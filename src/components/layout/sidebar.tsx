@@ -19,6 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Home,
+  Columns3,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -47,6 +49,7 @@ interface NavItem {
 
 const NAV_GROUPS = [
   { key: "principal", label: "" },
+  { key: "produtividade", label: "Produtividade" },
   { key: "gestao", label: "Gestao" },
   { key: "marketing", label: "Marketing" },
   { key: "operacional", label: "Operacional" },
@@ -55,6 +58,9 @@ const NAV_GROUPS = [
 const navigation: NavItem[] = [
   // PRINCIPAL
   { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
+  // PRODUTIVIDADE
+  { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
+  { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
   // GESTÃO
   { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "gestao", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "gestao", requiresStoreAccess: true },

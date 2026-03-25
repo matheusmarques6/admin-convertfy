@@ -1,0 +1,492 @@
+"use client"
+
+import { useEffect, useRef, useCallback } from "react"
+import { cn } from "@/lib/utils"
+import { useProductivityStore } from "@/stores/productivity-store"
+import { PRIORITY_COLORS, TASK_STATUSES } from "@/types/productivity"
+import {
+  PriorityDot, StatusDot, Avatar, Checkbox, ProgressBar, ProgressCircle,
+  Card, CardHeader, DSBadge, SectionLabel,
+  IconFlag, IconCalendar, IconCheck, IconBolt, IconChart,
+  IconTarget, IconFire, IconDoc, IconSun, IconMoon,
+  IconPlay, IconPause, IconRefresh, IconExtLink, IconClock,
+  IconChevronLeft, IconChevronRight,
+} from "./ds-atoms"
+
+// ============================================================================
+// Início — Dashboard do dia (3 zonas)
+// ============================================================================
+
+export function ProductivityHome() {
+  const {
+    tasks, calendarEvents, planningDone, setPlanningDone,
+    showShutdown, setShowShutdown, goals, habitDays,
+    kanbanColumns, weeklyBars, checkedHabits, toggleHabitCheck,
+    focusRunning, focusTime, focusSessions, focusBreak,
+    toggleFocus, resetFocus, tickFocus,
+  } = useProductivityStore()
+
+  // Focus timer tick
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (focusRunning && focusTime > 0) {
+      timerRef.current = setInterval(tickFocus, 1000)
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [focusRunning, focusTime, tickFocus])
+
+  const fm = Math.floor(focusTime / 60)
+  const fs = focusTime % 60
+
+  const plannedHours = 5.5
+  const capacityHours = 8
+  const workloadPct = Math.round((plannedHours / capacityHours) * 100)
+  const workloadColor = workloadPct > 90 ? "text-negative-text" : workloadPct > 70 ? "text-warning-text" : "text-positive-text"
+  const workloadBg = workloadPct > 90 ? "bg-negative-text" : workloadPct > 70 ? "bg-warning-text" : "bg-positive-text"
+
+  const pendingCount = tasks.filter((t) => t.status !== "done").length
+  const maxBar = Math.max(...weeklyBars.map((b) => Math.max(b.actual, b.estimated)))
+
+  return (
+    <div className="flex-1 overflow-auto">
+      {/* Top bar */}
+      <div className="bg-white border-b border-[rgba(0,0,0,0.08)] px-6 py-3 flex justify-between items-center sticky top-0 z-10">
+        <div className="flex items-center gap-6">
+          <div>
+            <h1 className="text-[18px] font-semibold text-gray-900 m-0 tracking-[-0.02em]">Bom dia, Matheus</h1>
+            <div className="text-[12px] text-gray-400 mt-[1px]">Terca, 24 mar 2026</div>
+          </div>
+          {/* Workload pill */}
+          <div className="flex items-center gap-3 py-[6px] px-4 bg-gray-50 rounded-md border border-[rgba(0,0,0,0.08)]">
+            <span className="text-gray-400"><IconClock size={14} /></span>
+            <span className="text-[12px] font-medium text-gray-600">Carga</span>
+            <div className="w-20 h-[6px] bg-gray-200 rounded-[3px] overflow-hidden">
+              <div className={cn("h-full rounded-[3px]", workloadBg)} style={{ width: `${workloadPct}%` }} />
+            </div>
+            <span className={cn("text-[12px] font-semibold font-mono tabular-nums", workloadColor)}>
+              {plannedHours}h/{capacityHours}h
+            </span>
+          </div>
+        </div>
+        {/* Day navigation */}
+        <div className="flex items-center gap-2">
+          <button className="py-[5px] px-[10px] rounded-sm border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[12px] text-gray-500 flex items-center gap-1 hover:bg-gray-50 transition-colors duration-fast ease-out-expo">
+            <IconChevronLeft size={14} /> Ontem
+          </button>
+          <span className="text-[12px] font-semibold text-brand-400 py-[5px] px-3 bg-brand-50 rounded-sm">Hoje</span>
+          <button className="py-[5px] px-[10px] rounded-sm border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[12px] text-gray-500 flex items-center gap-1 hover:bg-gray-50 transition-colors duration-fast ease-out-expo">
+            Amanha <IconChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-6 flex flex-col gap-6 max-w-[1100px]">
+        {/* ══════════ Planning Banner ══════════ */}
+        {!planningDone && (
+          <div className="bg-gradient-to-r from-brand-400 via-brand to-brand-800 rounded-md px-6 py-4 text-white flex items-center justify-between relative overflow-hidden">
+            <div className="absolute -top-[30px] -right-[30px] w-[100px] h-[100px] rounded-full bg-white/[0.06]" />
+            <div className="relative z-[1]">
+              <div className="flex items-center gap-2 mb-1">
+                <IconSun size={18} />
+                <span className="text-[15px] font-semibold">Ritual de planejamento matinal</span>
+              </div>
+              <p className="text-[13px] opacity-80 m-0">10 min de planejamento recuperam ate 2h do seu dia.</p>
+            </div>
+            <div className="flex gap-2 relative z-[1] shrink-0">
+              <button
+                onClick={() => setPlanningDone(true)}
+                className="h-9 px-5 rounded-sm border-none cursor-pointer text-[13px] font-semibold bg-white/20 text-white hover:bg-white/30 transition-colors duration-fast ease-out-expo"
+              >
+                Ja planejei
+              </button>
+              <button className="h-9 px-5 rounded-sm border-2 border-white/40 cursor-pointer text-[13px] font-semibold bg-white text-brand-400 hover:bg-gray-50 transition-colors duration-fast ease-out-expo">
+                Iniciar ritual
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════ ZONA 1: Visão do Dia ══════════ */}
+        <div>
+          <SectionLabel>Visao do dia</SectionLabel>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Objetivos do dia */}
+            <Card>
+              <CardHeader
+                icon={<IconFlag />}
+                title="Objetivos do dia"
+                right={<span className="text-[11px] text-gray-400">Max 3</span>}
+              />
+              {[
+                { text: "Fechar proposta Alphaville", done: false },
+                { text: "Alinhar prioridades sprint", done: false },
+                { text: "Aprovar 2 entregas design", done: true },
+              ].map((o, i) => (
+                <div key={i} className={cn("flex items-center gap-3 py-3", i < 2 && "border-b border-gray-100")}>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full flex items-center justify-center",
+                    o.done ? "bg-positive-text" : "border-2 border-brand-100"
+                  )}>
+                    {o.done && (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className={cn(
+                    "text-sm font-medium",
+                    o.done ? "text-gray-400 line-through" : "text-gray-800"
+                  )}>
+                    {o.text}
+                  </span>
+                </div>
+              ))}
+            </Card>
+
+            {/* Calendário */}
+            <Card>
+              <CardHeader
+                icon={<IconCalendar />}
+                title="Calendario"
+                right={<DSBadge type="brand">Google Cal</DSBadge>}
+              />
+              {calendarEvents.map((ev, i) => (
+                <div key={i} className={cn("flex items-center gap-2 py-[6px]", i < calendarEvents.length - 1 && "border-b border-gray-50")}>
+                  <div className="w-[3px] h-6 rounded-[2px] shrink-0" style={{ background: ev.color }} />
+                  <span className="font-semibold text-gray-500 font-mono text-[11px] min-w-9">{ev.time}</span>
+                  <span className="flex-1 text-[13px] text-gray-600">{ev.name}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+
+          {/* Tarefas do dia */}
+          <Card>
+            <CardHeader
+              icon={<IconCheck />}
+              title="Tarefas do dia"
+              right={<DSBadge type="warning">{pendingCount} pendentes</DSBadge>}
+            />
+            {/* Table header */}
+            <div className="grid grid-cols-[16px_16px_minmax(0,1fr)_70px_44px_28px_44px] gap-2 py-1 mb-[2px]">
+              <span />
+              <span />
+              <span className="text-[10px] font-semibold text-gray-400 uppercase">Tarefa</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase text-center">Projeto</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase text-center">Est.</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase text-center">Resp</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase text-right">Hora</span>
+            </div>
+            {tasks.map((t) => {
+              const isDone = t.status === "done"
+              return (
+                <div key={t.id}>
+                  <div className="grid grid-cols-[16px_16px_minmax(0,1fr)_70px_44px_28px_44px] gap-2 py-[6px] border-t border-gray-100 items-center">
+                    <PriorityDot priority={t.priority} />
+                    <Checkbox checked={isDone} />
+                    <span className={cn(
+                      "text-[13px] font-medium truncate",
+                      isDone ? "text-gray-400 line-through" : "text-gray-800"
+                    )}>
+                      {t.name}
+                    </span>
+                    <span className="text-[10px] font-medium text-brand-400 text-center px-1 py-[2px] bg-brand-50 rounded-[3px] truncate">
+                      {t.project}
+                    </span>
+                    <span className="text-[10px] font-medium text-gray-400 font-mono text-center bg-gray-50 rounded-[3px] px-1 py-[1px]">
+                      {t.estimatedTime}
+                    </span>
+                    <div className="flex justify-center">
+                      <Avatar initials={t.people[0]} size={20} />
+                    </div>
+                    <span className={cn(
+                      "text-[11px] font-medium font-mono text-right",
+                      isDone ? "text-positive-text" : "text-gray-400"
+                    )}>
+                      {isDone ? "Feito" : t.time}
+                    </span>
+                  </div>
+                  {/* Subtasks */}
+                  {t.subtasks.map((sub) => (
+                    <div key={sub.id} className="grid grid-cols-[16px_16px_minmax(0,1fr)_70px_44px_28px_44px] gap-2 py-1 pl-5">
+                      <span />
+                      <Checkbox checked={sub.done} />
+                      <span className={cn("text-[12px]", sub.done ? "text-gray-400 line-through" : "text-gray-600")}>
+                        {sub.name}
+                      </span>
+                      <span /><span /><span /><span />
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </Card>
+        </div>
+
+        {/* ══════════ ZONA 2: Produtividade ══════════ */}
+        <div>
+          <SectionLabel>Produtividade</SectionLabel>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Modo Foco (Timer) */}
+            <Card>
+              <CardHeader
+                icon={<IconBolt />}
+                title="Modo foco"
+                right={<DSBadge type="positive">Pronto</DSBadge>}
+              />
+              {/* Current task */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-sm mb-3 border border-gray-200">
+                <PriorityDot priority={2} />
+                <span className="text-[12px] font-medium text-gray-700 flex-1">Revisar proposta Alphaville</span>
+                <span className="text-[10px] text-brand-400 font-medium cursor-pointer hover:underline">Trocar</span>
+              </div>
+              {/* Timer display */}
+              <div className="flex items-center gap-6 mb-3">
+                <div className="text-[44px] font-semibold font-mono text-gray-900 tracking-[-2px] leading-none tabular-nums">
+                  {String(fm).padStart(2, "0")}:{String(fs).padStart(2, "0")}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={toggleFocus}
+                    className="flex items-center gap-[6px] h-8 px-4 rounded-sm border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand transition-colors duration-fast ease-out-expo"
+                  >
+                    {focusRunning ? <IconPause size={13} /> : <IconPlay size={13} />}
+                    {focusRunning ? "Pausar" : "Iniciar"}
+                  </button>
+                  <button
+                    onClick={resetFocus}
+                    className="h-[26px] rounded-sm border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[10px] text-gray-500 flex items-center justify-center gap-1 hover:bg-gray-50 transition-colors duration-fast ease-out-expo"
+                  >
+                    <IconRefresh size={10} /> Reset
+                  </button>
+                </div>
+              </div>
+              {/* Timer presets */}
+              <div className="flex gap-1">
+                {["25 min", "Pausa 5m", "Longa 15m"].map((t, i) => (
+                  <span
+                    key={t}
+                    className={cn(
+                      "text-[10px] py-[2px] px-2 rounded-sm border",
+                      i === 0
+                        ? "border-brand-100 bg-brand-50 text-brand-400 font-medium"
+                        : "border-[rgba(0,0,0,0.08)] bg-transparent text-gray-400"
+                    )}
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </Card>
+
+            {/* Gráfico Semanal */}
+            <Card>
+              <CardHeader
+                icon={<IconChart />}
+                title="Grafico semanal"
+                right={<DSBadge type="positive">+12%</DSBadge>}
+              />
+              {/* Mini stats */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[
+                  { v: "18", l: "Concluidas" },
+                  { v: "4.2h", l: "Real" },
+                  { v: "5.1h", l: "Estimado" },
+                ].map((m) => (
+                  <div key={m.l} className="bg-gray-50 rounded-sm p-2 text-center">
+                    <div className="text-[20px] font-semibold text-gray-900 tabular-nums leading-none">{m.v}</div>
+                    <div className="text-[10px] text-gray-400 mt-[3px]">{m.l}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Bar chart */}
+              <div className="flex items-end gap-[6px] h-16">
+                {weeklyBars.map((b) => (
+                  <div key={b.label} className="flex-1 flex flex-col items-center gap-[3px]">
+                    <div className="w-full flex gap-[2px] items-end justify-center h-[52px]">
+                      <div
+                        className="w-[40%] rounded-t-[3px] bg-gray-200"
+                        style={{ height: `${(b.estimated / maxBar) * 48}px` }}
+                      />
+                      <div
+                        className="w-[40%] rounded-t-[3px] opacity-80"
+                        style={{
+                          height: `${(b.actual / maxBar) * 48}px`,
+                          background: b.actual > b.estimated ? "#065F46" : "#4E62D8",
+                        }}
+                      />
+                    </div>
+                    <span className="text-[9px] text-gray-400">{b.label}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Board rápido */}
+          <Card>
+            <CardHeader
+              icon={<IconDoc />}
+              title="Board rapido"
+              right={
+                <span className="text-[12px] font-medium text-brand-400 cursor-pointer flex items-center gap-1 hover:underline">
+                  Board <IconExtLink size={12} />
+                </span>
+              }
+            />
+            <div className="grid grid-cols-3 gap-3">
+              {kanbanColumns.map((col) => (
+                <div key={col.title} className="bg-gray-50 rounded-md p-3">
+                  <div className="flex justify-between mb-2">
+                    <div className="flex items-center gap-[6px]">
+                      <div className="w-2 h-2 rounded-full" style={{ background: col.color }} />
+                      <span className="text-[12px] font-semibold text-gray-700">{col.title}</span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-gray-400 font-mono">{col.items.length}</span>
+                  </div>
+                  {col.items.map((item) => (
+                    <div
+                      key={item.text}
+                      className={cn(
+                        "bg-white border border-[rgba(0,0,0,0.08)] rounded-sm px-3 py-2 mb-1 flex justify-between",
+                        col.title === "Concluidas" && "opacity-55"
+                      )}
+                    >
+                      <div>
+                        <div className="text-[12px] font-medium text-gray-700">{item.text}</div>
+                        <div className="text-[10px] text-gray-400 mt-[2px]">{item.meta}</div>
+                      </div>
+                      <Avatar initials={item.avatar} size={18} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* ══════════ ZONA 3: Crescimento ══════════ */}
+        <div>
+          <SectionLabel>Crescimento</SectionLabel>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Metas do trimestre */}
+            <Card>
+              <CardHeader
+                icon={<IconTarget />}
+                title="Metas do trimestre"
+                right={<DSBadge type="brand">Q1 2026</DSBadge>}
+              />
+              {goals.map((g, i) => (
+                <div key={g.name} className={cn("py-2", i < goals.length - 1 && "border-b border-gray-100")}>
+                  <div className="flex justify-between">
+                    <span className="text-[13px] font-semibold text-gray-800">{g.name}</span>
+                    <span className="text-[12px] font-semibold font-mono" style={{ color: g.color }}>
+                      {g.percentage}%
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-[2px] mb-1">{g.current}</div>
+                  <div className="h-[5px] bg-gray-100 rounded-[3px] overflow-hidden">
+                    <div className="h-full rounded-[3px]" style={{ width: `${g.percentage}%`, background: g.color }} />
+                  </div>
+                </div>
+              ))}
+            </Card>
+
+            {/* Hábitos */}
+            <Card>
+              <CardHeader
+                icon={<IconFire />}
+                title="Habitos"
+                right={<DSBadge type="positive">7d streak</DSBadge>}
+              />
+              {habitDays.map((h, i) => (
+                <div key={h.name} className={cn(i < habitDays.length - 1 && "mb-3")}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[12px] font-medium text-gray-700">{h.name}</span>
+                    <span className="text-[11px] font-semibold text-positive-text font-mono">{h.streak}d</span>
+                  </div>
+                  <div className="grid grid-cols-7 gap-[3px]">
+                    {h.days.map((d, di) => (
+                      <div
+                        key={di}
+                        className={cn(
+                          "aspect-square rounded-[3px]",
+                          d === 1 ? "bg-positive-bg border border-positive-border" :
+                          d === 2 ? "border-[1.5px] border-brand-400 bg-transparent" :
+                          "bg-gray-100"
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </Card>
+          </div>
+        </div>
+
+        {/* ══════════ Encerramento ══════════ */}
+        <div className="bg-white rounded-md border border-[rgba(0,0,0,0.08)] px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-md bg-gray-50 flex items-center justify-center text-gray-400">
+              <IconMoon size={18} />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-gray-800">Ritual de encerramento</div>
+              <div className="text-[12px] text-gray-400">Revise, anote pendencias e planeje amanha.</div>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowShutdown(!showShutdown)}
+            className="h-9 px-5 rounded-sm border border-[rgba(0,0,0,0.08)] cursor-pointer text-[13px] font-medium bg-white text-gray-600 hover:bg-gray-50 transition-colors duration-fast ease-out-expo"
+          >
+            Encerrar o dia
+          </button>
+        </div>
+
+        {/* Shutdown panel */}
+        {showShutdown && (
+          <Card className="border-2 border-brand-100">
+            <CardHeader
+              icon={<IconMoon />}
+              title="Encerramento"
+              right={<DSBadge type="brand">Ativo</DSBadge>}
+            />
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-[12px] font-semibold text-gray-700 mb-2">Concluido</div>
+                {tasks.filter((t) => t.status === "done").map((t) => (
+                  <div key={t.id} className="flex items-center gap-[6px] py-[3px] text-[12px] text-positive-text">
+                    <IconCheck size={12} /> {t.name}
+                  </div>
+                ))}
+                <div className="text-[20px] font-semibold text-gray-900 mt-2 font-mono">
+                  {tasks.filter((t) => t.status === "done").length}/{tasks.length}
+                </div>
+              </div>
+              <div>
+                <div className="text-[12px] font-semibold text-gray-700 mb-2">Pendente</div>
+                {tasks.filter((t) => t.status !== "done").map((t) => (
+                  <div key={t.id} className="flex items-center gap-[6px] py-[3px] text-[12px] text-gray-600">
+                    <PriorityDot priority={t.priority} /> {t.name}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-[12px] font-semibold text-gray-700 mb-2">Amanha</div>
+                <textarea
+                  placeholder={"1.\n2.\n3."}
+                  className="w-full h-20 rounded-sm border border-[rgba(0,0,0,0.08)] p-2 text-[12px] font-sans resize-none text-gray-700 focus:outline-none focus:shadow-ring-brand"
+                />
+                <button className="w-full mt-2 h-8 rounded-sm border-none bg-brand-400 text-white text-[12px] font-semibold cursor-pointer hover:bg-brand transition-colors duration-fast ease-out-expo">
+                  Encerrar dia
+                </button>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+}
