@@ -147,7 +147,7 @@ function RevenueAreaChart({ klaviyo }: { klaviyo?: KlaviyoData }) {
               fontSize: 12,
               color: "#F9FAFB",
             }}
-            formatter={(value: number) => [formatCurrency(value), undefined]}
+            formatter={(value) => [formatCurrency(Number(value)), undefined]}
           />
           <Area
             type="monotone"
