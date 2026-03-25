@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   Tooltip,
@@ -411,9 +412,23 @@ export function DashboardClientHealth({
       {/* ── Header ─────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-4">
         <div>
-          <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
-            Saúde das Lojas
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+              Saúde das Lojas
+            </h3>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                  Ranking das lojas por receita e score de saúde. Identifique rapidamente quais clientes precisam de atenção com base na receita atribuída e performance geral.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="mt-0.5 text-[12px] text-gray-400 dark:text-gray-500">
             {needsAttention} precisam atenção &middot; {Math.min(MAX_VISIBLE, totalStores)} de{" "}
             {totalStores}

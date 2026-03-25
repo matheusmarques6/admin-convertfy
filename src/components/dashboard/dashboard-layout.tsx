@@ -226,6 +226,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
               delta={{ value: 0, label: "vs anterior" }}
               sparkData={FALLBACK_SPARKLINES.revenue}
               loading={isLoading}
+              tooltip="Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
             />
             <KpiCard
               label="Receita Campanhas"
@@ -233,6 +234,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
               delta={{ value: 0, label: "vs anterior" }}
               sparkData={FALLBACK_SPARKLINES.campaigns}
               loading={isLoading}
+              tooltip="Receita atribuída a campanhas de email e SMS enviadas pela Convertfy no período."
             />
             <KpiCard
               label="Receita Automações"
@@ -240,6 +242,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
               delta={{ value: 0, label: "vs anterior" }}
               sparkData={FALLBACK_SPARKLINES.automations}
               loading={isLoading}
+              tooltip="Receita gerada por flows automáticos (carrinho abandonado, welcome, win-back, etc.) no período."
             />
             <KpiCard
               label="Taxa média da Convertfy"
@@ -248,6 +251,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
               sparkData={FALLBACK_SPARKLINES.rate}
               variant="gradient"
               loading={isLoading}
+              tooltip="Percentual médio da receita total que é atribuída às ações da Convertfy (campanhas + automações) entre todas as lojas."
             />
           </KpiCardRow>
         </AnimatedItem>

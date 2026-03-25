@@ -1,8 +1,15 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 type Severity = 0 | 1 | 2
 
@@ -135,6 +142,18 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
           <span className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
             Alertas
           </span>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                Alertas automáticos sobre problemas que requerem atenção: pagamentos vencidos, contratos expirando, health score baixo, falhas de entrega e flows pausados.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {criticalCount > 0 && (
             <span className="inline-flex items-center rounded-full bg-[#EF4444] px-2 py-0.5 text-[11px] font-semibold leading-none text-white">
               {criticalCount} criticos

@@ -1,5 +1,6 @@
 "use client"
 
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   TooltipProvider,
@@ -239,14 +240,33 @@ interface DashboardFlowPerfProps {
 
 export function DashboardFlowPerf({ loading = false }: DashboardFlowPerfProps) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {loading
-        ? Array.from({ length: 3 }).map((_, i) => (
-            <FlowCardSkeleton key={i} />
-          ))
-        : FLOW_CARDS.map((card) => (
-            <FlowCard key={card.title} data={card} />
-          ))}
+    <div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+          Performance dos Flows
+        </h3>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+              Taxa de conversão e receita dos principais flows automáticos. Passe o mouse em cada card para ver detalhes como emails enviados, conversões e ticket médio.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {loading
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <FlowCardSkeleton key={i} />
+            ))
+          : FLOW_CARDS.map((card) => (
+              <FlowCard key={card.title} data={card} />
+            ))}
+      </div>
     </div>
   )
 }

@@ -1,8 +1,14 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
 
@@ -217,9 +223,23 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
     >
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
-          Clientes por Receita
-        </h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+            Clientes por Receita
+          </h3>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                Tabela paginada de todos os clientes ordenados por receita. Visualize open rate, click rate, tendência e status (ativo, em risco ou churned) de cada loja.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
 
         <div className="flex items-center gap-3">
           {/* Search */}

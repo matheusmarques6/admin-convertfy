@@ -10,7 +10,14 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip as InfoTooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -281,9 +288,23 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
       {/* ── Header ─────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-sm font-medium text-gray-700 dark:text-[#C1C7D4]">
-            Performance do Email
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-[#C1C7D4]">
+              Performance do Email
+            </h3>
+            <TooltipProvider delayDuration={200}>
+              <InfoTooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                  Métricas consolidadas de email: abertura, clique, CTOR, taxa de pedidos, receita por email e deliverability. Inclui volume de envios, perfis ativos e engajados nos últimos 90 dias.
+                </TooltipContent>
+              </InfoTooltip>
+            </TooltipProvider>
+          </div>
           <p className="mt-0.5 text-xs text-gray-400 dark:text-[#5C6378] font-mono tabular-nums">
             198.6K entregues &middot; R$ 847K receita atribuida
           </p>

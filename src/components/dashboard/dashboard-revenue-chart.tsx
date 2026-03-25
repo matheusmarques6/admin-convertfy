@@ -11,7 +11,14 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip as InfoTooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -262,9 +269,23 @@ export function DashboardRevenueChart({ loading, period: _period }: DashboardRev
     >
       {/* Header */}
       <div className="mb-1">
-        <h3 className="text-[14px] font-medium leading-5 text-gray-700 dark:text-[#C8CDD8]">
-          Receita Atribuida
-        </h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[14px] font-medium leading-5 text-gray-700 dark:text-[#C8CDD8]">
+            Receita Atribuida
+          </h3>
+          <TooltipProvider delayDuration={200}>
+            <InfoTooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                Compara a receita atribuída à Convertfy entre o período atual e o anterior. Visualize tendências de campanhas, automações e faturamento total.
+              </TooltipContent>
+            </InfoTooltip>
+          </TooltipProvider>
+        </div>
         <p className="text-[12px] text-gray-400 dark:text-[#5C6378] mt-0.5">
           Atual vs anterior (milhares R$)
         </p>

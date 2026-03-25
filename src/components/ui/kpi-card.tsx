@@ -1,7 +1,13 @@
 import * as React from 'react'
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react'
+import { ArrowUp, ArrowDown, Minus, Info } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip'
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -23,6 +29,8 @@ interface KpiCardProps {
   variant?: 'default' | 'gradient'
   /** Estado de loading */
   loading?: boolean
+  /** Tooltip descritivo exibido ao passar o mouse */
+  tooltip?: string
 }
 
 // ─── Sparkline ───────────────────────────────────────────
@@ -136,7 +144,7 @@ function KpiCardSkeleton({ variant = 'default' }: { variant?: 'default' | 'gradi
 
 // ─── KpiCard ─────────────────────────────────────────────
 
-export function KpiCard({ label, value, delta, sparkData, variant = 'default', loading }: KpiCardProps) {
+export function KpiCard({ label, value, delta, sparkData, variant = 'default', loading, tooltip }: KpiCardProps) {
   const isGradient = variant === 'gradient'
 
   if (loading) return <KpiCardSkeleton variant={variant} />
@@ -149,12 +157,33 @@ export function KpiCard({ label, value, delta, sparkData, variant = 'default', l
         : 'bg-white border border-[rgba(0,0,0,0.08)] dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]',
     )}>
       {/* Label */}
-      <p className={cn(
-        'text-[13px] font-medium leading-tight',
-        isGradient ? 'text-white/70' : 'text-gray-500 dark:text-[#8B92A5]',
-      )}>
-        {label}
-      </p>
+      <div className="flex items-center gap-1.5">
+        <p className={cn(
+          'text-[13px] font-medium leading-tight',
+          isGradient ? 'text-white/70' : 'text-gray-500 dark:text-[#8B92A5]',
+        )}>
+          {label}
+        </p>
+        {tooltip && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className={cn(
+                  'inline-flex shrink-0 rounded-full p-0.5 transition-colors',
+                  isGradient
+                    ? 'text-white/40 hover:text-white/70'
+                    : 'text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5]',
+                )}>
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-relaxed">
+                {tooltip}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
 
       {/* Value */}
       <p className={cn(

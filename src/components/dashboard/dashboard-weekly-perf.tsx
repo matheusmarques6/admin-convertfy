@@ -9,7 +9,14 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip as InfoTooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 interface DashboardWeeklyPerfProps {
   loading?: boolean
@@ -116,9 +123,23 @@ export function DashboardWeeklyPerf({ loading = false }: DashboardWeeklyPerfProp
       ) : (
         <>
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
-              Performance por Semana
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+                Performance por Semana
+              </h3>
+              <TooltipProvider delayDuration={200}>
+                <InfoTooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                    Taxa de abertura, clique e conversão dos emails por semana. Acompanhe a evolução do engajamento ao longo do tempo.
+                  </TooltipContent>
+                </InfoTooltip>
+              </TooltipProvider>
+            </div>
             <div className="flex items-center gap-3">
               {LEGEND_ITEMS.map((item) => (
                 <div key={item.key} className="flex items-center gap-1.5">

@@ -1,7 +1,14 @@
 "use client"
 
 import { useMemo } from "react"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -228,9 +235,23 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
         <>
           {/* ── Header ── */}
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
-              Onboarding
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+                Onboarding
+              </h3>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                    Acompanhe o progresso dos onboardings ativos. Cada loja passa pelas fases: Configuração, Briefing, Klaviyo, 1a Campanha e Go Live. Lojas atrasadas são destacadas.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <button
               type="button"
               className="text-[12px] font-medium text-[#4E62D8] hover:underline dark:text-[#7B8CEA]"
