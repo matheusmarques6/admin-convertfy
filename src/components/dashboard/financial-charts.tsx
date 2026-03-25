@@ -262,8 +262,8 @@ export function FinancialCharts({
                         border: "1px solid var(--border)",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number, _name, props) => [
-                        `${formatCurrency(value)} (${props.payload.deals} deals)`,
+                      formatter={(value, _name, props) => [
+                        `${formatCurrency(Number(value))} (${(props as { payload?: { deals?: number } }).payload?.deals ?? 0} deals)`,
                         "Valor",
                       ]}
                     />

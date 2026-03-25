@@ -206,9 +206,9 @@ export function RevenueComparisonChart({
                     borderRadius: "8px",
                     fontSize: "12px",
                   }}
-                  formatter={(value: number, name: string) => [
-                    formatCurrency(value),
-                    name === "storeRevenue" ? "Faturamento Total" : "Convertfy",
+                  formatter={(value, name) => [
+                    formatCurrency(Number(value)),
+                    String(name) === "storeRevenue" ? "Faturamento Total" : "Convertfy",
                   ]}
                 />
                 <Area
