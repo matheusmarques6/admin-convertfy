@@ -39,7 +39,7 @@ export function SidebarItem({
       onClick={onClick}
       className={cn(
         "relative mx-2 flex items-center gap-3 rounded-[6px] text-sm font-medium",
-        "transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        "transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
         "min-h-[36px] md:min-h-[36px]",
         collapsed ? "w-10 h-10 justify-center mx-auto" : "px-3 py-2",
         active

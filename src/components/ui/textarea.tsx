@@ -17,7 +17,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           // Focus — Rule 10 WCAG 2.4.7
           "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
           // Transitions
-          "transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           // Disabled
           "disabled:cursor-not-allowed disabled:opacity-50",
           // Dark mode

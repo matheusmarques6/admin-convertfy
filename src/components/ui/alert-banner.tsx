@@ -84,7 +84,7 @@ export function AlertBanner({
 
   const ctaClasses = cn(
     'inline-flex items-center justify-center px-3 h-8 rounded-[6px] text-xs font-semibold',
-    'transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]',
+    'transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]',
     'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]',
     'dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]',
     config.ctaBg,

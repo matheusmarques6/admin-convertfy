@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
   // Base — applied to ALL buttons
-  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8] dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA] disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8] dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA] disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {

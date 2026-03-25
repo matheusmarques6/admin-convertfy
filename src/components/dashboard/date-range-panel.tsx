@@ -120,7 +120,7 @@ export function DateRangePanel({
   return (
     <div
       className={cn(
-        "overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        "overflow-hidden transition-all duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
         isOpen ? "max-h-[500px] opacity-100 mt-4" : "max-h-0 opacity-0 mt-0",
       )}
     >

@@ -102,7 +102,7 @@ export function ClientSidebar({ user, forceExpanded }: ClientSidebarProps) {
         className={cn(
           "flex flex-col h-full bg-white border-r border-[rgba(0,0,0,0.08)]",
           "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]",
-          "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "transition-all duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           "relative z-30",
           collapsed ? "w-16" : "w-[240px]"
         )}
@@ -200,7 +200,7 @@ export function ClientSidebarMobileDrawer({ user }: Pick<ClientSidebarProps, "us
       <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-[280px] md:hidden",
-          "transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "transition-transform duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >

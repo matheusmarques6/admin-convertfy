@@ -102,7 +102,7 @@ export default async function SettingsPage() {
               "hover:shadow-[0_1px_2px_rgba(0,0,0,0.03),0_1px_3px_rgba(0,0,0,0.05)]",
               "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
               "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
-              "transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              "transition-all duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
               "min-h-[44px]",
             )}
           >
