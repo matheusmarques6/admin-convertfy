@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  LayoutDashboard,
+  Home,
   Users,
   Store,
   GitBranch,
@@ -42,7 +42,6 @@ interface NavItem {
   name: string
   href: string
   icon: LucideIcon
-  group: string
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
   badge?: string
