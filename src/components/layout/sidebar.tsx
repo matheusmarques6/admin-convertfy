@@ -19,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Home,
   Columns3,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
