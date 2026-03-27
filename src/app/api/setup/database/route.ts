@@ -5,7 +5,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // POST - Set up database tables
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "setup:database", RATE_LIMITS.migration)
+  const limited = await checkRateLimit(request, "setup:database", RATE_LIMITS.migration)
   if (limited) return limited
 
   try {

@@ -752,7 +752,7 @@ export default function PublicOnboardingPage() {
 
           {/* Navigation */}
           <div className="flex justify-between pt-6 border-t">
-            <Button variant="outline" onClick={prevStep} disabled={currentStepIndex === 0}>
+            <Button variant="secondary" onClick={prevStep} disabled={currentStepIndex === 0}>
               <ChevronLeft className="h-4 w-4 mr-1" />
               Voltar
             </Button>

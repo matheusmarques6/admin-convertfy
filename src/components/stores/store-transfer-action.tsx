@@ -263,7 +263,7 @@ export function StoreTransferAction({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => handleOpenChange(false)}
             disabled={isTransferring}
           >

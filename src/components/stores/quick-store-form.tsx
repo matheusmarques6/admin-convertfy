@@ -318,7 +318,7 @@ export function QuickStoreForm({ onSuccess, onCancel, defaultClientId }: QuickSt
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancelar
         </Button>
         <Button type="submit" disabled={isSubmitting}>

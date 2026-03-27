@@ -7,7 +7,7 @@ interface StoreLinkBadgeProps {
 
 export function StoreLinkBadge({ clientId, clientName }: StoreLinkBadgeProps) {
   if (!clientId) {
-    return <Badge variant="secondary">Avulsa</Badge>
+    return <Badge variant="neutral">Avulsa</Badge>
   }
-  return <Badge variant="default">Vinculada: {clientName || "Cliente"}</Badge>
+  return <Badge variant="info">Vinculada: {clientName || "Cliente"}</Badge>
 }

@@ -20,6 +20,7 @@ import {
   ChevronRight,
   X,
   Columns3,
+  LayoutDashboard,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -41,6 +42,7 @@ interface NavItem {
   name: string
   href: string
   icon: LucideIcon
+  group: string
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
   badge?: string

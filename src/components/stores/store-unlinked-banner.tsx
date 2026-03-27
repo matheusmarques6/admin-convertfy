@@ -27,7 +27,7 @@ export function StoreUnlinkedBanner({ storeId, storeName, orgId }: StoreUnlinked
             Esta loja nao esta vinculada a nenhum cliente. Vincular permite melhor organizacao e relatorios.
           </span>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             className="ml-2 border-yellow-500/50 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/10"
             onClick={() => setIsLinkModalOpen(true)}

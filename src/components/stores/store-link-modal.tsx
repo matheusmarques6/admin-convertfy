@@ -250,7 +250,7 @@ export function StoreLinkModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
           <Button

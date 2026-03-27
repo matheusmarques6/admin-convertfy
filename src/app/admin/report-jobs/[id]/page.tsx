@@ -439,7 +439,7 @@ export default function ReportJobDetailPage({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-600">
+                        <Badge variant="warning" className="text-[10px]">
                           Parcial
                         </Badge>
                         <Button

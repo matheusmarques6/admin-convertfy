@@ -31,7 +31,7 @@ function Calendar({
           "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
         ),
         button_next: cn(
-          buttonVariants({ variant: "outline" }),
+          buttonVariants({ variant: "secondary" }),
           "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1"
         ),
         month_grid: "w-full border-collapse",
@@ -56,8 +56,12 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: () => <Icon icon={ChevronLeft} size={16} />,
-        IconRight: () => <Icon icon={ChevronRight} size={16} />,
+        Chevron: ({ orientation }) =>
+          orientation === "left" ? (
+            <Icon icon={ChevronLeft} size={16} />
+          ) : (
+            <Icon icon={ChevronRight} size={16} />
+          ),
       }}
       {...props}
     />

@@ -35,7 +35,7 @@ export function StoreLinkActions({
       <>
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           onClick={() => setIsLinkModalOpen(true)}
         >
           <Link2 className="w-4 h-4 mr-1" />
@@ -58,7 +58,7 @@ export function StoreLinkActions({
     <>
       <Button
         size="sm"
-        variant="outline"
+        variant="secondary"
         onClick={() => setIsUnlinkDialogOpen(true)}
         className="text-destructive hover:text-destructive"
       >
