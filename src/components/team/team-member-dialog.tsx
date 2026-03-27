@@ -348,7 +348,7 @@ export function TeamMemberDialog({
               <p className="text-sm text-muted-foreground">Senha Provisória</p>
               <div className="flex items-center gap-2 p-4 bg-muted rounded-lg">
                 <code className="text-2xl font-mono font-bold tracking-wider">{tempPassword}</code>
-                <Button type="button" variant="outline" size="sm" onClick={copyTempPassword}>
+                <Button type="button" variant="secondary" size="sm" onClick={copyTempPassword}>
                   Copiar
                 </Button>
               </div>
@@ -527,7 +527,7 @@ export function TeamMemberDialog({
                       <div className="flex gap-2">
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={selectAllStores}
                         >
@@ -535,7 +535,7 @@ export function TeamMemberDialog({
                         </Button>
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={deselectAllStores}
                         >
@@ -582,7 +582,7 @@ export function TeamMemberDialog({
           </Tabs>
 
           <DialogFooter className="pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>

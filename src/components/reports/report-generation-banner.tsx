@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { X, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 interface ReportGenerationBannerProps {
   startDate: string
@@ -90,10 +91,10 @@ export function ReportGenerationBanner({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           {isComplete && (
-            <CheckCircle2 className="h-4 w-4 text-green-500" aria-hidden="true" />
+            <Icon icon={CheckCircle2} size={16} className="text-green-500" aria-hidden="true" />
           )}
           {isPartial && (
-            <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden="true" />
+            <Icon icon={AlertTriangle} size={16} className="text-amber-500" aria-hidden="true" />
           )}
           <span>
             {isAllDone
@@ -111,7 +112,7 @@ export function ReportGenerationBanner({
             onClick={handleDismiss}
             aria-label="Fechar banner"
           >
-            <X className="h-4 w-4" />
+            <Icon icon={X} size={16} />
           </Button>
         )}
       </div>

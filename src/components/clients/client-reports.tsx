@@ -548,7 +548,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
         </TabsList>
         <div className="flex items-center gap-2">
           {savedReports.length >= 2 && (
-            <Button variant="outline" onClick={() => setShowCompareDialog(true)}>
+            <Button variant="secondary" onClick={() => setShowCompareDialog(true)}>
               <GitCompare className="mr-2 h-4 w-4" />
               Comparar
             </Button>
@@ -604,7 +604,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             const { currency, locale } = getReportCurrency(report)
 
             return (
-              <Card key={report.id} className="rounded-xl border bg-card">
+              <Card key={report.id} className="rounded-[8px] border">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -628,10 +628,10 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 <CardContent className="space-y-4">
                   {/* Period Badge */}
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">
+                    <Badge variant="neutral">
                       {getPeriodLabel(report.period, report.date_range)}
                     </Badge>
-                    <Badge variant="outline" className="capitalize">
+                    <Badge variant="neutral" showDot={false} className="capitalize">
                       {report.report_type}
                     </Badge>
                   </div>
@@ -665,7 +665,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                   {/* Actions */}
                   <div className="flex gap-2 pt-2 border-t">
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="flex-1"
                       onClick={() => setViewingReport(report)}
@@ -768,7 +768,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowCreateDialog(false)}>
               Cancelar
             </Button>
             <Button onClick={createReport} disabled={isCreating || !selectedStore}>
@@ -794,7 +794,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleExportPDF}>
+                <Button variant="secondary" size="sm" onClick={handleExportPDF}>
                   <Download className="mr-2 h-4 w-4" />
                   Exportar PDF
                 </Button>
@@ -873,7 +873,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCompareDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowCompareDialog(false)}>
               Cancelar
             </Button>
             <Button
@@ -919,12 +919,12 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="font-medium text-muted-foreground">Métrica</div>
                   <div className="text-center">
-                    <Badge variant="outline" className="mb-1">Base</Badge>
+                    <Badge variant="neutral" showDot={false} className="mb-1">Base</Badge>
                     <p className="text-sm font-medium">{report1.store_name}</p>
                     <p className="text-xs text-muted-foreground">{getPeriodLabel(report1.period, report1.date_range)}</p>
                   </div>
                   <div className="text-center">
-                    <Badge variant="secondary" className="mb-1">Comparação</Badge>
+                    <Badge variant="neutral" className="mb-1">Comparação</Badge>
                     <p className="text-sm font-medium">{report2.store_name}</p>
                     <p className="text-xs text-muted-foreground">{getPeriodLabel(report2.period, report2.date_range)}</p>
                   </div>
@@ -985,7 +985,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </div>
 
                 {/* Summary */}
-                <Card className="rounded-xl border bg-card text-foreground">
+                <Card className="rounded-[8px] border text-foreground">
                   <CardContent className="py-4">
                     <h4 className="font-medium mb-3">Resumo da Comparação</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

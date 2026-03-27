@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { X, Loader2, Search, Store } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -285,7 +286,7 @@ export function CampaignFormModal({
         <CardHeader className="flex flex-row items-center justify-between sticky top-0 bg-card z-10 border-b">
           <CardTitle>Nova Campanha</CardTitle>
           <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
+            <Icon icon={X} size={16} />
           </Button>
         </CardHeader>
         <CardContent className="overflow-y-auto flex-1 p-6">
@@ -496,11 +497,11 @@ export function CampaignFormModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
-                  <Store className="h-4 w-4" />
+                  <Icon icon={Store} size={16} />
                   Lojas Selecionadas ({selectedStoreIds.length}/{allStores.length}) *
                 </Label>
                 <div className="relative w-64">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Icon icon={Search} size={16} className="absolute left-2 top-2.5 text-muted-foreground" />
                   <Input
                     placeholder="Buscar loja ou cliente..."
                     value={searchQuery}
@@ -513,7 +514,7 @@ export function CampaignFormModal({
               <div className="h-48 border rounded-md overflow-y-auto">
                 {loadingStores ? (
                   <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
                   </div>
                 ) : filteredStores.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -582,11 +583,11 @@ export function CampaignFormModal({
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="secondary" onClick={onClose}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={loading || selectedStoreIds.length === 0}>
-                {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {loading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                 Criar Campanha ({selectedStoreIds.length} lojas)
               </Button>
             </div>

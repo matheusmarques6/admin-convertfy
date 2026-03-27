@@ -137,15 +137,15 @@ export const TASK_TYPE_CONFIG: Record<
   TaskType,
   {
     label: string
-    variant: "default" | "secondary" | "outline" | "destructive" | "warning"
+    variant: "positive" | "negative" | "warning" | "neutral" | "info"
   }
 > = {
-  general: { label: "Geral", variant: "secondary" },
-  onboarding: { label: "Onboarding", variant: "secondary" },
-  campaign: { label: "Campanha", variant: "default" },
-  request: { label: "Solicitação", variant: "outline" },
+  general: { label: "Geral", variant: "neutral" },
+  onboarding: { label: "Onboarding", variant: "neutral" },
+  campaign: { label: "Campanha", variant: "info" },
+  request: { label: "Solicitação", variant: "neutral" },
   meeting: { label: "Reunião", variant: "warning" },
-  deadline: { label: "Prazo/Entrega", variant: "destructive" },
+  deadline: { label: "Prazo/Entrega", variant: "negative" },
 }
 
 export const TASK_TYPE_OPTIONS = (
@@ -163,14 +163,14 @@ export const MEETING_STATUS_CONFIG: Record<
   MeetingStatus,
   {
     label: string
-    variant: "default" | "secondary" | "outline" | "destructive"
+    variant: "positive" | "negative" | "warning" | "neutral" | "info"
     icon: typeof Clock
   }
 > = {
-  scheduled: { label: "Agendada", variant: "default", icon: Clock },
-  completed: { label: "Realizada", variant: "secondary", icon: CheckCircle },
-  cancelled: { label: "Cancelada", variant: "outline", icon: XCircle },
-  no_show: { label: "Não Compareceu", variant: "destructive", icon: AlertCircle },
+  scheduled: { label: "Agendada", variant: "info", icon: Clock },
+  completed: { label: "Realizada", variant: "positive", icon: CheckCircle },
+  cancelled: { label: "Cancelada", variant: "neutral", icon: XCircle },
+  no_show: { label: "Não Compareceu", variant: "negative", icon: AlertCircle },
 }
 
 export const MEETING_STATUS_OPTIONS = (

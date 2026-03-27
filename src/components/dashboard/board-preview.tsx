@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { LayoutGrid, AlertTriangle, Ban, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,16 +35,16 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
   const maxCount = Math.max(...counts.map((c) => c.count), 1)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <LayoutGrid className="h-4 w-4 text-primary" />
+              <Icon icon={LayoutGrid} size={16} className="text-primary" />
             </div>
             <CardTitle className="text-sm font-semibold">Board</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-xs font-medium">
+          <Badge variant="neutral" className="text-xs font-medium">
             {totalActive} ativas
           </Badge>
         </div>
@@ -52,7 +53,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         {/* Column counters */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {counts.map((col) => (
-            <div key={col.status} className="text-center space-y-1.5 sm:space-y-2 p-2 sm:p-2.5 rounded-xl bg-muted/30">
+            <div key={col.status} className="text-center space-y-1.5 sm:space-y-2 p-2 sm:p-2.5 rounded-[8px] bg-muted/30">
               <p className="text-[11px] text-muted-foreground font-medium">{col.label}</p>
               <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums">{col.count}</p>
               <div className="h-1.5 rounded-full bg-muted overflow-hidden">
@@ -69,13 +70,13 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         <div className="space-y-1.5">
           {overdue > 0 && (
             <div className="flex items-center gap-2 text-xs text-warning p-2 rounded-lg bg-warning/5">
-              <AlertTriangle className="h-3.5 w-3.5" />
+              <Icon icon={AlertTriangle} customSize={14} />
               <span>{overdue} {overdue === 1 ? "tarefa vencida" : "tarefas vencidas"}</span>
             </div>
           )}
           {blocked > 0 && (
             <div className="flex items-center gap-2 text-xs text-destructive p-2 rounded-lg bg-destructive/5">
-              <Ban className="h-3.5 w-3.5" />
+              <Icon icon={Ban} customSize={14} />
               <span>{blocked} {blocked === 1 ? "tarefa bloqueada" : "tarefas bloqueadas"}</span>
             </div>
           )}
@@ -86,7 +87,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
           <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
             <Link href="/admin/board">
               Ver Board
-              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+              <Icon icon={ArrowRight} customSize={14} className="ml-1 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </Button>
         </div>

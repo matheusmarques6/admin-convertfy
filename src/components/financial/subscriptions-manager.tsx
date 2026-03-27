@@ -8,23 +8,16 @@ import {
   RefreshCw,
   Calendar,
   Ban,
-  ChevronDown,
   Search,
   Repeat,
   User,
+  MoreHorizontal,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -79,19 +72,16 @@ export function SubscriptionsManager() {
     try {
       const supabase = createClient()
 
-      // Get all clients with asaas_customer_id
       const { data: clients } = await supabase
         .from("clients")
         .select("id, name, company, custom_fields")
 
       const allSubscriptions: Subscription[] = []
 
-      // Filter clients that have asaas_customer_id
       const clientsWithAsaas = (clients || []).filter(
         (c) => (c.custom_fields as Record<string, string>)?.asaas_customer_id
       )
 
-      // Fetch subscriptions in parallel batches (max 5 concurrent)
       const BATCH_SIZE = 5
       for (let i = 0; i < clientsWithAsaas.length; i += BATCH_SIZE) {
         const batch = clientsWithAsaas.slice(i, i + BATCH_SIZE)
@@ -118,7 +108,6 @@ export function SubscriptionsManager() {
         }
       }
 
-      // Sort by active first, then by nextDueDate
       allSubscriptions.sort((a, b) => {
         if (a.isActive !== b.isActive) return a.isActive ? -1 : 1
         return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime()
@@ -186,27 +175,14 @@ export function SubscriptionsManager() {
   const inactiveSubscriptions = filteredSubscriptions.filter(s => !s.isActive)
 
   const totalMRR = activeSubscriptions.reduce((sum, s) => {
-    // Normalize to monthly value
     let monthlyValue = s.value
     switch (s.cycle) {
-      case "WEEKLY":
-        monthlyValue = s.value * 4
-        break
-      case "BIWEEKLY":
-        monthlyValue = s.value * 2
-        break
-      case "BIMONTHLY":
-        monthlyValue = s.value / 2
-        break
-      case "QUARTERLY":
-        monthlyValue = s.value / 3
-        break
-      case "SEMIANNUALLY":
-        monthlyValue = s.value / 6
-        break
-      case "YEARLY":
-        monthlyValue = s.value / 12
-        break
+      case "WEEKLY": monthlyValue = s.value * 4; break
+      case "BIWEEKLY": monthlyValue = s.value * 2; break
+      case "BIMONTHLY": monthlyValue = s.value / 2; break
+      case "QUARTERLY": monthlyValue = s.value / 3; break
+      case "SEMIANNUALLY": monthlyValue = s.value / 6; break
+      case "YEARLY": monthlyValue = s.value / 12; break
     }
     return sum + monthlyValue
   }, 0)
@@ -214,7 +190,7 @@ export function SubscriptionsManager() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400 dark:text-[#5C6378]" />
       </div>
     )
   }
@@ -222,180 +198,200 @@ export function SubscriptionsManager() {
   const getStatusBadge = (sub: Subscription) => {
     if (sub.isActive) {
       return (
-        <Badge variant="success" className="gap-1">
+        <Badge variant="positive" className="gap-1">
           <CheckCircle2 className="h-3 w-3" />
           Ativa
         </Badge>
       )
     }
     return (
-      <Badge variant="secondary" className="gap-1">
+      <Badge variant="neutral" className="gap-1">
         <AlertCircle className="h-3 w-3" />
         {sub.statusLabel}
       </Badge>
     )
   }
 
+  // DataTable columns
+  const columns: ColumnDef<Subscription>[] = [
+    {
+      accessorKey: "clientName",
+      header: "Cliente",
+      type: "text",
+      mobilePriority: "title",
+      cell: (row) => (
+        <div className="min-w-0">
+          {row.clientId ? (
+            <Link href={`/admin/clients/${row.clientId}`} className="hover:underline">
+              <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+                {row.clientName}
+              </p>
+              {row.clientCompany && (
+                <p className="text-xs text-gray-400 dark:text-[#5C6378] truncate">
+                  {row.clientCompany}
+                </p>
+              )}
+            </Link>
+          ) : (
+            <span className="text-sm text-gray-400 dark:text-[#5C6378]">—</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "description",
+      header: "Descrição",
+      type: "text",
+      mobilePriority: "hidden",
+      hideOnTablet: true,
+      cell: (row) => (
+        <span className="text-sm text-gray-600 dark:text-[#8B92A5] truncate max-w-[200px] block">
+          {row.description || "Assinatura"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "value",
+      header: "Valor",
+      type: "currency",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <span className="text-sm font-medium font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+          {formatCurrency(row.value)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "cycle",
+      header: "Ciclo",
+      type: "badge",
+      mobilePriority: "hidden",
+      cell: (row) => (
+        <Badge variant="neutral" showDot={false} className="text-[10px]">
+          {row.cycleLabel}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "nextDueDate",
+      header: "Próximo Vencimento",
+      type: "date",
+      mobilePriority: "detail",
+      sortable: true,
+      cell: (row) => (
+        <span className="text-sm font-mono tabular-nums text-gray-600 dark:text-[#8B92A5]">
+          {formatDate(row.nextDueDate)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      type: "badge",
+      mobilePriority: "badge",
+      cell: (row) => getStatusBadge(row),
+    },
+    {
+      accessorKey: "id",
+      header: "",
+      type: "custom",
+      mobilePriority: "hidden",
+      width: "48px",
+      cell: (row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Icon icon={MoreHorizontal} size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {row.isActive && (
+              <DropdownMenuItem
+                className="text-[#991B1B] dark:text-[#FCA5A5]"
+                onClick={() => {
+                  setSelectedSubscription(row)
+                  setCancelDialogOpen(true)
+                }}
+              >
+                <Ban className="h-4 w-4 mr-2" />
+                Cancelar Assinatura
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Repeat className="h-4 w-4 text-emerald-500" />
-              Assinaturas Ativas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              {activeSubscriptions.length}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Summary Cards — DS v3.0 Rule 2 */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Repeat className="h-4 w-4 text-emerald-500" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Assinaturas Ativas</span>
+          </div>
+          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+            {activeSubscriptions.length}
+          </p>
+        </div>
 
-        <Card className="rounded-xl border bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary" />
-              MRR Estimado
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(totalMRR)}
-            </div>
-            <p className="text-xs text-muted-foreground">Receita Mensal Recorrente</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">MRR Estimado</span>
+          </div>
+          <p className="text-2xl font-bold font-mono tabular-nums text-[#4E62D8] dark:text-[#7B8CEA]">
+            {formatCurrency(totalMRR)}
+          </p>
+          <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-1">Receita Mensal Recorrente</p>
+        </div>
 
-        <Card className="rounded-xl border bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              Inativas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              {inactiveSubscriptions.length}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <User className="h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Inativas</span>
+          </div>
+          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+            {inactiveSubscriptions.length}
+          </p>
+        </div>
       </div>
 
-      {/* Table */}
-      <Card className="rounded-xl border bg-card">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>Assinaturas</CardTitle>
-              <CardDescription>
-                Gerencie as assinaturas recorrentes dos clientes
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-[200px]"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => loadSubscriptions(true)}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              </Button>
-            </div>
+      {/* Search + Refresh */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Assinaturas
+        </h3>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+            <Input
+              placeholder="Buscar..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-[200px]"
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Ciclo</TableHead>
-                <TableHead>Próximo Vencimento</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[100px]">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSubscriptions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    Nenhuma assinatura encontrada
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredSubscriptions.map((sub) => (
-                  <TableRow key={sub.id}>
-                    <TableCell>
-                      {sub.clientId ? (
-                        <Link href={`/admin/clients/${sub.clientId}`} className="hover:underline">
-                          <div className="font-medium">{sub.clientName}</div>
-                          {sub.clientCompany && (
-                            <div className="text-xs text-muted-foreground">{sub.clientCompany}</div>
-                          )}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {sub.description || "Assinatura"}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(sub.value)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{sub.cycleLabel}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {formatDate(sub.nextDueDate)}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(sub)}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {sub.isActive && (
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => {
-                                setSelectedSubscription(sub)
-                                setCancelDialogOpen(true)
-                              }}
-                            >
-                              <Ban className="h-4 w-4 mr-2" />
-                              Cancelar Assinatura
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={() => loadSubscriptions(true)}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
+
+      {/* DataTable — DS v3.0 Rule 5 (no zebra-striping) */}
+      <DataTable
+        columns={columns}
+        data={filteredSubscriptions}
+        emptyMessage="Nenhuma assinatura encontrada"
+        rowKey="id"
+      />
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -405,13 +401,13 @@ export function SubscriptionsManager() {
             <AlertDialogDescription>
               Tem certeza que deseja cancelar esta assinatura?
               {selectedSubscription && (
-                <div className="mt-2 p-3 rounded-lg bg-muted">
+                <div className="mt-2 p-3 rounded-[8px] bg-gray-50 dark:bg-[#0F1117]">
                   <p><strong>Cliente:</strong> {selectedSubscription.clientName || "—"}</p>
                   <p><strong>Valor:</strong> {formatCurrency(selectedSubscription.value)}</p>
                   <p><strong>Ciclo:</strong> {selectedSubscription.cycleLabel}</p>
                 </div>
               )}
-              <p className="mt-2 text-warning">
+              <p className="mt-2 text-[#991B1B] dark:text-[#FCA5A5]">
                 O cliente não será mais cobrado automaticamente após o cancelamento.
               </p>
             </AlertDialogDescription>
@@ -421,7 +417,7 @@ export function SubscriptionsManager() {
             <AlertDialogAction
               onClick={handleCancelSubscription}
               disabled={isCancelling}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-[#991B1B] text-white hover:bg-[#991B1B]/90"
             >
               {isCancelling ? (
                 <>

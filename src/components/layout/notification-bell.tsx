@@ -109,7 +109,7 @@ export function NotificationBell({ collapsed = false }: NotificationBellProps) {
       <button
         className={cn(
           "relative flex items-center justify-center rounded-lg transition-colors duration-150",
-          "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]",
+          "text-sidebar-foreground hover:text-white hover:bg-white/[0.07]",
           collapsed ? "h-9 w-9 mx-auto" : "h-9 w-9"
         )}
         aria-label={`Notificacoes de relatorios${unreadCount > 0 ? ` (${unreadCount} pendentes)` : ""}`}

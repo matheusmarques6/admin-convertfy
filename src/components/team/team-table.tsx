@@ -67,15 +67,41 @@ interface TeamTableProps {
   stores: StoreWithClient[]
 }
 
-const roleLabels: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" | "outline" }> = {
-  owner: { label: "Owner", variant: "default" },
-  manager: { label: "Gerente", variant: "success" },
+function formatRelativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "Nunca"
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHrs = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMin < 5) return "Agora"
+  if (diffMin < 60) return `Há ${diffMin}min`
+  if (diffHrs < 24) return `Há ${diffHrs}h`
+  if (diffDays < 7) return `Há ${diffDays}d`
+  if (diffDays < 30) return `Há ${Math.floor(diffDays / 7)} sem`
+  return `Há ${Math.floor(diffDays / 30)} mês(es)`
+}
+
+function getActivityColor(dateStr: string | null | undefined): string {
+  if (!dateStr) return "bg-muted-foreground/40"
+  const diffMs = Date.now() - new Date(dateStr).getTime()
+  const diffDays = diffMs / 86400000
+  if (diffDays < 1) return "bg-emerald-500"
+  if (diffDays < 7) return "bg-amber-500"
+  return "bg-muted-foreground/40"
+}
+
+const roleLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+  owner: { label: "Owner", variant: "info" },
+  manager: { label: "Gerente", variant: "positive" },
   coordinator: { label: "Coordenador", variant: "warning" },
-  copywriter: { label: "Copywriter", variant: "secondary" },
-  designer: { label: "Designer", variant: "secondary" },
-  developer: { label: "Desenvolvedor", variant: "secondary" },
-  support: { label: "Suporte", variant: "outline" },
-  analyst: { label: "Analista", variant: "outline" },
+  copywriter: { label: "Copywriter", variant: "neutral" },
+  designer: { label: "Designer", variant: "neutral" },
+  developer: { label: "Desenvolvedor", variant: "neutral" },
+  support: { label: "Suporte", variant: "neutral" },
+  analyst: { label: "Analista", variant: "neutral" },
 }
 
 export function TeamTable({ members, features, organizations, stores }: TeamTableProps) {
@@ -148,9 +174,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
     return (
       <>
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="rounded-full bg-muted p-4 mb-4">
-            <Users2 className="h-8 w-8 text-muted-foreground" />
-          </div>
+          <Users2 className="h-8 w-8 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium">Nenhum membro encontrado</h3>
           <p className="text-muted-foreground mt-1">
             Comece adicionando o primeiro membro da equipe
@@ -184,6 +208,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
               <TableHead>Organização</TableHead>
               <TableHead>Features</TableHead>
               <TableHead>Lojas</TableHead>
+              <TableHead>Última atividade</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
@@ -258,13 +283,21 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                     </div>
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${getActivityColor(member.profile?.last_sign_in_at)}`} />
+                      <span className="text-sm text-muted-foreground">
+                        {formatRelativeTime(member.profile?.last_sign_in_at)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     {member.is_active ? (
-                      <Badge variant="success" className="flex items-center gap-1 w-fit">
+                      <Badge variant="positive" className="flex items-center gap-1 w-fit">
                         <UserCheck className="h-3 w-3" />
                         Ativo
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                      <Badge variant="neutral" className="flex items-center gap-1 w-fit">
                         <UserX className="h-3 w-3" />
                         Inativo
                       </Badge>

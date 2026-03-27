@@ -681,19 +681,19 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   function getStatusBadge(status: string) {
-    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: typeof CheckCircle2 }> = {
-      RECEIVED: { label: "Pago", variant: "success", icon: CheckCircle2 },
-      CONFIRMED: { label: "Confirmado", variant: "success", icon: CheckCircle2 },
-      RECEIVED_IN_CASH: { label: "Recebido", variant: "success", icon: CheckCircle2 },
+    const statusMap: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info"; icon: typeof CheckCircle2 }> = {
+      RECEIVED: { label: "Pago", variant: "positive", icon: CheckCircle2 },
+      CONFIRMED: { label: "Confirmado", variant: "positive", icon: CheckCircle2 },
+      RECEIVED_IN_CASH: { label: "Recebido", variant: "positive", icon: CheckCircle2 },
       PENDING: { label: "Pendente", variant: "warning", icon: Clock },
       pending: { label: "Pendente", variant: "warning", icon: Clock },
-      OVERDUE: { label: "Vencido", variant: "destructive", icon: AlertCircle },
-      overdue: { label: "Vencido", variant: "destructive", icon: AlertCircle },
-      paid: { label: "Pago", variant: "success", icon: CheckCircle2 },
-      cancelled: { label: "Cancelado", variant: "secondary", icon: XCircle },
-      REFUNDED: { label: "Estornado", variant: "secondary", icon: XCircle },
+      OVERDUE: { label: "Vencido", variant: "negative", icon: AlertCircle },
+      overdue: { label: "Vencido", variant: "negative", icon: AlertCircle },
+      paid: { label: "Pago", variant: "positive", icon: CheckCircle2 },
+      cancelled: { label: "Cancelado", variant: "neutral", icon: XCircle },
+      REFUNDED: { label: "Estornado", variant: "neutral", icon: XCircle },
     }
-    const info = statusMap[status] || { label: status, variant: "default" as const, icon: Clock }
+    const info = statusMap[status] || { label: status, variant: "info" as const, icon: Clock }
     const Icon = info.icon
 
     return (
@@ -748,7 +748,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <AlertCircle className="h-12 w-12 text-destructive mb-4" />
           <h3 className="text-lg font-medium text-destructive">Erro ao carregar</h3>
           <p className="text-muted-foreground text-center mt-1">{error}</p>
-          <Button variant="outline" className="mt-4" onClick={() => { mutatePayments(); mutateSubscriptions() }}>
+          <Button variant="secondary" className="mt-4" onClick={() => { mutatePayments(); mutateSubscriptions() }}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Tentar novamente
           </Button>
@@ -761,7 +761,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-3 md:grid-cols-4">
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-[8px] border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Total Recebido</span>
             <div className="rounded-full w-2 h-2 bg-emerald-500" />
@@ -774,7 +774,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-[8px] border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Pendente</span>
             <div className="rounded-full w-2 h-2 bg-amber-500" />
@@ -787,7 +787,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-[8px] border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Vencido</span>
             <div className="rounded-full w-2 h-2 bg-red-500" />
@@ -800,7 +800,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-6">
+        <Card className="rounded-[8px] border p-6">
           <p className="text-sm text-muted-foreground mb-1">Assinaturas Ativas</p>
           <p className="text-2xl font-bold text-foreground">
             {computedSummary.activeSubsCount}
@@ -824,12 +824,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={() => { mutatePayments(); mutateSubscriptions(); loadLocalData(); }} disabled={isLoading}>
+          <Button variant="secondary" size="icon" onClick={() => { mutatePayments(); mutateSubscriptions(); loadLocalData(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setSubscriptionDialogOpen(true)}>
+          <Button variant="secondary" onClick={() => setSubscriptionDialogOpen(true)}>
             <Repeat className="mr-2 h-4 w-4" />
             Nova Assinatura
           </Button>
@@ -1002,7 +1002,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge variant={sub.status === "active" ? "success" : "secondary"}>
+                        <Badge variant={sub.status === "active" ? "positive" : "neutral"}>
                           {sub.status === "active" ? "Ativa" : sub.status === "inactive" ? "Inativa" : "Cancelada"}
                         </Badge>
                         <DropdownMenu>
@@ -1061,7 +1061,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge variant={sub.isActive ? "success" : "secondary"}>{sub.statusLabel}</Badge>
+                        <Badge variant={sub.isActive ? "positive" : "neutral"}>{sub.statusLabel}</Badge>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1224,7 +1224,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
+                <Button variant="secondary" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
                 <Button onClick={handleCreateCharge} disabled={isCreating || chargeForm.value === 0}>
                   {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Criar Fatura
@@ -1252,7 +1252,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         unoptimized
                       />
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         className="mt-2"
                         onClick={() => {
@@ -1268,7 +1268,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 )}
 
                 {createdPayment.bankSlipUrl && (
-                  <Button variant="outline" className="w-full" asChild>
+                  <Button variant="secondary" className="w-full" asChild>
                     <a href={createdPayment.bankSlipUrl} target="_blank" rel="noopener noreferrer">
                       <FileText className="mr-2 h-4 w-4" />
                       Ver Boleto
@@ -1277,7 +1277,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 )}
 
                 {createdPayment.invoiceUrl && (
-                  <Button variant="outline" className="w-full" asChild>
+                  <Button variant="secondary" className="w-full" asChild>
                     <a href={createdPayment.invoiceUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Link de Pagamento
@@ -1389,7 +1389,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleCreateSubscription} disabled={isCreating || subscriptionForm.value === 0}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
@@ -1477,7 +1477,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleUpdateChargeStatus} disabled={isCreating}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar Alterações

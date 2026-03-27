@@ -156,7 +156,7 @@ const LEGACY_STAGES: OnboardingStatus[] = ["not_started", "in_progress", "paused
 
 const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
   preparacao: { label: "Preparação", color: "#6366F1" },
-  integracao: { label: "Integração", color: "hsl(var(--primary))" },
+  integracao: { label: "Integração", color: "var(--primary)" },
   configuracao: { label: "Configuração", color: "#EC4899" },
   lancamento: { label: "Lançamento", color: "#10B981" },
 }
@@ -559,7 +559,7 @@ export function OnboardingKanban() {
           </div>
 
           {viewMode === "pipeline" && (
-            <Button variant="outline" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
+            <Button variant="secondary" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar
               {realtimeConnected && (
@@ -598,7 +598,7 @@ export function OnboardingKanban() {
                     <div className="flex items-center gap-2">
                       <span style={{ color: stage.color }}>{stage.icon}</span>
                       <h3 className="font-semibold">{stage.name}</h3>
-                      <Badge variant="secondary" className="rounded-full">
+                      <Badge variant="neutral">
                         {stageOnboardings.length}
                       </Badge>
                     </div>
@@ -713,7 +713,7 @@ export function OnboardingKanban() {
                                       <Store className="h-3 w-3" />
                                       <span className="truncate">{onboarding.store.store_name}</span>
                                       {onboarding.store.platform && (
-                                        <Badge variant="outline" className="text-[10px] ml-1">
+                                        <Badge variant="neutral" showDot={false} className="text-[10px] ml-1">
                                           {onboarding.store.platform}
                                         </Badge>
                                       )}
@@ -724,7 +724,7 @@ export function OnboardingKanban() {
                                   {onboarding.form_complete !== undefined && (
                                     <div className="mt-2">
                                       {onboarding.form_complete ? (
-                                        <Badge variant="success" className="text-[10px]">
+                                        <Badge variant="positive" className="text-[10px]">
                                           <CheckCircle2 className="h-3 w-3 mr-1" />
                                           Formulário preenchido
                                         </Badge>
@@ -850,7 +850,7 @@ export function OnboardingKanban() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewOnboardingDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowNewOnboardingDialog(false)}>
               Cancelar
             </Button>
             <Button onClick={handleCreateOnboarding} disabled={!newOnboardingClientId}>
@@ -1007,7 +1007,7 @@ export function OnboardingKanban() {
                                   )}
                                 </div>
                                 {step.status === "blocked" && (
-                                  <Badge variant="destructive" className="text-xs">
+                                  <Badge variant="negative" className="text-xs">
                                     Bloqueado
                                   </Badge>
                                 )}

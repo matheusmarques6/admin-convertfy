@@ -174,7 +174,7 @@ export default function ReportJobDetailPage({
       <div className="flex flex-col items-center justify-center py-16">
         <AlertTriangle className="h-10 w-10 text-destructive mb-4" />
         <h2 className="text-lg font-medium">Relatorio nao encontrado</h2>
-        <Button variant="outline" className="mt-4" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
+        <Button variant="secondary" className="mt-4" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
         </Button>
@@ -203,7 +203,7 @@ export default function ReportJobDetailPage({
             Os dados deste relatorio expiraram. Voce pode gerar novamente com os mesmos parametros.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
+            <Button variant="secondary" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
             </Button>
@@ -253,7 +253,7 @@ export default function ReportJobDetailPage({
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleCopyLink}>
+            <Button variant="secondary" size="sm" onClick={handleCopyLink}>
               {copiedLink ? (
                 <Check className="h-4 w-4 mr-1" />
               ) : (
@@ -261,7 +261,7 @@ export default function ReportJobDetailPage({
               )}
               {copiedLink ? "Copiado" : "Copiar link"}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={isExportingPdf}>
+            <Button variant="secondary" size="sm" onClick={handleDownloadPdf} disabled={isExportingPdf}>
               {isExportingPdf ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
@@ -269,7 +269,7 @@ export default function ReportJobDetailPage({
               )}
               {isExportingPdf ? "Gerando PDF..." : "Baixar PDF"}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
+            <Button variant="secondary" size="sm" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
               <ArrowLeft className="h-4 w-4 mr-1" />
               Voltar
             </Button>
@@ -295,7 +295,7 @@ export default function ReportJobDetailPage({
               {result.stores_processed}/{result.stores_processed + result.stores_failed} lojas processadas
             </span>
             {result.stores_failed > 0 && (
-              <Badge variant="destructive" className="text-[10px]">
+              <Badge variant="negative" className="text-[10px]">
                 {result.stores_failed} com falha
               </Badge>
             )}
@@ -403,7 +403,7 @@ export default function ReportJobDetailPage({
                       {formatPercent(pctOfTotal)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="default" className="text-[10px]">
+                      <Badge variant="info" className="text-[10px]">
                         OK
                       </Badge>
                     </TableCell>

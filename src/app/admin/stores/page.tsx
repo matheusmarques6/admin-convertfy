@@ -5,8 +5,8 @@ import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 
 export const metadata: Metadata = {
-  title: "Controle de Lojas | Convertfy Admin",
-  description: "Acompanhe os resultados e calls de feedback das lojas dos clientes",
+  title: "Lojas | Convertfy Admin",
+  description: "Gerencie as lojas dos clientes, integrações e alertas",
 }
 
 export default function StoresControlPage() {
@@ -15,11 +15,10 @@ export default function StoresControlPage() {
       <div className="flex-1 space-y-6">
         <PageHeader
           icon={Store}
-          title="Controle de Lojas"
-          description="Acompanhe resultados e gerencie calls de feedback"
+          title="Lojas"
+          description="Gerencie lojas, integrações e acompanhe métricas"
         />
 
-        {/* Stores Tabs: Lojas + Alertas */}
         <StoresPageTabs />
       </div>
     </PagePermissionWrapper>

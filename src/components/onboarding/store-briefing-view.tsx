@@ -367,7 +367,7 @@ export function StoreBriefingView({
           <p className="text-muted-foreground mb-4">Nenhum briefing gerado ainda.</p>
           <div className="flex gap-2 justify-center">
             {onEditForm && (
-              <Button variant="outline" onClick={onEditForm}>
+              <Button variant="secondary" onClick={onEditForm}>
                 Preencher Formulário
               </Button>
             )}
@@ -375,7 +375,7 @@ export function StoreBriefingView({
               {regenerating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               Gerar Briefing
             </Button>
-            <Button variant="outline" onClick={() => setCreatingManual(true)}>
+            <Button variant="secondary" onClick={() => setCreatingManual(true)}>
               <Pencil className="h-4 w-4 mr-1" />
               Criar Manual
             </Button>
@@ -439,7 +439,7 @@ export function StoreBriefingView({
         const v = d as BriefingData["foco_campanhas"]
         return (
           <div className="space-y-2 text-sm">
-            <Badge variant="secondary">{v.abordagem}</Badge>
+            <Badge variant="neutral">{v.abordagem}</Badge>
             <p className="text-muted-foreground">{v.descricao}</p>
           </div>
         )
@@ -466,7 +466,7 @@ export function StoreBriefingView({
         const v = d as BriefingData["perfil_marca"]
         return (
           <div className="space-y-2 text-sm">
-            <Badge variant="secondary">{v.tipo}</Badge>
+            <Badge variant="neutral">{v.tipo}</Badge>
             <p className="text-muted-foreground">{v.descricao}</p>
           </div>
         )
@@ -613,13 +613,13 @@ export function StoreBriefingView({
               <Clock className="h-3 w-3 ml-2" />
               <span>{new Date(briefing.generated_at).toLocaleDateString("pt-BR")}</span>
             </div>
-            <Button variant="outline" size="sm" onClick={startEditing}>
+            <Button variant="secondary" size="sm" onClick={startEditing}>
               <Pencil className="h-4 w-4 mr-1" />
               Editar
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={regenerating}>
+                <Button variant="secondary" size="sm" disabled={regenerating}>
                   {regenerating ? (
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                   ) : (

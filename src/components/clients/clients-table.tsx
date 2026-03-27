@@ -96,11 +96,11 @@ interface ClientStatus {
   }
 }
 
-const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
-  active: { label: "Ativo", variant: "success" },
-  inactive: { label: "Inativo", variant: "secondary" },
-  churned: { label: "Churned", variant: "destructive" },
-  prospect: { label: "Prospect", variant: "default" },
+const statusLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+  active: { label: "Ativo", variant: "positive" },
+  inactive: { label: "Inativo", variant: "neutral" },
+  churned: { label: "Churned", variant: "negative" },
+  prospect: { label: "Prospect", variant: "info" },
   onboarding: { label: "Onboarding", variant: "warning" },
 }
 
@@ -266,7 +266,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
           <p className="text-muted-foreground mt-1">
             Tente ajustar os filtros ou limpar a busca
           </p>
-          <Button variant="outline" asChild className="mt-4">
+          <Button variant="secondary" asChild className="mt-4">
             <Link href="/admin/clients">Limpar filtros</Link>
           </Button>
         </div>
@@ -399,12 +399,12 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
                     ) : clientStatus ? (
                       <div className="space-y-1">
                         {clientStatus.hasOverdue ? (
-                          <Badge variant="destructive" className="flex items-center gap-1 w-fit">
+                          <Badge variant="negative" className="flex items-center gap-1 w-fit">
                             <AlertCircle className="h-3 w-3" />
                             Inadimplente
                           </Badge>
                         ) : (
-                          <Badge variant="success" className="flex items-center gap-1 w-fit">
+                          <Badge variant="positive" className="flex items-center gap-1 w-fit">
                             <CheckCircle2 className="h-3 w-3" />
                             Adimplente
                           </Badge>
@@ -553,7 +553,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
           </p>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={currentPage <= 1}
               onClick={() => router.push(buildPageUrl(currentPage - 1))}
@@ -564,7 +564,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
               Página {currentPage} de {totalPages}
             </span>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={currentPage >= totalPages}
               onClick={() => router.push(buildPageUrl(currentPage + 1))}

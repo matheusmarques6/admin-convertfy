@@ -1,61 +1,115 @@
-import { cn } from "@/lib/utils"
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 
-type StatusVariant = "success" | "warning" | "destructive" | "info" | "default" | "muted"
+// ─── Types ───────────────────────────────────────────────
+
+type BadgeVariant = 'positive' | 'negative' | 'warning' | 'neutral' | 'info'
 
 interface StatusBadgeProps {
-  variant?: StatusVariant
-  children: React.ReactNode
+  /** String de status vinda do backend — mapeamento automático para variante visual */
+  status: string
+  /** Override do label exibido (se não informado, usa o status capitalizado) */
+  label?: string
+  /** Se false, esconde o dot. Default true */
   showDot?: boolean
   className?: string
 }
 
-const variantStyles: Record<StatusVariant, { bg: string; text: string; dot: string }> = {
-  success: {
-    bg: "bg-success/10",
-    text: "text-success",
-    dot: "bg-success",
-  },
-  warning: {
-    bg: "bg-warning/10",
-    text: "text-warning",
-    dot: "bg-warning",
-  },
-  destructive: {
-    bg: "bg-destructive/10",
-    text: "text-destructive",
-    dot: "bg-destructive",
-  },
-  info: {
-    bg: "bg-primary/10",
-    text: "text-primary",
-    dot: "bg-primary",
-  },
-  default: {
-    bg: "bg-secondary",
-    text: "text-secondary-foreground",
-    dot: "bg-secondary-foreground/50",
-  },
-  muted: {
-    bg: "bg-muted",
-    text: "text-muted-foreground",
-    dot: "bg-muted-foreground/50",
-  },
+// ─── Status Map ──────────────────────────────────────────
+
+const STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
+  // === Positive (ativo, sucesso, concluído) ===
+  active: { variant: 'positive', label: 'Ativo' },
+  ativo: { variant: 'positive', label: 'Ativo' },
+  completed: { variant: 'positive', label: 'Concluído' },
+  concluido: { variant: 'positive', label: 'Concluído' },
+  done: { variant: 'positive', label: 'Concluído' },
+  paid: { variant: 'positive', label: 'Pago' },
+  pago: { variant: 'positive', label: 'Pago' },
+  success: { variant: 'positive', label: 'Sucesso' },
+  online: { variant: 'positive', label: 'Online' },
+  connected: { variant: 'positive', label: 'Conectado' },
+  sent: { variant: 'positive', label: 'Enviado' },
+  enviado: { variant: 'positive', label: 'Enviado' },
+  published: { variant: 'positive', label: 'Publicado' },
+  approved: { variant: 'positive', label: 'Aprovado' },
+  healthy: { variant: 'positive', label: 'Saudável' },
+
+  // === Negative (erro, falha, churn) ===
+  failed: { variant: 'negative', label: 'Falhou' },
+  error: { variant: 'negative', label: 'Erro' },
+  erro: { variant: 'negative', label: 'Erro' },
+  churned: { variant: 'negative', label: 'Churned' },
+  cancelled: { variant: 'negative', label: 'Cancelado' },
+  cancelado: { variant: 'negative', label: 'Cancelado' },
+  rejected: { variant: 'negative', label: 'Rejeitado' },
+  overdue: { variant: 'negative', label: 'Atrasado' },
+  atrasado: { variant: 'negative', label: 'Atrasado' },
+  disconnected: { variant: 'negative', label: 'Desconectado' },
+  expired: { variant: 'negative', label: 'Expirado' },
+  critical: { variant: 'negative', label: 'Crítico' },
+
+  // === Warning (atenção, risco, pendente) ===
+  'at-risk': { variant: 'warning', label: 'Em Risco' },
+  at_risk: { variant: 'warning', label: 'Em Risco' },
+  'em-risco': { variant: 'warning', label: 'Em Risco' },
+  paused: { variant: 'warning', label: 'Pausado' },
+  pausado: { variant: 'warning', label: 'Pausado' },
+  pending: { variant: 'warning', label: 'Pendente' },
+  pendente: { variant: 'warning', label: 'Pendente' },
+  warning: { variant: 'warning', label: 'Atenção' },
+  review: { variant: 'warning', label: 'Em Revisão' },
+  'in-review': { variant: 'warning', label: 'Em Revisão' },
+  pending_review: { variant: 'warning', label: 'Em Revisão' },
+  processing: { variant: 'warning', label: 'Processando' },
+  queued: { variant: 'warning', label: 'Na Fila' },
+  retry: { variant: 'warning', label: 'Retry' },
+
+  // === Neutral (rascunho, inativo, arquivado) ===
+  draft: { variant: 'neutral', label: 'Rascunho' },
+  rascunho: { variant: 'neutral', label: 'Rascunho' },
+  inactive: { variant: 'neutral', label: 'Inativo' },
+  inativo: { variant: 'neutral', label: 'Inativo' },
+  archived: { variant: 'neutral', label: 'Arquivado' },
+  arquivado: { variant: 'neutral', label: 'Arquivado' },
+  unknown: { variant: 'neutral', label: 'Desconhecido' },
+  none: { variant: 'neutral', label: '—' },
+  closed: { variant: 'neutral', label: 'Fechado' },
+
+  // === Info (live, scheduled, sync) ===
+  live: { variant: 'info', label: 'Live' },
+  scheduled: { variant: 'info', label: 'Agendado' },
+  agendado: { variant: 'info', label: 'Agendado' },
+  syncing: { variant: 'info', label: 'Sincronizando' },
+  'in-progress': { variant: 'info', label: 'Em Andamento' },
+  in_progress: { variant: 'info', label: 'Em Andamento' },
+  'em-andamento': { variant: 'info', label: 'Em Andamento' },
+  running: { variant: 'info', label: 'Executando' },
+  open: { variant: 'info', label: 'Aberto' },
+  new: { variant: 'info', label: 'Novo' },
+  novo: { variant: 'info', label: 'Novo' },
 }
 
-export function StatusBadge({ variant = "default", children, showDot = true, className }: StatusBadgeProps) {
-  const styles = variantStyles[variant]
+function getStatusConfig(status: string): { variant: BadgeVariant; label: string } {
+  const normalized = status.toLowerCase().trim()
+  return STATUS_MAP[normalized] ?? { variant: 'neutral', label: status }
+}
+
+// ─── Component ───────────────────────────────────────────
+
+export function StatusBadge({ status, label, showDot = true, className }: StatusBadgeProps) {
+  const config = getStatusConfig(status)
 
   return (
-    <span className={cn(
-      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-      styles.bg,
-      styles.text,
-      className
-    )}>
-      {showDot && (
-        <span className={cn("h-1.5 w-1.5 rounded-full", styles.dot)} />
-      )}
-      {children}
-    </span>
+    <Badge
+      variant={config.variant}
+      showDot={showDot}
+      className={cn(className)}
+    >
+      {label ?? config.label}
+    </Badge>
   )
 }
+
+export { STATUS_MAP, getStatusConfig }
+export type { BadgeVariant, StatusBadgeProps }

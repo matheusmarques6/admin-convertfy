@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Users, UserPlus } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -57,15 +58,15 @@ interface NewClientsProps {
 
 export function NewClients({ clients }: NewClientsProps) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <UserPlus className="h-4 w-4 text-primary" />
+            <Icon icon={UserPlus} size={16} className="text-primary" />
             <CardTitle className="text-sm font-medium text-foreground">Novos Clientes</CardTitle>
           </div>
           {clients.length > 0 && (
-            <Badge variant="secondary" className="rounded-full text-xs">
+            <Badge variant="neutral" className="text-xs">
               {clients.length}
             </Badge>
           )}
@@ -90,7 +91,7 @@ export function NewClients({ clients }: NewClientsProps) {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate text-foreground">{client.name}</p>
                       <Badge
-                        variant="secondary"
+                        variant="neutral"
                         className={cn("text-[10px] h-5 px-2 shrink-0", STATUS_COLORS[client.status])}
                       >
                         {STATUS_LABELS[client.status] || client.status}
@@ -118,7 +119,7 @@ export function NewClients({ clients }: NewClientsProps) {
           </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <Users className="h-8 w-8 mb-2 opacity-50" />
+            <Icon icon={Users} customSize={32} className="mb-2 opacity-50" />
             <p className="text-sm">Nenhum novo cliente nos últimos 30 dias</p>
           </div>
         )}

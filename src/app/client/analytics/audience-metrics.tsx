@@ -1,4 +1,6 @@
 import { Users, UserPlus, RefreshCw, Mail, UserCheck, Repeat } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatNumber, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData, ShopifyData } from "../dashboard/types"
 
@@ -8,13 +10,13 @@ interface AudienceMetricsProps {
 }
 
 function StatBlock({
-  icon: Icon,
+  icon: IconComponent,
   label,
   value,
   subtitle,
   colorClass,
 }: {
-  icon: React.ElementType
+  icon: LucideIcon
   label: string
   value: string
   subtitle?: string
@@ -23,7 +25,7 @@ function StatBlock({
   return (
     <div className="flex items-start gap-3 py-3 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
       <div className="rounded-lg bg-slate-100/50 dark:bg-slate-800/50 p-2 mt-0.5">
-        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <Icon icon={IconComponent} size={16} className="text-slate-500 dark:text-slate-400" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
@@ -54,9 +56,9 @@ export function AudienceMetrics({ klaviyo, shopify }: AudienceMetricsProps) {
       : "text-slate-800 dark:text-slate-100"
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center gap-2 mb-2">
-        <Users className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <Icon icon={Users} size={16} className="text-slate-500 dark:text-slate-400" />
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Audiência & Clientes</h3>
       </div>
 

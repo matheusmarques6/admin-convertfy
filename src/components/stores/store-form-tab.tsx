@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Loader2, Copy, Link as LinkIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,7 +40,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -50,7 +51,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <LinkIcon className="h-4 w-4 text-muted-foreground" />
+            <Icon icon={LinkIcon} size={16} className="text-muted-foreground" />
             <span className="text-sm font-medium">Link de acesso do cliente</span>
           </div>
           <div className="flex items-center gap-2">
@@ -60,7 +61,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
               className="text-xs bg-muted/50"
             />
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => {
                 const link = `${window.location.origin}/cliente/onboarding`
@@ -68,7 +69,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
                 toast({ title: "Link copiado!", description: "O link do portal foi copiado para a área de transferência." })
               }}
             >
-              <Copy className="h-4 w-4" />
+              <Icon icon={Copy} size={16} />
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">

@@ -120,13 +120,13 @@ const logicTypes = [
 function TriggerNode({ data, selected }: { data: { label: string; type: string; config?: Record<string, unknown> }; selected: boolean }) {
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[180px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[180px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
       {/* Green top bar */}
-      <div className="h-2 bg-emerald-500 rounded-t-xl" />
+      <div className="h-2 bg-emerald-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background" />
 
         <div className="flex items-center gap-3">
@@ -155,13 +155,13 @@ function ActionNode({ data, selected }: { data: { label: string; type: string; c
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[180px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[180px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
       {/* Colored top bar */}
-      <div className="h-2 rounded-t-xl" style={{ backgroundColor: color }} />
+      <div className="h-2 rounded-t-[8px]" style={{ backgroundColor: color }} />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!w-3 !h-3 !border-2 !border-background" style={{ backgroundColor: color }} />
         <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !border-2 !border-background" style={{ backgroundColor: color }} />
 
@@ -199,12 +199,12 @@ function DelayNode({ data, selected }: { data: { label: string; config?: Record<
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[140px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[140px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-orange-500 rounded-t-xl" />
+      <div className="h-2 bg-orange-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-background" />
 
@@ -230,12 +230,12 @@ function DelayNode({ data, selected }: { data: { label: string; config?: Record<
 function ConditionNode({ data, selected }: { data: { label: string; type: string; config?: Record<string, unknown> }; selected: boolean }) {
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[160px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[160px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-blue-500 rounded-t-xl" />
+      <div className="h-2 bg-blue-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} id="yes" className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background !left-[30%]" />
         <Handle type="source" position={Position.Bottom} id="no" className="!bg-red-500 !w-3 !h-3 !border-2 !border-background !left-[70%]" />
@@ -267,12 +267,12 @@ function RandomizerNode({ data, selected }: { data: { label: string; config?: Re
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[140px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[140px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-red-500 rounded-t-xl" />
+      <div className="h-2 bg-red-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-red-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} id="a" className="!bg-blue-500 !w-3 !h-3 !border-2 !border-background !left-[30%]" />
         <Handle type="source" position={Position.Bottom} id="b" className="!bg-violet-500 !w-3 !h-3 !border-2 !border-background !left-[70%]" />
@@ -339,10 +339,10 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
         animated: false,
         style: {
           strokeWidth: 2,
-          stroke: "hsl(var(--muted-foreground))",
+          stroke: "var(--muted-foreground)",
           strokeDasharray: "5 5",
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--muted-foreground))" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--muted-foreground)" },
       }
       setEdges((eds) => addEdge(newEdge, eds))
     },
@@ -380,10 +380,10 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
         animated: false,
         style: {
           strokeWidth: 2,
-          stroke: "hsl(var(--muted-foreground))",
+          stroke: "var(--muted-foreground)",
           strokeDasharray: "5 5",
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--muted-foreground))" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--muted-foreground)" },
       }
       setEdges((eds) => [...eds, newEdge])
     }
@@ -526,7 +526,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
                   {actionTypes.map((action) => (
                     <Button
                       key={action.type}
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 relative hover:border-primary/50"
                       onClick={() => addNode("action", { type: action.type, label: action.label })}
@@ -552,7 +552,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               <div className="space-y-3">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wide">Tempo</Label>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   className="w-full h-auto py-3 px-3 flex items-center gap-2 hover:border-primary/50"
                   onClick={() => addNode("delay", { type: "delay", label: "Aguardar" })}
@@ -573,7 +573,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
                   {logicTypes.map((logic) => (
                     <Button
                       key={logic.type}
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 hover:border-primary/50"
                       onClick={() => addNode(
@@ -613,7 +613,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               animated: false,
               style: {
                 strokeWidth: 2,
-                stroke: "hsl(var(--muted-foreground))",
+                stroke: "var(--muted-foreground)",
                 strokeDasharray: "5 5",
               },
             }}
@@ -623,7 +623,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               variant={BackgroundVariant.Dots}
               gap={24}
               size={1}
-              color="hsl(var(--muted-foreground) / 0.15)"
+              color="color-mix(in srgb, var(--muted-foreground) 15%, transparent)"
             />
             <Controls
               className="!bg-card !border-border !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted"

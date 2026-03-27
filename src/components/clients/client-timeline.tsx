@@ -12,6 +12,7 @@ import {
   Mail,
   Loader2,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
@@ -23,7 +24,7 @@ interface ClientTimelineProps {
   clientId: string
 }
 
-const activityIcons: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
+const activityIcons: Record<string, { icon: LucideIcon; color: string; bg: string }> = {
   client_created: { icon: UserPlus, color: "text-info", bg: "bg-info/10" },
   client_updated: { icon: Edit, color: "text-muted-foreground", bg: "bg-muted" },
   status_changed: { icon: Tag, color: "text-primary", bg: "bg-primary/10" },
@@ -71,7 +72,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   }
 
   return (
-    <Card className="rounded-xl border bg-card">
+    <Card className="rounded-[8px] border">
       <CardHeader>
         <CardTitle className="text-base">Histórico de Atividades</CardTitle>
       </CardHeader>

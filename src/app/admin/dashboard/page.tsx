@@ -30,6 +30,9 @@ async function getDashboardData() {
     { data: weekMeetings },
     { data: weekTasks },
     { data: activeOnboardings },
+    { count: draftReportsCount },
+    { count: draftCampaignsCount },
+    { count: pendingReviewCampaignsCount },
   ] = await Promise.all([
     // Upcoming meetings
     supabase
@@ -48,7 +51,7 @@ async function getDashboardData() {
     // Board preview: active tasks
     supabase
       .from("tasks")
-      .select("id, status, due_date")
+      .select("id, title, status, due_date")
       .not("status", "in", '("completed","cancelled")'),
     // Week calendar: meetings this week
     supabase
@@ -77,6 +80,21 @@ async function getDashboardData() {
       `)
       .neq("status", "completed")
       .order("target_completion_date", { ascending: true }),
+    // Pending: draft reports
+    supabase
+      .from("client_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "draft"),
+    // Pending: draft campaigns
+    supabase
+      .from("campaigns")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "draft"),
+    // Pending: campaigns awaiting review
+    supabase
+      .from("campaigns")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending_review"),
   ])
 
   // --- Alerts: parallel fetch with joins (no N+1) ---
@@ -188,6 +206,10 @@ async function getDashboardData() {
   const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 }
   alerts.sort((a, b) => (severityOrder[a.severity] ?? 2) - (severityOrder[b.severity] ?? 2))
 
+  const overdueTasksCount = (activeTasks || []).filter(
+    t => t.due_date && new Date(t.due_date) < now && t.status !== "completed" && t.status !== "cancelled"
+  ).length
+
   return {
     upcomingMeetings: meetings || [],
     activities: activities || [],
@@ -196,12 +218,42 @@ async function getDashboardData() {
     weekMeetings: weekMeetings || [],
     weekTasks: weekTasks || [],
     activeOnboardings: activeOnboardings || [],
+    pendingItems: {
+      draftReports: draftReportsCount || 0,
+      draftCampaigns: draftCampaignsCount || 0,
+      pendingReviewCampaigns: pendingReviewCampaignsCount || 0,
+      overdueTasksCount,
+    },
   }
+}
+
+const EMPTY_DASHBOARD_DATA = {
+  upcomingMeetings: [],
+  activities: [],
+  alerts: [] as DashboardAlert[],
+  activeTasks: [],
+  weekMeetings: [],
+  weekTasks: [],
+  activeOnboardings: [],
+  pendingItems: {
+    draftReports: 0,
+    draftCampaigns: 0,
+    pendingReviewCampaigns: 0,
+    overdueTasksCount: 0,
+  },
 }
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  let authUser
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    authUser = user
+  } catch (err) {
+    console.error("[DashboardPage] auth.getUser() failed:", err)
+    redirect("/login")
+  }
 
   if (!authUser) {
     redirect("/login")
@@ -209,7 +261,7 @@ export default async function DashboardPage() {
 
   const { data: authProfile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, name")
     .eq("id", authUser.id)
     .single()
 
@@ -225,7 +277,15 @@ export default async function DashboardPage() {
 
   const userRole = isAdmin ? "owner" : (authOrgMember?.role || "support")
 
-  const data = await getDashboardData()
+  let data
+  try {
+    data = await getDashboardData()
+  } catch (err) {
+    console.error("[DashboardPage] getDashboardData() failed:", err)
+    data = EMPTY_DASHBOARD_DATA
+  }
 
-  return <DashboardLayout data={data} userRole={userRole} />
+  const userName = authProfile?.name || authUser.email?.split("@")[0] || "Usuário"
+
+  return <DashboardLayout data={data} userRole={userRole} userName={userName} />
 }

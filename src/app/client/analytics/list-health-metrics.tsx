@@ -1,4 +1,6 @@
 import { Shield, Users, MailOpen, MousePointerClick, UserMinus, Send } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatNumber } from "@/lib/utils/format"
 import type { KlaviyoData } from "../dashboard/types"
 
@@ -19,12 +21,12 @@ function getStatusColor(value: number, thresholds: { good: number; warn: number;
 }
 
 function MetricRow({
-  icon: Icon,
+  icon: IconComponent,
   label,
   value,
   colorClass,
 }: {
-  icon: React.ElementType
+  icon: LucideIcon
   label: string
   value: string
   colorClass: string
@@ -32,7 +34,7 @@ function MetricRow({
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
       <div className="flex items-center gap-2.5">
-        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <Icon icon={IconComponent} size={16} className="text-slate-500 dark:text-slate-400" />
         <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
       </div>
       <span className={`text-sm font-bold ${colorClass}`}>{value}</span>
@@ -72,9 +74,9 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
   const progress = (overallScore / 100) * circumference
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center gap-2 mb-4">
-        <Shield className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <Icon icon={Shield} size={16} className="text-slate-500 dark:text-slate-400" />
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Saúde da Lista</h3>
       </div>
 

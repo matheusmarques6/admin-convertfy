@@ -13,24 +13,16 @@ import {
   CreditCard,
   Receipt,
   Ban,
-  ChevronDown,
-  Filter,
   Search,
   RotateCcw,
+  MoreHorizontal,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { StatusTabs } from "@/components/ui/status-tabs"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,18 +39,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Calendar as CalendarComponent } from "@/components/ui/calendar"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { RefundDialog, type RefundCharge } from "@/components/financial/refund-dialog"
 import Link from "next/link"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
 interface Charge {
   id: string
@@ -103,18 +87,18 @@ interface ChargesData {
   all: Charge[]
 }
 
+type ChargeTab = "overdue" | "pending" | "upcoming" | "received" | "all"
+
 export function ChargesManager() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
+  const [activeTab, setActiveTab] = useState<ChargeTab>("overdue")
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
   const [refundCharge, setRefundCharge] = useState<RefundCharge | null>(null)
 
-  const startDate = dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : null
-  const endDate = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : null
-  const { data: rawData, error: fetchError, isLoading, isValidating: isRefreshing, mutate } = useAsaasCharges(startDate, endDate)
+  const { data: rawData, error: fetchError, isLoading, isValidating: isRefreshing, mutate } = useAsaasCharges(null, null)
   const data = rawData as ChargesData | undefined
 
   useEffect(() => {
@@ -173,7 +157,7 @@ export function ChargesManager() {
   const getStatusBadge = (charge: Charge) => {
     if (charge.isOverdue) {
       return (
-        <Badge variant="destructive" className="gap-1">
+        <Badge variant="negative" className="gap-1">
           <AlertCircle className="h-3 w-3" />
           Vencido ({charge.daysOverdue}d)
         </Badge>
@@ -192,7 +176,7 @@ export function ChargesManager() {
       case "CONFIRMED":
       case "RECEIVED_IN_CASH":
         return (
-          <Badge variant="success" className="gap-1">
+          <Badge variant="positive" className="gap-1">
             <CheckCircle2 className="h-3 w-3" />
             Recebido
           </Badge>
@@ -213,341 +197,303 @@ export function ChargesManager() {
             </Badge>
           )
         }
-        return <Badge variant="secondary">{charge.statusLabel}</Badge>
-    }
-  }
-
-  const getBillingTypeIcon = (type: string) => {
-    switch (type) {
-      case "PIX":
-        return <Receipt className="h-4 w-4" />
-      case "CREDIT_CARD":
-        return <CreditCard className="h-4 w-4" />
-      case "BOLETO":
-        return <Receipt className="h-4 w-4" />
-      default:
-        return <Receipt className="h-4 w-4" />
+        return <Badge variant="neutral">{charge.statusLabel}</Badge>
     }
   }
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400 dark:text-[#5C6378]" />
       </div>
     )
   }
 
   if (!data?.connected) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">Asaas não conectado</h3>
-          <p className="text-muted-foreground text-center mb-4">
+      <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27]">
+        <div className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-gray-400 dark:text-[#5C6378] mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 dark:text-[#EAEDF3] mb-2">Asaas não conectado</h3>
+          <p className="text-gray-500 dark:text-[#8B92A5] text-center mb-4">
             Conecte sua conta Asaas para gerenciar faturas
           </p>
           <Button asChild>
             <Link href="/admin/settings/integrations">Configurar Integração</Link>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
-  const ChargesTable = ({ charges, showActions = true }: { charges: Charge[]; showActions?: boolean }) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Descrição</TableHead>
-          <TableHead>Valor</TableHead>
-          <TableHead>Vencimento</TableHead>
-          <TableHead>Tipo</TableHead>
-          <TableHead>Status</TableHead>
-          {showActions && <TableHead className="w-[100px]">Ações</TableHead>}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {charges.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={showActions ? 7 : 6} className="text-center text-muted-foreground py-8">
-              Nenhuma fatura encontrada
-            </TableCell>
-          </TableRow>
-        ) : (
-          charges.map((charge) => (
-            <TableRow key={charge.id} className={charge.isOverdue ? "bg-destructive/10" : ""}>
-              <TableCell>
-                {charge.client ? (
-                  <Link href={`/admin/clients/${charge.client.id}`} className="hover:underline">
-                    <div className="font-medium">{charge.client.name}</div>
-                    {charge.client.company && (
-                      <div className="text-xs text-muted-foreground">{charge.client.company}</div>
-                    )}
-                  </Link>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell className="max-w-[200px] truncate">
-                {charge.description || "Fatura"}
-              </TableCell>
-              <TableCell className="font-medium">
-                {formatCurrency(charge.value)}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  {formatDate(charge.dueDate)}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  {getBillingTypeIcon(charge.billingType)}
-                  <span className="text-sm">{charge.billingTypeLabel}</span>
-                </div>
-              </TableCell>
-              <TableCell>{getStatusBadge(charge)}</TableCell>
-              {showActions && (
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {charge.invoiceUrl && (
-                        <DropdownMenuItem asChild>
-                          <a href={charge.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Ver Fatura
-                          </a>
-                        </DropdownMenuItem>
-                      )}
-                      {(charge.status === "PENDING" || charge.status === "OVERDUE") && (
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => {
-                            setSelectedCharge(charge)
-                            setCancelDialogOpen(true)
-                          }}
-                        >
-                          <Ban className="h-4 w-4 mr-2" />
-                          Cancelar Fatura
-                        </DropdownMenuItem>
-                      )}
-                      {(charge.status === "RECEIVED" || charge.status === "CONFIRMED" || charge.status === "RECEIVED_IN_CASH") && (
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setRefundCharge({
-                              id: charge.id,
-                              amount: charge.value,
-                              description: charge.description,
-                              asaas_id: charge.asaas_id,
-                              subscription_id: charge.subscription_id,
-                              refund_total: charge.refund_total,
-                              client_name: charge.client?.name,
-                            })
-                            setRefundDialogOpen(true)
-                          }}
-                        >
-                          <RotateCcw className="h-4 w-4 mr-2" />
-                          Reembolsar
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+  // Get current tab charges
+  const currentCharges = filterCharges(data[activeTab] || [])
+
+  // StatusTabs items with counts
+  const tabItems = [
+    { value: "overdue" as const, label: "Vencidas", count: data.summary.overdue.count },
+    { value: "pending" as const, label: "Pendentes", count: data.summary.pending.count },
+    { value: "upcoming" as const, label: "Próximas", count: data.summary.upcoming.count },
+    { value: "received" as const, label: "Recebidas", count: data.summary.received.count },
+    { value: "all" as const, label: "Todas", count: data.summary.total.count },
+  ]
+
+  // DataTable columns
+  const columns: ColumnDef<Charge>[] = [
+    {
+      accessorKey: "client",
+      header: "Cliente",
+      type: "text",
+      mobilePriority: "title",
+      cell: (row) => (
+        <div className="min-w-0">
+          {row.client ? (
+            <Link href={`/admin/clients/${row.client.id}`} className="hover:underline">
+              <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+                {row.client.name}
+              </p>
+              {row.client.company && (
+                <p className="text-xs text-gray-400 dark:text-[#5C6378] truncate">
+                  {row.client.company}
+                </p>
               )}
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
-  )
+            </Link>
+          ) : (
+            <span className="text-sm text-gray-400 dark:text-[#5C6378]">—</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "description",
+      header: "Descrição",
+      type: "text",
+      mobilePriority: "hidden",
+      hideOnTablet: true,
+      cell: (row) => (
+        <span className="text-sm text-gray-600 dark:text-[#8B92A5] truncate max-w-[200px] block">
+          {row.description || "Fatura"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "value",
+      header: "Valor",
+      type: "currency",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <span className="text-sm font-medium font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+          {formatCurrency(row.value)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "dueDate",
+      header: "Vencimento",
+      type: "date",
+      mobilePriority: "detail",
+      sortable: true,
+      cell: (row) => (
+        <span className={cn(
+          "text-sm font-mono tabular-nums",
+          row.isOverdue
+            ? "text-[#991B1B] dark:text-[#FCA5A5] font-semibold"
+            : "text-gray-600 dark:text-[#8B92A5]"
+        )}>
+          {formatDate(row.dueDate)}
+          {row.isOverdue && " ⚠"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "billingType",
+      header: "Tipo",
+      type: "custom",
+      mobilePriority: "hidden",
+      hideOnTablet: true,
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          {row.billingType === "CREDIT_CARD" ? (
+            <CreditCard className="h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+          ) : (
+            <Receipt className="h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+          )}
+          <span className="text-sm text-gray-600 dark:text-[#8B92A5]">{row.billingTypeLabel}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      type: "badge",
+      mobilePriority: "badge",
+      cell: (row) => getStatusBadge(row),
+    },
+    {
+      accessorKey: "id",
+      header: "",
+      type: "custom",
+      mobilePriority: "hidden",
+      width: "48px",
+      cell: (row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Icon icon={MoreHorizontal} size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {row.invoiceUrl && (
+              <DropdownMenuItem asChild>
+                <a href={row.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Ver Fatura
+                </a>
+              </DropdownMenuItem>
+            )}
+            {(row.status === "PENDING" || row.status === "OVERDUE") && (
+              <DropdownMenuItem
+                className="text-[#991B1B] dark:text-[#FCA5A5]"
+                onClick={() => {
+                  setSelectedCharge(row)
+                  setCancelDialogOpen(true)
+                }}
+              >
+                <Ban className="h-4 w-4 mr-2" />
+                Cancelar Fatura
+              </DropdownMenuItem>
+            )}
+            {(row.status === "RECEIVED" || row.status === "CONFIRMED" || row.status === "RECEIVED_IN_CASH") && (
+              <DropdownMenuItem
+                onClick={() => {
+                  setRefundCharge({
+                    id: row.id,
+                    amount: row.value,
+                    description: row.description,
+                    asaas_id: row.asaas_id,
+                    subscription_id: row.subscription_id,
+                    refund_total: row.refund_total,
+                    client_name: row.client?.name,
+                  })
+                  setRefundDialogOpen(true)
+                }}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reembolsar
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
+      {/* Summary Cards — DS v3.0 Rule 2 */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground">Vencidas</span>
-            <div className="rounded-full p-1.5 bg-red-500/10">
-              <AlertCircle className="h-3 w-3 text-red-500" />
-            </div>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="h-4 w-4 text-red-500" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Vencidas</span>
           </div>
-          <div className="text-xl font-semibold text-foreground">
+          <div className="text-xl font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
             {formatCurrency(data.summary.overdue.value)}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
             {data.summary.overdue.count} faturas
           </p>
-        </Card>
+        </div>
 
-        <Card className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground">Pendentes</span>
-            <div className="rounded-full p-1.5 bg-amber-500/10">
-              <Clock className="h-3 w-3 text-amber-500" />
-            </div>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="h-4 w-4 text-amber-500" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Pendentes</span>
           </div>
-          <div className="text-xl font-semibold text-foreground">
+          <div className="text-xl font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
             {formatCurrency(data.summary.pending.value)}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
             {data.summary.pending.count} faturas
           </p>
-        </Card>
+        </div>
 
-        <Card className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground">Próximos 7 dias</span>
-            <div className="rounded-full p-1.5 bg-blue-500/10">
-              <Calendar className="h-3 w-3 text-blue-500" />
-            </div>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="h-4 w-4 text-blue-500" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Próximos 7 dias</span>
           </div>
-          <div className="text-xl font-semibold text-foreground">
+          <div className="text-xl font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
             {formatCurrency(data.summary.upcoming.value)}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
             {data.summary.upcoming.count} faturas
           </p>
-        </Card>
+        </div>
 
-        <Card className="rounded-xl border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground">Recebidas</span>
-            <div className="rounded-full p-1.5 bg-emerald-500/10">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-            </div>
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Recebidas</span>
           </div>
-          <div className="text-xl font-semibold text-foreground">
+          <div className="text-xl font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
             {formatCurrency(data.summary.received.value)}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
             {data.summary.received.count} faturas
           </p>
-        </Card>
+        </div>
       </div>
 
-      {/* Filters and Table */}
-      <Card className="rounded-xl border bg-card">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>Gerenciamento de Faturas</CardTitle>
-              <CardDescription>
-                Visualize e gerencie todas as faturas do sistema
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-[200px]"
-                />
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Filter className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-4" align="end">
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Filtrar por período</h4>
-                    <CalendarComponent
-                      mode="range"
-                      selected={{ from: dateRange.from, to: dateRange.to }}
-                      onSelect={(range) => setDateRange({ from: range?.from, to: range?.to })}
-                      locale={ptBR}
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDateRange({})}
-                      >
-                        Limpar
-                      </Button>
-                      <Button size="sm" onClick={() => mutate()}>
-                        Aplicar
-                      </Button>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => mutate()}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              </Button>
+      {/* Overdue Alert Banner */}
+      {data.summary.overdue.count > 0 && (
+        <div className="rounded-[8px] border border-[#991B1B]/30 dark:border-[#FCA5A5]/20 bg-red-50 dark:bg-red-900/10 px-5 py-3">
+          <div className="flex items-center gap-4">
+            <AlertCircle className="h-5 w-5 text-[#991B1B] dark:text-[#FCA5A5] shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-[#991B1B] dark:text-[#FCA5A5]">
+                {data.summary.overdue.count} faturas vencidas totalizando {formatCurrency(data.summary.overdue.value)}
+              </p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="overdue">
-            <TabsList className="mb-4">
-              <TabsTrigger value="overdue" className="gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Vencidas
-                {data.summary.overdue.count > 0 && (
-                  <Badge variant="destructive" className="ml-1">
-                    {data.summary.overdue.count}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="pending" className="gap-2">
-                <Clock className="h-4 w-4" />
-                Pendentes
-                {data.summary.pending.count > 0 && (
-                  <Badge variant="warning" className="ml-1">
-                    {data.summary.pending.count}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="upcoming" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                Próximas
-              </TabsTrigger>
-              <TabsTrigger value="received" className="gap-2">
-                <CheckCircle2 className="h-4 w-4" />
-                Recebidas
-              </TabsTrigger>
-              <TabsTrigger value="all">Todas</TabsTrigger>
-            </TabsList>
+        </div>
+      )}
 
-            <TabsContent value="overdue">
-              <ChargesTable charges={filterCharges(data.overdue)} />
-            </TabsContent>
+      {/* StatusTabs filter + Search — DS v3.0 Rule 18 */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <StatusTabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          items={tabItems}
+        />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+            <Input
+              placeholder="Buscar..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-[200px]"
+            />
+          </div>
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={() => mutate()}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
 
-            <TabsContent value="pending">
-              <ChargesTable charges={filterCharges(data.pending)} />
-            </TabsContent>
-
-            <TabsContent value="upcoming">
-              <ChargesTable charges={filterCharges(data.upcoming)} />
-            </TabsContent>
-
-            <TabsContent value="received">
-              <ChargesTable charges={filterCharges(data.received)} showActions={false} />
-            </TabsContent>
-
-            <TabsContent value="all">
-              <ChargesTable charges={filterCharges(data.all)} />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* DataTable — DS v3.0 Rule 5 (no zebra-striping) */}
+      <DataTable
+        columns={columns}
+        data={currentCharges}
+        emptyMessage="Nenhuma fatura encontrada"
+        rowKey="id"
+      />
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -557,13 +503,13 @@ export function ChargesManager() {
             <AlertDialogDescription>
               Tem certeza que deseja cancelar esta fatura?
               {selectedCharge && (
-                <div className="mt-2 p-3 rounded-lg bg-muted">
+                <div className="mt-2 p-3 rounded-[8px] bg-gray-50 dark:bg-[#0F1117]">
                   <p><strong>Cliente:</strong> {selectedCharge.client?.name || "—"}</p>
                   <p><strong>Valor:</strong> {formatCurrency(selectedCharge.value)}</p>
                   <p><strong>Vencimento:</strong> {formatDate(selectedCharge.dueDate)}</p>
                 </div>
               )}
-              <p className="mt-2 text-warning">
+              <p className="mt-2 text-[#991B1B] dark:text-[#FCA5A5]">
                 Esta ação não pode ser desfeita.
               </p>
             </AlertDialogDescription>
@@ -573,7 +519,7 @@ export function ChargesManager() {
             <AlertDialogAction
               onClick={handleCancelCharge}
               disabled={isCancelling}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-[#991B1B] text-white hover:bg-[#991B1B]/90"
             >
               {isCancelling ? (
                 <>

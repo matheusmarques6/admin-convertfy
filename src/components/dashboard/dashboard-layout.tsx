@@ -1,175 +1,120 @@
 "use client"
 
-import { useState, useCallback, useRef, useMemo } from "react"
-import Link from "next/link"
-import {
-  AlertTriangle,
-  ArrowRight,
-  Users,
-  ShieldAlert,
-  CalendarClock,
-  MessageSquareWarning,
-} from "lucide-react"
-import { usePermissions } from "@/lib/hooks/use-permissions"
-import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
-import { BoardPreview } from "./board-preview"
-import { WeekCalendarPreview } from "./week-calendar-preview"
-import { TopStoresCard } from "./top-stores-card"
-import { WorstPerformersCard } from "./worst-performers-card"
-import { OnboardingPreview } from "./onboarding-preview"
-import { RecentActivity } from "./recent-activity"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+import { useState, useCallback, useRef, useMemo, lazy, Suspense } from "react"
+import { DashboardTopBar } from "./dashboard-top-bar"
+import type { DateRange } from "./date-range-panel"
+import { TotalRevenueBanner, type TotalRevenueData, type RevenueStoreItem } from "./total-revenue-banner"
+import { KpiCard } from "@/components/ui/kpi-card"
+import { KpiCardRow } from "@/components/ui/kpi-card-row"
+import { Skeleton } from "@/components/ui/skeleton"
+import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
+import { formatCurrency } from "@/lib/utils"
 import type { Meeting, DashboardAlert } from "@/types"
 
-interface Activity {
-  id: string
-  type: string
-  description: string
-  created_at: string
-  client?: { name: string } | { name: string }[] | null
-  profile?: { name: string } | { name: string }[] | null
-}
+// ─── Lazy-loaded components (below the fold) ──────────────
+const DashboardRevenueChart = lazy(() =>
+  import("./dashboard-revenue-chart").then((m) => ({ default: m.DashboardRevenueChart }))
+)
+const DashboardWeeklyPerf = lazy(() =>
+  import("./dashboard-weekly-perf").then((m) => ({ default: m.DashboardWeeklyPerf }))
+)
+const DashboardEmailPerf = lazy(() =>
+  import("./dashboard-email-perf").then((m) => ({ default: m.DashboardEmailPerf }))
+)
+const DashboardClientHealth = lazy(() =>
+  import("./dashboard-client-health").then((m) => ({ default: m.DashboardClientHealth }))
+)
+const DashboardFlowPerf = lazy(() =>
+  import("./dashboard-flow-perf").then((m) => ({ default: m.DashboardFlowPerf }))
+)
+const DashboardOnboarding = lazy(() =>
+  import("./dashboard-onboarding").then((m) => ({ default: m.DashboardOnboarding }))
+)
+const DashboardAlerts = lazy(() =>
+  import("./dashboard-alerts-card").then((m) => ({ default: m.DashboardAlerts }))
+)
+const DashboardClientsRevenue = lazy(() =>
+  import("./dashboard-clients-revenue").then((m) => ({ default: m.DashboardClientsRevenue }))
+)
+
+// ─── Types ────────────────────────────────────────────────
 
 interface TaskPreview {
   id: string
+  title: string
   status: string
   due_date: string | null
 }
 
-interface WeekMeeting {
-  id: string
-  title: string
-  scheduled_at: string
-  duration_minutes: number | null
-  meeting_url: string | null
-  status: string
-}
-
-interface WeekTask {
-  id: string
-  title: string
-  due_date: string
-  status: string
-  priority: string
-  type: string
-}
-
-interface OnboardingItem {
+interface OnboardingEntry {
   id: string
   status: string
-  current_phase: string | null
+  current_phase?: string | null
   progress_percent: number
-  target_completion_date: string | null
+  target_completion_date?: string | null
+  started_at?: string | null
   client?: { id: string; name: string } | { id: string; name: string }[] | null
   store?: { id: string; store_name: string } | { id: string; store_name: string }[] | null
 }
 
-interface DashboardLayoutProps {
+export interface DashboardLayoutProps {
   data: {
     upcomingMeetings: Meeting[]
-    activities: Activity[]
-    alerts: DashboardAlert[]
     activeTasks: TaskPreview[]
-    weekMeetings: WeekMeeting[]
-    weekTasks: WeekTask[]
-    activeOnboardings: OnboardingItem[]
+    activities?: unknown[]
+    alerts?: DashboardAlert[]
+    weekMeetings?: unknown[]
+    weekTasks?: unknown[]
+    activeOnboardings?: OnboardingEntry[]
+    pendingItems?: unknown
   }
   userRole: string
+  userName: string
 }
 
-// Compact client health summary
-function ClientHealthSummary({ alerts }: { alerts: DashboardAlert[] }) {
-  const healthAlerts = alerts.filter(a => a.type === "health_low")
-  const paymentAlerts = alerts.filter(a => a.type === "payment_overdue")
-  const contractAlerts = alerts.filter(a => a.type === "contract_expiring")
+// ─── Fallback sparklines (used when historical data is not yet available) ──
 
+const FALLBACK_SPARKLINES = {
+  revenue: [95, 110, 125, 140, 155, 170, 190, 210, 240, 265, 290, 320],
+  campaigns: [60, 65, 72, 80, 88, 95, 102, 110, 115, 120, 125, 128],
+  automations: [92, 95, 98, 100, 102, 99, 97, 100, 103, 101, 102, 102],
+  rate: [18, 17, 19, 18, 20, 19, 20, 21, 20, 21, 22, 21],
+}
+
+// ─── Chart Skeleton ──────────────────────────────────────────
+
+function ChartSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
-      <div className="p-5 pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Users className="h-4 w-4 text-primary" />
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">Saúde dos Clientes</h3>
-          </div>
-        </div>
-      </div>
-      <div className="px-5 pb-5 flex-1 space-y-2">
-        <div className="space-y-1.5">
-          {paymentAlerts.length > 0 && (
-            <Link href="/admin/financial" className="flex items-center justify-between p-2.5 rounded-lg bg-destructive/5 hover:bg-destructive/10 transition-colors group">
-              <div className="flex items-center gap-2.5">
-                <div className="h-7 w-7 rounded-md bg-destructive/10 flex items-center justify-center">
-                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Pagamentos vencidos</p>
-                  <p className="text-[11px] text-muted-foreground">{paymentAlerts.length} {paymentAlerts.length === 1 ? "assinatura" : "assinaturas"}</p>
-                </div>
-              </div>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </Link>
-          )}
+    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
+      <Skeleton className="h-4 w-40 mb-2" />
+      <Skeleton className="h-3 w-56 mb-6" />
+      <Skeleton className="h-[240px] w-full rounded-[4px]" />
+    </div>
+  )
+}
 
-          {contractAlerts.length > 0 && (
-            <Link href="/admin/clients" className="flex items-center justify-between p-2.5 rounded-lg bg-warning/5 hover:bg-warning/10 transition-colors group">
-              <div className="flex items-center gap-2.5">
-                <div className="h-7 w-7 rounded-md bg-warning/10 flex items-center justify-center">
-                  <CalendarClock className="h-3.5 w-3.5 text-warning" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Contratos expirando</p>
-                  <p className="text-[11px] text-muted-foreground">{contractAlerts.length} nos próximos 30 dias</p>
-                </div>
-              </div>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </Link>
-          )}
-
-          {healthAlerts.length > 0 && (
-            <Link href="/admin/clients?health=critical" className="flex items-center justify-between p-2.5 rounded-lg bg-warning/5 hover:bg-warning/10 transition-colors group">
-              <div className="flex items-center gap-2.5">
-                <div className="h-7 w-7 rounded-md bg-warning/10 flex items-center justify-center">
-                  <ShieldAlert className="h-3.5 w-3.5 text-warning" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Health score baixo</p>
-                  <p className="text-[11px] text-muted-foreground">{healthAlerts.length} {healthAlerts.length === 1 ? "cliente" : "clientes"} em risco</p>
-                </div>
-              </div>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </Link>
-          )}
-
-          {paymentAlerts.length === 0 && contractAlerts.length === 0 && healthAlerts.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-6 text-center">
-              <div className="h-10 w-10 rounded-full bg-success/10 flex items-center justify-center mb-2">
-                <Users className="h-5 w-5 text-success" />
-              </div>
-              <p className="text-xs text-muted-foreground">Tudo em ordem</p>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-auto pt-2">
-          <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
-            <Link href="/admin/clients">
-              Ver todos os clientes
-              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </Button>
-        </div>
+function CardSkeleton() {
+  return (
+    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
+      <Skeleton className="h-4 w-40 mb-4" />
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-[200px] w-full rounded-[4px]" />
       </div>
     </div>
   )
 }
 
-export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
-  const { permissions, hasFeature } = usePermissions()
-  const [revenuePeriod, setRevenuePeriod] = useState("30d")
+// ─── Dashboard Layout (6 ROWs — DS v3.0) ────────────────────
+
+export function DashboardLayout({ data, userRole: _userRole, userName }: DashboardLayoutProps) {
+  // Period & compare state
+  const [revenuePeriod, setRevenuePeriod] = useState<"today" | "7d" | "30d" | "90d" | "custom">("30d")
+  const [compareEnabled, setCompareEnabled] = useState(false)
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined)
+
+  // Revenue data from TotalRevenueBanner (real API)
   const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
   const revenueResolved = useRef(false)
   const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
@@ -177,99 +122,212 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
     setRevenueData(d)
   }, [])
 
-  const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
-  const canViewReports = isAdminOrOwner || hasFeature("view_reports")
+  const isLoading = !revenueResolved.current
 
-  // Compute critical alerts for top banner
-  const criticalAlerts = useMemo(() => {
-    const items: Array<{ label: string; href: string; count: number; variant: "destructive" | "warning" }> = []
+  // ─── Computed KPI values from REAL data ─────────────────
 
-    const overdueTasks = data.activeTasks.filter(
-      t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed" && t.status !== "cancelled"
-    ).length
-    if (overdueTasks > 0) {
-      items.push({ label: `${overdueTasks} ${overdueTasks === 1 ? "tarefa vencida" : "tarefas vencidas"}`, href: "/admin/board", count: overdueTasks, variant: "warning" })
-    }
+  const totalRevenue = revenueData?.totalRevenue ?? 0
+  const campaignRevenue = revenueData?.campaignRevenue ?? 0
+  const flowRevenue = revenueData?.flowRevenue ?? 0
 
-    const highAlerts = data.alerts.filter(a => a.severity === "high").length
-    if (highAlerts > 0) {
-      items.push({ label: `${highAlerts} ${highAlerts === 1 ? "alerta urgente" : "alertas urgentes"}`, href: "/admin/stores?tab=alerts", count: highAlerts, variant: "destructive" })
-    }
+  // Taxa Convertfy = média da % de receita atribuída de cada loja
+  const storeBreakdown = useMemo(
+    () => revenueData?.storeBreakdown ?? [],
+    [revenueData?.storeBreakdown],
+  )
+  const convertfyRate = useMemo(() => {
+    const storesWithRevenue = storeBreakdown.filter((s) => {
+      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+      return storeRev > 0
+    })
+    if (storesWithRevenue.length === 0) return 0
+    const sumPercents = storesWithRevenue.reduce((sum, s) => {
+      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+      const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
+        (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
+      return sum + (attributed / storeRev) * 100
+    }, 0)
+    return sumPercents / storesWithRevenue.length
+  }, [storeBreakdown])
 
-    const activeOnboardings = data.activeOnboardings.length
-    if (activeOnboardings > 0) {
-      items.push({ label: `${activeOnboardings} ${activeOnboardings === 1 ? "onboarding ativo" : "onboardings ativos"}`, href: "/admin/onboarding", count: activeOnboardings, variant: "info" as "warning" })
-    }
+  // Format compact currency
+  const fmtCompact = (v: number) => {
+    if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(2).replace(".", ",")}M`
+    if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}K`
+    return formatCurrency(v)
+  }
 
-    return items
-  }, [data])
+  // ─── Map storeBreakdown for Client Health + Clients Revenue ──
+
+  const clientStoreData: RevenueStoreItem[] = storeBreakdown
+
+  // ─── Map onboarding data from page.tsx ────────────────────
+
+  const onboardingData = useMemo(() => {
+    const entries = data.activeOnboardings ?? []
+    return entries.map((ob) => {
+      const client = Array.isArray(ob.client) ? ob.client[0] : ob.client
+      const store = Array.isArray(ob.store) ? ob.store[0] : ob.store
+      const started = ob.started_at ? new Date(ob.started_at) : (ob.target_completion_date ? new Date(ob.target_completion_date) : new Date())
+      const days = Math.max(1, Math.ceil((Date.now() - started.getTime()) / (1000 * 60 * 60 * 24)))
+      return {
+        id: ob.id,
+        storeName: store?.store_name ?? client?.name ?? "Loja",
+        phase: ob.current_phase ?? ob.status ?? "in_progress",
+        days,
+        isNew: days <= 2,
+        isLate: ob.target_completion_date ? new Date(ob.target_completion_date) < new Date() : false,
+      }
+    })
+  }, [data.activeOnboardings])
+
+  // ─── Map alerts from page.tsx ─────────────────────────────
+
+  const alertsData = useMemo(() => {
+    const alerts = data.alerts ?? []
+    return alerts.map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      clientName: a.store_name ?? "",
+      severity: a.severity === "high" ? 0 : a.severity === "medium" ? 1 : 2,
+    }))
+  }, [data.alerts])
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto">
-      {/* Actionable Alerts Banner */}
-      {criticalAlerts.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl border border-border bg-card">
-          <div className="flex items-center gap-2 mr-1">
-            <div className="h-7 w-7 rounded-lg bg-warning/10 flex items-center justify-center">
-              <MessageSquareWarning className="h-4 w-4 text-warning" />
-            </div>
-            <span className="text-xs font-semibold text-foreground">Atenção</span>
-          </div>
-          {criticalAlerts.map((alert, i) => (
-            <Link key={i} href={alert.href}>
-              <Badge
-                variant={alert.variant === "destructive" ? "destructive" : "secondary"}
-                className={cn(
-                  "text-xs cursor-pointer transition-all hover:scale-105",
-                  alert.variant === "warning" && "bg-warning/10 text-warning border-warning/20 hover:bg-warning/20",
-                )}
-              >
-                {alert.label}
-              </Badge>
-            </Link>
-          ))}
-        </div>
-      )}
+    <div className="max-w-[1600px] mx-auto">
+      {/* TOP BAR */}
+      <DashboardTopBar
+        userName={userName}
+        period={revenuePeriod}
+        onPeriodChange={setRevenuePeriod}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange}
+        compareEnabled={compareEnabled}
+        onCompareToggle={setCompareEnabled}
+      />
 
-      {/* Revenue Banner - Compact with period selector */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
-
-      {/* Primary Grid: Board + Calendar side by side */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <BoardPreview tasks={data.activeTasks} />
-        <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
-      </div>
-
-      {/* Secondary Grid: Store Performance + Health + Alerts - 3 columns */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        <TopStoresCard
-          stores={revenueData?.topStores}
-          allStores={revenueData?.storeBreakdown}
-          isLoading={!revenueResolved.current}
-          dataStatus={revenueData?.dataStatus}
+      {/* Hidden: TotalRevenueBanner fetches real API data */}
+      <div className="hidden">
+        <TotalRevenueBanner
+          period={revenuePeriod}
+          onPeriodChange={(p) => setRevenuePeriod(p as typeof revenuePeriod)}
+          onDataChange={handleRevenueData}
         />
-
-        {(isAdminOrOwner || canViewReports) ? (
-          <WorstPerformersCard
-            stores={revenueData?.bottomStores}
-            allStores={revenueData?.storeBreakdown}
-            isLoading={!revenueResolved.current}
-            dataStatus={revenueData?.dataStatus}
-          />
-        ) : (
-          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-        )}
-
-        <ClientHealthSummary alerts={data.alerts} />
       </div>
 
-      {/* Tertiary Row: Onboarding + Activity */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        {(isAdminOrOwner || canViewReports) && (
-          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-        )}
-        <RecentActivity activities={data.activities} />
-      </div>
+      <AnimatedContainer className="space-y-5">
+        {/* ══════════ ROW 1: 4 KPI Cards ══════════ */}
+        <AnimatedItem>
+          <KpiCardRow columns={4}>
+            <KpiCard
+              label="Receita Total"
+              value={fmtCompact(totalRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.revenue}
+              loading={isLoading}
+              tooltip="Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
+            />
+            <KpiCard
+              label="Receita Campanhas"
+              value={fmtCompact(campaignRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.campaigns}
+              loading={isLoading}
+              tooltip="Receita atribuída a campanhas de email e SMS enviadas pela Convertfy no período."
+            />
+            <KpiCard
+              label="Receita Automações"
+              value={fmtCompact(flowRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.automations}
+              loading={isLoading}
+              tooltip="Receita gerada por flows automáticos (carrinho abandonado, welcome, win-back, etc.) no período."
+            />
+            <KpiCard
+              label="Taxa média da Convertfy"
+              value={`${convertfyRate.toFixed(1)}%`}
+              delta={{ value: 0, label: "vs período anterior" }}
+              sparkData={FALLBACK_SPARKLINES.rate}
+              variant="gradient"
+              loading={isLoading}
+              tooltip="Percentual médio da receita total que é atribuída às ações da Convertfy (campanhas + automações) entre todas as lojas."
+            />
+          </KpiCardRow>
+        </AnimatedItem>
+
+        {/* ══════════ ROW 2: Charts ══════════ */}
+        <AnimatedItem>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+            <div className="lg:col-span-3">
+              <Suspense fallback={<ChartSkeleton />}>
+                <DashboardRevenueChart loading={isLoading} period={revenuePeriod} />
+              </Suspense>
+            </div>
+            <div className="lg:col-span-2">
+              <Suspense fallback={<ChartSkeleton />}>
+                <DashboardWeeklyPerf loading={isLoading} />
+              </Suspense>
+            </div>
+          </div>
+        </AnimatedItem>
+
+        {/* ══════════ ROW 3: Email Perf + Client Health ══════════ */}
+        <AnimatedItem>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+            <Suspense fallback={<CardSkeleton />}>
+              <DashboardEmailPerf loading={isLoading} />
+            </Suspense>
+            <Suspense fallback={<CardSkeleton />}>
+              <DashboardClientHealth
+                loading={isLoading}
+                storeBreakdown={clientStoreData}
+              />
+            </Suspense>
+          </div>
+        </AnimatedItem>
+
+        {/* ══════════ ROW 4: Flow Performance ══════════ */}
+        <AnimatedItem>
+          <Suspense fallback={
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <ChartSkeleton />
+              <ChartSkeleton />
+              <ChartSkeleton />
+            </div>
+          }>
+            <DashboardFlowPerf loading={isLoading} />
+          </Suspense>
+        </AnimatedItem>
+
+        {/* ══════════ ROW 5: Onboarding + Alerts ══════════ */}
+        <AnimatedItem>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+            <Suspense fallback={<CardSkeleton />}>
+              <DashboardOnboarding
+                loading={isLoading}
+                onboardings={onboardingData}
+              />
+            </Suspense>
+            <Suspense fallback={<CardSkeleton />}>
+              <DashboardAlerts
+                loading={isLoading}
+                alerts={alertsData}
+              />
+            </Suspense>
+          </div>
+        </AnimatedItem>
+
+        {/* ══════════ ROW 6: Clients by Revenue ══════════ */}
+        <AnimatedItem>
+          <Suspense fallback={<CardSkeleton />}>
+            <DashboardClientsRevenue
+              loading={isLoading}
+              storeBreakdown={clientStoreData}
+            />
+          </Suspense>
+        </AnimatedItem>
+      </AnimatedContainer>
     </div>
   )
 }

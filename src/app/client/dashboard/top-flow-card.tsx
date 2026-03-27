@@ -1,6 +1,7 @@
-import { Zap, ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { Zap } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 
 interface Flow {
   id: string
@@ -18,21 +19,14 @@ interface TopFlowCardProps {
 export function TopFlowCard({ flows }: TopFlowCardProps) {
   if (!flows || flows.length === 0) {
     return (
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
-            <Zap className="h-4 w-4 text-purple-600" />
+            <Icon icon={Zap} size={16} className="text-purple-600" />
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Top Flow</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum flow ativo no período</p>
-        <Link
-          href="/client/flows"
-          className="inline-flex items-center gap-1 text-xs text-[#05AFF2] hover:text-[#05AFF2]/80 mt-2 transition-colors"
-        >
-          Ver flows
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <EmptyState compact title="Nenhum flow ativo no período" link={{ label: "Ver flows", href: "/client/flows" }} />
       </div>
     )
   }
@@ -42,10 +36,10 @@ export function TopFlowCard({ flows }: TopFlowCardProps) {
   const revenuePerRecipient = topFlow.delivered > 0 ? topFlow.revenue / topFlow.delivered : 0
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
-          <Zap className="h-4 w-4 text-purple-600" />
+          <Icon icon={Zap} size={16} className="text-purple-600" />
         </div>
         <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Top Flow</span>
       </div>

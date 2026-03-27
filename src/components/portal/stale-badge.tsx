@@ -1,6 +1,7 @@
 "use client"
 
 import { Clock } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   PERIOD_FRESHNESS_THRESHOLDS,
   STALE_THRESHOLD_MULTIPLIER,
@@ -43,7 +44,7 @@ export function StaleBadge({ period, lastFetchedAt }: StaleBadgeProps) {
       role="status"
       className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700/40 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 text-xs text-slate-500 dark:text-slate-400"
     >
-      <Clock className="h-3 w-3 shrink-0" />
+      <Icon icon={Clock} customSize={12} />
       <span>Dados atualizados ha {formatElapsed(elapsed)}</span>
     </div>
   )

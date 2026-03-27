@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
+import { PageHeader } from "@/components/ui/page-header"
+import { BrandIcon } from "@/components/ui/icon"
+import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
+import { ExternalLink } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -16,12 +18,10 @@ async function getStore(id: string) {
   try {
     adminClient = createAdminClient()
   } catch (err) {
-    // SERVICE_ROLE_KEY missing — this is a server configuration error, not a data issue
     console.error("[StoreDetail] CRITICAL: createAdminClient() failed. Check SUPABASE_SERVICE_ROLE_KEY env var.", err)
     throw new Error("Erro de configuração do servidor. Verifique as variáveis de ambiente.")
   }
 
-  // Use admin client to bypass RLS — admin/agent users may not have RLS access to client_stores
   const { data: store, error } = await adminClient
     .from("client_stores")
     .select(`
@@ -58,7 +58,6 @@ async function getStore(id: string) {
   let integrationStatus: Record<string, any> = {}
   try {
     const status = await getStoreIntegrationStatus(id)
-    // Convert typed IntegrationStatus to Record for the component
     integrationStatus = Object.fromEntries(
       Object.entries(status).filter(([, v]) => v !== undefined)
     )
@@ -66,7 +65,7 @@ async function getStore(id: string) {
     console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
   }
 
-  // Fetch extra onboarding data — Supabase queries return {data, error}, they don't throw
+  // Fetch extra onboarding data
   const { data: onboardingData } = await adminClient
     .from("store_onboarding_data")
     .select("is_complete, filled_at")
@@ -110,6 +109,11 @@ async function getStore(id: string) {
   }
 }
 
+function getPlatformIcon(platform: string | null) {
+  if (platform?.toLowerCase() === "shopify") return "/images/integrations/shopify.svg"
+  return null
+}
+
 export default async function StoreDetailPage({
   params,
 }: {
@@ -117,7 +121,6 @@ export default async function StoreDetailPage({
 }) {
   const { id } = await params
 
-  // Validate user has access to this store's org
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) notFound()
@@ -125,7 +128,7 @@ export default async function StoreDetailPage({
   const store = await getStore(id)
   if (!store) notFound()
 
-  // Multi-tenant isolation: verify store belongs to user's org
+  // Multi-tenant isolation
   if (store.org_id) {
     const userOrgId = await resolveOrgId(user.id)
     if (store.org_id !== userOrgId) {
@@ -134,53 +137,82 @@ export default async function StoreDetailPage({
   }
 
   const integrationStatus = store.integrationStatus
-  const connectedCount = Object.values(integrationStatus).filter(s => s?.connected).length
+  const _connectedCount = Object.values(integrationStatus).filter((s: unknown) => (s as Record<string, unknown>)?.connected).length
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientName = (store.clients as any)?.name || null
+  const platformIcon = getPlatformIcon(store.platform)
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-          <Button variant="ghost" size="icon" className="shrink-0" asChild>
-            <Link href="/admin/stores">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{store.store_name}</h1>
-              <Badge variant={store.is_active ? "success" : "secondary"}>
-                {store.is_active ? "Ativa" : "Inativa"}
-              </Badge>
-              {store.platform && (
-                <Badge variant="outline">{store.platform}</Badge>
+      {/* Breadcrumbs + Header */}
+      <PageHeader
+        title={store.store_name}
+        breadcrumb={[
+          { label: "Lojas", href: ROUTES.ADMIN.STORES.LIST },
+          { label: store.store_name },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <StoreDeleteAction
+              storeId={store.id}
+              storeName={store.store_name}
+            />
+          </div>
+        }
+      />
+
+      {/* Store Header Card */}
+      <div className="rounded-[8px] border border-border bg-card p-4 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          {/* Left: brand icon + name + url + status */}
+          <div className="flex items-start gap-3 min-w-0">
+            {platformIcon ? (
+              <BrandIcon src={platformIcon} alt={store.platform || "Platform"} size={32} className="mt-0.5" />
+            ) : (
+              <div className="w-8 h-8 rounded-[6px] bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-sm font-semibold text-muted-foreground">
+                  {store.store_name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold text-foreground">{store.store_name}</h2>
+                <StatusBadge status={store.is_active ? "active" : "inactive"} />
+              </div>
+              {store.store_url && (
+                <a
+                  href={store.store_url.startsWith("http") ? store.store_url : `https://${store.store_url}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline mt-0.5"
+                >
+                  {store.store_url}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               )}
-            </div>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
-              {store.store_url && <span className="truncate">{store.store_url}</span>}
-              {store.client_id && clientName && (
+              {clientName && (
                 <Link
                   href={`/admin/clients/${store.client_id}`}
-                  className="text-primary hover:underline"
+                  className="block text-sm text-muted-foreground hover:text-foreground mt-0.5"
                 >
                   Cliente: {clientName}
                 </Link>
               )}
-              <span>{connectedCount} integração(ões) conectada(s)</span>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-          <StoreDeleteAction
-            storeId={store.id}
-            storeName={store.store_name}
-          />
+
+          {/* Right: Mini KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <MiniKpi label="Receita 30d" value="—" />
+            <MiniKpi label="Pedidos 30d" value="—" />
+            <MiniKpi label="Open Rate" value="—" />
+            <MiniKpi label="Subscribers" value="—" />
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Detail Tabs */}
       <StoreDetailTabs
         storeId={store.id}
         storeName={store.store_name}
@@ -198,6 +230,15 @@ export default async function StoreDetailPage({
         driveFolderUrl={store.drive_folder_url}
         currency={undefined}
       />
+    </div>
+  )
+}
+
+function MiniKpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-center sm:text-left">
+      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-lg font-semibold text-foreground font-mono tabular-nums">{value}</p>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CheckCircle, Video, Users, FileText, Clock } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -124,12 +125,12 @@ export function MeetingCompletionDialog({
           <DialogTitle className="flex items-center gap-2">
             {isReadOnly ? (
               <>
-                <FileText className="h-5 w-5 text-primary" />
+                <Icon icon={FileText} size={20} className="text-primary" />
                 Detalhes da Reunião
               </>
             ) : (
               <>
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
+                <Icon icon={CheckCircle} size={20} className="text-emerald-500" />
                 Concluir Reunião
               </>
             )}
@@ -146,11 +147,11 @@ export function MeetingCompletionDialog({
           {/* Meeting info */}
           <div className="space-y-2 p-3 rounded-lg bg-muted/50">
             <div className="flex items-center gap-2">
-              <Video className="h-4 w-4 text-primary" />
+              <Icon icon={Video} size={16} className="text-primary" />
               <span className="font-medium">{meeting.title}</span>
               {isCompleted && (
-                <Badge variant="secondary" className="ml-auto">
-                  <CheckCircle className="mr-1 h-3 w-3" />
+                <Badge variant="neutral" className="ml-auto">
+                  <Icon icon={CheckCircle} customSize={12} className="mr-1" />
                   {MEETING_STATUS_CONFIG.completed.label}
                 </Badge>
               )}
@@ -163,7 +164,7 @@ export function MeetingCompletionDialog({
             )}
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground pl-6">
-              <Clock className="h-3 w-3" />
+              <Icon icon={Clock} customSize={12} />
               <span>
                 {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
               </span>
@@ -202,7 +203,7 @@ export function MeetingCompletionDialog({
           {nonOrganizerParticipants.length > 0 && (
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4" />
+                <Icon icon={Users} size={16} />
                 Participantes
               </Label>
               <div className="flex flex-wrap gap-2">
@@ -233,7 +234,7 @@ export function MeetingCompletionDialog({
           {/* Completion notes */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
+              <Icon icon={FileText} size={16} />
               Notas de Conclusão {!isReadOnly && "*"}
             </Label>
             {isReadOnly ? (
@@ -259,12 +260,12 @@ export function MeetingCompletionDialog({
 
         <DialogFooter>
           {isReadOnly ? (
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="secondary" onClick={onClose}>
               Fechar
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+              <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 Cancelar
               </Button>
               <Button onClick={handleComplete} disabled={isSubmitting}>

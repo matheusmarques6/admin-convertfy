@@ -26,6 +26,7 @@ import {
   FileText,
   type LucideIcon,
 } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 import { DialogTitle } from "@/components/ui/dialog"
 
@@ -87,6 +88,11 @@ export function useCommandPalette(): CommandPaletteContextValue {
     throw new Error("useCommandPalette must be used within a <CommandPalette /> provider")
   }
   return ctx
+}
+
+/** Safe version that returns null when used outside the provider */
+export function useCommandPaletteSafe(): CommandPaletteContextValue | null {
+  return useContext(CommandPaletteContext)
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +230,7 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
 
           {/* Search input */}
           <div className="flex items-center border-b border-white/10 px-4">
-            <Search className="mr-3 h-4 w-4 shrink-0 text-zinc-400" />
+            <IconWrapper icon={Search} size={16} className="mr-3 text-zinc-400" />
             <input
               ref={inputRef}
               value={query}
@@ -248,7 +254,7 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
             <div ref={listRef} className="px-2 py-2">
               {flatList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                  <Search className="mb-3 h-8 w-8 text-zinc-600" />
+                  <IconWrapper icon={Search} customSize={32} className="mb-3 text-zinc-600" />
                   <p className="text-sm">Nenhum resultado encontrado</p>
                   <p className="mt-1 text-xs text-zinc-600">
                     Tente buscar com outros termos
@@ -263,7 +269,6 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
                     {items.map((item) => {
                       const idx = flatIdx++
                       const isActive = idx === activeIndex
-                      const Icon = item.icon
                       return (
                         <button
                           key={item.href}
@@ -278,7 +283,7 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
                               : "hover:bg-white/5"
                           )}
                         >
-                          <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
+                          <IconWrapper icon={item.icon} size={16} className="text-zinc-400" />
                           <span className="truncate">{item.name}</span>
                           {isActive && (
                             <kbd className="ml-auto hidden shrink-0 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 sm:inline-block">
