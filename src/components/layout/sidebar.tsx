@@ -45,6 +45,7 @@ interface NavItem {
   group: string
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
+  badge?: string
 }
 
 const NAV_GROUPS = [

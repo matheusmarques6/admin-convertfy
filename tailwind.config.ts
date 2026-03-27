@@ -190,6 +190,13 @@ const config: Config = {
           4: "var(--chart-4)",
           5: "var(--chart-5)",
         },
+        sidebar: {
+          bg: "#0d1117",
+          muted: "#b0b8c1",
+          hover: "#e6edf3",
+          icon: "#b0b8c1",
+          label: "#6e7681",
+        },
       },
 
       /* ═══ BORDER RADIUS — 4 tokens (6/8/12/9999) ═══ */

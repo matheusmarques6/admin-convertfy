@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
         email: data.email,
         phone: data.phone || null,
         cpf_cnpj: data.cpf_cnpj || null,
-        company: data.company || null,
         status: "prospect",
         org_id: orgId,
       })
@@ -121,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Create store onboarding data (design info)
-    if (data.price_sensitivity || data.logo_url || data.design_direction_text || data.brand_manual_url || data.additional_notes) {
+    if (data.price_sensitivity || data.logo_url || data.design_direction_text || data.design_direction_file_url || data.brand_manual_url || data.additional_notes) {
       await adminClient.from("store_onboarding_data").insert({
         store_id: store.id,
         client_id: client.id,
@@ -155,8 +154,8 @@ export async function POST(request: NextRequest) {
         client_id: client.id,
         store_id: store.id,
         template_id: template?.id || null,
-        status: "pending_approval",
-        current_phase: "pending_approval",
+        status: "not_started",
+        current_phase: "not_started",
         submitted_at: new Date().toISOString(),
         target_completion_date: targetDate.toISOString(),
       })
@@ -187,18 +186,15 @@ export async function POST(request: NextRequest) {
       await adminClient.from("client_onboarding_steps").insert(steps)
     }
 
-    // 5. Notify approvers (via phase service side effects)
+    // 5. Transition not_started → pending_approval (triggers notifyApprovers + notifyClient)
     try {
       await onboardingPhaseService.transition({
         onboardingId: onboarding.id,
         toPhase: "pending_approval",
         triggeredBy: "form_submission",
-      }).catch(() => {
-        // The onboarding is already in pending_approval, so transition may fail
-        // That's ok, just manually notify
       })
     } catch {
-      // Non-blocking
+      // Non-blocking — side effects are best-effort
     }
 
     log.info("Public onboarding form submitted successfully", {

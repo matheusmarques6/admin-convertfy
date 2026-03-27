@@ -613,8 +613,208 @@ export function StoreControlPanel() {
               Limpar filtros
             </button>
           </div>
-        )}
-      </div>
+
+          {/* Mobile Cards (hidden on desktop) */}
+          <div className="lg:hidden space-y-3">
+            {stores.map((store) => {
+              const statusCfg = getStatusConfig(store.feedback_status, store.days_until_feedback)
+
+              return (
+                <div
+                  key={store.id}
+                  onClick={() => router.push(`/admin/stores/${store.id}`)}
+                  className={cn(
+                    "rounded-xl border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
+                    isLoading && "opacity-50"
+                  )}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                        <Store className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{store.store_name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground truncate">{store.client_name || 'Sem cliente'}</span>
+                          {store.has_klaviyo && (
+                            <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                              Klaviyo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => router.push(`/admin/stores/${store.id}`)}>
+                            <Store className="w-4 h-4 mr-2" />
+                            Ver Loja
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(store)}>
+                            <Settings className="w-4 h-4 mr-2" />
+                            Configurar
+                          </DropdownMenuItem>
+                          {store.client_id && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => router.push(`/admin/clients/${store.client_id}`)}>
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Ver Cliente
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          <DropdownMenuSeparator />
+                          {!store.client_id ? (
+                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsLinkModalOpen(true) }}>
+                              <Link2 className="w-4 h-4 mr-2" />
+                              Vincular a Cliente
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsUnlinkDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                              <Unlink className="w-4 h-4 mr-2" />
+                              Desvincular
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Excluir Loja
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* Metrics grid */}
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Receita 30d</p>
+                      {store.revenue_status === 'loaded' ? (
+                        <p className={cn(
+                          "text-sm font-semibold tabular-nums",
+                          store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
+                        )}>
+                          {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
+                        </p>
+                      ) : store.revenue_status === 'error' ? (
+                        <div className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                          <span className="text-xs text-amber-500">Erro</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">-</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Recuperacao</p>
+                      {store.recovery_rate !== null ? (
+                        <p className={cn(
+                          "text-sm font-semibold tabular-nums",
+                          store.recovery_rate >= 10 ? 'text-emerald-600 dark:text-emerald-400' :
+                          store.recovery_rate >= 5 ? 'text-amber-600 dark:text-amber-400' :
+                          'text-red-600 dark:text-red-400'
+                        )}>
+                          {store.recovery_rate.toFixed(1)}%
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">-</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Feedback</p>
+                      <Badge variant="outline" className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
+                        <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
+                        {statusCfg.label}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Footer actions */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {store.last_call_source === 'meeting' ? (
+                        <Video className="w-3 h-3 text-primary" />
+                      ) : store.last_call_source === 'feedback' ? (
+                        <Phone className="w-3 h-3 text-emerald-500" />
+                      ) : null}
+                      <span>
+                        {store.last_call_date ? `Ultima: ${formatDate(store.last_call_date)}` : 'Sem calls'}
+                      </span>
+                      {store.last_feedback_by_name && (
+                        <>
+                          <span className="text-muted-foreground/30">|</span>
+                          <span>{store.last_feedback_by_name}</span>
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedStore(store)
+                        setIsRegisterDialogOpen(true)
+                      }}
+                      className="h-7 px-2.5 text-xs"
+                    >
+                      <Phone className="w-3 h-3 mr-1" />
+                      Registrar
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ─── Pagination ──────────────────────────────────────── */}
+          {totalItems > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <span className="text-xs text-muted-foreground order-2 sm:order-1">
+                {paginationStart}-{paginationEnd} de {totalItems} lojas
+              </span>
+              <div className="flex items-center gap-1.5 order-1 sm:order-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isLoading}
+                  className="h-8"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">Anterior</span>
+                </Button>
+                <div className="flex items-center gap-1 px-2">
+                  <span className="text-xs font-medium text-foreground">{page}</span>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <span className="text-xs text-muted-foreground">{totalPages}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isLoading}
+                  className="h-8"
+                >
+                  <span className="hidden sm:inline mr-1">Proximo</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Dialogs ─────────────────────────────────────────── */}
 
       {/* ─── Store List ────────────────────────────────────────── */}
       {stores.length === 0 ? (
