@@ -7,9 +7,12 @@
  * Follows the same architecture as klaviyo-sync.service.ts.
  *
  * Omnisend API:
- *   - Campaigns: GET /v3/campaigns (includes stats inline)
- *   - Automations: GET /v3/automations (includes stats inline)
+ *   - Campaigns list: GET /v3/campaigns (includes stats inline)
+ *   - Campaign stats: GET /v5/campaigns/{id}/statistics (detailed metrics + revenue)
+ *   - Automations list: GET /v3/automations (includes stats inline)
+ *   - Automation stats: GET /v5/automations/{id}/statistics (detailed metrics + revenue)
  *   - Contacts: GET /v5/contacts (for audience size)
+ *   - Segments: GET /v5/segments (for segment data + contactsCount)
  *   - Brands: GET /v5/brands/current (account info)
  *   - Orders: GET /v3/orders (for revenue attribution)
  */
@@ -47,12 +50,26 @@ export interface OmnisendCampaignStats {
   unsubscribed?: number
   revenue?: number
   orders?: number
+  totalRevenue?: number
+  ordersCount?: number
+  averageOrderValue?: number
+  clickToOpenRate?: number
+  complaintRate?: number
   // Computed rates
   openRate?: number
   clickRate?: number
   bounceRate?: number
   unsubscribeRate?: number
   conversionRate?: number
+}
+
+export interface OmnisendSegment {
+  segmentID: string
+  name: string
+  type?: string
+  contactsCount: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface OmnisendCampaign {
@@ -170,6 +187,7 @@ export interface OmnisendAutomationRow {
 export interface OmnisendSyncData {
   campaignRows: OmnisendCampaignRow[]
   automationRows: OmnisendAutomationRow[]
+  segments: OmnisendSegment[]
   totalCampaignRevenue: number
   totalAutomationRevenue: number
   totalStoreRevenue: number
@@ -211,12 +229,54 @@ export async function fetchSentCampaigns(apiKey: string): Promise<OmnisendCampai
   })
 }
 
+// ── Campaign Stats v5 (detailed) ──────────────────────────
+
+export async function fetchCampaignStatsV5(
+  apiKey: string,
+  campaignID: string
+): Promise<OmnisendCampaignStats | null> {
+  return omnisendRequest<OmnisendCampaignStats>(
+    apiKey,
+    `${OMNISEND_V5}/campaigns/${campaignID}/statistics`,
+    { logTag: "OmnisendCampaignStats" }
+  )
+}
+
 // ── Automations ───────────────────────────────────────────
 
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
   return omnisendPaginateV3<OmnisendAutomation>(apiKey, `${OMNISEND_V3}/automations`, "automations", {
     logTag: "OmnisendAutomations",
   })
+}
+
+// ── Automation Stats v5 (detailed) ────────────────────────
+
+export async function fetchAutomationStatsV5(
+  apiKey: string,
+  automationID: string
+): Promise<OmnisendCampaignStats | null> {
+  return omnisendRequest<OmnisendCampaignStats>(
+    apiKey,
+    `${OMNISEND_V5}/automations/${automationID}/statistics`,
+    { logTag: "OmnisendAutomationStats" }
+  )
+}
+
+// ── Segments ──────────────────────────────────────────────
+
+interface SegmentsResponse {
+  segments: OmnisendSegment[]
+  paging?: { next?: string }
+}
+
+export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> {
+  const resp = await omnisendRequest<SegmentsResponse>(
+    apiKey,
+    `${OMNISEND_V5}/segments?limit=250`,
+    { logTag: "OmnisendSegments" }
+  )
+  return resp?.segments || []
 }
 
 // ── Orders (for revenue attribution) ──────────────────────
@@ -353,8 +413,43 @@ export async function syncOmnisendForStore(params: {
     const { totalContacts, subscribedContacts } = await fetchContactCounts(apiKey)
     log.info(`Contacts: ${totalContacts} total, ${subscribedContacts} subscribed`, { storeId })
 
+    await sleep(200)
+
+    // 5b. Fetch segments
+    const segments = await fetchSegments(apiKey)
+    log.info(`Fetched ${segments.length} segments`, { storeId })
+
     // 6. Compute revenue from orders
     const orderRevenue = computeRevenueFromOrders(orders)
+
+    // 6b. Try to enrich campaigns with v5 detailed stats (revenue, orders)
+    // Only for first 20 campaigns to avoid rate limit issues
+    const campaignsToEnrich = campaigns.slice(0, 20)
+    for (const camp of campaignsToEnrich) {
+      try {
+        const detailed = await fetchCampaignStatsV5(apiKey, camp.campaignID)
+        if (detailed) {
+          camp.stats = { ...camp.stats, ...detailed }
+        }
+        await sleep(200)
+      } catch {
+        // Non-critical — fall back to inline stats
+      }
+    }
+
+    // 6c. Try to enrich automations with v5 detailed stats
+    const activeAutomations = automations.filter(a => a.status === "enabled" || a.status === "active")
+    for (const auto of activeAutomations.slice(0, 20)) {
+      try {
+        const detailed = await fetchAutomationStatsV5(apiKey, auto.automationID)
+        if (detailed) {
+          auto.stats = { ...auto.stats, ...detailed }
+        }
+        await sleep(200)
+      } catch {
+        // Non-critical — fall back to inline stats
+      }
+    }
 
     // 7. Map campaigns to rows
     const campaignRows: OmnisendCampaignRow[] = campaigns.map((c) => {
@@ -365,8 +460,8 @@ export async function syncOmnisendForStore(params: {
       const clicked = s.uniqueClicked || s.clicked || 0
       const bounced = s.bounced || 0
       const unsubscribed = s.unsubscribed || 0
-      const revenue = s.revenue || 0
-      const campaignOrders = s.orders || 0
+      const revenue = s.totalRevenue || s.revenue || 0
+      const campaignOrders = s.ordersCount || s.orders || 0
       const spam = s.complained || 0
 
       return {
@@ -399,7 +494,7 @@ export async function syncOmnisendForStore(params: {
 
     // 8. Map automations to rows
     const automationRows: OmnisendAutomationRow[] = automations
-      .filter((a) => a.status === "enabled")
+      .filter((a) => a.status === "enabled" || a.status === "active")
       .map((a) => {
         const s = a.stats || ({} as OmnisendCampaignStats)
         const sent = s.sent || 0
@@ -408,8 +503,8 @@ export async function syncOmnisendForStore(params: {
         const clicked = s.uniqueClicked || s.clicked || 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
-        const revenue = s.revenue || 0
-        const automationOrders = s.orders || 0
+        const revenue = s.totalRevenue || s.revenue || 0
+        const automationOrders = s.ordersCount || s.orders || 0
 
         return {
           store_id: storeId,
@@ -445,6 +540,7 @@ export async function syncOmnisendForStore(params: {
       data: {
         campaignRows,
         automationRows,
+        segments,
         totalCampaignRevenue,
         totalAutomationRevenue,
         totalStoreRevenue: orderRevenue.totalRevenue,
