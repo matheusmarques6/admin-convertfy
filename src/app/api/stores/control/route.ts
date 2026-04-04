@@ -57,6 +57,7 @@ interface StoreWithResults {
   currency: string
   has_shopify: boolean
   has_klaviyo: boolean
+  has_omnisend: boolean
   fetched_at: string | null
   sync_status: string
 }
@@ -72,6 +73,7 @@ interface StoreRow {
   is_active: boolean
   shopify_access_token: string | null
   klaviyo_private_key: string | null
+  omnisend_api_key: string | null
   feedback_frequency: string | null
   last_feedback_date: string | null
   next_feedback_date: string | null
@@ -240,6 +242,7 @@ export async function GET(request: Request) {
         is_active,
         shopify_access_token,
         klaviyo_private_key,
+        omnisend_api_key,
         feedback_frequency,
         last_feedback_date,
         next_feedback_date,
@@ -301,6 +304,7 @@ export async function GET(request: Request) {
       // Revenue
       const hasShopify = !!store.shopify_access_token
       const hasKlaviyo = !!store.klaviyo_private_key
+      const hasOmnisend = !!store.omnisend_api_key
       const klaviyoData = revenueMap.get(store.id)
       const shopifyRevenue = shopifyRevenueMap.get(store.id) ?? 0
 
@@ -315,7 +319,7 @@ export async function GET(request: Request) {
         totalRevenue = shopifyRevenue
       }
 
-      if (hasKlaviyo && klaviyoData) {
+      if ((hasKlaviyo || hasOmnisend) && klaviyoData) {
         if (klaviyoData.totalRevenue === -1) {
           revenueStatus = 'error'
         } else {
@@ -392,6 +396,7 @@ export async function GET(request: Request) {
         last_call_source: lastCallSource,
         has_shopify: hasShopify,
         has_klaviyo: hasKlaviyo,
+        has_omnisend: hasOmnisend,
         fetched_at: syncMetaMap.get(store.id)?.fetchedAt ?? null,
         sync_status: syncMetaMap.get(store.id)?.syncStatus ?? 'pending',
       }

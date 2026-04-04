@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
 
       adminClient
         .from("client_stores")
-        .select("id, store_name, platform, store_url, is_active, org_id, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
+        .select("id, store_name, platform, store_url, is_active, org_id, klaviyo_private_key, klaviyo_api_key, omnisend_api_key, shopify_access_token, shopify_store_domain")
         .eq("client_id", clientId)
         .eq("is_active", true)
         .order("store_name"),
@@ -294,7 +294,7 @@ export async function GET(request: NextRequest) {
 
     // ─── Fetch Klaviyo + Shopify for selected stores ──────────────────────────
 
-    const storesWithKlaviyo = stores.filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
+    const storesWithKlaviyo = stores.filter(s => s.klaviyo_private_key || s.klaviyo_api_key || s.omnisend_api_key)
     const hasKlaviyoStores = storesWithKlaviyo.length > 0
 
     if (storeId && storeId !== "all") {
@@ -319,7 +319,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Klaviyo: pure cache read — no live API calls
-        const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
+        const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key || selectedStore.omnisend_api_key)
         log.info(`[Portal] Single store ${selectedStore.id}: hasKlaviyo=${hasKlaviyo}, period=${period}`)
         if (hasKlaviyo) {
           const storeOrgId = (selectedStore as Record<string, unknown>).org_id as string | undefined
@@ -350,7 +350,7 @@ export async function GET(request: NextRequest) {
     } else {
       // ── "All stores" selected — aggregate across all stores ────────────────
       const storesWithIntegrations = stores.filter(
-        (s) => (s.klaviyo_private_key || s.klaviyo_api_key) || (s.shopify_access_token && s.shopify_store_domain)
+        (s) => (s.klaviyo_private_key || s.klaviyo_api_key || s.omnisend_api_key) || (s.shopify_access_token && s.shopify_store_domain)
       )
       log.info(`[Portal] All stores mode: total=${stores.length}, withKlaviyo=${storesWithKlaviyo.length}, withIntegrations=${storesWithIntegrations.length}`)
 
