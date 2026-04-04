@@ -279,3 +279,116 @@ export async function validateKlaviyoCredentials(
     }
   }
 }
+
+// ─── Omnisend Validation ──────────────────────────────────
+
+const OMNISEND_V5_BASE = "https://api.omnisend.com/v5"
+
+/**
+ * Validate Omnisend credentials by calling GET /v5/brands/current
+ * This is a lightweight endpoint that confirms the API key is valid
+ * and returns account metadata (currency, platform, etc.).
+ */
+export async function validateOmnisendCredentials(
+  apiKey: string
+): Promise<ValidationResult> {
+  const testedAt = new Date().toISOString()
+
+  if (!apiKey) {
+    return { valid: false, error: "API Key é obrigatória", tested_at: testedAt }
+  }
+
+  const url = `${OMNISEND_V5_BASE}/brands/current`
+
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS)
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Accept": "application/json",
+      },
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeout)
+
+    if (response.ok) {
+      log.info("Omnisend credentials valid")
+
+      // Check if campaigns endpoint is accessible (v3)
+      let hasReportingAccess = false
+      try {
+        const campResp = await fetch("https://api.omnisend.com/v3/campaigns?limit=1", {
+          method: "GET",
+          headers: { "X-API-KEY": apiKey, "Accept": "application/json" },
+          signal: AbortSignal.timeout(5000),
+        })
+        hasReportingAccess = campResp.ok
+      } catch {
+        // Non-critical — just means no campaign access
+      }
+
+      return {
+        valid: true,
+        tested_at: testedAt,
+        hasReportingAccess,
+      }
+    }
+
+    if (response.status === 401) {
+      return {
+        valid: false,
+        error: "API Key inválida. Verifique no Omnisend em Settings → API Keys.",
+        tested_at: testedAt,
+      }
+    }
+
+    if (response.status === 403) {
+      return {
+        valid: false,
+        error: "Permissões insuficientes. Verifique os scopes da API Key no Omnisend.",
+        missingScopes: ["brands:read"],
+        tested_at: testedAt,
+      }
+    }
+
+    if (response.status === 429) {
+      log.warn("Omnisend validation rate limited — treating as valid")
+      return {
+        valid: true,
+        error: "API Omnisend temporariamente limitada (rate limit).",
+        tested_at: testedAt,
+      }
+    }
+
+    const responseText = await response.text().catch(() => "(failed to read body)")
+    log.error("Omnisend validation unexpected status", {
+      status: response.status,
+      responseBody: responseText.substring(0, 500),
+    })
+
+    return {
+      valid: false,
+      error: `Erro na API Omnisend (HTTP ${response.status}). Verifique se a chave é válida.`,
+      tested_at: testedAt,
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      log.warn("Omnisend validation timeout")
+      return {
+        valid: false,
+        error: "Timeout ao validar credenciais Omnisend (API demorou para responder).",
+        tested_at: testedAt,
+      }
+    }
+    log.error("Omnisend validation error", err)
+    return {
+      valid: false,
+      error: "Erro de conexão com a API Omnisend",
+      tested_at: testedAt,
+    }
+  }
+}

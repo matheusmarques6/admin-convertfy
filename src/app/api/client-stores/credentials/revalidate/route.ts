@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
-import { validateShopifyCredentials, validateKlaviyoCredentials } from "@/lib/services/credential-validator.service"
+import { validateShopifyCredentials, validateKlaviyoCredentials, validateOmnisendCredentials } from "@/lib/services/credential-validator.service"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     // Read credentials server-side (decrypted) — pass orgId for defense-in-depth
     const credentials = await getStoreCredentials(store_id, storeAccess.orgId)
 
-    const results: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
+    const results: { shopify?: ValidationResult; klaviyo?: ValidationResult; omnisend?: ValidationResult } = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dbUpdates: Record<string, any> = {}
 
@@ -59,6 +59,17 @@ export async function POST(request: NextRequest) {
       dbUpdates.klaviyo_validation_error = klaviyoResult.valid ? null : klaviyoResult.error
       dbUpdates.klaviyo_missing_scopes = klaviyoResult.missingScopes || null
       dbUpdates.klaviyo_has_reporting_access = klaviyoResult.hasReportingAccess ?? null
+    }
+
+    // Validate Omnisend if credentials are present
+    const omnisendKey = credentials.omnisend_api_key
+    if (omnisendKey) {
+      log.info("Revalidating Omnisend credentials", { store_id })
+      const omnisendResult = await validateOmnisendCredentials(omnisendKey)
+      results.omnisend = omnisendResult
+      dbUpdates.omnisend_validated_at = omnisendResult.tested_at
+      dbUpdates.omnisend_validation_error = omnisendResult.valid ? null : omnisendResult.error
+      dbUpdates.omnisend_has_reporting_access = omnisendResult.hasReportingAccess ?? null
     }
 
     // Persist validation results in the database

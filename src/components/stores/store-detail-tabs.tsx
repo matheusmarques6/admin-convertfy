@@ -85,6 +85,7 @@ interface CredentialsFormState {
   klaviyo_public_key: string
   klaviyo_private_key: string
   klaviyo_list_id: string
+  omnisend_api_key: string
   ga4_property_id: string
   ga4_credentials_json: string
 }
@@ -95,6 +96,7 @@ const EMPTY_CREDENTIALS: CredentialsFormState = {
   klaviyo_public_key: "",
   klaviyo_private_key: "",
   klaviyo_list_id: "",
+  omnisend_api_key: "",
   ga4_property_id: "",
   ga4_credentials_json: "",
 }
@@ -483,6 +485,7 @@ function CredentialsForm({
       if (form.klaviyo_public_key.trim()) payload.klaviyo_public_key = form.klaviyo_public_key.trim()
       if (form.klaviyo_private_key.trim()) payload.klaviyo_private_key = form.klaviyo_private_key.trim()
       if (form.klaviyo_list_id.trim()) payload.klaviyo_list_id = form.klaviyo_list_id.trim()
+      if (form.omnisend_api_key.trim()) payload.omnisend_api_key = form.omnisend_api_key.trim()
       if (form.ga4_property_id.trim()) payload.ga4_property_id = form.ga4_property_id.trim()
       if (form.ga4_credentials_json.trim()) {
         try {
@@ -633,6 +636,48 @@ function CredentialsForm({
                 value={form.klaviyo_list_id}
                 onChange={(e) => setForm({ ...form, klaviyo_list_id: e.target.value })}
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Omnisend Section */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              Integração Omnisend
+            </h4>
+            <Badge variant={form.omnisend_api_key || integrationStatus?.omnisend?.connected ? "positive" : "neutral"} className="text-xs">
+              {form.omnisend_api_key || integrationStatus?.omnisend?.connected ? "Configurado" : "Não configurado"}
+            </Badge>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>API Key *</Label>
+              <div className="relative">
+                <Input
+                  type={showPasswords.omnisend_api_key ? "text" : "password"}
+                  placeholder="Cole sua API Key do Omnisend"
+                  value={form.omnisend_api_key}
+                  onChange={(e) => setForm({ ...form, omnisend_api_key: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => togglePasswordVisibility("omnisend_api_key")}
+                >
+                  {showPasswords.omnisend_api_key ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Encontre em Omnisend → Settings → API Keys. Use uma chave com permissões de leitura.
+              </p>
             </div>
           </div>
         </div>

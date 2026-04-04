@@ -203,6 +203,7 @@ export function IntegrationCardsGrid({ storeId, integrationStatus, storeUrl }: I
   const integrations = [
     { key: "shopify", label: "Shopify", brandIcon: "/images/integrations/shopify.svg", canRevalidate: true },
     { key: "klaviyo", label: "Klaviyo", brandIcon: "/images/integrations/klaviyo.svg", canRevalidate: true },
+    { key: "omnisend", label: "Omnisend", brandIcon: "/images/integrations/omnisend.svg", canRevalidate: true },
     { key: "ga4", label: "Google Analytics", canRevalidate: false },
     { key: "meta", label: "Meta Ads", canRevalidate: false },
     { key: "google_ads", label: "Google Ads", canRevalidate: false },
