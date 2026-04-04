@@ -4,199 +4,72 @@ import { create } from "zustand"
 import type {
   ProductivityTask,
   TaskGroup,
-  CalendarEvent,
-  Note,
-  Objective,
-  Habit,
-  HabitDay,
-  TeamMember,
   GoalSummary,
   KanbanColumn,
   WeeklyBar,
 } from "@/types/productivity"
 
 // ============================================================================
-// Mock Data — Produtividade
+// Types for API response
 // ============================================================================
 
-const MOCK_TASKS: ProductivityTask[] = [
-  {
-    id: "t1", name: "Revisar proposta Alphaville", status: "progress", priority: 1,
-    people: ["MC"], date: "24 Mar", estimatedTime: "45m", time: "09:00", project: "Vendas",
-    subtasks: [
-      { id: "s1", name: "Ajustar valores Premium", done: true },
-      { id: "s2", name: "Incluir case study", done: false },
-    ],
-  },
-  {
-    id: "t2", name: "Aprovar layout landing", status: "review", priority: 2,
-    people: ["LS"], date: "25 Mar", estimatedTime: "20m", time: "10:30", project: "Projeto X",
-    subtasks: [],
-  },
-  {
-    id: "t3", name: "Reuniao alinhamento", status: "pending", priority: 2,
-    people: ["MC"], date: "24 Mar", estimatedTime: "60m", time: "14:00", project: "Interno",
-    subtasks: [],
-  },
-  {
-    id: "t4", name: "Enviar relatorio", status: "done", priority: 3,
-    people: ["MC"], date: "24 Mar", estimatedTime: "15m", time: "-", project: "Admin",
-    subtasks: [],
-  },
-  {
-    id: "t5", name: "Feedback Meta Ads", status: "pending", priority: 2,
-    people: ["RA"], date: "25 Mar", estimatedTime: "30m", time: "17:00", project: "MKT",
-    subtasks: [
-      { id: "s4", name: "Analisar CTR", done: false },
-      { id: "s5", name: "Benchmark", done: false },
-    ],
-  },
-]
+interface CalendarEventAPI {
+  id: string
+  name: string
+  time: string
+  duration?: number
+  color: string
+}
 
-const MOCK_GROUPS: TaskGroup[] = [
-  {
-    id: "g1", name: "Sprint 12", color: "#4E62D8",
-    items: [
-      ...MOCK_TASKS.slice(0, 3),
-      {
-        id: "t6", name: "Documentar API v2", status: "pending", priority: 3,
-        people: ["MC"], date: "27 Mar", estimatedTime: "3h", time: "-", project: "Dev",
-        subtasks: [],
-      },
-    ],
-  },
-  { id: "g2", name: "Concluido", color: "#065F46", items: [MOCK_TASKS[3]] },
-]
+interface HabitAPI {
+  id: string
+  name: string
+  color: string
+  streak: number
+  days: number[] // 0=miss, 1=done, 2=today-pending
+  best_streak?: number
+  total_completed?: number
+}
 
-const MOCK_CALENDAR_EVENTS: CalendarEvent[] = [
-  { id: "g1", name: "Reuniao investidor", day: 24, time: "09:00", color: "#4E62D8" },
-  { id: "g2", name: "Call equipe design", day: 24, time: "14:00", color: "#065F46" },
-  { id: "g3", name: "Review sprint", day: 24, time: "16:30", color: "#92400E" },
-]
+interface DailyPlan {
+  objectives?: string[]
+  mood?: string
+  tasks_planned?: string[]
+  shutdown_at?: string
+  tomorrow_priorities?: string
+}
 
-const MOCK_NOTES: Note[] = [
-  { id: "n1", title: "Sprint 12 Planning", preview: "Objetivos: refatorar auth...", date: "Hoje", favorite: true, tags: ["Sprint"], words: 847 },
-  { id: "n2", title: "Ata Donaris", preview: "Participantes: MC, LS...", date: "Ontem", favorite: false, tags: ["Ata"], words: 523 },
-  { id: "n3", title: "Brief remarketing", preview: "Recuperar 15% carrinhos...", date: "22 Mar", favorite: true, tags: ["Brief"], words: 1204 },
-]
+interface FocusSessionsData {
+  count: number
+  totalMinutes: number
+}
 
-const MOCK_OBJECTIVES: Objective[] = [
-  {
-    id: "o1", title: "Escalar receita R$150k MRR", area: "Receita", progress: 74, status: "on-track",
-    keyResults: [
-      { title: "200 clientes", current: 168, target: 200, percentage: 84 },
-      { title: "Ticket R$750", current: 680, target: 750, percentage: 91 },
-      { title: "Churn <3%", current: 4.2, target: 3, percentage: 48 },
-    ],
-  },
-  {
-    id: "o2", title: "Lancar produtividade", area: "Produto", progress: 60, status: "on-track",
-    keyResults: [
-      { title: "Board 3 views", current: 3, target: 3, percentage: 100 },
-      { title: "Planning+Foco", current: 1, target: 2, percentage: 50 },
-    ],
-  },
-]
-
-const MOCK_HABITS: Habit[] = [
-  { id: "h1", name: "Revisar tarefas", color: "#4E62D8", streak: 12, best: 18, total: 67 },
-  { id: "h2", name: "30 min leitura", color: "#065F46", streak: 5, best: 14, total: 43 },
-  { id: "h3", name: "Exercicio", color: "#92400E", streak: 3, best: 21, total: 38 },
-  { id: "h4", name: "1h foco profundo", color: "#7C3AED", streak: 8, best: 12, total: 52 },
-]
-
-const MOCK_HABIT_DAYS: HabitDay[] = [
-  { name: "Revisar tarefas", streak: 7, days: [1, 1, 1, 1, 1, 1, 1] },
-  { name: "30 min leitura", streak: 5, days: [1, 1, 0, 1, 1, 1, 2] },
-  { name: "Exercicio", streak: 3, days: [1, 0, 0, 0, 1, 1, 2] },
-  { name: "1h foco", streak: 2, days: [0, 0, 1, 0, 0, 1, 2] },
-]
-
-const MOCK_GOALS: GoalSummary[] = [
-  { name: "Faturar R$150k MRR", current: "R$112k", percentage: 74, color: "#4E62D8" },
-  { name: "200 clientes ativos", current: "168/200", percentage: 84, color: "#065F46" },
-  { name: "Lancar automacao", current: "3/5 etapas", percentage: 60, color: "#92400E" },
-]
-
-const MOCK_KANBAN_COLUMNS: KanbanColumn[] = [
-  {
-    title: "Pendentes", color: "#92400E",
-    items: [
-      { text: "Wireframe preco", meta: "Design — 45m", avatar: "LS" },
-      { text: "Pixel Meta", meta: "MKT — 20m", avatar: "RA" },
-      { text: "API v2", meta: "Dev — 60m", avatar: "MC" },
-    ],
-  },
-  {
-    title: "Em andamento", color: "#4E62D8",
-    items: [
-      { text: "Refatorar auth", meta: "Dev — 2h", avatar: "MC" },
-      { text: "Remarketing", meta: "MKT — 1h", avatar: "RA" },
-    ],
-  },
-  {
-    title: "Concluidas", color: "#065F46",
-    items: [
-      { text: "Relatorio", meta: "Admin", avatar: "MC" },
-      { text: "Fix checkout", meta: "Dev", avatar: "MC" },
-    ],
-  },
-]
-
-const MOCK_WEEKLY_BARS: WeeklyBar[] = [
-  { label: "Seg", actual: 3, estimated: 4 },
-  { label: "Ter", actual: 6, estimated: 5 },
-  { label: "Qua", actual: 4, estimated: 5 },
-  { label: "Qui", actual: 8, estimated: 6 },
-  { label: "Sex", actual: 5, estimated: 5 },
-  { label: "Sab", actual: 2, estimated: 1 },
-  { label: "Dom", actual: 1, estimated: 0 },
-]
-
-const MOCK_TEAM: TeamMember[] = [
-  {
-    id: "MC", name: "Matheus C.", role: "Tech Lead", capacity: 8,
-    dailyHours: [8.5, 5, 4, 3, 1],
-    tasks: [
-      { name: "Auth", hours: 4, days: [0, 1], color: "#4E62D8" },
-      { name: "API", hours: 3, days: [2, 3], color: "#7C3AED" },
-    ],
-  },
-  {
-    id: "LS", name: "Lucas S.", role: "Designer", capacity: 8,
-    dailyHours: [3, 6, 6, 6, 2],
-    tasks: [
-      { name: "Wire", hours: 2, days: [0], color: "#4E62D8" },
-      { name: "Redesign", hours: 8, days: [1, 2, 3, 4], color: "#7C3AED" },
-    ],
-  },
-  {
-    id: "RA", name: "Rafael A.", role: "MKT", capacity: 8,
-    dailyHours: [4, 4, 3, 2, 0],
-    tasks: [
-      { name: "Pixel", hours: 1, days: [0], color: "#92400E" },
-      { name: "Remarketing", hours: 6, days: [0, 1, 2], color: "#4E62D8" },
-    ],
-  },
-]
+interface ProfileData {
+  name: string
+  avatar_url: string | null
+}
 
 // ============================================================================
 // Store
 // ============================================================================
 
 interface ProductivityState {
-  // Data
+  // Data (loaded from API)
   tasks: ProductivityTask[]
   groups: TaskGroup[]
-  calendarEvents: CalendarEvent[]
-  notes: Note[]
-  objectives: Objective[]
-  habits: Habit[]
-  habitDays: HabitDay[]
+  calendarEvents: CalendarEventAPI[]
   goals: GoalSummary[]
+  habits: HabitAPI[]
   kanbanColumns: KanbanColumn[]
   weeklyBars: WeeklyBar[]
-  team: TeamMember[]
+  dailyPlan: DailyPlan | null
+  focusSessions: FocusSessionsData
+  profile: ProfileData
+
+  // Loading state
+  isLoading: boolean
+  isLoaded: boolean
+  error: string | null
 
   // UI State — Board
   boardView: "table" | "kanban"
@@ -214,16 +87,13 @@ interface ProductivityState {
   focusRunning: boolean
   focusBreak: boolean
   focusTime: number
-  focusSessions: number
+  focusSessionCount: number
 
-  // UI State — Docs
-  activeNoteId: string | null
-  noteSearch: string
+  // Actions — Data
+  fetchData: () => Promise<void>
+  apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
 
-  // UI State — Metas
-  expandedObjectiveId: string | null
-
-  // Actions
+  // Actions — UI
   setBoardView: (view: "table" | "kanban") => void
   selectTask: (id: string | null) => void
   toggleTaskExpand: (id: string) => void
@@ -235,45 +105,158 @@ interface ProductivityState {
   toggleFocus: () => void
   resetFocus: () => void
   tickFocus: () => void
-  setActiveNote: (id: string | null) => void
-  setNoteSearch: (search: string) => void
-  toggleObjective: (id: string) => void
   toggleSubtask: (taskId: string, subtaskId: string) => void
   updateTaskStatus: (taskId: string, status: ProductivityTask["status"]) => void
 }
 
+// ============================================================================
+// Helpers to map API data → store format
+// ============================================================================
+
+function mapTasksToKanban(tasks: ProductivityTask[]): KanbanColumn[] {
+  const columns: Record<string, KanbanColumn> = {
+    pending: { title: "Pendentes", color: "#92400E", items: [] },
+    progress: { title: "Em andamento", color: "#4E62D8", items: [] },
+    done: { title: "Concluidas", color: "#065F46", items: [] },
+  }
+
+  for (const t of tasks) {
+    const col = t.status === "done" ? "done" : t.status === "progress" || t.status === "review" ? "progress" : "pending"
+    columns[col].items.push({
+      text: t.name,
+      meta: `${t.project}${t.estimatedTime ? ` — ${t.estimatedTime}` : ""}`,
+      avatar: t.people[0] || "?",
+    })
+  }
+
+  return Object.values(columns)
+}
+
+function mapGoals(goals: Array<Record<string, unknown>>): GoalSummary[] {
+  return (goals || []).map((g) => ({
+    name: String(g.title || g.name || ""),
+    current: String(g.current_value || "0"),
+    percentage: Number(g.progress || 0),
+    color: String(g.color || "#4E62D8"),
+  }))
+}
+
+// ============================================================================
+// Store implementation
+// ============================================================================
+
 export const useProductivityStore = create<ProductivityState>()((set, get) => ({
   // Data
-  tasks: MOCK_TASKS,
-  groups: MOCK_GROUPS,
-  calendarEvents: MOCK_CALENDAR_EVENTS,
-  notes: MOCK_NOTES,
-  objectives: MOCK_OBJECTIVES,
-  habits: MOCK_HABITS,
-  habitDays: MOCK_HABIT_DAYS,
-  goals: MOCK_GOALS,
-  kanbanColumns: MOCK_KANBAN_COLUMNS,
-  weeklyBars: MOCK_WEEKLY_BARS,
-  team: MOCK_TEAM,
+  tasks: [],
+  groups: [],
+  calendarEvents: [],
+  goals: [],
+  habits: [],
+  kanbanColumns: [],
+  weeklyBars: [],
+  dailyPlan: null,
+  focusSessions: { count: 0, totalMinutes: 0 },
+  profile: { name: "Usuario", avatar_url: null },
+
+  // Loading
+  isLoading: false,
+  isLoaded: false,
+  error: null,
 
   // UI State
   boardView: "table",
   selectedTaskId: null,
-  expandedTasks: new Set(["t1"]),
-  collapsedGroups: new Set(["g2"]),
+  expandedTasks: new Set<string>(),
+  collapsedGroups: new Set<string>(),
   hoveredTaskId: null,
   planningDone: false,
   showShutdown: false,
-  checkedHabits: new Set(["h1", "h4"]),
+  checkedHabits: new Set<string>(),
   focusRunning: false,
   focusBreak: false,
-  focusTime: 1500,
-  focusSessions: 3,
-  activeNoteId: "n1",
-  noteSearch: "",
-  expandedObjectiveId: null,
+  focusTime: 1500, // 25 min
+  focusSessionCount: 0,
 
-  // Actions
+  // ── Fetch data from API ──
+  fetchData: async () => {
+    if (get().isLoading) return
+    set({ isLoading: true, error: null })
+
+    try {
+      const res = await fetch("/api/productivity")
+      if (!res.ok) throw new Error(`API error: ${res.status}`)
+
+      const json = await res.json()
+      const data = json.data || json
+
+      // Map API groups to store format
+      const groups: TaskGroup[] = (data.groups || []).map((g: Record<string, unknown>) => ({
+        id: String(g.id),
+        name: String(g.name),
+        color: String(g.color || "#4E62D8"),
+        items: ((g.items || []) as Array<Record<string, unknown>>).map(mapApiTask),
+      }))
+
+      const allTasks = groups.flatMap((g) => g.items)
+
+      // Map habits — check which are completed today
+      const habits: HabitAPI[] = (data.habits || []).map((h: Record<string, unknown>) => ({
+        id: String(h.id),
+        name: String(h.name),
+        color: String(h.color || "#4E62D8"),
+        streak: Number(h.streak || 0),
+        days: (h.days as number[]) || [0, 0, 0, 0, 0, 0, 2],
+      }))
+
+      const checkedHabits = new Set(
+        habits.filter((h) => h.days[h.days.length - 1] === 1).map((h) => h.id)
+      )
+
+      // Check if daily planning is done
+      const dailyPlan = data.dailyPlan || null
+      const planningDone = !!(dailyPlan?.objectives?.length)
+
+      set({
+        tasks: allTasks,
+        groups,
+        calendarEvents: data.calendarEvents || [],
+        goals: mapGoals(data.goals),
+        habits,
+        kanbanColumns: mapTasksToKanban(allTasks),
+        weeklyBars: data.weeklyBars || [],
+        dailyPlan,
+        focusSessions: data.focusSessions || { count: 0, totalMinutes: 0 },
+        profile: data.profile || { name: "Usuario", avatar_url: null },
+        planningDone,
+        checkedHabits,
+        isLoading: false,
+        isLoaded: true,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao carregar dados"
+      console.error("[ProductivityStore] fetchData error:", msg)
+      set({ isLoading: false, error: msg })
+    }
+  },
+
+  // ── Generic API action ──
+  apiAction: async (action: string, data?: Record<string, unknown>) => {
+    try {
+      const res = await fetch("/api/productivity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...data }),
+      })
+      if (!res.ok) return false
+      // Refresh data after mutation
+      get().fetchData()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  // ── UI Actions ──
   setBoardView: (view) => set({ boardView: view }),
   selectTask: (id) => set({ selectedTaskId: id }),
   toggleTaskExpand: (id) => set((state) => {
@@ -291,12 +274,20 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
   setHoveredTask: (id) => set({ hoveredTaskId: id }),
   setPlanningDone: (done) => set({ planningDone: done }),
   setShowShutdown: (show) => set({ showShutdown: show }),
-  toggleHabitCheck: (id) => set((state) => {
+
+  toggleHabitCheck: (id) => {
+    const state = get()
     const next = new Set(state.checkedHabits)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return { checkedHabits: next }
-  }),
+    if (next.has(id)) {
+      next.delete(id)
+      state.apiAction("uncomplete_habit", { habit_id: id })
+    } else {
+      next.add(id)
+      state.apiAction("complete_habit", { habit_id: id })
+    }
+    set({ checkedHabits: next })
+  },
+
   toggleFocus: () => set((state) => ({ focusRunning: !state.focusRunning })),
   resetFocus: () => set({ focusRunning: false, focusTime: 1500 }),
   tickFocus: () => {
@@ -309,33 +300,65 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
         focusRunning: false,
         focusBreak: nextBreak,
         focusTime: nextBreak ? 300 : 1500,
-        focusSessions: nextBreak ? state.focusSessions : state.focusSessions + 1,
+        focusSessionCount: nextBreak ? state.focusSessionCount : state.focusSessionCount + 1,
       })
     }
   },
-  setActiveNote: (id) => set({ activeNoteId: id }),
-  setNoteSearch: (search) => set({ noteSearch: search }),
-  toggleObjective: (id) => set((state) => ({
-    expandedObjectiveId: state.expandedObjectiveId === id ? null : id,
-  })),
-  toggleSubtask: (taskId, subtaskId) => set((state) => {
+
+  toggleSubtask: (taskId, subtaskId) => {
+    const state = get()
+    const task = state.tasks.find((t) => t.id === taskId)
+    const sub = task?.subtasks.find((s) => s.id === subtaskId)
+    if (sub) {
+      state.apiAction("toggle_subtask", { id: subtaskId, done: !sub.done })
+    }
+
+    // Optimistic update
     const updateTasks = (tasks: ProductivityTask[]) =>
       tasks.map((t) =>
         t.id === taskId
           ? { ...t, subtasks: t.subtasks.map((s) => s.id === subtaskId ? { ...s, done: !s.done } : s) }
           : t
       )
-    return {
+    set({
       tasks: updateTasks(state.tasks),
       groups: state.groups.map((g) => ({ ...g, items: updateTasks(g.items) })),
-    }
-  }),
-  updateTaskStatus: (taskId, status) => set((state) => {
+    })
+  },
+
+  updateTaskStatus: (taskId, status) => {
+    const state = get()
+    state.apiAction("update_task", { id: taskId, status })
+
+    // Optimistic update
     const updateTasks = (tasks: ProductivityTask[]) =>
       tasks.map((t) => t.id === taskId ? { ...t, status } : t)
-    return {
-      tasks: updateTasks(state.tasks),
+    const updatedTasks = updateTasks(state.tasks)
+    set({
+      tasks: updatedTasks,
       groups: state.groups.map((g) => ({ ...g, items: updateTasks(g.items) })),
-    }
-  }),
+      kanbanColumns: mapTasksToKanban(updatedTasks),
+    })
+  },
 }))
+
+// ── Helper to map API task response to ProductivityTask ──
+
+function mapApiTask(t: Record<string, unknown>): ProductivityTask {
+  return {
+    id: String(t.id),
+    name: String(t.name || t.title || ""),
+    status: (t.status as ProductivityTask["status"]) || "pending",
+    priority: (Number(t.priority) || 4) as 1 | 2 | 3 | 4,
+    people: (t.assigned_to as string[]) || (t.people as string[]) || [],
+    date: t.due_date ? new Date(String(t.due_date)).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "—",
+    estimatedTime: t.estimated_minutes ? `${t.estimated_minutes}m` : (t.estimatedTime as string) || "",
+    time: (t.scheduled_time as string) || "—",
+    project: String(t.project || t.group_name || ""),
+    subtasks: ((t.subtasks || []) as Array<Record<string, unknown>>).map((s) => ({
+      id: String(s.id),
+      name: String(s.name || s.title || ""),
+      done: Boolean(s.done),
+    })),
+  }
+}

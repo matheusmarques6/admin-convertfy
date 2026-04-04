@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { TASK_STATUSES, PRIORITY_COLORS, PRIORITY_LABELS } from "@/types/productivity"
@@ -20,7 +20,13 @@ export function ProductivityBoard() {
     groups, boardView, setBoardView, selectedTaskId, selectTask,
     expandedTasks, toggleTaskExpand, collapsedGroups, toggleGroupCollapse,
     hoveredTaskId, setHoveredTask, toggleSubtask,
+    isLoaded, fetchData,
   } = useProductivityStore()
+
+  // Load data on mount
+  useEffect(() => {
+    if (!isLoaded) fetchData()
+  }, [isLoaded, fetchData])
 
   const allTasks = groups.flatMap((g) => g.items)
   const selectedTask = allTasks.find((t) => t.id === selectedTaskId) || null

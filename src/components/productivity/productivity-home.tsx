@@ -20,11 +20,17 @@ import {
 export function ProductivityHome() {
   const {
     tasks, calendarEvents, planningDone, setPlanningDone,
-    showShutdown, setShowShutdown, goals, habitDays,
+    showShutdown, setShowShutdown, goals, habits,
     kanbanColumns, weeklyBars, checkedHabits, toggleHabitCheck,
-    focusRunning, focusTime, focusSessions, focusBreak,
+    focusRunning, focusTime, focusSessionCount, focusBreak,
     toggleFocus, resetFocus, tickFocus,
+    isLoading, isLoaded, fetchData, profile,
   } = useProductivityStore()
+
+  // Load data on mount
+  useEffect(() => {
+    if (!isLoaded) fetchData()
+  }, [isLoaded, fetchData])
 
   // Focus timer tick
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -55,8 +61,12 @@ export function ProductivityHome() {
       <div className="bg-white border-b border-[rgba(0,0,0,0.08)] px-6 py-3 flex justify-between items-center sticky top-0 z-10">
         <div className="flex items-center gap-6">
           <div>
-            <h1 className="text-[18px] font-semibold text-gray-900 m-0 tracking-[-0.02em]">Bom dia, Matheus</h1>
-            <div className="text-[12px] text-gray-400 mt-[1px]">Terca, 24 mar 2026</div>
+            <h1 className="text-[18px] font-semibold text-gray-900 m-0 tracking-[-0.02em]">
+              {new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite"}, {profile.name?.split(" ")[0] || "Usuario"}
+            </h1>
+            <div className="text-[12px] text-gray-400 mt-[1px]">
+              {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}
+            </div>
           </div>
           {/* Workload pill */}
           <div className="flex items-center gap-3 py-[6px] px-4 bg-gray-50 rounded-md border border-[rgba(0,0,0,0.08)]">
@@ -401,8 +411,8 @@ export function ProductivityHome() {
                 title="Habitos"
                 right={<DSBadge type="positive">7d streak</DSBadge>}
               />
-              {habitDays.map((h, i) => (
-                <div key={h.name} className={cn(i < habitDays.length - 1 && "mb-3")}>
+              {habits.map((h, i) => (
+                <div key={h.name} className={cn(i < habits.length - 1 && "mb-3")}>
                   <div className="flex justify-between mb-1">
                     <span className="text-[12px] font-medium text-gray-700">{h.name}</span>
                     <span className="text-[11px] font-semibold text-positive-text font-mono">{h.streak}d</span>
