@@ -189,11 +189,24 @@ export function ClientOverview({ client }: ClientOverviewProps) {
     ) : nextMeeting ? (
       <span className="text-sm text-gray-700 dark:text-[#EAEDF3]">{formatDate(nextMeeting.scheduled_at)}</span>
     ) : <span className="text-sm text-gray-400 dark:text-[#5C6378]">Nenhuma agendada</span> },
+    { label: "CPF/CNPJ", value: client.cpf_cnpj ?? (clientCustomFields?.cpf_cnpj as string) ?? "—" },
   ]
 
-  // Custom fields (filter asaas internal)
+  // Build address string from custom_fields.address
+  const addressObj = clientCustomFields?.address as Record<string, string> | undefined
+  const addressParts = addressObj
+    ? [
+        [addressObj.street, addressObj.number].filter(Boolean).join(", "),
+        addressObj.complement,
+        addressObj.neighborhood,
+        [addressObj.city, addressObj.state].filter(Boolean).join(" - "),
+        addressObj.postal_code,
+      ].filter(Boolean)
+    : []
+
+  // Custom fields (filter internal + address + notes)
   const displayCustomFields = client.custom_fields
-    ? Object.entries(client.custom_fields).filter(([key]) => !key.startsWith("asaas_") && key !== "cpf_cnpj")
+    ? Object.entries(client.custom_fields).filter(([key]) => !key.startsWith("asaas_") && key !== "cpf_cnpj" && key !== "address" && key !== "notes")
     : []
 
   return (
@@ -223,6 +236,20 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </dl>
           </CardContent>
         </Card>
+
+        {/* Address Card */}
+        {addressParts.length > 0 && (
+          <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Endereço</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-700 dark:text-[#EAEDF3] leading-relaxed">
+                {addressParts.join(" — ")}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Financial Summary Card */}
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
@@ -314,7 +341,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
                       {key.replace(/_/g, " ")}
                     </dt>
                     <dd className="text-sm text-gray-700 dark:text-[#EAEDF3] mt-0.5">
-                      {String(value)}
+                      {typeof value === "object" ? JSON.stringify(value) : String(value)}
                     </dd>
                   </div>
                 ))}
