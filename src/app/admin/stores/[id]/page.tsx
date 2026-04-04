@@ -98,6 +98,14 @@ async function getStore(id: string) {
     .limit(1)
     .maybeSingle()
 
+  // Fetch revenue summary for KPIs
+  const { data: revenueSummary } = await adminClient
+    .from("store_revenue_summary")
+    .select("klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status")
+    .eq("store_id", id)
+    .eq("period_label", "30d")
+    .maybeSingle()
+
   return {
     ...store,
     integrationStatus,
@@ -106,6 +114,7 @@ async function getStore(id: string) {
     onboarding_progress: onboarding?.progress_percent || 0,
     has_briefing: !!briefing,
     drive_folder_url: driveData?.drive_folder_url || null,
+    revenueSummary,
   }
 }
 
@@ -204,10 +213,10 @@ export default async function StoreDetailPage({
 
           {/* Right: Mini KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <MiniKpi label="Receita 30d" value="—" />
-            <MiniKpi label="Pedidos 30d" value="—" />
-            <MiniKpi label="Open Rate" value="—" />
-            <MiniKpi label="Subscribers" value="—" />
+            <MiniKpi label="Receita 30d" value={store.revenueSummary?.klaviyo_total_revenue ? `${store.revenueSummary.currency === "USD" ? "$" : "R$"} ${Number(store.revenueSummary.klaviyo_total_revenue).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} />
+            <MiniKpi label="Pedidos 30d" value={store.revenueSummary?.store_orders ? String(store.revenueSummary.store_orders) : "—"} />
+            <MiniKpi label="Engajamento" value={store.revenueSummary?.engagement_rate ? `${Number(store.revenueSummary.engagement_rate).toFixed(1)}%` : "—"} />
+            <MiniKpi label="Contatos" value={store.revenueSummary?.total_leads ? Number(store.revenueSummary.total_leads).toLocaleString("pt-BR") : "—"} />
           </div>
         </div>
       </div>
