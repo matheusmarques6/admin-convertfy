@@ -18,15 +18,23 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
 
-interface DashboardWeeklyPerfProps {
-  loading?: boolean
+interface WeeklyDataPoint {
+  week: string
+  open: number
+  click: number
+  conv: number
 }
 
-const MOCK_DATA = [
-  { week: "Sem 1", open: 32, click: 28, conv: 4.2 },
-  { week: "Sem 2", open: 35, click: 25, conv: 3.8 },
-  { week: "Sem 3", open: 34, click: 30, conv: 4.5 },
-  { week: "Sem 4", open: 36, click: 32, conv: 4.8 },
+interface DashboardWeeklyPerfProps {
+  loading?: boolean
+  data?: WeeklyDataPoint[]
+}
+
+const EMPTY_DATA: WeeklyDataPoint[] = [
+  { week: "Sem 1", open: 0, click: 0, conv: 0 },
+  { week: "Sem 2", open: 0, click: 0, conv: 0 },
+  { week: "Sem 3", open: 0, click: 0, conv: 0 },
+  { week: "Sem 4", open: 0, click: 0, conv: 0 },
 ]
 
 const COLORS = {
@@ -110,7 +118,9 @@ function SkeletonState() {
   )
 }
 
-export function DashboardWeeklyPerf({ loading = false }: DashboardWeeklyPerfProps) {
+export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPerfProps) {
+  const chartData = data && data.length > 0 ? data : EMPTY_DATA
+  const hasRealData = !!(data && data.length > 0)
   return (
     <div
       className={cn(
@@ -154,10 +164,15 @@ export function DashboardWeeklyPerf({ loading = false }: DashboardWeeklyPerfProp
               ))}
             </div>
           </div>
-          <div className="h-[220px] w-full">
+          <div className="h-[220px] w-full relative">
+            {!hasRealData && !loading && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
+                <p className="text-sm text-gray-400 dark:text-[#5C6378]">Aguardando dados do sync</p>
+              </div>
+            )}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={MOCK_DATA}
+                data={chartData}
                 margin={{ top: 8, right: 0, left: -12, bottom: 0 }}
                 barGap={2}
                 barCategoryGap="20%"

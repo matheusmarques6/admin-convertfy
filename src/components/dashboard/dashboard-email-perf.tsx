@@ -47,35 +47,23 @@ interface DashboardEmailPerfProps {
   loading?: boolean
 }
 
-// ─── Mock chart data generators ──────────────────────────
-
-function generateSeries(base: number, variance: number, trend: number): { current: number[]; previous: number[] } {
-  const current: number[] = []
-  const previous: number[] = []
-  for (let i = 0; i < 30; i++) {
-    const c = base + trend * i + (Math.random() - 0.5) * variance
-    current.push(Math.round(c * 100) / 100)
-    const p = base - 2 + trend * 0.6 * i + (Math.random() - 0.5) * variance
-    previous.push(Math.round(p * 100) / 100)
-  }
-  return { current, previous }
-}
+// ─── Empty chart data (zeros — awaiting sync) ───────────
 
 const DAYS = Array.from({ length: 30 }, (_, i) =>
   new Date(2026, 1, i + 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
 )
 
-const MOCK_SERIES: Record<MetricKey, { current: number[]; previous: number[] }> = {
-  openRate: generateSeries(37, 4, 0.08),
-  clickRate: generateSeries(3.8, 0.8, 0.02),
-  ctor: generateSeries(10.2, 1.5, 0.04),
-  placedOrder: generateSeries(1.9, 0.4, -0.01),
-  rpe: generateSeries(0.82, 0.12, 0.003),
-  deliverability: generateSeries(98.6, 0.6, 0.01),
+const EMPTY_SERIES: Record<MetricKey, { current: number[]; previous: number[] }> = {
+  openRate: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+  clickRate: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+  ctor: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+  placedOrder: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+  rpe: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+  deliverability: { current: Array(30).fill(0), previous: Array(30).fill(0) },
 }
 
 function getChartData(metric: MetricKey): ChartPoint[] {
-  const series = MOCK_SERIES[metric]
+  const series = EMPTY_SERIES[metric]
   return DAYS.map((day, i) => ({
     day,
     current: series.current[i],
@@ -83,23 +71,23 @@ function getChartData(metric: MetricKey): ChartPoint[] {
   }))
 }
 
-// ─── Metric definitions ─────────────────────────────────
+// ─── Metric definitions (empty — filled by sync data) ───
 
 const METRICS: MetricDefinition[] = [
-  { key: "openRate", label: "Open Rate", value: "38.4%", delta: 3.2, format: "percent" },
-  { key: "clickRate", label: "Click Rate", value: "4.2%", delta: 0.5, format: "percent" },
-  { key: "ctor", label: "CTOR", value: "10.9%", delta: 1.1, format: "percent" },
-  { key: "placedOrder", label: "Placed Order", value: "1.8%", delta: -0.2, format: "percent" },
-  { key: "rpe", label: "RPE", value: "R$ 0,87", delta: 0.1, format: "currency" },
-  { key: "deliverability", label: "Deliverability", value: "98.9%", delta: 0.3, format: "percent" },
+  { key: "openRate", label: "Open Rate", value: "—", delta: 0, format: "percent" },
+  { key: "clickRate", label: "Click Rate", value: "—", delta: 0, format: "percent" },
+  { key: "ctor", label: "CTOR", value: "—", delta: 0, format: "percent" },
+  { key: "placedOrder", label: "Placed Order", value: "—", delta: 0, format: "percent" },
+  { key: "rpe", label: "RPE", value: "—", delta: 0, format: "currency" },
+  { key: "deliverability", label: "Deliverability", value: "—", delta: 0, format: "percent" },
 ]
 
 // ─── Footer stats ───────────────────────────────────────
 
 const FOOTER_STATS = [
-  { label: "Volume de Envios", value: "4.820.350" },
-  { label: "Perfis Ativos", value: "187.420" },
-  { label: "Engajados (90d)", value: "62.4%" },
+  { label: "Volume de Envios", value: "—" },
+  { label: "Perfis Ativos", value: "—" },
+  { label: "Engajados (90d)", value: "—" },
   { label: "Unsub Rate", value: "0.08%" },
 ]
 

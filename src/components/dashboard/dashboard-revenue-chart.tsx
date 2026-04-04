@@ -36,23 +36,17 @@ interface RevenueDataPoint {
 interface DashboardRevenueChartProps {
   loading?: boolean
   period: string
+  data?: RevenueDataPoint[]
 }
 
-// ─── Mock Data ────────────────────────────────────────────
-
-const MOCK_DATA: RevenueDataPoint[] = [
-  { month: "Jan", current: 42, previous: 35, fatAtribuido: 42000, campanhas: 24000, automacoes: 18000, fatTotalLojas: 210000, taxaReceita: 20.0 },
-  { month: "Fev", current: 38, previous: 32, fatAtribuido: 38000, campanhas: 22000, automacoes: 16000, fatTotalLojas: 195000, taxaReceita: 19.5 },
-  { month: "Mar", current: 55, previous: 40, fatAtribuido: 55000, campanhas: 31000, automacoes: 24000, fatTotalLojas: 260000, taxaReceita: 21.2 },
-  { month: "Abr", current: 48, previous: 42, fatAtribuido: 48000, campanhas: 27000, automacoes: 21000, fatTotalLojas: 235000, taxaReceita: 20.4 },
-  { month: "Mai", current: 62, previous: 45, fatAtribuido: 62000, campanhas: 35000, automacoes: 27000, fatTotalLojas: 290000, taxaReceita: 21.4 },
-  { month: "Jun", current: 58, previous: 48, fatAtribuido: 58000, campanhas: 33000, automacoes: 25000, fatTotalLojas: 275000, taxaReceita: 21.1 },
-  { month: "Jul", current: 70, previous: 52, fatAtribuido: 70000, campanhas: 40000, automacoes: 30000, fatTotalLojas: 320000, taxaReceita: 21.9 },
-  { month: "Ago", current: 65, previous: 55, fatAtribuido: 65000, campanhas: 37000, automacoes: 28000, fatTotalLojas: 305000, taxaReceita: 21.3 },
-  { month: "Set", current: 78, previous: 58, fatAtribuido: 78000, campanhas: 44000, automacoes: 34000, fatTotalLojas: 355000, taxaReceita: 22.0 },
-  { month: "Out", current: 72, previous: 60, fatAtribuido: 72000, campanhas: 41000, automacoes: 31000, fatTotalLojas: 330000, taxaReceita: 21.8 },
-  { month: "Nov", current: 88, previous: 65, fatAtribuido: 88000, campanhas: 50000, automacoes: 38000, fatTotalLojas: 395000, taxaReceita: 22.3 },
-  { month: "Dez", current: 95, previous: 70, fatAtribuido: 95000, campanhas: 54000, automacoes: 41000, fatTotalLojas: 420000, taxaReceita: 22.6 },
+// Empty state placeholder data (all zeros — shows empty chart grid)
+const EMPTY_DATA: RevenueDataPoint[] = [
+  { month: "Jan", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
+  { month: "Fev", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
+  { month: "Mar", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
+  { month: "Abr", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
+  { month: "Mai", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
+  { month: "Jun", current: 0, previous: 0, fatAtribuido: 0, campanhas: 0, automacoes: 0, fatTotalLojas: 0, taxaReceita: 0 },
 ]
 
 // ─── Custom Tooltip ───────────────────────────────────────
@@ -237,7 +231,9 @@ function ChartSkeleton() {
 
 // ─── Main Component ───────────────────────────────────────
 
-export function DashboardRevenueChart({ loading, period: _period }: DashboardRevenueChartProps) {
+export function DashboardRevenueChart({ loading, period: _period, data }: DashboardRevenueChartProps) {
+  const chartData = data && data.length > 0 ? data : EMPTY_DATA
+  const hasRealData = !!(data && data.length > 0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -314,10 +310,15 @@ export function DashboardRevenueChart({ loading, period: _period }: DashboardRev
       </div>
 
       {/* Chart */}
-      <div className="h-[280px]">
+      <div className="h-[280px] relative">
+        {!hasRealData && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
+            <p className="text-sm text-gray-400 dark:text-[#5C6378]">Aguardando dados do sync</p>
+          </div>
+        )}
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={MOCK_DATA}
+            data={chartData}
             margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
@@ -376,9 +377,9 @@ export function DashboardRevenueChart({ loading, period: _period }: DashboardRev
             />
 
             {/* Active index reference line (vertical dashed) */}
-            {activeIndex !== null && MOCK_DATA[activeIndex] && (
+            {activeIndex !== null && chartData[activeIndex] && (
               <ReferenceLine
-                x={MOCK_DATA[activeIndex].month}
+                x={chartData[activeIndex].month}
                 stroke="rgba(78,98,216,0.25)"
                 strokeDasharray="4 3"
                 strokeWidth={1}
