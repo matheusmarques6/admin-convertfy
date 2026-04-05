@@ -53,6 +53,22 @@ interface ProfileData {
 // Store
 // ============================================================================
 
+interface OrgMember {
+  id: string
+  name: string
+  avatar_url: string | null
+  initials: string
+}
+
+interface TaskComment {
+  id: string
+  task_id: string
+  text: string
+  user_name: string
+  user_initials: string
+  created_at: string
+}
+
 interface ProductivityState {
   // Data (loaded from API)
   tasks: ProductivityTask[]
@@ -65,6 +81,8 @@ interface ProductivityState {
   dailyPlan: DailyPlan | null
   focusSessions: FocusSessionsData
   profile: ProfileData
+  members: OrgMember[]
+  comments: TaskComment[]
 
   // Loading state
   isLoading: boolean
@@ -157,6 +175,8 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
   dailyPlan: null,
   focusSessions: { count: 0, totalMinutes: 0 },
   profile: { name: "Usuario", avatar_url: null },
+  members: [],
+  comments: [],
 
   // Loading
   isLoading: false,
@@ -227,6 +247,8 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
         dailyPlan,
         focusSessions: data.focusSessions || { count: 0, totalMinutes: 0 },
         profile: data.profile || { name: "Usuario", avatar_url: null },
+        members: data.members || [],
+        comments: data.comments || [],
         planningDone,
         checkedHabits,
         isLoading: false,

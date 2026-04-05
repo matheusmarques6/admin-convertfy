@@ -190,6 +190,53 @@ export function ProductivityBoard() {
 }
 
 // ============================================================================
+// Editable Group Name
+// ============================================================================
+
+function EditableGroupName({ groupId, name }: { groupId: string; name: string }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(name)
+  const { apiAction } = useProductivityStore()
+
+  if (editing) {
+    return (
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value.trim() && value !== name) {
+            apiAction("update_group", { group_id: groupId, group_name: value.trim() })
+          }
+          setEditing(false)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            if (value.trim() && value !== name) {
+              apiAction("update_group", { group_id: groupId, group_name: value.trim() })
+            }
+            setEditing(false)
+          }
+          if (e.key === "Escape") { setValue(name); setEditing(false) }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="text-sm font-semibold text-gray-800 border-none outline-none bg-transparent p-0"
+        autoFocus
+      />
+    )
+  }
+
+  return (
+    <span
+      onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
+      className="text-sm font-semibold text-gray-800 cursor-text hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
+      title="Duplo clique para editar"
+    >
+      {name}
+    </span>
+  )
+}
+
+// ============================================================================
 // Inline New Task — add task within a group
 // ============================================================================
 
@@ -299,7 +346,7 @@ function TableView({
               >
                 <path d="M3 1l4 4-4 4" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-              <span className="text-sm font-semibold text-gray-800">{g.name}</span>
+              <EditableGroupName groupId={g.id} name={g.name} />
               <span className="text-[11px] font-semibold text-gray-400 font-mono">{g.items.length}</span>
               {doneCount > 0 && (
                 <>
@@ -410,6 +457,58 @@ function TableView({
           </div>
         )
       })}
+
+      {/* Add new group */}
+      <NewGroupInline />
+    </div>
+  )
+}
+
+function NewGroupInline() {
+  const [isAdding, setIsAdding] = useState(false)
+  const [name, setName] = useState("")
+  const { apiAction } = useProductivityStore()
+
+  if (!isAdding) {
+    return (
+      <div className="h-10 px-6 flex items-center">
+        <button
+          onClick={() => setIsAdding(true)}
+          className="border-none bg-transparent cursor-pointer text-[13px] text-gray-400 p-0 flex items-center gap-1 hover:text-gray-600 transition-colors"
+        >
+          <IconPlus size={14} /> Novo grupo
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-12 px-6 flex items-center gap-2 border-b border-gray-100">
+      <div className="w-[3px] h-[18px] rounded-[2px] bg-brand-400" />
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={async (e) => {
+          if (e.key === "Enter" && name.trim()) {
+            // Create a task with the new group to establish the group
+            await apiAction("create_task", {
+              name: "Nova tarefa",
+              status: "pending",
+              priority: 4,
+              group_id: name.trim().toLowerCase().replace(/\s+/g, "-"),
+              group_name: name.trim(),
+              group_color: "#4E62D8",
+            })
+            setName("")
+            setIsAdding(false)
+          }
+          if (e.key === "Escape") setIsAdding(false)
+        }}
+        placeholder="Nome do grupo..."
+        className="text-sm font-semibold text-gray-800 border-none outline-none bg-transparent flex-1"
+        autoFocus
+      />
+      <button onClick={() => setIsAdding(false)} className="text-[10px] text-gray-400 bg-transparent border-none cursor-pointer">Cancelar</button>
     </div>
   )
 }
@@ -567,10 +666,11 @@ function TaskDetailPanel({
   onClose: () => void
   toggleSubtask: (taskId: string, subtaskId: string) => void
 }) {
-  const { apiAction, updateTaskStatus } = useProductivityStore()
+  const { apiAction, updateTaskStatus, members, comments } = useProductivityStore()
   const statusConfig = TASK_STATUSES.find((x) => x.id === task.status)
   const hasSubs = task.subtasks.length > 0
   const subDone = task.subtasks.filter((s) => s.done).length
+  const taskComments = comments.filter((c) => c.task_id === task.id)
 
   // Editable fields
   const [editingName, setEditingName] = useState(false)
@@ -581,6 +681,7 @@ function TaskDetailPanel({
   const [newSubtask, setNewSubtask] = useState("")
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [showPrioMenu, setShowPrioMenu] = useState(false)
+  const [showAssigneeMenu, setShowAssigneeMenu] = useState(false)
 
   // Timer state
   const [timerRunning, setTimerRunning] = useState(false)
@@ -621,9 +722,9 @@ function TaskDetailPanel({
     setNewSubtask("")
   }
 
-  const addComment = () => {
+  const addComment = async () => {
     if (!newComment.trim()) return
-    // Would call apiAction for comments
+    await apiAction("add_comment", { task_id: task.id, text: newComment.trim() })
     setNewComment("")
   }
 
@@ -710,13 +811,42 @@ function TaskDetailPanel({
           )}
         </div>
 
-        {/* Responsável */}
-        <div className="flex items-center">
+        {/* Responsável — editable */}
+        <div className="flex items-center relative">
           <span className="w-[90px] text-[12px] font-medium text-gray-400">Responsavel</span>
-          <span className="inline-flex items-center gap-[6px]">
-            <Avatar initials={task.people[0] || "?"} size={22} />
-            <span className="text-[13px] text-gray-700">{task.people[0] || "—"}</span>
-          </span>
+          <button
+            onClick={() => setShowAssigneeMenu(!showAssigneeMenu)}
+            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 transition-colors"
+          >
+            {task.people[0] ? (
+              <>
+                <Avatar initials={task.people[0]} size={22} />
+                <span className="text-[13px] text-gray-700">{task.people[0]}</span>
+              </>
+            ) : (
+              <span className="text-[13px] text-gray-400">+ Atribuir</span>
+            )}
+          </button>
+          {showAssigneeMenu && (
+            <div className="absolute top-full left-[90px] z-20 bg-white border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[160px] max-h-[200px] overflow-auto">
+              {members.length === 0 ? (
+                <div className="px-3 py-2 text-[11px] text-gray-400">Nenhum membro encontrado</div>
+              ) : (
+                members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      apiAction("update_assignee", { id: task.id, assigned_to: [m.initials] })
+                      setShowAssigneeMenu(false)
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer flex items-center gap-2"
+                  >
+                    <Avatar initials={m.initials} size={20} /> {m.name}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* Data */}
@@ -828,13 +958,28 @@ function TaskDetailPanel({
       <div className="px-6 py-4 flex-1">
         <div className="text-[11px] font-semibold text-gray-400 uppercase mb-3">Comentarios</div>
 
-        <div className="text-center py-4 text-[12px] text-gray-300">
-          Nenhum comentario ainda
-        </div>
+        {taskComments.length === 0 && (
+          <div className="text-center py-4 text-[12px] text-gray-300">
+            Nenhum comentario ainda
+          </div>
+        )}
+
+        {taskComments.map((c) => (
+          <div key={c.id} className="flex gap-2 mb-3">
+            <Avatar initials={c.user_initials} size={24} />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[12px] font-semibold text-gray-700">{c.user_initials}</span>
+                <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <p className="text-[12px] text-gray-600 m-0">{c.text}</p>
+            </div>
+          </div>
+        ))}
 
         {/* New comment input */}
         <div className="flex items-start gap-2 mt-2">
-          <Avatar initials="?" size={24} />
+          <Avatar initials={useProductivityStore.getState().profile.name?.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase() || "?"} size={24} />
           <input
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}

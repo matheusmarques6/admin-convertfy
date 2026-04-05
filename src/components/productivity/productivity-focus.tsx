@@ -190,18 +190,31 @@ export function ProductivityFocus() {
           ))}
         </div>
 
-        {/* Selected task */}
-        {selectedTask && (
+        {/* Selected task / Select task prompt */}
+        {selectedTask ? (
           <div className="w-full px-4 py-3 bg-gray-800 rounded-lg border border-gray-700 flex items-center gap-3">
             <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: "#4E62D8" }} />
             <span className="text-[12px] text-gray-300 flex-1 truncate">{selectedTask.name}</span>
             <button
-              onClick={() => setSelectedTaskId(null)}
+              onClick={() => setShowTaskPicker(true)}
               className="text-[10px] text-[#7B8CEA] font-medium cursor-pointer bg-transparent border-none hover:underline"
+            >
+              Trocar
+            </button>
+            <button
+              onClick={() => setSelectedTaskId(null)}
+              className="text-[10px] text-gray-500 cursor-pointer bg-transparent border-none hover:underline"
             >
               Remover
             </button>
           </div>
+        ) : (
+          <button
+            onClick={() => setShowTaskPicker(!showTaskPicker)}
+            className="w-full px-4 py-3 bg-gray-800 rounded-lg border border-dashed border-gray-600 text-[12px] text-gray-400 cursor-pointer hover:bg-gray-750 hover:border-gray-500 transition-colors flex items-center justify-center gap-2"
+          >
+            <IconTarget size={14} /> Selecionar uma tarefa para focar
+          </button>
         )}
 
         {/* Task picker dropdown */}

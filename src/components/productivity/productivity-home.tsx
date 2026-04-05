@@ -607,10 +607,18 @@ export function ProductivityHome() {
               <div>
                 <div className="text-[12px] font-semibold text-gray-700 mb-2">Amanha</div>
                 <textarea
-                  placeholder={"1.\n2.\n3."}
+                  id="shutdown-tomorrow"
+                  placeholder={"1. Prioridade para amanha\n2. \n3."}
                   className="w-full h-20 rounded-sm border border-[rgba(0,0,0,0.08)] p-2 text-[12px] font-sans resize-none text-gray-700 focus:outline-none focus:shadow-ring-brand"
                 />
-                <button className="w-full mt-2 h-8 rounded-sm border-none bg-brand-400 text-white text-[12px] font-semibold cursor-pointer hover:bg-brand transition-colors duration-fast ease-out-expo">
+                <button
+                  onClick={async () => {
+                    const textarea = document.getElementById("shutdown-tomorrow") as HTMLTextAreaElement
+                    await apiAction("shutdown_day", { tomorrow_priorities: textarea?.value || "" })
+                    setShowShutdown(false)
+                  }}
+                  className="w-full mt-2 h-8 rounded-sm border-none bg-brand-400 text-white text-[12px] font-semibold cursor-pointer hover:bg-brand transition-colors duration-fast ease-out-expo"
+                >
                   Encerrar dia
                 </button>
               </div>

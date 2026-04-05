@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
       dailyPlanRes,
       focusSessionsRes,
       profileRes,
+      membersRes,
+      commentsRes,
     ] = await Promise.all([
       // Tasks with subtasks, assigned to user's org
       supabase
@@ -81,6 +83,19 @@ export async function GET(request: NextRequest) {
         .select("name, avatar_url")
         .eq("id", user.id)
         .single(),
+
+      // Org members (for assignee picker)
+      supabase
+        .from("org_members")
+        .select("id, profile_id, profiles(name, avatar_url)")
+        .eq("org_id", orgId),
+
+      // Comments on tasks
+      supabase
+        .from("productivity_comments")
+        .select("*, profiles(name, avatar_url)")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: true }),
     ])
 
     // Group tasks by group_id
@@ -186,12 +201,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Map members for assignee picker
+    const members = (membersRes.data || []).map((m: Record<string, unknown>) => {
+      const profile = m.profiles as Record<string, unknown> | null
+      return {
+        id: m.profile_id,
+        name: profile?.name || "?",
+        avatar_url: profile?.avatar_url || null,
+        initials: String(profile?.name || "?").split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase(),
+      }
+    })
+
+    // Map comments by task_id
+    const comments = (commentsRes.data || []).map((c: Record<string, unknown>) => {
+      const profile = c.profiles as Record<string, unknown> | null
+      return {
+        id: c.id,
+        task_id: c.task_id,
+        text: c.text,
+        user_name: profile?.name || "?",
+        user_initials: String(profile?.name || "?").split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase(),
+        created_at: c.created_at,
+      }
+    })
+
     return successResponse(request, {
       groups,
       tasks,
       goals: goalsRes.data || [],
       habits,
       calendarEvents,
+      members,
+      comments,
       dailyPlan: dailyPlanRes.data || null,
       focusSessions: {
         count: focusSessions.length,
@@ -387,6 +428,62 @@ export async function POST(request: NextRequest) {
             task_id: subTaskId,
             name: subName,
           })
+        if (error) throw error
+        break
+      }
+
+      case "add_comment": {
+        const { task_id: commentTaskId, text: commentText } = data
+        const { error } = await supabase
+          .from("productivity_comments")
+          .insert({
+            task_id: commentTaskId,
+            user_id: user.id,
+            text: commentText,
+            org_id: orgId,
+          })
+        if (error) throw error
+        break
+      }
+
+      case "update_assignee": {
+        const { id: assignTaskId, assigned_to: assignees } = data
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .update({ assigned_to: assignees })
+          .eq("id", assignTaskId)
+          .eq("org_id", orgId)
+        if (error) throw error
+        break
+      }
+
+      case "delete_task": {
+        const { id: deleteTaskId } = data
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .delete()
+          .eq("id", deleteTaskId)
+          .eq("org_id", orgId)
+        if (error) throw error
+        break
+      }
+
+      case "create_group": {
+        // Groups are stored as fields on tasks — create a placeholder task for new groups
+        // Or update all tasks in the group
+        break
+      }
+
+      case "update_group": {
+        const { group_id: gId, group_name: gName, group_color: gColor } = data
+        const updates: Record<string, unknown> = {}
+        if (gName) updates.group_name = gName
+        if (gColor) updates.group_color = gColor
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .update(updates)
+          .eq("group_id", gId)
+          .eq("org_id", orgId)
         if (error) throw error
         break
       }
