@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { TASK_STATUSES, PRIORITY_COLORS, PRIORITY_LABELS } from "@/types/productivity"
@@ -190,6 +190,64 @@ export function ProductivityBoard() {
 }
 
 // ============================================================================
+// Inline New Task — add task within a group
+// ============================================================================
+
+function InlineNewTask({ groupId, groupName, groupColor }: { groupId: string; groupName: string; groupColor: string }) {
+  const [isAdding, setIsAdding] = useState(false)
+  const [name, setName] = useState("")
+  const { apiAction } = useProductivityStore()
+
+  const handleAdd = async () => {
+    if (!name.trim()) return
+    await apiAction("create_task", {
+      name: name.trim(),
+      status: "pending",
+      priority: 3,
+      group_id: groupId,
+      group_name: groupName,
+      group_color: groupColor,
+    })
+    setName("")
+    setIsAdding(false)
+  }
+
+  if (!isAdding) {
+    return (
+      <div className="h-9 pl-[72px] flex items-center border-b border-gray-100">
+        <button
+          onClick={() => setIsAdding(true)}
+          className="border-none bg-transparent cursor-pointer text-[13px] text-gray-400 p-0 flex items-center gap-1 hover:text-gray-600 transition-colors duration-fast ease-out-expo"
+        >
+          <IconPlus size={14} /> Nova tarefa
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-10 pl-[72px] pr-6 flex items-center border-b border-gray-100 gap-2">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setIsAdding(false) }}
+        placeholder="Nome da tarefa..."
+        className="flex-1 text-[13px] text-gray-700 border-none outline-none bg-transparent placeholder:text-gray-300"
+        autoFocus
+      />
+      <button
+        onClick={handleAdd}
+        disabled={!name.trim()}
+        className="text-[11px] font-semibold bg-brand-400 text-white px-3 py-1 rounded-md border-none cursor-pointer disabled:opacity-40"
+      >
+        Criar
+      </button>
+      <button onClick={() => setIsAdding(false)} className="text-gray-400 bg-transparent border-none cursor-pointer text-[11px]">Cancelar</button>
+    </div>
+  )
+}
+
+// ============================================================================
 // Table View
 // ============================================================================
 
@@ -341,13 +399,9 @@ function TableView({
               )
             })}
 
-            {/* Add task button */}
+            {/* Add task inline */}
             {!isCollapsed && (
-              <div className="h-9 pl-[72px] flex items-center border-b border-gray-100">
-                <button className="border-none bg-transparent cursor-pointer text-[13px] text-gray-400 p-0 flex items-center gap-1 hover:text-gray-600 transition-colors duration-fast ease-out-expo">
-                  <IconPlus size={14} /> Nova tarefa
-                </button>
-              </div>
+              <InlineNewTask groupId={g.id} groupName={g.name} groupColor={g.color} />
             )}
           </div>
         )
@@ -415,7 +469,7 @@ function KanbanView({
 }
 
 // ============================================================================
-// Task Detail Panel
+// Task Detail Panel — Rich panel with description, time tracking, comments, subtasks
 // ============================================================================
 
 function TaskDetailPanel({
@@ -425,81 +479,283 @@ function TaskDetailPanel({
   onClose: () => void
   toggleSubtask: (taskId: string, subtaskId: string) => void
 }) {
+  const { apiAction, updateTaskStatus } = useProductivityStore()
   const statusConfig = TASK_STATUSES.find((x) => x.id === task.status)
   const hasSubs = task.subtasks.length > 0
   const subDone = task.subtasks.filter((s) => s.done).length
 
+  // Editable fields
+  const [editingName, setEditingName] = useState(false)
+  const [nameValue, setNameValue] = useState(task.name)
+  const [description, setDescription] = useState("")
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [newComment, setNewComment] = useState("")
+  const [newSubtask, setNewSubtask] = useState("")
+  const [showStatusMenu, setShowStatusMenu] = useState(false)
+  const [showPrioMenu, setShowPrioMenu] = useState(false)
+
+  // Timer state
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerSeconds, setTimerSeconds] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    setNameValue(task.name)
+  }, [task.name])
+
+  useEffect(() => {
+    if (timerRunning) {
+      timerRef.current = setInterval(() => setTimerSeconds((s) => s + 1), 1000)
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [timerRunning])
+
+  const timerMin = Math.floor(timerSeconds / 60)
+  const timerSec = timerSeconds % 60
+
+  const saveName = () => {
+    if (nameValue.trim() && nameValue !== task.name) {
+      apiAction("update_task", { id: task.id, name: nameValue.trim() })
+    }
+    setEditingName(false)
+  }
+
+  const saveDescription = () => {
+    apiAction("update_task", { id: task.id, description })
+    setEditingDesc(false)
+  }
+
+  const addSubtask = () => {
+    if (!newSubtask.trim()) return
+    apiAction("create_subtask" as string, { task_id: task.id, name: newSubtask.trim() })
+    setNewSubtask("")
+  }
+
+  const addComment = () => {
+    if (!newComment.trim()) return
+    // Would call apiAction for comments
+    setNewComment("")
+  }
+
   return (
-    <div className="w-[320px] bg-white border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0">
-      {/* Header */}
+    <div className="w-[400px] bg-white border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0 flex flex-col">
+      {/* Header — editable title */}
       <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
-        <div className="flex justify-between">
-          <h2 className="text-[16px] font-semibold text-gray-900 m-0 flex-1">{task.name}</h2>
+        <div className="flex justify-between items-start gap-2">
+          {editingName ? (
+            <input
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => e.key === "Enter" && saveName()}
+              className="text-[16px] font-semibold text-gray-900 flex-1 border-none outline-none bg-transparent p-0 m-0"
+              autoFocus
+            />
+          ) : (
+            <h2
+              onClick={() => setEditingName(true)}
+              className="text-[16px] font-semibold text-gray-900 m-0 flex-1 cursor-text hover:bg-gray-50 rounded px-1 -mx-1 transition-colors"
+            >
+              {task.name}
+            </h2>
+          )}
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-sm border-none bg-gray-50 cursor-pointer text-gray-400 flex items-center justify-center hover:bg-gray-100 transition-colors duration-fast ease-out-expo"
+            className="w-7 h-7 rounded-md border-none bg-gray-50 cursor-pointer text-gray-400 flex items-center justify-center hover:bg-gray-100 transition-colors shrink-0"
           >
             <IconClose size={14} />
           </button>
         </div>
       </div>
 
-      {/* Properties */}
+      {/* Properties — clickable to edit */}
       <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)] flex flex-col gap-2">
-        {[
-          {
-            label: "Status",
-            value: (
-              <span className="inline-flex items-center gap-[6px]">
-                <StatusDot color={statusConfig?.color || "#9CA3AF"} />
-                <span className="text-[13px] text-gray-600">{statusConfig?.label}</span>
-              </span>
-            ),
-          },
-          {
-            label: "Prio",
-            value: (
-              <span className="inline-flex items-center gap-[6px]">
-                <PriorityDot priority={task.priority} />
-                <span className="text-[13px] text-gray-600">{PRIORITY_LABELS[task.priority]}</span>
-              </span>
-            ),
-          },
-          {
-            label: "Data",
-            value: <span className="text-[13px] text-gray-600 font-mono">{task.date}</span>,
-          },
-        ].map((prop) => (
-          <div key={prop.label} className="flex items-center">
-            <span className="w-[70px] text-[12px] font-medium text-gray-400">{prop.label}</span>
-            {prop.value}
+        {/* Status */}
+        <div className="flex items-center relative">
+          <span className="w-[90px] text-[12px] font-medium text-gray-400">Status</span>
+          <button
+            onClick={() => setShowStatusMenu(!showStatusMenu)}
+            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 transition-colors"
+          >
+            <StatusDot color={statusConfig?.color || "#9CA3AF"} />
+            <span className="text-[13px] text-gray-700">{statusConfig?.label}</span>
+          </button>
+          {showStatusMenu && (
+            <div className="absolute top-full left-[90px] z-20 bg-white border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[140px]">
+              {TASK_STATUSES.map((st) => (
+                <button
+                  key={st.id}
+                  onClick={() => { updateTaskStatus(task.id, st.id); setShowStatusMenu(false) }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer flex items-center gap-2"
+                >
+                  <StatusDot color={st.color} /> {st.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Priority */}
+        <div className="flex items-center relative">
+          <span className="w-[90px] text-[12px] font-medium text-gray-400">Prioridade</span>
+          <button
+            onClick={() => setShowPrioMenu(!showPrioMenu)}
+            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 transition-colors"
+          >
+            <PriorityDot priority={task.priority} />
+            <span className="text-[13px] text-gray-700">{PRIORITY_LABELS[task.priority]}</span>
+          </button>
+          {showPrioMenu && (
+            <div className="absolute top-full left-[90px] z-20 bg-white border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[140px]">
+              {([1, 2, 3, 4] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => { apiAction("update_task", { id: task.id, priority: p }); setShowPrioMenu(false) }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer flex items-center gap-2"
+                >
+                  <PriorityDot priority={p} /> {PRIORITY_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Responsável */}
+        <div className="flex items-center">
+          <span className="w-[90px] text-[12px] font-medium text-gray-400">Responsavel</span>
+          <span className="inline-flex items-center gap-[6px]">
+            <Avatar initials={task.people[0] || "?"} size={22} />
+            <span className="text-[13px] text-gray-700">{task.people[0] || "—"}</span>
+          </span>
+        </div>
+
+        {/* Data */}
+        <div className="flex items-center">
+          <span className="w-[90px] text-[12px] font-medium text-gray-400">Data</span>
+          <span className="text-[13px] text-gray-700 font-mono">{task.date || "—"}</span>
+        </div>
+
+        {/* Estimativa */}
+        <div className="flex items-center">
+          <span className="w-[90px] text-[12px] font-medium text-gray-400">Estimativa</span>
+          <span className="text-[13px] text-gray-700 font-mono">{task.estimatedTime || "—"}</span>
+        </div>
+      </div>
+
+      {/* Time tracking */}
+      <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+            </span>
+            <span className="text-[12px] font-medium text-gray-600">Time tracking</span>
           </div>
-        ))}
+          <div className="flex items-center gap-2">
+            <span className="text-[18px] font-semibold font-mono tabular-nums text-gray-900">
+              {String(timerMin).padStart(2, "0")}:{String(timerSec).padStart(2, "0")}
+            </span>
+            <button
+              onClick={() => setTimerRunning(!timerRunning)}
+              className={cn(
+                "w-7 h-7 rounded-md flex items-center justify-center border-none cursor-pointer transition-colors",
+                timerRunning ? "bg-gray-200 text-gray-600" : "bg-brand-400 text-white"
+              )}
+            >
+              {timerRunning ? (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
+        <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Descricao</div>
+        {editingDesc ? (
+          <div>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full h-20 rounded-md border border-[rgba(0,0,0,0.08)] p-2 text-[13px] text-gray-700 resize-none focus:outline-none focus:border-brand-400"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-2">
+              <button onClick={saveDescription} className="text-[11px] font-semibold bg-brand-400 text-white px-3 py-1 rounded-md border-none cursor-pointer">Salvar</button>
+              <button onClick={() => setEditingDesc(false)} className="text-[11px] text-gray-400 bg-transparent border-none cursor-pointer">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div
+            onClick={() => setEditingDesc(true)}
+            className="text-[13px] text-gray-500 cursor-text hover:bg-gray-50 rounded-md p-2 -mx-2 min-h-[40px] transition-colors"
+          >
+            {description || "Clique para adicionar descricao..."}
+          </div>
+        )}
       </div>
 
       {/* Subtasks */}
-      {hasSubs && (
-        <div className="px-6 py-4">
-          <div className="flex justify-between mb-3">
-            <span className="text-[12px] font-medium text-gray-400 uppercase">Subtarefas</span>
+      <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
+        <div className="flex justify-between mb-3">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase">Subtarefas</span>
+          {hasSubs && (
             <span className="text-[11px] font-semibold text-positive-text font-mono">{subDone}/{task.subtasks.length}</span>
-          </div>
-          {task.subtasks.map((sub) => (
-            <div key={sub.id} className="flex items-center gap-2 py-1">
-              <Checkbox
-                checked={sub.done}
-                onChange={() => toggleSubtask(task.id, sub.id)}
-              />
-              <span className={cn(
-                "text-[13px]",
-                sub.done ? "text-gray-400 line-through" : "text-gray-700"
-              )}>
-                {sub.name}
-              </span>
-            </div>
-          ))}
+          )}
         </div>
-      )}
+        {task.subtasks.map((sub) => (
+          <div key={sub.id} className="flex items-center gap-2 py-1.5">
+            <Checkbox
+              checked={sub.done}
+              onChange={() => toggleSubtask(task.id, sub.id)}
+            />
+            <span className={cn(
+              "text-[13px] flex-1",
+              sub.done ? "text-gray-400 line-through" : "text-gray-700"
+            )}>
+              {sub.name}
+            </span>
+          </div>
+        ))}
+        {/* Add subtask inline */}
+        <div className="flex items-center gap-2 mt-2">
+          <input
+            value={newSubtask}
+            onChange={(e) => setNewSubtask(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addSubtask()}
+            placeholder="+ Adicionar subtarefa"
+            className="flex-1 text-[12px] text-gray-600 border-none outline-none bg-transparent placeholder:text-gray-300"
+          />
+        </div>
+      </div>
+
+      {/* Comments */}
+      <div className="px-6 py-4 flex-1">
+        <div className="text-[11px] font-semibold text-gray-400 uppercase mb-3">Comentarios</div>
+
+        <div className="text-center py-4 text-[12px] text-gray-300">
+          Nenhum comentario ainda
+        </div>
+
+        {/* New comment input */}
+        <div className="flex items-start gap-2 mt-2">
+          <Avatar initials="?" size={24} />
+          <input
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addComment()}
+            placeholder="Escrever comentario..."
+            className="flex-1 h-8 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[12px] text-gray-700 focus:outline-none focus:border-brand-400"
+          />
+        </div>
+      </div>
     </div>
   )
 }

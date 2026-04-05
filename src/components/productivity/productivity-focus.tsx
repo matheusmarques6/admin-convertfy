@@ -84,8 +84,42 @@ export function ProductivityFocus() {
     { label: "Longa 15m", seconds: 900 },
   ]
 
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement && containerRef.current) {
+      containerRef.current.requestFullscreen()
+      setIsFullscreen(true)
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener("fullscreenchange", handler)
+    return () => document.removeEventListener("fullscreenchange", handler)
+  }, [])
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gray-900 min-h-screen relative overflow-hidden">
+    <div ref={containerRef} className="flex-1 flex flex-col items-center justify-center bg-gray-900 min-h-screen relative overflow-hidden">
+      {/* Fullscreen toggle */}
+      <button
+        onClick={toggleFullscreen}
+        className="absolute top-4 right-4 z-20 px-3 py-1.5 rounded-md border border-gray-700 bg-transparent text-gray-400 text-[11px] font-medium cursor-pointer hover:bg-gray-800 hover:text-gray-300 transition-colors flex items-center gap-1.5"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          {isFullscreen ? (
+            <><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></>
+          ) : (
+            <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>
+          )}
+        </svg>
+        {isFullscreen ? "Sair tela cheia" : "Tela cheia"}
+      </button>
+
       {/* Subtle radial gradient */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(78,98,216,0.08)_0%,transparent_70%)]" />
 

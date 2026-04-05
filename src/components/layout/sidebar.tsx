@@ -65,7 +65,6 @@ const navigation: NavItem[] = [
   // PRODUTIVIDADE
   { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
   { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
-  { name: "Calendario", href: ROUTES.ADMIN.PRODUCTIVITY.CALENDAR, icon: Calendar, group: "produtividade" },
   { name: "Metas", href: ROUTES.ADMIN.PRODUCTIVITY.GOALS, icon: Target, group: "produtividade" },
   { name: "Habitos", href: ROUTES.ADMIN.PRODUCTIVITY.HABITS, icon: Flame, group: "produtividade" },
   { name: "Foco", href: ROUTES.ADMIN.PRODUCTIVITY.FOCUS, icon: Zap, group: "produtividade" },
