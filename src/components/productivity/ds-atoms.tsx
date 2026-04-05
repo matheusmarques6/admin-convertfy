@@ -133,11 +133,12 @@ export function ProgressCircle({
 }
 
 /** Card container — border, não shadow */
-export function Card({ children, className, style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
+export function Card({ children, className, style, onClick }: { children: ReactNode; className?: string; style?: React.CSSProperties; onClick?: () => void }) {
   return (
     <div
       className={cn("bg-white rounded-md border border-[rgba(0,0,0,0.08)] px-6 py-4", className)}
       style={style}
+      onClick={onClick}
     >
       {children}
     </div>

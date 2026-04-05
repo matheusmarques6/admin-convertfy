@@ -66,6 +66,10 @@ export const ROUTES = {
     PRODUCTIVITY: {
       HOME: "/admin/productivity",
       BOARD: "/admin/productivity/board",
+      CALENDAR: "/admin/productivity/calendar",
+      GOALS: "/admin/productivity/goals",
+      HABITS: "/admin/productivity/habits",
+      FOCUS: "/admin/productivity/focus",
     },
 
     PIPELINE: "/admin/pipeline",

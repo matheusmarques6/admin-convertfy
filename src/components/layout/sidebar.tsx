@@ -21,6 +21,9 @@ import {
   X,
   Columns3,
   LayoutDashboard,
+  Target,
+  Flame,
+  Zap,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -62,6 +65,10 @@ const navigation: NavItem[] = [
   // PRODUTIVIDADE
   { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
   { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
+  { name: "Calendario", href: ROUTES.ADMIN.PRODUCTIVITY.CALENDAR, icon: Calendar, group: "produtividade" },
+  { name: "Metas", href: ROUTES.ADMIN.PRODUCTIVITY.GOALS, icon: Target, group: "produtividade" },
+  { name: "Habitos", href: ROUTES.ADMIN.PRODUCTIVITY.HABITS, icon: Flame, group: "produtividade" },
+  { name: "Foco", href: ROUTES.ADMIN.PRODUCTIVITY.FOCUS, icon: Zap, group: "produtividade" },
   // GESTÃO
   { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "gestao", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "gestao", requiresStoreAccess: true },
