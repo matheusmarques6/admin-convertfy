@@ -21,16 +21,13 @@ interface DailyPlanningProps {
 
 export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
   const [step, setStep] = useState(0)
-  const { tasks, calendarEvents, setPlanningDone } = useProductivityStore()
+  const { tasks, calendarEvents, setPlanningDone, apiAction } = useProductivityStore()
 
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(
     new Set(tasks.filter((t) => t.status !== "done").map((t) => t.id))
   )
-  const [objectives, setObjectives] = useState([
-    "Fechar proposta Alphaville",
-    "Alinhar prioridades sprint",
-    "",
-  ])
+  const [objectives, setObjectives] = useState(["", "", ""])
+  const [mood, setMood] = useState<string>("normal")
 
   const toggleTask = useCallback((id: string) => {
     setSelectedTasks((prev) => {
@@ -41,11 +38,17 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
     })
   }, [])
 
-  const handleFinish = useCallback(() => {
+  const handleFinish = useCallback(async () => {
+    // Save daily plan to database
+    await apiAction("save_daily_plan", {
+      objectives: objectives.filter((o) => o.trim()),
+      mood,
+      tasks_planned: Array.from(selectedTasks),
+    })
     setPlanningDone(true)
     onClose()
     setStep(0)
-  }, [setPlanningDone, onClose])
+  }, [setPlanningDone, onClose, apiAction, objectives, mood, selectedTasks])
 
   if (!open) return null
 
@@ -68,7 +71,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
             <IconSun size={20} />
             <div>
               <div className="text-[16px] font-semibold">Planejamento do dia</div>
-              <div className="text-[12px] opacity-70">Terca, 24 mar 2026</div>
+              <div className="text-[12px] opacity-70">{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</div>
             </div>
           </div>
           <button
@@ -110,8 +113,31 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
           {/* Step 1: Review tasks */}
           {step === 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">{steps[0].label}</h3>
-              <p className="text-[12px] text-gray-400 mb-4">{steps[0].desc}</p>
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">Como foi ontem?</h3>
+              <p className="text-[12px] text-gray-400 mb-4">Revise o que completou e o que ficou pendente.</p>
+
+              {/* Mood selector */}
+              <div className="flex gap-3 mb-5">
+                {[
+                  { id: "productive", label: "Produtivo", emoji: "😊" },
+                  { id: "normal", label: "Normal", emoji: "😐" },
+                  { id: "difficult", label: "Dificil", emoji: "😓" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setMood(m.id)}
+                    className={cn(
+                      "flex-1 flex flex-col items-center gap-2 py-4 rounded-md border-2 cursor-pointer transition-all duration-fast ease-out-expo",
+                      mood === m.id
+                        ? "border-brand-400 bg-brand-50"
+                        : "border-[rgba(0,0,0,0.08)] bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <span className="text-[24px]">{m.emoji}</span>
+                    <span className={cn("text-[12px] font-medium", mood === m.id ? "text-brand-400" : "text-gray-600")}>{m.label}</span>
+                  </button>
+                ))}
+              </div>
 
               {/* Calendar preview */}
               <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-100">

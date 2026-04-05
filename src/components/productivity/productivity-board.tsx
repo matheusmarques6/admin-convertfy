@@ -20,8 +20,14 @@ export function ProductivityBoard() {
     groups, boardView, setBoardView, selectedTaskId, selectTask,
     expandedTasks, toggleTaskExpand, collapsedGroups, toggleGroupCollapse,
     hoveredTaskId, setHoveredTask, toggleSubtask,
-    isLoaded, fetchData,
+    isLoaded, fetchData, apiAction,
   } = useProductivityStore()
+
+  const [showNewTask, setShowNewTask] = useState(false)
+  const [newTaskName, setNewTaskName] = useState("")
+  const [newTaskPriority, setNewTaskPriority] = useState(3)
+  const [newTaskProject, setNewTaskProject] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
 
   // Load data on mount
   useEffect(() => {
@@ -30,6 +36,27 @@ export function ProductivityBoard() {
 
   const allTasks = groups.flatMap((g) => g.items)
   const selectedTask = allTasks.find((t) => t.id === selectedTaskId) || null
+
+  const handleCreateTask = useCallback(async () => {
+    if (!newTaskName.trim()) return
+    setIsCreating(true)
+    const success = await apiAction("create_task", {
+      name: newTaskName.trim(),
+      priority: newTaskPriority,
+      project: newTaskProject || undefined,
+      status: "pending",
+      group_id: groups[0]?.id || "default",
+      group_name: groups[0]?.name || "Backlog",
+      group_color: groups[0]?.color || "#9CA3AF",
+    })
+    if (success) {
+      setNewTaskName("")
+      setNewTaskProject("")
+      setNewTaskPriority(3)
+      setShowNewTask(false)
+    }
+    setIsCreating(false)
+  }, [newTaskName, newTaskPriority, newTaskProject, apiAction, groups])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -42,10 +69,67 @@ export function ProductivityBoard() {
               {allTasks.length}
             </span>
           </div>
-          <button className="inline-flex items-center gap-2 h-9 px-4 rounded-sm border-none cursor-pointer text-[13px] font-medium bg-brand-400 text-white hover:bg-brand transition-colors duration-fast ease-out-expo">
+          <button
+            onClick={() => setShowNewTask(true)}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-sm border-none cursor-pointer text-[13px] font-medium bg-brand-400 text-white hover:bg-brand transition-colors duration-fast ease-out-expo"
+          >
             <IconPlus size={14} /> Nova tarefa
           </button>
         </div>
+
+        {/* New task inline form */}
+        {showNewTask && (
+          <div className="mx-6 mb-2 p-4 bg-gray-50 rounded-md border border-[rgba(0,0,0,0.08)]">
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Nome da tarefa</label>
+                <input
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateTask()}
+                  placeholder="Ex: Criar wireframe da pagina de precos"
+                  className="w-full h-9 px-3 rounded-sm border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 focus:outline-none focus:border-brand-400 bg-white"
+                  autoFocus
+                />
+              </div>
+              <div className="w-24">
+                <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Projeto</label>
+                <input
+                  value={newTaskProject}
+                  onChange={(e) => setNewTaskProject(e.target.value)}
+                  placeholder="Projeto"
+                  className="w-full h-9 px-3 rounded-sm border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 focus:outline-none focus:border-brand-400 bg-white"
+                />
+              </div>
+              <div className="w-20">
+                <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Prioridade</label>
+                <select
+                  value={newTaskPriority}
+                  onChange={(e) => setNewTaskPriority(Number(e.target.value))}
+                  className="w-full h-9 px-2 rounded-sm border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 focus:outline-none focus:border-brand-400 bg-white"
+                >
+                  <option value={1}>P1</option>
+                  <option value={2}>P2</option>
+                  <option value={3}>P3</option>
+                  <option value={4}>P4</option>
+                </select>
+              </div>
+              <button
+                onClick={handleCreateTask}
+                disabled={!newTaskName.trim() || isCreating}
+                className="h-9 px-4 rounded-sm border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
+              >
+                {isCreating ? "Criando..." : "Criar"}
+              </button>
+              <button
+                onClick={() => setShowNewTask(false)}
+                className="h-9 w-9 rounded-sm border border-[rgba(0,0,0,0.08)] bg-white flex items-center justify-center cursor-pointer text-gray-400 hover:bg-gray-50 transition-colors duration-fast ease-out-expo"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* View tabs — underline style */}
         <div className="flex gap-6 px-6">

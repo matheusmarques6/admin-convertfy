@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
+import { DailyPlanning } from "./daily-planning"
 import { PRIORITY_COLORS, TASK_STATUSES } from "@/types/productivity"
 import {
   PriorityDot, StatusDot, Avatar, Checkbox, ProgressBar, ProgressCircle,
@@ -24,8 +25,10 @@ export function ProductivityHome() {
     kanbanColumns, weeklyBars, checkedHabits, toggleHabitCheck,
     focusRunning, focusTime, focusSessionCount, focusBreak,
     toggleFocus, resetFocus, tickFocus,
-    isLoading, isLoaded, fetchData, profile,
+    isLoading, isLoaded, fetchData, profile, apiAction,
   } = useProductivityStore()
+
+  const [showDailyPlanning, setShowDailyPlanning] = useState(false)
 
   // Load data on mount
   useEffect(() => {
@@ -46,14 +49,26 @@ export function ProductivityHome() {
   const fm = Math.floor(focusTime / 60)
   const fs = focusTime % 60
 
-  const plannedHours = 5.5
+  // Compute workload from real tasks
+  const plannedMinutes = tasks.filter(t => t.status !== "done").reduce((sum, t) => {
+    const m = parseInt(t.estimatedTime) || 0
+    return sum + m
+  }, 0)
+  const computedPlannedHours = Math.round(plannedMinutes / 60 * 10) / 10 || 0
+
   const capacityHours = 8
-  const workloadPct = Math.round((plannedHours / capacityHours) * 100)
+  const workloadPct = capacityHours > 0 ? Math.round((computedPlannedHours / capacityHours) * 100) : 0
   const workloadColor = workloadPct > 90 ? "text-negative-text" : workloadPct > 70 ? "text-warning-text" : "text-positive-text"
   const workloadBg = workloadPct > 90 ? "bg-negative-text" : workloadPct > 70 ? "bg-warning-text" : "bg-positive-text"
 
   const pendingCount = tasks.filter((t) => t.status !== "done").length
-  const maxBar = Math.max(...weeklyBars.map((b) => Math.max(b.actual, b.estimated)))
+  const maxBar = Math.max(1, ...weeklyBars.map((b) => Math.max(b.actual, b.estimated)))
+
+  // Derive daily objectives from daily plan (filled by Daily Planning wizard)
+  const { dailyPlan } = useProductivityStore()
+  const dayObjectives = ((dailyPlan?.objectives || []) as string[])
+    .filter(Boolean)
+    .map((text) => ({ text, done: false }))
 
   return (
     <div className="flex-1 overflow-auto">
@@ -76,7 +91,7 @@ export function ProductivityHome() {
               <div className={cn("h-full rounded-[3px]", workloadBg)} style={{ width: `${workloadPct}%` }} />
             </div>
             <span className={cn("text-[12px] font-semibold font-mono tabular-nums", workloadColor)}>
-              {plannedHours}h/{capacityHours}h
+              {computedPlannedHours}h/{capacityHours}h
             </span>
           </div>
         </div>
@@ -111,7 +126,10 @@ export function ProductivityHome() {
               >
                 Ja planejei
               </button>
-              <button className="h-9 px-5 rounded-sm border-2 border-white/40 cursor-pointer text-[13px] font-semibold bg-white text-brand-400 hover:bg-gray-50 transition-colors duration-fast ease-out-expo">
+              <button
+                onClick={() => setShowDailyPlanning(true)}
+                className="h-9 px-5 rounded-sm border-2 border-white/40 cursor-pointer text-[13px] font-semibold bg-white text-brand-400 hover:bg-gray-50 transition-colors duration-fast ease-out-expo"
+              >
                 Iniciar ritual
               </button>
             </div>
@@ -129,11 +147,12 @@ export function ProductivityHome() {
                 title="Objetivos do dia"
                 right={<span className="text-[11px] text-gray-400">Max 3</span>}
               />
-              {[
-                { text: "Fechar proposta Alphaville", done: false },
-                { text: "Alinhar prioridades sprint", done: false },
-                { text: "Aprovar 2 entregas design", done: true },
-              ].map((o, i) => (
+              {dayObjectives.length === 0 ? (
+                <div className="py-4 text-center text-[12px] text-gray-400">
+                  Nenhum objetivo definido. Inicie o planejamento diario.
+                </div>
+              ) : null}
+              {dayObjectives.map((o, i) => (
                 <div key={i} className={cn("flex items-center gap-3 py-3", i < 2 && "border-b border-gray-100")}>
                   <div className={cn(
                     "w-5 h-5 rounded-full flex items-center justify-center",
@@ -497,6 +516,9 @@ export function ProductivityHome() {
           </Card>
         )}
       </div>
+
+      {/* Daily Planning Modal */}
+      <DailyPlanning open={showDailyPlanning} onClose={() => setShowDailyPlanning(false)} />
     </div>
   )
 }
