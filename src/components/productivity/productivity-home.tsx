@@ -208,6 +208,14 @@ export function ProductivityHome() {
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center">Resp</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-right">Hora</span>
             </div>
+            {tasks.length === 0 && (
+              <div className="py-8 text-center">
+                <p className="text-[12px] text-gray-400 mb-2">Nenhuma tarefa para hoje</p>
+                <a href="/admin/productivity/board" className="text-[12px] font-medium text-brand-400 hover:underline">
+                  Criar tarefa no Board →
+                </a>
+              </div>
+            )}
             {tasks.map((t) => {
               const isDone = t.status === "done"
               return (
@@ -266,11 +274,18 @@ export function ProductivityHome() {
                 right={<DSBadge type="positive">Pronto</DSBadge>}
               />
               {/* Current task */}
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-sm mb-3 border border-gray-200">
-                <PriorityDot priority={2} />
-                <span className="text-[12px] font-medium text-gray-700 flex-1">Revisar proposta Alphaville</span>
-                <span className="text-[10px] text-brand-400 font-medium cursor-pointer hover:underline">Trocar</span>
-              </div>
+              {(() => {
+                const firstPending = tasks.find((t) => t.status === "progress") || tasks.find((t) => t.status !== "done")
+                if (!firstPending) return (
+                  <div className="text-[12px] text-gray-400 py-2 text-center">Nenhuma tarefa para focar</div>
+                )
+                return (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-sm mb-3 border border-gray-200">
+                    <PriorityDot priority={firstPending.priority} />
+                    <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{firstPending.name}</span>
+                  </div>
+                )
+              })()}
               {/* Timer display */}
               <div className="flex items-center gap-6 mb-3">
                 <div className="text-[44px] font-semibold font-mono text-gray-900 tracking-[-2px] leading-none tabular-nums">
@@ -315,14 +330,13 @@ export function ProductivityHome() {
               <CardHeader
                 icon={<IconChart />}
                 title="Grafico semanal"
-                right={<DSBadge type="positive">+12%</DSBadge>}
               />
-              {/* Mini stats */}
+              {/* Mini stats — computed from real data */}
               <div className="grid grid-cols-3 gap-2 mb-3">
                 {[
-                  { v: "18", l: "Concluidas" },
-                  { v: "4.2h", l: "Real" },
-                  { v: "5.1h", l: "Estimado" },
+                  { v: String(tasks.filter((t) => t.status === "done").length), l: "Concluidas" },
+                  { v: `${Math.round(weeklyBars.reduce((s, b) => s + b.actual, 0) / 60 * 10) / 10 || 0}h`, l: "Real" },
+                  { v: `${Math.round(weeklyBars.reduce((s, b) => s + b.estimated, 0) / 60 * 10) / 10 || 0}h`, l: "Estimado" },
                 ].map((m) => (
                   <div key={m.l} className="bg-gray-50 rounded-sm p-2 text-center">
                     <div className="text-[20px] font-semibold text-gray-900 tabular-nums leading-none">{m.v}</div>
@@ -405,8 +419,16 @@ export function ProductivityHome() {
               <CardHeader
                 icon={<IconTarget />}
                 title="Metas do trimestre"
-                right={<DSBadge type="brand">Q1 2026</DSBadge>}
+                right={<DSBadge type="brand">Q{Math.ceil((new Date().getMonth() + 1) / 3)} {new Date().getFullYear()}</DSBadge>}
               />
+              {goals.length === 0 && (
+                <div className="py-6 text-center">
+                  <p className="text-[12px] text-gray-400 mb-2">Nenhuma meta definida</p>
+                  <a href="/admin/productivity/goals" className="text-[12px] font-medium text-brand-400 hover:underline">
+                    Criar meta →
+                  </a>
+                </div>
+              )}
               {goals.map((g, i) => (
                 <div key={g.name} className={cn("py-2", i < goals.length - 1 && "border-b border-gray-100")}>
                   <div className="flex justify-between">
@@ -428,8 +450,16 @@ export function ProductivityHome() {
               <CardHeader
                 icon={<IconFire />}
                 title="Habitos"
-                right={<DSBadge type="positive">7d streak</DSBadge>}
+                right={habits.length > 0 ? <DSBadge type="positive">{Math.max(...habits.map(h => h.streak), 0)}d streak</DSBadge> : undefined}
               />
+              {habits.length === 0 && (
+                <div className="py-6 text-center">
+                  <p className="text-[12px] text-gray-400 mb-2">Nenhum habito cadastrado</p>
+                  <a href="/admin/productivity/habits" className="text-[12px] font-medium text-brand-400 hover:underline">
+                    Criar habito →
+                  </a>
+                </div>
+              )}
               {habits.map((h, i) => (
                 <div key={h.name} className={cn(i < habits.length - 1 && "mb-3")}>
                   <div className="flex justify-between mb-1">
