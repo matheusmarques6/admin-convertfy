@@ -29,6 +29,10 @@ export function ProductivityHome() {
   } = useProductivityStore()
 
   const [showDailyPlanning, setShowDailyPlanning] = useState(false)
+  const [showAddGoal, setShowAddGoal] = useState(false)
+  const [showAddHabit, setShowAddHabit] = useState(false)
+  const [newGoalName, setNewGoalName] = useState("")
+  const [newHabitName, setNewHabitName] = useState("")
 
   // Load data on mount
   useEffect(() => {
@@ -421,12 +425,46 @@ export function ProductivityHome() {
                 title="Metas do trimestre"
                 right={<DSBadge type="brand">Q{Math.ceil((new Date().getMonth() + 1) / 3)} {new Date().getFullYear()}</DSBadge>}
               />
-              {goals.length === 0 && (
+              {goals.length === 0 && !showAddGoal && (
                 <div className="py-6 text-center">
                   <p className="text-[12px] text-gray-400 mb-2">Nenhuma meta definida</p>
-                  <a href="/admin/productivity/goals" className="text-[12px] font-medium text-brand-400 hover:underline">
-                    Criar meta →
-                  </a>
+                  <button onClick={() => setShowAddGoal(true)} className="text-[12px] font-medium text-brand-400 hover:underline bg-transparent border-none cursor-pointer">
+                    + Adicionar meta
+                  </button>
+                </div>
+              )}
+              {showAddGoal && (
+                <div className="py-3">
+                  <input
+                    value={newGoalName}
+                    onChange={(e) => setNewGoalName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newGoalName.trim()) {
+                        apiAction("create_goal" as string, { title: newGoalName.trim() })
+                        setNewGoalName("")
+                        setShowAddGoal(false)
+                      }
+                      if (e.key === "Escape") setShowAddGoal(false)
+                    }}
+                    placeholder="Nome da meta..."
+                    className="w-full h-8 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[12px] text-gray-700 focus:outline-none focus:border-brand-400 mb-2"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (newGoalName.trim()) {
+                          apiAction("create_goal" as string, { title: newGoalName.trim() })
+                          setNewGoalName("")
+                          setShowAddGoal(false)
+                        }
+                      }}
+                      className="text-[10px] font-semibold bg-brand-400 text-white px-3 py-1 rounded-md border-none cursor-pointer"
+                    >
+                      Criar
+                    </button>
+                    <button onClick={() => setShowAddGoal(false)} className="text-[10px] text-gray-400 bg-transparent border-none cursor-pointer">Cancelar</button>
+                  </div>
                 </div>
               )}
               {goals.map((g, i) => (
@@ -452,12 +490,46 @@ export function ProductivityHome() {
                 title="Habitos"
                 right={habits.length > 0 ? <DSBadge type="positive">{Math.max(...habits.map(h => h.streak), 0)}d streak</DSBadge> : undefined}
               />
-              {habits.length === 0 && (
+              {habits.length === 0 && !showAddHabit && (
                 <div className="py-6 text-center">
                   <p className="text-[12px] text-gray-400 mb-2">Nenhum habito cadastrado</p>
-                  <a href="/admin/productivity/habits" className="text-[12px] font-medium text-brand-400 hover:underline">
-                    Criar habito →
-                  </a>
+                  <button onClick={() => setShowAddHabit(true)} className="text-[12px] font-medium text-brand-400 hover:underline bg-transparent border-none cursor-pointer">
+                    + Adicionar habito
+                  </button>
+                </div>
+              )}
+              {showAddHabit && (
+                <div className="py-3">
+                  <input
+                    value={newHabitName}
+                    onChange={(e) => setNewHabitName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newHabitName.trim()) {
+                        apiAction("create_habit" as string, { name: newHabitName.trim() })
+                        setNewHabitName("")
+                        setShowAddHabit(false)
+                      }
+                      if (e.key === "Escape") setShowAddHabit(false)
+                    }}
+                    placeholder="Nome do habito..."
+                    className="w-full h-8 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[12px] text-gray-700 focus:outline-none focus:border-brand-400 mb-2"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (newHabitName.trim()) {
+                          apiAction("create_habit" as string, { name: newHabitName.trim() })
+                          setNewHabitName("")
+                          setShowAddHabit(false)
+                        }
+                      }}
+                      className="text-[10px] font-semibold bg-brand-400 text-white px-3 py-1 rounded-md border-none cursor-pointer"
+                    >
+                      Criar
+                    </button>
+                    <button onClick={() => setShowAddHabit(false)} className="text-[10px] text-gray-400 bg-transparent border-none cursor-pointer">Cancelar</button>
+                  </div>
                 </div>
               )}
               {habits.map((h, i) => (

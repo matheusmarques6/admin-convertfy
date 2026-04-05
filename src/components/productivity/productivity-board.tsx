@@ -273,10 +273,11 @@ function TableView({
       {/* Table header */}
       <div className="flex items-center h-8 px-6 bg-gray-50 border-b border-gray-200 sticky top-0 z-[5]">
         <div className="w-12" />
-        <div className="flex-1 text-table-header text-gray-500 uppercase">Tarefa</div>
-        <div className="w-[120px] text-table-header text-gray-500 uppercase">Status</div>
-        <div className="w-[50px] text-center text-table-header text-gray-500 uppercase">Resp</div>
-        <div className="w-[56px] text-right text-table-header text-gray-500 uppercase">Data</div>
+        <div className="flex-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tarefa</div>
+        <div className="w-[120px] text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</div>
+        <div className="w-[50px] text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Resp.</div>
+        <div className="w-[60px] text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Data</div>
+        <div className="w-[40px] text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Est.</div>
       </div>
 
       {/* Groups */}
@@ -370,8 +371,11 @@ function TableView({
                     <div className="w-[50px] flex justify-center">
                       <Avatar initials={t.people[0]} size={24} />
                     </div>
-                    <div className="w-[56px] text-right text-[12px] text-gray-500 font-mono">
+                    <div className="w-[60px] text-right text-[12px] text-gray-500 font-mono">
                       {t.date}
+                    </div>
+                    <div className="w-[40px] text-right text-[11px] text-gray-400 font-mono">
+                      {t.estimatedTime || "—"}
                     </div>
                   </div>
 
@@ -421,12 +425,22 @@ function KanbanView({
   selectedTaskId: string | null
   selectTask: (id: string | null) => void
 }) {
+  const { apiAction } = useProductivityStore()
+
+  // Kanban has 5 columns: pending, progress, review, blocked, done
+  const KANBAN_STATUSES = [
+    { id: "pending" as const, label: "Pendente", color: "#9CA3AF" },
+    { id: "progress" as const, label: "Em progresso", color: "#4E62D8" },
+    { id: "review" as const, label: "Em revisao", color: "#92400E" },
+    { id: "done" as const, label: "Concluido", color: "#065F46" },
+  ]
+
   return (
-    <div className="flex gap-3 p-6 overflow-auto items-start">
-      {TASK_STATUSES.map((st) => {
+    <div className="flex gap-4 p-6 overflow-auto items-start">
+      {KANBAN_STATUSES.map((st) => {
         const items = tasks.filter((t) => t.status === st.id)
         return (
-          <div key={st.id} className="min-w-[200px] flex-1">
+          <div key={st.id} className="min-w-[220px] flex-1 max-w-[280px]">
             {/* Column header */}
             <div className="flex items-center gap-2 mb-3">
               <StatusDot color={st.color} />
@@ -434,36 +448,110 @@ function KanbanView({
               <span className="text-[11px] font-semibold text-gray-400 font-mono">{items.length}</span>
             </div>
 
-            {/* Cards container */}
-            <div className="bg-gray-50 rounded-md p-2 min-h-[50px]">
+            {/* Cards */}
+            <div className="space-y-2 min-h-[60px]">
               {items.length === 0 && (
-                <div className="p-4 text-center text-[12px] text-gray-300">Vazio</div>
+                <div className="p-6 text-center text-[12px] text-gray-300 bg-gray-50 rounded-md border border-dashed border-gray-200">Vazio</div>
               )}
-              {items.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => selectTask(t.id)}
-                  className={cn(
-                    "bg-white border rounded-md p-3 mb-2 cursor-grab transition-all duration-fast ease-out-expo hover:shadow-sm",
-                    selectedTaskId === t.id
-                      ? "border-brand-400"
-                      : "border-[rgba(0,0,0,0.08)]"
-                  )}
-                >
-                  <div className="text-[13px] font-medium text-gray-800 mb-2">{t.name}</div>
-                  <div className="flex justify-between">
-                    <div className="flex items-center gap-2">
-                      <PriorityDot priority={t.priority} />
-                      <span className="text-[11px] text-gray-400 font-mono">{t.date}</span>
+              {items.map((t) => {
+                const hasSubs = t.subtasks.length > 0
+                const subDone = t.subtasks.filter((s) => s.done).length
+                const subPct = hasSubs ? Math.round((subDone / t.subtasks.length) * 100) : 0
+
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => selectTask(t.id)}
+                    className={cn(
+                      "bg-white border rounded-md p-3 cursor-pointer transition-all hover:shadow-sm",
+                      selectedTaskId === t.id ? "border-brand-400 shadow-sm" : "border-[rgba(0,0,0,0.08)]"
+                    )}
+                  >
+                    <div className="text-[13px] font-medium text-gray-800 mb-2">{t.name}</div>
+
+                    {/* Subtask progress bar */}
+                    {hasSubs && (
+                      <div className="mb-2">
+                        <div className="text-[9px] text-gray-400 font-mono mb-0.5">{subDone}/{t.subtasks.length}</div>
+                        <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-brand-400 rounded-full transition-all" style={{ width: `${subPct}%` }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bottom row: priority, date, comments, avatar */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PriorityDot priority={t.priority} />
+                        <span className="text-[11px] text-gray-400 font-mono">{t.date}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {t.subtasks.length > 0 && (
+                          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                            {t.subtasks.length}
+                          </span>
+                        )}
+                        {t.people.length > 0 && (
+                          <div className="flex -space-x-1">
+                            {t.people.slice(0, 2).map((p, i) => (
+                              <Avatar key={i} initials={p} size={20} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <Avatar initials={t.people[0]} size={22} />
                   </div>
-                </div>
-              ))}
+                )
+              })}
+
+              {/* + Adicionar */}
+              <KanbanAddTask status={st.id} />
             </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function KanbanAddTask({ status }: { status: string }) {
+  const [isAdding, setIsAdding] = useState(false)
+  const [name, setName] = useState("")
+  const { apiAction } = useProductivityStore()
+
+  const handleAdd = async () => {
+    if (!name.trim()) return
+    await apiAction("create_task", { name: name.trim(), status, priority: 3 })
+    setName("")
+    setIsAdding(false)
+  }
+
+  if (!isAdding) {
+    return (
+      <button
+        onClick={() => setIsAdding(true)}
+        className="w-full text-left px-3 py-2 text-[12px] text-gray-400 bg-transparent border-none cursor-pointer hover:text-gray-600 transition-colors flex items-center gap-1"
+      >
+        <IconPlus size={12} /> Adicionar
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-md p-2">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setIsAdding(false) }}
+        placeholder="Nome da tarefa..."
+        className="w-full text-[12px] text-gray-700 border-none outline-none bg-transparent mb-2 placeholder:text-gray-300"
+        autoFocus
+      />
+      <div className="flex gap-1">
+        <button onClick={handleAdd} disabled={!name.trim()} className="text-[10px] font-semibold bg-brand-400 text-white px-2 py-1 rounded border-none cursor-pointer disabled:opacity-40">Criar</button>
+        <button onClick={() => setIsAdding(false)} className="text-[10px] text-gray-400 bg-transparent border-none cursor-pointer">Cancelar</button>
+      </div>
     </div>
   )
 }

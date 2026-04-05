@@ -348,6 +348,49 @@ export async function POST(request: NextRequest) {
         break
       }
 
+      case "create_goal": {
+        const { title, area, color, quarter } = data
+        const now = new Date()
+        const q = quarter || `Q${Math.ceil((now.getMonth() + 1) / 3)} ${now.getFullYear()}`
+        const { error } = await supabase
+          .from("productivity_goals")
+          .insert({
+            title,
+            area: area || null,
+            color: color || "#4E62D8",
+            quarter: q,
+            org_id: orgId,
+          })
+        if (error) throw error
+        break
+      }
+
+      case "create_habit": {
+        const { name: habitName, color: habitColor } = data
+        const { error } = await supabase
+          .from("productivity_habits")
+          .insert({
+            name: habitName,
+            color: habitColor || "#4E62D8",
+            user_id: user.id,
+            org_id: orgId,
+          })
+        if (error) throw error
+        break
+      }
+
+      case "create_subtask": {
+        const { task_id: subTaskId, name: subName } = data
+        const { error } = await supabase
+          .from("productivity_subtasks")
+          .insert({
+            task_id: subTaskId,
+            name: subName,
+          })
+        if (error) throw error
+        break
+      }
+
       default:
         return successResponse(request, { error: "Unknown action" }, { status: 400 })
     }
