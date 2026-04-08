@@ -77,6 +77,7 @@ export const ROUTES = {
     NOTIFICATIONS: "/admin/notifications",
     ONBOARDING: "/admin/onboarding",
     TOOLS: "/admin/tools",
+    FIGMA_SLICER: "/admin/tools/figma-slicer",
 
     SETTINGS: {
       ROOT: "/admin/settings",

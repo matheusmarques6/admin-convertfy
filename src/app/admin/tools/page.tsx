@@ -13,6 +13,7 @@ import {
   Loader2,
   Copy,
   ArrowRight,
+  Scissors,
 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
@@ -45,7 +46,7 @@ interface ToolDef {
   name: string
   description: string
   icon: LucideIcon
-  category: "ai" | "calculators"
+  category: "ai" | "design" | "calculators"
   badge?: string
   href?: string
 }
@@ -59,6 +60,16 @@ const TOOLS: ToolDef[] = [
     category: "ai",
     badge: "IA",
     href: "/admin/tools/copy",
+  },
+  {
+    id: "figma-slicer",
+    name: "Email Slicer",
+    description:
+      "Fatie automaticamente emails do Figma em seções para Omnisend/Klaviyo com IA.",
+    icon: Scissors,
+    category: "design",
+    badge: "IA",
+    href: "/admin/tools/figma-slicer",
   },
   {
     id: "email-subjects",
@@ -95,6 +106,7 @@ const TOOLS: ToolDef[] = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   ai: "Geradores de IA",
+  design: "Design & Email",
   calculators: "Calculadoras",
 }
 

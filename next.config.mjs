@@ -6,6 +6,10 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  // Sharp must run as a native module on the server (not bundled by Next.js)
+  // Needed by the Figma Email Slicer image processing API.
+  serverExternalPackages: ["sharp"],
+
   images: {
     remotePatterns: [
       {
