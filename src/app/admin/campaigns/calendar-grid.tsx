@@ -3,6 +3,7 @@
 // Unification would require refactoring admin page.tsx rendering logic — tracked as backlog.
 
 import { Mail } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Campaign } from "@/types"
 import { CHANNEL_CONFIG, WEEK_DAYS } from "@/lib/constants/calendar"
 
@@ -82,7 +83,6 @@ export function CalendarGrid({
               </div>
               <div className="space-y-0.5 overflow-hidden">
                 {dayCampaigns.slice(0, 3).map((campaign) => {
-                  const ChannelIcon = channelConfig[campaign.channel]?.icon || Mail
                   return (
                     <div
                       key={campaign.id}
@@ -91,7 +91,7 @@ export function CalendarGrid({
                       style={{ backgroundColor: campaign.color || "#3b82f6" }}
                       title={campaign.name}
                     >
-                      <ChannelIcon className="h-3 w-3 flex-shrink-0" />
+                      <Icon icon={channelConfig[campaign.channel]?.icon || Mail} customSize={12} />
                       <span className="truncate">{campaign.name}</span>
                     </div>
                   )

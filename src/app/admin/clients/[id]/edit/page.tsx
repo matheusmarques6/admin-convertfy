@@ -6,13 +6,14 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Trash2, Archive } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -21,7 +22,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { PageHeader } from "@/components/ui/page-header"
+import { FormField } from "@/components/ui/form-field"
+import { SaveBar } from "@/components/ui/save-bar"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import { use } from "react"
 
 const clientSchema = z.object({
@@ -79,13 +92,17 @@ export default function EditClientPage({
   const [isFetching, setIsFetching] = useState(true)
   const [client, setClient] = useState<Client | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showAddress, setShowAddress] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isArchiving, setIsArchiving] = useState(false)
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<ClientForm>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
@@ -131,6 +148,7 @@ export default function EditClientPage({
         // Address from custom_fields
         const addressData = (customFields.address as Record<string, string>) || null
         if (addressData) {
+          setShowAddress(true)
           setValue("address_street", addressData.street || "")
           setValue("address_number", addressData.number || "")
           setValue("address_complement", addressData.complement || "")
@@ -201,7 +219,7 @@ export default function EditClientPage({
 
       let asaasCustomerId = data.asaas_customer_id || null
 
-      // If "000" is used, skip Asaas creation (for international clients or clients outside Asaas)
+      // If "000" is used, skip Asaas creation
       const skipAsaas = data.asaas_customer_id === "000"
 
       // If no Asaas ID and we have all required fields and not skipping, create customer in Asaas
@@ -245,11 +263,9 @@ export default function EditClientPage({
           }
         } catch (asaasError) {
           console.warn("Error creating Asaas customer:", asaasError)
-          // Continue updating local client even if Asaas fails
         }
       }
 
-      // If "000" was used, set to null for local storage
       if (skipAsaas) {
         asaasCustomerId = null
       }
@@ -260,7 +276,7 @@ export default function EditClientPage({
         website = `https://${website}`
       }
 
-      // Save locally FIRST so the Asaas sync route reads fresh data from DB
+      // Save locally FIRST
       const { data: updated, error } = await supabase
         .from("clients")
         .update({
@@ -289,7 +305,7 @@ export default function EditClientPage({
         throw new Error("Nenhum registro foi atualizado. Verifique suas permissões.")
       }
 
-      // Sync to Asaas AFTER local save, so the API route reads fresh data from DB
+      // Sync to Asaas AFTER local save
       let asaasSyncSuccess = false
       let asaasSyncAttempted = false
       if (!skipAsaas && asaasCustomerId && asaasCustomerId !== "000") {
@@ -358,6 +374,46 @@ export default function EditClientPage({
     }
   }
 
+  async function handleArchive() {
+    setIsArchiving(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("clients")
+        .update({ status: "inactive", updated_at: new Date().toISOString() })
+        .eq("id", id)
+
+      if (error) throw error
+
+      toast({ title: "Cliente arquivado", description: "O cliente foi movido para inativos." })
+      router.push(ROUTES.ADMIN.CLIENTS.LIST)
+      router.refresh()
+    } catch {
+      toast({ variant: "destructive", title: "Erro", description: "Não foi possível arquivar o cliente." })
+    } finally {
+      setIsArchiving(false)
+    }
+  }
+
+  async function handleDelete() {
+    setIsDeleting(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("clients").delete().eq("id", id)
+
+      if (error) throw error
+
+      toast({ title: "Cliente excluído", description: "O cliente foi removido permanentemente." })
+      router.push(ROUTES.ADMIN.CLIENTS.LIST)
+      router.refresh()
+    } catch {
+      toast({ variant: "destructive", title: "Erro", description: "Não foi possível excluir o cliente." })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+    }
+  }
+
   // Check if client has all required Asaas fields
   const hasRequiredAsaasFields = () => {
     const name = watch("name")
@@ -369,13 +425,13 @@ export default function EditClientPage({
 
   if (error) {
     return (
-      <div className="max-w-3xl mx-auto space-y-6">
-        <Card className="border-destructive/50 bg-destructive/5">
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Card className="border-[#FECACA] dark:border-[rgba(252,165,165,0.15)]">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-            <h3 className="text-lg font-medium text-destructive">Erro</h3>
-            <p className="text-muted-foreground text-center mt-1">{error}</p>
-            <Button variant="outline" className="mt-4" asChild>
+            <Icon icon={AlertCircle} customSize={48} className="text-[#991B1B] dark:text-[#FCA5A5] mb-4" />
+            <h3 className="text-lg font-medium text-[#991B1B] dark:text-[#FCA5A5]">Erro</h3>
+            <p className="text-sm text-gray-500 dark:text-[#5C6378] text-center mt-1">{error}</p>
+            <Button variant="secondary" className="mt-4" asChild>
               <Link href="/admin/clients">Voltar para Clientes</Link>
             </Button>
           </CardContent>
@@ -386,7 +442,7 @@ export default function EditClientPage({
 
   if (isFetching) {
     return (
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <div>
@@ -397,7 +453,6 @@ export default function EditClientPage({
         <Card>
           <CardHeader>
             <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-4 w-64" />
           </CardHeader>
           <CardContent className="space-y-4">
             {[1, 2, 3, 4, 5].map(i => (
@@ -413,370 +468,342 @@ export default function EditClientPage({
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/admin/clients/${id}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Editar Cliente</h1>
-          <p className="text-muted-foreground">
-            Atualize as informações de {client?.name}
-          </p>
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        title="Editar Cliente"
+        breadcrumb={[
+          { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
+          { label: client?.name || "Cliente", href: `/admin/clients/${id}` },
+          { label: "Editar" },
+        ]}
+      />
 
-      {/* Asaas Status */}
-      {watch("asaas_customer_id") ? (
-        <Card className="border-success/50 bg-success/10">
-          <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
-            <div>
-              <p className="font-medium text-success">Cliente vinculado ao Asaas</p>
-              <p className="text-sm text-muted-foreground">
-                ID: <code className="bg-success/20 px-1 rounded">{watch("asaas_customer_id")}</code>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : !hasRequiredAsaasFields() ? (
-        <Card className="border-warning/50 bg-warning/10">
-          <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
-            <div>
-              <p className="font-medium text-warning">Campos obrigatórios para assinaturas</p>
-              <p className="text-sm text-muted-foreground">
-                Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-primary/50 bg-primary/10">
-          <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
-            <div>
-              <p className="font-medium text-primary">Pronto para criar no Asaas</p>
-              <p className="text-sm text-muted-foreground">
-                O cliente será criado automaticamente no Asaas ao salvar.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <div className="max-w-2xl mx-auto mt-6">
+        {/* Asaas Status */}
+        {watch("asaas_customer_id") ? (
+          <Card className="border-[#A7F3D0] dark:border-[rgba(110,231,183,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={CheckCircle2} size={20} className="text-[#065F46] dark:text-[#6EE7B7] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#065F46] dark:text-[#6EE7B7]">Cliente vinculado ao Asaas</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">
+                  ID: <code className="bg-[#ECFDF5] dark:bg-[#052E1C] px-1 rounded text-xs">{watch("asaas_customer_id")}</code>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : !hasRequiredAsaasFields() ? (
+          <Card className="border-[#FDE68A] dark:border-[rgba(252,211,77,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={AlertCircle} size={20} className="text-[#92400E] dark:text-[#FCD34D] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#92400E] dark:text-[#FCD34D]">Campos obrigatórios para assinaturas</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">
+                  Preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-[#C7CDEF] dark:border-[rgba(168,184,240,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={CheckCircle2} size={20} className="text-[#4E62D8] dark:text-[#7B8CEA] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#4E62D8] dark:text-[#7B8CEA]">Pronto para criar no Asaas</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">
+                  O cliente será criado automaticamente no Asaas ao salvar.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit, onValidationError)} className="space-y-6">
-        {/* Required Fields for Asaas */}
-        <Card className="border-primary/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Dados Obrigatórios
-              <span className="text-xs font-normal text-muted-foreground">(para assinaturas)</span>
-            </CardTitle>
-            <CardDescription>
-              Estes campos são necessários para gerar assinaturas no Asaas
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Name */}
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome Completo *</Label>
-              <Input
-                id="name"
-                placeholder="Nome completo do cliente"
-                {...register("name")}
-                disabled={isLoading}
-              />
-              {errors.name && (
-                <p className="text-sm text-destructive">{errors.name.message}</p>
-              )}
-            </div>
-
-            {/* CPF/CNPJ */}
-            <div className="space-y-2">
-              <Label htmlFor="cpf_cnpj">CPF/CNPJ *</Label>
-              <Input
-                id="cpf_cnpj"
-                placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                {...register("cpf_cnpj")}
-                disabled={isLoading}
-              />
-              {errors.cpf_cnpj && (
-                <p className="text-sm text-destructive">{errors.cpf_cnpj.message}</p>
-              )}
-              <p className="text-xs text-muted-foreground">Obrigatório para assinaturas via Asaas</p>
-            </div>
-
-            {/* Email and Phone */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+        <form onSubmit={handleSubmit(onSubmit, onValidationError)} className="space-y-6">
+          {/* Seção 1: Dados do Cliente */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Dados do Cliente</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Nome" required error={errors.name?.message} htmlFor="name">
+                  <Input
+                    id="name"
+                    placeholder="Nome completo do cliente"
+                    {...register("name")}
+                    disabled={isLoading}
+                  />
+                </FormField>
+                <FormField label="Email" required error={errors.email?.message} htmlFor="email">
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="email@empresa.com"
+                    {...register("email")}
+                    disabled={isLoading}
+                  />
+                </FormField>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Telefone/WhatsApp" error={errors.phone?.message} htmlFor="phone" hint="Pelo menos email ou telefone é obrigatório">
+                  <Input
+                    id="phone"
+                    placeholder="11999999999"
+                    {...register("phone")}
+                    disabled={isLoading}
+                  />
+                </FormField>
+                <FormField label="CPF/CNPJ" error={errors.cpf_cnpj?.message} htmlFor="cpf_cnpj" hint="Obrigatório para assinaturas via Asaas">
+                  <Input
+                    id="cpf_cnpj"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    {...register("cpf_cnpj")}
+                    disabled={isLoading}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Empresa" htmlFor="company">
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="email@empresa.com"
-                  {...register("email")}
+                  id="company"
+                  placeholder="Nome da empresa"
+                  {...register("company")}
                   disabled={isLoading}
                 />
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone/WhatsApp *</Label>
+              </FormField>
+              <FormField label="Website" error={errors.website?.message} htmlFor="website">
                 <Input
-                  id="phone"
-                  placeholder="11999999999"
-                  {...register("phone")}
+                  id="website"
+                  placeholder="https://www.empresa.com"
+                  {...register("website")}
                   disabled={isLoading}
                 />
-                {errors.phone && (
-                  <p className="text-sm text-destructive">{errors.phone.message}</p>
-                )}
+              </FormField>
+            </CardContent>
+          </Card>
+
+          {/* Seção 2: Status e Integração */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Status e Integração</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Status" required>
+                  <Select
+                    value={watch("status")}
+                    onValueChange={(value) => setValue("status", value as ClientForm["status"], { shouldDirty: true })}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger className="h-9 sm:h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="prospect">Prospect</SelectItem>
+                      <SelectItem value="onboarding">Em Onboarding</SelectItem>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="inactive">Inativo</SelectItem>
+                      <SelectItem value="churned">Churned</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="ID Asaas" htmlFor="asaas_customer_id" hint={watch("asaas_customer_id") ? "Cliente vinculado ao Asaas." : 'Deixe vazio para criar automaticamente. Use "000" para clientes fora do Asaas.'}>
+                  <Input
+                    id="asaas_customer_id"
+                    placeholder={watch("asaas_customer_id") ? "" : "Será gerado automaticamente"}
+                    {...register("asaas_customer_id")}
+                    disabled={isLoading || !!watch("asaas_customer_id")}
+                    className={watch("asaas_customer_id") ? "bg-[#F3F4F6] dark:bg-[#242836]" : ""}
+                  />
+                </FormField>
               </div>
-            </div>
-            <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório para assinaturas</p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Basic Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Informações Adicionais</CardTitle>
-            <CardDescription>
-              Dados complementares do cliente
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Company */}
-            <div className="space-y-2">
-              <Label htmlFor="company">Empresa</Label>
-              <Input
-                id="company"
-                placeholder="Nome da empresa"
-                {...register("company")}
+          {/* Seção 3: Endereço (colapsável) */}
+          <Card>
+            <CardHeader>
+              <button type="button" onClick={() => setShowAddress(!showAddress)} className="flex items-center gap-2 w-full focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8] dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA] rounded-[4px]">
+                <CardTitle className="text-sm font-semibold">Endereço</CardTitle>
+                <Badge variant="neutral" showDot={false}>Opcional</Badge>
+                <Icon icon={showAddress ? ChevronUp : ChevronDown} size={16} className="ml-auto text-gray-400" />
+              </button>
+            </CardHeader>
+            {showAddress && (
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                    <FormField label="Rua" htmlFor="address_street">
+                      <Input
+                        id="address_street"
+                        placeholder="Nome da rua"
+                        {...register("address_street")}
+                        disabled={isLoading}
+                      />
+                    </FormField>
+                  </div>
+                  <FormField label="Número" htmlFor="address_number">
+                    <Input
+                      id="address_number"
+                      placeholder="123"
+                      {...register("address_number")}
+                      disabled={isLoading}
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="Complemento" htmlFor="address_complement">
+                    <Input
+                      id="address_complement"
+                      placeholder="Apto, Sala, etc"
+                      {...register("address_complement")}
+                      disabled={isLoading}
+                    />
+                  </FormField>
+                  <FormField label="Bairro" htmlFor="address_neighborhood">
+                    <Input
+                      id="address_neighborhood"
+                      placeholder="Nome do bairro"
+                      {...register("address_neighborhood")}
+                      disabled={isLoading}
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <FormField label="CEP" htmlFor="address_postal_code">
+                    <Input
+                      id="address_postal_code"
+                      placeholder="00000-000"
+                      {...register("address_postal_code")}
+                      disabled={isLoading}
+                    />
+                  </FormField>
+                  <FormField label="Cidade" htmlFor="address_city">
+                    <Input
+                      id="address_city"
+                      placeholder="Nome da cidade"
+                      {...register("address_city")}
+                      disabled={isLoading}
+                    />
+                  </FormField>
+                  <FormField label="Estado">
+                    <Select
+                      value={watch("address_state") || ""}
+                      onValueChange={(value) => setValue("address_state", value, { shouldDirty: true })}
+                      disabled={isLoading}
+                    >
+                      <SelectTrigger className="h-9 sm:h-11">
+                        <SelectValue placeholder="UF" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AC">Acre</SelectItem>
+                        <SelectItem value="AL">Alagoas</SelectItem>
+                        <SelectItem value="AP">Amapá</SelectItem>
+                        <SelectItem value="AM">Amazonas</SelectItem>
+                        <SelectItem value="BA">Bahia</SelectItem>
+                        <SelectItem value="CE">Ceará</SelectItem>
+                        <SelectItem value="DF">Distrito Federal</SelectItem>
+                        <SelectItem value="ES">Espírito Santo</SelectItem>
+                        <SelectItem value="GO">Goiás</SelectItem>
+                        <SelectItem value="MA">Maranhão</SelectItem>
+                        <SelectItem value="MT">Mato Grosso</SelectItem>
+                        <SelectItem value="MS">Mato Grosso do Sul</SelectItem>
+                        <SelectItem value="MG">Minas Gerais</SelectItem>
+                        <SelectItem value="PA">Pará</SelectItem>
+                        <SelectItem value="PB">Paraíba</SelectItem>
+                        <SelectItem value="PR">Paraná</SelectItem>
+                        <SelectItem value="PE">Pernambuco</SelectItem>
+                        <SelectItem value="PI">Piauí</SelectItem>
+                        <SelectItem value="RJ">Rio de Janeiro</SelectItem>
+                        <SelectItem value="RN">Rio Grande do Norte</SelectItem>
+                        <SelectItem value="RS">Rio Grande do Sul</SelectItem>
+                        <SelectItem value="RO">Rondônia</SelectItem>
+                        <SelectItem value="RR">Roraima</SelectItem>
+                        <SelectItem value="SC">Santa Catarina</SelectItem>
+                        <SelectItem value="SP">São Paulo</SelectItem>
+                        <SelectItem value="SE">Sergipe</SelectItem>
+                        <SelectItem value="TO">Tocantins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Seção 4: Notas */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Notas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="Adicione observações sobre o cliente..."
+                {...register("notes")}
                 disabled={isLoading}
+                rows={4}
               />
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Website */}
-            <div className="space-y-2">
-              <Label htmlFor="website">Website</Label>
-              <Input
-                id="website"
-                placeholder="https://www.empresa.com"
-                {...register("website")}
-                disabled={isLoading}
-              />
-              {errors.website && (
-                <p className="text-sm text-destructive">{errors.website.message}</p>
-              )}
-            </div>
-
-            {/* Status */}
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={watch("status")}
-                onValueChange={(value) => setValue("status", value as ClientForm["status"])}
-                disabled={isLoading}
+          {/* Zona de Perigo */}
+          <Card className="border-[#FECACA] dark:border-[rgba(252,165,165,0.15)]">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold text-[#991B1B] dark:text-[#FCA5A5]">Zona de Perigo</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleArchive}
+                disabled={isArchiving || watch("status") === "inactive"}
+                className="w-full sm:w-auto"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="prospect">Prospect</SelectItem>
-                  <SelectItem value="onboarding">Em Onboarding</SelectItem>
-                  <SelectItem value="active">Ativo</SelectItem>
-                  <SelectItem value="inactive">Inativo</SelectItem>
-                  <SelectItem value="churned">Churned</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+                {isArchiving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Archive className="h-4 w-4 mr-2" />}
+                Arquivar cliente
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDeleteDialog(true)}
+                className="w-full sm:w-auto"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Excluir cliente
+              </Button>
+            </CardContent>
+          </Card>
 
-        {/* Address */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Endereço</CardTitle>
-            <CardDescription>
-              Necessário para assinaturas via boleto
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="address_street">Rua</Label>
-                <Input
-                  id="address_street"
-                  placeholder="Nome da rua"
-                  {...register("address_street")}
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address_number">Número</Label>
-                <Input
-                  id="address_number"
-                  placeholder="123"
-                  {...register("address_number")}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
+          {/* SaveBar */}
+          <SaveBar
+            isSaving={isLoading}
+            onSave={handleSubmit(onSubmit, onValidationError)}
+            onCancel={() => router.push(`/admin/clients/${id}`)}
+            hasChanges={isDirty}
+            saveLabel="Salvar alterações"
+          />
+        </form>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="address_complement">Complemento</Label>
-                <Input
-                  id="address_complement"
-                  placeholder="Apto, Sala, etc"
-                  {...register("address_complement")}
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address_neighborhood">Bairro</Label>
-                <Input
-                  id="address_neighborhood"
-                  placeholder="Nome do bairro"
-                  {...register("address_neighborhood")}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="address_postal_code">CEP</Label>
-                <Input
-                  id="address_postal_code"
-                  placeholder="00000-000"
-                  {...register("address_postal_code")}
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address_city">Cidade</Label>
-                <Input
-                  id="address_city"
-                  placeholder="Nome da cidade"
-                  {...register("address_city")}
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address_state">Estado</Label>
-                <Select
-                  value={watch("address_state") || ""}
-                  onValueChange={(value) => setValue("address_state", value)}
-                  disabled={isLoading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AC">Acre</SelectItem>
-                    <SelectItem value="AL">Alagoas</SelectItem>
-                    <SelectItem value="AP">Amapá</SelectItem>
-                    <SelectItem value="AM">Amazonas</SelectItem>
-                    <SelectItem value="BA">Bahia</SelectItem>
-                    <SelectItem value="CE">Ceará</SelectItem>
-                    <SelectItem value="DF">Distrito Federal</SelectItem>
-                    <SelectItem value="ES">Espírito Santo</SelectItem>
-                    <SelectItem value="GO">Goiás</SelectItem>
-                    <SelectItem value="MA">Maranhão</SelectItem>
-                    <SelectItem value="MT">Mato Grosso</SelectItem>
-                    <SelectItem value="MS">Mato Grosso do Sul</SelectItem>
-                    <SelectItem value="MG">Minas Gerais</SelectItem>
-                    <SelectItem value="PA">Pará</SelectItem>
-                    <SelectItem value="PB">Paraíba</SelectItem>
-                    <SelectItem value="PR">Paraná</SelectItem>
-                    <SelectItem value="PE">Pernambuco</SelectItem>
-                    <SelectItem value="PI">Piauí</SelectItem>
-                    <SelectItem value="RJ">Rio de Janeiro</SelectItem>
-                    <SelectItem value="RN">Rio Grande do Norte</SelectItem>
-                    <SelectItem value="RS">Rio Grande do Sul</SelectItem>
-                    <SelectItem value="RO">Rondônia</SelectItem>
-                    <SelectItem value="RR">Roraima</SelectItem>
-                    <SelectItem value="SC">Santa Catarina</SelectItem>
-                    <SelectItem value="SP">São Paulo</SelectItem>
-                    <SelectItem value="SE">Sergipe</SelectItem>
-                    <SelectItem value="TO">Tocantins</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Integration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Integração Asaas</CardTitle>
-            <CardDescription>
-              {watch("asaas_customer_id")
-                ? "Cliente já vinculado ao Asaas"
-                : "O cliente será criado automaticamente no Asaas ao salvar (se os campos obrigatórios estiverem preenchidos)"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="asaas_customer_id">ID do Cliente no Asaas</Label>
-              <Input
-                id="asaas_customer_id"
-                placeholder={watch("asaas_customer_id") ? "" : "Será gerado automaticamente"}
-                {...register("asaas_customer_id")}
-                disabled={isLoading || !!watch("asaas_customer_id")}
-                className={watch("asaas_customer_id") ? "bg-muted" : ""}
-              />
-              {watch("asaas_customer_id") ? (
-                <p className="text-xs text-success">
-                  Cliente vinculado ao Asaas. ID não pode ser alterado.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Deixe vazio para criar automaticamente. Use &quot;000&quot; para clientes internacionais/fora do Asaas.
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Observações</CardTitle>
-            <CardDescription>
-              Notas internas sobre o cliente
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Adicione observações sobre o cliente..."
-              {...register("notes")}
-              disabled={isLoading}
-              rows={4}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" asChild disabled={isLoading}>
-            <Link href={`/admin/clients/${id}`}>Cancelar</Link>
-          </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Salvar Alterações
-          </Button>
-        </div>
-      </form>
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Excluir cliente</DialogTitle>
+              <DialogDescription>
+                Tem certeza que deseja excluir <strong>{client?.name}</strong>? Esta ação não pode ser desfeita e todos os dados associados serão perdidos.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="ghost" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Excluir permanentemente
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

@@ -274,7 +274,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             <p className="text-muted-foreground text-center mt-1">
               {loadError}
             </p>
-            <Button variant="outline" onClick={loadStores} className="mt-4">
+            <Button variant="secondary" onClick={loadStores} className="mt-4">
               <RefreshCw className="mr-2 h-4 w-4" />
               Tentar novamente
             </Button>
@@ -302,7 +302,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       ) : stores.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {stores.map((store) => (
-            <Card key={store.id} className="rounded-xl border bg-card">
+            <Card key={store.id} className="rounded-[8px] border">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -318,7 +318,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       </CardDescription>
                     </div>
                   </div>
-                  <Badge variant={store.is_active ? "success" : "secondary"}>
+                  <Badge variant={store.is_active ? "positive" : "neutral"}>
                     {store.is_active ? "Ativa" : "Inativa"}
                   </Badge>
                 </div>
@@ -368,7 +368,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    variant="default"
+                    variant="primary"
                     size="sm"
                     className="flex-1"
                     onClick={() => router.push(`/admin/stores/${store.id}`)}
@@ -377,7 +377,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     Ir para Loja
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="flex-1"
                     onClick={() => openDialog(store)}
@@ -386,7 +386,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     Editar
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDeleteStore(store)}
@@ -490,7 +490,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="secondary" onClick={() => setDialogOpen(false)}>
               Cancelar
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Loader2, Plus, X, Search } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -344,12 +345,12 @@ export function ImportRuleForm({
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleAddCondition}
               disabled={isLoading}
             >
-              <Plus className="mr-1 h-3 w-3" />
+              <Icon icon={Plus} customSize={12} className="mr-1" />
               Condicao
             </Button>
           </div>
@@ -472,7 +473,7 @@ export function ImportRuleForm({
                     className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-destructive"
                     onClick={() => handleRemoveCondition(index)}
                   >
-                    <X className="h-4 w-4" />
+                    <Icon icon={X} size={16} />
                   </Button>
                 </div>
               )
@@ -484,20 +485,20 @@ export function ImportRuleForm({
             <div className="flex items-center gap-3">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handlePreview}
                 disabled={isPreviewLoading}
               >
                 {isPreviewLoading ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  <Icon icon={Loader2} customSize={12} className="mr-1 animate-spin" />
                 ) : (
-                  <Search className="mr-1 h-3 w-3" />
+                  <Icon icon={Search} customSize={12} className="mr-1" />
                 )}
                 Testar Regra
               </Button>
               {previewCount !== null && (
-                <Badge variant="secondary">
+                <Badge variant="neutral">
                   {previewCount} cliente{previewCount !== 1 ? "s" : ""}{" "}
                   correspondem
                 </Badge>
@@ -616,14 +617,14 @@ export function ImportRuleForm({
         <div className="flex justify-end gap-2">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={onCancel}
             disabled={isLoading}
           >
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
             {isEditing ? "Salvar Alteracoes" : "Criar Regra"}
           </Button>
         </div>

@@ -577,7 +577,7 @@ export function StoreOnboardingForm({
         <div className="flex items-center justify-between pt-4 border-t">
           <div>
             {currentStep > 0 && (
-              <Button variant="outline" onClick={() => setCurrentStep((s) => s - 1)}>
+              <Button variant="secondary" onClick={() => setCurrentStep((s) => s - 1)}>
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Voltar
               </Button>
@@ -586,7 +586,7 @@ export function StoreOnboardingForm({
 
           <div className="flex gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => handleSave(false)}
               disabled={saving}
             >

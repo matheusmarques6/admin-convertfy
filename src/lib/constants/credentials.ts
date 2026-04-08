@@ -15,6 +15,7 @@ export const ENCRYPTED_FIELDS = [
   "klaviyo_api_key",
   "klaviyo_private_key",
   "klaviyo_public_key",
+  "omnisend_api_key",
   "meta_access_token",
 ] as const
 

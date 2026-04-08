@@ -68,7 +68,7 @@ const categoryIcons: Record<string, React.ElementType> = {
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   pending: { label: "Pendente", color: "text-slate-400" },
-  in_progress: { label: "Em andamento", color: "text-[#05AFF2]" },
+  in_progress: { label: "Em andamento", color: "text-[#4E62D8] dark:text-[#7B8CEA]" },
   blocked: { label: "Bloqueado", color: "text-red-600" },
   completed: { label: "Concluído", color: "text-emerald-600" },
   skipped: { label: "Pulado", color: "text-slate-400" },
@@ -121,11 +121,9 @@ export default function PortalOnboardingPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Onboarding</h1>
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-            <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-              <AlertCircle className="h-7 w-7 text-slate-400 dark:text-slate-500" />
-            </div>
+            <AlertCircle className="h-7 w-7 text-slate-400 dark:text-slate-500 mb-4" />
             <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100">Nenhum onboarding ativo</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Entre em contato com a equipe Convertfy para iniciar seu onboarding.
@@ -150,12 +148,10 @@ export default function PortalOnboardingPage() {
       </div>
 
       {/* Progress Card */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
         {isCompleted ? (
           <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 dark:bg-emerald-500/10">
-              <PartyPopper className="h-7 w-7 text-emerald-600" />
-            </div>
+            <PartyPopper className="h-7 w-7 text-emerald-600" />
             <div>
               <h3 className="text-lg font-semibold text-emerald-600">
                 Onboarding concluído!
@@ -201,14 +197,14 @@ export default function PortalOnboardingPage() {
           const allDone = group.completed === group.total
 
           return (
-            <div key={group.category} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+            <div key={group.category} className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-700/30">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-[15px]">
                     <Icon className={cn("h-5 w-5", allDone ? "text-emerald-600" : "text-slate-400 dark:text-slate-500")} />
                     {group.label}
                   </CardTitle>
-                  <Badge variant={allDone ? "default" : "secondary"} className={cn("text-xs", allDone && "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20")}>
+                  <Badge variant={allDone ? "info" : "neutral"} className={cn("text-xs", allDone && "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20")}>
                     {group.completed}/{group.total}
                   </Badge>
                 </div>
@@ -232,7 +228,7 @@ export default function PortalOnboardingPage() {
                         {isDone ? (
                           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                         ) : step.status === "in_progress" ? (
-                          <Clock className="h-5 w-5 text-[#05AFF2] shrink-0" />
+                          <Clock className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA] shrink-0" />
                         ) : step.status === "blocked" ? (
                           <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
                         ) : (
@@ -259,7 +255,7 @@ export default function PortalOnboardingPage() {
                           </span>
                         ) : isIntegrationStep && step.status === "pending" ? (
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             className="shrink-0 border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200"
                             onClick={() => router.push("/client/stores")}
@@ -268,7 +264,7 @@ export default function PortalOnboardingPage() {
                           </Button>
                         ) : !isDone && step.status !== "pending" ? (
                           <Badge
-                            variant="outline"
+                            variant="neutral"
                             className={cn("text-xs shrink-0", statusConfig[step.status]?.color)}
                           >
                             {statusConfig[step.status]?.label}

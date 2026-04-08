@@ -13,8 +13,10 @@ import {
   Clock,
   Filter,
 } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Select,
@@ -200,7 +202,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <IconWrapper icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -212,7 +214,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold">Alertas</h3>
           {activeCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
+            <Badge variant="negative" className="text-xs">
               {activeCount} ativo{activeCount !== 1 ? "s" : ""}
             </Badge>
           )}
@@ -230,12 +232,12 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
         >
           {isChecking ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <IconWrapper icon={Loader2} size={16} className="mr-2 animate-spin" />
               Verificando...
             </>
           ) : (
             <>
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <IconWrapper icon={RefreshCw} size={16} className="mr-2" />
               Verificar Agora
             </>
           )}
@@ -247,7 +249,6 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(ALERT_TYPE_CONFIG) as Array<keyof typeof ALERT_TYPE_CONFIG>).map((type) => {
             const config = ALERT_TYPE_CONFIG[type]
-            const Icon = config.icon
             const count = alerts.filter((a) => a.type === type && a.status !== "resolved").length
 
             return (
@@ -257,7 +258,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
                   count > 0 ? config.bgColor + " border-border" : "bg-card border-border"
                 }`}
               >
-                <Icon className={`h-5 w-5 ${count > 0 ? config.color : "text-muted-foreground/40"}`} />
+                <IconWrapper icon={config.icon} size={20} className={count > 0 ? config.color : "text-muted-foreground/40"} />
                 <div>
                   <p className={`text-lg font-bold ${count > 0 ? config.color : "text-muted-foreground"}`}>{count}</p>
                   <p className="text-xs text-muted-foreground">{config.label}</p>
@@ -272,7 +273,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
       <div className="flex gap-2">
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-[150px] h-8 text-xs">
-            <Filter className="w-3 h-3 mr-1" />
+            <IconWrapper icon={Filter} customSize={12} className="mr-1" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -302,9 +303,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
         <Card>
           <CardContent className="py-16 text-center">
             <div className="flex flex-col items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
-                <CheckCircle2 className="w-6 h-6 text-success" />
-              </div>
+              <IconWrapper icon={CheckCircle2} customSize={32} className="text-success" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
                   {alerts.length === 0
@@ -324,12 +323,10 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
             const typeConfig = ALERT_TYPE_CONFIG[alert.type]
             const severityConfig = SEVERITY_CONFIG[alert.severity]
             const statusConfig = STATUS_CONFIG[alert.status]
-            const TypeIcon = typeConfig.icon
-
             return (
               <Card
                 key={alert.id}
-                className={`rounded-xl ${
+                className={`rounded-[8px] ${
                   alert.status === "active" && alert.severity === "critical"
                     ? "border-destructive/30"
                     : alert.status === "active"
@@ -341,29 +338,33 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
                   <div className="flex items-start gap-3">
                     {/* Icon */}
                     <div className={`w-10 h-10 rounded-lg ${typeConfig.bgColor} flex items-center justify-center flex-shrink-0`}>
-                      <TypeIcon className={`h-5 w-5 ${typeConfig.color}`} />
+                      <IconWrapper icon={typeConfig.icon} size={20} className={typeConfig.color} />
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{alert.title}</span>
-                        <Badge className={`${severityConfig.className} text-[10px]`}>
-                          {severityConfig.label}
-                        </Badge>
-                        <Badge className={`${statusConfig.className} text-[10px]`}>
-                          {statusConfig.label}
-                        </Badge>
+                        <StatusBadge
+                          status={alert.severity}
+                          label={severityConfig.label}
+                          className="text-[10px]"
+                        />
+                        <StatusBadge
+                          status={alert.status === "acknowledged" ? "warning" : alert.status === "resolved" ? "completed" : "active"}
+                          label={statusConfig.label}
+                          className="text-[10px]"
+                        />
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
                       <div className="flex items-center gap-3 mt-2">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
+                          <IconWrapper icon={Clock} customSize={12} />
                           {timeAgo(alert.created_at)}
                         </span>
                         {alert.status === "resolved" && alert.resolved_at && (
                           <span className="text-xs text-success flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
+                            <IconWrapper icon={CheckCircle2} customSize={12} />
                             Resolvido {timeAgo(alert.resolved_at)}
                           </span>
                         )}
@@ -381,7 +382,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
                             onClick={() => handleUpdateAlert(alert.id, "acknowledge")}
                             title="Marcar como visto"
                           >
-                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            <IconWrapper icon={Eye} customSize={14} className="mr-1" />
                             Visto
                           </Button>
                         )}
@@ -392,7 +393,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
                           onClick={() => handleUpdateAlert(alert.id, "resolve")}
                           title="Resolver alerta"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                          <IconWrapper icon={CheckCircle2} customSize={14} className="mr-1" />
                           Resolver
                         </Button>
                       </div>

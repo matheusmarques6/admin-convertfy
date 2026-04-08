@@ -256,7 +256,7 @@ export default function OnboardingWizardPage() {
         </div>
 
         {/* Step Content */}
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-4 pt-6 pb-4 sm:px-8 sm:pt-8">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{STEPS[currentStep].label}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -311,7 +311,7 @@ export default function OnboardingWizardPage() {
                     <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Plataforma</Label>
                     <Select value={platform} onValueChange={setPlatform}>
                       <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+                      <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="shopify">Shopify</SelectItem>
                         <SelectItem value="woocommerce">WooCommerce</SelectItem>
                         <SelectItem value="nuvemshop">Nuvemshop</SelectItem>
@@ -331,7 +331,7 @@ export default function OnboardingWizardPage() {
                     <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">País</Label>
                     <Select value={country} onValueChange={setCountry}>
                       <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+                      <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="BR">Brasil</SelectItem>
                         <SelectItem value="US">Estados Unidos</SelectItem>
                         <SelectItem value="PT">Portugal</SelectItem>
@@ -343,7 +343,7 @@ export default function OnboardingWizardPage() {
                     <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Idioma</Label>
                     <Select value={language} onValueChange={setLanguage}>
                       <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+                      <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
                         <SelectItem value="en-US">English (US)</SelectItem>
                         <SelectItem value="es">Español</SelectItem>
@@ -359,7 +359,7 @@ export default function OnboardingWizardPage() {
                   <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Tipo de Frete Grátis</Label>
                   <Select value={freeShippingType} onValueChange={setFreeShippingType}>
                     <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+                    <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                       <SelectItem value="fixed">Fixo (acima de X reais)</SelectItem>
                       <SelectItem value="custom">Personalizado (por região/produto)</SelectItem>
                       <SelectItem value="none">Sem frete grátis</SelectItem>
@@ -372,7 +372,7 @@ export default function OnboardingWizardPage() {
             {/* Step 3: Shopify Collaborator Code */}
             {currentStep === 2 && (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
+                <div className="p-4 rounded-[8px] bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
                   <p className="font-medium text-slate-700 dark:text-slate-200">Como obter o código de colaborador:</p>
                   <ol className="list-decimal list-inside space-y-1 text-slate-500 dark:text-slate-400">
                     <li>Acesse o painel admin da sua loja Shopify</li>
@@ -399,7 +399,7 @@ export default function OnboardingWizardPage() {
             {/* Step 4: Klaviyo Keys */}
             {currentStep === 3 && (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
+                <div className="p-4 rounded-[8px] bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
                   <p className="font-medium text-slate-700 dark:text-slate-200">Como obter a Private API Key do Klaviyo:</p>
                   <ol className="list-decimal list-inside space-y-1 text-slate-500 dark:text-slate-400">
                     <li>Acesse sua conta Klaviyo em klaviyo.com</li>

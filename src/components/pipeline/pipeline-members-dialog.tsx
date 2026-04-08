@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Loader2, Plus, X, Crown, Pencil, Eye } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -259,9 +260,9 @@ export function PipelineMembersDialog({
                       disabled={!selectedUserId || isLoading}
                     >
                       {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Icon icon={Loader2} size={16} className="animate-spin" />
                       ) : (
-                        <Plus className="h-4 w-4" />
+                        <Icon icon={Plus} size={16} />
                       )}
                     </Button>
                   </div>
@@ -279,7 +280,6 @@ export function PipelineMembersDialog({
                 <div className="space-y-2">
                   {members.map((member) => {
                     const config = roleConfig[member.role]
-                    const RoleIcon = config.icon
 
                     return (
                       <div
@@ -312,7 +312,7 @@ export function PipelineMembersDialog({
                             >
                               <SelectTrigger className="w-[130px] h-8 text-xs">
                                 <div className="flex items-center gap-1">
-                                  <RoleIcon className={`h-3 w-3 ${config.color}`} />
+                                  <Icon icon={config.icon} customSize={12} className={config.color} />
                                   <SelectValue />
                                 </div>
                               </SelectTrigger>
@@ -329,12 +329,12 @@ export function PipelineMembersDialog({
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
                               onClick={() => setRemovingMember(member)}
                             >
-                              <X className="h-4 w-4" />
+                              <Icon icon={X} size={16} />
                             </Button>
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-xs">
-                            <RoleIcon className={`mr-1 h-3 w-3 ${config.color}`} />
+                          <Badge variant="neutral" showDot={false} className="text-xs">
+                            <Icon icon={config.icon} customSize={12} className={`mr-1 ${config.color}`} />
                             {config.label}
                           </Badge>
                         )}

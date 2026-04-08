@@ -6,14 +6,16 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Eye, EyeOff, Loader2, CheckCircle, AlertTriangle, Check, X } from "lucide-react"
+import { Eye, EyeOff, Loader2, AlertTriangle, Check, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormField } from "@/components/ui/form-field"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
+import { AuthLayout } from "@/components/auth/auth-layout"
+import { cn } from "@/lib/utils"
 
 // Password validation rules
 const passwordRules = {
@@ -59,10 +61,17 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
 
   const metCount = Object.values(strength).filter(Boolean).length
   const strengthLevel = metCount === 5 ? "strong" : metCount >= 3 ? "medium" : "weak"
+
   const strengthColors = {
-    weak: "bg-destructive",
-    medium: "bg-warning",
-    strong: "bg-success",
+    weak: "bg-[#991B1B] dark:bg-[#FCA5A5]",
+    medium: "bg-[#D97706] dark:bg-[#FBBF24]",
+    strong: "bg-[#16A34A] dark:bg-[#4ADE80]",
+  }
+
+  const strengthTextColors = {
+    weak: "text-[#991B1B] dark:text-[#FCA5A5]",
+    medium: "text-[#D97706] dark:text-[#FBBF24]",
+    strong: "text-[#16A34A] dark:text-[#4ADE80]",
   }
 
   const rules = [
@@ -81,18 +90,18 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                i <= metCount ? strengthColors[strengthLevel] : "bg-muted"
-              }`}
+              className={cn(
+                "h-1.5 flex-1 rounded-full transition-colors",
+                i <= metCount
+                  ? strengthColors[strengthLevel]
+                  : "bg-gray-100 dark:bg-[#242836]"
+              )}
             />
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-gray-500 dark:text-[#8B92A5]">
           Força da senha:{" "}
-          <span className={`font-medium ${
-            strengthLevel === "strong" ? "text-success" :
-            strengthLevel === "medium" ? "text-warning" : "text-destructive"
-          }`}>
+          <span className={cn("font-medium", strengthTextColors[strengthLevel])}>
             {strengthLevel === "strong" ? "Forte" : strengthLevel === "medium" ? "Média" : "Fraca"}
           </span>
         </p>
@@ -103,15 +112,14 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
         {rules.map((rule) => (
           <li
             key={rule.key}
-            className={`flex items-center gap-2 text-xs ${
-              rule.met ? "text-success" : "text-muted-foreground"
-            }`}
-          >
-            {rule.met ? (
-              <Check className="h-3 w-3" />
-            ) : (
-              <X className="h-3 w-3" />
+            className={cn(
+              "flex items-center gap-2 text-xs",
+              rule.met
+                ? "text-[#16A34A] dark:text-[#4ADE80]"
+                : "text-gray-400 dark:text-[#5C6378]"
             )}
+          >
+            <Icon icon={rule.met ? Check : X} customSize={12} />
             {rule.label}
           </li>
         ))}
@@ -139,16 +147,13 @@ function ResetPasswordContent() {
     resolver: zodResolver(resetPasswordSchema),
   })
 
-  // Watch password for strength indicator
   const watchedPassword = watch("password", "")
 
   useEffect(() => {
     setPassword(watchedPassword)
   }, [watchedPassword])
 
-  // Check if token is present (Supabase handles token validation)
   useEffect(() => {
-    // If there's an error in URL params, the token might be expired
     const error = searchParams.get("error")
     const errorDescription = searchParams.get("error_description")
 
@@ -163,7 +168,6 @@ function ResetPasswordContent() {
     try {
       const supabase = createClient()
 
-      // Get current user session (from the recovery token)
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user?.email) {
@@ -176,12 +180,11 @@ function ResetPasswordContent() {
         return
       }
 
-      // Log the reset attempt
       await rateLimitService.logPasswordResetAudit({
         email: user.email,
         accountType: "admin",
         action: "complete",
-        success: false, // Will be updated if successful
+        success: false,
       })
 
       const { error } = await supabase.auth.updateUser({
@@ -189,7 +192,6 @@ function ResetPasswordContent() {
       })
 
       if (error) {
-        // Log the failure
         await rateLimitService.logPasswordResetAudit({
           email: user.email,
           accountType: "admin",
@@ -206,7 +208,6 @@ function ResetPasswordContent() {
         return
       }
 
-      // Log success
       await rateLimitService.logPasswordResetAudit({
         email: user.email,
         accountType: "admin",
@@ -214,7 +215,6 @@ function ResetPasswordContent() {
         success: true,
       })
 
-      // Clear any rate limits for this user
       await rateLimitService.clearRateLimit(user.email, "password_reset")
 
       setIsSuccess(true)
@@ -224,7 +224,6 @@ function ResetPasswordContent() {
         description: "Sua senha foi alterada com sucesso.",
       })
 
-      // Redirect to login after 3 seconds
       setTimeout(() => {
         router.push("/login")
       }, 3000)
@@ -239,190 +238,141 @@ function ResetPasswordContent() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
-          <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
+  // Expired state
+  if (isExpired) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <Icon
+            icon={AlertTriangle}
+            size={24}
+            className="text-[#D97706] dark:text-[#FBBF24] mx-auto"
+          />
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Link Expirado
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            O link de recuperação expirou ou é inválido.
+            Os links são válidos por 1 hora.
+          </p>
+          <Button asChild variant="primary" size="lg" className="w-full">
+            <Link href="/forgot-password">Solicitar Novo Link</Link>
+          </Button>
         </div>
+      </AuthLayout>
+    )
+  }
 
-        {isExpired ? (
-          <Card className="rounded-xl border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-warning/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-warning" />
-                </div>
-              </div>
-              <CardTitle className="text-2xl">Link Expirado</CardTitle>
-              <CardDescription className="text-base">
-                O link de recuperação expirou ou é inválido.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-sm text-muted-foreground">
-                Os links de recuperação são válidos por 1 hora. Solicite um novo link para redefinir sua senha.
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Button asChild className="w-full" variant="gradient">
-                <Link href="/forgot-password">Solicitar Novo Link</Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : isSuccess ? (
-          <Card className="rounded-xl border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-success/10 p-4">
-                  <CheckCircle className="h-8 w-8 text-success" />
-                </div>
-              </div>
-              <CardTitle className="text-2xl">Senha Redefinida!</CardTitle>
-              <CardDescription className="text-base">
-                Sua senha foi alterada com sucesso.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-sm text-muted-foreground">
-                Você será redirecionado para o login em instantes...
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Button asChild className="w-full" variant="gradient">
-                <Link href="/login">Ir para Login</Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : (
-          <Card className="rounded-xl border-border">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Redefinir Senha</CardTitle>
-              <CardDescription>
-                Crie uma senha forte para proteger sua conta
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="password">Nova Senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Digite sua nova senha"
-                      {...register("password")}
-                      disabled={isLoading}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isLoading}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                  {errors.password && (
-                    <p className="text-sm text-destructive">{errors.password.message}</p>
-                  )}
+  // Success state
+  if (isSuccess) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 rounded-full bg-[#DCFCE7] dark:bg-[rgba(74,222,128,0.1)] flex items-center justify-center mx-auto">
+            <Icon icon={Check} size={20} className="text-[#16A34A] dark:text-[#4ADE80]" />
+          </div>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Senha Redefinida!
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            Sua senha foi alterada com sucesso. Você será redirecionado para o login em instantes...
+          </p>
+          <Button asChild variant="primary" size="lg" className="w-full">
+            <Link href="/login">Ir para Login</Link>
+          </Button>
+        </div>
+      </AuthLayout>
+    )
+  }
 
-                  {/* Password strength indicator */}
-                  {password.length > 0 && (
-                    <PasswordStrengthIndicator password={password} />
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
-                  <div className="relative">
-                    <Input
-                      id="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder="Confirme sua nova senha"
-                      {...register("confirmPassword")}
-                      disabled={isLoading}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      disabled={isLoading}
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                  {errors.confirmPassword && (
-                    <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-                  )}
-                </div>
-              </CardContent>
-
-              <CardFooter className="flex flex-col space-y-4">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  variant="gradient"
-                  disabled={isLoading}
-                >
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Redefinir Senha
-                </Button>
-
-                <p className="text-sm text-center text-muted-foreground">
-                  Lembrou a senha?{" "}
-                  <Link href="/login" className="text-primary hover:underline">
-                    Faça login
-                  </Link>
-                </p>
-              </CardFooter>
-            </form>
-          </Card>
-        )}
+  // Form state
+  return (
+    <AuthLayout>
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Redefinir Senha
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-1">
+          Crie uma senha forte para proteger sua conta
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Nova Senha" required error={errors.password?.message}>
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="Digite sua nova senha"
+              className="h-11 pr-10"
+              {...register("password")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+          {password.length > 0 && (
+            <PasswordStrengthIndicator password={password} />
+          )}
+        </FormField>
+
+        <FormField label="Confirmar Nova Senha" required error={errors.confirmPassword?.message}>
+          <div className="relative">
+            <Input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Confirme sua nova senha"
+              className="h-11 pr-10"
+              {...register("confirmPassword")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showConfirmPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+        </FormField>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
+          Redefinir Senha
+        </Button>
+
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] text-center">
+          Lembrou a senha?{" "}
+          <Link
+            href="/login"
+            className="text-[#4E62D8] dark:text-[#7B8CEA] hover:underline font-medium"
+          >
+            Faça login
+          </Link>
+        </p>
+      </form>
+    </AuthLayout>
   )
 }
 
 function ResetPasswordLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
-          <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
-        </div>
-        <Card className="border-border/50">
-          <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
+    <AuthLayout>
+      <div className="flex items-center justify-center py-12">
+        <Icon icon={Loader2} size={24} className="animate-spin text-gray-400 dark:text-[#5C6378]" />
       </div>
-    </div>
+    </AuthLayout>
   )
 }
 

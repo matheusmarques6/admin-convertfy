@@ -20,13 +20,12 @@ import {
   Pencil,
   Video,
   Trash2,
-  ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -70,7 +69,6 @@ import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { ReportJobCard } from "@/components/shared/report-job-card"
 import { useReportJob } from "@/hooks/use-report-job"
 import { cn } from "@/lib/utils"
-import { StoreTransferAction } from "@/components/stores/store-transfer-action"
 
 const PERIOD_OPTIONS = [
   { value: "7d", label: "7 dias" },
@@ -233,7 +231,6 @@ export function StoreControlPanel() {
   const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -464,7 +461,7 @@ export function StoreControlPanel() {
       <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border p-4 space-y-3">
+            <div key={i} className="rounded-[8px] border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-3 w-16" />
                 <Skeleton className="w-8 h-8 rounded-lg" />
@@ -475,9 +472,9 @@ export function StoreControlPanel() {
         </div>
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border p-4">
+            <div key={i} className="rounded-[8px] border border-border p-4">
               <div className="flex items-center gap-4">
-                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                <Skeleton className="w-10 h-10 rounded-[8px] shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-3 w-24" />
@@ -506,10 +503,10 @@ export function StoreControlPanel() {
                 key={card.key}
                 onClick={() => handleFilterStatusChange(card.key)}
                 className={cn(
-                  "group rounded-xl border p-4 text-left transition-all duration-200",
+                  "group rounded-[8px] border p-4 text-left transition-all duration-200",
                   isActive
                     ? card.bgActive
-                    : "border-border bg-card hover:border-border/80 hover:shadow-sm"
+                    : "border-border bg-card hover:border-border/80"
                 )}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -586,7 +583,7 @@ export function StoreControlPanel() {
             )}
 
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               onClick={fetchStores}
               disabled={isLoading}
@@ -619,7 +616,7 @@ export function StoreControlPanel() {
       {/* ─── Store List ────────────────────────────────────────── */}
       {stores.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+          <div className="w-14 h-14 rounded-[8px] bg-muted flex items-center justify-center mb-4">
             <Store className="w-7 h-7 text-muted-foreground" />
           </div>
           <p className="text-sm font-medium text-foreground mb-1">Nenhuma loja encontrada</p>
@@ -632,7 +629,7 @@ export function StoreControlPanel() {
       ) : (
         <>
           {/* Desktop Table (hidden on mobile) */}
-          <div className="hidden lg:block rounded-xl border border-border overflow-hidden bg-card">
+          <div className="hidden lg:block rounded-[8px] border border-border overflow-hidden bg-card">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -662,7 +659,7 @@ export function StoreControlPanel() {
                         {/* Store / Client */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                            <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
                               <Store className="w-4.5 h-4.5 text-primary" />
                             </div>
                             <div className="min-w-0">
@@ -744,10 +741,11 @@ export function StoreControlPanel() {
                         {/* Feedback Status */}
                         <td className="px-4 py-3.5 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <Badge variant="outline" className={cn("text-[11px] font-medium gap-1 border", statusCfg.className)}>
-                              <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
-                              {statusCfg.label}
-                            </Badge>
+                            <StatusBadge
+                              status={store.feedback_status === "overdue" ? "overdue" : store.feedback_status === "due_soon" ? "warning" : store.feedback_status === "on_track" ? "active" : "unknown"}
+                              label={statusCfg.label}
+                              className="text-[11px]"
+                            />
                             {store.next_feedback_date && (
                               <span className="text-[10px] text-muted-foreground">{formatDate(store.next_feedback_date)}</span>
                             )}
@@ -787,7 +785,7 @@ export function StoreControlPanel() {
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="secondary"
                               onClick={() => {
                                 setSelectedStore(store)
                                 setIsRegisterDialogOpen(true)
@@ -823,10 +821,6 @@ export function StoreControlPanel() {
                                   </>
                                 )}
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsTransferDialogOpen(true) }}>
-                                  <ArrowRightLeft className="w-4 h-4 mr-2" />
-                                  Transferir Loja
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Excluir Loja
@@ -853,14 +847,14 @@ export function StoreControlPanel() {
                   key={store.id}
                   onClick={() => router.push(`/admin/stores/${store.id}`)}
                   className={cn(
-                    "rounded-xl border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
+                    "rounded-[8px] border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
                     isLoading && "opacity-50"
                   )}
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
                         <Store className="w-4.5 h-4.5 text-primary" />
                       </div>
                       <div className="min-w-0">
@@ -902,10 +896,6 @@ export function StoreControlPanel() {
                             </>
                           )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsTransferDialogOpen(true) }}>
-                            <ArrowRightLeft className="w-4 h-4 mr-2" />
-                            Transferir Loja
-                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
                             <Trash2 className="w-4 h-4 mr-2" />
                             Excluir Loja
@@ -954,10 +944,11 @@ export function StoreControlPanel() {
 
                     <div>
                       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Feedback</p>
-                      <Badge variant="outline" className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
-                        <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
-                        {statusCfg.label}
-                      </Badge>
+                      <StatusBadge
+                        status={store.feedback_status === "overdue" ? "overdue" : store.feedback_status === "due_soon" ? "warning" : store.feedback_status === "on_track" ? "active" : "unknown"}
+                        label={statusCfg.label}
+                        className="text-[10px]"
+                      />
                     </div>
                   </div>
 
@@ -981,7 +972,7 @@ export function StoreControlPanel() {
                     </div>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => {
                         setSelectedStore(store)
                         setIsRegisterDialogOpen(true)
@@ -1005,7 +996,7 @@ export function StoreControlPanel() {
               </span>
               <div className="flex items-center gap-1.5 order-1 sm:order-2">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1 || isLoading}
@@ -1020,7 +1011,7 @@ export function StoreControlPanel() {
                   <span className="text-xs text-muted-foreground">{totalPages}</span>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || isLoading}
@@ -1152,7 +1143,7 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setIsRegisterDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleRegisterFeedback} disabled={isSubmitting}>
               {isSubmitting ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</>
@@ -1181,7 +1172,7 @@ export function StoreControlPanel() {
             <div className="space-y-4">
               <div className="rounded-lg bg-muted/30 border border-border p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
                     <Store className="w-5 h-5 text-primary" />
                   </div>
                   <div>
@@ -1232,7 +1223,7 @@ export function StoreControlPanel() {
                 <div className="flex gap-2">
                   {selectedStore.client_id && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="flex-1"
                       onClick={() => router.push(`/admin/clients/${selectedStore.client_id}?tab=stores`)}
@@ -1242,7 +1233,7 @@ export function StoreControlPanel() {
                     </Button>
                   )}
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="flex-1"
                     onClick={() => router.push(`/admin/reports?store_id=${selectedStore.id}`)}
@@ -1256,28 +1247,13 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveStoreSettings} disabled={isSubmitting}>
               {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Configuracoes'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Transfer Store */}
-      {selectedStore && (
-        <StoreTransferAction
-          storeId={selectedStore.id}
-          storeName={selectedStore.store_name}
-          currentClientId={selectedStore.client_id}
-          currentClientName={selectedStore.client_name || undefined}
-          open={isTransferDialogOpen}
-          onOpenChange={(open) => {
-            setIsTransferDialogOpen(open)
-            if (!open) setSelectedStore(null)
-          }}
-        />
-      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {

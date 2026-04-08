@@ -263,7 +263,7 @@ export function ImportRulesDialog({
                     <span className="text-muted-foreground">Colunas extras → campos customizados</span>
                   </div>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="mt-3"
                     onClick={handleDownloadTemplate}
@@ -351,7 +351,7 @@ export function ImportRulesDialog({
 
             <div className="flex justify-end">
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={() => {
                   setShowImportUpload(false)
                   setImportResult(null)
@@ -415,7 +415,7 @@ export function ImportRulesDialog({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setShowLogs(true)}
                 >
@@ -423,7 +423,7 @@ export function ImportRulesDialog({
                   Logs
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setShowImportUpload(true)}
                 >
@@ -477,7 +477,7 @@ export function ImportRulesDialog({
                             />
                             <p className="font-medium truncate">{rule.name}</p>
                             <Badge
-                              variant={rule.is_active ? "default" : "secondary"}
+                              variant={rule.is_active ? "info" : "neutral"}
                               className="text-xs"
                             >
                               {rule.is_active ? "Ativa" : "Inativa"}

@@ -319,20 +319,20 @@ export function CampaignBatchModal({
               {languages.map((lang) => (
                 <Button
                   key={lang}
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => selectByLanguage(lang)}
                   className="gap-1"
                 >
                   {languageFlags[lang] || <Globe className="h-3 w-3" />}
                   {lang}
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  <Badge variant="neutral" className="ml-1 px-1.5 py-0 text-xs">
                     {languageCounts[lang] || 0}
                   </Badge>
                 </Button>
               ))}
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={selectAll}
               >
@@ -397,7 +397,7 @@ export function CampaignBatchModal({
                           {store.client?.company || store.client?.name || "Sem cliente"}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="neutral" showDot={false} className="text-xs">
                         {languageFlags[store.language] || "🌐"} {store.language || "pt-BR"}
                       </Badge>
                     </div>
@@ -432,7 +432,7 @@ export function CampaignBatchModal({
 
         <DialogFooter className="gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >

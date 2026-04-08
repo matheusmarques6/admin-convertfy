@@ -100,7 +100,7 @@ interface OperationalOverviewProps {
 
 export function OperationalOverview({ activities, onboardings }: OperationalOverviewProps) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />
@@ -114,7 +114,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
             <TabsTrigger value="onboardings" className="flex-1 rounded-md text-xs h-7">
               Onboardings
               {onboardings.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 rounded-full text-[10px] px-1.5 py-0">
+                <Badge variant="neutral" className="ml-1.5 text-[10px] px-1.5 py-0">
                   {onboardings.length}
                 </Badge>
               )}
@@ -185,7 +185,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                             </p>
                             <div className="flex items-center gap-2 mt-1.5">
                               <Badge
-                                variant="secondary"
+                                variant="neutral"
                                 className={cn("text-[10px] h-5 px-2", status.color)}
                               >
                                 {status.label}

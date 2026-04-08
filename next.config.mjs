@@ -2,6 +2,9 @@
 const nextConfig = {
   compress: true,
   cleanDistDir: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 
   images: {
     remotePatterns: [

@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
 import Image from "next/image"
 import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info, Users, Pencil, AppWindow, Copy, CheckCheck } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
 import { CpfCnpjInput } from "@/components/ui/cpf-cnpj-input"
 import { OnboardingStepper } from "@/components/onboarding/stepper"
@@ -329,9 +330,7 @@ export default function PublicOnboardingPage() {
       <div className="flex items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
-            </div>
+            <Icon icon={Check} customSize={32} className="text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full mx-auto mb-4" />
             <CardTitle className="text-2xl">Cadastro Enviado!</CardTitle>
             <p className="text-muted-foreground text-base mt-2">
               Seu cadastro foi recebido com sucesso. Enviamos um <strong>link de acesso</strong> para o email <strong>{formData.email}</strong>.
@@ -424,7 +423,7 @@ export default function PublicOnboardingPage() {
               </div>
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 mt-4 dark:border-blue-800 dark:bg-blue-950/30">
                 <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
-                  <Mail className="h-4 w-4 shrink-0" />
+                  <Icon icon={Mail} size={16} />
                   <span>Voce recebera um link de acesso por email apos o envio do cadastro.</span>
                 </div>
               </div>
@@ -529,35 +528,35 @@ export default function PublicOnboardingPage() {
           {currentStepId === "create_shopify_app" && (
             <div className="space-y-6">
               {/* Passo 1 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">1. Acessar o Admin</p>
                 <p className="text-sm text-muted-foreground">Abra o admin da sua loja Shopify em <strong>suaLoja.myshopify.com/admin</strong></p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: tela de login do admin Shopify]</div>
               </div>
 
               {/* Passo 2 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">2. Ir para Apps</p>
                 <p className="text-sm text-muted-foreground">No menu lateral, clique em <strong>Configuracoes</strong> (icone de engrenagem), depois em <strong>Apps e canais de vendas</strong>. No canto superior, clique em <strong>Desenvolver apps</strong>.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: menu configuracoes &gt; apps]</div>
               </div>
 
               {/* Passo 3 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">3. Permitir desenvolvimento</p>
                 <p className="text-sm text-muted-foreground">Se for a primeira vez, clique em <strong>Permitir desenvolvimento de apps personalizados</strong> e confirme novamente.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao de permitir desenvolvimento]</div>
               </div>
 
               {/* Passo 4 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">4. Criar o App</p>
                 <p className="text-sm text-muted-foreground">Clique em <strong>Criar um app</strong>. No campo &quot;Nome do app&quot;, digite: <strong>convertfy</strong>. Clique em <strong>Criar app</strong>.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: modal de criar app]</div>
               </div>
 
               {/* Passo 5 — Permissoes com seletor interativo */}
-              <div className="rounded-xl bg-muted p-4 space-y-3">
+              <div className="rounded-[8px] bg-muted p-4 space-y-3">
                 <p className="font-semibold text-foreground">5. Configurar Permissoes</p>
                 <p className="text-sm text-muted-foreground">Na aba <strong>Configuracao</strong>, clique em <strong>Configurar escopos da API Admin</strong>. Selecione as permissoes abaixo:</p>
 
@@ -619,7 +618,7 @@ export default function PublicOnboardingPage() {
                           }
                         }}
                       >
-                        {scopesCopied ? <CheckCheck className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {scopesCopied ? <Icon icon={CheckCheck} customSize={14} className="text-emerald-500" /> : <Icon icon={Copy} customSize={14} />}
                         <span className="ml-1 text-xs">{scopesCopied ? "Copiado!" : "Copiar"}</span>
                       </Button>
                     </div>
@@ -631,14 +630,14 @@ export default function PublicOnboardingPage() {
               </div>
 
               {/* Passo 6 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">6. Instalar o App</p>
                 <p className="text-sm text-muted-foreground">Volte para a aba <strong>Visao geral</strong>. Clique em <strong>Instalar app</strong> e confirme.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao instalar app]</div>
               </div>
 
               {/* Passo 7 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">7. Copiar o Token</p>
                 <p className="text-sm text-muted-foreground">Apos instalar, a tela mostrara o <strong>Admin API access token</strong>. Copie e guarde em local seguro.</p>
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
@@ -652,9 +651,9 @@ export default function PublicOnboardingPage() {
           {/* Step: Collaborator Code (Shopify only) */}
           {currentStepId === "collaborator_code" && (
             <div className="space-y-4">
-              <div className="rounded-xl bg-muted p-4 text-sm space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 text-sm space-y-2">
                 <div className="flex items-center gap-2">
-                  <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Icon icon={Info} size={16} className="text-muted-foreground" />
                   <p className="font-medium text-foreground">Como obter o codigo de colaborador:</p>
                 </div>
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground ml-6">
@@ -687,7 +686,7 @@ export default function PublicOnboardingPage() {
                (formData.brand_manual_url && !uploadedFiles.brand_manual) ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
                   <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
-                    <Info className="h-4 w-4 shrink-0" />
+                    <Icon icon={Info} size={16} />
                     <span>Alguns arquivos precisam ser enviados novamente. Faca o upload novamente abaixo.</span>
                   </div>
                 </div>
@@ -699,10 +698,10 @@ export default function PublicOnboardingPage() {
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Logo</p>
                   {uploadedFiles.logo ? (
                     <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                      <ImageIcon className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                      <Icon icon={ImageIcon} size={20} className="text-green-600 dark:text-green-400" />
                       <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
                       <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
-                        <X className="h-4 w-4" />
+                        <Icon icon={X} size={16} />
                       </Button>
                     </div>
                   ) : (
@@ -714,9 +713,9 @@ export default function PublicOnboardingPage() {
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); logoInputRef.current?.click() } }}
                     >
                       {uploadingField === "logo" ? (
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                        <Icon icon={Loader2} size={24} className="animate-spin text-blue-500" />
                       ) : (
-                        <Upload className="h-6 w-6 text-muted-foreground" />
+                        <Icon icon={Upload} size={24} className="text-muted-foreground" />
                       )}
                       <span className="text-sm text-muted-foreground">Clique para enviar o logo</span>
                       <span className="text-xs text-muted-foreground/70">PNG, JPG, SVG, WebP (max. 10MB)</span>
@@ -743,10 +742,10 @@ export default function PublicOnboardingPage() {
                   <div>
                     {uploadedFiles.design ? (
                       <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                        <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                        <Icon icon={FileText} size={20} className="text-green-600 dark:text-green-400" />
                         <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.design.fileName}</span>
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("design")}>
-                          <X className="h-4 w-4" />
+                          <Icon icon={X} size={16} />
                         </Button>
                       </div>
                     ) : (
@@ -758,9 +757,9 @@ export default function PublicOnboardingPage() {
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); designInputRef.current?.click() } }}
                       >
                         {uploadingField === "design" ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-blue-500 shrink-0" />
+                          <Icon icon={Loader2} size={20} className="animate-spin text-blue-500" />
                         ) : (
-                          <Upload className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <Icon icon={Upload} size={20} className="text-muted-foreground" />
                         )}
                         <div>
                           <span className="text-sm text-muted-foreground block">Referencia visual</span>
@@ -785,10 +784,10 @@ export default function PublicOnboardingPage() {
                   <div>
                     {uploadedFiles.brand_manual ? (
                       <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                        <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                        <Icon icon={FileText} size={20} className="text-green-600 dark:text-green-400" />
                         <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("brand_manual")}>
-                          <X className="h-4 w-4" />
+                          <Icon icon={X} size={16} />
                         </Button>
                       </div>
                     ) : (
@@ -800,9 +799,9 @@ export default function PublicOnboardingPage() {
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); brandInputRef.current?.click() } }}
                       >
                         {uploadingField === "brand_manual" ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-blue-500 shrink-0" />
+                          <Icon icon={Loader2} size={20} className="animate-spin text-blue-500" />
                         ) : (
-                          <Upload className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <Icon icon={Upload} size={20} className="text-muted-foreground" />
                         )}
                         <div>
                           <span className="text-sm text-muted-foreground block">Manual da marca</span>
@@ -846,7 +845,7 @@ export default function PublicOnboardingPage() {
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-foreground">Dados Pessoais</h3>
                   <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("personal_data")}>
-                    <Pencil className="h-3 w-3 mr-1" />Editar
+                    <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -862,7 +861,7 @@ export default function PublicOnboardingPage() {
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-foreground">Dados da Loja</h3>
                   <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("store_data")}>
-                    <Pencil className="h-3 w-3 mr-1" />Editar
+                    <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -877,7 +876,7 @@ export default function PublicOnboardingPage() {
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-foreground">Perfil da Loja</h3>
                   <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("store_profile")}>
-                    <Pencil className="h-3 w-3 mr-1" />Editar
+                    <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -896,7 +895,7 @@ export default function PublicOnboardingPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-foreground">App Shopify</h3>
                     <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("create_shopify_app")}>
-                      <Pencil className="h-3 w-3 mr-1" />Editar
+                      <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                     </Button>
                   </div>
                   <p className="text-sm text-muted-foreground">Instrucoes visualizadas</p>
@@ -909,7 +908,7 @@ export default function PublicOnboardingPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-foreground">Codigo Colaborador</h3>
                     <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("collaborator_code")}>
-                      <Pencil className="h-3 w-3 mr-1" />Editar
+                      <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -924,13 +923,13 @@ export default function PublicOnboardingPage() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-foreground">Identidade Visual</h3>
                     <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("visual_identity")}>
-                      <Pencil className="h-3 w-3 mr-1" />Editar
+                      <Icon icon={Pencil} customSize={12} className="mr-1" />Editar
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {formData.logo_url && <div><p className="text-xs text-muted-foreground">Logo</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" />{uploadedFiles.logo?.fileName || "Arquivo enviado"}</p></div>}
-                    {formData.design_direction_file_url && <div><p className="text-xs text-muted-foreground">Referencia visual</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{uploadedFiles.design?.fileName || "Arquivo enviado"}</p></div>}
-                    {formData.brand_manual_url && <div><p className="text-xs text-muted-foreground">Manual da marca</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{uploadedFiles.brand_manual?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.logo_url && <div><p className="text-xs text-muted-foreground">Logo</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><Icon icon={ImageIcon} customSize={14} />{uploadedFiles.logo?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.design_direction_file_url && <div><p className="text-xs text-muted-foreground">Referencia visual</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><Icon icon={FileText} customSize={14} />{uploadedFiles.design?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.brand_manual_url && <div><p className="text-xs text-muted-foreground">Manual da marca</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><Icon icon={FileText} customSize={14} />{uploadedFiles.brand_manual?.fileName || "Arquivo enviado"}</p></div>}
                     {formData.design_direction_text && <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Direcao de design</p><p className="text-sm whitespace-pre-wrap">{formData.design_direction_text}</p></div>}
                     {formData.additional_notes && <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Observacoes</p><p className="text-sm whitespace-pre-wrap">{formData.additional_notes}</p></div>}
                   </div>
@@ -941,8 +940,8 @@ export default function PublicOnboardingPage() {
 
           {/* Navigation */}
           <div className="flex justify-between pt-6 border-t">
-            <Button variant="outline" onClick={prevStep} disabled={currentStepIndex === 0}>
-              <ChevronLeft className="h-4 w-4 mr-1" />
+            <Button variant="secondary" onClick={prevStep} disabled={currentStepIndex === 0}>
+              <Icon icon={ChevronLeft} size={16} className="mr-1" />
               Voltar
             </Button>
 
@@ -955,18 +954,18 @@ export default function PublicOnboardingPage() {
               {!isLastStep ? (
                 <Button onClick={nextStep}>
                   Proximo
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <Icon icon={ChevronRight} size={16} className="ml-1" />
                 </Button>
               ) : (
                 <Button onClick={handleSubmit} disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                       Enviando...
                     </>
                   ) : (
                     <>
-                      <Send className="h-4 w-4 mr-2" />
+                      <Icon icon={Send} size={16} className="mr-2" />
                       Enviar Cadastro
                     </>
                   )}

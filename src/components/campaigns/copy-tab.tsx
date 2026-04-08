@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2, Store, Check, Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
@@ -163,7 +164,7 @@ function InlineStoreSelector({
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Icon icon={Search} customSize={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input
             placeholder="Buscar loja..."
             value={search}
@@ -245,9 +246,9 @@ function InlineStoreSelector({
                     }`}
                   >
                     {isSelected ? (
-                      <Check className="h-4 w-4" />
+                      <Icon icon={Check} size={16} />
                     ) : (
-                      <Store className="h-4 w-4" />
+                      <Icon icon={Store} size={16} />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -281,7 +282,7 @@ function InlineStoreSelector({
                   disabled={page === 0}
                   className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700/40 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <Icon icon={ChevronLeft} customSize={14} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => (
                   <button
@@ -303,7 +304,7 @@ function InlineStoreSelector({
                   disabled={page === totalPages - 1}
                   className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700/40 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                 >
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <Icon icon={ChevronRight} customSize={14} />
                 </button>
               </div>
             </div>
@@ -497,7 +498,7 @@ export function CopyTab() {
   return (
     <div className="space-y-8">
       {/* ========== FORM: Gerar Copies ========== */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1">
           Gerar Copies de Campanha
         </h2>
@@ -598,11 +599,11 @@ export function CopyTab() {
           <Button
             type="submit"
             disabled={!canSubmit}
-            className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20"
+            className="bg-primary hover:bg-primary/85 text-white"
           >
             {submitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                 Gerando...
               </>
             ) : (
@@ -620,7 +621,7 @@ export function CopyTab() {
 
         {loadingHistory ? (
           <div className="flex items-center justify-center py-12 text-slate-500 dark:text-slate-400">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            <Icon icon={Loader2} size={20} className="animate-spin mr-2" />
             Carregando historico...
           </div>
         ) : (

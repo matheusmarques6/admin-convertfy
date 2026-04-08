@@ -9,6 +9,7 @@ import {
   FileText,
   RefreshCw,
 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -77,10 +78,10 @@ const variantStyles: Record<
   },
   dark: {
     active: {
-      card: "border-[#05AFF2]/20 bg-[#05AFF2]/5",
-      icon: "text-[#05AFF2]",
+      card: "border-[#4E62D8]/20 bg-[#4E62D8]/5",
+      icon: "text-[#4E62D8]",
       text: "text-sm font-medium text-white",
-      progress: "[&>div]:bg-[#05AFF2]",
+      progress: "[&>div]:bg-[#4E62D8]",
       muted: "text-white/60",
     },
     done: {
@@ -160,7 +161,7 @@ export function ReportJobCard({
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-2">
-              <BarChart3 className={cn("w-4 h-4", s.icon)} />
+              <Icon icon={BarChart3} size={16} className={s.icon} />
               <span className={s.text}>Relatorio: {dateLabel}</span>
             </div>
             <Button
@@ -169,7 +170,7 @@ export function ReportJobCard({
               className="h-6 w-6 -mt-1 -mr-1"
               onClick={onClose}
             >
-              <X className="w-3.5 h-3.5" />
+              <Icon icon={X} customSize={14} />
             </Button>
           </div>
           <Progress value={progress} className={cn("h-2 mb-2", s.progress)} />
@@ -191,7 +192,7 @@ export function ReportJobCard({
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2">
-              <CheckCircle className={cn("w-4 h-4", s.icon)} />
+              <Icon icon={CheckCircle} size={16} className={s.icon} />
               <span className={s.text}>Relatorio pronto: {dateLabel}</span>
             </div>
           </div>
@@ -202,11 +203,11 @@ export function ReportJobCard({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="default"
+              variant="primary"
               className="h-7 text-xs"
               onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
             >
-              <FileText className="w-3 h-3 mr-1" />
+              <Icon icon={FileText} customSize={12} className="mr-1" />
               Abrir Relatorio
             </Button>
             <Button
@@ -215,7 +216,7 @@ export function ReportJobCard({
               className="h-7 text-xs ml-auto"
               onClick={onClose}
             >
-              <X className="w-3 h-3" />
+              <Icon icon={X} customSize={12} />
             </Button>
           </div>
         </CardContent>
@@ -234,7 +235,7 @@ export function ReportJobCard({
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2">
-              <AlertTriangle className={cn("w-4 h-4", s.icon)} />
+              <Icon icon={AlertTriangle} size={16} className={s.icon} />
               <span className={s.text}>
                 {isFailed ? "Relatorio falhou" : "Relatorio parcial"}: {dateLabel}
               </span>
@@ -248,21 +249,21 @@ export function ReportJobCard({
             {isPartial && (
               <Button
                 size="sm"
-                variant="default"
+                variant="primary"
                 className="h-7 text-xs"
                 onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
               >
-                <FileText className="w-3 h-3 mr-1" />
+                <Icon icon={FileText} customSize={12} className="mr-1" />
                 Ver Relatorio Parcial
               </Button>
             )}
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               className="h-7 text-xs"
               onClick={onRetry}
             >
-              <RefreshCw className="w-3 h-3 mr-1" />
+              <Icon icon={RefreshCw} customSize={12} className="mr-1" />
               Tentar Novamente
             </Button>
             <Button
@@ -271,7 +272,7 @@ export function ReportJobCard({
               className="h-7 text-xs ml-auto"
               onClick={onClose}
             >
-              <X className="w-3 h-3" />
+              <Icon icon={X} customSize={12} />
             </Button>
           </div>
         </CardContent>
@@ -286,7 +287,7 @@ export function ReportJobCard({
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className={cn("flex items-center gap-2", s.text)}>
-            <BarChart3 className={cn("w-4 h-4", s.icon)} />
+            <Icon icon={BarChart3} size={16} className={s.icon} />
             <span>
               Relatorio{" "}
               {job.status === "cancelled"
@@ -298,7 +299,7 @@ export function ReportJobCard({
             </span>
           </div>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="w-3.5 h-3.5" />
+            <Icon icon={X} customSize={14} />
           </Button>
         </div>
       </CardContent>

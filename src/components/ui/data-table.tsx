@@ -1,171 +1,523 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { EmptyState } from "@/components/ui/empty-state"
+import React from "react"
+import { ArrowUp, ArrowDown, ChevronRight, Loader2, Inbox } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
+import { Button } from "@/components/ui/button"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
-type SortDirection = "asc" | "desc" | null
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-interface Column<T> {
-  key: string
+export interface ColumnDef<T> {
+  /** Key to access value from the row object */
+  accessorKey: keyof T & string
+  /** Header label */
   header: string
-  render: (item: T) => React.ReactNode
+  /** Column type — determines alignment and formatting */
+  type?: "text" | "number" | "currency" | "percentage" | "date" | "badge" | "custom"
+  /** Custom cell renderer (overrides type-based formatting) */
+  cell?: (row: T) => React.ReactNode
+  /** Custom header renderer */
+  headerCell?: () => React.ReactNode
+  /** Priority on mobile card: title | badge | detail | hidden */
+  mobilePriority?: "title" | "badge" | "detail" | "hidden"
+  /** Column width (desktop, e.g. "200px" or "20%") */
+  width?: string
+  /** Sortable column */
   sortable?: boolean
-  sortFn?: (a: T, b: T) => number
-  className?: string
-  headerClassName?: string
+  /** Hide this column on tablet (768-1039px) */
+  hideOnTablet?: boolean
 }
 
-interface DataTableProps<T> {
+export interface DataTableProps<T> {
+  columns: ColumnDef<T>[]
   data: T[]
-  columns: Column<T>[]
-  keyExtractor: (item: T) => string
-  pageSize?: number
-  emptyTitle?: string
+  onRowClick?: (row: T) => void
+  pagination?: {
+    page: number
+    pageSize: number
+    total: number
+    onPageChange: (page: number) => void
+    /** Mobile: use "Carregar mais" instead of page navigation */
+    loadMore?: boolean
+    onLoadMore?: () => void
+    isLoadingMore?: boolean
+  }
+  loading?: boolean
+  emptyMessage?: string
   emptyDescription?: string
-  emptyIcon?: LucideIcon
-  onRowClick?: (item: T) => void
-  className?: string
+  sorting?: { column: string; direction: "asc" | "desc" } | null
+  onSortChange?: (column: string) => void
+  /** Unique key for each row (default: "id") */
+  rowKey?: keyof T & string
 }
 
-export function DataTable<T>({
-  data,
-  columns,
-  keyExtractor,
-  pageSize = 10,
-  emptyTitle = "Nenhum item encontrado",
-  emptyDescription,
-  emptyIcon,
-  onRowClick,
-  className,
-}: DataTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<SortDirection>(null)
-  const [page, setPage] = useState(0)
+// ---------------------------------------------------------------------------
+// Format helpers
+// ---------------------------------------------------------------------------
 
-  function handleSort(key: string) {
-    if (sortKey === key) {
-      if (sortDir === "asc") setSortDir("desc")
-      else if (sortDir === "desc") { setSortKey(null); setSortDir(null) }
-      else setSortDir("asc")
-    } else {
-      setSortKey(key)
-      setSortDir("asc")
+const numberFmt = new Intl.NumberFormat("pt-BR")
+const currencyFmt = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+const dateFmt = new Intl.DateTimeFormat("pt-BR")
+
+function formatCell(value: unknown, type?: string): React.ReactNode {
+  if (value == null || value === "") return "—"
+  switch (type) {
+    case "number":
+      return numberFmt.format(Number(value))
+    case "currency":
+      return `R$ ${currencyFmt.format(Number(value))}`
+    case "percentage":
+      return `${numberFmt.format(Number(value))}%`
+    case "date": {
+      const d = typeof value === "string" ? new Date(value) : value
+      if (d instanceof Date && !isNaN(d.getTime())) return dateFmt.format(d)
+      return String(value)
     }
-    setPage(0)
+    default:
+      return String(value)
+  }
+}
+
+function isNumericType(type?: string) {
+  return type === "number" || type === "currency" || type === "percentage"
+}
+
+// ---------------------------------------------------------------------------
+// Mobile column heuristics
+// ---------------------------------------------------------------------------
+
+interface ResolvedMobile<T> {
+  titleCol: ColumnDef<T> | null
+  badgeCol: ColumnDef<T> | null
+  detailCols: ColumnDef<T>[]
+}
+
+function resolveMobileColumns<T>(columns: ColumnDef<T>[]): ResolvedMobile<T> {
+  const hasExplicit = columns.some((c) => c.mobilePriority)
+  if (hasExplicit) {
+    return {
+      titleCol: columns.find((c) => c.mobilePriority === "title") ?? null,
+      badgeCol: columns.find((c) => c.mobilePriority === "badge") ?? null,
+      detailCols: columns.filter((c) => c.mobilePriority === "detail"),
+    }
   }
 
-  const sortedData = useMemo(() => {
-    if (!sortKey || !sortDir) return data
+  // Auto-heuristic
+  const textCols = columns.filter((c) => !c.type || c.type === "text")
+  const badgeCols = columns.filter((c) => c.type === "badge")
+  const numCols = columns.filter((c) => isNumericType(c.type))
+  const dateCols = columns.filter((c) => c.type === "date")
 
-    const col = columns.find(c => c.key === sortKey)
-    if (!col?.sortFn) return data
+  const titleCol = textCols[0] ?? null
+  const badgeCol = badgeCols[0] ?? null
 
-    return [...data].sort((a, b) => {
-      const result = col.sortFn!(a, b)
-      return sortDir === "desc" ? -result : result
-    })
-  }, [data, sortKey, sortDir, columns])
+  const used = new Set([titleCol, badgeCol].filter(Boolean))
+  const remaining = [...numCols, ...dateCols, ...columns.filter(
+    (c) => !used.has(c) && !numCols.includes(c) && !dateCols.includes(c)
+  )].filter((c) => !used.has(c))
 
-  const totalPages = Math.ceil(sortedData.length / pageSize)
-  const pagedData = sortedData.slice(page * pageSize, (page + 1) * pageSize)
+  return { titleCol, badgeCol, detailCols: remaining.slice(0, 4) }
+}
 
-  function SortIcon({ columnKey }: { columnKey: string }) {
-    if (sortKey !== columnKey) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />
-    if (sortDir === "asc") return <ArrowUp className="ml-1 h-3 w-3 text-foreground" />
-    return <ArrowDown className="ml-1 h-3 w-3 text-foreground" />
+// ---------------------------------------------------------------------------
+// DataTable — public component
+// ---------------------------------------------------------------------------
+
+export function DataTable<T>(props: DataTableProps<T>) {
+  const isMobile = useMediaQuery("(max-width: 767px)")
+
+  if (props.loading) {
+    return isMobile
+      ? <MobileSkeleton />
+      : <DesktopSkeleton columns={props.columns} />
   }
 
-  if (data.length === 0) {
-    return (
-      <EmptyState
-        icon={emptyIcon}
-        title={emptyTitle}
-        description={emptyDescription}
-        className={className}
-      />
-    )
+  if (!props.data.length) {
+    return <EmptyState message={props.emptyMessage} description={props.emptyDescription} />
   }
+
+  return isMobile ? <MobileCardStack {...props} /> : <DesktopTable {...props} />
+}
+
+// ---------------------------------------------------------------------------
+// Desktop Table (>= 768px)
+// ---------------------------------------------------------------------------
+
+function DesktopTable<T>({
+  columns,
+  data,
+  onRowClick,
+  pagination,
+  sorting,
+  onSortChange,
+  rowKey,
+}: DataTableProps<T>) {
+  const start = pagination ? (pagination.page - 1) * pagination.pageSize + 1 : 1
+  const end = pagination
+    ? Math.min(pagination.page * pagination.pageSize, pagination.total)
+    : data.length
+  const total = pagination?.total ?? data.length
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
+    <div>
+      <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-[#242836]">
               {columns.map((col) => (
-                <TableHead
-                  key={col.key}
+                <th
+                  key={col.accessorKey}
+                  style={col.width ? { width: col.width } : undefined}
                   className={cn(
-                    col.sortable && "cursor-pointer select-none",
-                    col.headerClassName
+                    "px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.04em]",
+                    "text-gray-500 dark:text-[#5C6378]",
+                    "border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+                    "text-left",
+                    isNumericType(col.type) && "text-right",
+                    col.sortable && "cursor-pointer select-none hover:text-gray-700 dark:hover:text-[#8B92A5]",
+                    col.hideOnTablet && "hidden lg:table-cell"
                   )}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  onClick={
+                    col.sortable && onSortChange
+                      ? () => onSortChange(col.accessorKey)
+                      : undefined
+                  }
                 >
-                  <div className="flex items-center">
-                    {col.header}
-                    {col.sortable && <SortIcon columnKey={col.key} />}
-                  </div>
-                </TableHead>
+                  {col.headerCell ? col.headerCell() : col.header}
+                  {col.sortable && sorting?.column === col.accessorKey && (
+                    <Icon
+                      icon={sorting.direction === "asc" ? ArrowUp : ArrowDown}
+                      customSize={14}
+                      className="inline ml-1 -mt-0.5"
+                    />
+                  )}
+                </th>
               ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pagedData.map((item) => (
-              <TableRow
-                key={keyExtractor(item)}
-                className={cn(onRowClick && "cursor-pointer")}
-                onClick={() => onRowClick?.(item)}
-              >
-                {columns.map((col) => (
-                  <TableCell key={col.key} className={col.className}>
-                    {col.render(item)}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row, i) => {
+              const key = rowKey ? String(row[rowKey]) : String(i)
+              return (
+                <tr
+                  key={key}
+                  className={cn(
+                    "border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] last:border-b-0",
+                    "hover:bg-[rgba(0,0,0,0.02)] dark:hover:bg-[rgba(255,255,255,0.02)]",
+                    "transition-colors duration-150",
+                    onRowClick && "cursor-pointer"
+                  )}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
+                  {columns.map((col) => (
+                    <td
+                      key={col.accessorKey}
+                      className={cn(
+                        "px-4 py-3 text-sm",
+                        isNumericType(col.type)
+                          ? "text-right font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]"
+                          : "text-left text-gray-700 dark:text-[#8B92A5]",
+                        col.hideOnTablet && "hidden lg:table-cell"
+                      )}
+                    >
+                      {col.cell
+                        ? col.cell(row)
+                        : formatCell(row[col.accessorKey], col.type)}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Mostrando {page * pageSize + 1}-{Math.min((page + 1) * pageSize, sortedData.length)} de {sortedData.length}
-          </p>
+      {/* Desktop pagination — Anterior / Próximo only (Rule 13) */}
+      {pagination && (
+        <div className="flex items-center justify-between px-1 py-3">
+          <span className="text-sm text-gray-500 dark:text-[#5C6378]">
+            Mostrando {start}–{end} de {total} resultados
+          </span>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
-              onClick={() => setPage(p => p - 1)}
-              disabled={page === 0}
+              disabled={pagination.page <= 1}
+              onClick={() => pagination.onPageChange(pagination.page - 1)}
             >
-              <ChevronLeft className="h-4 w-4" />
+              Anterior
             </Button>
-            <span className="text-sm text-muted-foreground">
-              {page + 1} / {totalPages}
-            </span>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
-              onClick={() => setPage(p => p + 1)}
-              disabled={page >= totalPages - 1}
+              disabled={end >= total}
+              onClick={() => pagination.onPageChange(pagination.page + 1)}
             >
-              <ChevronRight className="h-4 w-4" />
+              Próximo
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mobile Card Stack (< 768px) — Rule 22
+// ---------------------------------------------------------------------------
+
+function MobileCardStack<T>({
+  columns,
+  data,
+  onRowClick,
+  pagination,
+  rowKey,
+}: DataTableProps<T>) {
+  const { titleCol, badgeCol, detailCols } = resolveMobileColumns(columns)
+  const end = pagination
+    ? Math.min(pagination.page * pagination.pageSize, pagination.total)
+    : data.length
+  const total = pagination?.total ?? data.length
+
+  return (
+    <div>
+      <div className="space-y-3 px-1">
+        {data.map((row, i) => {
+          const key = rowKey ? String(row[rowKey]) : String(i)
+          return (
+            <div
+              key={key}
+              className={cn(
+                "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
+                "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]",
+                "active:bg-gray-50 dark:active:bg-[#242836]",
+                "transition-colors duration-150",
+                onRowClick && "cursor-pointer"
+              )}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              {/* Header: title + badge + chevron */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {titleCol && (
+                    <span className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] truncate">
+                      {titleCol.cell
+                        ? titleCol.cell(row)
+                        : formatCell(row[titleCol.accessorKey], titleCol.type)}
+                    </span>
+                  )}
+                  {badgeCol && (
+                    <span className="shrink-0">
+                      {badgeCol.cell
+                        ? badgeCol.cell(row)
+                        : formatCell(row[badgeCol.accessorKey], badgeCol.type)}
+                    </span>
+                  )}
+                </div>
+                {onRowClick && (
+                  <Icon
+                    icon={ChevronRight}
+                    size={16}
+                    className="text-gray-400 dark:text-[#5C6378] shrink-0"
+                  />
+                )}
+              </div>
+
+              {/* Detail pairs: 2-column grid */}
+              {detailCols.length > 0 && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {detailCols.map((col) => (
+                    <div key={col.accessorKey}>
+                      <span className="text-[11px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">
+                        {col.header}
+                      </span>
+                      <span
+                        className={cn(
+                          "block text-sm mt-0.5",
+                          isNumericType(col.type)
+                            ? "font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]"
+                            : "text-gray-700 dark:text-[#8B92A5]"
+                        )}
+                      >
+                        {col.cell
+                          ? col.cell(row)
+                          : formatCell(row[col.accessorKey], col.type)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Mobile pagination — "Carregar mais" (Rule 22) */}
+      {pagination?.loadMore && (
+        <div className="mt-4 px-1">
+          <Button
+            variant="secondary"
+            size="lg"
+            className="w-full"
+            onClick={pagination.onLoadMore}
+            disabled={pagination.isLoadingMore || end >= total}
+          >
+            {pagination.isLoadingMore && (
+              <Icon icon={Loader2} size={16} className="animate-spin mr-2" />
+            )}
+            {end >= total
+              ? "Todos os resultados carregados"
+              : "Carregar mais"}
+          </Button>
+          <p className="text-xs text-center text-gray-400 dark:text-[#5C6378] mt-2">
+            {end} de {total} resultados
+          </p>
+        </div>
+      )}
+
+      {/* Fallback pagination if loadMore is not configured */}
+      {pagination && !pagination.loadMore && (
+        <div className="flex items-center justify-between px-1 py-3">
+          <span className="text-xs text-gray-500 dark:text-[#5C6378]">
+            {end} de {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={pagination.page <= 1}
+              onClick={() => pagination.onPageChange(pagination.page - 1)}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={end >= total}
+              onClick={() => pagination.onPageChange(pagination.page + 1)}
+            >
+              Próximo
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Loading skeletons
+// ---------------------------------------------------------------------------
+
+function DesktopSkeleton<T>({ columns }: { columns: ColumnDef<T>[] }) {
+  return (
+    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-[#242836]">
+            {columns.map((col) => (
+              <th
+                key={col.accessorKey}
+                className={cn(
+                  "px-4 py-3 border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+                  col.hideOnTablet && "hidden lg:table-cell"
+                )}
+              >
+                <div className="h-3 w-16 rounded bg-gray-200 dark:bg-[#2E3347] animate-pulse" />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <tr
+              key={i}
+              className="border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] last:border-b-0"
+            >
+              {columns.map((col) => (
+                <td
+                  key={col.accessorKey}
+                  className={cn(
+                    "px-4 py-3",
+                    col.hideOnTablet && "hidden lg:table-cell"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "h-4 rounded bg-gray-100 dark:bg-[#242836] animate-pulse",
+                      isNumericType(col.type) ? "w-20 ml-auto" : "w-32"
+                    )}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MobileSkeleton() {
+  return (
+    <div className="space-y-3 px-1">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4 dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27] animate-pulse"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-4 w-32 rounded bg-gray-200 dark:bg-[#2E3347]" />
+            <div className="h-5 w-16 rounded-[6px] bg-gray-100 dark:bg-[#242836]" />
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <div className="h-2.5 w-12 rounded bg-gray-100 dark:bg-[#242836] mb-1.5" />
+              <div className="h-4 w-20 rounded bg-gray-200 dark:bg-[#2E3347]" />
+            </div>
+            <div>
+              <div className="h-2.5 w-12 rounded bg-gray-100 dark:bg-[#242836] mb-1.5" />
+              <div className="h-4 w-16 rounded bg-gray-200 dark:bg-[#2E3347]" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Empty state — no icon-in-circle (Rule 1), minimal
+// ---------------------------------------------------------------------------
+
+function EmptyState({
+  message,
+  description,
+}: {
+  message?: string
+  description?: string
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4">
+      <Icon
+        icon={Inbox}
+        size={24}
+        className="text-gray-300 dark:text-[#5C6378] mb-3"
+      />
+      <p className="text-sm font-medium text-gray-500 dark:text-[#8B92A5]">
+        {message || "Nenhum resultado encontrado"}
+      </p>
+      {description && (
+        <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-1">
+          {description}
+        </p>
       )}
     </div>
   )

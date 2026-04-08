@@ -1,10 +1,10 @@
-import { Suspense } from "react"
-import { Plus, Users } from "lucide-react"
+import { Users } from "lucide-react"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
-import { TeamTable } from "@/components/team/team-table"
-import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { PageHeader } from "@/components/ui/page-header"
+import { TeamPageClient } from "@/components/team/team-page-client"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TeamPage")
@@ -19,7 +19,7 @@ async function getTeamMembers() {
     .select(`
       *,
       organization:organizations(id, name, slug),
-      profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role)
+      profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at)
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false })
@@ -30,11 +30,10 @@ async function getTeamMembers() {
   }
 
   const memberIds = (members || []).map((m) => m.id)
-
   if (memberIds.length === 0) return []
 
-  // Batch: fetch all features and store access in 2 queries instead of 2*N
-  const [featuresRes, accessRes] = await Promise.all([
+  // Batch: fetch features, store access, and client assignments
+  const [featuresRes, accessRes, clientsRes] = await Promise.all([
     supabase
       .from("org_member_features")
       .select("org_member_id, feature_key")
@@ -45,6 +44,10 @@ async function getTeamMembers() {
       .select("org_member_id, id")
       .in("org_member_id", memberIds)
       .eq("can_view", true),
+    supabase
+      .from("clients")
+      .select("id, account_manager_id")
+      .in("account_manager_id", memberIds),
   ])
 
   // Group features by member
@@ -61,106 +64,44 @@ async function getTeamMembers() {
     accessCountByMember.set(a.org_member_id, (accessCountByMember.get(a.org_member_id) || 0) + 1)
   })
 
+  // Count clients by member
+  const clientCountByMember = new Map<string, number>()
+  clientsRes.data?.forEach((c) => {
+    if (c.account_manager_id) {
+      clientCountByMember.set(c.account_manager_id, (clientCountByMember.get(c.account_manager_id) || 0) + 1)
+    }
+  })
+
   return (members || []).map((member) => ({
     ...member,
     enabled_features: featuresByMember.get(member.id) || [],
     store_access_count: accessCountByMember.get(member.id) || 0,
+    client_count: clientCountByMember.get(member.id) || 0,
   }))
-}
-
-async function getFeaturesCatalog() {
-  const supabase = await createClient()
-
-  const { data: features } = await supabase
-    .from("features_catalog")
-    .select("*")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true })
-
-  return features || []
-}
-
-async function getOrganizations() {
-  const supabase = await createClient()
-
-  const { data: orgs } = await supabase
-    .from("organizations")
-    .select("*")
-    .eq("is_active", true)
-    .order("name", { ascending: true })
-
-  return orgs || []
-}
-
-async function getStores() {
-  const supabase = await createClient()
-
-  const { data: stores } = await supabase
-    .from("client_stores")
-    .select(`
-      id,
-      store_name,
-      store_url,
-      platform,
-      client:clients(id, name)
-    `)
-    .eq("is_active", true)
-    .order("store_name", { ascending: true })
-
-  // Transform client from array to single object (Supabase quirk)
-  return (stores || []).map(s => ({
-    ...s,
-    client: Array.isArray(s.client) ? s.client[0] : s.client
-  }))
-}
-
-function TableSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-[400px] w-full" />
-    </div>
-  )
 }
 
 export default async function TeamPage() {
-  const [members, features, organizations, stores] = await Promise.all([
-    getTeamMembers(),
-    getFeaturesCatalog(),
-    getOrganizations(),
-    getStores(),
-  ])
+  const members = await getTeamMembers()
 
   return (
     <PagePermissionWrapper requiredFeatures={["team_control", "team_view"]}>
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 shrink-0">
-            <Users className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Equipe</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">Gerencie os membros da sua equipe e suas permissões</p>
-          </div>
-        </div>
-        <Button id="add-member-trigger" className="self-end sm:self-auto">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Membro
-        </Button>
-      </div>
-
-      {/* Table */}
-      <Suspense fallback={<TableSkeleton />}>
-        <TeamTable
-          members={members}
-          features={features}
-          organizations={organizations}
-          stores={stores}
+      <div className="space-y-6">
+        <PageHeader
+          icon={Users}
+          title="Equipe"
+          badge={members.length}
+          description="Visão operacional da equipe — carga de trabalho e atribuições"
+          actions={
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/admin/settings/team">
+                Gerenciar Permissões
+              </Link>
+            </Button>
+          }
         />
-      </Suspense>
-    </div>
+
+        <TeamPageClient members={members} />
+      </div>
     </PagePermissionWrapper>
   )
 }

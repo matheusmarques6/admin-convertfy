@@ -65,10 +65,10 @@ export function StoreOnboardingCard({
 
         <div className="flex items-center gap-2 mt-3">
           {platform && (
-            <Badge variant="outline" className="text-[10px]">{platform}</Badge>
+            <Badge variant="neutral" showDot={false} className="text-[10px]">{platform}</Badge>
           )}
           {formComplete ? (
-            <Badge variant="success" className="text-[10px]">
+            <Badge variant="positive" className="text-[10px]">
               <CheckCircle2 className="h-3 w-3 mr-1" />
               Formulário preenchido
             </Badge>

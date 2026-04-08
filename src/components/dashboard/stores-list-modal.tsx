@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { Trophy, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -51,9 +52,9 @@ export function StoresListModal({ stores, variant, open, onOpenChange }: StoresL
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             {isTop ? (
-              <Trophy className="h-4 w-4 text-success" />
+              <Icon icon={Trophy} size={16} className="text-success" />
             ) : (
-              <TrendingDown className="h-4 w-4 text-destructive" />
+              <Icon icon={TrendingDown} size={16} className="text-destructive" />
             )}
             {isTop ? "Top Lojas \u2014 Todas" : "Atencao Necessaria \u2014 Todas"}
           </DialogTitle>
@@ -108,25 +109,25 @@ export function StoresListModal({ stores, variant, open, onOpenChange }: StoresL
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-3 border-t border-border">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={page <= 1}
                   onClick={() => setPage(p => p - 1)}
                 >
-                  <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+                  <Icon icon={ChevronLeft} customSize={14} className="mr-1" />
                   Anterior
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   Pagina {page} de {totalPages}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={page >= totalPages}
                   onClick={() => setPage(p => p + 1)}
                 >
                   Proximo
-                  <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                  <Icon icon={ChevronRight} customSize={14} className="ml-1" />
                 </Button>
               </div>
             )}

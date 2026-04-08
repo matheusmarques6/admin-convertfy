@@ -1,8 +1,9 @@
 "use client"
 
 import { Zap } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import {
   Table,
   TableBody,
@@ -73,7 +74,7 @@ export function StorePerformanceTables() {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Zap className="h-10 w-10 text-muted-foreground mb-3" />
+          <Icon icon={Zap} customSize={40} className="text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Nenhum dado encontrado neste período</p>
           <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
             Não há dados de campanhas ou flows para o período selecionado.
@@ -88,7 +89,7 @@ export function StorePerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {hasCampaigns && (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Campanhas recentes</CardTitle>
           </CardHeader>
@@ -140,7 +141,7 @@ export function StorePerformanceTables() {
 
       {/* Top Flows Table */}
       {hasFlows && (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Flows com melhor desempenho</CardTitle>
           </CardHeader>
@@ -164,9 +165,7 @@ export function StorePerformanceTables() {
                         <div className="font-medium truncate" title={f.name}>
                           {f.name}
                         </div>
-                        <Badge variant={f.status === "live" ? "success" : "secondary"} className="text-xs mt-1">
-                          {f.status}
-                        </Badge>
+                        <StatusBadge status={f.status === "live" ? "live" : "inactive"} className="text-xs mt-1" />
                       </TableCell>
                       <TableCell className="text-right">
                         {(delivered).toLocaleString("pt-BR")}

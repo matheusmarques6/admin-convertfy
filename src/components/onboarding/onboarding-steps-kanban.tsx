@@ -410,7 +410,7 @@ export function OnboardingStepsKanban() {
         )}
 
         <div className="ml-auto">
-          <Button variant="outline" size="sm" className="h-8" onClick={fetchSteps}>
+          <Button variant="secondary" size="sm" className="h-8" onClick={fetchSteps}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Atualizar
             {realtimeConnected && (
@@ -439,7 +439,7 @@ export function OnboardingStepsKanban() {
                   <div className="flex items-center gap-2">
                     <span style={{ color: column.color }}>{column.icon}</span>
                     <h3 className="font-semibold text-sm">{column.title}</h3>
-                    <Badge variant="secondary" className="rounded-full ml-auto">
+                    <Badge variant="neutral" className="ml-auto">
                       {columnSteps.length}
                     </Badge>
                   </div>

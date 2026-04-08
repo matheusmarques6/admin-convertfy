@@ -1,6 +1,7 @@
 "use client"
 
 import { Info } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   isSettlingPeriod,
   ATTRIBUTION_SETTLING_DAYS,
@@ -22,7 +23,7 @@ export function SettlingIndicator({ period }: SettlingIndicatorProps) {
       role="status"
       className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-slate-500 dark:text-slate-400"
     >
-      <Info className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
+      <Icon icon={Info} customSize={14} className="text-slate-400 dark:text-slate-500" />
       <span>
         Atribuicao de receita e preliminar — valores finais estabilizam em ate{" "}
         {ATTRIBUTION_SETTLING_DAYS} dias.

@@ -4,115 +4,205 @@
 
 @layer base {
   :root {
-    --background: 220 14% 96%;
-    --foreground: 222 47% 11%;
+    /* ═══ FONTES ═══ */
+    --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: var(--font-geist-mono), 'SF Mono', 'Fira Code', monospace;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    /* ═══ BRAND ═══ */
+    --brand-50: #EEF0FB;
+    --brand-100: #C7CDEF;
+    --brand-200: #A8B2EE;
+    --brand-300: #7B8DE5;
+    --brand-400: #4E62D8;
+    --brand-500: #2137B6;
+    --brand-600: #1A2D96;
+    --brand-700: #0E1F73;
+    --brand-800: #041366;
+    --brand-900: #020B3D;
+    --brand-gradient: linear-gradient(90deg, #4E62D8, #2137B6, #041366);
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    /* ═══ GRAY SCALE ═══ */
+    --gray-white: #FFFFFF;
+    --gray-25: #FCFCFD;
+    --gray-50: #F8FAFC;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-300: #D1D5DB;
+    --gray-400: #9CA3AF;
+    --gray-500: #6B7280;
+    --gray-600: #4B5563;
+    --gray-700: #374151;
+    --gray-800: #1F2937;
+    --gray-900: #111827;
 
-    --primary: 217 91% 53%;
-    --primary-foreground: 0 0% 100%;
+    /* ═══ SEMANTIC (tinted bg + dark text — pesquisa Stripe/Linear) ═══ */
+    --positive-bg: #ECFDF5;
+    --positive-text: #065F46;
+    --positive-border: #A7F3D0;
+    --negative-bg: #FEF2F2;
+    --negative-text: #991B1B;
+    --negative-border: #FECACA;
+    --warning-bg: #FFFBEB;
+    --warning-text: #92400E;
+    --warning-border: #FDE68A;
+    --neutral-bg: #F3F4F6;
+    --neutral-text: #374151;
+    --neutral-border: #E5E7EB;
+    --info-bg: #EEF0FB;
+    --info-text: #2137B6;
+    --info-border: #C7CDEF;
 
-    --secondary: 214 20% 94%;
-    --secondary-foreground: 222 47% 11%;
+    /* ═══ BORDERS ═══ */
+    --border-color: rgba(0,0,0,0.08);
+    --border-hover: rgba(0,0,0,0.12);
 
-    --muted: 214 20% 94%;
-    --muted-foreground: 215 16% 47%;
+    /* ═══ CHANNEL COLORS ═══ */
+    --channel-email: #4E62D8;
+    --channel-sms: #065F46;
+    --channel-push: #7C3AED;
+    --channel-push-bg: #F3E8FF;
+    --channel-whatsapp: #146B3A;
+    --channel-whatsapp-bg: #E6F9EC;
 
-    --accent: 214 20% 94%;
-    --accent-foreground: 222 47% 11%;
+    /* ═══ ACCENT ═══ */
+    --accent-amber: #D97706;
+    --accent-red: #DC2626;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    /* ═══ SHADOWS (layered, max 0.06 alpha — auditoria Shopify/Stripe) ═══ */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.05);
+    --shadow-md: 0 2px 4px rgba(0,0,0,0.03), 0 4px 6px rgba(0,0,0,0.05);
+    --shadow-lg: 0 1px 2px rgba(0,0,0,0.03), 0 4px 8px rgba(0,0,0,0.04), 0 12px 24px rgba(0,0,0,0.06);
 
-    --success: 160 84% 39%;
-    --success-foreground: 0 0% 100%;
+    /* ═══ BORDER RADIUS (4 tokens — Regra auditoria profissional) ═══ */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-pill: 9999px;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    /* ═══ FOCUS RING (WCAG 2.4.7 — Regra 10 do DS) ═══ */
+    --ring-brand: 0 0 0 2px #4E62D8;
 
-    --info: 196 97% 49%;
-    --info-foreground: 0 0% 100%;
+    /* ═══ TRANSITION ═══ */
+    --transition: 150ms cubic-bezier(0.16, 1, 0.3, 1);
 
-    --mrr: 237 87% 55%;
-    --mrr-foreground: 0 0% 100%;
+    /* ═══ SHADCN/UI MAPPINGS ═══ */
+    --background: var(--gray-white);
+    --foreground: var(--gray-900);
+    --card: var(--gray-white);
+    --card-foreground: var(--gray-900);
+    --popover: var(--gray-white);
+    --popover-foreground: var(--gray-900);
+    --primary: var(--brand-400);
+    --primary-foreground: #FFFFFF;
+    --secondary: var(--gray-100);
+    --secondary-foreground: var(--gray-700);
+    --muted: var(--gray-50);
+    --muted-foreground: var(--gray-500);
+    --accent: var(--gray-50);
+    --accent-foreground: var(--gray-900);
+    --destructive: var(--negative-bg);
+    --destructive-foreground: var(--negative-text);
+    --border: rgba(0,0,0,0.08);
+    --input: rgba(0,0,0,0.08);
+    --ring: var(--brand-400);
+    --radius: var(--radius-md);
 
-    --border: 220 13% 86%;
-    --input: 220 13% 86%;
-    --ring: 217 91% 53%;
+    /* ═══ SIDEBAR (DS v3.0 — light bg, brand active) ═══ */
+    --sidebar-background: #FFFFFF;
+    --sidebar-foreground: var(--gray-600);
+    --sidebar-primary: var(--brand-400);
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: var(--brand-50);
+    --sidebar-accent-foreground: var(--brand-400);
+    --sidebar-border: rgba(0,0,0,0.08);
+    --sidebar-ring: var(--brand-400);
+    --sidebar-muted: var(--gray-50);
+    --sidebar-muted-foreground: var(--gray-400);
 
-    --radius: 0.5rem;
-
-    /* Semantic color HSL for status indicators */
-    --success-h: 160; --success-s: 84%; --success-l: 39%;
-    --warning-h: 38;  --warning-s: 92%; --warning-l: 50%;
-    --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 53%;
-    --info-h: 196;    --info-s: 97%;  --info-l: 49%;
-    --mrr-h: 237;     --mrr-s: 87%;  --mrr-l: 55%;
+    /* ═══ CHART COLORS ═══ */
+    --chart-1: var(--brand-400);
+    --chart-2: var(--channel-sms);
+    --chart-3: var(--accent-amber);
+    --chart-4: var(--channel-push);
+    --chart-5: var(--accent-red);
   }
 
-  .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 20% 98%;
+  /* ═══ DARK MODE (Regra 11 do DS — elevated surfaces get LIGHTER) ═══ */
+  .dark,
+  [data-theme="dark"] {
+    --dark-bg: #0F1117;
+    --dark-surface: #1A1D27;
+    --dark-surface-elevated: #242836;
+    --dark-surface-hover: #2A2F3D;
+    --dark-text: #EAEDF3;
+    --dark-text-secondary: #8B92A5;
+    --dark-text-muted: #5C6378;
+    --dark-border: rgba(255,255,255,0.08);
+    --dark-border-hover: rgba(255,255,255,0.14);
+    --dark-border-focus: rgba(90,110,224,0.4);
+    --dark-brand: #7B8CEA;
+    --dark-brand-hover: #6A7CE0;
+    --dark-brand-muted: rgba(123,140,234,0.12);
+    --dark-brand-gradient: linear-gradient(90deg, #7B8CEA, #5A6EE0, #3B50C8);
 
-    --card: 224 50% 8%;
-    --card-foreground: 210 20% 98%;
+    --dark-positive-bg: #052E1C;
+    --dark-positive-text: #6EE7B7;
+    --dark-positive-border: rgba(110,231,183,0.15);
+    --dark-negative-bg: #3B1111;
+    --dark-negative-text: #FCA5A5;
+    --dark-negative-border: rgba(252,165,165,0.15);
+    --dark-warning-bg: #3B2506;
+    --dark-warning-text: #FCD34D;
+    --dark-warning-border: rgba(252,211,77,0.15);
+    --dark-info-bg: #141C3D;
+    --dark-info-text: #A8B8F0;
+    --dark-info-border: rgba(168,184,240,0.15);
 
-    --popover: 224 50% 8%;
-    --popover-foreground: 210 20% 98%;
+    --dark-chart-line: #7B8CEA;
+    --dark-chart-area: rgba(123,140,234,0.08);
+    --dark-chart-grid: rgba(255,255,255,0.04);
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
+    --ring-brand: 0 0 0 2px #7B8CEA;
 
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 20% 98%;
+    /* Remap shadcn/ui */
+    --background: var(--dark-bg);
+    --foreground: var(--dark-text);
+    --card: var(--dark-surface);
+    --card-foreground: var(--dark-text);
+    --popover: var(--dark-surface-elevated);
+    --popover-foreground: var(--dark-text);
+    --primary: var(--dark-brand);
+    --primary-foreground: #FFFFFF;
+    --secondary: var(--dark-surface);
+    --secondary-foreground: var(--dark-text-secondary);
+    --muted: var(--dark-surface);
+    --muted-foreground: var(--dark-text-muted);
+    --accent: var(--dark-surface-hover);
+    --accent-foreground: var(--dark-text);
+    --destructive: var(--dark-negative-bg);
+    --destructive-foreground: var(--dark-negative-text);
+    --border: var(--dark-border);
+    --input: var(--dark-border);
+    --ring: var(--dark-brand);
 
-    --muted: 215 28% 17%;
-    --muted-foreground: 217 10% 64%;
+    /* Sidebar dark (DS v3.0 — surface bg, brand accent) */
+    --sidebar-background: #1A1D27;
+    --sidebar-foreground: #8B92A5;
+    --sidebar-primary: #7B8CEA;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: rgba(123,140,234,0.12);
+    --sidebar-accent-foreground: #7B8CEA;
+    --sidebar-border: rgba(255,255,255,0.08);
+    --sidebar-ring: #7B8CEA;
+    --sidebar-muted: #242836;
+    --sidebar-muted-foreground: #5C6378;
 
-    --accent: 215 28% 17%;
-    --accent-foreground: 210 20% 98%;
-
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 160 84% 39%;
-    --success-foreground: 0 0% 100%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 213 30% 11%;
-
-    --info: 196 97% 49%;
-    --info-foreground: 0 0% 100%;
-
-    --mrr: 237 87% 55%;
-    --mrr-foreground: 0 0% 100%;
-
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 217 91% 60%;
-
-    /* Dark mode overrides */
-    --destructive-h: 0; --destructive-s: 62%; --destructive-l: 50%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 60%;
-  }
-
-  /* Portal override: keep brand cyan-blue for customer portal */
-  .portal-layout {
-    --primary: 197 96% 48%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 48%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
-  }
-  .dark .portal-layout {
-    --primary: 197 96% 55%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 55%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 55%;
+    /* Chart */
+    --chart-1: var(--dark-brand);
+    --chart-2: #6EE7B7;
+    --chart-3: #FCD34D;
+    --chart-4: #C4B5FD;
+    --chart-5: #FCA5A5;
   }
 }
 
@@ -120,174 +210,97 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
-
-  /* Light mode: subtle shadow on cards for depth */
-  :root .rounded-xl[class*="border"][class*="bg-card"] {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
-  }
-  .dark .rounded-xl[class*="border"][class*="bg-card"] {
-    box-shadow: none;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  /* Touch targets — mobile accessibility (Regra 14, 44px min) */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .touch-comfortable {
+    min-width: 48px;
+    min-height: 48px;
   }
 
-  .gradient-text {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #0284C7 0%, #05AFF2 100%);
+  /* Tabular numbers — OBRIGATÓRIO em toda tabela e KPI (Regra 4) */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 
-  .gradient-border {
-    position: relative;
+  /* Transition padrão do DS */
+  .transition-ds {
+    transition: all var(--transition);
   }
 
-  .gradient-border::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    padding: 1px;
-    background: linear-gradient(135deg, #0284C7 0%, #05AFF2 100%);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    border-radius: inherit;
+  /* Font mono — Geist Mono para dados numéricos */
+  .font-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
-  .glass {
-    backdrop-filter: blur(16px) saturate(180%);
-    background-color: hsl(var(--background) / 0.8);
+  /* Scrollbar hide para tabs e KPI scroll horizontal mobile */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
+  /* Scrollbar thin */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted)) transparent;
+    scrollbar-color: var(--gray-300) transparent;
   }
-
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
-
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted));
+    background-color: var(--gray-300);
     border-radius: 3px;
   }
-
-  /* ═══════════════════════════════════════════════
-     GLOW CARD SYSTEM — Clean card with subtle color accent
-     ═══════════════════════════════════════════════ */
-
-  .glow-card {
-    position: relative;
-    border-radius: 0.75rem;
-    overflow: visible;
+  .dark .scrollbar-thin {
+    scrollbar-color: var(--dark-surface-hover) transparent;
+  }
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--dark-surface-hover);
   }
 
-  /* Halo — disabled for clean look */
-  .glow-halo {
-    display: none;
+  /* Text balance */
+  .text-balance {
+    text-wrap: balance;
   }
 
-  /* Surface (main card layer) */
-  .glow-surface {
-    position: relative;
-    z-index: 1;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  /* Brand gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--brand-gradient);
   }
-
-  .glow-card:hover .glow-surface {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06);
-  }
-
-  /* Top accent line (thin 2px colored bar at top) */
-  .glow-line-top {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    border-radius: 0.75rem 0.75rem 0 0;
-    z-index: 2;
-  }
-
-  /* Hide blur and left lines — not needed for clean design */
-  .glow-line-top-blur,
-  .glow-line-left,
-  .glow-line-left-blur {
-    display: none;
-  }
-
-  /* ── Color accents ── */
-  .glow-card[data-color="success"] .glow-line-top {
-    background: hsl(var(--success-h), var(--success-s), var(--success-l));
-  }
-  .glow-card[data-color="warning"] .glow-line-top {
-    background: hsl(var(--warning-h), var(--warning-s), var(--warning-l));
-  }
-  .glow-card[data-color="destructive"] .glow-line-top {
-    background: hsl(var(--destructive-h), var(--destructive-s), var(--destructive-l));
-  }
-  .glow-card[data-color="primary"] .glow-line-top {
-    background: hsl(var(--primary-h), var(--primary-s), var(--primary-l));
-  }
-  .glow-card[data-color="info"] .glow-line-top {
-    background: hsl(var(--info-h), var(--info-s), var(--info-l));
-  }
-  .glow-card[data-color="mrr"] .glow-line-top {
-    background: hsl(var(--mrr-h), var(--mrr-s), var(--mrr-l));
-  }
-
-  /* Subtle intensity — thinner line */
-  .glow-card[data-intensity="subtle"] .glow-line-top {
-    opacity: 0.6;
-  }
-
-  /* ── Text glow — disabled for clean look ── */
-  .text-glow-success,
-  .text-glow-warning,
-  .text-glow-destructive,
-  .text-glow-primary,
-  .text-glow-mrr {
-    text-shadow: none;
-  }
-
-  /* ── Ambient background — disabled for clean look ── */
-  .ambient-mesh,
-  .ambient-noise {
-    display: none;
+  .dark .gradient-text {
+    background-image: var(--dark-brand-gradient);
   }
 }
 
-/* ═══════════════════════════════════════════════
-   SIDEBAR — Clean dark sidebar
-   ═══════════════════════════════════════════════ */
-
-.sidebar-container {
-  background: #0d1117;
-  border-right: 1px solid rgba(240, 246, 252, 0.06);
-}
 
 /* React Flow custom styles */
 .react-flow__node-custom {
-  @apply bg-card border border-border rounded-lg shadow-sm;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .react-flow__edge-custom {
-  @apply stroke-muted-foreground;
+  stroke: var(--muted-foreground);
 }

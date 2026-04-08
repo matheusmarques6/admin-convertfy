@@ -15,6 +15,7 @@ import {
   Link2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,44 +38,17 @@ const STEP_STATUS_CONFIG: Record<
   {
     label: string
     icon: typeof Clock
-    badgeClass: string
+    /** Status key to pass to StatusBadge */
+    badgeStatus: string
   }
 > = {
-  waiting: {
-    label: "Aguardando",
-    icon: Clock,
-    badgeClass: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-  },
-  pending: {
-    label: "Pendente",
-    icon: PlayCircle,
-    badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-  },
-  in_progress: {
-    label: "Em andamento",
-    icon: Loader2,
-    badgeClass: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
-  },
-  review: {
-    label: "Em revisao",
-    icon: Eye,
-    badgeClass: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
-  },
-  completed: {
-    label: "Concluido",
-    icon: CheckCircle2,
-    badgeClass: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  },
-  blocked: {
-    label: "Bloqueado",
-    icon: AlertCircle,
-    badgeClass: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  },
-  skipped: {
-    label: "Pulado",
-    icon: SkipForward,
-    badgeClass: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-  },
+  waiting: { label: "Aguardando", icon: Clock, badgeStatus: "pending" },
+  pending: { label: "Pendente", icon: PlayCircle, badgeStatus: "pending" },
+  in_progress: { label: "Em andamento", icon: Loader2, badgeStatus: "in_progress" },
+  review: { label: "Em revisao", icon: Eye, badgeStatus: "review" },
+  completed: { label: "Concluido", icon: CheckCircle2, badgeStatus: "completed" },
+  blocked: { label: "Bloqueado", icon: AlertCircle, badgeStatus: "critical" },
+  skipped: { label: "Pulado", icon: SkipForward, badgeStatus: "closed" },
 }
 
 // =============================================
@@ -203,7 +177,7 @@ export function OnboardingStepCard({
   className,
 }: OnboardingStepCardProps) {
   const statusConfig = STEP_STATUS_CONFIG[step.status]
-  const StatusIcon = statusConfig.icon
+  const _StatusIcon = statusConfig.icon
   const categoryLabel = CATEGORY_LABELS[step.category] ?? step.category
   const actions = getAvailableActions(step.status)
   const isBlockedOrWaiting = step.status === "waiting" || step.status === "blocked"
@@ -238,19 +212,19 @@ export function OnboardingStepCard({
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Status badge */}
-          <Badge
-            className={cn("text-[10px] gap-1 border-0", statusConfig.badgeClass)}
-          >
-            <StatusIcon className={cn("h-3 w-3", step.status === "in_progress" && "animate-spin")} />
-            {statusConfig.label}
-          </Badge>
+          <StatusBadge
+            status={statusConfig.badgeStatus}
+            label={statusConfig.label}
+            showDot={false}
+            className="text-[10px]"
+          />
           {/* Category badge */}
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="neutral" showDot={false} className="text-[10px]">
             {categoryLabel}
           </Badge>
           {/* Board context: "Onboarding" origin badge */}
           {context === "board" && (
-            <Badge variant="secondary" className="text-[10px] gap-1">
+            <Badge variant="neutral" className="text-[10px] gap-1">
               <Link2 className="h-3 w-3" />
               Onboarding
             </Badge>

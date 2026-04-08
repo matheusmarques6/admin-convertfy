@@ -5,7 +5,7 @@ import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
 import { sanitizeStoreResponse, validateCredentialField } from "@/lib/services/credentials.service"
-import { validateShopifyCredentials, validateKlaviyoCredentials } from "@/lib/services/credential-validator.service"
+import { validateShopifyCredentials, validateKlaviyoCredentials, validateOmnisendCredentials } from "@/lib/services/credential-validator.service"
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
 
@@ -144,8 +144,9 @@ async function runCredentialValidation(
 ): Promise<{
   shopify?: ValidationResult
   klaviyo?: ValidationResult
+  omnisend?: ValidationResult
 }> {
-  const results: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
+  const results: { shopify?: ValidationResult; klaviyo?: ValidationResult; omnisend?: ValidationResult } = {}
 
   // Validate Shopify if credentials are present in body
   const shopifyDomain = body.shopify_store_domain
@@ -166,6 +167,17 @@ async function runCredentialValidation(
     results.klaviyo = klaviyoResult
     storeData.klaviyo_validated_at = klaviyoResult.tested_at
     storeData.klaviyo_validation_error = klaviyoResult.valid ? null : klaviyoResult.error
+  }
+
+  // Validate Omnisend if credentials are present in body
+  const omnisendKey = body.omnisend_api_key
+  if (omnisendKey) {
+    log.info("Validating Omnisend credentials...")
+    const omnisendResult = await validateOmnisendCredentials(omnisendKey)
+    results.omnisend = omnisendResult
+    storeData.omnisend_validated_at = omnisendResult.tested_at
+    storeData.omnisend_validation_error = omnisendResult.valid ? null : omnisendResult.error
+    storeData.omnisend_has_reporting_access = omnisendResult.hasReportingAccess ?? false
   }
 
   return results

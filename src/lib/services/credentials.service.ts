@@ -33,6 +33,12 @@ const log = logger.child("CredentialsService")
 export const KLAVIYO_CREDENTIALS_FILTER =
   "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null"
 
+/**
+ * Supabase OR filter string for stores with Omnisend credentials.
+ */
+export const OMNISEND_CREDENTIALS_FILTER =
+  "omnisend_api_key.not.is.null"
+
 // Fields that must contain only ASCII printable characters (0x20-0x7E).
 // meta_access_token is excluded — it comes from OAuth callback, not manual input.
 const FIELDS_TO_VALIDATE: ReadonlySet<string> = new Set([
@@ -42,6 +48,7 @@ const FIELDS_TO_VALIDATE: ReadonlySet<string> = new Set([
   "klaviyo_api_key",
   "klaviyo_private_key",
   "klaviyo_public_key",
+  "omnisend_api_key",
 ])
 
 const ASCII_PRINTABLE = /^[\x20-\x7E]+$/
@@ -93,6 +100,8 @@ export interface StoreCredentials {
   klaviyo_private_key?: string
   klaviyo_public_key?: string
   klaviyo_list_id?: string
+  // Omnisend
+  omnisend_api_key?: string
   // Google Analytics
   ga4_property_id?: string
   ga4_credentials?: Record<string, string>
@@ -123,6 +132,7 @@ export interface IntegrationStatusEntry {
 export interface IntegrationStatus {
   shopify?: IntegrationStatusEntry
   klaviyo?: IntegrationStatusEntry
+  omnisend?: IntegrationStatusEntry
   meta?: IntegrationStatusEntry
   google_ads?: IntegrationStatusEntry
   google_calendar?: IntegrationStatusEntry
@@ -421,6 +431,10 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
       klaviyo_validation_error,
       klaviyo_missing_scopes,
       klaviyo_has_reporting_access,
+      omnisend_api_key,
+      omnisend_validated_at,
+      omnisend_validation_error,
+      omnisend_has_reporting_access,
       ga4_credentials,
       meta_access_token
     `)
@@ -448,6 +462,14 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
       ),
       hasReportingAccess: store.klaviyo_has_reporting_access ?? undefined,
       missingScopes: store.klaviyo_missing_scopes ?? undefined,
+    },
+    omnisend: {
+      ...deriveStatus(
+        !!store.omnisend_api_key,
+        store.omnisend_validated_at,
+        store.omnisend_validation_error
+      ),
+      hasReportingAccess: store.omnisend_has_reporting_access ?? undefined,
     },
     ga4: saved.ga4 || { connected: !!store.ga4_credentials, status: store.ga4_credentials ? "connected" : "not_configured" },
     meta: saved.meta || { connected: !!store.meta_access_token, status: store.meta_access_token ? "connected" : "not_configured" },

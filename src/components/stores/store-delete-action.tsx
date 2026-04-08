@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Trash2, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -66,10 +67,10 @@ export function StoreDeleteAction({ storeId, storeName }: StoreDeleteActionProps
       <AlertDialogTrigger asChild>
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           className="text-destructive hover:text-destructive"
         >
-          <Trash2 className="w-4 h-4 mr-1" />
+          <Icon icon={Trash2} size={16} className="mr-1" />
           Excluir
         </Button>
       </AlertDialogTrigger>
@@ -90,12 +91,12 @@ export function StoreDeleteAction({ storeId, storeName }: StoreDeleteActionProps
           >
             {isDeleting ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                 Excluindo...
               </>
             ) : (
               <>
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Icon icon={Trash2} size={16} className="mr-2" />
                 Excluir
               </>
             )}

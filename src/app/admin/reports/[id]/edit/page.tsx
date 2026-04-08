@@ -2,18 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
-import Link from "next/link"
 import {
-  ArrowLeft,
   Loader2,
-  Calendar,
-  Store,
-  Building2,
   Save,
   RefreshCw,
-  DollarSign,
-  Users,
-  Mail,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,11 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
+import { FormField } from "@/components/ui/form-field"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createClient } from "@/lib/supabase/client"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import type { Report, ReportData, ReportStatus } from "@/types"
 
 interface ReportWithRelations extends Report {
@@ -280,50 +274,44 @@ export default function EditReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href={`/admin/reports/${reportId}`}>
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">Editar Relatório</h1>
-              <Badge variant="outline">
-                {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
-              </Badge>
-            </div>
-            <p className="text-muted-foreground">
-              {report.store_name || report.client?.name}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isManual && (
-            <Button
-              variant="outline"
-              onClick={handleRegenerate}
-              disabled={isRegenerating}
-            >
-              {isRegenerating ? (
+      <PageHeader
+        title="Editar Relatório"
+        description={report.store_name || report.client?.name}
+        breadcrumb={[
+          { label: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST },
+          { label: report.store_name || report.client?.name || "Relatório", href: `/admin/reports/${reportId}` },
+          { label: "Editar" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral" showDot={false}>
+              {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
+            </Badge>
+            {!isManual && (
+              <Button
+                variant="secondary"
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+              >
+                {isRegenerating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Regenerar Dados
+              </Button>
+            )}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <Save className="mr-2 h-4 w-4" />
               )}
-              Regenerar Dados
+              Salvar
             </Button>
-          )}
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Salvar
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
@@ -339,10 +327,7 @@ export default function EditReportPage() {
             <TabsContent value="metrics">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-emerald-500" />
-                    Métricas de Receita
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">Métricas de Receita</CardTitle>
                   <CardDescription>
                     {isManual
                       ? "Preencha as métricas de receita manualmente"
@@ -351,9 +336,8 @@ export default function EditReportPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Faturamento Total (R$)</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField label="Faturamento Total (R$)">
                       <Input
                         type="number"
                         step="0.01"
@@ -364,9 +348,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Receita Klaviyo (R$)</Label>
+                    </FormField>
+                    <FormField label="Receita Klaviyo (R$)">
                       <Input
                         type="number"
                         step="0.01"
@@ -377,9 +360,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Total de Pedidos</Label>
+                    </FormField>
+                    <FormField label="Total de Pedidos">
                       <Input
                         type="number"
                         value={revenue.totalOrders || ""}
@@ -389,9 +371,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Ticket Médio (R$)</Label>
+                    </FormField>
+                    <FormField label="Ticket Médio (R$)">
                       <Input
                         type="number"
                         step="0.01"
@@ -402,9 +383,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Receita de Campanhas (R$)</Label>
+                    </FormField>
+                    <FormField label="Receita de Campanhas (R$)">
                       <Input
                         type="number"
                         step="0.01"
@@ -415,9 +395,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Receita de Flows (R$)</Label>
+                    </FormField>
+                    <FormField label="Receita de Flows (R$)">
                       <Input
                         type="number"
                         step="0.01"
@@ -428,7 +407,7 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
+                    </FormField>
                   </div>
                 </CardContent>
               </Card>
@@ -438,18 +417,14 @@ export default function EditReportPage() {
             <TabsContent value="overview">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-blue-500" />
-                    Visão Geral
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">Visão Geral</CardTitle>
                   <CardDescription>
                     Métricas de audiência e automações
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Total de Contatos</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField label="Total de Contatos">
                       <Input
                         type="number"
                         value={overview.totalSubscribers || ""}
@@ -459,9 +434,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Engajados (90d)</Label>
+                    </FormField>
+                    <FormField label="Engajados (90d)">
                       <Input
                         type="number"
                         value={overview.engagedSegmentSize || ""}
@@ -471,9 +445,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Total de Flows</Label>
+                    </FormField>
+                    <FormField label="Total de Flows">
                       <Input
                         type="number"
                         value={overview.totalFlows || ""}
@@ -483,9 +456,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Total de Campanhas</Label>
+                    </FormField>
+                    <FormField label="Total de Campanhas">
                       <Input
                         type="number"
                         value={overview.totalCampaigns || ""}
@@ -495,9 +467,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Total de Listas</Label>
+                    </FormField>
+                    <FormField label="Total de Listas">
                       <Input
                         type="number"
                         value={overview.totalLists || ""}
@@ -507,9 +478,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Total de Segmentos</Label>
+                    </FormField>
+                    <FormField label="Total de Segmentos">
                       <Input
                         type="number"
                         value={overview.totalSegments || ""}
@@ -519,7 +489,7 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
+                    </FormField>
                   </div>
                 </CardContent>
               </Card>
@@ -529,18 +499,14 @@ export default function EditReportPage() {
             <TabsContent value="email">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="h-5 w-5 text-purple-500" />
-                    Performance de Email
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">Performance de Email</CardTitle>
                   <CardDescription>
                     Métricas de engajamento de email
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Emails Entregues</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField label="Emails Entregues">
                       <Input
                         type="number"
                         value={emailPerformance.delivered || ""}
@@ -550,9 +516,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Taxa de Entrega (%)</Label>
+                    </FormField>
+                    <FormField label="Taxa de Entrega (%)">
                       <Input
                         type="number"
                         step="0.01"
@@ -563,9 +528,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Aberturas</Label>
+                    </FormField>
+                    <FormField label="Aberturas">
                       <Input
                         type="number"
                         value={emailPerformance.opened || ""}
@@ -575,9 +539,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Taxa de Abertura (%)</Label>
+                    </FormField>
+                    <FormField label="Taxa de Abertura (%)">
                       <Input
                         type="number"
                         step="0.01"
@@ -588,9 +551,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Cliques</Label>
+                    </FormField>
+                    <FormField label="Cliques">
                       <Input
                         type="number"
                         value={emailPerformance.clicked || ""}
@@ -600,9 +562,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Taxa de Clique (%)</Label>
+                    </FormField>
+                    <FormField label="Taxa de Clique (%)">
                       <Input
                         type="number"
                         step="0.01"
@@ -613,9 +574,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Bounces</Label>
+                    </FormField>
+                    <FormField label="Bounces">
                       <Input
                         type="number"
                         value={emailPerformance.bounced || ""}
@@ -625,9 +585,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Taxa de Bounce (%)</Label>
+                    </FormField>
+                    <FormField label="Taxa de Bounce (%)">
                       <Input
                         type="number"
                         step="0.01"
@@ -638,9 +597,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Descadastros</Label>
+                    </FormField>
+                    <FormField label="Descadastros">
                       <Input
                         type="number"
                         value={emailPerformance.unsubscribed || ""}
@@ -650,9 +608,8 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Taxa de Descadastro (%)</Label>
+                    </FormField>
+                    <FormField label="Taxa de Descadastro (%)">
                       <Input
                         type="number"
                         step="0.01"
@@ -663,7 +620,7 @@ export default function EditReportPage() {
                         }))}
                         placeholder="0.00"
                       />
-                    </div>
+                    </FormField>
                   </div>
                 </CardContent>
               </Card>
@@ -679,8 +636,7 @@ export default function EditReportPage() {
               <CardTitle className="text-base">Configurações</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Status</Label>
+              <FormField label="Status">
                 <Select value={status} onValueChange={(v) => setStatus(v as ReportStatus)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -693,17 +649,16 @@ export default function EditReportPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>Observações</Label>
+              <FormField label="Observações">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Adicione observações sobre este relatório..."
                   rows={4}
                 />
-              </div>
+              </FormField>
             </CardContent>
           </Card>
 
@@ -715,22 +670,19 @@ export default function EditReportPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">Cliente</p>
-                <p className="font-medium flex items-center gap-1">
-                  <Building2 className="h-3 w-3" />
+                <p className="font-medium">
                   {report.client?.name || "N/A"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Loja</p>
-                <p className="font-medium flex items-center gap-1">
-                  <Store className="h-3 w-3" />
+                <p className="font-medium">
                   {report.store_name || "N/A"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Período</p>
-                <p className="font-medium flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
+                <p className="font-medium">
                   {report.period === "7d" && "7 dias"}
                   {report.period === "30d" && "30 dias"}
                   {report.period === "90d" && "90 dias"}
@@ -746,7 +698,7 @@ export default function EditReportPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tipo</p>
-                <Badge variant="outline" className="capitalize">
+                <Badge variant="neutral" showDot={false} className="capitalize">
                   {report.report_type}
                 </Badge>
               </div>

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { Check, Globe } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -189,7 +190,7 @@ export function StoreSelector({
         </Select>
 
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleSelectAll}
           aria-label={
@@ -207,7 +208,7 @@ export function StoreSelector({
       {/* Empty filtered state */}
       {filteredStores.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-          <Globe className="mb-2 h-8 w-8 text-muted-foreground" />
+          <Icon icon={Globe} customSize={32} className="mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Nenhuma loja encontrada com os filtros selecionados.
           </p>
@@ -242,7 +243,7 @@ export function StoreSelector({
                     : "border-muted-foreground/30",
                 )}
               >
-                {isSelected && <Check className="h-3 w-3" />}
+                {isSelected && <Icon icon={Check} customSize={12} />}
               </div>
 
               <div className="min-w-0 flex-1">
@@ -255,7 +256,7 @@ export function StoreSelector({
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="neutral" className="text-xs">
                     {getLanguageLabel(store.language)}
                   </Badge>
                   <span className="text-xs text-muted-foreground">

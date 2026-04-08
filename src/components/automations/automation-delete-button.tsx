@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
@@ -63,7 +64,7 @@ export function AutomationDeleteButton({ automationId, automationName }: Automat
           setShowDialog(true)
         }}
       >
-        <Trash2 className="mr-2 h-4 w-4" />
+        <Icon icon={Trash2} size={16} className="mr-2" />
         Excluir
       </DropdownMenuItem>
 

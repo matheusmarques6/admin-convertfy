@@ -4,16 +4,10 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
-  ArrowLeft,
-  FileText,
   Loader2,
-  Calendar,
-  Store,
   ChevronDown,
   AlertCircle,
   Check,
-  Building2,
-  BarChart3,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,10 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { FormField } from "@/components/ui/form-field"
 import { createClient } from "@/lib/supabase/client"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import type { ReportType } from "@/types"
 
 interface ClientOption {
@@ -448,17 +445,14 @@ export default function NewReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/reports">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Novo Relatório</h1>
-          <p className="text-muted-foreground">Crie um novo relatório para um cliente</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Novo Relatório"
+        description="Crie um novo relatório para um cliente"
+        breadcrumb={[
+          { label: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST },
+          { label: "Novo Relatório" },
+        ]}
+      />
 
       {isLoading ? (
         <Card>
@@ -470,21 +464,16 @@ export default function NewReportPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-[8px] border">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
+                <CardTitle className="text-sm font-semibold">
                   Detalhes do Relatório
                 </CardTitle>
                 <CardDescription>Configure as opções para gerar o relatório</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Client Selection */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Cliente
-                  </Label>
+                <FormField label="Cliente">
                   <Select value={selectedClient} onValueChange={setSelectedClient}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um cliente" />
@@ -502,14 +491,10 @@ export default function NewReportPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </FormField>
 
                 {/* Store Selection */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Store className="h-4 w-4" />
-                    Loja
-                  </Label>
+                <FormField label="Loja">
                   {selectedClient ? (
                     filteredStores.length > 0 ? (
                       <Select value={selectedStore} onValueChange={setSelectedStore}>
@@ -523,10 +508,10 @@ export default function NewReportPage() {
                                 <span>{store.store_name}</span>
                                 <div className="flex gap-1">
                                   {store.has_klaviyo && (
-                                    <Badge variant="outline" className="text-xs">Klaviyo</Badge>
+                                    <Badge variant="neutral" showDot={false} className="text-xs">Klaviyo</Badge>
                                   )}
                                   {store.has_shopify && (
-                                    <Badge variant="outline" className="text-xs">Shopify</Badge>
+                                    <Badge variant="neutral" showDot={false} className="text-xs">Shopify</Badge>
                                   )}
                                 </div>
                               </div>
@@ -552,15 +537,11 @@ export default function NewReportPage() {
                       Selecione um cliente primeiro
                     </div>
                   )}
-                </div>
+                </FormField>
 
                 {/* Report Type Selection */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    Tipo de Relatório
-                  </Label>
-                  <div className="grid gap-3 md:grid-cols-2">
+                <FormField label="Tipo de Relatório">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {REPORT_TYPES.map((type) => {
                       // Check if this type is available for the selected store
                       let isAvailable = !type.requiresIntegration
@@ -611,14 +592,10 @@ export default function NewReportPage() {
                       )
                     })}
                   </div>
-                </div>
+                </FormField>
 
                 {/* Period Selection */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Período
-                  </Label>
+                <FormField label="Período">
                   <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                     <SelectTrigger>
                       <SelectValue />
@@ -631,37 +608,30 @@ export default function NewReportPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </FormField>
 
                 {/* Custom Date Range */}
                 {selectedPeriod === "custom" && (
                   <div className="space-y-3 p-4 rounded-lg border bg-muted/30">
-                    <Label className="text-sm font-medium flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Período Personalizado
-                    </Label>
+                    <p className="text-sm font-medium">Período Personalizado</p>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Data Início</Label>
-                        <input
+                      <FormField label="Data Início">
+                        <Input
                           type="date"
                           value={customStartDate}
                           onChange={(e) => setCustomStartDate(e.target.value)}
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           max={customEndDate || new Date().toISOString().split("T")[0]}
                         />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Data Fim</Label>
-                        <input
+                      </FormField>
+                      <FormField label="Data Fim">
+                        <Input
                           type="date"
                           value={customEndDate}
                           onChange={(e) => setCustomEndDate(e.target.value)}
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           min={customStartDate}
                           max={new Date().toISOString().split("T")[0]}
                         />
-                      </div>
+                      </FormField>
                     </div>
                     {customStartDate && customEndDate && new Date(customStartDate) > new Date(customEndDate) && (
                       <p className="text-sm text-destructive flex items-center gap-1">
@@ -673,8 +643,7 @@ export default function NewReportPage() {
                 )}
 
                 {/* Notes */}
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Observações (opcional)</Label>
+                <FormField label="Observações (opcional)" htmlFor="notes">
                   <Textarea
                     id="notes"
                     placeholder="Adicione observações ou notas sobre este relatório..."
@@ -682,13 +651,13 @@ export default function NewReportPage() {
                     onChange={(e) => setNotes(e.target.value)}
                     rows={3}
                   />
-                </div>
+                </FormField>
               </CardContent>
             </Card>
 
             {/* Submit Button */}
             <div className="flex gap-3">
-              <Button variant="outline" asChild>
+              <Button variant="secondary" asChild>
                 <Link href="/admin/reports">Cancelar</Link>
               </Button>
               <Button
@@ -704,9 +673,9 @@ export default function NewReportPage() {
 
           {/* Preview Panel */}
           <div className="space-y-6">
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-[8px] border">
               <CardHeader>
-                <CardTitle className="text-base">Resumo</CardTitle>
+                <CardTitle className="text-sm font-semibold">Resumo</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Selected Client */}
@@ -734,7 +703,7 @@ export default function NewReportPage() {
                 {/* Report Type */}
                 <div>
                   <p className="text-sm text-muted-foreground">Tipo</p>
-                  <Badge variant="secondary" className="capitalize">
+                  <Badge variant="neutral" className="capitalize">
                     {REPORT_TYPES.find(t => t.value === reportType)?.label || reportType}
                   </Badge>
                 </div>
@@ -774,7 +743,7 @@ export default function NewReportPage() {
             </Card>
 
             {/* Help Card */}
-            <Card className="rounded-xl border bg-muted/50">
+            <Card className="rounded-[8px] border bg-muted/50">
               <CardContent className="pt-6">
                 <h4 className="font-medium mb-2">Dicas</h4>
                 <ul className="text-sm text-muted-foreground space-y-2">

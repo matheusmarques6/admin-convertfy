@@ -7,7 +7,6 @@ import {
   Bell,
   Moon,
   Sun,
-  Menu,
   Check,
   Loader2,
   PartyPopper,
@@ -15,9 +14,11 @@ import {
   XCircle,
   Megaphone,
   ChevronRight,
+  Search,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
+import { useCommandPaletteSafe } from "@/components/ui/command-palette"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,8 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Sidebar } from "./sidebar"
 import { notificationService, type Notification } from "@/lib/services"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
@@ -83,6 +82,7 @@ const parentRoutes: Record<string, { label: string; href: string }> = {
   [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
   [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
   [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: { label: "Dashboard", href: ROUTES.ADMIN.DASHBOARD },
+  [ROUTES.ADMIN.TOOLS + "/copy"]: { label: "Ferramentas", href: ROUTES.ADMIN.TOOLS },
 }
 
 interface HeaderProps {
@@ -93,10 +93,11 @@ interface HeaderProps {
   }
 }
 
-export function Header({ user: userProp }: HeaderProps) {
+export function Header({ user: _userProp }: HeaderProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const { user } = useAuthStore()
+  const commandPalette = useCommandPaletteSafe()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -223,19 +224,7 @@ export function Header({ user: userProp }: HeaderProps) {
   }, [pathname])
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
-      {/* Mobile Menu */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden h-8 w-8">
-            <Menu className="h-4 w-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[260px]">
-          <Sidebar user={userProp} forceExpanded />
-        </SheetContent>
-      </Sheet>
-
+    <header className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
       {/* Page Title with Breadcrumbs */}
       <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1">
         {pageInfo.breadcrumbs.length > 0 ? (
@@ -263,11 +252,37 @@ export function Header({ user: userProp }: HeaderProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-1 sm:gap-1.5">
+        {/* Search / Command Palette */}
+        {commandPalette && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden sm:flex items-center gap-2 h-9 px-3 text-muted-foreground hover:text-foreground rounded-[8px] border border-border bg-muted/50"
+            onClick={commandPalette.open}
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="text-xs">Buscar...</span>
+            <kbd className="ml-1 text-[10px] font-medium text-muted-foreground/70 border border-border rounded px-1 py-0.5 bg-background">
+              Ctrl K
+            </kbd>
+          </Button>
+        )}
+        {commandPalette && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="sm:hidden h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
+            onClick={commandPalette.open}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        )}
+
         {/* Theme Toggle */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl"
+          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -278,7 +293,7 @@ export function Header({ user: userProp }: HeaderProps) {
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl">
+            <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]">
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] px-1 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white">

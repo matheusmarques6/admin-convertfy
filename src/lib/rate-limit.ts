@@ -191,4 +191,8 @@ export const RATE_LIMITS = {
   clienteForm: { limit: 3, windowSeconds: 3600 },
   /** Cliente file upload: 10 requests per hour */
   clienteUpload: { limit: 10, windowSeconds: 3600 },
+  /** Public onboarding form: 3 requests per hour */
+  publicForm: { limit: 3, windowSeconds: 3600 },
+  /** Public file upload: 10 requests per hour */
+  publicUpload: { limit: 10, windowSeconds: 3600 },
 } as const

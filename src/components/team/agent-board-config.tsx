@@ -98,7 +98,7 @@ export function AgentBoardConfig({
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleResetDefaults}
           disabled={isDefault}
@@ -110,7 +110,7 @@ export function AgentBoardConfig({
       </div>
 
       {!isDefault && (
-        <Badge variant="secondary" className="text-xs">
+        <Badge variant="neutral" className="text-xs">
           Configuração personalizada
         </Badge>
       )}

@@ -116,7 +116,7 @@ export function GoogleCalendarCard() {
   // Loading skeleton
   if (isLoading) {
     return (
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-blue-500/10">
@@ -140,7 +140,7 @@ export function GoogleCalendarCard() {
   // Disconnected state
   if (!connected) {
     return (
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-blue-500/10">
@@ -181,7 +181,7 @@ export function GoogleCalendarCard() {
   // Connected but inactive (error state)
   if (!isActive) {
     return (
-      <Card className="rounded-xl border bg-card border-destructive/50">
+      <Card className="rounded-[8px] border border-destructive/50">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -191,7 +191,7 @@ export function GoogleCalendarCard() {
               <div>
                 <CardTitle className="text-base">Google Calendar</CardTitle>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-destructive border-destructive">
+                  <Badge variant="neutral" showDot={false} className="text-destructive border-destructive">
                     <AlertTriangle className="h-3 w-3 mr-1" />
                     Erro
                   </Badge>
@@ -215,7 +215,7 @@ export function GoogleCalendarCard() {
               </Button>
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 onClick={() => setDisconnectDialogOpen(true)}
               >
                 <Unplug className="h-4 w-4" />
@@ -236,7 +236,7 @@ export function GoogleCalendarCard() {
 
   // Connected and active
   return (
-    <Card className="rounded-xl border bg-card border-success/50">
+    <Card className="rounded-[8px] border border-success/50">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -246,7 +246,7 @@ export function GoogleCalendarCard() {
             <div>
               <CardTitle className="text-base">Google Calendar</CardTitle>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className="text-success border-success">
+                <Badge variant="neutral" showDot={false} className="text-success border-success">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Conectado
                 </Badge>
@@ -271,7 +271,7 @@ export function GoogleCalendarCard() {
           )}
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             className="w-full"
             onClick={() => setDisconnectDialogOpen(true)}
           >

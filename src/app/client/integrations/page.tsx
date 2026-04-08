@@ -393,7 +393,7 @@ export default function PortalIntegrationsPage() {
       {/* Integration Cards */}
       <div className="grid gap-6 md:grid-cols-3">
         {/* Shopify Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -427,7 +427,7 @@ export default function PortalIntegrationsPage() {
               </div>
             </div>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => openDialog("shopify")}
               className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
             >
@@ -438,7 +438,7 @@ export default function PortalIntegrationsPage() {
         </div>
 
         {/* Klaviyo Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -486,7 +486,7 @@ export default function PortalIntegrationsPage() {
               </div>
             </div>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => openDialog("klaviyo")}
               className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
             >
@@ -497,7 +497,7 @@ export default function PortalIntegrationsPage() {
         </div>
 
         {/* Rastreamento Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -569,7 +569,7 @@ export default function PortalIntegrationsPage() {
               return (
                 <div
                   key={carrier.id}
-                  className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4 flex flex-col gap-3"
+                  className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-4 flex flex-col gap-3"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
@@ -601,7 +601,7 @@ export default function PortalIntegrationsPage() {
                   </div>
 
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => openCarrierDialog(carrier)}
                     className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
@@ -622,7 +622,7 @@ export default function PortalIntegrationsPage() {
 
       {/* Shopify/Klaviyo Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
               {dialogType === "shopify" ? "Configurar Shopify" : "Configurar Klaviyo"}
@@ -713,11 +713,11 @@ export default function PortalIntegrationsPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+            <Button variant="secondary" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={handleTestConnection}
               disabled={testing || saving}
               className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
@@ -739,7 +739,7 @@ export default function PortalIntegrationsPage() {
 
       {/* Carrier Dialog */}
       <Dialog open={carrierDialogOpen} onOpenChange={setCarrierDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+        <DialogContent className="sm:max-w-md bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
               Configurar {activeCarrier?.name}
@@ -752,7 +752,7 @@ export default function PortalIntegrationsPage() {
           {activeCarrier?.id === "cainiao" ? (
             <>
               <div className="py-4">
-                <div className="flex items-start gap-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-4">
+                <div className="flex items-start gap-3 rounded-[8px] bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-4">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Ativo automaticamente</p>
@@ -813,7 +813,7 @@ export default function PortalIntegrationsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+                <Button variant="secondary" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                   Cancelar
                 </Button>
                 <Button

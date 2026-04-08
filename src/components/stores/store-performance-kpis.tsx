@@ -112,11 +112,11 @@ export function StorePerformanceKPIs() {
 
       {/* Error */}
       {error && !loading && (
-        <Card className="rounded-xl border-destructive/20">
+        <Card className="rounded-[8px] border-destructive/20">
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" onClick={refresh} className="ml-auto">
+            <Button variant="secondary" size="sm" onClick={refresh} className="ml-auto">
               Tentar novamente
             </Button>
           </CardContent>
@@ -127,7 +127,7 @@ export function StorePerformanceKPIs() {
       {totals && !loading && !error && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Receita Total (Loja) */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm text-muted-foreground">Receita Total</span>
@@ -143,7 +143,7 @@ export function StorePerformanceKPIs() {
           </Card>
 
           {/* Revenue Email (Atribuido) */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm text-muted-foreground">Revenue Email</span>
@@ -162,7 +162,7 @@ export function StorePerformanceKPIs() {
           </Card>
 
           {/* Campanhas & Flows */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm text-muted-foreground">Campanhas & Flows</span>
@@ -191,7 +191,7 @@ export function StorePerformanceKPIs() {
           </Card>
 
           {/* Recuperação Email % */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm text-muted-foreground">Recuperação Email</span>

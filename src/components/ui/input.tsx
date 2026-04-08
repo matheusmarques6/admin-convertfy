@@ -1,20 +1,32 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  error?: boolean
-  success?: boolean
-}
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, error, success, ...props }, ref) => {
+  ({ className, type, ...props }, ref) => {
     return (
       <input
         type={type}
         className={cn(
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          error && "border-destructive focus-visible:ring-destructive",
-          success && "border-success focus-visible:ring-success",
+          // Size & layout
+          "flex h-9 w-full rounded-[6px] px-3 py-2 text-sm",
+          // Colors
+          "bg-white text-gray-900 border border-[rgba(0,0,0,0.08)]",
+          // Placeholder
+          "placeholder:text-gray-400",
+          // Focus — Rule 10 WCAG 2.4.7
+          "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
+          // Transitions
+          "transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
+          // File input
+          "file:border-0 file:bg-transparent file:text-sm file:font-medium",
+          // Disabled
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          // Dark mode
+          "dark:bg-[#1A1D27] dark:text-[#EAEDF3] dark:border-[rgba(255,255,255,0.08)]",
+          "dark:placeholder:text-[#5C6378]",
+          "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
           className
         )}
         ref={ref}
@@ -25,24 +37,4 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 )
 Input.displayName = "Input"
 
-interface InputHelperProps {
-  children: React.ReactNode
-  variant?: "default" | "error" | "success"
-  className?: string
-}
-
-function InputHelper({ children, variant = "default", className }: InputHelperProps) {
-  return (
-    <p className={cn(
-      "mt-1.5 text-xs",
-      variant === "error" && "text-destructive",
-      variant === "success" && "text-success",
-      variant === "default" && "text-muted-foreground",
-      className
-    )}>
-      {children}
-    </p>
-  )
-}
-
-export { Input, InputHelper }
+export { Input }

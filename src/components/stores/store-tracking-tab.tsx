@@ -176,7 +176,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
   return (
     <div className="space-y-6">
       {/* Header com toggle */}
-      <Card className="rounded-xl">
+      <Card className="rounded-[8px]">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -190,11 +190,11 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
             </div>
             <div className="flex items-center gap-3">
               {enabled ? (
-                <Badge variant="default" className="gap-1">
+                <Badge variant="info" className="gap-1">
                   <Power className="h-3 w-3" /> Ativo
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="gap-1">
+                <Badge variant="neutral" className="gap-1">
                   <PowerOff className="h-3 w-3" /> Inativo
                 </Badge>
               )}
@@ -206,7 +206,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Config */}
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Configuração</CardTitle>
           </CardHeader>
@@ -282,7 +282,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
         {/* Snippet + Stats */}
         <div className="space-y-6">
           {/* Snippet */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardHeader>
               <CardTitle className="text-base">Código para instalar na loja</CardTitle>
               <CardDescription>
@@ -297,7 +297,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
                 </pre>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   className="absolute top-2 right-2"
                   onClick={handleCopySnippet}
                 >
@@ -308,13 +308,13 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
           </Card>
 
           {/* Stats */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Estatísticas</CardTitle>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleSync}
                   disabled={syncing || !enabled}
                 >
@@ -347,7 +347,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
 
           {/* Preview toggle */}
           <Button
-            variant="outline"
+            variant="secondary"
             className="w-full"
             onClick={() => setShowPreview(!showPreview)}
           >
@@ -356,7 +356,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
           </Button>
 
           {showPreview && (
-            <Card className="rounded-xl overflow-hidden">
+            <Card className="rounded-[8px] overflow-hidden">
               <CardContent className="p-0">
                 <iframe
                   srcDoc={`<!DOCTYPE html><html><body style="margin:0;padding:16px;font-family:sans-serif;"><div id="convertfy-tracking"></div><script src="${origin}/api/script/widget.js" data-store-id="${storeId}"></script></body></html>`}

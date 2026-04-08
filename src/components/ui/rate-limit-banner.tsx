@@ -1,6 +1,7 @@
 "use client"
 
 import { Clock, Info } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface RateLimitBannerProps {
@@ -30,7 +31,7 @@ export function RateLimitBanner({ fromCache, fetchedAt }: RateLimitBannerProps) 
   if (fromCache && fetchedAt) {
     return (
       <Alert variant="warning" className="mb-4">
-        <Clock className="h-4 w-4" />
+        <Icon icon={Clock} size={16} />
         <AlertDescription>
           {"Exibindo dados de "}{formatTimeAgo(fetchedAt)}{" atr\u00e1s. A Klaviyo est\u00e1 temporariamente limitando requisi\u00e7\u00f5es. Os dados ser\u00e3o atualizados automaticamente."}
         </AlertDescription>
@@ -40,7 +41,7 @@ export function RateLimitBanner({ fromCache, fetchedAt }: RateLimitBannerProps) 
 
   return (
     <Alert className="mb-4 border-muted-foreground/30 bg-muted/50">
-      <Info className="h-4 w-4" />
+      <Icon icon={Info} size={16} />
       <AlertDescription>
         {"N\u00e3o foi poss\u00edvel carregar dados devido a uma limita\u00e7\u00e3o da Klaviyo. Assim que normalizar, os dados estar\u00e3o dispon\u00edveis."}
       </AlertDescription>

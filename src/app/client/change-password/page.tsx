@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Loader2, Lock, CheckCircle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -105,10 +106,8 @@ export default function ChangePasswordPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14] px-4">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-10 text-center max-w-md">
-          <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
-          </div>
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-10 text-center max-w-md">
+          <Icon icon={CheckCircle} customSize={32} className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-full mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Senha alterada com sucesso!</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             Você será redirecionado para o dashboard em instantes...
@@ -123,8 +122,8 @@ export default function ChangePasswordPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
-            <Lock className="h-7 w-7 text-white" />
+          <div className="w-14 h-14 rounded-[8px] bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
+            <Icon icon={Lock} customSize={28} className="text-white" />
           </div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Criar Nova Senha</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm text-center mt-1">
@@ -132,7 +131,7 @@ export default function ChangePasswordPage() {
           </p>
         </div>
 
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-8 pt-8 pb-4 text-center">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Primeira vez acessando?</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Escolha uma senha segura para proteger sua conta</p>
@@ -167,7 +166,7 @@ export default function ChangePasswordPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? <Icon icon={EyeOff} size={16} /> : <Icon icon={Eye} size={16} />}
                   </Button>
                 </div>
               </div>
@@ -194,7 +193,7 @@ export default function ChangePasswordPage() {
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     disabled={loading}
                   >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showConfirmPassword ? <Icon icon={EyeOff} size={16} /> : <Icon icon={Eye} size={16} />}
                   </Button>
                 </div>
               </div>
@@ -218,7 +217,7 @@ export default function ChangePasswordPage() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                     Alterando...
                   </>
                 ) : (
