@@ -6,14 +6,18 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"]
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"]
+const PDF_MIME_TYPE = "application/pdf"
+const ALLOWED_MIME_TYPES = [...ALLOWED_IMAGE_TYPES, PDF_MIME_TYPE]
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
 const MIN_IMAGE_WIDTH = 200
 
 interface ImageUploaderProps {
+  // Para imagens, dimensions é extraído localmente. Para PDF,
+  // dimensions é null — a API retornará o preview e as dimensões.
   onImageSelected: (
     file: File,
-    dimensions: { width: number; height: number }
+    dimensions: { width: number; height: number } | null
   ) => void
   isDisabled?: boolean
 }
@@ -28,12 +32,20 @@ export function ImageUploader({ onImageSelected, isDisabled }: ImageUploaderProp
       setError(null)
 
       if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-        setError(`Tipo de arquivo não suportado: ${file.type}. Use PNG, JPG ou WebP.`)
+        setError(
+          `Tipo de arquivo não suportado: ${file.type}. Use PNG, JPG, WebP ou PDF.`
+        )
         return
       }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        setError("Arquivo muito grande. Máximo 10MB.")
+        setError("Arquivo muito grande. Máximo 15MB.")
+        return
+      }
+
+      // PDF: não tentar ler dimensões localmente, passar direto para a API
+      if (file.type === PDF_MIME_TYPE) {
+        onImageSelected(file, null)
         return
       }
 
@@ -142,11 +154,11 @@ export function ImageUploader({ onImageSelected, isDisabled }: ImageUploaderProp
           <div className="text-center space-y-1">
             <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">
               {isDragging
-                ? "Solte a imagem para começar"
-                : "Arraste a imagem do email ou clique para escolher"}
+                ? "Solte o arquivo para começar"
+                : "Arraste o email (PNG, JPG, WebP ou PDF) ou clique para escolher"}
             </p>
             <p className="text-xs text-gray-500 dark:text-[#8B92A5]">
-              PNG, JPG ou WebP — até 10MB
+              PNG, JPG, WebP ou PDF — até 15MB
             </p>
           </div>
 
@@ -166,7 +178,7 @@ export function ImageUploader({ onImageSelected, isDisabled }: ImageUploaderProp
           <input
             ref={inputRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept="image/png,image/jpeg,image/webp,application/pdf,.pdf"
             className="hidden"
             onChange={handleFileChange}
             disabled={isDisabled}

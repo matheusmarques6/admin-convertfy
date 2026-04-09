@@ -15,12 +15,15 @@ import { ExportButton } from "./components/export-button"
 
 interface ImageData {
   file: File
-  url: string
+  url: string // Object URL (for images) or data URL (for PDF preview)
+  isObjectUrl: boolean // true if URL.revokeObjectURL is needed
   width: number
   height: number
 }
 
 type Step = "upload" | "analyzing" | "preview"
+
+const PDF_MIME_TYPE = "application/pdf"
 
 export default function FigmaSlicerPage() {
   const [step, setStep] = useState<Step>("upload")
@@ -41,14 +44,23 @@ export default function FigmaSlicerPage() {
   // Cleanup the object URL when the page unmounts
   useEffect(() => {
     return () => {
-      if (imageDataRef.current?.url) {
+      if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
         URL.revokeObjectURL(imageDataRef.current.url)
       }
     }
   }, [])
 
   const runAnalysis = useCallback(
-    async (file: File): Promise<{ ok: true } | { ok: false; error: string }> => {
+    async (
+      file: File
+    ): Promise<
+      | {
+          ok: true
+          previewImage: string | null
+          previewDimensions: { width: number; height: number } | null
+        }
+      | { ok: false; error: string }
+    > => {
       const formData = new FormData()
       formData.append("image", file)
 
@@ -75,22 +87,43 @@ export default function FigmaSlicerPage() {
 
       setSections(sectionsWithIds)
       setAnalysisTime(data.duration_ms)
-      return { ok: true }
+      return {
+        ok: true,
+        previewImage: data.preview_image ?? null,
+        previewDimensions: data.preview_dimensions ?? null,
+      }
     },
     []
   )
 
   const handleImageSelected = useCallback(
-    async (file: File, dimensions: ImageDimensions) => {
+    async (file: File, dimensions: ImageDimensions | null) => {
       // Revoke previous URL if any
-      if (imageDataRef.current?.url) {
+      if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
         URL.revokeObjectURL(imageDataRef.current.url)
       }
 
-      const url = URL.createObjectURL(file)
-      setImageData({ file, url, width: dimensions.width, height: dimensions.height })
       setError(null)
       setStep("analyzing")
+
+      // For images we can set imageData immediately (the preview uses the
+      // original file via object URL). For PDF we have to wait for the API
+      // to return the PNG preview before we can render anything.
+      const isPdf = file.type === PDF_MIME_TYPE
+
+      if (!isPdf && dimensions) {
+        const url = URL.createObjectURL(file)
+        setImageData({
+          file,
+          url,
+          isObjectUrl: true,
+          width: dimensions.width,
+          height: dimensions.height,
+        })
+      } else {
+        // Clear any previous image data while analyzing PDF
+        setImageData(null)
+      }
 
       const result = await runAnalysis(file)
       if (!result.ok) {
@@ -98,6 +131,23 @@ export default function FigmaSlicerPage() {
         setStep("upload")
         return
       }
+
+      // For PDF: use the preview_image base64 returned by the API
+      if (isPdf) {
+        if (!result.previewImage || !result.previewDimensions) {
+          setError("Falha ao gerar preview do PDF.")
+          setStep("upload")
+          return
+        }
+        setImageData({
+          file,
+          url: `data:image/png;base64,${result.previewImage}`,
+          isObjectUrl: false,
+          width: result.previewDimensions.width,
+          height: result.previewDimensions.height,
+        })
+      }
+
       setStep("preview")
     },
     [runAnalysis]
@@ -154,7 +204,7 @@ export default function FigmaSlicerPage() {
   }, [imageData, sections])
 
   const handleReset = useCallback(() => {
-    if (imageDataRef.current?.url) {
+    if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
       URL.revokeObjectURL(imageDataRef.current.url)
     }
     setImageData(null)

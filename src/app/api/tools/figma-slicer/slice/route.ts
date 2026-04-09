@@ -3,6 +3,7 @@ import sharp from "sharp"
 import JSZip from "jszip"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { pdfBufferToPngBuffer } from "../lib/pdf-to-image"
 
 const log = logger.child("FigmaSlicer.Slice")
 
@@ -15,7 +16,8 @@ interface SliceSectionInput {
   y_end: number
 }
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB (PDFs podem ser maiores)
+const PDF_MIME_TYPE = "application/pdf"
 
 function sanitizeName(name: string, fallback: string): string {
   const cleaned = name
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
-        { error: "Arquivo muito grande. Máximo 10MB." },
+        { error: "Arquivo muito grande. Máximo 15MB." },
         { status: 400 }
       )
     }
@@ -73,7 +75,28 @@ export async function POST(request: NextRequest) {
     }
 
     const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
+    const rawBuffer = Buffer.from(bytes)
+
+    // Se for PDF, converter para PNG antes de cortar
+    let buffer: Buffer
+    try {
+      buffer =
+        file.type === PDF_MIME_TYPE
+          ? await pdfBufferToPngBuffer(rawBuffer, 2)
+          : rawBuffer
+    } catch (pdfError) {
+      log.error("PDF conversion failed", {
+        error:
+          pdfError instanceof Error ? pdfError.message : String(pdfError),
+      })
+      return NextResponse.json(
+        {
+          error:
+            "Falha ao converter PDF para imagem. Verifique se o arquivo é válido.",
+        },
+        { status: 422 }
+      )
+    }
 
     const metadata = await sharp(buffer).metadata()
     const imageWidth = metadata.width
