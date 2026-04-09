@@ -212,7 +212,7 @@ export default function FigmaSlicerPage() {
                 Analisando email com IA...
               </p>
               <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
-                Claude está identificando as seções
+                Dupla verificação: Sonnet detecta + Opus revisa (pode levar até 60s)
               </p>
             </div>
           </CardContent>

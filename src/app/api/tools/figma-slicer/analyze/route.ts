@@ -4,11 +4,13 @@ import sharp from "sharp"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { snapAllBoundaries } from "../lib/snap-to-boundary"
+import { drawCutLinesOverlay } from "../lib/draw-cut-lines"
 
 const log = logger.child("FigmaSlicer.Analyze")
 
 export const runtime = "nodejs"
-export const maxDuration = 60
+// Dupla verificação (Sonnet + Opus) pode demorar um pouco mais
+export const maxDuration = 120
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB — cliente aceita até 15, margem
@@ -519,6 +521,206 @@ export async function POST(request: NextRequest) {
         }
         mergedSomething = true
         break
+      }
+    }
+
+    // =====================================================================
+    // DUPLA VERIFICAÇÃO VISUAL (Opus revisor)
+    // Desenha as linhas de corte propostas sobre a imagem e pede para
+    // o Claude Opus (mais preciso em tarefas visuais) revisar se cada
+    // linha está no lugar certo. Se alguma está cortando no meio de
+    // conteúdo, Opus retorna a coordenada Y corrigida.
+    //
+    // Só roda se houver pelo menos 2 seções (1 ou mais cortes intermediários).
+    // =====================================================================
+    if (analysis.sections.length >= 2) {
+      try {
+        const cutLinesForReview = analysis.sections
+          .slice(0, -1)
+          .map((s, idx) => ({
+            y: s.y_end,
+            label: `CUT ${idx + 1} → y=${s.y_end} (between ${s.name} and ${analysis.sections[idx + 1].name})`,
+          }))
+
+        const annotatedBuffer = await drawCutLinesOverlay(
+          claudeBuffer,
+          cutLinesForReview
+        )
+
+        // A imagem anotada pode ter ficado maior — se passar do limite,
+        // cai para JPEG com qualidade menor
+        let reviewBuffer = annotatedBuffer
+        let reviewMediaType: "image/png" | "image/jpeg" = "image/jpeg"
+        if (reviewBuffer.length > CLAUDE_MAX_IMAGE_BYTES) {
+          for (const quality of [80, 70, 60]) {
+            reviewBuffer = await sharp(annotatedBuffer)
+              .jpeg({ quality, mozjpeg: true })
+              .toBuffer()
+            if (reviewBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) break
+          }
+        }
+
+        const verifyTool: Anthropic.Tool = {
+          name: "verify_cut_lines",
+          description:
+            "Retorna a verificação e correções das linhas de corte marcadas em vermelho na imagem.",
+          input_schema: {
+            type: "object",
+            properties: {
+              all_correct: {
+                type: "boolean",
+                description:
+                  "true se TODAS as linhas vermelhas estão em posições corretas (em espaço vazio entre seções). false se alguma precisa ser corrigida.",
+              },
+              corrections: {
+                type: "array",
+                description:
+                  "Lista de correções. Vazia se all_correct=true. Inclua APENAS as linhas que precisam mudar.",
+                items: {
+                  type: "object",
+                  properties: {
+                    cut_index: {
+                      type: "integer",
+                      description:
+                        "Índice da linha de corte (começa em 1, conforme rotulado na imagem: CUT 1, CUT 2, ...).",
+                    },
+                    corrected_y: {
+                      type: "integer",
+                      description:
+                        "Nova coordenada Y correta, em pixels da imagem anotada. Deve estar em um espaço vazio entre duas seções.",
+                    },
+                    reason: {
+                      type: "string",
+                      description:
+                        "Por que a linha original estava errada (ex: 'cortava no meio do grid de produtos', 'separava botão do texto acima').",
+                    },
+                  },
+                  required: ["cut_index", "corrected_y", "reason"],
+                },
+              },
+            },
+            required: ["all_correct", "corrections"],
+          },
+        }
+
+        const reviewPrompt = `Você está revisando cortes de um email marketing. A imagem que você está vendo tem linhas horizontais VERMELHAS desenhadas sobre ela — são cortes propostos por um modelo anterior entre as seções visuais do email.
+
+A imagem tem exatamente ${claudeHeight} pixels de altura.
+
+Sua tarefa: verificar se cada linha vermelha (CUT 1, CUT 2, ...) está no lugar CORRETO.
+
+## REGRAS DE VERIFICAÇÃO
+
+Uma linha de corte está CORRETA quando:
+✅ Está em um espaço vazio (fundo uniforme) entre duas seções visuais distintas
+✅ Não atravessa texto, botões, imagens de produto, reviews ou qualquer conteúdo
+✅ Está em uma mudança clara de cor de fundo ou tipo de conteúdo
+
+Uma linha está ERRADA quando:
+❌ Corta no meio de um texto
+❌ Corta no meio de uma imagem, foto de produto, logo, ou ícone
+❌ Corta no meio de um grid de produtos (entre a linha de cima e a de baixo de um grid 2x2)
+❌ Separa um botão CTA da seção acima dele
+❌ Corta um bloco visualmente coeso ao meio
+
+## PROCEDIMENTO
+
+1. Olhe CADA linha vermelha individualmente
+2. Verifique se ela está em um espaço vazio apropriado
+3. Se estiver errada, determine onde o espaço vazio CORRETO fica (geralmente a poucos pixels acima ou abaixo)
+4. Retorne a lista de correções com as novas coordenadas Y
+
+Se TODAS as linhas estão corretas, retorne \`all_correct: true\` com \`corrections: []\`.
+
+Se alguma está errada, retorne \`all_correct: false\` e liste APENAS as que precisam mudar com sua nova coordenada Y.
+
+Seja crítico mas não mova linhas que já estão OK. Toda coordenada deve estar entre 0 e ${claudeHeight}.`
+
+        const reviewStart = Date.now()
+        const reviewResponse = await anthropic.messages.create({
+          model: "claude-opus-4-6",
+          max_tokens: 4096,
+          tools: [verifyTool],
+          tool_choice: { type: "tool", name: "verify_cut_lines" },
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: reviewMediaType,
+                    data: reviewBuffer.toString("base64"),
+                  },
+                },
+                {
+                  type: "text",
+                  text: reviewPrompt,
+                },
+              ],
+            },
+          ],
+        })
+        const reviewMs = Date.now() - reviewStart
+
+        const reviewToolBlock = reviewResponse.content.find(
+          (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+        )
+
+        if (reviewToolBlock && reviewToolBlock.name === "verify_cut_lines") {
+          const reviewInput = reviewToolBlock.input as {
+            all_correct: boolean
+            corrections: Array<{
+              cut_index: number
+              corrected_y: number
+              reason: string
+            }>
+          }
+
+          log.info("Opus review completed", {
+            reviewMs,
+            allCorrect: reviewInput.all_correct,
+            correctionsCount: reviewInput.corrections?.length ?? 0,
+            corrections: reviewInput.corrections,
+          })
+
+          // Aplicar correções
+          if (
+            !reviewInput.all_correct &&
+            Array.isArray(reviewInput.corrections)
+          ) {
+            for (const correction of reviewInput.corrections) {
+              // cut_index é 1-based (CUT 1, CUT 2, ...) — converte para 0-based
+              const i = correction.cut_index - 1
+              if (i < 0 || i >= analysis.sections.length - 1) continue
+
+              let newY = Math.round(correction.corrected_y)
+              // Clampar ao intervalo válido
+              newY = Math.max(0, Math.min(claudeHeight, newY))
+              // Garantir que não crie seções inválidas
+              const minY = analysis.sections[i].y_start + 40
+              const maxY = analysis.sections[i + 1].y_end - 40
+              if (minY >= maxY) continue
+              newY = Math.max(minY, Math.min(maxY, newY))
+
+              analysis.sections[i].y_end = newY
+              analysis.sections[i + 1].y_start = newY
+            }
+          }
+        } else {
+          log.warn("Opus review did not return verify_cut_lines tool", {
+            stopReason: reviewResponse.stop_reason,
+          })
+        }
+      } catch (reviewError) {
+        // Review é best-effort — se falhar, usa os cortes iniciais
+        log.warn("Opus review failed, using Sonnet's original cuts", {
+          error:
+            reviewError instanceof Error
+              ? reviewError.message
+              : String(reviewError),
+        })
       }
     }
 
