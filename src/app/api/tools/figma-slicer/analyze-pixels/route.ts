@@ -15,60 +15,54 @@ export const maxDuration = 30
 const TARGET_WIDTH = 600 // largura fixa de análise (= largura de output)
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
-// Passo 1 — scan grosso
-const SCAN_INTERVAL = 10 // escaneia 1 linha a cada N (rápido)
-const X_SAMPLE = 3 // amostra 1 pixel a cada N horizontalmente
+// Scan de linha por linha
+const X_SAMPLE = 2 // amostra horizontal a cada N pixels (pra calcular variância)
 
-// Passo 2 — detecção de transição
-const RAW_DIST_THRESHOLD = 35 // distância RGB mínima para considerar transição
-const RAW_DIST_CLASS_CHANGE = 20 // mínimo se a classe mudou (transição fraca mas real)
+// ------ Detecção de whitespace gaps (fronteiras REAIS entre seções) ------
+// Um "gap" é uma faixa de linhas consecutivas com fundo uniforme (baixa
+// variância) e cor consistente. Emails marketing tipicamente têm 30-80px
+// de espaço vazio entre blocos funcionais (hero → body → grid → footer).
+const GAP_VARIANCE_MAX = 400 // linha é "uniforme" se variância horizontal < N
+const GAP_COLOR_DRIFT_MAX = 15 // dentro de um gap, a cor média não pode variar mais que N
+const GAP_MIN_HEIGHT = 20 // gap precisa ter ≥ N pixels de altura pra ser um corte real
 
-// Passo 3 — refinamento fino
-const REFINE_RADIUS = 20 // ± N pixels ao redor da sugestão
-const REFINE_STEP = 2
-const REFINE_X_SAMPLE = 5
+// ------ Detecção de transição forte de fundo dominante ------
+// Pra casos onde NÃO há gap (ex: hero azul termina exatamente onde body
+// branco começa). Exige uma mudança MUITO grande de cor.
+const STRONG_TRANSITION_DIST = 120 // distância RGB pra considerar uma mudança de fundo
 
-// Passo 4 — filtros finais
+// ------ Filtros finais ------
 const MIN_SECTION_HEIGHT = 200 // mínimo entre cortes
-const MIN_CUT_SCORE = 20 // score mínimo pra um corte ser válido
-// MAX_SECTIONS agora é dinâmico (calculado por altura do email) — veja o handler
+// MAX_SECTIONS é dinâmico (calculado por altura do email) — veja o handler
 const MIN_FINAL_HEIGHT = 150 // seções menores que isso são fundidas
 
 // ============================================================================
 // UTILS
 // ============================================================================
 
-/**
- * Classifica uma cor média em uma categoria. Usado pra detectar mudanças
- * bruscas de tom de fundo entre seções (ex: hero escuro → corpo branco).
- */
-function classifyBrightness(r: number, g: number, b: number): string {
-  const avg = (r + g + b) / 3
-  if (avg > 240) return "WHITE"
-  if (avg > 200) return "LIGHT"
-  if (avg < 30) return "BLACK"
-  if (avg < 80) return "DARK"
-  return "MID"
-}
-
-interface RowSummary {
+interface RowStats {
   y: number
   avgR: number
   avgG: number
   avgB: number
-  classification: string
+  variance: number // variância horizontal (quão "uniforme" é a linha)
 }
 
-interface RawTransition {
-  y: number
-  from: string
-  to: string
-  colorDist: number
-}
-
-interface RefinedCut {
+interface CutCandidate {
   y: number
   score: number
+  source: "gap" | "transition" // origem do corte pra debug
+}
+
+/**
+ * Calcula a distância RGB Euclidiana entre duas cores médias.
+ */
+function colorDistance(a: RowStats, b: RowStats): number {
+  return Math.sqrt(
+    Math.pow(a.avgR - b.avgR, 2) +
+      Math.pow(a.avgG - b.avgG, 2) +
+      Math.pow(a.avgB - b.avgB, 2)
+  )
 }
 
 // ============================================================================
@@ -143,16 +137,17 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // PASSO 1: scan grosso — resumo de RGB + classificação por linha
+    // PASSO 1: calcular estatísticas de CADA linha
+    // avgR/G/B + variância horizontal (quão uniforme é a linha)
     // ========================================================================
     const { data: pixels, info } = await sharp(buffer)
       .raw()
       .toBuffer({ resolveWithObject: true })
     const ch = info.channels
 
-    const rows: RowSummary[] = []
+    const rows: RowStats[] = new Array(height)
 
-    for (let y = 0; y < height; y += SCAN_INTERVAL) {
+    for (let y = 0; y < height; y++) {
       let sumR = 0
       let sumG = 0
       let sumB = 0
@@ -170,116 +165,126 @@ export async function POST(request: NextRequest) {
       const avgG = sumG / samples
       const avgB = sumB / samples
 
-      rows.push({
-        y,
-        avgR,
-        avgG,
-        avgB,
-        classification: classifyBrightness(avgR, avgG, avgB),
-      })
+      // Variância horizontal: quão "uniforme" é essa linha
+      let variance = 0
+      for (let x = 0; x < width; x += X_SAMPLE) {
+        const idx = (y * width + x) * ch
+        variance += Math.pow(pixels[idx] - avgR, 2)
+        variance += Math.pow(pixels[idx + 1] - avgG, 2)
+        variance += Math.pow(pixels[idx + 2] - avgB, 2)
+      }
+      variance = variance / (samples * 3)
+
+      rows[y] = { y, avgR, avgG, avgB, variance }
     }
 
     // ========================================================================
-    // PASSO 2: detectar transições (linhas onde a cor/classe muda)
+    // PASSO 2A: detectar WHITESPACE GAPS
+    // Runs de linhas consecutivas com variância baixa (fundo sólido)
+    // e cor consistente entre si. Esses gaps são as fronteiras REAIS
+    // entre blocos funcionais do email.
     // ========================================================================
-    const rawTransitions: RawTransition[] = []
+    const gapCandidates: CutCandidate[] = []
+    let gapStart = -1
+    let gapBaseColor: { r: number; g: number; b: number } | null = null
 
-    for (let i = 1; i < rows.length; i++) {
-      const prev = rows[i - 1]
-      const curr = rows[i]
+    const closeGap = (endY: number) => {
+      if (gapStart === -1 || !gapBaseColor) return
+      const gapHeight = endY - gapStart
+      if (gapHeight >= GAP_MIN_HEIGHT) {
+        // Centro do gap = ponto ideal de corte
+        const centerY = Math.round((gapStart + endY) / 2)
+        // Score proporcional ao tamanho do gap (gap maior = corte mais forte)
+        const score = gapHeight * 4
+        gapCandidates.push({ y: centerY, score, source: "gap" })
+      }
+      gapStart = -1
+      gapBaseColor = null
+    }
 
-      const dist = Math.sqrt(
-        Math.pow(prev.avgR - curr.avgR, 2) +
-          Math.pow(prev.avgG - curr.avgG, 2) +
-          Math.pow(prev.avgB - curr.avgB, 2)
-      )
+    for (let y = 0; y < height; y++) {
+      const row = rows[y]
+      const isUniform = row.variance < GAP_VARIANCE_MAX
 
-      const classChanged = prev.classification !== curr.classification
-      if (
-        dist > RAW_DIST_THRESHOLD ||
-        (classChanged && dist > RAW_DIST_CLASS_CHANGE)
-      ) {
-        rawTransitions.push({
-          y: curr.y,
-          from: prev.classification,
-          to: curr.classification,
-          colorDist: dist,
+      if (isUniform) {
+        if (gapStart === -1) {
+          // Começa um gap novo
+          gapStart = y
+          gapBaseColor = { r: row.avgR, g: row.avgG, b: row.avgB }
+        } else if (gapBaseColor) {
+          // Verifica se a cor ainda é similar à do início do gap
+          const drift =
+            Math.abs(row.avgR - gapBaseColor.r) +
+            Math.abs(row.avgG - gapBaseColor.g) +
+            Math.abs(row.avgB - gapBaseColor.b)
+          if (drift > GAP_COLOR_DRIFT_MAX * 3) {
+            // Cor mudou dentro do gap — fecha o anterior e começa novo
+            closeGap(y - 1)
+            gapStart = y
+            gapBaseColor = { r: row.avgR, g: row.avgG, b: row.avgB }
+          }
+        }
+      } else {
+        // Linha com conteúdo — fecha o gap atual se existir
+        closeGap(y - 1)
+      }
+    }
+    closeGap(height - 1)
+
+    // ========================================================================
+    // PASSO 2B: detectar TRANSIÇÕES FORTES de cor de fundo
+    // Pra casos onde NÃO há gap (ex: hero colorido termina exatamente
+    // onde body branco começa, sem espaço vazio entre eles).
+    // Exige uma distância RGB muito grande entre linhas uniformes vizinhas.
+    // ========================================================================
+    const transitionCandidates: CutCandidate[] = []
+
+    for (let y = 1; y < height; y++) {
+      const prev = rows[y - 1]
+      const curr = rows[y]
+      const dist = colorDistance(prev, curr)
+
+      if (dist >= STRONG_TRANSITION_DIST) {
+        transitionCandidates.push({
+          y,
+          score: Math.round(dist),
+          source: "transition",
         })
       }
     }
 
     // ========================================================================
-    // PASSO 3: refinar cada transição com scan fino ±20px
+    // PASSO 3: unificar candidatos e filtrar
     // ========================================================================
-    const refinedCuts: RefinedCut[] = []
+    const allCandidates: CutCandidate[] = [
+      ...gapCandidates,
+      ...transitionCandidates,
+    ]
+    allCandidates.sort((a, b) => a.y - b.y)
 
-    for (const trans of rawTransitions) {
-      const searchMin = Math.max(0, trans.y - REFINE_RADIUS)
-      const searchMax = Math.min(height - 2, trans.y + REFINE_RADIUS)
-
-      let bestY = trans.y
-      let bestScore = 0
-
-      for (let y = searchMin; y < searchMax; y += REFINE_STEP) {
-        let totalDiff = 0
-        let samples = 0
-
-        for (let x = 0; x < width; x += REFINE_X_SAMPLE) {
-          const idx1 = (y * width + x) * ch
-          const idx2 = ((y + 1) * width + x) * ch
-          totalDiff += Math.abs(pixels[idx1] - pixels[idx2])
-          totalDiff += Math.abs(pixels[idx1 + 1] - pixels[idx2 + 1])
-          totalDiff += Math.abs(pixels[idx1 + 2] - pixels[idx2 + 2])
-          samples++
-        }
-
-        const avgDiff = totalDiff / (samples * 3)
-        if (avgDiff > bestScore) {
-          bestScore = avgDiff
-          bestY = y
-        }
-      }
-
-      refinedCuts.push({ y: bestY, score: bestScore })
-    }
-
-    // ========================================================================
-    // PASSO 4: filtros finais
-    // ========================================================================
-
-    // 4a. Remove cortes com score muito baixo
-    let validCuts = refinedCuts.filter((c) => c.score >= MIN_CUT_SCORE)
-
-    // 4b. Ordena por Y
-    validCuts.sort((a, b) => a.y - b.y)
-
-    // 4c. Remove cortes muito próximos (mantém o mais forte)
-    const spacedCuts: RefinedCut[] = []
-    for (const cut of validCuts) {
-      const last = spacedCuts[spacedCuts.length - 1]
-      if (!last || cut.y - last.y >= MIN_SECTION_HEIGHT) {
-        spacedCuts.push(cut)
-      } else if (cut.score > last.score) {
-        spacedCuts[spacedCuts.length - 1] = cut
-      }
-    }
-
-    // 4d. Remove cortes muito perto das bordas (topo/base)
-    // Margem de 100px das bordas (antes era MIN_SECTION_HEIGHT=200 e cortava
-    // demais em emails curtos).
-    let finalCuts = spacedCuts.filter(
+    // 3a. Remove candidatos muito perto das bordas (topo/base)
+    let filtered = allCandidates.filter(
       (c) => c.y > 100 && c.y < height - 100
     )
 
-    // 4e. MAX_SECTIONS agora é DINÂMICO baseado na altura do email.
-    // Regra: 1 corte a cada 400px, mínimo 3 seções, máximo 8.
-    //   Email 922px  → floor(922/400)=2  → max 3 seções (2 cortes)
-    //   Email 1500px → floor(1500/400)=3 → max 4 seções (3 cortes)
-    //   Email 2700px → floor(2700/400)=6 → max 7 seções (6 cortes)
-    //   Email 4000px → floor(4000/400)=10 → cap em 8 seções (7 cortes)
+    // 3b. Consolida candidatos muito próximos (mantém o de maior score)
+    const consolidated: CutCandidate[] = []
+    for (const cand of filtered) {
+      const last = consolidated[consolidated.length - 1]
+      if (!last || cand.y - last.y >= MIN_SECTION_HEIGHT) {
+        consolidated.push(cand)
+      } else if (cand.score > last.score) {
+        consolidated[consolidated.length - 1] = cand
+      }
+    }
+
+    filtered = consolidated
+
+    // 3c. MAX_SECTIONS dinâmico baseado na altura do email
     const MAX_SECTIONS = Math.max(3, Math.min(8, Math.floor(height / 400)))
+    let finalCuts = filtered
     if (finalCuts.length > MAX_SECTIONS - 1) {
-      finalCuts.sort((a, b) => b.score - a.score)
+      finalCuts = [...filtered].sort((a, b) => b.score - a.score)
       finalCuts = finalCuts.slice(0, MAX_SECTIONS - 1)
       finalCuts.sort((a, b) => a.y - b.y)
     }
@@ -332,11 +337,17 @@ export async function POST(request: NextRequest) {
 
     log.info("Pixel analysis completed", {
       imageSize: `${width}x${height}`,
-      rawTransitionsCount: rawTransitions.length,
-      validCutsCount: validCuts.length,
+      gapCandidatesCount: gapCandidates.length,
+      transitionCandidatesCount: transitionCandidates.length,
       finalCutsCount: finalCuts.length,
       sectionsCount: mergedSections.length,
+      maxSections: MAX_SECTIONS,
       durationMs,
+      finalCutsDetail: finalCuts.map((c) => ({
+        y: c.y,
+        score: c.score,
+        source: c.source,
+      })),
     })
 
     return NextResponse.json({
