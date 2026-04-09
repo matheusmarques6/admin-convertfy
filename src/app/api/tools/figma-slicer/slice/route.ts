@@ -16,12 +16,11 @@ interface SliceSectionInput {
 }
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
-const TARGET_EXPORT_WIDTH = 600 // Klaviyo/Omnisend padrão de largura
+const TARGET_WIDTH = 600 // Klaviyo/Omnisend padrão
 
 /**
- * Sanitiza nome de seção para virar um nome de arquivo válido.
- * Preserva case, underscores e hífens — necessários para nomes como
- * "03_In-Klaviyo_Dynamic_Product_Section".
+ * Sanitiza nome de seção. Preserva case, underscore e hífen —
+ * necessário para nomes canônicos como "03_In-Klaviyo_Dynamic_Product_Section".
  */
 function sanitizeName(name: string, fallback: string): string {
   const cleaned = name
@@ -44,18 +43,33 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
     const file = formData.get("image") as File | null
+    const imageBase64 = formData.get("imageBase64") as string | null
     const sectionsJson = formData.get("sections") as string | null
 
-    if (!file || !sectionsJson) {
+    if (!sectionsJson) {
       return NextResponse.json(
-        { error: 'Campos "image" e "sections" são obrigatórios' },
+        { error: "Campo 'sections' é obrigatório" },
         { status: 400 }
       )
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    let buffer: Buffer
+    let originalFilename = "email"
+
+    if (file) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: "Arquivo muito grande. Máximo 20MB." },
+          { status: 400 }
+        )
+      }
+      buffer = Buffer.from(await file.arrayBuffer())
+      originalFilename = file.name || "email"
+    } else if (imageBase64) {
+      buffer = Buffer.from(imageBase64, "base64")
+    } else {
       return NextResponse.json(
-        { error: "Arquivo muito grande. Máximo 20MB." },
+        { error: "Envie o arquivo no campo 'image' ou 'imageBase64'." },
         { status: 400 }
       )
     }
@@ -77,65 +91,69 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-
-    const metadata = await sharp(buffer).metadata()
-    const imageWidth = metadata.width
-    const imageHeight = metadata.height
-
-    if (!imageWidth || !imageHeight) {
+    // Normaliza para 600px de largura — MESMA escala usada na analyze,
+    // então as coordenadas Y vêm já corretas.
+    const meta = await sharp(buffer).metadata()
+    if (!meta.width || !meta.height) {
       return NextResponse.json(
         { error: "Não foi possível ler as dimensões da imagem" },
         { status: 422 }
       )
     }
 
+    if (meta.width !== TARGET_WIDTH) {
+      const newHeight = Math.round((meta.height / meta.width) * TARGET_WIDTH)
+      buffer = await sharp(buffer)
+        .resize(TARGET_WIDTH, newHeight, { fit: "fill" })
+        .png()
+        .toBuffer()
+    }
+
+    const finalMeta = await sharp(buffer).metadata()
+    const imageWidth = finalMeta.width ?? TARGET_WIDTH
+    const imageHeight = finalMeta.height ?? 0
+
+    if (!imageHeight) {
+      return NextResponse.json(
+        { error: "Altura da imagem inválida após normalização" },
+        { status: 500 }
+      )
+    }
+
     const zip = new JSZip()
     let slicesGenerated = 0
 
-    // Determinar se as fatias serão redimensionadas para 600px (padrão
-    // Klaviyo/Omnisend). Apenas reduz quando a imagem original é maior —
-    // nunca aumenta para evitar degradação.
-    const shouldResize = imageWidth > TARGET_EXPORT_WIDTH
-    const exportWidth = shouldResize ? TARGET_EXPORT_WIDTH : imageWidth
-
     for (let i = 0; i < sections.length; i++) {
       const raw = sections[i]
-      const yStart = Math.max(0, Math.min(Math.round(raw.y_start), imageHeight))
+      const yStart = Math.max(
+        0,
+        Math.min(Math.round(raw.y_start), imageHeight)
+      )
       const yEnd = Math.max(0, Math.min(Math.round(raw.y_end), imageHeight))
       const sliceHeight = yEnd - yStart
 
       if (sliceHeight <= 0) continue
 
       try {
-        // Pipeline: extract na resolução original → (opcional) resize
-        // para 600px → PNG. Resize após extract preserva a precisão do
-        // corte e mantém aspect ratio.
-        let sharpPipeline = sharp(buffer).extract({
-          left: 0,
-          top: yStart,
-          width: imageWidth,
-          height: sliceHeight,
-        })
-
-        if (shouldResize) {
-          sharpPipeline = sharpPipeline.resize({
-            width: TARGET_EXPORT_WIDTH,
-            withoutEnlargement: true,
-            fit: "inside",
+        const sliceBuffer = await sharp(buffer)
+          .extract({
+            left: 0,
+            top: yStart,
+            width: imageWidth,
+            height: sliceHeight,
           })
-        }
+          .png()
+          .toBuffer()
 
-        const sliceBuffer = await sharpPipeline.png().toBuffer()
-
-        // Prefixo numerado NN_ — se o nome do Claude já começa com NN_,
-        // não duplica o prefixo.
-        const rawName = raw.name.trim()
-        const alreadyHasPrefix = /^\d{2}_/.test(rawName)
-        const safeName = alreadyHasPrefix
+        // Nome: usa o nome da seção; se não tem prefixo NN_, adiciona
+        const rawName = (raw.name || "").trim()
+        const hasPrefix = /^\d{2}_/.test(rawName)
+        const safeName = hasPrefix
           ? sanitizeName(rawName, `section_${i + 1}`)
-          : `${String(i + 1).padStart(2, "0")}_${sanitizeName(rawName, `section_${i + 1}`)}`
+          : `${String(i + 1).padStart(2, "0")}_${sanitizeName(
+              rawName,
+              `section_${i + 1}`
+            )}`
         const fileName = `${safeName}.png`
 
         zip.file(fileName, sliceBuffer)
@@ -145,9 +163,11 @@ export async function POST(request: NextRequest) {
           name: raw.name,
           yStart,
           yEnd,
-          error: sliceError instanceof Error ? sliceError.message : String(sliceError),
+          error:
+            sliceError instanceof Error
+              ? sliceError.message
+              : String(sliceError),
         })
-        // Continuar com as outras seções
       }
     }
 
@@ -164,11 +184,11 @@ export async function POST(request: NextRequest) {
       compressionOptions: { level: 6 },
     })
 
-    // Best-effort log (errors are non-fatal so the user still gets the ZIP)
+    // Log best-effort no Supabase
     try {
       await supabase.from("slicer_export_logs").insert({
         user_id: user.id,
-        original_filename: file.name,
+        original_filename: originalFilename,
         original_width: imageWidth,
         original_height: imageHeight,
         slices_count: slicesGenerated,
@@ -177,7 +197,8 @@ export async function POST(request: NextRequest) {
       })
     } catch (logError) {
       log.warn("Failed to insert export log", {
-        error: logError instanceof Error ? logError.message : String(logError),
+        error:
+          logError instanceof Error ? logError.message : String(logError),
       })
     }
 
@@ -193,7 +214,8 @@ export async function POST(request: NextRequest) {
     log.error("Slice generation failed", {
       error: error instanceof Error ? error.message : String(error),
     })
-    const message = error instanceof Error ? error.message : "Erro ao processar imagem"
+    const message =
+      error instanceof Error ? error.message : "Erro ao processar imagem"
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
