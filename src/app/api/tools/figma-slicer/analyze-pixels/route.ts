@@ -36,35 +36,44 @@ function buildClaudePrompt(height: number): string {
 
 A imagem tem 600 pixels de largura e ${height} pixels de altura.
 
-## REGRAS CRÍTICAS
+## COMO PENSAR
 
-Cada fatia que você definir será uma imagem PNG separada. O operador vai empilhar as fatias no Omnisend/Klaviyo. Pra fazer isso funcionar, você precisa identificar os BLOCOS FUNCIONAIS COMPLETOS do email, NÃO micro-transições de cor.
+Cada email tem SUA estrutura própria. Pode ter 3, 4, 5, 6, 7 ou 8 seções — depende do design. Você precisa olhar a imagem e IDENTIFICAR os blocos visuais funcionais distintos, sem forçar uma quantidade específica.
 
-### Seções típicas de um email marketing:
+Cada fatia que você definir será uma imagem PNG separada. O operador vai empilhar as fatias no Omnisend/Klaviyo. Pra isso funcionar, você precisa identificar os BLOCOS FUNCIONAIS COMPLETOS do email, NÃO micro-transições de cor.
 
-1. **hero** — Logo da marca + imagem principal do produto + headline grande + CTA primário. TUDO JUNTO. Normalmente fundo colorido ou escuro.
+## REGRAS CRÍTICAS (nunca violar)
 
-2. **body_copy** — Bloco de texto da oferta. Pode ter título tipo "ÚLTIMA OPORTUNIDADE", porcentagem "17% OFF", cupom "ESPECIAL", e botão "RECUPERAR O CÓDIGO". **Tudo isso é UMA seção só.** Nunca separar cupom do título, nunca separar botão do texto.
+1. **NUNCA corte no meio de um grid de produtos.**
+   Se há um grid 2×2, 3×3 ou similar com imagens de produto + preço + botão, TODO o grid é UMA seção só. A fronteira entre a linha de cima e a linha de baixo NÃO é um ponto de corte.
 
-3. **product_section** — Grid de produtos (2×2, 3×3, etc). Cada produto tem imagem + preço + botão "comprar". **O GRID INTEIRO é UMA seção**. NUNCA corte entre a linha 1 (produtos 1-2) e a linha 2 (produtos 3-4).
+2. **NUNCA corte no meio de um bloco de texto/cupom.**
+   Título + subtítulo + texto + cupom + botão formam UMA seção única quando são parte do mesmo "apelo". Ex: "ÚLTIMA OPORTUNIDADE" + "17% OFF" + "CUPOM ESPECIAL" + botão "RECUPERAR O CÓDIGO" = 1 seção.
 
-4. **cta_final** — Ícones de benefícios (envio, qualidade, segurança) + bloco de oferta final + botão. Tipicamente antes do footer. Pode ter fundo misto (branco nos badges, preto no bloco de oferta). Se esses elementos estão grudados, é UMA seção.
+3. **NUNCA separe um botão CTA do texto/bloco que ele pertence.**
+   O botão faz parte da seção acima dele, nunca é uma seção sozinha.
 
-5. **footer** — Logo + links de navegação ("Mais vendidos", "Conforto", etc) + copyright + email de contato. Normalmente fundo escuro.
+4. **NUNCA quebre reviews individuais em fatias separadas.**
+   Se há 3 depoimentos empilhados, todos formam UMA única seção.
 
-### O QUE NÃO FAZER
+5. **NUNCA corte o hero antes do headline/CTA terminar.**
+   Hero = logo + imagem principal + headline + CTA principal. Tudo junto.
 
-❌ NUNCA corte no meio de um grid de produtos.
-❌ NUNCA corte no meio de um bloco de texto ou cupom.
-❌ NUNCA crie uma seção só pra um botão ou título.
-❌ NUNCA crie seções menores que 150 pixels.
-❌ NUNCA retorne mais que 8 seções. Emails típicos têm 3-6 seções.
+6. **NUNCA crie seções menores que 150 pixels.**
+   Se uma seção ficaria menor que isso, ela deve ser mergida com a vizinha.
 
-### VALIDAÇÃO
+## DICAS PRÁTICAS
+
+- Olhe pelo fundo: mudanças de cor de fundo (ex: escuro→branco→preto) são pistas fortes de fronteiras entre seções.
+- Olhe pelo conteúdo funcional: "o que esse bloco está tentando comunicar?" Se a resposta é a mesma, é a mesma seção.
+- Olhe pelo espaçamento: onde há faixas de fundo vazio entre blocos, geralmente é onde cortar.
+- NÃO se prenda a 5 seções ou qualquer número fixo. Cada email pede um número diferente.
+
+## VALIDAÇÃO
 
 - sections[0].y_start deve ser 0
 - sections[last].y_end deve ser ${height}
-- Cada y_end deve ser igual ao y_start da próxima seção (sem gaps nem sobreposição)
+- Cada y_end deve ser igual ao y_start da próxima seção
 - Todos os valores devem ser inteiros
 - Cada seção deve ter altura >= 150 pixels
 
