@@ -16,11 +16,16 @@ interface SliceSectionInput {
 }
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
+const TARGET_EXPORT_WIDTH = 600 // Klaviyo/Omnisend padrão de largura
 
+/**
+ * Sanitiza nome de seção para virar um nome de arquivo válido.
+ * Preserva case, underscores e hífens — necessários para nomes como
+ * "03_In-Klaviyo_Dynamic_Product_Section".
+ */
 function sanitizeName(name: string, fallback: string): string {
   const cleaned = name
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/[^A-Za-z0-9_\-]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
   return cleaned || fallback
@@ -89,6 +94,12 @@ export async function POST(request: NextRequest) {
     const zip = new JSZip()
     let slicesGenerated = 0
 
+    // Determinar se as fatias serão redimensionadas para 600px (padrão
+    // Klaviyo/Omnisend). Apenas reduz quando a imagem original é maior —
+    // nunca aumenta para evitar degradação.
+    const shouldResize = imageWidth > TARGET_EXPORT_WIDTH
+    const exportWidth = shouldResize ? TARGET_EXPORT_WIDTH : imageWidth
+
     for (let i = 0; i < sections.length; i++) {
       const raw = sections[i]
       const yStart = Math.max(0, Math.min(Math.round(raw.y_start), imageHeight))
@@ -98,18 +109,35 @@ export async function POST(request: NextRequest) {
       if (sliceHeight <= 0) continue
 
       try {
-        const sliceBuffer = await sharp(buffer)
-          .extract({
-            left: 0,
-            top: yStart,
-            width: imageWidth,
-            height: sliceHeight,
-          })
-          .png()
-          .toBuffer()
+        // Pipeline: extract na resolução original → (opcional) resize
+        // para 600px → PNG. Resize após extract preserva a precisão do
+        // corte e mantém aspect ratio.
+        let sharpPipeline = sharp(buffer).extract({
+          left: 0,
+          top: yStart,
+          width: imageWidth,
+          height: sliceHeight,
+        })
 
-        const safeName = sanitizeName(raw.name, `section_${i + 1}`)
-        const fileName = `${String(i + 1).padStart(2, "0")}_${safeName}.png`
+        if (shouldResize) {
+          sharpPipeline = sharpPipeline.resize({
+            width: TARGET_EXPORT_WIDTH,
+            withoutEnlargement: true,
+            fit: "inside",
+          })
+        }
+
+        const sliceBuffer = await sharpPipeline.png().toBuffer()
+
+        // Prefixo numerado NN_ — se o nome do Claude já começa com NN_,
+        // não duplica o prefixo.
+        const rawName = raw.name.trim()
+        const alreadyHasPrefix = /^\d{2}_/.test(rawName)
+        const safeName = alreadyHasPrefix
+          ? sanitizeName(rawName, `section_${i + 1}`)
+          : `${String(i + 1).padStart(2, "0")}_${sanitizeName(rawName, `section_${i + 1}`)}`
+        const fileName = `${safeName}.png`
+
         zip.file(fileName, sliceBuffer)
         slicesGenerated++
       } catch (sliceError) {

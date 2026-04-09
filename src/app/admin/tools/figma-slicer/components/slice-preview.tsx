@@ -162,6 +162,11 @@ export function SlicePreview({
         const topY = toDisplayY(section.y_start)
         const bottomY = toDisplayY(section.y_end)
         const heightPx = section.y_end - section.y_start
+        // Se o nome já tem prefixo NN_, usa ele; senão gera do index
+        const hasPrefix = /^\d{2}_/.test(section.name)
+        const displayLabel = hasPrefix
+          ? section.name
+          : `${String(index + 1).padStart(2, "0")}_${section.name}`
         return (
           <div
             key={`label-${section.id}`}
@@ -169,7 +174,7 @@ export function SlicePreview({
             style={{ top: `${topY}px`, height: `${bottomY - topY}px` }}
           >
             <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-black/70 text-white text-[10px] font-mono leading-none backdrop-blur-sm">
-              {String(index + 1).padStart(2, "0")} · {section.name} · {imageDimensions.width}×{heightPx}px
+              {displayLabel} · {imageDimensions.width}×{heightPx}px
             </div>
           </div>
         )

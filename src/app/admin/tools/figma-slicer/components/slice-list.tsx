@@ -18,11 +18,15 @@ interface SliceListProps {
   isReanalyzing?: boolean
 }
 
+/**
+ * Sanitiza nome para virar parte de um filename. Preserva case,
+ * underscores e hífens — necessário para nomes canônicos como
+ * "03_In-Klaviyo_Dynamic_Product_Section".
+ */
 function sanitizeName(input: string): string {
   return input
-    .toLowerCase()
     .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "")
+    .replace(/[^A-Za-z0-9_\-]/g, "")
     .replace(/_+/g, "_")
 }
 
@@ -109,6 +113,13 @@ export function SliceList({
           <div className="space-y-2">
             {sections.map((section, index) => {
               const height = section.y_end - section.y_start
+              // Se o nome já começa com "NN_", mostramos o prefixo como
+              // badge e o restante no input — evita duplicar "01 01_hero".
+              const prefixMatch = section.name.match(/^(\d{2})_(.*)$/)
+              const displayNumber = prefixMatch
+                ? prefixMatch[1]
+                : String(index + 1).padStart(2, "0")
+              const displayName = prefixMatch ? prefixMatch[2] : section.name
               return (
                 <div
                   key={section.id}
@@ -120,11 +131,17 @@ export function SliceList({
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#4E62D8]/10 text-[#4E62D8] text-[10px] font-mono font-semibold">
-                        {String(index + 1).padStart(2, "0")}
+                        {displayNumber}
                       </span>
                       <Input
-                        value={section.name}
-                        onChange={(e) => handleNameChange(section.id, e.target.value)}
+                        value={displayName}
+                        onChange={(e) => {
+                          // Preservar o prefixo NN_ ao editar
+                          const newValue = prefixMatch
+                            ? `${prefixMatch[1]}_${e.target.value}`
+                            : e.target.value
+                          handleNameChange(section.id, newValue)
+                        }}
                         className="h-7 text-xs font-mono px-2"
                         spellCheck={false}
                         aria-label={`Nome da seção ${index + 1}`}

@@ -21,52 +21,52 @@ const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que m
 
 Chame a tool \`report_email_sections\` com a análise completa.
 
-## COMO PENSAR SOBRE OS CORTES
+## TAXONOMIA PADRÃO — USE SEMPRE QUE POSSÍVEL
 
-Imagine que você vai montar este email no Omnisend. Cada seção que você definir será uma IMAGEM SEPARADA empilhada verticalmente. Os cortes devem ser nos pontos onde, ao montar no Omnisend, você naturalmente separaria os blocos.
+Mapeie as seções do email para esta hierarquia canônica na ordem em que aparecerem. Pule categorias que não existirem. Use exatamente estes nomes:
 
-## REGRAS OBRIGATÓRIAS
+- **01_hero** — Logo + imagem principal (banner) + headline + CTA principal
+- **02_body_copy** — Copy da oferta, urgência, cupom, benefícios, blocos de texto promocional
+- **03_In-Klaviyo_Dynamic_Product_Section** — Grid de produtos dinâmicos (imagens, preços, botões "comprar")
+- **04_reviews** — Reviews, depoimentos, social proof ("+25.000 clientes"), avaliações/estrelas
+- **05_cta_final** — CTA de fechamento + ícones de benefício (frete, suporte, garantia) + botão final
+- **06_footer** — Logo da marca + menu de navegação + copyright + redes sociais
 
-1. MENOS É MAIS: Prefira MENOS cortes. Se uma área funciona como uma unidade visual, mantenha como UMA seção. Emails típicos têm entre 4 e 8 seções no total. Raramente mais de 8.
+Se o email tem uma seção que NÃO se encaixa claramente em nenhuma dessas 6 categorias, use um nome descritivo com o próximo número disponível (ex: \`03_resumo_valores\`, \`04_upsell\`, \`05_produtos_recomendados\`). Sempre mantenha a numeração sequencial.
 
-2. NÃO QUEBRE BLOCOS DE TEXTO: Se há um título + subtítulo + parágrafo + botão CTA, isso é UMA seção. Não separe o título do corpo de texto. Não separe o botão do texto acima dele.
+## REGRAS ABSOLUTAS — NUNCA VIOLAR
 
-3. NÃO QUEBRE BLOCOS DE CONTEÚDO RELACIONADO: Se há um título "ÚLTIMA OPORTUNIDADE" com um cupom "ESPECIAL" e um botão "RECUPERAR O CÓDIGO" abaixo — isso é TUDO UMA seção. São peças do mesmo bloco.
+1. **\`03_In-Klaviyo_Dynamic_Product_Section\` é SEMPRE uma seção separada e sozinha.** Nunca junte com hero, body_copy, reviews ou qualquer outra. No Klaviyo, essa seção será substituída por um bloco dinâmico de produtos, então precisa estar isolada.
 
-4. GRID DE PRODUTOS = UMA SEÇÃO: Se há 2x2 ou 3x3 de produtos com imagens + preço + botão "comprar", todo o grid é UMA seção. Não corte entre a linha de cima e a linha de baixo do grid.
+2. **Reviews/depoimentos são SEMPRE uma ÚNICA seção.** Nunca quebre reviews individuais em arquivos separados. Se houver 3 depoimentos em sequência, todos ficam no mesmo \`04_reviews\`.
 
-5. TRUST BADGES = UMA SEÇÃO: Ícones de envio grátis + qualidade + pagamento seguro + o texto abaixo de cada ícone = UMA seção.
+3. **Blocos de texto não se quebram.** Título + subtítulo + parágrafo + botão CTA = UMA seção.
 
-6. SOCIAL PROOF = UMA SEÇÃO: Bloco de "+25.000 clientes" + avaliações + estrelas = UMA seção.
+4. **Grid de produtos é UMA seção.** 2×2 ou 3×3 de produtos com imagens + preço + botão "comprar" = TODO o grid em um arquivo só.
 
-7. CORTE NAS FRONTEIRAS VISUAIS ÓBVIAS: Corte onde há uma mudança CLARA de:
-   - Cor de fundo (branco → preto, branco → azul, etc)
-   - Tipo de conteúdo (texto → imagens de produto, banner → texto)
-   - Função (conteúdo promocional → footer com links)
+5. **Trust badges (frete/qualidade/segurança) são UMA seção**, geralmente dentro do \`05_cta_final\`.
 
-8. UM BLOCO COM BOTÃO CTA: Se uma seção termina com um botão (ex: "APROVEITAR AGORA", "COMPRAR COM 10% OFF"), o botão faz PARTE dessa seção. Não crie uma seção separada só para um botão.
+6. **Botões CTA fazem parte da seção onde estão.** Nunca crie uma seção só pra um botão.
 
-## SEÇÕES TÍPICAS DE UM EMAIL MARKETING (para referência)
+## COMO IDENTIFICAR OS BOUNDARIES
 
-- hero_banner: Imagem principal no topo com logo, foto de produto/lifestyle, headline e CTA
-- welcome_text: Bloco de texto de boas-vindas com headline, body text, e CTA (TUDO JUNTO)
-- coupon_block: Bloco com código de cupom, porcentagem, timer, e botão para copiar/usar
-- product_grid: Grid com múltiplos produtos (imagens, nomes, preços, botões "comprar") — TODO O GRID é 1 seção
-- trust_badges: Ícones com benefícios (frete, qualidade, segurança) — TODOS juntos são 1 seção
-- social_proof: Depoimentos, avaliações, número de clientes satisfeitos
-- cta_final: Último bloco de chamada para ação antes do footer
-- footer: Logo da marca, links de navegação, copyright, redes sociais
+Corte em fronteiras visuais óbvias:
+- Mudança clara de cor de fundo (branco → preto, branco → azul)
+- Mudança de tipo de conteúdo (texto → imagens de produto, banner → texto)
+- Mudança de função (conteúdo promocional → footer com links)
+
+Use as coordenadas Y em pixels da imagem original. O primeiro slice começa em y_start=0. O último slice termina em y_end=altura_total. Cada y_end deve ser exatamente igual ao y_start da próxima seção (sem gaps nem sobreposição).
 
 ## VALIDAÇÕES OBRIGATÓRIAS
 
 - total_height deve ser a altura total em pixels inteiros
 - sections[0].y_start deve ser 0
 - sections[last].y_end deve ser igual a total_height
-- Para cada i: sections[i].y_end === sections[i+1].y_start (sem gaps)
-- Todos os y_start e y_end são inteiros
-- Cada seção deve ter pelo menos 80px de altura
-- Total de seções entre 3 e 10
-- Nome da seção em snake_case curto (hero_banner, product_grid, etc)`
+- Para cada i: sections[i].y_end === sections[i+1].y_start
+- Todos os valores y são inteiros
+- Cada seção tem pelo menos 80px de altura
+- Total de seções entre 3 e 8 (raramente mais)
+- Nomes seguem o padrão NN_nome (ex: 01_hero, 02_body_copy)`
 
 interface ClaudeSection {
   name: string
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
     const reportSectionsTool: Anthropic.Tool = {
       name: "report_email_sections",
       description:
-        "Reporta as seções detectadas no email marketing analisado. Deve ser chamada uma única vez com todas as seções em ordem vertical.",
+        "Reporta as seções detectadas no email marketing analisado. Deve ser chamada uma única vez com todas as seções em ordem vertical, seguindo a taxonomia canônica do prompt.",
       input_schema: {
         type: "object",
         properties: {
@@ -255,25 +255,29 @@ export async function POST(request: NextRequest) {
           sections: {
             type: "array",
             minItems: 2,
+            maxItems: 10,
             items: {
               type: "object",
               properties: {
                 name: {
                   type: "string",
                   description:
-                    "Nome curto em snake_case (ex: hero_banner, product_grid).",
+                    "Nome da seção no formato NN_categoria (ex: 01_hero, 02_body_copy, 03_In-Klaviyo_Dynamic_Product_Section, 04_reviews, 05_cta_final, 06_footer). Use exatamente esses nomes quando a seção se encaixar na taxonomia canônica. Pule categorias que não existirem no email e mantenha numeração sequencial.",
                 },
                 y_start: {
                   type: "integer",
-                  description: "Coordenada Y inicial em pixels.",
+                  description:
+                    "Coordenada Y inicial em pixels da imagem original.",
                 },
                 y_end: {
                   type: "integer",
-                  description: "Coordenada Y final em pixels.",
+                  description:
+                    "Coordenada Y final em pixels. Deve ser igual ao y_start da próxima seção.",
                 },
                 description: {
                   type: "string",
-                  description: "Descrição curta do conteúdo da seção.",
+                  description:
+                    "Descrição curta do conteúdo visual desta seção.",
                 },
               },
               required: ["name", "y_start", "y_end"],
