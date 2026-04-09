@@ -21,6 +21,12 @@ import { ProcessingStatus } from "./components/processing-status"
 import { ResultsDashboard } from "./components/results-dashboard"
 import { EmailSliceEditor } from "./components/email-slice-editor"
 import { ManualUpload } from "./components/manual-upload"
+import {
+  buildFunnelZipClientSide,
+  normalizeFileTo600pxBase64,
+  sanitizeFsName,
+  triggerBlobDownload,
+} from "./lib/client-slicer"
 
 export default function FigmaSlicerPage() {
   // Step global da UI
@@ -237,12 +243,12 @@ export default function FigmaSlicerPage() {
     [editingResult, manualResult]
   )
 
-  // ===== DOWNLOAD ZIP BATCH =====
+  // ===== DOWNLOAD ZIP BATCH (client-side, zero body-size issues) =====
 
   const handleDownloadZip = useCallback(async () => {
     if (!currentFunnel) return
     const validResults = results.filter(
-      (r) => r.sections.length > 0 && r.imageBase64
+      (r) => r.sections.length > 0 && r.imageBase64 && r.dimensions
     )
     if (validResults.length === 0) {
       setError("Nenhum email válido para exportar")
@@ -252,39 +258,29 @@ export default function FigmaSlicerPage() {
     setIsDownloading(true)
     setError(null)
     try {
-      const response = await fetch("/api/tools/figma-slicer/slice-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          funnelName: currentFunnel.name,
-          emails: validResults.map((r) => ({
-            emailName: r.email.name,
-            imageBase64: r.imageBase64,
-            sections: r.sections.map((s) => ({
-              name: s.name,
-              y_start: s.y_start,
-              y_end: s.y_end,
-            })),
+      const { blob, totalSlices } = await buildFunnelZipClientSide({
+        funnelName: currentFunnel.name,
+        emails: validResults.map((r) => ({
+          emailName: r.email.name,
+          imageBase64: r.imageBase64,
+          width: r.dimensions!.width,
+          height: r.dimensions!.height,
+          sections: r.sections.map((s) => ({
+            name: s.name,
+            y_start: s.y_start,
+            y_end: s.y_end,
           })),
-        }),
+        })),
       })
 
-      if (!response.ok) {
-        const err = await response
-          .json()
-          .catch(() => ({ error: "Erro ao gerar ZIP" }))
-        throw new Error(err.error || "Erro ao gerar ZIP")
+      if (totalSlices === 0) {
+        throw new Error("Nenhuma fatia válida para exportar")
       }
 
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${currentFunnel.name.replace(/[^a-zA-Z0-9_\-]/g, "_")}-slices.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      triggerBlobDownload(
+        blob,
+        `${sanitizeFsName(currentFunnel.name, "funnel")}-slices.zip`
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao baixar ZIP")
     } finally {
@@ -298,13 +294,15 @@ export default function FigmaSlicerPage() {
     setManualLoading(true)
     setError(null)
     try {
-      // 1. Converter File pra base64 (para poder usar no slice depois)
-      const arrayBuffer = await file.arrayBuffer()
-      const base64 = Buffer.from(arrayBuffer).toString("base64")
+      // 1. Normaliza pra 600px NO CLIENTE — garantimos que a escala do
+      // base64 guardado bate com a escala das coordenadas do analyze.
+      const normalized = await normalizeFileTo600pxBase64(file)
 
-      // 2. Analisar
+      // 2. Envia o base64 já normalizado pro analyze (para o servidor
+      // não precisar redimensionar de novo e as coords virem no sistema
+      // que já está salvo no client).
       const formData = new FormData()
-      formData.append("image", file)
+      formData.append("imageBase64", normalized.base64)
       const analyzeRes = await fetch("/api/tools/figma-slicer/analyze-pixels", {
         method: "POST",
         body: formData,
@@ -328,17 +326,17 @@ export default function FigmaSlicerPage() {
       const fakeEmail = {
         id: `manual-${Date.now()}`,
         name: file.name.replace(/\.[^/.]+$/, ""),
-        width: analyzeData.analysis.width,
-        height: analyzeData.analysis.height,
+        width: normalized.width,
+        height: normalized.height,
       }
 
       const result: EmailResult = {
         email: fakeEmail,
         sections: sectionsWithIds,
-        imageBase64: base64,
+        imageBase64: normalized.base64,
         dimensions: {
-          width: analyzeData.analysis.width,
-          height: analyzeData.analysis.height,
+          width: normalized.width,
+          height: normalized.height,
         },
         error: null,
       }
@@ -360,7 +358,7 @@ export default function FigmaSlicerPage() {
   }, [manualResult])
 
   const handleManualDownload = useCallback(async () => {
-    if (!manualResult) return
+    if (!manualResult || !manualResult.dimensions) return
     const validSections = manualResult.sections.filter(
       (s) => s.y_end - s.y_start > 0
     )
@@ -372,39 +370,31 @@ export default function FigmaSlicerPage() {
     setIsDownloading(true)
     setError(null)
     try {
-      const response = await fetch("/api/tools/figma-slicer/slice-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          funnelName: "Manual",
-          emails: [
-            {
-              emailName: manualResult.email.name,
-              imageBase64: manualResult.imageBase64,
-              sections: validSections.map((s) => ({
-                name: s.name,
-                y_start: s.y_start,
-                y_end: s.y_end,
-              })),
-            },
-          ],
-        }),
+      const { blob, totalSlices } = await buildFunnelZipClientSide({
+        funnelName: "Manual",
+        emails: [
+          {
+            emailName: manualResult.email.name,
+            imageBase64: manualResult.imageBase64,
+            width: manualResult.dimensions.width,
+            height: manualResult.dimensions.height,
+            sections: validSections.map((s) => ({
+              name: s.name,
+              y_start: s.y_start,
+              y_end: s.y_end,
+            })),
+          },
+        ],
       })
-      if (!response.ok) {
-        const err = await response
-          .json()
-          .catch(() => ({ error: "Erro ao gerar ZIP" }))
-        throw new Error(err.error || "Erro ao gerar ZIP")
+
+      if (totalSlices === 0) {
+        throw new Error("Nenhuma fatia válida para exportar")
       }
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${manualResult.email.name.replace(/[^a-zA-Z0-9_\-]/g, "_")}-slices.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+
+      triggerBlobDownload(
+        blob,
+        `${sanitizeFsName(manualResult.email.name, "email")}-slices.zip`
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao baixar ZIP")
     } finally {
