@@ -54,7 +54,7 @@
     "next": "15.5.14",
     "next-themes": "^0.4.6",
     "openai": "^6.22.0",
-    "pdf-to-img": "^5.0.0",
+    "pdfjs-dist": "^5.6.205",
     "react": "^19",
     "react-day-picker": "^9.6.0",
     "react-dom": "^19",
@@ -87,8 +87,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "sharp",
-      "@napi-rs/canvas"
+      "sharp"
     ]
   }
 }

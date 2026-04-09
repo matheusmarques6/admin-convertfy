@@ -6,15 +6,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  // Native / heavy modules that should NOT be bundled by Next.js — they run
-  // as native Node modules on the server. Needed by the Figma Email Slicer
-  // image/PDF processing APIs.
-  serverExternalPackages: [
-    "sharp",
-    "pdf-to-img",
-    "pdfjs-dist",
-    "@napi-rs/canvas",
-  ],
+  // Sharp is a native module and must not be bundled by Next.js.
+  // Needed by the Figma Email Slicer image processing API.
+  serverExternalPackages: ["sharp"],
 
   images: {
     remotePatterns: [

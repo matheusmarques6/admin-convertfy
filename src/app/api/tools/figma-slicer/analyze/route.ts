@@ -4,7 +4,6 @@ import sharp from "sharp"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { snapAllBoundaries } from "../lib/snap-to-boundary"
-import { pdfBufferToPngBuffer } from "../lib/pdf-to-image"
 
 const log = logger.child("FigmaSlicer.Analyze")
 
@@ -12,8 +11,11 @@ export const runtime = "nodejs"
 export const maxDuration = 60
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const
-const PDF_MIME_TYPE = "application/pdf"
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB (PDFs podem ser maiores)
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB — cliente aceita até 15, margem
+
+// Claude Vision limita cada imagem a ~5 MB em base64. Base64 cresce ~33%,
+// então o PNG binário precisa caber em ~3.7 MB para sobrar margem.
+const CLAUDE_MAX_IMAGE_BYTES = 3.7 * 1024 * 1024
 
 const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que monta emails em plataformas como Omnisend e Klaviyo. Sua tarefa é analisar esta imagem de email marketing e definir EXATAMENTE onde cortar para montar o email na plataforma.
 
@@ -90,6 +92,78 @@ interface ClaudeAnalysis {
   sections: ClaudeSection[]
 }
 
+/**
+ * Prepara a imagem para caber no limite de 5 MB (base64) do Claude Vision.
+ * Se o binário original já cabe, envia como está. Se não, redimensiona
+ * progressivamente e converte para JPEG (mais eficiente) mantendo proporção.
+ *
+ * Retorna o buffer enviado ao Claude + seu mime type + a altura da imagem
+ * que o Claude viu (necessária para reescalar coordenadas de volta ao
+ * original).
+ */
+async function prepareImageForClaude(
+  originalBuffer: Buffer,
+  originalMime: "image/png" | "image/jpeg" | "image/webp"
+): Promise<{
+  buffer: Buffer
+  mediaType: "image/png" | "image/jpeg" | "image/webp"
+  claudeWidth: number
+  claudeHeight: number
+}> {
+  const meta = await sharp(originalBuffer).metadata()
+  const originalWidth = meta.width ?? 0
+  const originalHeight = meta.height ?? 0
+
+  // Caso 1: binário já cabe
+  if (originalBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
+    return {
+      buffer: originalBuffer,
+      mediaType: originalMime,
+      claudeWidth: originalWidth,
+      claudeHeight: originalHeight,
+    }
+  }
+
+  // Caso 2: redimensionar. Tenta larguras progressivamente menores
+  // até caber. 1600 -> 1200 -> 900 -> 700.
+  const candidateWidths = [1600, 1200, 900, 700]
+
+  for (const targetWidth of candidateWidths) {
+    if (originalWidth > 0 && targetWidth >= originalWidth) {
+      // Não aumenta imagem — tenta só com o quality
+    }
+
+    const resized = await sharp(originalBuffer)
+      .resize({ width: targetWidth, withoutEnlargement: true })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer()
+
+    if (resized.length <= CLAUDE_MAX_IMAGE_BYTES) {
+      const resizedMeta = await sharp(resized).metadata()
+      return {
+        buffer: resized,
+        mediaType: "image/jpeg",
+        claudeWidth: resizedMeta.width ?? targetWidth,
+        claudeHeight: resizedMeta.height ?? 0,
+      }
+    }
+  }
+
+  // Último recurso: 500px + JPEG 75%
+  const tiny = await sharp(originalBuffer)
+    .resize({ width: 500, withoutEnlargement: true })
+    .jpeg({ quality: 75, mozjpeg: true })
+    .toBuffer()
+
+  const tinyMeta = await sharp(tiny).metadata()
+  return {
+    buffer: tiny,
+    mediaType: "image/jpeg",
+    claudeWidth: tinyMeta.width ?? 500,
+    claudeHeight: tinyMeta.height ?? 0,
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -129,16 +203,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const isPdf = file.type === PDF_MIME_TYPE
-    const isImage = ALLOWED_IMAGE_TYPES.includes(
-      file.type as (typeof ALLOWED_IMAGE_TYPES)[number]
-    )
-
-    if (!isPdf && !isImage) {
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(
+        file.type as (typeof ALLOWED_IMAGE_TYPES)[number]
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: `Tipo de arquivo não suportado: ${file.type}. Use PNG, JPG, WebP ou PDF.`,
+          error: `Tipo de arquivo não suportado: ${file.type}. Envie PNG, JPG ou WebP (PDFs devem ser convertidos no cliente).`,
         },
         { status: 400 }
       )
@@ -146,37 +219,39 @@ export async function POST(request: NextRequest) {
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
-        { success: false, error: "Arquivo muito grande. Máximo 15MB." },
+        { success: false, error: "Arquivo muito grande. Máximo 20MB." },
         { status: 400 }
       )
     }
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const base64 = buffer.toString("base64")
+    const originalBuffer = Buffer.from(await file.arrayBuffer())
+    const originalMeta = await sharp(originalBuffer).metadata()
+    const originalWidth = originalMeta.width ?? 0
+    const originalHeight = originalMeta.height ?? 0
+
+    if (!originalWidth || !originalHeight) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Não foi possível ler as dimensões da imagem.",
+        },
+        { status: 422 }
+      )
+    }
+
+    // Redimensionar (se necessário) para caber no limite do Claude
+    const {
+      buffer: claudeBuffer,
+      mediaType: claudeMediaType,
+      claudeHeight,
+    } = await prepareImageForClaude(
+      originalBuffer,
+      file.type as "image/png" | "image/jpeg" | "image/webp"
+    )
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const startTime = Date.now()
-
-    // Para PDF: enviar como documento. Para imagem: enviar como image.
-    const fileContentBlock = isPdf
-      ? {
-          type: "document" as const,
-          source: {
-            type: "base64" as const,
-            media_type: "application/pdf" as const,
-            data: base64,
-          },
-        }
-      : {
-          type: "image" as const,
-          source: {
-            type: "base64" as const,
-            media_type: file.type as "image/png" | "image/jpeg" | "image/webp",
-            data: base64,
-          },
-        }
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -185,7 +260,14 @@ export async function POST(request: NextRequest) {
         {
           role: "user",
           content: [
-            fileContentBlock,
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: claudeMediaType,
+                data: claudeBuffer.toString("base64"),
+              },
+            },
             {
               type: "text",
               text: SLICE_ANALYSIS_PROMPT,
@@ -258,49 +340,26 @@ export async function POST(request: NextRequest) {
       analysis.total_height = Math.round(analysis.total_height)
     }
 
-    // Obter um buffer PNG para:
-    // (a) snap-to-boundary via análise de pixels
-    // (b) retornar como preview quando a origem é PDF
-    let pngBuffer: Buffer
-    try {
-      pngBuffer = isPdf ? await pdfBufferToPngBuffer(buffer, 2) : buffer
-    } catch (pdfError) {
-      log.error("PDF conversion failed", {
-        error:
-          pdfError instanceof Error ? pdfError.message : String(pdfError),
-      })
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Falha ao converter PDF para imagem. Verifique se o arquivo é válido.",
-        },
-        { status: 422 }
-      )
-    }
-
-    // Descobrir dimensões reais da imagem PNG
-    const pngMeta = await sharp(pngBuffer).metadata()
-    const actualWidth = pngMeta.width ?? 0
-    const actualHeight = pngMeta.height ?? 0
-
-    // Se o Claude retornou coordenadas em uma escala diferente da imagem PNG,
-    // reescalar antes do snap. (Comum em PDFs: Claude pode reportar coords
-    // em unidades do PDF, não pixels.)
-    if (actualHeight > 0 && analysis.total_height > 0) {
-      const scale = actualHeight / analysis.total_height
+    // Reescalar coordenadas da escala do Claude para a escala da imagem
+    // original. O Claude viu uma imagem de altura `claudeHeight`, então
+    // precisamos multiplicar suas coordenadas por (originalHeight / claudeHeight).
+    // Usamos claudeHeight (a altura real da imagem enviada) como referência,
+    // não analysis.total_height (que o Claude pode ter reportado incorretamente).
+    const referenceHeight = claudeHeight > 0 ? claudeHeight : analysis.total_height
+    if (referenceHeight > 0 && originalHeight > 0) {
+      const scale = originalHeight / referenceHeight
       if (Math.abs(scale - 1) > 0.02) {
         for (const section of analysis.sections) {
           section.y_start = Math.round(section.y_start * scale)
           section.y_end = Math.round(section.y_end * scale)
         }
-        analysis.total_height = actualHeight
       }
     }
+    analysis.total_height = originalHeight
 
-    // Garantir limites após rescale
+    // Garantir extremos depois do rescale
     analysis.sections[0].y_start = 0
-    analysis.sections[analysis.sections.length - 1].y_end = actualHeight
+    analysis.sections[analysis.sections.length - 1].y_end = originalHeight
     for (let i = 1; i < analysis.sections.length; i++) {
       if (
         analysis.sections[i].y_start !== analysis.sections[i - 1].y_end
@@ -309,10 +368,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Snap-to-boundary via análise de pixels
+    // Snap-to-boundary via análise de pixels na IMAGEM ORIGINAL
     try {
       analysis.sections = await snapAllBoundaries(
-        pngBuffer,
+        originalBuffer,
         analysis.sections,
         60
       )
@@ -323,20 +382,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Se for PDF, retornar também o PNG como preview base64
-    let previewImage: string | null = null
-    let previewDimensions: { width: number; height: number } | null = null
-    if (isPdf) {
-      previewImage = pngBuffer.toString("base64")
-      previewDimensions = { width: actualWidth, height: actualHeight }
-    }
-
     return NextResponse.json({
       success: true,
       analysis,
       duration_ms: analysisMs,
-      preview_image: previewImage,
-      preview_dimensions: previewDimensions,
     })
   } catch (error: unknown) {
     log.error("Slice analysis failed", {
