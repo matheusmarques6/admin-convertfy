@@ -24,61 +24,70 @@ const CLAUDE_MAX_DIMENSION = 1568
 // Limite de 5 MB em base64 → ~3.7 MB em binário.
 const CLAUDE_MAX_IMAGE_BYTES = 3.7 * 1024 * 1024
 
-const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que monta emails em plataformas como Omnisend e Klaviyo. Sua tarefa é analisar esta imagem de email marketing e definir EXATAMENTE onde cortar para montar o email na plataforma.
+/**
+ * Gera o prompt de análise injetando dinamicamente a altura real da
+ * imagem que o Claude está vendo. Isso evita que ele tente adivinhar
+ * a escala e erra o total_height.
+ */
+function buildSliceAnalysisPrompt(claudeHeight: number): string {
+  return `Você é um especialista em email marketing que monta emails em plataformas como Omnisend e Klaviyo. Sua tarefa é analisar esta imagem de email e definir EXATAMENTE onde cortar para montar o email na plataforma.
 
 Chame a tool \`report_email_sections\` com a análise completa.
 
-## TAXONOMIA CANÔNICA — USE SEMPRE QUE POSSÍVEL
+## INFORMAÇÃO CRÍTICA SOBRE A IMAGEM
 
-Mapeie as seções do email para esta hierarquia na ordem em que aparecerem. Pule categorias que não existirem. Use exatamente estes nomes:
+A imagem que você está vendo tem EXATAMENTE **${claudeHeight} pixels de altura**. Todas as coordenadas Y que você retornar DEVEM estar entre 0 e ${claudeHeight}.
 
-- **01_hero** — Logo + imagem principal (banner) + headline + CTA principal
-- **02_body_copy** — Copy da oferta, urgência, cupom, benefícios, blocos de texto promocional, trust badges
-- **03_In-Klaviyo_Dynamic_Product_Section** — Grid completo de produtos dinâmicos
-- **04_reviews** — Reviews, depoimentos, social proof ("+25.000 clientes"), avaliações/estrelas
-- **05_cta_final** — Último bloco antes do footer (APENAS se existir um CTA de fechamento distinto)
-- **06_footer** — Logo da marca + menu de navegação + copyright + redes sociais
+- total_height DEVE ser exatamente ${claudeHeight}
+- sections[0].y_start DEVE ser 0
+- sections[last].y_end DEVE ser exatamente ${claudeHeight}
+- Nenhuma coordenada pode ultrapassar ${claudeHeight}
+
+## ABORDAGEM DE ANÁLISE — FAÇA NESTA ORDEM
+
+**Passo 1**: Identifique visualmente TODOS os blocos distintos do email, de cima a baixo. Liste o que você vê: hero? texto? cupom? grid de produtos? reviews? footer?
+
+**Passo 2**: Agrupe blocos relacionados em **4 a 6 seções lógicas**. Cada seção deve ser visualmente coesa por si só.
+
+**Passo 3**: Para cada seção, defina as coordenadas y_start e y_end em pixels.
+
+## TAXONOMIA SUGERIDA (não força — use quando fizer sentido natural)
+
+Quando uma seção se encaixar perfeitamente em uma destas categorias, use o nome canônico:
+
+- **01_hero**: logo + imagem grande do topo + headline grande + CTA principal
+- **02_body_copy**: textos promocionais + cupom + trust badges + botões CTA do corpo (PODE ter várias centenas de pixels, incluindo título "BOAS-VINDAS", texto da oferta, cupom, botão APROVEITAR AGORA e ícones de benefício)
+- **03_In-Klaviyo_Dynamic_Product_Section**: APENAS o grid de produtos (2×2, 3×3, etc.). NÃO inclua texto ou botões antes/depois do grid — só os cards dos produtos.
+- **04_reviews**: "+N clientes", depoimentos, estrelas, social proof
+- **05_cta_final**: APENAS se houver um bloco FINAL distinto com botão entre reviews e footer
+- **06_footer**: logo + menu de navegação + copyright
+
+Se uma seção não se encaixar claramente, use um nome descritivo em snake_case (ex: \`02_welcome_offer\`, \`03_coupon_block\`, \`04_product_grid\`, \`05_trust_badges\`). **É MELHOR usar um nome natural do que forçar uma categoria errada.**
 
 ## ⛔ ERROS CRÍTICOS QUE VOCÊ NÃO PODE COMETER
 
-Estas são as violações mais comuns. NÃO faça nenhuma delas:
+❌ **NUNCA crie seções minúsculas (<100 pixels de altura).** Se uma seção tem menos de 100px, você está dividindo demais — merge com a seção adjacente.
 
-❌ **NUNCA corte no meio de um grid de produtos.** Se há um grid 2×2 ou 3×3 com imagens de produto + preço + botão "comprar", TODO o grid é UMA única seção chamada \`03_In-Klaviyo_Dynamic_Product_Section\`. A fronteira entre a linha de cima (produtos 1-2) e a linha de baixo (produtos 3-4) NÃO é um ponto de corte — é parte do mesmo bloco. Se a seção tem 4 produtos em 2 linhas, ela vai do topo do primeiro produto até o final do último produto, em uma fatia só.
+❌ **NUNCA force a taxonomia.** Se o email não tem um "body_copy" claro, não crie uma seção vazia chamada body_copy só pra ter. Pule e vá pra próxima categoria. Se o email não tem um "cta_final" distinto, NÃO crie um.
 
-❌ **NUNCA nomeie trust badges como \`cta_final\`.** Ícones de "envio grátis", "parcelamento", "compra segura", "frete", "garantia", "suporte" — isso é **trust_badges** e faz parte de \`02_body_copy\` (se estiver antes do grid) ou de \`05_cta_final\` (se for logo antes do footer). Sozinhos, NÃO são uma seção \`cta_final\` — cta_final exige um botão de chamada à ação explícito.
+❌ **NUNCA corte no meio de um grid de produtos.** Se há um grid 2×2 com produtos 1,2,3,4 em quadrado, o corte NÃO fica entre a linha 1-2 e a linha 3-4. TODO o grid é UMA seção só. Pergunta para si: "Se eu cortasse aqui, ficaria um produto isolado numa fatia?" Se sim, o corte está errado.
 
-❌ **NUNCA corte o hero antes do headline terminar.** O \`01_hero\` inclui: logo + imagem principal + headline grande + CTA principal. Só termine o hero quando esses 4 elementos já passaram. Se o hero tem uma curvatura ou degradê no final, o corte fica DEPOIS da curvatura, não no meio dela.
+❌ **NUNCA jogue o corpo do email dentro da seção de produtos.** Textos, cupons, trust badges que vêm ANTES do grid ficam em \`02_body_copy\`. A \`03_In-Klaviyo_Dynamic_Product_Section\` contém APENAS as imagens dos produtos + preços + botões "comprar".
 
-❌ **NUNCA separe um botão CTA da seção que ele pertence.** "APROVEITAR AGORA", "COMPRAR COM 10% OFF", "RECUPERAR CÓDIGO" — esses botões fazem parte do bloco acima deles (body_copy, coupon, etc). Não crie uma seção só pra um botão.
+❌ **NUNCA corte o hero antes do headline terminar.** O hero inclui: logo + imagem de fundo + headline grande. Se o hero tem curvatura ou degradê no final, o corte fica DEPOIS disso.
 
-❌ **NUNCA quebre reviews individuais.** Se há 3 depoimentos empilhados, eles formam UMA seção \`04_reviews\`.
+❌ **NUNCA separe um botão CTA da seção acima dele.** "APROVEITAR AGORA", "COMPRAR 10% OFF" fazem parte do bloco de texto/cupom acima, não são uma seção sozinha.
 
-❌ **NUNCA retorne mais de 8 seções.** Emails típicos têm 4-6 seções. Se você está tentando criar 9-10, está cortando demais — volte e agrupe.
+❌ **NUNCA quebre reviews individuais em seções separadas.**
 
-## ✅ REGRA POSITIVA MESTRE
+❌ **NUNCA retorne mais de 7 seções.** Emails típicos têm 4-5 seções. Se você está tentando criar 8+, está cortando demais.
 
-Pergunte para cada corte: "Se eu fizesse isso no Omnisend, as duas fatias resultantes ficariam visualmente coesas sozinhas?" Se uma delas ficaria "cortada no meio" (meio grid, meio texto, meio curvatura), o corte está errado.
+## ✅ REGRA MESTRE POSITIVA
 
-## COMO IDENTIFICAR OS BOUNDARIES
+Para cada corte, pergunte: "Se eu montasse isso no Omnisend, as duas fatias resultantes ficariam visualmente coesas e funcionais sozinhas?" Se a resposta é NÃO (fatia com texto cortado, meio grid, botão órfão, etc.), o corte está errado — recue ou avance até encontrar um espaço vazio claro.
 
-Corte SEMPRE em **zonas de espaço vazio** (faixas horizontais de cor de fundo uniforme) entre seções. Tipicamente:
-- Fim de uma área com fundo colorido e início de uma com fundo branco
-- Espaço horizontal em branco entre blocos de texto
-- Linha horizontal ou separador visual
-- Mudança drástica de tipo de conteúdo (texto → imagens, banner → texto)
-
-Use coordenadas Y em pixels. O primeiro slice começa em y_start=0. O último termina em y_end=altura_total. Cada y_end deve ser igual ao y_start da próxima seção.
-
-## VALIDAÇÕES OBRIGATÓRIAS
-
-- total_height é inteiro positivo
-- sections[0].y_start === 0
-- sections[last].y_end === total_height
-- Para cada i: sections[i].y_end === sections[i+1].y_start
-- Todos os y são inteiros
-- Cada seção tem pelo menos 80px de altura
-- Total de seções entre 3 e 8 (idealmente 4-6)
-- Nomes seguem o padrão NN_nome`
+Corte sempre em faixas de espaço vazio (fundo uniforme) entre blocos, nunca em cima de conteúdo.`
+}
 
 interface ClaudeSection {
   name: string
@@ -362,7 +371,7 @@ export async function POST(request: NextRequest) {
             },
             {
               type: "text",
-              text: SLICE_ANALYSIS_PROMPT,
+              text: buildSliceAnalysisPrompt(claudeHeight),
             },
           ],
         },
@@ -417,16 +426,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Arredondar todos os valores para inteiros
+    // Arredondar inteiros
     for (const section of analysis.sections) {
       section.y_start = Math.round(section.y_start)
       section.y_end = Math.round(section.y_end)
     }
 
-    // Garantir que começa em 0
+    // Garantir que começa em 0 e termina no claudeHeight (a altura real
+    // da imagem que enviamos) — isso normaliza erros do Claude sobre o
+    // ponto final do email.
     analysis.sections[0].y_start = 0
+    analysis.sections[analysis.sections.length - 1].y_end = claudeHeight
 
-    // Corrigir gaps (y_end de uma deve ser y_start da próxima)
+    // Clampar y_start/y_end ao intervalo [0, claudeHeight]
+    for (const section of analysis.sections) {
+      if (section.y_start < 0) section.y_start = 0
+      if (section.y_start > claudeHeight) section.y_start = claudeHeight
+      if (section.y_end < 0) section.y_end = 0
+      if (section.y_end > claudeHeight) section.y_end = claudeHeight
+    }
+
+    // Corrigir gaps/sobreposições: y_end de uma = y_start da próxima
     for (let i = 1; i < analysis.sections.length; i++) {
       if (
         analysis.sections[i].y_start !== analysis.sections[i - 1].y_end
@@ -435,35 +455,62 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ===================================================================
-    // RESCALE: o Claude vê uma imagem de tamanho potencialmente diferente
-    // da original (porque redimensionamos para ≤1568px, ou porque o
-    // Claude fez downscaling interno). Suas coordenadas são na escala
-    // que ELE viu. Precisamos escalar de volta para a imagem original.
-    //
-    // A escala é inferida da última seção: lastSection.y_end representa
-    // o "fim do email" na escala do Claude. Se ele viu uma imagem de
-    // 1568 de altura, a última seção termina em ~1568. Dividimos a
-    // altura original por esse valor para obter o fator de escala.
-    // ===================================================================
-    const lastSection = analysis.sections[analysis.sections.length - 1]
-    const claudeMaxY = Math.max(
-      lastSection.y_end,
-      analysis.total_height || 0
-    )
-
-    log.info("Claude returned sections", {
+    log.info("Claude returned sections (pre-rescale)", {
       originalSize: `${originalWidth}x${originalHeight}`,
       claudeSentSize: `${claudeWidth}x${claudeHeight}`,
       claudeReportedHeight: analysis.total_height,
-      claudeMaxY,
       sectionsCount: analysis.sections.length,
-      firstSectionYEnd: analysis.sections[0].y_end,
-      lastSectionYEnd: lastSection.y_end,
+      sections: analysis.sections.map((s) => ({
+        name: s.name,
+        y_start: s.y_start,
+        y_end: s.y_end,
+        height: s.y_end - s.y_start,
+      })),
     })
 
-    if (claudeMaxY > 0 && originalHeight > 0) {
-      const scale = originalHeight / claudeMaxY
+    // =====================================================================
+    // AUTO-MERGE DE SEÇÕES MINÚSCULAS
+    // Se o Claude criou uma seção com < 100px de altura (ainda na escala
+    // dele), provavelmente forçou um nome canônico onde não devia.
+    // Merge automático com a seção vizinha MAIOR para não perder conteúdo.
+    // =====================================================================
+    const MIN_SECTION_HEIGHT_CLAUDE_SCALE = 100
+    let mergedSomething = true
+    while (mergedSomething && analysis.sections.length > 1) {
+      mergedSomething = false
+      for (let i = 0; i < analysis.sections.length; i++) {
+        const height = analysis.sections[i].y_end - analysis.sections[i].y_start
+        if (height >= MIN_SECTION_HEIGHT_CLAUDE_SCALE) continue
+
+        // Merge com vizinho mais alto (prioriza o de cima se existir)
+        if (i === 0 && analysis.sections.length > 1) {
+          // Primeira seção é minúscula — merge com a próxima (ela absorve)
+          analysis.sections[1].y_start = analysis.sections[0].y_start
+          analysis.sections.splice(0, 1)
+        } else if (i === analysis.sections.length - 1) {
+          // Última seção é minúscula — merge com a anterior
+          analysis.sections[i - 1].y_end = analysis.sections[i].y_end
+          analysis.sections.splice(i, 1)
+        } else {
+          // No meio — merge com a vizinha que tem nome mais "genérico"
+          // (preferência: body_copy > outras). Na dúvida, com a anterior.
+          analysis.sections[i - 1].y_end = analysis.sections[i].y_end
+          analysis.sections.splice(i, 1)
+        }
+        mergedSomething = true
+        break
+      }
+    }
+
+    // =====================================================================
+    // RESCALE: converte coordenadas da escala do Claude (claudeHeight) para
+    // a escala da imagem original (originalHeight). claudeHeight é FIXO e
+    // conhecido (é o tamanho da imagem que enviamos), então o scale é
+    // determinístico. Nada de inferir "referenceHeight" do retorno do
+    // Claude — isso quebrava quando o Claude reportava altura errada.
+    // =====================================================================
+    if (claudeHeight > 0 && originalHeight > 0 && claudeHeight !== originalHeight) {
+      const scale = originalHeight / claudeHeight
       for (const section of analysis.sections) {
         section.y_start = Math.round(section.y_start * scale)
         section.y_end = Math.round(section.y_end * scale)
@@ -480,7 +527,6 @@ export async function POST(request: NextRequest) {
       ) {
         analysis.sections[i].y_start = analysis.sections[i - 1].y_end
       }
-      // Clampar pra não passar da altura original
       if (analysis.sections[i].y_end > originalHeight) {
         analysis.sections[i].y_end = originalHeight
       }
@@ -489,8 +535,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Filtrar seções degeneradas (altura ≤ 0) que podem ter aparecido
-    // depois do rescale se o Claude colapsou algumas
+    // Filtrar seções degeneradas (altura ≤ 0)
     analysis.sections = analysis.sections.filter(
       (s) => s.y_end - s.y_start > 0
     )
@@ -504,19 +549,61 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Snap-to-boundary via análise de pixels na IMAGEM ORIGINAL
+    // Snap-to-boundary via análise de pixels na IMAGEM ORIGINAL com
+    // safeguard: guarda as coordenadas originais e aceita o snap apenas
+    // se ele move a posição em menos de 8% da altura da imagem. Isso
+    // impede que o snap grude em um gap errado muito distante.
     try {
-      analysis.sections = await snapAllBoundaries(
+      const beforeSnap = analysis.sections.map((s) => ({
+        y_start: s.y_start,
+        y_end: s.y_end,
+      }))
+      const snapped = await snapAllBoundaries(
         originalBuffer,
         analysis.sections,
         60
       )
+
+      const maxSnapDistance = Math.round(originalHeight * 0.08)
+      const safelyMerged = snapped.map((s, i) => {
+        if (!beforeSnap[i]) return s
+        const orig = beforeSnap[i]
+        // Se o snap moveu y_start ou y_end em mais de 8%, rejeita o snap
+        // dessa seção específica e mantém as coordenadas pré-snap.
+        if (
+          Math.abs(s.y_start - orig.y_start) > maxSnapDistance ||
+          Math.abs(s.y_end - orig.y_end) > maxSnapDistance
+        ) {
+          return { ...s, y_start: orig.y_start, y_end: orig.y_end }
+        }
+        return s
+      })
+
+      // Re-garantir contiguidade após o merge seguro
+      for (let i = 1; i < safelyMerged.length; i++) {
+        if (safelyMerged[i].y_start !== safelyMerged[i - 1].y_end) {
+          safelyMerged[i].y_start = safelyMerged[i - 1].y_end
+        }
+      }
+      safelyMerged[0].y_start = 0
+      safelyMerged[safelyMerged.length - 1].y_end = originalHeight
+
+      analysis.sections = safelyMerged
     } catch (snapError) {
       log.warn("Snap-to-boundary failed, using Claude's coordinates", {
         error:
           snapError instanceof Error ? snapError.message : String(snapError),
       })
     }
+
+    log.info("Final sections (post-snap)", {
+      sections: analysis.sections.map((s) => ({
+        name: s.name,
+        y_start: s.y_start,
+        y_end: s.y_end,
+        height: s.y_end - s.y_start,
+      })),
+    })
 
     return NextResponse.json({
       success: true,
