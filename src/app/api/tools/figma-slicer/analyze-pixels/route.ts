@@ -20,8 +20,8 @@ const SCAN_INTERVAL = 10 // escaneia 1 linha a cada N (rápido)
 const X_SAMPLE = 3 // amostra 1 pixel a cada N horizontalmente
 
 // Passo 2 — detecção de transição
-const RAW_DIST_THRESHOLD = 20 // distância RGB mínima para considerar transição
-const RAW_DIST_CLASS_CHANGE = 10 // mínimo se a classe mudou (transição fraca mas real)
+const RAW_DIST_THRESHOLD = 35 // distância RGB mínima para considerar transição
+const RAW_DIST_CLASS_CHANGE = 20 // mínimo se a classe mudou (transição fraca mas real)
 
 // Passo 3 — refinamento fino
 const REFINE_RADIUS = 20 // ± N pixels ao redor da sugestão
@@ -29,10 +29,10 @@ const REFINE_STEP = 2
 const REFINE_X_SAMPLE = 5
 
 // Passo 4 — filtros finais
-const MIN_SECTION_HEIGHT = 80 // mínimo entre cortes
-const MIN_CUT_SCORE = 8 // score mínimo pra um corte ser válido
-const MAX_SECTIONS = 8 // máximo de seções (= 7 cortes)
-const MIN_FINAL_HEIGHT = 40 // seções menores que isso são fundidas
+const MIN_SECTION_HEIGHT = 200 // mínimo entre cortes
+const MIN_CUT_SCORE = 20 // score mínimo pra um corte ser válido
+// MAX_SECTIONS agora é dinâmico (calculado por altura do email) — veja o handler
+const MIN_FINAL_HEIGHT = 150 // seções menores que isso são fundidas
 
 // ============================================================================
 // UTILS
@@ -265,11 +265,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 4d. Remove cortes muito perto das bordas (topo/base)
+    // Margem de 100px das bordas (antes era MIN_SECTION_HEIGHT=200 e cortava
+    // demais em emails curtos).
     let finalCuts = spacedCuts.filter(
-      (c) => c.y > MIN_SECTION_HEIGHT && c.y < height - MIN_SECTION_HEIGHT
+      (c) => c.y > 100 && c.y < height - 100
     )
 
-    // 4e. Se ainda tem mais que MAX_SECTIONS-1 cortes, manter os mais fortes
+    // 4e. MAX_SECTIONS agora é DINÂMICO baseado na altura do email.
+    // Regra: 1 corte a cada 400px, mínimo 3 seções, máximo 8.
+    //   Email 922px  → floor(922/400)=2  → max 3 seções (2 cortes)
+    //   Email 1500px → floor(1500/400)=3 → max 4 seções (3 cortes)
+    //   Email 2700px → floor(2700/400)=6 → max 7 seções (6 cortes)
+    //   Email 4000px → floor(4000/400)=10 → cap em 8 seções (7 cortes)
+    const MAX_SECTIONS = Math.max(3, Math.min(8, Math.floor(height / 400)))
     if (finalCuts.length > MAX_SECTIONS - 1) {
       finalCuts.sort((a, b) => b.score - a.score)
       finalCuts = finalCuts.slice(0, MAX_SECTIONS - 1)
