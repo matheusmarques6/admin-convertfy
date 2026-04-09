@@ -1,5 +1,5 @@
 // ============================================================================
-// Figma Email Slicer — shared types
+// Figma Email Slicer V4 — shared types
 // ============================================================================
 
 // ===== FIGMA =====
@@ -7,13 +7,14 @@
 export interface FigmaEmail {
   id: string
   name: string
-  width?: number
-  height?: number
+  width: number
+  height: number
 }
 
 export interface FigmaFunnel {
   id: string
   name: string
+  emailCount: number
   emails: FigmaEmail[]
 }
 
@@ -26,7 +27,6 @@ export interface FigmaPage {
 export interface FigmaFileStructure {
   name: string
   fileKey: string
-  lastModified: string
   pages: FigmaPage[]
 }
 
@@ -34,30 +34,36 @@ export interface FigmaFileStructure {
 
 export interface SliceSection {
   id: string
-  name: string
+  name: string // parte_1, parte_2, ...
   y_start: number
   y_end: number
-  description?: string
-}
-
-export interface SliceAnalysisSection {
-  name: string
-  y_start: number
-  y_end: number
-  description?: string
-}
-
-export interface SliceAnalysisResponse {
-  success: boolean
-  analysis: {
-    total_height: number
-    image_width: number
-    sections: SliceAnalysisSection[]
-  }
-  duration_ms: number
 }
 
 export interface ImageDimensions {
   width: number
   height: number
+}
+
+export interface EmailResult {
+  email: FigmaEmail
+  sections: SliceSection[]
+  imageBase64: string
+  dimensions: ImageDimensions | null
+  error: string | null
+}
+
+// ===== Fases da UI =====
+
+export type SlicerStep =
+  | "connect"
+  | "browsing"
+  | "processing"
+  | "results"
+  | "editing"
+  | "manual"
+
+export interface ProcessingStatus {
+  phase: "exporting" | "analyzing"
+  current: number
+  total: number
 }

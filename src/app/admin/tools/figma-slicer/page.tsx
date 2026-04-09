@@ -1,185 +1,100 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Scissors, Link as LinkIcon, Upload } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ROUTES } from "@/lib/routes"
 import type {
-  FigmaEmail,
+  EmailResult,
   FigmaFileStructure,
-  ImageDimensions,
+  FigmaFunnel,
+  ProcessingStatus as Status,
   SliceSection,
+  SlicerStep,
 } from "@/types/slicer"
 import { FigmaConnect } from "./components/figma-connect"
-import { FunnelBrowser } from "./components/funnel-browser"
-import { ImageUploader } from "./components/image-uploader"
-import { SlicePreview } from "./components/slice-preview"
-import { SliceList } from "./components/slice-list"
-import { ExportButton } from "./components/export-button"
-import { SlicePreviewModal } from "./components/slice-preview-modal"
-
-interface ImageData {
-  url: string
-  width: number
-  height: number
-  // Origem: file local ou base64 vindo do Figma
-  file: File | null
-  base64: string | null
-  isObjectUrl: boolean
-}
-
-type Step = "connect" | "browsing" | "analyzing" | "slicing"
+import { FunnelList } from "./components/funnel-list"
+import { ProcessingStatus } from "./components/processing-status"
+import { ResultsDashboard } from "./components/results-dashboard"
+import { EmailSliceEditor } from "./components/email-slice-editor"
+import { ManualUpload } from "./components/manual-upload"
 
 export default function FigmaSlicerPage() {
-  const [step, setStep] = useState<Step>("connect")
+  // Step global da UI
+  const [step, setStep] = useState<SlicerStep>("connect")
   const [tab, setTab] = useState<"figma" | "upload">("figma")
 
-  // Figma state
-  const [figmaStructure, setFigmaStructure] =
-    useState<FigmaFileStructure | null>(null)
+  // Figma
+  const [structure, setStructure] = useState<FigmaFileStructure | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [selectedEmail, setSelectedEmail] = useState<FigmaEmail | null>(null)
-  const [selectedFunnelName, setSelectedFunnelName] = useState<string | null>(
-    null
-  )
 
-  // Slicing state
-  const [imageData, setImageData] = useState<ImageData | null>(null)
-  const [sections, setSections] = useState<SliceSection[]>([])
-  const [analysisTime, setAnalysisTime] = useState(0)
+  // Processamento batch
+  const [currentFunnel, setCurrentFunnel] = useState<FigmaFunnel | null>(null)
+  const [processingStatus, setProcessingStatus] = useState<Status>({
+    phase: "exporting",
+    current: 0,
+    total: 0,
+  })
+
+  // Resultados
+  const [results, setResults] = useState<EmailResult[]>([])
+  const [editingResult, setEditingResult] = useState<EmailResult | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  // Upload manual
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualResult, setManualResult] = useState<EmailResult | null>(null)
+
+  // Erros globais
   const [error, setError] = useState<string | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
-  const [isReanalyzing, setIsReanalyzing] = useState(false)
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
 
-  // Cleanup de Object URLs
-  const imageDataRef = useRef<ImageData | null>(null)
-  useEffect(() => {
-    imageDataRef.current = imageData
-  }, [imageData])
-  useEffect(() => {
-    return () => {
-      if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
-        URL.revokeObjectURL(imageDataRef.current.url)
-      }
-    }
-  }, [])
+  // ===== FIGMA CONNECT =====
 
-  // ===== Figma flow =====
-
-  const handleFigmaConnected = useCallback((structure: FigmaFileStructure) => {
-    setFigmaStructure(structure)
-    setStep("browsing")
-    setError(null)
-  }, [])
+  const handleFigmaConnected = useCallback(
+    (newStructure: FigmaFileStructure) => {
+      setStructure(newStructure)
+      setStep("browsing")
+      setError(null)
+    },
+    []
+  )
 
   const handleBackToConnect = useCallback(() => {
-    setFigmaStructure(null)
-    setStep("connect")
+    setStructure(null)
+    setCurrentFunnel(null)
+    setResults([])
     setError(null)
+    setStep("connect")
   }, [])
 
-  const runAnalysisFromBase64 = useCallback(
-    async (base64: string): Promise<{ ok: true } | { ok: false; error: string }> => {
-      const formData = new FormData()
-      formData.append("imageBase64", base64)
+  // ===== BATCH PROCESSING =====
 
-      const res = await fetch("/api/tools/figma-slicer/analyze", {
-        method: "POST",
-        body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        return { ok: false, error: data.error || "Erro na análise" }
-      }
-
-      const sectionsWithIds: SliceSection[] = data.analysis.sections.map(
-        (s: {
-          name: string
-          y_start: number
-          y_end: number
-          description?: string
-        }) => ({
-          ...s,
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random()}`,
-        })
-      )
-
-      setSections(sectionsWithIds)
-      setAnalysisTime(data.duration_ms)
-      return { ok: true }
-    },
-    []
-  )
-
-  const runAnalysisFromFile = useCallback(
-    async (file: File): Promise<{ ok: true } | { ok: false; error: string }> => {
-      const formData = new FormData()
-      formData.append("image", file)
-
-      const res = await fetch("/api/tools/figma-slicer/analyze", {
-        method: "POST",
-        body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        return { ok: false, error: data.error || "Erro na análise" }
-      }
-
-      const sectionsWithIds: SliceSection[] = data.analysis.sections.map(
-        (s: {
-          name: string
-          y_start: number
-          y_end: number
-          description?: string
-        }) => ({
-          ...s,
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random()}`,
-        })
-      )
-
-      setSections(sectionsWithIds)
-      setAnalysisTime(data.duration_ms)
-      return { ok: true }
-    },
-    []
-  )
-
-  const handleEmailSelected = useCallback(
-    async (email: FigmaEmail, funnelName: string) => {
-      if (!figmaStructure) return
-
-      // Limpa imageData anterior
-      if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
-        URL.revokeObjectURL(imageDataRef.current.url)
-      }
-      setImageData(null)
-      setSections([])
+  const handleProcessFunnel = useCallback(
+    async (funnel: FigmaFunnel) => {
+      if (!structure) return
+      setCurrentFunnel(funnel)
       setError(null)
-      setSelectedEmail(email)
-      setSelectedFunnelName(funnelName)
-      setStep("analyzing")
+      setResults([])
+      setStep("processing")
+      setProcessingStatus({
+        phase: "exporting",
+        current: 0,
+        total: funnel.emails.length,
+      })
 
       try {
-        // 1. Exporta o email do Figma (PNG 600px)
+        // Passo 1: exportar todos os emails numa única chamada
         const exportRes = await fetch(
-          "/api/tools/figma-slicer/figma/export",
+          "/api/tools/figma-slicer/figma-export-batch",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              fileKey: figmaStructure.fileKey,
-              nodeId: email.id,
+              fileKey: structure.fileKey,
+              nodeIds: funnel.emails.map((e) => e.id),
             }),
           }
         )
@@ -188,168 +103,321 @@ export default function FigmaSlicerPage() {
           throw new Error(exportData.error || "Erro ao exportar do Figma")
         }
 
-        const dimensions = exportData.dimensions as ImageDimensions
-        const imgBase64: string = exportData.imageBase64
-
-        // 2. Configura imageData com data URL (sem Object URL)
-        setImageData({
-          url: `data:image/png;base64,${imgBase64}`,
-          width: dimensions.width,
-          height: dimensions.height,
-          file: null,
-          base64: imgBase64,
-          isObjectUrl: false,
+        // Passo 2: analisar cada email sequencialmente (evita sobrecarga)
+        setProcessingStatus({
+          phase: "analyzing",
+          current: 0,
+          total: funnel.emails.length,
         })
 
-        // 3. Analisa as seções
-        const result = await runAnalysisFromBase64(imgBase64)
-        if (!result.ok) throw new Error(result.error)
+        const newResults: EmailResult[] = []
 
-        setStep("slicing")
+        for (let i = 0; i < funnel.emails.length; i++) {
+          const email = funnel.emails[i]
+          setProcessingStatus({
+            phase: "analyzing",
+            current: i + 1,
+            total: funnel.emails.length,
+          })
+
+          const imageData = exportData.images[email.id] as
+            | { base64: string; width: number; height: number }
+            | null
+
+          if (!imageData) {
+            newResults.push({
+              email,
+              sections: [],
+              imageBase64: "",
+              dimensions: null,
+              error: "Falha ao exportar do Figma",
+            })
+            continue
+          }
+
+          const formData = new FormData()
+          formData.append("imageBase64", imageData.base64)
+
+          try {
+            const analyzeRes = await fetch(
+              "/api/tools/figma-slicer/analyze-pixels",
+              {
+                method: "POST",
+                body: formData,
+              }
+            )
+            const analyzeData = await analyzeRes.json()
+
+            if (!analyzeRes.ok || !analyzeData.success) {
+              newResults.push({
+                email,
+                sections: [],
+                imageBase64: imageData.base64,
+                dimensions: { width: imageData.width, height: imageData.height },
+                error: analyzeData.error || "Erro na análise",
+              })
+              continue
+            }
+
+            const sectionsWithIds: SliceSection[] =
+              analyzeData.analysis.sections.map(
+                (s: { name: string; y_start: number; y_end: number }) => ({
+                  ...s,
+                  id:
+                    typeof crypto !== "undefined" && "randomUUID" in crypto
+                      ? crypto.randomUUID()
+                      : `${Date.now()}-${Math.random()}`,
+                })
+              )
+
+            newResults.push({
+              email,
+              sections: sectionsWithIds,
+              imageBase64: imageData.base64,
+              dimensions: { width: imageData.width, height: imageData.height },
+              error: null,
+            })
+          } catch (err) {
+            newResults.push({
+              email,
+              sections: [],
+              imageBase64: imageData.base64,
+              dimensions: { width: imageData.width, height: imageData.height },
+              error: err instanceof Error ? err.message : "Erro",
+            })
+          }
+        }
+
+        setResults(newResults)
+        setStep("results")
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao processar email")
+        setError(err instanceof Error ? err.message : "Erro ao processar funil")
         setStep("browsing")
       }
     },
-    [figmaStructure, runAnalysisFromBase64]
+    [structure]
   )
 
-  // ===== Upload manual flow =====
+  // ===== RESULTS =====
 
-  const handleUploadSelected = useCallback(
-    async (file: File, dimensions: ImageDimensions) => {
-      // Limpa imageData anterior
-      if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
-        URL.revokeObjectURL(imageDataRef.current.url)
+  const handleBackToBrowsing = useCallback(() => {
+    setResults([])
+    setCurrentFunnel(null)
+    setEditingResult(null)
+    setError(null)
+    setStep("browsing")
+  }, [])
+
+  const handleEditEmail = useCallback((result: EmailResult) => {
+    setEditingResult(result)
+    setStep("editing")
+  }, [])
+
+  const handleBackFromEdit = useCallback(
+    (updatedSections: SliceSection[]) => {
+      if (editingResult) {
+        // Atualiza o result no array
+        setResults((prev) =>
+          prev.map((r) =>
+            r.email.id === editingResult.email.id
+              ? { ...r, sections: updatedSections }
+              : r
+          )
+        )
       }
-
-      const url = URL.createObjectURL(file)
-      setImageData({
-        url,
-        width: dimensions.width,
-        height: dimensions.height,
-        file,
-        base64: null,
-        isObjectUrl: true,
-      })
-      setSections([])
-      setError(null)
-      setStep("analyzing")
-
-      const result = await runAnalysisFromFile(file)
-      if (!result.ok) {
-        setError(result.error)
-        setStep("connect")
-        return
+      setEditingResult(null)
+      if (manualResult && editingResult?.email.id === manualResult.email.id) {
+        // Upload manual: voltar para manual
+        setManualResult({ ...manualResult, sections: updatedSections })
+        setStep("manual")
+      } else {
+        setStep("results")
       }
-      setStep("slicing")
     },
-    [runAnalysisFromFile]
+    [editingResult, manualResult]
   )
 
-  // ===== Reanalyze =====
+  // ===== DOWNLOAD ZIP BATCH =====
 
-  const handleReanalyze = useCallback(async () => {
-    if (!imageData) return
-    setIsReanalyzing(true)
-    setError(null)
-    const result = imageData.base64
-      ? await runAnalysisFromBase64(imageData.base64)
-      : imageData.file
-      ? await runAnalysisFromFile(imageData.file)
-      : { ok: false as const, error: "Nenhuma imagem disponível" }
-    if (!result.ok) setError(result.error)
-    setIsReanalyzing(false)
-  }, [imageData, runAnalysisFromBase64, runAnalysisFromFile])
+  const handleDownloadZip = useCallback(async () => {
+    if (!currentFunnel) return
+    const validResults = results.filter(
+      (r) => r.sections.length > 0 && r.imageBase64
+    )
+    if (validResults.length === 0) {
+      setError("Nenhum email válido para exportar")
+      return
+    }
 
-  // ===== Export ZIP =====
-
-  // Abre o modal de revisão final. Não baixa nada ainda — o download
-  // só acontece depois do usuário confirmar visualmente.
-  const handleRequestExport = useCallback(() => {
-    if (!imageData || sections.length === 0) return
-    setError(null)
-    setShowPreviewModal(true)
-  }, [imageData, sections.length])
-
-  const handleConfirmedExport = useCallback(async () => {
-    if (!imageData || sections.length === 0) return
-
-    setIsExporting(true)
+    setIsDownloading(true)
     setError(null)
     try {
-      const formData = new FormData()
-      if (imageData.base64) {
-        formData.append("imageBase64", imageData.base64)
-      } else if (imageData.file) {
-        formData.append("image", imageData.file)
-      }
-      formData.append(
-        "sections",
-        JSON.stringify(
-          sections.map(({ name, y_start, y_end }) => ({
-            name,
-            y_start,
-            y_end,
-          }))
-        )
-      )
-
-      const res = await fetch("/api/tools/figma-slicer/slice", {
+      const response = await fetch("/api/tools/figma-slicer/slice-batch", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          funnelName: currentFunnel.name,
+          emails: validResults.map((r) => ({
+            emailName: r.email.name,
+            imageBase64: r.imageBase64,
+            sections: r.sections.map((s) => ({
+              name: s.name,
+              y_start: s.y_start,
+              y_end: s.y_end,
+            })),
+          })),
+        }),
       })
 
-      if (!res.ok) {
-        const err = await res
+      if (!response.ok) {
+        const err = await response
           .json()
-          .catch(() => ({ error: "Erro ao exportar" }))
-        throw new Error(err.error || "Erro ao exportar")
+          .catch(() => ({ error: "Erro ao gerar ZIP" }))
+        throw new Error(err.error || "Erro ao gerar ZIP")
       }
 
-      const blob = await res.blob()
-      const downloadUrl = URL.createObjectURL(blob)
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
-      const baseName = selectedEmail?.name || imageData.file?.name || "email"
-      a.href = downloadUrl
-      a.download = `slices-${baseName.replace(/[^a-zA-Z0-9]+/g, "_")}-${Date.now()}.zip`
+      a.href = url
+      a.download = `${currentFunnel.name.replace(/[^a-zA-Z0-9_\-]/g, "_")}-slices.zip`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(downloadUrl)
-
-      // Fecha o modal após download bem-sucedido
-      setShowPreviewModal(false)
+      URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao exportar")
+      setError(err instanceof Error ? err.message : "Erro ao baixar ZIP")
     } finally {
-      setIsExporting(false)
+      setIsDownloading(false)
     }
-  }, [imageData, sections, selectedEmail])
+  }, [currentFunnel, results])
 
-  // ===== Reset / novo email =====
+  // ===== UPLOAD MANUAL =====
 
-  const handleNewEmail = useCallback(() => {
-    if (imageDataRef.current?.isObjectUrl && imageDataRef.current?.url) {
-      URL.revokeObjectURL(imageDataRef.current.url)
-    }
-    setImageData(null)
-    setSections([])
+  const handleManualFileSelected = useCallback(async (file: File) => {
+    setManualLoading(true)
     setError(null)
-    setAnalysisTime(0)
-    setSelectedEmail(null)
-    setSelectedFunnelName(null)
+    try {
+      // 1. Converter File pra base64 (para poder usar no slice depois)
+      const arrayBuffer = await file.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString("base64")
 
-    // Se tem estrutura Figma carregada, volta pro browser; senão pro connect
-    if (figmaStructure) {
-      setStep("browsing")
-    } else {
-      setStep("connect")
+      // 2. Analisar
+      const formData = new FormData()
+      formData.append("image", file)
+      const analyzeRes = await fetch("/api/tools/figma-slicer/analyze-pixels", {
+        method: "POST",
+        body: formData,
+      })
+      const analyzeData = await analyzeRes.json()
+      if (!analyzeRes.ok || !analyzeData.success) {
+        throw new Error(analyzeData.error || "Erro na análise")
+      }
+
+      const sectionsWithIds: SliceSection[] =
+        analyzeData.analysis.sections.map(
+          (s: { name: string; y_start: number; y_end: number }) => ({
+            ...s,
+            id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random()}`,
+          })
+        )
+
+      const fakeEmail = {
+        id: `manual-${Date.now()}`,
+        name: file.name.replace(/\.[^/.]+$/, ""),
+        width: analyzeData.analysis.width,
+        height: analyzeData.analysis.height,
+      }
+
+      const result: EmailResult = {
+        email: fakeEmail,
+        sections: sectionsWithIds,
+        imageBase64: base64,
+        dimensions: {
+          width: analyzeData.analysis.width,
+          height: analyzeData.analysis.height,
+        },
+        error: null,
+      }
+
+      setManualResult(result)
+      setStep("manual")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao processar arquivo")
+    } finally {
+      setManualLoading(false)
     }
-  }, [figmaStructure])
+  }, [])
 
-  const handleSectionsChange = useCallback((newSections: SliceSection[]) => {
-    setSections(newSections)
+  const handleManualEdit = useCallback(() => {
+    if (manualResult) {
+      setEditingResult(manualResult)
+      setStep("editing")
+    }
+  }, [manualResult])
+
+  const handleManualDownload = useCallback(async () => {
+    if (!manualResult) return
+    const validSections = manualResult.sections.filter(
+      (s) => s.y_end - s.y_start > 0
+    )
+    if (validSections.length === 0) {
+      setError("Nenhuma seção válida")
+      return
+    }
+
+    setIsDownloading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/tools/figma-slicer/slice-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          funnelName: "Manual",
+          emails: [
+            {
+              emailName: manualResult.email.name,
+              imageBase64: manualResult.imageBase64,
+              sections: validSections.map((s) => ({
+                name: s.name,
+                y_start: s.y_start,
+                y_end: s.y_end,
+              })),
+            },
+          ],
+        }),
+      })
+      if (!response.ok) {
+        const err = await response
+          .json()
+          .catch(() => ({ error: "Erro ao gerar ZIP" }))
+        throw new Error(err.error || "Erro ao gerar ZIP")
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${manualResult.email.name.replace(/[^a-zA-Z0-9_\-]/g, "_")}-slices.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao baixar ZIP")
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [manualResult])
+
+  const handleResetManual = useCallback(() => {
+    setManualResult(null)
+    setEditingResult(null)
+    setError(null)
+    setStep("connect")
+    setTab("upload")
   }, [])
 
   return (
@@ -357,54 +425,24 @@ export default function FigmaSlicerPage() {
       <PageHeader
         icon={Scissors}
         title="Email Slicer"
-        description="Corte automático de emails marketing — conecte ao Figma ou faça upload"
+        description="Corte automático de emails do Figma — conecte, processe o funil inteiro, exporte ZIP"
         breadcrumb={[
           { label: "Ferramentas", href: ROUTES.ADMIN.TOOLS },
           { label: "Email Slicer" },
         ]}
         actions={
-          step === "slicing" ? (
-            <Button variant="secondary" size="sm" onClick={handleNewEmail}>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={ROUTES.ADMIN.TOOLS}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              {figmaStructure ? "Outro email" : "Novo email"}
-            </Button>
-          ) : (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={ROUTES.ADMIN.TOOLS}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
-              </Link>
-            </Button>
-          )
+              Voltar
+            </Link>
+          </Button>
         }
       />
 
       {error && (
         <div className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
           {error}
-        </div>
-      )}
-
-      {/* Breadcrumbs Figma no slicing */}
-      {step === "slicing" && figmaStructure && selectedEmail && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-[#8B92A5]">
-          <button
-            type="button"
-            onClick={() => {
-              setStep("browsing")
-              setImageData(null)
-              setSections([])
-            }}
-            className="hover:underline hover:text-gray-700 dark:hover:text-[#EAEDF3]"
-          >
-            {figmaStructure.name}
-          </button>
-          <span>›</span>
-          <span>{selectedFunnelName}</span>
-          <span>›</span>
-          <span className="text-gray-900 dark:text-[#EAEDF3] font-medium">
-            {selectedEmail.name}
-          </span>
         </div>
       )}
 
@@ -435,95 +473,98 @@ export default function FigmaSlicerPage() {
           </TabsContent>
 
           <TabsContent value="upload" className="mt-4">
-            <ImageUploader onImageSelected={handleUploadSelected} />
+            <ManualUpload
+              onFileSelected={handleManualFileSelected}
+              isLoading={manualLoading}
+            />
           </TabsContent>
         </Tabs>
       )}
 
-      {/* Step: Browsing (grid de funis) */}
-      {step === "browsing" && figmaStructure && (
-        <FunnelBrowser
-          structure={figmaStructure}
-          onEmailSelected={handleEmailSelected}
+      {/* Step: Browsing */}
+      {step === "browsing" && structure && (
+        <FunnelList
+          structure={structure}
+          onProcessFunnel={handleProcessFunnel}
           onBack={handleBackToConnect}
         />
       )}
 
-      {/* Step: Analyzing (loader) */}
-      {step === "analyzing" && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 space-y-4">
-            <div className="h-10 w-10 border-4 border-[#4E62D8]/30 border-t-[#4E62D8] rounded-full animate-spin" />
-            <div className="text-center space-y-1">
-              <p className="font-medium text-gray-900 dark:text-[#EAEDF3]">
-                Analisando email com IA...
-              </p>
-              <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
-                {selectedEmail
-                  ? `Exportando "${selectedEmail.name}" do Figma e detectando seções`
-                  : "Claude está identificando as seções"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Step: Processing */}
+      {step === "processing" && currentFunnel && (
+        <ProcessingStatus
+          status={processingStatus}
+          funnelName={currentFunnel.name}
+        />
       )}
 
-      {/* Step: Slicing (preview + lista + export) */}
-      {step === "slicing" && imageData && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 order-2 lg:order-1">
-            <Card>
-              <CardContent className="p-4">
-                <SlicePreview
-                  imageUrl={imageData.url}
-                  imageDimensions={{
-                    width: imageData.width,
-                    height: imageData.height,
-                  }}
-                  sections={sections}
-                  onSectionsChange={handleSectionsChange}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-4 order-1 lg:order-2">
-            <SliceList
-              sections={sections}
-              imageDimensions={{
-                width: imageData.width,
-                height: imageData.height,
-              }}
-              onSectionsChange={handleSectionsChange}
-              analysisTime={analysisTime}
-              onReanalyze={handleReanalyze}
-              isReanalyzing={isReanalyzing}
-            />
-
-            <ExportButton
-              onExport={handleRequestExport}
-              isExporting={isExporting}
-              sectionsCount={sections.length}
-            />
-          </div>
-        </div>
+      {/* Step: Results (Figma) */}
+      {step === "results" && currentFunnel && (
+        <ResultsDashboard
+          funnel={currentFunnel}
+          results={results}
+          onBack={handleBackToBrowsing}
+          onEditEmail={handleEditEmail}
+          onDownloadZip={handleDownloadZip}
+          isDownloading={isDownloading}
+        />
       )}
 
-      {/* Modal de revisão final obrigatório antes do export */}
-      {imageData && step === "slicing" && (
-        <SlicePreviewModal
-          open={showPreviewModal}
-          onOpenChange={setShowPreviewModal}
-          sections={sections}
-          imageUrl={imageData.url}
-          imageDimensions={{
-            width: imageData.width,
-            height: imageData.height,
-          }}
-          onConfirmExport={handleConfirmedExport}
-          isExporting={isExporting}
+      {/* Step: Editing (de result do Figma OU manual) */}
+      {step === "editing" && editingResult && (
+        <EmailSliceEditor
+          result={editingResult}
+          funnelName={
+            currentFunnel?.name || (manualResult ? "Upload manual" : "Email")
+          }
+          onBack={handleBackFromEdit}
+        />
+      )}
+
+      {/* Step: Manual (resultado do upload manual) */}
+      {step === "manual" && manualResult && (
+        <ManualResultView
+          result={manualResult}
+          onEdit={handleManualEdit}
+          onDownload={handleManualDownload}
+          onReset={handleResetManual}
+          isDownloading={isDownloading}
         />
       )}
     </div>
+  )
+}
+
+// =============================================================================
+// Sub-componente: ManualResultView (mini-dashboard para upload manual)
+// =============================================================================
+
+function ManualResultView({
+  result,
+  onEdit,
+  onDownload,
+  onReset,
+  isDownloading,
+}: {
+  result: EmailResult
+  onEdit: () => void
+  onDownload: () => void
+  onReset: () => void
+  isDownloading: boolean
+}) {
+  return (
+    <ResultsDashboard
+      funnel={{
+        id: "manual",
+        name: "Upload manual",
+        emailCount: 1,
+        emails: [result.email],
+      }}
+      results={[result]}
+      onBack={onReset}
+      onEditEmail={onEdit}
+      onDownloadZip={onDownload}
+      isDownloading={isDownloading}
+    />
   )
 }

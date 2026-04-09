@@ -13,7 +13,7 @@ const LS_KEY = "figma_slicer_last_url"
 interface FigmaConnectProps {
   onConnected: (structure: FigmaFileStructure) => void
   isLoading: boolean
-  setIsLoading: (loading: boolean) => void
+  setIsLoading: (v: boolean) => void
 }
 
 export function FigmaConnect({
@@ -25,13 +25,12 @@ export function FigmaConnect({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Restaura o último link usado
   useEffect(() => {
     try {
       const saved = localStorage.getItem(LS_KEY)
       if (saved) setFigmaUrl(saved)
     } catch {
-      // ignora erros de localStorage
+      // ignora
     }
   }, [])
 
@@ -41,29 +40,23 @@ export function FigmaConnect({
       inputRef.current?.focus()
       return
     }
-
     setError(null)
     setIsLoading(true)
-
     try {
-      const res = await fetch("/api/tools/figma-slicer/figma/structure", {
+      const res = await fetch("/api/tools/figma-slicer/figma-structure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ figmaUrl: figmaUrl.trim() }),
       })
-
       const data = await res.json()
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Erro ao conectar ao Figma")
       }
-
-      // Salva o link para a próxima vez
       try {
         localStorage.setItem(LS_KEY, figmaUrl.trim())
       } catch {
         // ignora
       }
-
       onConnected(data.structure as FigmaFileStructure)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao conectar")
@@ -71,15 +64,6 @@ export function FigmaConnect({
       setIsLoading(false)
     }
   }, [figmaUrl, onConnected, setIsLoading])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !isLoading) {
-        handleConnect()
-      }
-    },
-    [handleConnect, isLoading]
-  )
 
   return (
     <Card>
@@ -112,7 +96,9 @@ export function FigmaConnect({
               setFigmaUrl(e.target.value)
               if (error) setError(null)
             }}
-            onKeyDown={handleKeyDown}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !isLoading) handleConnect()
+            }}
             disabled={isLoading}
             className="font-mono text-xs"
           />
