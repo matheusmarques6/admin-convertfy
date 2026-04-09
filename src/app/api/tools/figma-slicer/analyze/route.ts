@@ -19,6 +19,8 @@ const CLAUDE_MAX_IMAGE_BYTES = 3.7 * 1024 * 1024
 
 const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que monta emails em plataformas como Omnisend e Klaviyo. Sua tarefa é analisar esta imagem de email marketing e definir EXATAMENTE onde cortar para montar o email na plataforma.
 
+Chame a tool \`report_email_sections\` com a análise completa.
+
 ## COMO PENSAR SOBRE OS CORTES
 
 Imagine que você vai montar este email no Omnisend. Cada seção que você definir será uma IMAGEM SEPARADA empilhada verticalmente. Os cortes devem ser nos pontos onde, ao montar no Omnisend, você naturalmente separaria os blocos.
@@ -55,30 +57,16 @@ Imagine que você vai montar este email no Omnisend. Cada seção que você defi
 - cta_final: Último bloco de chamada para ação antes do footer
 - footer: Logo da marca, links de navegação, copyright, redes sociais
 
-## FORMATO DE RESPOSTA
+## VALIDAÇÕES OBRIGATÓRIAS
 
-Retorne APENAS JSON válido. Sem markdown, sem backticks, sem texto antes ou depois.
-
-{
-  "total_height": <altura total em pixels inteiros>,
-  "sections": [
-    {
-      "name": "hero_banner",
-      "y_start": 0,
-      "y_end": <onde termina o hero e começa a próxima seção>,
-      "description": "Descrição curta do conteúdo desta seção"
-    }
-  ]
-}
-
-VALIDAÇÕES ANTES DE RETORNAR:
-- total_height é inteiro positivo
-- sections[0].y_start === 0
-- sections[last].y_end === total_height
+- total_height deve ser a altura total em pixels inteiros
+- sections[0].y_start deve ser 0
+- sections[last].y_end deve ser igual a total_height
 - Para cada i: sections[i].y_end === sections[i+1].y_start (sem gaps)
 - Todos os y_start e y_end são inteiros
-- Cada seção tem pelo menos 80px de altura (seções menores que 80px provavelmente estão erradas — merge com a seção adjacente)
-- Total de seções está entre 3 e 10 (se tiver mais de 10, você está cortando demais — volte e merge seções relacionadas)`
+- Cada seção deve ter pelo menos 80px de altura
+- Total de seções entre 3 e 10
+- Nome da seção em snake_case curto (hero_banner, product_grid, etc)`
 
 interface ClaudeSection {
   name: string
@@ -251,11 +239,58 @@ export async function POST(request: NextRequest) {
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+    // Tool use schema — força Claude a retornar JSON estruturado no
+    // formato exato, sem depender de parsing de markdown/regex.
+    const reportSectionsTool: Anthropic.Tool = {
+      name: "report_email_sections",
+      description:
+        "Reporta as seções detectadas no email marketing analisado. Deve ser chamada uma única vez com todas as seções em ordem vertical.",
+      input_schema: {
+        type: "object",
+        properties: {
+          total_height: {
+            type: "integer",
+            description: "Altura total da imagem em pixels inteiros.",
+          },
+          sections: {
+            type: "array",
+            minItems: 2,
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description:
+                    "Nome curto em snake_case (ex: hero_banner, product_grid).",
+                },
+                y_start: {
+                  type: "integer",
+                  description: "Coordenada Y inicial em pixels.",
+                },
+                y_end: {
+                  type: "integer",
+                  description: "Coordenada Y final em pixels.",
+                },
+                description: {
+                  type: "string",
+                  description: "Descrição curta do conteúdo da seção.",
+                },
+              },
+              required: ["name", "y_start", "y_end"],
+            },
+          },
+        },
+        required: ["total_height", "sections"],
+      },
+    }
+
     const startTime = Date.now()
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+      max_tokens: 8192,
+      tools: [reportSectionsTool],
+      tool_choice: { type: "tool", name: "report_email_sections" },
       messages: [
         {
           role: "user",
@@ -279,29 +314,36 @@ export async function POST(request: NextRequest) {
 
     const analysisMs = Date.now() - startTime
 
-    const responseText = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("")
+    // Extract the tool_use block — Tool Use guarantees valid JSON matching
+    // the schema, so no regex parsing is needed.
+    const toolUseBlock = response.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+    )
 
-    const cleanJson = responseText
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim()
+    if (!toolUseBlock || toolUseBlock.name !== "report_email_sections") {
+      // Fallback: attempt to parse text block as JSON (older behaviour)
+      const responseText = response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join("")
 
-    let analysis: ClaudeAnalysis
-    try {
-      analysis = JSON.parse(cleanJson) as ClaudeAnalysis
-    } catch {
-      log.error("Failed to parse Claude response", { responseText: cleanJson })
+      log.error("Claude did not return a tool_use block", {
+        stopReason: response.stop_reason,
+        contentTypes: response.content.map((b) => b.type),
+        textPreview: responseText.slice(0, 500),
+      })
+
       return NextResponse.json(
         {
           success: false,
-          error: "Claude retornou resposta inválida. Tente novamente.",
+          error:
+            "Claude não retornou o formato esperado. Tente novamente em alguns segundos.",
         },
-        { status: 500 }
+        { status: 502 }
       )
     }
+
+    const analysis = toolUseBlock.input as unknown as ClaudeAnalysis
 
     if (
       !analysis.sections ||
