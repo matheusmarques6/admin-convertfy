@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, Download, Loader2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, Download, Loader2, RefreshCw } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +13,7 @@ interface ResultsDashboardProps {
   onBack: () => void
   onEditEmail: (result: EmailResult) => void
   onDownloadZip: () => void
+  onReprocess?: () => void
   isDownloading: boolean
 }
 
@@ -36,6 +37,7 @@ export function ResultsDashboard({
   onBack,
   onEditEmail,
   onDownloadZip,
+  onReprocess,
   isDownloading,
 }: ResultsDashboardProps) {
   const validResults = results.filter(
@@ -63,10 +65,23 @@ export function ResultsDashboard({
               {totalSlices} fatias no total
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar aos funis
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onReprocess && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onReprocess}
+                title="Reprocessar funil com IA"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Reprocessar
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={onBack}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar aos funis
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

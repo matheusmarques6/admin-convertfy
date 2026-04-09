@@ -82,6 +82,12 @@ export default function FigmaSlicerPage() {
   const [editingResult, setEditingResult] = useState<EmailResult | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
 
+  // Cache de funis já processados: funnelId → EmailResult[]
+  // Permite navegar entre funis sem perder o trabalho já feito.
+  const [processedCache, setProcessedCache] = useState<
+    Map<string, EmailResult[]>
+  >(new Map())
+
   // Upload manual
   const [manualLoading, setManualLoading] = useState(false)
   const [manualResult, setManualResult] = useState<EmailResult | null>(null)
@@ -104,6 +110,7 @@ export default function FigmaSlicerPage() {
     setStructure(null)
     setCurrentFunnel(null)
     setResults([])
+    setProcessedCache(new Map()) // limpa cache ao trocar arquivo
     setError(null)
     setStep("connect")
   }, [])
@@ -111,10 +118,22 @@ export default function FigmaSlicerPage() {
   // ===== BATCH PROCESSING =====
 
   const handleProcessFunnel = useCallback(
-    async (funnel: FigmaFunnel) => {
+    async (funnel: FigmaFunnel, forceReprocess = false) => {
       if (!structure) return
       setCurrentFunnel(funnel)
       setError(null)
+
+      // Cache hit: se já processamos este funil e não é force reprocess,
+      // restaura os resultados e pula direto pro dashboard.
+      if (!forceReprocess) {
+        const cached = processedCache.get(funnel.id)
+        if (cached && cached.length > 0) {
+          setResults(cached)
+          setStep("results")
+          return
+        }
+      }
+
       setResults([])
       setStep("processing")
       setProcessingStatus({
@@ -252,6 +271,13 @@ export default function FigmaSlicerPage() {
           }
         }
 
+        // Salva no cache pra permitir navegação livre sem reprocessar
+        setProcessedCache((prev) => {
+          const next = new Map(prev)
+          next.set(funnel.id, newResults)
+          return next
+        })
+
         setResults(newResults)
         setStep("results")
       } catch (err) {
@@ -259,7 +285,7 @@ export default function FigmaSlicerPage() {
         setStep("browsing")
       }
     },
-    [structure]
+    [structure, processedCache]
   )
 
   // ===== RESULTS =====
@@ -281,13 +307,25 @@ export default function FigmaSlicerPage() {
     (updatedSections: SliceSection[]) => {
       if (editingResult) {
         // Atualiza o result no array
-        setResults((prev) =>
+        const updater = (prev: EmailResult[]): EmailResult[] =>
           prev.map((r) =>
             r.email.id === editingResult.email.id
               ? { ...r, sections: updatedSections }
               : r
           )
-        )
+
+        setResults((prev) => {
+          const next = updater(prev)
+          // Propaga a edição pro cache do funil atual
+          if (currentFunnel) {
+            setProcessedCache((cachePrev) => {
+              const cacheNext = new Map(cachePrev)
+              cacheNext.set(currentFunnel.id, next)
+              return cacheNext
+            })
+          }
+          return next
+        })
       }
       setEditingResult(null)
       if (manualResult && editingResult?.email.id === manualResult.email.id) {
@@ -298,7 +336,7 @@ export default function FigmaSlicerPage() {
         setStep("results")
       }
     },
-    [editingResult, manualResult]
+    [editingResult, manualResult, currentFunnel]
   )
 
   // ===== DOWNLOAD ZIP BATCH (client-side, zero body-size issues) =====
@@ -544,6 +582,7 @@ export default function FigmaSlicerPage() {
       {step === "browsing" && structure && (
         <FunnelList
           structure={structure}
+          processedCache={processedCache}
           onProcessFunnel={handleProcessFunnel}
           onBack={handleBackToConnect}
         />
@@ -565,6 +604,7 @@ export default function FigmaSlicerPage() {
           onBack={handleBackToBrowsing}
           onEditEmail={handleEditEmail}
           onDownloadZip={handleDownloadZip}
+          onReprocess={() => handleProcessFunnel(currentFunnel, true)}
           isDownloading={isDownloading}
         />
       )}

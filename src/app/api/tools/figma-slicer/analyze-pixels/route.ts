@@ -42,24 +42,67 @@ Cada email tem SUA estrutura própria. Pode ter 3, 4, 5, 6, 7 ou 8 seções — 
 
 Cada fatia que você definir será uma imagem PNG separada. O operador vai empilhar as fatias no Omnisend/Klaviyo. Pra isso funcionar, você precisa identificar os BLOCOS FUNCIONAIS COMPLETOS do email, NÃO micro-transições de cor.
 
-## REGRAS CRÍTICAS (nunca violar)
+## 🚨 REGRAS INVIOLÁVEIS — NUNCA QUEBRAR
 
-1. **NUNCA corte no meio de um grid de produtos.**
-   Se há um grid 2×2, 3×3 ou similar com imagens de produto + preço + botão, TODO o grid é UMA seção só. A fronteira entre a linha de cima e a linha de baixo NÃO é um ponto de corte.
+Estas são as 2 regras mais importantes. Elas SEMPRE se aplicam, em TODO email, sem exceção.
 
-2. **NUNCA corte no meio de um bloco de texto/cupom.**
+### REGRA 1 — FOOTER SEMPRE SOZINHO (no final do email)
+
+O **footer** é SEMPRE a ÚLTIMA seção do email E SEMPRE fica sozinho numa seção isolada.
+
+**Como identificar o footer:**
+- Fica no final do email
+- Contém: logo da marca + links de navegação (ex: "Startseite", "Contato", "Políticas") + copyright + email/telefone de contato
+- Geralmente tem fundo escuro (preto, dark gray) ou branco com separadores entre os links
+- Contém elementos de "rodapé corporativo" e não de venda
+
+**Proibido fazer:**
+- ❌ NUNCA colocar o footer junto com o CTA final
+- ❌ NUNCA colocar o footer junto com trust badges
+- ❌ NUNCA colocar um título/promoção acima do footer dentro da MESMA seção
+- ❌ NUNCA deixar o footer no meio do email (footer é sempre o último)
+
+**Passo a passo:**
+1. Encontre o ponto EXATO onde o conteúdo promocional termina e começam os links corporativos/copyright
+2. Essa é a fronteira do footer
+3. A última seção começa nesse ponto e vai até o final da imagem
+4. Essa é SEMPRE a seção do footer
+
+### REGRA 2 — PRODUCT GRID SEMPRE SOZINHO (sem título junto)
+
+Um **product grid** (grade de produtos) é SEMPRE uma seção sozinha, contendo APENAS os cards de produto.
+
+**Como identificar um product grid:**
+- Múltiplos cards arrumados em grid (2×1, 2×2, 3×3, etc)
+- Cada card tem: imagem do produto + preço (às vezes) + botão "COMPRAR"/"BUY NOW"
+- Fundo geralmente uniforme (branco ou escuro) entre os cards
+
+**Proibido fazer:**
+- ❌ NUNCA incluir um título "NOSSOS PRODUTOS" ou "PROFITIEREN SIE" etc acima do grid na MESMA seção — o título é uma SEÇÃO SEPARADA do grid
+- ❌ NUNCA incluir o CTA abaixo do grid (ex: "15% RABATT SICHERN") na MESMA seção — o CTA é uma SEÇÃO SEPARADA
+- ❌ NUNCA cortar o grid no meio (se tem 2×2 produtos, os 4 ficam juntos)
+- ❌ NUNCA juntar grid com trust badges ou outros blocos
+
+**Estrutura típica ao redor de um product grid:**
+  Seção A (título opcional): "Confira nossos produtos", "Profitieren Sie", etc
+  Seção B (O PRODUCT GRID): APENAS os cards de produto
+  Seção C (CTA/outro bloco opcional): "15% RABATT SICHERN", etc
+
+## REGRAS SECUNDÁRIAS
+
+3. **NUNCA corte no meio de um bloco de texto/cupom.**
    Título + subtítulo + texto + cupom + botão formam UMA seção única quando são parte do mesmo "apelo". Ex: "ÚLTIMA OPORTUNIDADE" + "17% OFF" + "CUPOM ESPECIAL" + botão "RECUPERAR O CÓDIGO" = 1 seção.
 
-3. **NUNCA separe um botão CTA do texto/bloco que ele pertence.**
+4. **NUNCA separe um botão CTA do texto/bloco que ele pertence.**
    O botão faz parte da seção acima dele, nunca é uma seção sozinha.
 
-4. **NUNCA quebre reviews individuais em fatias separadas.**
+5. **NUNCA quebre reviews individuais em fatias separadas.**
    Se há 3 depoimentos empilhados, todos formam UMA única seção.
 
-5. **NUNCA corte o hero antes do headline/CTA terminar.**
+6. **NUNCA corte o hero antes do headline/CTA terminar.**
    Hero = logo + imagem principal + headline + CTA principal. Tudo junto.
 
-6. **NUNCA crie seções menores que 150 pixels.**
+7. **NUNCA crie seções menores que 150 pixels.**
    Se uma seção ficaria menor que isso, ela deve ser mergida com a vizinha.
 
 ## DICAS PRÁTICAS
@@ -68,14 +111,20 @@ Cada fatia que você definir será uma imagem PNG separada. O operador vai empil
 - Olhe pelo conteúdo funcional: "o que esse bloco está tentando comunicar?" Se a resposta é a mesma, é a mesma seção.
 - Olhe pelo espaçamento: onde há faixas de fundo vazio entre blocos, geralmente é onde cortar.
 - NÃO se prenda a 5 seções ou qualquer número fixo. Cada email pede um número diferente.
+- SEMPRE reserve a última seção APENAS para o footer.
+- SEMPRE isole product grids em seções próprias.
 
 ## VALIDAÇÃO
 
-- sections[0].y_start deve ser 0
-- sections[last].y_end deve ser ${height}
-- Cada y_end deve ser igual ao y_start da próxima seção
-- Todos os valores devem ser inteiros
-- Cada seção deve ter altura >= 150 pixels
+Antes de retornar, VERIFIQUE:
+- [ ] A última seção contém APENAS o footer (logo + links + copyright)?
+- [ ] Cada product grid está SOZINHO numa seção?
+- [ ] Títulos acima de grids estão em seções separadas?
+- [ ] CTAs abaixo de grids estão em seções separadas?
+- [ ] sections[0].y_start === 0?
+- [ ] sections[last].y_end === ${height}?
+- [ ] Cada y_end é igual ao y_start da próxima?
+- [ ] Cada seção tem altura >= 150 pixels?
 
 Chame a tool \`report_sections\` com a análise.`
 }
