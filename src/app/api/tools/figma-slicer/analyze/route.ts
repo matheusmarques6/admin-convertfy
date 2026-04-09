@@ -28,52 +28,57 @@ const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que m
 
 Chame a tool \`report_email_sections\` com a análise completa.
 
-## TAXONOMIA PADRÃO — USE SEMPRE QUE POSSÍVEL
+## TAXONOMIA CANÔNICA — USE SEMPRE QUE POSSÍVEL
 
-Mapeie as seções do email para esta hierarquia canônica na ordem em que aparecerem. Pule categorias que não existirem. Use exatamente estes nomes:
+Mapeie as seções do email para esta hierarquia na ordem em que aparecerem. Pule categorias que não existirem. Use exatamente estes nomes:
 
 - **01_hero** — Logo + imagem principal (banner) + headline + CTA principal
-- **02_body_copy** — Copy da oferta, urgência, cupom, benefícios, blocos de texto promocional
-- **03_In-Klaviyo_Dynamic_Product_Section** — Grid de produtos dinâmicos (imagens, preços, botões "comprar")
+- **02_body_copy** — Copy da oferta, urgência, cupom, benefícios, blocos de texto promocional, trust badges
+- **03_In-Klaviyo_Dynamic_Product_Section** — Grid completo de produtos dinâmicos
 - **04_reviews** — Reviews, depoimentos, social proof ("+25.000 clientes"), avaliações/estrelas
-- **05_cta_final** — CTA de fechamento + ícones de benefício (frete, suporte, garantia) + botão final
+- **05_cta_final** — Último bloco antes do footer (APENAS se existir um CTA de fechamento distinto)
 - **06_footer** — Logo da marca + menu de navegação + copyright + redes sociais
 
-Se o email tem uma seção que NÃO se encaixa claramente em nenhuma dessas 6 categorias, use um nome descritivo com o próximo número disponível (ex: \`03_resumo_valores\`, \`04_upsell\`, \`05_produtos_recomendados\`). Sempre mantenha a numeração sequencial.
+## ⛔ ERROS CRÍTICOS QUE VOCÊ NÃO PODE COMETER
 
-## REGRAS ABSOLUTAS — NUNCA VIOLAR
+Estas são as violações mais comuns. NÃO faça nenhuma delas:
 
-1. **\`03_In-Klaviyo_Dynamic_Product_Section\` é SEMPRE uma seção separada e sozinha.** Nunca junte com hero, body_copy, reviews ou qualquer outra. No Klaviyo, essa seção será substituída por um bloco dinâmico de produtos, então precisa estar isolada.
+❌ **NUNCA corte no meio de um grid de produtos.** Se há um grid 2×2 ou 3×3 com imagens de produto + preço + botão "comprar", TODO o grid é UMA única seção chamada \`03_In-Klaviyo_Dynamic_Product_Section\`. A fronteira entre a linha de cima (produtos 1-2) e a linha de baixo (produtos 3-4) NÃO é um ponto de corte — é parte do mesmo bloco. Se a seção tem 4 produtos em 2 linhas, ela vai do topo do primeiro produto até o final do último produto, em uma fatia só.
 
-2. **Reviews/depoimentos são SEMPRE uma ÚNICA seção.** Nunca quebre reviews individuais em arquivos separados. Se houver 3 depoimentos em sequência, todos ficam no mesmo \`04_reviews\`.
+❌ **NUNCA nomeie trust badges como \`cta_final\`.** Ícones de "envio grátis", "parcelamento", "compra segura", "frete", "garantia", "suporte" — isso é **trust_badges** e faz parte de \`02_body_copy\` (se estiver antes do grid) ou de \`05_cta_final\` (se for logo antes do footer). Sozinhos, NÃO são uma seção \`cta_final\` — cta_final exige um botão de chamada à ação explícito.
 
-3. **Blocos de texto não se quebram.** Título + subtítulo + parágrafo + botão CTA = UMA seção.
+❌ **NUNCA corte o hero antes do headline terminar.** O \`01_hero\` inclui: logo + imagem principal + headline grande + CTA principal. Só termine o hero quando esses 4 elementos já passaram. Se o hero tem uma curvatura ou degradê no final, o corte fica DEPOIS da curvatura, não no meio dela.
 
-4. **Grid de produtos é UMA seção.** 2×2 ou 3×3 de produtos com imagens + preço + botão "comprar" = TODO o grid em um arquivo só.
+❌ **NUNCA separe um botão CTA da seção que ele pertence.** "APROVEITAR AGORA", "COMPRAR COM 10% OFF", "RECUPERAR CÓDIGO" — esses botões fazem parte do bloco acima deles (body_copy, coupon, etc). Não crie uma seção só pra um botão.
 
-5. **Trust badges (frete/qualidade/segurança) são UMA seção**, geralmente dentro do \`05_cta_final\`.
+❌ **NUNCA quebre reviews individuais.** Se há 3 depoimentos empilhados, eles formam UMA seção \`04_reviews\`.
 
-6. **Botões CTA fazem parte da seção onde estão.** Nunca crie uma seção só pra um botão.
+❌ **NUNCA retorne mais de 8 seções.** Emails típicos têm 4-6 seções. Se você está tentando criar 9-10, está cortando demais — volte e agrupe.
+
+## ✅ REGRA POSITIVA MESTRE
+
+Pergunte para cada corte: "Se eu fizesse isso no Omnisend, as duas fatias resultantes ficariam visualmente coesas sozinhas?" Se uma delas ficaria "cortada no meio" (meio grid, meio texto, meio curvatura), o corte está errado.
 
 ## COMO IDENTIFICAR OS BOUNDARIES
 
-Corte em fronteiras visuais óbvias:
-- Mudança clara de cor de fundo (branco → preto, branco → azul)
-- Mudança de tipo de conteúdo (texto → imagens de produto, banner → texto)
-- Mudança de função (conteúdo promocional → footer com links)
+Corte SEMPRE em **zonas de espaço vazio** (faixas horizontais de cor de fundo uniforme) entre seções. Tipicamente:
+- Fim de uma área com fundo colorido e início de uma com fundo branco
+- Espaço horizontal em branco entre blocos de texto
+- Linha horizontal ou separador visual
+- Mudança drástica de tipo de conteúdo (texto → imagens, banner → texto)
 
-Use as coordenadas Y em pixels da imagem original. O primeiro slice começa em y_start=0. O último slice termina em y_end=altura_total. Cada y_end deve ser exatamente igual ao y_start da próxima seção (sem gaps nem sobreposição).
+Use coordenadas Y em pixels. O primeiro slice começa em y_start=0. O último termina em y_end=altura_total. Cada y_end deve ser igual ao y_start da próxima seção.
 
 ## VALIDAÇÕES OBRIGATÓRIAS
 
-- total_height deve ser a altura total em pixels inteiros
-- sections[0].y_start deve ser 0
-- sections[last].y_end deve ser igual a total_height
+- total_height é inteiro positivo
+- sections[0].y_start === 0
+- sections[last].y_end === total_height
 - Para cada i: sections[i].y_end === sections[i+1].y_start
-- Todos os valores y são inteiros
+- Todos os y são inteiros
 - Cada seção tem pelo menos 80px de altura
-- Total de seções entre 3 e 8 (raramente mais)
-- Nomes seguem o padrão NN_nome (ex: 01_hero, 02_body_copy)`
+- Total de seções entre 3 e 8 (idealmente 4-6)
+- Nomes seguem o padrão NN_nome`
 
 interface ClaudeSection {
   name: string
