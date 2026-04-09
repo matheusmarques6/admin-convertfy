@@ -20,6 +20,7 @@ import { ImageUploader } from "./components/image-uploader"
 import { SlicePreview } from "./components/slice-preview"
 import { SliceList } from "./components/slice-list"
 import { ExportButton } from "./components/export-button"
+import { SlicePreviewModal } from "./components/slice-preview-modal"
 
 interface ImageData {
   url: string
@@ -53,6 +54,7 @@ export default function FigmaSlicerPage() {
   const [error, setError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [isReanalyzing, setIsReanalyzing] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
 
   // Cleanup de Object URLs
   const imageDataRef = useRef<ImageData | null>(null)
@@ -262,7 +264,15 @@ export default function FigmaSlicerPage() {
 
   // ===== Export ZIP =====
 
-  const handleExport = useCallback(async () => {
+  // Abre o modal de revisão final. Não baixa nada ainda — o download
+  // só acontece depois do usuário confirmar visualmente.
+  const handleRequestExport = useCallback(() => {
+    if (!imageData || sections.length === 0) return
+    setError(null)
+    setShowPreviewModal(true)
+  }, [imageData, sections.length])
+
+  const handleConfirmedExport = useCallback(async () => {
     if (!imageData || sections.length === 0) return
 
     setIsExporting(true)
@@ -307,6 +317,9 @@ export default function FigmaSlicerPage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(downloadUrl)
+
+      // Fecha o modal após download bem-sucedido
+      setShowPreviewModal(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao exportar")
     } finally {
@@ -488,12 +501,28 @@ export default function FigmaSlicerPage() {
             />
 
             <ExportButton
-              onExport={handleExport}
+              onExport={handleRequestExport}
               isExporting={isExporting}
               sectionsCount={sections.length}
             />
           </div>
         </div>
+      )}
+
+      {/* Modal de revisão final obrigatório antes do export */}
+      {imageData && step === "slicing" && (
+        <SlicePreviewModal
+          open={showPreviewModal}
+          onOpenChange={setShowPreviewModal}
+          sections={sections}
+          imageUrl={imageData.url}
+          imageDimensions={{
+            width: imageData.width,
+            height: imageData.height,
+          }}
+          onConfirmExport={handleConfirmedExport}
+          isExporting={isExporting}
+        />
       )}
     </div>
   )

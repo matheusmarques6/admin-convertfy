@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { Plus, Trash2, RotateCcw } from "lucide-react"
+import { Plus, Trash2, RotateCcw, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,44 @@ interface SliceListProps {
   analysisTime?: number
   onReanalyze?: () => void
   isReanalyzing?: boolean
+}
+
+/**
+ * Detecta problemas suspeitos em uma seção que podem indicar um corte errado.
+ * Retorna um array de warnings (vazio se nada suspeito).
+ */
+export function detectSectionWarnings(
+  section: SliceSection,
+  allSections: SliceSection[],
+  imageHeight: number
+): string[] {
+  const warnings: string[] = []
+  const height = section.y_end - section.y_start
+  const heightPercent = height / imageHeight
+
+  if (height < 80) {
+    warnings.push(
+      `Altura de ${height}px é muito pequena (mínimo recomendado: 80px)`
+    )
+  }
+
+  if (heightPercent > 0.55 && allSections.length > 2) {
+    warnings.push(
+      `Esta seção ocupa ${Math.round(heightPercent * 100)}% do email — pode estar agrupando blocos que deveriam ser separados`
+    )
+  }
+
+  if (!section.name || section.name.trim().length === 0) {
+    warnings.push("Seção sem nome")
+  }
+
+  // Nome duplicado?
+  const duplicates = allSections.filter((s) => s.name === section.name)
+  if (duplicates.length > 1) {
+    warnings.push(`Nome duplicado: "${section.name}" aparece em múltiplas seções`)
+  }
+
+  return warnings
 }
 
 /**
@@ -120,12 +158,19 @@ export function SliceList({
                 ? prefixMatch[1]
                 : String(index + 1).padStart(2, "0")
               const displayName = prefixMatch ? prefixMatch[2] : section.name
+              const warnings = detectSectionWarnings(
+                section,
+                sections,
+                imageDimensions.height
+              )
               return (
                 <div
                   key={section.id}
                   className={cn(
-                    "rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
-                    "bg-card p-3 space-y-2"
+                    "rounded-[8px] border p-3 space-y-2",
+                    warnings.length > 0
+                      ? "border-amber-400 dark:border-amber-600/60 bg-amber-50/50 dark:bg-amber-900/10"
+                      : "border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-card"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -171,6 +216,16 @@ export function SliceList({
                     <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] line-clamp-2">
                       {section.description}
                     </p>
+                  )}
+                  {warnings.length > 0 && (
+                    <div className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 border-t border-amber-200 dark:border-amber-900/30 pt-2">
+                      <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                      <ul className="space-y-0.5 leading-tight">
+                        {warnings.map((w, idx) => (
+                          <li key={idx}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               )

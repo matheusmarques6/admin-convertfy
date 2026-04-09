@@ -91,6 +91,59 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // =====================================================================
+    // VALIDAÇÃO DEFENSIVA DAS SEÇÕES (estrutural, antes de cortar)
+    //
+    // Rejeita qualquer input que viole invariantes mínimos. Essa é a
+    // última barreira antes da imagem ser cortada e baixada pelo cliente.
+    // =====================================================================
+    for (let i = 0; i < sections.length; i++) {
+      const s = sections[i]
+      if (typeof s !== "object" || s === null) {
+        return NextResponse.json(
+          { error: `Seção ${i + 1} inválida (não é um objeto)` },
+          { status: 400 }
+        )
+      }
+      if (typeof s.name !== "string" || s.name.trim().length === 0) {
+        return NextResponse.json(
+          { error: `Seção ${i + 1} sem nome válido` },
+          { status: 400 }
+        )
+      }
+      if (
+        typeof s.y_start !== "number" ||
+        typeof s.y_end !== "number" ||
+        !Number.isFinite(s.y_start) ||
+        !Number.isFinite(s.y_end)
+      ) {
+        return NextResponse.json(
+          { error: `Seção "${s.name}" tem coordenadas Y inválidas` },
+          { status: 400 }
+        )
+      }
+      if (s.y_end <= s.y_start) {
+        return NextResponse.json(
+          {
+            error: `Seção "${s.name}" tem altura inválida (y_end deve ser maior que y_start)`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Valida contiguidade: y_end de uma seção = y_start da próxima
+    for (let i = 1; i < sections.length; i++) {
+      if (Math.abs(sections[i].y_start - sections[i - 1].y_end) > 1) {
+        return NextResponse.json(
+          {
+            error: `Seções não são contíguas entre "${sections[i - 1].name}" e "${sections[i].name}" (gap detectado)`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Normaliza para 600px de largura — MESMA escala usada na analyze,
     // então as coordenadas Y vêm já corretas.
     const meta = await sharp(buffer).metadata()
