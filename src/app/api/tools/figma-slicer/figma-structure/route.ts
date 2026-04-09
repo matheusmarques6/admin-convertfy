@@ -59,6 +59,66 @@ function isEmailFrame(node: FigmaNode): boolean {
   return true
 }
 
+// ============================================================================
+// AGRUPAMENTO INTELIGENTE POR PADRÃO DE NOME
+//
+// Quando os emails estão todos no mesmo parent (caso comum: arquivos que
+// não usam sections do Figma pra agrupar), caímos nestes padrões regex
+// pra agrupar por "funil lógico" baseado nos nomes.
+//
+// A ordem importa: patterns mais específicos antes (ex: "post purchase"
+// antes de "purchase" puro).
+// ============================================================================
+
+interface GroupPattern {
+  regex: RegExp
+  group: string
+}
+
+const GROUP_PATTERNS: GroupPattern[] = [
+  { regex: /^welcome/i, group: "Welcome Flow" },
+  { regex: /^(cart|carrinho)\s*abandon/i, group: "Carrinho Abandonado" },
+  { regex: /^browse\s*abandon/i, group: "Browse Abandoned" },
+  { regex: /^site\s*abandon/i, group: "Site Abandoned" },
+  { regex: /^post[\s_-]*purchase|p[óo]s[\s_-]*compra/i, group: "Pós-Compra / Upsell" },
+  { regex: /^winback|win[\s_-]*back/i, group: "Winback" },
+  // "Pedido pago", "Pedido em separação", "Pedido enviado", "Atraso na entrega"...
+  { regex: /^(pedido|atraso|entrega|envio|shipment|order|tracking)/i, group: "Etapas de Envio" },
+  // "Birthday flow", "Anniversary", etc
+  { regex: /^(birthday|anivers[áa]rio|anniversary)/i, group: "Aniversário" },
+  // "Review request"
+  { regex: /^review/i, group: "Reviews / Feedback" },
+  // "Newsletter"
+  { regex: /^newsletter/i, group: "Newsletter" },
+]
+
+/**
+ * Detecta o grupo lógico de um nome de email. Retorna null se nada bater.
+ */
+function detectGroupFromName(name: string): string | null {
+  const trimmed = name.trim()
+  for (const { regex, group } of GROUP_PATTERNS) {
+    if (regex.test(trimmed)) return group
+  }
+  return null
+}
+
+/**
+ * Fallback: extrai o prefixo do nome (tudo antes de "#" ou antes do
+ * primeiro número). Usado quando nenhum padrão bate.
+ */
+function extractNamePrefix(name: string): string {
+  const trimmed = name.trim()
+  // "Welcome Email #4" → "Welcome Email"
+  const hashMatch = trimmed.match(/^(.+?)\s*#\s*\d+/)
+  if (hashMatch) return hashMatch[1].trim()
+  // "Welcome Email 4" → "Welcome Email"
+  const numMatch = trimmed.match(/^(.+?)\s+\d+\s*$/)
+  if (numMatch) return numMatch[1].trim()
+  // Sem número: usa o nome completo como "grupo próprio"
+  return trimmed
+}
+
 /**
  * BFS na árvore do Figma. Retorna os email-frames encontrados no PRIMEIRO
  * nível que contém algum frame que atenda os critérios — junto com seus
@@ -183,12 +243,13 @@ export async function POST(request: NextRequest) {
       document: { children?: FigmaNode[] }
     }
 
-    // Pra cada page, acha os email-frames e agrupa por parent
+    // Pra cada page, acha os email-frames e agrupa
     const pages = (data.document?.children || []).map((page) => {
       const found = findEmailFramesBFS(page)
 
-      // Agrupa por parent.id — cada parent distinto vira um "funil"
-      const funnelsById = new Map<
+      // Agrupa 1ª tentativa: por parent.id — funciona quando o Figma tem
+      // sections/frames nomeados agrupando emails.
+      const byParent = new Map<
         string,
         {
           id: string
@@ -198,21 +259,82 @@ export async function POST(request: NextRequest) {
       >()
 
       for (const { email, parent } of found) {
-        if (!funnelsById.has(parent.id)) {
-          funnelsById.set(parent.id, {
+        if (!byParent.has(parent.id)) {
+          byParent.set(parent.id, {
             id: parent.id,
             name: parent.name || "Emails",
             emails: [],
           })
         }
-        funnelsById.get(parent.id)!.emails.push(email)
+        byParent.get(parent.id)!.emails.push(email)
       }
 
-      const funnels = Array.from(funnelsById.values()).map((funnel) => {
-        // Ordena por posição X no canvas (esquerda → direita)
+      // Se só há UM parent (todos os emails num container genérico tipo
+      // "Frame 1" ou direto na page), descarta e agrupa por PADRÃO DE NOME.
+      // Isso cria os funis lógicos: Welcome Flow, Carrinho Abandonado, etc.
+      let groupedEmails: Array<{
+        id: string
+        name: string
+        emails: FigmaNode[]
+      }>
+
+      if (byParent.size > 1) {
+        // Confia na organização do Figma
+        groupedEmails = Array.from(byParent.values())
+      } else {
+        // Agrupa por padrão de nome
+        const byGroup = new Map<
+          string,
+          { id: string; name: string; emails: FigmaNode[] }
+        >()
+
+        for (const { email } of found) {
+          const pattern = detectGroupFromName(email.name)
+          const groupName = pattern ?? extractNamePrefix(email.name)
+          const groupId = `group::${groupName}`
+
+          if (!byGroup.has(groupId)) {
+            byGroup.set(groupId, {
+              id: groupId,
+              name: groupName,
+              emails: [],
+            })
+          }
+          byGroup.get(groupId)!.emails.push(email)
+        }
+
+        groupedEmails = Array.from(byGroup.values())
+      }
+
+      // Ordena funis: alfabético mas "Welcome Flow" sempre primeiro
+      const FUNNEL_ORDER: Record<string, number> = {
+        "Welcome Flow": 1,
+        "Browse Abandoned": 2,
+        "Site Abandoned": 3,
+        "Carrinho Abandonado": 4,
+        "Pós-Compra / Upsell": 5,
+        "Winback": 6,
+        "Etapas de Envio": 7,
+      }
+
+      groupedEmails.sort((a, b) => {
+        const orderA = FUNNEL_ORDER[a.name] ?? 99
+        const orderB = FUNNEL_ORDER[b.name] ?? 99
+        if (orderA !== orderB) return orderA - orderB
+        return a.name.localeCompare(b.name)
+      })
+
+      const funnels = groupedEmails.map((funnel) => {
+        // Ordena emails dentro do funil por número no nome,
+        // caindo pra posição X como fallback.
         const sortedEmails = funnel.emails
           .slice()
           .sort((a, b) => {
+            // Extrai número de "Welcome Email #3"
+            const aNum = parseInt(a.name.match(/#\s*(\d+)/)?.[1] || "0", 10)
+            const bNum = parseInt(b.name.match(/#\s*(\d+)/)?.[1] || "0", 10)
+            if (aNum !== bNum && (aNum || bNum)) return aNum - bNum
+            // Fallback: posição X no canvas
             const aX = a.absoluteBoundingBox?.x || 0
             const bX = b.absoluteBoundingBox?.x || 0
             return aX - bX

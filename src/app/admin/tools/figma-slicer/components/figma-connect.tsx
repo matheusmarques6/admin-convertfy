@@ -48,8 +48,23 @@ export function FigmaConnect({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ figmaUrl: figmaUrl.trim() }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
+      // Leitura segura: se der timeout/500, a resposta pode ser HTML.
+      const contentType = res.headers.get("content-type") || ""
+      const text = await res.text()
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          `Erro ao conectar ao Figma (HTTP ${res.status}): ${
+            text.slice(0, 150).trim() || "resposta vazia"
+          }`
+        )
+      }
+      let data: { success: boolean; error?: string; structure?: unknown }
+      try {
+        data = JSON.parse(text)
+      } catch {
+        throw new Error("Resposta do servidor em formato inválido")
+      }
+      if (!data.success) {
         throw new Error(data.error || "Erro ao conectar ao Figma")
       }
       try {

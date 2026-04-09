@@ -10,6 +10,9 @@ export const maxDuration = 120
 
 const TARGET_WIDTH = 600 // padrão Klaviyo/Omnisend
 const MAX_BATCH_SIZE = 30
+// Figma /v1/images aceita múltiplos IDs mas tem limite de URL length.
+// Cada ID tem ~15-20 chars + encoding → máximo seguro é ~10 por chunk.
+const FIGMA_CHUNK_SIZE = 8
 // Exporta do Figma em 2x para ter qualidade suficiente antes do resize final.
 // Se o frame no Figma tem 600px, a imagem exportada vem em 1200px.
 const FIGMA_EXPORT_SCALE = 2
@@ -103,56 +106,117 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // Chama Figma /v1/images com use_absolute_bounds=true
+    // Chama Figma /v1/images em CHUNKS (use_absolute_bounds=true).
+    //
+    // POR QUE CHUNKS:
+    //   Quando mandávamos 28 IDs de uma vez, o URL ficava gigante
+    //   (~500+ caracteres só de IDs encoded) e o Figma retornava 400.
+    //   Chunks de 8 evitam esse problema.
     //
     // use_absolute_bounds=true é CRÍTICO: sem isso, conteúdo que extrapola
-    // o bounding box visível do frame é CORTADO no export. Com true, o
-    // Figma renderiza a imagem inteira incluindo qualquer overflow.
+    // o bounding box visível do frame é CORTADO no export.
     //
     // scale=2 garante qualidade de sobra — depois reduzimos pra 600px no
-    // resize final com sharp (que é mais preciso que o resize da Figma API).
+    // resize final com sharp (mais preciso que o resize da Figma API).
     // ========================================================================
-    const idsParam = nodeIds.map((id) => encodeURIComponent(id)).join(",")
-    const figmaExportUrl =
-      `https://api.figma.com/v1/images/${fileKey}` +
-      `?ids=${idsParam}` +
-      `&format=png` +
-      `&scale=${FIGMA_EXPORT_SCALE}` +
-      `&use_absolute_bounds=true`
+    const allImageUrls: Record<string, string | null> = {}
 
-    let exportRes: Response | null = null
-    let exportError = ""
+    const chunks: string[][] = []
+    for (let i = 0; i < nodeIds.length; i += FIGMA_CHUNK_SIZE) {
+      chunks.push(nodeIds.slice(i, i + FIGMA_CHUNK_SIZE))
+    }
 
-    // Retry da chamada pra Figma API (pode ser lenta ou falhar)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        exportRes = await fetch(figmaExportUrl, {
-          headers: { "X-Figma-Token": token },
-        })
-        if (exportRes.ok) break
-        exportError = `Figma retornou ${exportRes.status}`
-        log.warn("Figma batch export attempt failed", {
-          attempt: attempt + 1,
-          status: exportRes.status,
-        })
-      } catch (err) {
-        exportError = err instanceof Error ? err.message : String(err)
+    log.info("Starting Figma batch export", {
+      totalIds: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: FIGMA_CHUNK_SIZE,
+    })
+
+    for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+      const chunk = chunks[chunkIdx]
+      const idsParam = chunk.map((id) => encodeURIComponent(id)).join(",")
+      const figmaExportUrl =
+        `https://api.figma.com/v1/images/${fileKey}` +
+        `?ids=${idsParam}` +
+        `&format=png` +
+        `&scale=${FIGMA_EXPORT_SCALE}` +
+        `&use_absolute_bounds=true`
+
+      let exportRes: Response | null = null
+      let exportErrorBody = ""
+
+      // Retry da chamada pra Figma API
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          exportRes = await fetch(figmaExportUrl, {
+            headers: { "X-Figma-Token": token },
+          })
+          if (exportRes.ok) break
+          // Tenta ler o body do erro pra log (pode ser HTML ou JSON)
+          try {
+            exportErrorBody = (await exportRes.clone().text()).slice(0, 500)
+          } catch {
+            // ignora
+          }
+          log.warn("Figma chunk export failed", {
+            chunkIdx,
+            attempt: attempt + 1,
+            status: exportRes.status,
+            bodyPreview: exportErrorBody,
+          })
+        } catch (err) {
+          exportErrorBody = err instanceof Error ? err.message : String(err)
+        }
+        if (attempt < 2) await sleep(1500 * (attempt + 1))
       }
-      if (attempt < 2) await sleep(2000 * (attempt + 1))
-    }
 
-    if (!exportRes || !exportRes.ok) {
-      log.error("Figma batch export failed after retries", { exportError })
-      throw new Error(`Figma export: ${exportError}`)
-    }
+      if (!exportRes || !exportRes.ok) {
+        log.error("Figma chunk failed after all retries, skipping", {
+          chunkIdx,
+          bodyPreview: exportErrorBody,
+          idsInChunk: chunk.length,
+        })
+        // Marca todos os IDs do chunk como null, mas continua com os outros
+        for (const id of chunk) {
+          allImageUrls[id] = null
+        }
+        continue
+      }
 
-    const exportData = (await exportRes.json()) as {
-      err?: string | null
-      images?: Record<string, string | null>
-    }
+      let exportData: {
+        err?: string | null
+        images?: Record<string, string | null>
+      }
+      try {
+        exportData = await exportRes.json()
+      } catch (err) {
+        log.error("Failed to parse Figma chunk response as JSON", {
+          chunkIdx,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        for (const id of chunk) {
+          allImageUrls[id] = null
+        }
+        continue
+      }
 
-    if (exportData.err) {
-      throw new Error(`Figma: ${exportData.err}`)
+      if (exportData.err) {
+        log.error("Figma returned error for chunk", {
+          chunkIdx,
+          error: exportData.err,
+        })
+        for (const id of chunk) {
+          allImageUrls[id] = null
+        }
+        continue
+      }
+
+      // Adiciona as URLs do chunk ao mapa geral
+      if (exportData.images) {
+        for (const [id, url] of Object.entries(exportData.images)) {
+          allImageUrls[id] = url
+        }
+      }
     }
 
     // ========================================================================
@@ -170,7 +234,7 @@ export async function POST(request: NextRequest) {
     > = {}
 
     const processOne = async (nodeId: string) => {
-      const imageUrl = exportData.images?.[nodeId]
+      const imageUrl = allImageUrls[nodeId]
       if (!imageUrl) {
         log.warn("Figma returned null URL for node", { nodeId })
         results[nodeId] = null

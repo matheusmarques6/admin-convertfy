@@ -28,6 +28,38 @@ import {
   triggerBlobDownload,
 } from "./lib/client-slicer"
 
+/**
+ * Helper pra ler a resposta de um fetch de forma segura.
+ * Em caso de timeout/erro 5xx, o response pode vir como HTML ou texto —
+ * fazendo .json() direto estoura "Unexpected token 'A'". Este helper
+ * tenta JSON, cai pra text, e devolve um erro amigável.
+ */
+async function safeJsonResponse<T = unknown>(
+  res: Response,
+  fallbackErrorMessage: string
+): Promise<T> {
+  const contentType = res.headers.get("content-type") || ""
+  const text = await res.text()
+
+  // Se não é JSON, tenta extrair algo útil do HTML/texto
+  if (!contentType.includes("application/json")) {
+    if (!res.ok) {
+      // Timeout do Vercel tipicamente devolve "An error occurred..."
+      const preview = text.slice(0, 200).trim()
+      throw new Error(
+        `${fallbackErrorMessage} (HTTP ${res.status}): ${preview || "resposta vazia"}`
+      )
+    }
+    throw new Error(`${fallbackErrorMessage}: resposta não é JSON`)
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`${fallbackErrorMessage}: JSON inválido`)
+  }
+}
+
 export default function FigmaSlicerPage() {
   // Step global da UI
   const [step, setStep] = useState<SlicerStep>("connect")
@@ -104,8 +136,15 @@ export default function FigmaSlicerPage() {
             }),
           }
         )
-        const exportData = await exportRes.json()
-        if (!exportRes.ok || !exportData.success) {
+        const exportData = await safeJsonResponse<{
+          success: boolean
+          error?: string
+          images?: Record<
+            string,
+            { base64: string; width: number; height: number } | null
+          >
+        }>(exportRes, "Erro ao exportar do Figma")
+        if (!exportData.success) {
           throw new Error(exportData.error || "Erro ao exportar do Figma")
         }
 
@@ -126,9 +165,7 @@ export default function FigmaSlicerPage() {
             total: funnel.emails.length,
           })
 
-          const imageData = exportData.images[email.id] as
-            | { base64: string; width: number; height: number }
-            | null
+          const imageData = exportData.images?.[email.id] ?? null
 
           if (!imageData) {
             newResults.push({
@@ -152,9 +189,21 @@ export default function FigmaSlicerPage() {
                 body: formData,
               }
             )
-            const analyzeData = await analyzeRes.json()
+            const analyzeData = await safeJsonResponse<{
+              success: boolean
+              error?: string
+              analysis?: {
+                width: number
+                height: number
+                sections: Array<{
+                  name: string
+                  y_start: number
+                  y_end: number
+                }>
+              }
+            }>(analyzeRes, "Erro na análise")
 
-            if (!analyzeRes.ok || !analyzeData.success) {
+            if (!analyzeData.success) {
               newResults.push({
                 email,
                 sections: [],
@@ -165,16 +214,25 @@ export default function FigmaSlicerPage() {
               continue
             }
 
+            if (!analyzeData.analysis) {
+              newResults.push({
+                email,
+                sections: [],
+                imageBase64: imageData.base64,
+                dimensions: { width: imageData.width, height: imageData.height },
+                error: "Análise sem resposta válida",
+              })
+              continue
+            }
+
             const sectionsWithIds: SliceSection[] =
-              analyzeData.analysis.sections.map(
-                (s: { name: string; y_start: number; y_end: number }) => ({
-                  ...s,
-                  id:
-                    typeof crypto !== "undefined" && "randomUUID" in crypto
-                      ? crypto.randomUUID()
-                      : `${Date.now()}-${Math.random()}`,
-                })
-              )
+              analyzeData.analysis.sections.map((s) => ({
+                ...s,
+                id:
+                  typeof crypto !== "undefined" && "randomUUID" in crypto
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random()}`,
+              }))
 
             newResults.push({
               email,
@@ -307,21 +365,32 @@ export default function FigmaSlicerPage() {
         method: "POST",
         body: formData,
       })
-      const analyzeData = await analyzeRes.json()
-      if (!analyzeRes.ok || !analyzeData.success) {
+      const analyzeData = await safeJsonResponse<{
+        success: boolean
+        error?: string
+        analysis?: {
+          width: number
+          height: number
+          sections: Array<{
+            name: string
+            y_start: number
+            y_end: number
+          }>
+        }
+      }>(analyzeRes, "Erro na análise")
+      if (!analyzeData.success || !analyzeData.analysis) {
         throw new Error(analyzeData.error || "Erro na análise")
       }
 
-      const sectionsWithIds: SliceSection[] =
-        analyzeData.analysis.sections.map(
-          (s: { name: string; y_start: number; y_end: number }) => ({
-            ...s,
-            id:
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? crypto.randomUUID()
-                : `${Date.now()}-${Math.random()}`,
-          })
-        )
+      const sectionsWithIds: SliceSection[] = analyzeData.analysis.sections.map(
+        (s) => ({
+          ...s,
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random()}`,
+        })
+      )
 
       const fakeEmail = {
         id: `manual-${Date.now()}`,
