@@ -13,8 +13,15 @@ export const maxDuration = 60
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB — cliente aceita até 15, margem
 
-// Claude Vision limita cada imagem a ~5 MB em base64. Base64 cresce ~33%,
-// então o PNG binário precisa caber em ~3.7 MB para sobrar margem.
+// Claude Vision processa internamente imagens para um máximo de 1568px
+// na maior dimensão. Se enviarmos uma imagem maior, o Claude reduz
+// silenciosamente e retorna coordenadas na escala reduzida — o que quebra
+// nosso rescale. Para garantir coordenadas previsíveis, redimensionamos
+// nós mesmos para que a maior dimensão seja exatamente 1568px.
+// Ref: https://docs.anthropic.com/en/docs/build-with-claude/vision#image-best-practices
+const CLAUDE_MAX_DIMENSION = 1568
+
+// Limite de 5 MB em base64 → ~3.7 MB em binário.
 const CLAUDE_MAX_IMAGE_BYTES = 3.7 * 1024 * 1024
 
 const SLICE_ANALYSIS_PROMPT = `Você é um especialista em email marketing que monta emails em plataformas como Omnisend e Klaviyo. Sua tarefa é analisar esta imagem de email marketing e definir EXATAMENTE onde cortar para montar o email na plataforma.
@@ -81,13 +88,15 @@ interface ClaudeAnalysis {
 }
 
 /**
- * Prepara a imagem para caber no limite de 5 MB (base64) do Claude Vision.
- * Se o binário original já cabe, envia como está. Se não, redimensiona
- * progressivamente e converte para JPEG (mais eficiente) mantendo proporção.
+ * Prepara a imagem para o Claude Vision garantindo que:
  *
- * Retorna o buffer enviado ao Claude + seu mime type + a altura da imagem
- * que o Claude viu (necessária para reescalar coordenadas de volta ao
- * original).
+ * 1. A maior dimensão seja EXATAMENTE ≤ 1568px (limite interno do Claude).
+ *    Se for maior, o Claude reduz silenciosamente e retorna coordenadas
+ *    na escala reduzida, quebrando nosso rescale.
+ * 2. O binário caiba no limite de ~5MB (base64) do Claude.
+ *
+ * Retorna também a altura e largura que o Claude efetivamente vai ver
+ * (essenciais para reescalar as coordenadas de volta para o original).
  */
 async function prepareImageForClaude(
   originalBuffer: Buffer,
@@ -102,8 +111,23 @@ async function prepareImageForClaude(
   const originalWidth = meta.width ?? 0
   const originalHeight = meta.height ?? 0
 
-  // Caso 1: binário já cabe
-  if (originalBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
+  // Calcular as dimensões alvo: nunca exceder CLAUDE_MAX_DIMENSION na
+  // maior dimensão; mantém aspect ratio; nunca faz upscale.
+  let targetWidth = originalWidth
+  let targetHeight = originalHeight
+
+  const longestEdge = Math.max(originalWidth, originalHeight)
+  if (longestEdge > CLAUDE_MAX_DIMENSION) {
+    const scale = CLAUDE_MAX_DIMENSION / longestEdge
+    targetWidth = Math.round(originalWidth * scale)
+    targetHeight = Math.round(originalHeight * scale)
+  }
+
+  const needsResize =
+    targetWidth !== originalWidth || targetHeight !== originalHeight
+
+  // Caso 1: dimensões já são OK E binário cabe → envia como está.
+  if (!needsResize && originalBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
     return {
       buffer: originalBuffer,
       mediaType: originalMime,
@@ -112,43 +136,66 @@ async function prepareImageForClaude(
     }
   }
 
-  // Caso 2: redimensionar. Tenta larguras progressivamente menores
-  // até caber. 1600 -> 1200 -> 900 -> 700.
-  const candidateWidths = [1600, 1200, 900, 700]
+  // Caso 2: precisa reescalar. Tenta primeiro PNG (sem perda), depois
+  // JPEG com qualidade decrescente até caber nos bytes.
+  const resizeOptions = {
+    width: targetWidth,
+    height: targetHeight,
+    fit: "inside" as const,
+    withoutEnlargement: true,
+  }
 
-  for (const targetWidth of candidateWidths) {
-    if (originalWidth > 0 && targetWidth >= originalWidth) {
-      // Não aumenta imagem — tenta só com o quality
+  // Tenta PNG primeiro (preserva nitidez para detecção de boundaries)
+  const pngBuffer = await sharp(originalBuffer)
+    .resize(resizeOptions)
+    .png({ compressionLevel: 9 })
+    .toBuffer()
+
+  if (pngBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
+    const pngMeta = await sharp(pngBuffer).metadata()
+    return {
+      buffer: pngBuffer,
+      mediaType: "image/png",
+      claudeWidth: pngMeta.width ?? targetWidth,
+      claudeHeight: pngMeta.height ?? targetHeight,
     }
+  }
 
-    const resized = await sharp(originalBuffer)
-      .resize({ width: targetWidth, withoutEnlargement: true })
-      .jpeg({ quality: 85, mozjpeg: true })
+  // PNG não coube — cai para JPEG com qualidade decrescente
+  for (const quality of [90, 85, 80, 75, 70, 60]) {
+    const jpegBuffer = await sharp(originalBuffer)
+      .resize(resizeOptions)
+      .jpeg({ quality, mozjpeg: true })
       .toBuffer()
 
-    if (resized.length <= CLAUDE_MAX_IMAGE_BYTES) {
-      const resizedMeta = await sharp(resized).metadata()
+    if (jpegBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
+      const jpegMeta = await sharp(jpegBuffer).metadata()
       return {
-        buffer: resized,
+        buffer: jpegBuffer,
         mediaType: "image/jpeg",
-        claudeWidth: resizedMeta.width ?? targetWidth,
-        claudeHeight: resizedMeta.height ?? 0,
+        claudeWidth: jpegMeta.width ?? targetWidth,
+        claudeHeight: jpegMeta.height ?? targetHeight,
       }
     }
   }
 
-  // Último recurso: 500px + JPEG 75%
-  const tiny = await sharp(originalBuffer)
-    .resize({ width: 500, withoutEnlargement: true })
-    .jpeg({ quality: 75, mozjpeg: true })
+  // Último recurso: reduzir também as dimensões
+  const fallbackBuffer = await sharp(originalBuffer)
+    .resize({
+      width: Math.min(targetWidth, 1000),
+      height: Math.min(targetHeight, 1000),
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 70, mozjpeg: true })
     .toBuffer()
 
-  const tinyMeta = await sharp(tiny).metadata()
+  const fallbackMeta = await sharp(fallbackBuffer).metadata()
   return {
-    buffer: tiny,
+    buffer: fallbackBuffer,
     mediaType: "image/jpeg",
-    claudeWidth: tinyMeta.width ?? 500,
-    claudeHeight: tinyMeta.height ?? 0,
+    claudeWidth: fallbackMeta.width ?? 0,
+    claudeHeight: fallbackMeta.height ?? 0,
   }
 }
 
@@ -231,6 +278,7 @@ export async function POST(request: NextRequest) {
     const {
       buffer: claudeBuffer,
       mediaType: claudeMediaType,
+      claudeWidth,
       claudeHeight,
     } = await prepareImageForClaude(
       originalBuffer,
@@ -364,7 +412,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Garantir que seções são contíguas (corrigir gaps)
+    // Arredondar todos os valores para inteiros
+    for (const section of analysis.sections) {
+      section.y_start = Math.round(section.y_start)
+      section.y_end = Math.round(section.y_end)
+    }
+
+    // Garantir que começa em 0
+    analysis.sections[0].y_start = 0
+
+    // Corrigir gaps (y_end de uma deve ser y_start da próxima)
     for (let i = 1; i < analysis.sections.length; i++) {
       if (
         analysis.sections[i].y_start !== analysis.sections[i - 1].y_end
@@ -373,37 +430,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Garantir que começa em 0
-    analysis.sections[0].y_start = 0
+    // ===================================================================
+    // RESCALE: o Claude vê uma imagem de tamanho potencialmente diferente
+    // da original (porque redimensionamos para ≤1568px, ou porque o
+    // Claude fez downscaling interno). Suas coordenadas são na escala
+    // que ELE viu. Precisamos escalar de volta para a imagem original.
+    //
+    // A escala é inferida da última seção: lastSection.y_end representa
+    // o "fim do email" na escala do Claude. Se ele viu uma imagem de
+    // 1568 de altura, a última seção termina em ~1568. Dividimos a
+    // altura original por esse valor para obter o fator de escala.
+    // ===================================================================
+    const lastSection = analysis.sections[analysis.sections.length - 1]
+    const claudeMaxY = Math.max(
+      lastSection.y_end,
+      analysis.total_height || 0
+    )
 
-    // Arredondar todos os valores para inteiros
-    for (const section of analysis.sections) {
-      section.y_start = Math.round(section.y_start)
-      section.y_end = Math.round(section.y_end)
-    }
+    log.info("Claude returned sections", {
+      originalSize: `${originalWidth}x${originalHeight}`,
+      claudeSentSize: `${claudeWidth}x${claudeHeight}`,
+      claudeReportedHeight: analysis.total_height,
+      claudeMaxY,
+      sectionsCount: analysis.sections.length,
+      firstSectionYEnd: analysis.sections[0].y_end,
+      lastSectionYEnd: lastSection.y_end,
+    })
 
-    if (typeof analysis.total_height === "number") {
-      analysis.total_height = Math.round(analysis.total_height)
-    }
-
-    // Reescalar coordenadas da escala do Claude para a escala da imagem
-    // original. O Claude viu uma imagem de altura `claudeHeight`, então
-    // precisamos multiplicar suas coordenadas por (originalHeight / claudeHeight).
-    // Usamos claudeHeight (a altura real da imagem enviada) como referência,
-    // não analysis.total_height (que o Claude pode ter reportado incorretamente).
-    const referenceHeight = claudeHeight > 0 ? claudeHeight : analysis.total_height
-    if (referenceHeight > 0 && originalHeight > 0) {
-      const scale = originalHeight / referenceHeight
-      if (Math.abs(scale - 1) > 0.02) {
-        for (const section of analysis.sections) {
-          section.y_start = Math.round(section.y_start * scale)
-          section.y_end = Math.round(section.y_end * scale)
-        }
+    if (claudeMaxY > 0 && originalHeight > 0) {
+      const scale = originalHeight / claudeMaxY
+      for (const section of analysis.sections) {
+        section.y_start = Math.round(section.y_start * scale)
+        section.y_end = Math.round(section.y_end * scale)
       }
     }
-    analysis.total_height = originalHeight
 
-    // Garantir extremos depois do rescale
+    // Garantir extremos e contiguidade depois do rescale
+    analysis.total_height = originalHeight
     analysis.sections[0].y_start = 0
     analysis.sections[analysis.sections.length - 1].y_end = originalHeight
     for (let i = 1; i < analysis.sections.length; i++) {
@@ -412,6 +475,28 @@ export async function POST(request: NextRequest) {
       ) {
         analysis.sections[i].y_start = analysis.sections[i - 1].y_end
       }
+      // Clampar pra não passar da altura original
+      if (analysis.sections[i].y_end > originalHeight) {
+        analysis.sections[i].y_end = originalHeight
+      }
+      if (analysis.sections[i].y_start > originalHeight) {
+        analysis.sections[i].y_start = originalHeight
+      }
+    }
+
+    // Filtrar seções degeneradas (altura ≤ 0) que podem ter aparecido
+    // depois do rescale se o Claude colapsou algumas
+    analysis.sections = analysis.sections.filter(
+      (s) => s.y_end - s.y_start > 0
+    )
+    if (analysis.sections.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Todas as seções ficaram vazias após rescale.",
+        },
+        { status: 500 }
+      )
     }
 
     // Snap-to-boundary via análise de pixels na IMAGEM ORIGINAL
