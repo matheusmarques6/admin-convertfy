@@ -1,68 +1,231 @@
 import { NextRequest, NextResponse } from "next/server"
+import Anthropic from "@anthropic-ai/sdk"
 import sharp from "sharp"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
-const log = logger.child("FigmaSlicer.AnalyzePixels")
+const log = logger.child("FigmaSlicer.AnalyzeHybrid")
 
 export const runtime = "nodejs"
-export const maxDuration = 30
+export const maxDuration = 60
 
 // ============================================================================
-// CONSTANTES DO ALGORITMO
+// CONSTANTES
 // ============================================================================
 
-const TARGET_WIDTH = 600 // largura fixa de análise (= largura de output)
+const TARGET_WIDTH = 600 // largura de análise = largura de output
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
-// Scan de linha por linha
-const X_SAMPLE = 2 // amostra horizontal a cada N pixels (pra calcular variância)
+// Claude Vision tem limite de ~5 MB em base64 (~3.7 MB em binário).
+const CLAUDE_MAX_BYTES = 3.7 * 1024 * 1024
 
-// ------ Detecção de whitespace gaps (fronteiras REAIS entre seções) ------
-// Um "gap" é uma faixa de linhas consecutivas com fundo uniforme (baixa
-// variância) e cor consistente. Emails marketing tipicamente têm 30-80px
-// de espaço vazio entre blocos funcionais (hero → body → grid → footer).
-const GAP_VARIANCE_MAX = 400 // linha é "uniforme" se variância horizontal < N
-const GAP_COLOR_DRIFT_MAX = 15 // dentro de um gap, a cor média não pode variar mais que N
-const GAP_MIN_HEIGHT = 20 // gap precisa ter ≥ N pixels de altura pra ser um corte real
+// Mínimo entre cortes (evita fatias muito pequenas)
+const MIN_SECTION_HEIGHT = 150
 
-// ------ Detecção de transição forte de fundo dominante ------
-// Pra casos onde NÃO há gap (ex: hero azul termina exatamente onde body
-// branco começa). Exige uma mudança MUITO grande de cor.
-const STRONG_TRANSITION_DIST = 120 // distância RGB pra considerar uma mudança de fundo
-
-// ------ Filtros finais ------
-const MIN_SECTION_HEIGHT = 200 // mínimo entre cortes
-// MAX_SECTIONS é dinâmico (calculado por altura do email) — veja o handler
-const MIN_FINAL_HEIGHT = 150 // seções menores que isso são fundidas
+// Refinamento por pixel: ao redor da sugestão do Claude, procura o gap
+// de whitespace mais próximo pra alinhar o corte exatamente numa zona vazia.
+const REFINE_RADIUS = 60 // ±N pixels ao redor da sugestão do Claude
+const GAP_VARIANCE_MAX = 400 // linha uniforme
 
 // ============================================================================
-// UTILS
+// PROMPT do Claude Vision
+// ============================================================================
+
+function buildClaudePrompt(height: number): string {
+  return `Você é um especialista em email marketing que monta emails no Omnisend e Klaviyo. Analise esta imagem de email marketing e identifique as SEÇÕES VISUAIS DISTINTAS que devem virar fatias separadas.
+
+A imagem tem 600 pixels de largura e ${height} pixels de altura.
+
+## REGRAS CRÍTICAS
+
+Cada fatia que você definir será uma imagem PNG separada. O operador vai empilhar as fatias no Omnisend/Klaviyo. Pra fazer isso funcionar, você precisa identificar os BLOCOS FUNCIONAIS COMPLETOS do email, NÃO micro-transições de cor.
+
+### Seções típicas de um email marketing:
+
+1. **hero** — Logo da marca + imagem principal do produto + headline grande + CTA primário. TUDO JUNTO. Normalmente fundo colorido ou escuro.
+
+2. **body_copy** — Bloco de texto da oferta. Pode ter título tipo "ÚLTIMA OPORTUNIDADE", porcentagem "17% OFF", cupom "ESPECIAL", e botão "RECUPERAR O CÓDIGO". **Tudo isso é UMA seção só.** Nunca separar cupom do título, nunca separar botão do texto.
+
+3. **product_section** — Grid de produtos (2×2, 3×3, etc). Cada produto tem imagem + preço + botão "comprar". **O GRID INTEIRO é UMA seção**. NUNCA corte entre a linha 1 (produtos 1-2) e a linha 2 (produtos 3-4).
+
+4. **cta_final** — Ícones de benefícios (envio, qualidade, segurança) + bloco de oferta final + botão. Tipicamente antes do footer. Pode ter fundo misto (branco nos badges, preto no bloco de oferta). Se esses elementos estão grudados, é UMA seção.
+
+5. **footer** — Logo + links de navegação ("Mais vendidos", "Conforto", etc) + copyright + email de contato. Normalmente fundo escuro.
+
+### O QUE NÃO FAZER
+
+❌ NUNCA corte no meio de um grid de produtos.
+❌ NUNCA corte no meio de um bloco de texto ou cupom.
+❌ NUNCA crie uma seção só pra um botão ou título.
+❌ NUNCA crie seções menores que 150 pixels.
+❌ NUNCA retorne mais que 8 seções. Emails típicos têm 3-6 seções.
+
+### VALIDAÇÃO
+
+- sections[0].y_start deve ser 0
+- sections[last].y_end deve ser ${height}
+- Cada y_end deve ser igual ao y_start da próxima seção (sem gaps nem sobreposição)
+- Todos os valores devem ser inteiros
+- Cada seção deve ter altura >= 150 pixels
+
+Chame a tool \`report_sections\` com a análise.`
+}
+
+// ============================================================================
+// PIXEL REFINE: encontra o ponto exato de corte próximo da sugestão do Claude
 // ============================================================================
 
 interface RowStats {
-  y: number
   avgR: number
   avgG: number
   avgB: number
-  variance: number // variância horizontal (quão "uniforme" é a linha)
-}
-
-interface CutCandidate {
-  y: number
-  score: number
-  source: "gap" | "transition" // origem do corte pra debug
+  variance: number
 }
 
 /**
- * Calcula a distância RGB Euclidiana entre duas cores médias.
+ * Calcula estatísticas (média RGB + variância horizontal) pra cada linha.
  */
-function colorDistance(a: RowStats, b: RowStats): number {
-  return Math.sqrt(
-    Math.pow(a.avgR - b.avgR, 2) +
-      Math.pow(a.avgG - b.avgG, 2) +
-      Math.pow(a.avgB - b.avgB, 2)
+function computeRowStats(
+  pixels: Buffer,
+  width: number,
+  height: number,
+  channels: number
+): RowStats[] {
+  const rows: RowStats[] = new Array(height)
+  const xStep = 2
+
+  for (let y = 0; y < height; y++) {
+    let sumR = 0
+    let sumG = 0
+    let sumB = 0
+    let samples = 0
+
+    for (let x = 0; x < width; x += xStep) {
+      const idx = (y * width + x) * channels
+      sumR += pixels[idx]
+      sumG += pixels[idx + 1]
+      sumB += pixels[idx + 2]
+      samples++
+    }
+
+    const avgR = sumR / samples
+    const avgG = sumG / samples
+    const avgB = sumB / samples
+
+    let variance = 0
+    for (let x = 0; x < width; x += xStep) {
+      const idx = (y * width + x) * channels
+      variance += Math.pow(pixels[idx] - avgR, 2)
+      variance += Math.pow(pixels[idx + 1] - avgG, 2)
+      variance += Math.pow(pixels[idx + 2] - avgB, 2)
+    }
+    variance = variance / (samples * 3)
+
+    rows[y] = { avgR, avgG, avgB, variance }
+  }
+
+  return rows
+}
+
+/**
+ * Dado uma sugestão de corte do Claude e as estatísticas das linhas,
+ * encontra o ponto EXATO mais próximo onde há uma fronteira visual real.
+ *
+ * Estratégias, em ordem de prioridade:
+ * 1. Procura a ZONA de whitespace (linhas uniformes consecutivas) mais próxima
+ *    da sugestão, e retorna o CENTRO dessa zona.
+ * 2. Se não encontrar whitespace, procura a maior transição de cor Y→Y+1
+ *    dentro do raio.
+ * 3. Se nada melhor for encontrado, mantém a sugestão original.
+ */
+function refineCut(
+  rows: RowStats[],
+  suggestedY: number,
+  minY: number,
+  maxY: number
+): number {
+  const height = rows.length
+  const searchMin = Math.max(minY, Math.max(0, suggestedY - REFINE_RADIUS))
+  const searchMax = Math.min(
+    maxY,
+    Math.min(height - 1, suggestedY + REFINE_RADIUS)
   )
+
+  if (searchMin >= searchMax) return suggestedY
+
+  // Estratégia 1: procurar zonas de whitespace próximas
+  interface GapRange {
+    start: number
+    end: number
+  }
+  const gaps: GapRange[] = []
+  let currentGapStart = -1
+
+  for (let y = searchMin; y <= searchMax; y++) {
+    const isUniform = rows[y].variance < GAP_VARIANCE_MAX
+    if (isUniform) {
+      if (currentGapStart === -1) currentGapStart = y
+    } else {
+      if (currentGapStart !== -1) {
+        gaps.push({ start: currentGapStart, end: y - 1 })
+        currentGapStart = -1
+      }
+    }
+  }
+  if (currentGapStart !== -1) {
+    gaps.push({ start: currentGapStart, end: searchMax })
+  }
+
+  // Pega o gap mais próximo da sugestão (com tamanho >= 5px)
+  const validGaps = gaps.filter((g) => g.end - g.start >= 5)
+  if (validGaps.length > 0) {
+    let closestGap: GapRange = validGaps[0]
+    let closestDist = Math.abs(
+      (closestGap.start + closestGap.end) / 2 - suggestedY
+    )
+    for (const g of validGaps) {
+      const centerY = (g.start + g.end) / 2
+      const dist = Math.abs(centerY - suggestedY)
+      if (dist < closestDist) {
+        closestGap = g
+        closestDist = dist
+      }
+    }
+    return Math.round((closestGap.start + closestGap.end) / 2)
+  }
+
+  // Estratégia 2: maior transição de cor no raio
+  let bestY = suggestedY
+  let bestScore = 0
+  for (let y = searchMin; y < searchMax; y++) {
+    const curr = rows[y]
+    const next = rows[y + 1]
+    const dist =
+      Math.abs(curr.avgR - next.avgR) +
+      Math.abs(curr.avgG - next.avgG) +
+      Math.abs(curr.avgB - next.avgB)
+    if (dist > bestScore) {
+      bestScore = dist
+      bestY = y
+    }
+  }
+
+  return bestScore > 30 ? bestY : suggestedY
+}
+
+// ============================================================================
+// TIPO da resposta do Claude
+// ============================================================================
+
+interface ClaudeSection {
+  name: string
+  y_start: number
+  y_end: number
+  description?: string
+}
+
+interface ClaudeAnalysis {
+  sections: ClaudeSection[]
 }
 
 // ============================================================================
@@ -80,6 +243,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Não autenticado" },
         { status: 401 }
+      )
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "ANTHROPIC_API_KEY não configurada no servidor.",
+        },
+        { status: 503 }
       )
     }
 
@@ -111,7 +284,7 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     // ========================================================================
-    // PASSO 0: normalizar para 600px de largura
+    // PASSO 1: normalizar para 600px de largura
     // ========================================================================
     const meta = await sharp(buffer).metadata()
     let width = meta.width ?? 0
@@ -131,222 +304,224 @@ export async function POST(request: NextRequest) {
       height = Math.round((height / width) * TARGET_WIDTH)
       width = TARGET_WIDTH
       buffer = await sharp(buffer)
-        .resize(TARGET_WIDTH, height, { fit: "fill" })
+        .resize({
+          width: TARGET_WIDTH,
+          fit: "inside",
+          withoutEnlargement: false,
+        })
         .png()
         .toBuffer()
+      // Re-ler dimensões reais após resize
+      const newMeta = await sharp(buffer).metadata()
+      height = newMeta.height ?? height
     }
 
     // ========================================================================
-    // PASSO 1: calcular estatísticas de CADA linha
-    // avgR/G/B + variância horizontal (quão uniforme é a linha)
+    // PASSO 2: preparar buffer pra enviar ao Claude (cabe em 5MB base64?)
+    // Se não couber, reencoda como JPEG até caber.
     // ========================================================================
-    const { data: pixels, info } = await sharp(buffer)
+    let claudeBuffer = buffer
+    let claudeMediaType: "image/png" | "image/jpeg" = "image/png"
+
+    if (claudeBuffer.length > CLAUDE_MAX_BYTES) {
+      for (const quality of [92, 85, 75, 65]) {
+        const jpeg = await sharp(buffer)
+          .jpeg({ quality, mozjpeg: true })
+          .toBuffer()
+        if (jpeg.length <= CLAUDE_MAX_BYTES) {
+          claudeBuffer = jpeg
+          claudeMediaType = "image/jpeg"
+          break
+        }
+      }
+    }
+
+    // ========================================================================
+    // PASSO 3: Claude Vision identifica as seções semanticamente
+    // ========================================================================
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    const reportTool: Anthropic.Tool = {
+      name: "report_sections",
+      description:
+        "Reporta as seções visuais distintas do email marketing, em ordem vertical.",
+      input_schema: {
+        type: "object",
+        properties: {
+          sections: {
+            type: "array",
+            minItems: 2,
+            maxItems: 8,
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description:
+                    "Nome descritivo da seção em snake_case (hero, body_copy, product_section, trust_badges, cta_final, footer, etc)",
+                },
+                y_start: {
+                  type: "integer",
+                  description: "Coordenada Y inicial em pixels",
+                },
+                y_end: {
+                  type: "integer",
+                  description: "Coordenada Y final em pixels",
+                },
+                description: {
+                  type: "string",
+                  description: "Descrição curta do que há nesta seção",
+                },
+              },
+              required: ["name", "y_start", "y_end"],
+            },
+          },
+        },
+        required: ["sections"],
+      },
+    }
+
+    const claudeStart = Date.now()
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      tools: [reportTool],
+      tool_choice: { type: "tool", name: "report_sections" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: claudeMediaType,
+                data: claudeBuffer.toString("base64"),
+              },
+            },
+            { type: "text", text: buildClaudePrompt(height) },
+          ],
+        },
+      ],
+    })
+    const claudeMs = Date.now() - claudeStart
+
+    const toolBlock = response.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+    )
+    if (!toolBlock || toolBlock.name !== "report_sections") {
+      log.error("Claude did not return report_sections tool", {
+        stopReason: response.stop_reason,
+        contentTypes: response.content.map((b) => b.type),
+      })
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "A IA não retornou o formato esperado. Tente novamente.",
+        },
+        { status: 502 }
+      )
+    }
+
+    const analysis = toolBlock.input as unknown as ClaudeAnalysis
+
+    if (
+      !analysis.sections ||
+      !Array.isArray(analysis.sections) ||
+      analysis.sections.length === 0
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Nenhuma seção detectada pela IA." },
+        { status: 422 }
+      )
+    }
+
+    // ========================================================================
+    // PASSO 4: normalização estrutural das seções do Claude
+    // ========================================================================
+    for (const s of analysis.sections) {
+      s.y_start = Math.round(s.y_start)
+      s.y_end = Math.round(s.y_end)
+      if (s.y_start < 0) s.y_start = 0
+      if (s.y_end > height) s.y_end = height
+    }
+    analysis.sections[0].y_start = 0
+    analysis.sections[analysis.sections.length - 1].y_end = height
+    for (let i = 1; i < analysis.sections.length; i++) {
+      if (analysis.sections[i].y_start !== analysis.sections[i - 1].y_end) {
+        analysis.sections[i].y_start = analysis.sections[i - 1].y_end
+      }
+    }
+
+    // ========================================================================
+    // PASSO 5: refinamento por pixel — alinha cada corte ao gap mais próximo
+    // ========================================================================
+    const { data: rawPixels, info } = await sharp(buffer)
       .raw()
       .toBuffer({ resolveWithObject: true })
-    const ch = info.channels
+    const rows = computeRowStats(rawPixels, info.width, info.height, info.channels)
 
-    const rows: RowStats[] = new Array(height)
+    for (let i = 0; i < analysis.sections.length - 1; i++) {
+      const suggested = analysis.sections[i].y_end
+      // Não pode mover pra antes da seção atual nem pra depois da próxima
+      const minY = analysis.sections[i].y_start + MIN_SECTION_HEIGHT
+      const maxY =
+        analysis.sections[i + 1].y_end - MIN_SECTION_HEIGHT
+      if (minY >= maxY) continue
 
-    for (let y = 0; y < height; y++) {
-      let sumR = 0
-      let sumG = 0
-      let sumB = 0
-      let samples = 0
-
-      for (let x = 0; x < width; x += X_SAMPLE) {
-        const idx = (y * width + x) * ch
-        sumR += pixels[idx]
-        sumG += pixels[idx + 1]
-        sumB += pixels[idx + 2]
-        samples++
-      }
-
-      const avgR = sumR / samples
-      const avgG = sumG / samples
-      const avgB = sumB / samples
-
-      // Variância horizontal: quão "uniforme" é essa linha
-      let variance = 0
-      for (let x = 0; x < width; x += X_SAMPLE) {
-        const idx = (y * width + x) * ch
-        variance += Math.pow(pixels[idx] - avgR, 2)
-        variance += Math.pow(pixels[idx + 1] - avgG, 2)
-        variance += Math.pow(pixels[idx + 2] - avgB, 2)
-      }
-      variance = variance / (samples * 3)
-
-      rows[y] = { y, avgR, avgG, avgB, variance }
+      const refined = refineCut(rows, suggested, minY, maxY)
+      analysis.sections[i].y_end = refined
+      analysis.sections[i + 1].y_start = refined
     }
 
     // ========================================================================
-    // PASSO 2A: detectar WHITESPACE GAPS
-    // Runs de linhas consecutivas com variância baixa (fundo sólido)
-    // e cor consistente entre si. Esses gaps são as fronteiras REAIS
-    // entre blocos funcionais do email.
+    // PASSO 6: auto-merge de seções pequenas como safety net
     // ========================================================================
-    const gapCandidates: CutCandidate[] = []
-    let gapStart = -1
-    let gapBaseColor: { r: number; g: number; b: number } | null = null
+    let mergedSections = analysis.sections.map((s) => ({
+      name: s.name,
+      y_start: s.y_start,
+      y_end: s.y_end,
+    }))
 
-    const closeGap = (endY: number) => {
-      if (gapStart === -1 || !gapBaseColor) return
-      const gapHeight = endY - gapStart
-      if (gapHeight >= GAP_MIN_HEIGHT) {
-        // Centro do gap = ponto ideal de corte
-        const centerY = Math.round((gapStart + endY) / 2)
-        // Score proporcional ao tamanho do gap (gap maior = corte mais forte)
-        const score = gapHeight * 4
-        gapCandidates.push({ y: centerY, score, source: "gap" })
-      }
-      gapStart = -1
-      gapBaseColor = null
-    }
+    let mergedSomething = true
+    while (mergedSomething && mergedSections.length > 1) {
+      mergedSomething = false
+      for (let i = 0; i < mergedSections.length; i++) {
+        const h = mergedSections[i].y_end - mergedSections[i].y_start
+        if (h >= MIN_SECTION_HEIGHT) continue
 
-    for (let y = 0; y < height; y++) {
-      const row = rows[y]
-      const isUniform = row.variance < GAP_VARIANCE_MAX
-
-      if (isUniform) {
-        if (gapStart === -1) {
-          // Começa um gap novo
-          gapStart = y
-          gapBaseColor = { r: row.avgR, g: row.avgG, b: row.avgB }
-        } else if (gapBaseColor) {
-          // Verifica se a cor ainda é similar à do início do gap
-          const drift =
-            Math.abs(row.avgR - gapBaseColor.r) +
-            Math.abs(row.avgG - gapBaseColor.g) +
-            Math.abs(row.avgB - gapBaseColor.b)
-          if (drift > GAP_COLOR_DRIFT_MAX * 3) {
-            // Cor mudou dentro do gap — fecha o anterior e começa novo
-            closeGap(y - 1)
-            gapStart = y
-            gapBaseColor = { r: row.avgR, g: row.avgG, b: row.avgB }
-          }
+        if (i === 0) {
+          mergedSections[1].y_start = mergedSections[0].y_start
+          mergedSections.splice(0, 1)
+        } else {
+          mergedSections[i - 1].y_end = mergedSections[i].y_end
+          mergedSections.splice(i, 1)
         }
-      } else {
-        // Linha com conteúdo — fecha o gap atual se existir
-        closeGap(y - 1)
-      }
-    }
-    closeGap(height - 1)
-
-    // ========================================================================
-    // PASSO 2B: detectar TRANSIÇÕES FORTES de cor de fundo
-    // Pra casos onde NÃO há gap (ex: hero colorido termina exatamente
-    // onde body branco começa, sem espaço vazio entre eles).
-    // Exige uma distância RGB muito grande entre linhas uniformes vizinhas.
-    // ========================================================================
-    const transitionCandidates: CutCandidate[] = []
-
-    for (let y = 1; y < height; y++) {
-      const prev = rows[y - 1]
-      const curr = rows[y]
-      const dist = colorDistance(prev, curr)
-
-      if (dist >= STRONG_TRANSITION_DIST) {
-        transitionCandidates.push({
-          y,
-          score: Math.round(dist),
-          source: "transition",
-        })
+        mergedSomething = true
+        break
       }
     }
 
-    // ========================================================================
-    // PASSO 3: unificar candidatos e filtrar
-    // ========================================================================
-    const allCandidates: CutCandidate[] = [
-      ...gapCandidates,
-      ...transitionCandidates,
-    ]
-    allCandidates.sort((a, b) => a.y - b.y)
-
-    // 3a. Remove candidatos muito perto das bordas (topo/base)
-    let filtered = allCandidates.filter(
-      (c) => c.y > 100 && c.y < height - 100
-    )
-
-    // 3b. Consolida candidatos muito próximos (mantém o de maior score)
-    const consolidated: CutCandidate[] = []
-    for (const cand of filtered) {
-      const last = consolidated[consolidated.length - 1]
-      if (!last || cand.y - last.y >= MIN_SECTION_HEIGHT) {
-        consolidated.push(cand)
-      } else if (cand.score > last.score) {
-        consolidated[consolidated.length - 1] = cand
-      }
-    }
-
-    filtered = consolidated
-
-    // 3c. MAX_SECTIONS dinâmico baseado na altura do email
-    const MAX_SECTIONS = Math.max(3, Math.min(8, Math.floor(height / 400)))
-    let finalCuts = filtered
-    if (finalCuts.length > MAX_SECTIONS - 1) {
-      finalCuts = [...filtered].sort((a, b) => b.score - a.score)
-      finalCuts = finalCuts.slice(0, MAX_SECTIONS - 1)
-      finalCuts.sort((a, b) => a.y - b.y)
-    }
-
-    // ========================================================================
-    // PASSO 5: montar seções a partir dos cortes
-    // ========================================================================
-    const cutPoints = [0, ...finalCuts.map((c) => c.y), height]
-    const rawSections: Array<{ name: string; y_start: number; y_end: number }> =
-      []
-
-    for (let i = 0; i < cutPoints.length - 1; i++) {
-      rawSections.push({
-        name: `parte_${i + 1}`,
-        y_start: cutPoints[i],
-        y_end: cutPoints[i + 1],
-      })
-    }
-
-    // 5a. Merge de seções minúsculas (<40px) com a vizinha
-    const mergedSections: typeof rawSections = []
-    for (const s of rawSections) {
-      const h = s.y_end - s.y_start
-      if (h < MIN_FINAL_HEIGHT && mergedSections.length > 0) {
-        // Merge com a anterior
-        mergedSections[mergedSections.length - 1].y_end = s.y_end
-      } else if (h < MIN_FINAL_HEIGHT && mergedSections.length === 0) {
-        // Primeira é pequena demais — guarda e deixa a próxima absorver depois
-        mergedSections.push(s)
-      } else {
-        mergedSections.push(s)
-      }
-    }
-
-    // 5b. Se a primeira continuar pequena, merge pra frente
-    while (
-      mergedSections.length > 1 &&
-      mergedSections[0].y_end - mergedSections[0].y_start < MIN_FINAL_HEIGHT
-    ) {
-      mergedSections[1].y_start = mergedSections[0].y_start
-      mergedSections.splice(0, 1)
-    }
-
-    // 5c. Renumerar
-    mergedSections.forEach((s, i) => {
-      s.name = `parte_${i + 1}`
-    })
+    // Renumerar como parte_1, parte_2, ...
+    mergedSections = mergedSections.map((s, i) => ({
+      ...s,
+      name: `parte_${i + 1}`,
+    }))
 
     const durationMs = Date.now() - startTime
 
-    log.info("Pixel analysis completed", {
+    log.info("Hybrid analysis completed", {
       imageSize: `${width}x${height}`,
-      gapCandidatesCount: gapCandidates.length,
-      transitionCandidatesCount: transitionCandidates.length,
-      finalCutsCount: finalCuts.length,
-      sectionsCount: mergedSections.length,
-      maxSections: MAX_SECTIONS,
-      durationMs,
-      finalCutsDetail: finalCuts.map((c) => ({
-        y: c.y,
-        score: c.score,
-        source: c.source,
+      claudeMs,
+      totalMs: durationMs,
+      claudeSectionsCount: analysis.sections.length,
+      finalSectionsCount: mergedSections.length,
+      sections: mergedSections.map((s) => ({
+        name: s.name,
+        y_start: s.y_start,
+        y_end: s.y_end,
+        height: s.y_end - s.y_start,
       })),
     })
 
@@ -356,12 +531,12 @@ export async function POST(request: NextRequest) {
         width,
         height,
         sections: mergedSections,
-        cuts_found: finalCuts.length,
+        cuts_found: Math.max(0, mergedSections.length - 1),
       },
       duration_ms: durationMs,
     })
   } catch (error: unknown) {
-    log.error("Pixel analysis failed", {
+    log.error("Hybrid analysis failed", {
       error: error instanceof Error ? error.message : String(error),
     })
     const message =
