@@ -13,13 +13,21 @@ export const maxDuration = 60
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB — cliente aceita até 15, margem
 
-// Claude Vision processa internamente imagens para um máximo de 1568px
-// na maior dimensão. Se enviarmos uma imagem maior, o Claude reduz
-// silenciosamente e retorna coordenadas na escala reduzida — o que quebra
-// nosso rescale. Para garantir coordenadas previsíveis, redimensionamos
-// nós mesmos para que a maior dimensão seja exatamente 1568px.
-// Ref: https://docs.anthropic.com/en/docs/build-with-claude/vision#image-best-practices
-const CLAUDE_MAX_DIMENSION = 1568
+// =========================================================================
+// DIMENSÕES DA IMAGEM ENVIADA AO CLAUDE VISION
+//
+// Estratégia CRÍTICA: nunca deixar a largura ficar estreita demais.
+// Emails marketing são sempre altos (1200×5000+ px típico). Se usarmos
+// "maior dimensão ≤ 1568px", uma imagem 1200×8000 vira 234×1568, ficando
+// ilegível para o Claude e retornando coordenadas completamente erradas.
+//
+// Nova abordagem: target LARGURA 1024px (legível), altura cresce
+// proporcionalmente até o limite absoluto do Claude (8000px).
+//
+// Ref: https://docs.anthropic.com/en/docs/build-with-claude/vision
+// =========================================================================
+const CLAUDE_TARGET_WIDTH = 1024
+const CLAUDE_MAX_HEIGHT = 8000
 
 // Limite de 5 MB em base64 → ~3.7 MB em binário.
 const CLAUDE_MAX_IMAGE_BYTES = 3.7 * 1024 * 1024
@@ -102,15 +110,20 @@ interface ClaudeAnalysis {
 }
 
 /**
- * Prepara a imagem para o Claude Vision garantindo que:
+ * Prepara a imagem para o Claude Vision preservando LEGIBILIDADE.
  *
- * 1. A maior dimensão seja EXATAMENTE ≤ 1568px (limite interno do Claude).
- *    Se for maior, o Claude reduz silenciosamente e retorna coordenadas
- *    na escala reduzida, quebrando nosso rescale.
- * 2. O binário caiba no limite de ~5MB (base64) do Claude.
+ * Regra principal: target LARGURA = 1024px. Altura cresce
+ * proporcionalmente. Isso garante que o texto, produtos e elementos
+ * do email fiquem visíveis ao Claude — ao contrário de forçar a maior
+ * dimensão a ≤1568 (que para emails altos gera imagens ultra-estreitas).
  *
- * Retorna também a altura e largura que o Claude efetivamente vai ver
- * (essenciais para reescalar as coordenadas de volta para o original).
+ * Casos:
+ * - Largura < 1024: usa a largura original (não faz upscale)
+ * - Largura > 1024: reduz para 1024, altura proporcional
+ * - Após reduzir, se altura > 8000 (limite Claude): reduz mais ainda
+ *
+ * Depois tenta PNG (preserva boundaries); se passar de 3.7MB, cai
+ * para JPEG com qualidade decrescente.
  */
 async function prepareImageForClaude(
   originalBuffer: Buffer,
@@ -125,22 +138,28 @@ async function prepareImageForClaude(
   const originalWidth = meta.width ?? 0
   const originalHeight = meta.height ?? 0
 
-  // Calcular as dimensões alvo: nunca exceder CLAUDE_MAX_DIMENSION na
-  // maior dimensão; mantém aspect ratio; nunca faz upscale.
+  // Passo 1: calcular dimensões alvo preservando aspect ratio
   let targetWidth = originalWidth
   let targetHeight = originalHeight
 
-  const longestEdge = Math.max(originalWidth, originalHeight)
-  if (longestEdge > CLAUDE_MAX_DIMENSION) {
-    const scale = CLAUDE_MAX_DIMENSION / longestEdge
-    targetWidth = Math.round(originalWidth * scale)
+  // Se a imagem é mais larga que CLAUDE_TARGET_WIDTH, reduz
+  if (originalWidth > CLAUDE_TARGET_WIDTH) {
+    const scale = CLAUDE_TARGET_WIDTH / originalWidth
+    targetWidth = CLAUDE_TARGET_WIDTH
     targetHeight = Math.round(originalHeight * scale)
+  }
+
+  // Se após redução a altura ainda passa do limite Claude, reduz mais
+  if (targetHeight > CLAUDE_MAX_HEIGHT) {
+    const scale = CLAUDE_MAX_HEIGHT / targetHeight
+    targetHeight = CLAUDE_MAX_HEIGHT
+    targetWidth = Math.round(targetWidth * scale)
   }
 
   const needsResize =
     targetWidth !== originalWidth || targetHeight !== originalHeight
 
-  // Caso 1: dimensões já são OK E binário cabe → envia como está.
+  // Caso 1: dimensões já são OK E binário cabe → envia como está
   if (!needsResize && originalBuffer.length <= CLAUDE_MAX_IMAGE_BYTES) {
     return {
       buffer: originalBuffer,
@@ -150,8 +169,7 @@ async function prepareImageForClaude(
     }
   }
 
-  // Caso 2: precisa reescalar. Tenta primeiro PNG (sem perda), depois
-  // JPEG com qualidade decrescente até caber nos bytes.
+  // Caso 2: precisa reescalar ou reencodar
   const resizeOptions = {
     width: targetWidth,
     height: targetHeight,
@@ -159,7 +177,7 @@ async function prepareImageForClaude(
     withoutEnlargement: true,
   }
 
-  // Tenta PNG primeiro (preserva nitidez para detecção de boundaries)
+  // Tenta PNG primeiro (preserva nitidez para snap-to-boundary)
   const pngBuffer = await sharp(originalBuffer)
     .resize(resizeOptions)
     .png({ compressionLevel: 9 })
@@ -175,8 +193,9 @@ async function prepareImageForClaude(
     }
   }
 
-  // PNG não coube — cai para JPEG com qualidade decrescente
-  for (const quality of [90, 85, 80, 75, 70, 60]) {
+  // PNG não coube — tenta JPEG com qualidade decrescente mantendo
+  // as mesmas dimensões (não reduz mais para manter legibilidade)
+  for (const quality of [92, 88, 82, 75, 68, 60]) {
     const jpegBuffer = await sharp(originalBuffer)
       .resize(resizeOptions)
       .jpeg({ quality, mozjpeg: true })
@@ -193,22 +212,23 @@ async function prepareImageForClaude(
     }
   }
 
-  // Último recurso: reduzir também as dimensões
+  // Último recurso: reduz a largura para 800 (ainda legível) + JPEG 65
+  const fallbackScale = 800 / targetWidth
   const fallbackBuffer = await sharp(originalBuffer)
     .resize({
-      width: Math.min(targetWidth, 1000),
-      height: Math.min(targetHeight, 1000),
+      width: 800,
+      height: Math.round(targetHeight * fallbackScale),
       fit: "inside",
       withoutEnlargement: true,
     })
-    .jpeg({ quality: 70, mozjpeg: true })
+    .jpeg({ quality: 65, mozjpeg: true })
     .toBuffer()
 
   const fallbackMeta = await sharp(fallbackBuffer).metadata()
   return {
     buffer: fallbackBuffer,
     mediaType: "image/jpeg",
-    claudeWidth: fallbackMeta.width ?? 0,
+    claudeWidth: fallbackMeta.width ?? 800,
     claudeHeight: fallbackMeta.height ?? 0,
   }
 }
