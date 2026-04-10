@@ -55,39 +55,56 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+// Largura final dos slices no ZIP (padrão Klaviyo/Omnisend)
+const OUTPUT_SLICE_WIDTH = 600
+
 /**
- * Corta uma faixa horizontal da imagem usando canvas e retorna o blob PNG.
+ * Corta uma faixa horizontal da imagem de ALTA RESOLUÇÃO e redimensiona
+ * o slice pra 600px de largura (padrão email marketing).
+ *
+ * As coordenadas (yStart, yEnd) são na escala de ANÁLISE (600px).
+ * O img pode ser de qualquer resolução (1200px, 1800px, etc).
+ * O scaleFactor converte de coords de análise pra coords da imagem real.
  */
-async function cropToPngBlob(
+async function cropAndResizeToPngBlob(
   img: HTMLImageElement,
   yStart: number,
   yEnd: number,
-  width: number
+  scaleFactor: number
 ): Promise<Blob> {
-  const height = yEnd - yStart
-  if (height <= 0 || width <= 0) {
-    throw new Error(`Dimensões inválidas do corte: ${width}×${height}`)
+  // Converte coords da escala de análise pra escala real da imagem
+  const realYStart = Math.round(yStart * scaleFactor)
+  const realYEnd = Math.round(yEnd * scaleFactor)
+  const realHeight = realYEnd - realYStart
+  const realWidth = img.naturalWidth
+
+  if (realHeight <= 0 || realWidth <= 0) {
+    throw new Error(`Dimensões inválidas do corte: ${realWidth}×${realHeight}`)
   }
 
+  // Canvas na resolução de OUTPUT (600px), height proporcional
+  const outputHeight = Math.round(
+    (realHeight / realWidth) * OUTPUT_SLICE_WIDTH
+  )
+
   const canvas = document.createElement("canvas")
-  canvas.width = width
-  canvas.height = height
+  canvas.width = OUTPUT_SLICE_WIDTH
+  canvas.height = outputHeight
 
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Canvas 2D context indisponível")
 
-  // drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
-  // — recorta a faixa [yStart..yEnd] da imagem e desenha em 0,0
+  // Crop na resolução real + resize pra 600px, tudo num drawImage só
   ctx.drawImage(
     img,
     0,
-    yStart,
-    img.naturalWidth,
-    height,
+    realYStart,
+    realWidth,
+    realHeight,
     0,
     0,
-    width,
-    height
+    OUTPUT_SLICE_WIDTH,
+    outputHeight
   )
 
   return new Promise<Blob>((resolve, reject) => {
@@ -126,19 +143,23 @@ export async function buildFunnelZipClientSide(
       continue
     }
 
+    // As coordenadas das sections são na escala de ANÁLISE (600px).
+    // A imagem pode estar em alta resolução (1200px, 1800px).
+    // Scale factor converte de coords análise → coords imagem real.
+    const analysisWidth = email.width // 600 (a largura que o analyze usou)
+    const scaleFactor =
+      analysisWidth > 0 ? img.naturalWidth / analysisWidth : 1
+
     for (const section of email.sections) {
-      const yStart = Math.max(
-        0,
-        Math.min(Math.round(section.y_start), img.naturalHeight)
-      )
-      const yEnd = Math.max(
-        0,
-        Math.min(Math.round(section.y_end), img.naturalHeight)
-      )
-      if (yEnd <= yStart) continue
+      if (section.y_end <= section.y_start) continue
 
       try {
-        const blob = await cropToPngBlob(img, yStart, yEnd, img.naturalWidth)
+        const blob = await cropAndResizeToPngBlob(
+          img,
+          section.y_start,
+          section.y_end,
+          scaleFactor
+        )
         const arrayBuffer = await blob.arrayBuffer()
         const safeSliceName = sanitizeFsName(section.name, "parte")
         zip.file(`${folder}/${safeSliceName}.png`, arrayBuffer)

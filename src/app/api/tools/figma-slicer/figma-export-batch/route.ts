@@ -8,14 +8,14 @@ const log = logger.child("FigmaSlicer.ExportBatch")
 export const runtime = "nodejs"
 export const maxDuration = 120
 
-const TARGET_WIDTH = 600 // padrão Klaviyo/Omnisend
+const TARGET_WIDTH = 600 // largura de ANÁLISE (coordenadas do Claude)
 const MAX_BATCH_SIZE = 30
-// Figma /v1/images aceita múltiplos IDs mas tem limite de URL length.
-// Cada ID tem ~15-20 chars + encoding → máximo seguro é ~10 por chunk.
 const FIGMA_CHUNK_SIZE = 8
-// Exporta do Figma em 2x para ter qualidade suficiente antes do resize final.
-// Se o frame no Figma tem 600px, a imagem exportada vem em 1200px.
-const FIGMA_EXPORT_SCALE = 2
+// Scale=3 gera 1800px de largura (pra um frame de 600px no Figma).
+// NÃO redimensionamos pro 600px no export — mantemos a alta resolução
+// pra que o preview e os slices fiquem nítidos. A análise (Claude)
+// recebe uma versão downscaled no endpoint de analyze.
+const FIGMA_EXPORT_SCALE = 3
 
 /**
  * Delay helper para retries.
@@ -258,33 +258,30 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // Redimensiona para 600px de largura preservando aspect ratio.
-        // IMPORTANTE: usa fit: "inside" (não "fill") para NÃO distorcer.
-        // O height é calculado automaticamente por sharp.
-        const resizedBuffer = await sharp(origBuffer)
-          .resize({
-            width: TARGET_WIDTH,
-            fit: "inside",
-            withoutEnlargement: false,
-          })
-          .png({ compressionLevel: 9 })
+        // NÃO redimensiona pra 600px. Mantém a resolução alta do Figma
+        // (scale=3 = 1800px pra frames de 600px). O downscale pra análise
+        // acontece no endpoint analyze-pixels, e o downscale pra slicing
+        // acontece no client-slicer. Isso mantém a qualidade visual alta
+        // no preview e nos slices finais.
+        //
+        // Usamos PNG com compressão moderada (nível 6, não 9) pra manter
+        // boa qualidade sem explodir o tamanho.
+        const optimizedBuffer = await sharp(origBuffer)
+          .png({ compressionLevel: 6 })
           .toBuffer()
 
-        const resizedMeta = await sharp(resizedBuffer).metadata()
-
         results[nodeId] = {
-          base64: resizedBuffer.toString("base64"),
-          width: resizedMeta.width ?? TARGET_WIDTH,
-          height: resizedMeta.height ?? 0,
+          base64: optimizedBuffer.toString("base64"),
+          width: origWidth,
+          height: origHeight,
           originalWidth: origWidth,
           originalHeight: origHeight,
         }
 
-        log.info("Exported and resized email", {
+        log.info("Exported email (high-res)", {
           nodeId,
-          figmaSize: `${origWidth}x${origHeight}`,
-          finalSize: `${resizedMeta.width}x${resizedMeta.height}`,
-          payloadKB: Math.round(resizedBuffer.length / 1024),
+          size: `${origWidth}x${origHeight}`,
+          payloadKB: Math.round(optimizedBuffer.length / 1024),
         })
       } catch (err) {
         log.warn("Failed to process image", {

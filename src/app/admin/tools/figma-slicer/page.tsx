@@ -253,11 +253,18 @@ export default function FigmaSlicerPage() {
                     : `${Date.now()}-${Math.random()}`,
               }))
 
+            // dimensions = escala de ANÁLISE (600px) — coordenadas das
+            // sections estão nesta escala. A imagem real (imageBase64) está
+            // em alta res (1200-1800px). O client-slicer escala
+            // proporcionalmente na hora de cropar.
             newResults.push({
               email,
               sections: sectionsWithIds,
               imageBase64: imageData.base64,
-              dimensions: { width: imageData.width, height: imageData.height },
+              dimensions: {
+                width: analyzeData.analysis.width,
+                height: analyzeData.analysis.height,
+              },
               error: null,
             })
           } catch (err) {
