@@ -12,10 +12,7 @@ const TARGET_WIDTH = 600 // largura de ANÁLISE (coordenadas do Claude)
 const MAX_BATCH_SIZE = 30
 const FIGMA_CHUNK_SIZE = 8
 // Scale=2 gera 1200px de largura (pra um frame de 600px no Figma).
-// Scale=4 (2400px) causava timeout no Vercel porque o download de 8
-// imagens de 2400px do CDN do Figma levava >120s. Scale=2 é o sweet
-// spot: 2x a resolução final (600px), rápido pra baixar, e os slices
-// ficam nítidos porque cropamos em 1200px e resizamos pra 600px.
+// Scale=2 é o sweet spot: 2x a resolução final (600px), rápido pra baixar.
 const FIGMA_EXPORT_SCALE = 2
 
 /**
@@ -107,60 +104,41 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // Chama Figma /v1/images em CHUNKS (use_absolute_bounds=true).
+    // DUAL EXPORT: PDF (pro Claude) + PNG (pro preview/corte)
     //
-    // POR QUE CHUNKS:
-    //   Quando mandávamos 28 IDs de uma vez, o URL ficava gigante
-    //   (~500+ caracteres só de IDs encoded) e o Figma retornava 400.
-    //   Chunks de 8 evitam esse problema.
+    // Exporta cada email em 2 formatos:
+    // - PDF: mandado pro Claude Opus como document block (qualidade vetorial)
+    // - PNG: usado pro preview no frontend e pro corte final com sharp
     //
-    // use_absolute_bounds=true é CRÍTICO: sem isso, conteúdo que extrapola
-    // o bounding box visível do frame é CORTADO no export.
-    //
-    // scale=2 garante qualidade de sobra — depois reduzimos pra 600px no
-    // resize final com sharp (mais preciso que o resize da Figma API).
+    // São 2 chamadas ao Figma por chunk, mas cada uma é rápida (~2-5s).
     // ========================================================================
-    const allImageUrls: Record<string, string | null> = {}
 
-    const chunks: string[][] = []
-    for (let i = 0; i < nodeIds.length; i += FIGMA_CHUNK_SIZE) {
-      chunks.push(nodeIds.slice(i, i + FIGMA_CHUNK_SIZE))
-    }
-
-    log.info("Starting Figma batch export", {
-      totalIds: nodeIds.length,
-      chunks: chunks.length,
-      chunkSize: FIGMA_CHUNK_SIZE,
-    })
-
-    for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
-      const chunk = chunks[chunkIdx]
-      const idsParam = chunk.map((id) => encodeURIComponent(id)).join(",")
+    async function fetchFigmaImages(
+      ids: string[],
+      format: "pdf" | "png",
+      scale: number,
+    ): Promise<Record<string, string | null>> {
+      const idsParam = ids.map((id) => encodeURIComponent(id)).join(",")
       const figmaExportUrl =
         `https://api.figma.com/v1/images/${fileKey}` +
         `?ids=${idsParam}` +
-        `&format=pdf` +
-        `&scale=${FIGMA_EXPORT_SCALE}` +
+        `&format=${format}` +
+        `&scale=${scale}` +
         `&use_absolute_bounds=true`
 
       let exportRes: Response | null = null
       let exportErrorBody = ""
 
-      // Retry da chamada pra Figma API
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           exportRes = await fetch(figmaExportUrl, {
-            headers: { "X-Figma-Token": token },
+            headers: { "X-Figma-Token": token! },
           })
           if (exportRes.ok) break
-          // Tenta ler o body do erro pra log (pode ser HTML ou JSON)
           try {
             exportErrorBody = (await exportRes.clone().text()).slice(0, 500)
-          } catch {
-            // ignora
-          }
-          log.warn("Figma chunk export failed", {
-            chunkIdx,
+          } catch { /* ignora */ }
+          log.warn(`Figma ${format} export failed`, {
             attempt: attempt + 1,
             status: exportRes.status,
             bodyPreview: exportErrorBody,
@@ -172,61 +150,56 @@ export async function POST(request: NextRequest) {
       }
 
       if (!exportRes || !exportRes.ok) {
-        log.error("Figma chunk failed after all retries, skipping", {
-          chunkIdx,
-          bodyPreview: exportErrorBody,
-          idsInChunk: chunk.length,
-        })
-        // Marca todos os IDs do chunk como null, mas continua com os outros
-        for (const id of chunk) {
-          allImageUrls[id] = null
-        }
-        continue
+        log.error(`Figma ${format} export failed after retries`)
+        const result: Record<string, string | null> = {}
+        ids.forEach((id) => { result[id] = null })
+        return result
       }
 
-      let exportData: {
-        err?: string | null
-        images?: Record<string, string | null>
-      }
+      let data: { err?: string | null; images?: Record<string, string | null> }
       try {
-        exportData = await exportRes.json()
-      } catch (err) {
-        log.error("Failed to parse Figma chunk response as JSON", {
-          chunkIdx,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        for (const id of chunk) {
-          allImageUrls[id] = null
-        }
-        continue
+        data = await exportRes.json()
+      } catch {
+        const result: Record<string, string | null> = {}
+        ids.forEach((id) => { result[id] = null })
+        return result
       }
 
-      if (exportData.err) {
-        log.error("Figma returned error for chunk", {
-          chunkIdx,
-          error: exportData.err,
-        })
-        for (const id of chunk) {
-          allImageUrls[id] = null
-        }
-        continue
-      }
+      return data.images || {}
+    }
 
-      // Adiciona as URLs do chunk ao mapa geral
-      if (exportData.images) {
-        for (const [id, url] of Object.entries(exportData.images)) {
-          allImageUrls[id] = url
-        }
-      }
+    // Processa 1 email por vez (já que o frontend manda 1 ID)
+    const allPdfUrls: Record<string, string | null> = {}
+    const allPngUrls: Record<string, string | null> = {}
+
+    const chunks: string[][] = []
+    for (let i = 0; i < nodeIds.length; i += FIGMA_CHUNK_SIZE) {
+      chunks.push(nodeIds.slice(i, i + FIGMA_CHUNK_SIZE))
+    }
+
+    log.info("Starting Figma dual export (PDF + PNG)", {
+      totalIds: nodeIds.length,
+      chunks: chunks.length,
+    })
+
+    for (const chunk of chunks) {
+      // PDF pra Claude (scale não importa pra PDF)
+      const pdfResult = await fetchFigmaImages(chunk, "pdf", 1)
+      Object.assign(allPdfUrls, pdfResult)
+
+      // PNG pra preview/corte (scale=2 = 1200px)
+      const pngResult = await fetchFigmaImages(chunk, "png", FIGMA_EXPORT_SCALE)
+      Object.assign(allPngUrls, pngResult)
     }
 
     // ========================================================================
-    // Baixa e redimensiona cada imagem em paralelo
+    // Baixa PDF + PNG de cada email em paralelo
     // ========================================================================
     const results: Record<
       string,
       {
-        base64: string
+        base64: string         // PNG/JPEG pra preview
+        pdfBase64?: string | null  // PDF pra Claude
         width: number
         height: number
         originalWidth: number
@@ -235,37 +208,70 @@ export async function POST(request: NextRequest) {
     > = {}
 
     const processOne = async (nodeId: string) => {
-      const imageUrl = allImageUrls[nodeId]
-      if (!imageUrl) {
-        log.warn("Figma returned null URL for node", { nodeId })
+      const pdfUrl = allPdfUrls[nodeId]
+      const pngUrl = allPngUrls[nodeId]
+
+      if (!pdfUrl && !pngUrl) {
+        log.warn("Figma returned null URLs for node", { nodeId })
         results[nodeId] = null
         return
       }
 
-      const origBuffer = await downloadImageWithRetry(imageUrl, nodeId)
-      if (!origBuffer) {
+      // Baixa PDF (pra Claude)
+      let pdfBase64: string | null = null
+      if (pdfUrl) {
+        const pdfBuf = await downloadImageWithRetry(pdfUrl, nodeId)
+        if (pdfBuf) {
+          pdfBase64 = pdfBuf.toString("base64")
+        }
+      }
+
+      // Baixa PNG (pra preview + corte)
+      let pngBase64: string | null = null
+      let imgWidth = 0
+      let imgHeight = 0
+      if (pngUrl) {
+        const pngBuf = await downloadImageWithRetry(pngUrl, nodeId)
+        if (pngBuf) {
+          try {
+            const meta = await sharp(pngBuf).metadata()
+            imgWidth = meta.width ?? 0
+            imgHeight = meta.height ?? 0
+            // Otimiza com JPEG pra reduzir tamanho do payload
+            const optimized = await sharp(pngBuf)
+              .jpeg({ quality: 92, mozjpeg: true })
+              .toBuffer()
+            pngBase64 = optimized.toString("base64")
+          } catch {
+            // Se sharp falha, usa o PNG raw
+            pngBase64 = pngBuf.toString("base64")
+          }
+        }
+      }
+
+      if (!pngBase64 && !pdfBase64) {
         results[nodeId] = null
         return
       }
 
       try {
-        // Retorna o PDF raw sem processamento. O PDF mantém qualidade
-        // vetorial (texto nítido, imagens em alta res). A conversão
-        // pra PNG acontece DEPOIS da análise, na hora de cortar.
         results[nodeId] = {
-          base64: origBuffer.toString("base64"),
-          width: 0, // PDF não tem dimensões em pixels — serão lidas na conversão
-          height: 0,
-          originalWidth: 0,
-          originalHeight: 0,
+          base64: pngBase64 || "", // PNG/JPEG pra preview
+          pdfBase64: pdfBase64,    // PDF pra Claude
+          width: imgWidth,
+          height: imgHeight,
+          originalWidth: imgWidth,
+          originalHeight: imgHeight,
         }
 
-        log.info("Exported email as PDF", {
+        log.info("Exported email (PDF + PNG)", {
           nodeId,
-          payloadKB: Math.round(origBuffer.length / 1024),
+          pngSize: `${imgWidth}x${imgHeight}`,
+          pdfKB: pdfBase64 ? Math.round((pdfBase64.length * 3) / 4 / 1024) : 0,
+          pngKB: pngBase64 ? Math.round((pngBase64.length * 3) / 4 / 1024) : 0,
         })
       } catch (err) {
-        log.warn("Failed to process PDF", {
+        log.warn("Failed to process", {
           nodeId,
           error: err instanceof Error ? err.message : String(err),
         })

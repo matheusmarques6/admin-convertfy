@@ -164,6 +164,7 @@ export default function FigmaSlicerPage() {
           // Exporta 1 email do Figma
           let imageData: {
             base64: string
+            pdfBase64?: string | null
             width: number
             height: number
           } | null = null
@@ -185,7 +186,7 @@ export default function FigmaSlicerPage() {
               error?: string
               images?: Record<
                 string,
-                { base64: string; width: number; height: number } | null
+                { base64: string; pdfBase64?: string | null; width: number; height: number } | null
               >
             }>(exportRes, `Erro ao exportar "${email.name}"`)
 
@@ -218,9 +219,8 @@ export default function FigmaSlicerPage() {
           }
 
           // Analisa: envia o PDF pro Claude como document block
-          // (qualidade vetorial total, igual ao Claude web).
-          // O servidor converte pra PNG internamente e retorna o PNG
-          // no campo preview_png_base64 pra o frontend usar no preview.
+          // (qualidade vetorial total, igual ao Claude web) e o PNG
+          // pra pixel refinement e preview.
           setProcessingStatus({
             phase: "analyzing",
             current: i + 1,
@@ -228,9 +228,21 @@ export default function FigmaSlicerPage() {
           })
 
           const formData = new FormData()
-          // Envia o PDF como pdfBase64 (texto). PDFs são pequenos
-          // (~100-500KB), não estoura o body limit.
-          formData.append("pdfBase64", imageData.base64)
+
+          // Se tem PDF, manda pro Claude. PDFs são ~100-500KB.
+          if (imageData.pdfBase64) {
+            formData.append("pdfBase64", imageData.pdfBase64)
+          }
+
+          // PNG/JPEG pra pixel refinement (como File binário pra evitar 413)
+          if (imageData.base64) {
+            const binaryData = Uint8Array.from(
+              atob(imageData.base64),
+              (c) => c.charCodeAt(0)
+            )
+            const imageBlob = new Blob([binaryData], { type: "image/jpeg" })
+            formData.append("image", new File([imageBlob], `${email.name}.jpg`, { type: "image/jpeg" }))
+          }
 
           try {
             const analyzeRes = await fetch(
@@ -243,7 +255,6 @@ export default function FigmaSlicerPage() {
             const analyzeData = await safeJsonResponse<{
               success: boolean
               error?: string
-              preview_png_base64?: string
               analysis?: {
                 width: number
                 height: number
@@ -286,15 +297,12 @@ export default function FigmaSlicerPage() {
                     : `${Date.now()}-${Math.random()}`,
               }))
 
-            // Se veio preview PNG do servidor (caso PDF), usa ele pro
-            // display e pro corte. Senão usa o base64 original.
-            const displayBase64 =
-              analyzeData.preview_png_base64 || imageData.base64
-
+            // Usa o PNG/JPEG do export pra display e corte.
+            // O PDF foi mandado pro Claude separadamente.
             newResults.push({
               email,
               sections: sectionsWithIds,
-              imageBase64: displayBase64,
+              imageBase64: imageData.base64, // PNG/JPEG do export
               dimensions: {
                 width: analyzeData.analysis.width,
                 height: analyzeData.analysis.height,

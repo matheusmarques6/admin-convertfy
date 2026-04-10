@@ -419,30 +419,31 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
     const pdfBase64 = formData.get("pdfBase64") as string | null
-    const file = formData.get("image") as File | null
+    const imageFile = formData.get("image") as File | null
 
-    let rawBuffer: Buffer
-    let isPdf = false
-
+    // PDF pro Claude (qualidade vetorial, sem compressão)
+    let pdfBuffer: Buffer | null = null
     if (pdfBase64) {
-      rawBuffer = Buffer.from(pdfBase64, "base64")
-      isPdf = true
-    } else if (file) {
-      if (file.size > MAX_FILE_SIZE_BYTES) {
+      pdfBuffer = Buffer.from(pdfBase64, "base64")
+    }
+
+    // PNG/JPEG pro pixel refinement e dimensões
+    let imageBuffer: Buffer | null = null
+    if (imageFile) {
+      if (imageFile.size > MAX_FILE_SIZE_BYTES) {
         return NextResponse.json(
           { success: false, error: "Arquivo muito grande (máximo 20MB)." },
           { status: 400 }
         )
       }
-      rawBuffer = Buffer.from(await file.arrayBuffer())
-      isPdf =
-        file.type === "application/pdf" ||
-        file.name.toLowerCase().endsWith(".pdf")
-    } else {
+      imageBuffer = Buffer.from(await imageFile.arrayBuffer())
+    }
+
+    if (!pdfBuffer && !imageBuffer) {
       return NextResponse.json(
         {
           success: false,
-          error: "Envie o PDF no campo 'pdfBase64' ou imagem no campo 'image'.",
+          error: "Envie 'pdfBase64' e/ou 'image'.",
         },
         { status: 400 }
       )
@@ -451,125 +452,71 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     // ========================================================================
-    // PASSO 1: Converter PDF → PNG em alta resolução pra preview + corte
-    //
-    // O PDF é usado direto pro Claude (document block = qualidade total).
-    // Mas pra o preview no frontend e pro corte final, precisamos de PNG.
-    // Usamos Sharp que lê PDF via libvips (se disponível) ou, como
-    // fallback, o cliente já pode ter enviado como imagem direto.
+    // PASSO 1: Normalizar a IMAGEM pra 600px (pra pixel refinement + coords)
+    // Se só tem PDF e não tem imagem, erro (frontend deveria mandar ambos).
     // ========================================================================
     let pngBuffer: Buffer
     let width: number
     let height: number
 
-    if (isPdf) {
-      // Tenta converter PDF → PNG com Sharp (libvips suporta PDF)
-      try {
-        // Sharp pode ler PDFs se compilado com suporte a poppler/pdfium.
-        // No Vercel, o sharp prebuilt pode não ter esse suporte.
-        // Se falhar, retornamos erro pedindo ao usuário tentar PNG.
-        const pdfImage = sharp(rawBuffer, { density: 150 })
-        const pdfMeta = await pdfImage.metadata()
-        pngBuffer = await pdfImage.png().toBuffer()
-        const pngMeta = await sharp(pngBuffer).metadata()
-        width = pngMeta.width ?? pdfMeta.width ?? 0
-        height = pngMeta.height ?? pdfMeta.height ?? 0
-      } catch (pdfConvertError) {
-        log.warn("Sharp cannot read PDF, trying as raw image", {
-          error:
-            pdfConvertError instanceof Error
-              ? pdfConvertError.message
-              : String(pdfConvertError),
-        })
-        // Fallback: talvez o "PDF" é na verdade um PNG/JPEG que foi
-        // erroneamente marcado como PDF. Tenta ler direto.
-        try {
-          const fallbackMeta = await sharp(rawBuffer).metadata()
-          width = fallbackMeta.width ?? 0
-          height = fallbackMeta.height ?? 0
-          pngBuffer = rawBuffer
-          isPdf = false // não é PDF de verdade
-        } catch {
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                "Não foi possível processar o arquivo. O servidor não suporta conversão de PDF neste momento.",
-            },
-            { status: 422 }
-          )
-        }
-      }
-    } else {
-      // É uma imagem normal (PNG/JPEG)
-      const meta = await sharp(rawBuffer).metadata()
+    if (imageBuffer) {
+      const meta = await sharp(imageBuffer).metadata()
       width = meta.width ?? 0
       height = meta.height ?? 0
-      pngBuffer = rawBuffer
-    }
 
-    if (!width || !height) {
+      if (!width || !height) {
+        return NextResponse.json(
+          { success: false, error: "Não foi possível ler dimensões da imagem." },
+          { status: 422 }
+        )
+      }
+
+      // Normaliza pra 600px de largura
+      if (width !== TARGET_WIDTH) {
+        height = Math.round((height / width) * TARGET_WIDTH)
+        width = TARGET_WIDTH
+        pngBuffer = await sharp(imageBuffer)
+          .resize({ width: TARGET_WIDTH, fit: "inside", withoutEnlargement: false })
+          .png()
+          .toBuffer()
+        const newMeta = await sharp(pngBuffer).metadata()
+        height = newMeta.height ?? height
+      } else {
+        pngBuffer = imageBuffer
+      }
+    } else {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Não foi possível ler as dimensões do arquivo.",
-        },
-        { status: 422 }
+        { success: false, error: "Imagem PNG/JPEG necessária além do PDF." },
+        { status: 400 }
       )
-    }
-
-    // Normaliza pra 600px de largura pra análise e coordenadas
-    if (width !== TARGET_WIDTH) {
-      height = Math.round((height / width) * TARGET_WIDTH)
-      width = TARGET_WIDTH
-      pngBuffer = await sharp(pngBuffer)
-        .resize({
-          width: TARGET_WIDTH,
-          fit: "inside",
-          withoutEnlargement: false,
-        })
-        .png()
-        .toBuffer()
-      const newMeta = await sharp(pngBuffer).metadata()
-      height = newMeta.height ?? height
     }
 
     // ========================================================================
     // PASSO 2: Enviar pro Claude Opus
     //
-    // Se é PDF: envia como DOCUMENT block (qualidade vetorial total —
-    // exatamente como o Claude web faz).
-    // Se é imagem: envia como IMAGE block (fallback).
+    // Se tem PDF: envia como DOCUMENT block (qualidade vetorial total —
+    // EXATAMENTE como o Claude web faz quando funciona perfeitamente).
+    // Se não tem PDF: envia a imagem como fallback.
     // ========================================================================
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    // Prepara o content block correto
-    const claudeBase64 = rawBuffer.toString("base64")
-
-    const fileContentBlock = isPdf
+    const fileContentBlock = pdfBuffer
       ? {
           type: "document" as const,
           source: {
             type: "base64" as const,
             media_type: "application/pdf" as const,
-            data: claudeBase64,
+            data: pdfBuffer.toString("base64"),
           },
         }
-      : (() => {
-          // Pra imagem, prepara uma versão que caiba no limite de 5MB
-          let imgBuffer = pngBuffer
-          let imgMediaType: "image/png" | "image/jpeg" = "image/png"
-          // Se muito grande, comprime
-          // (síncrono check — o toBuffer real é async mas fazemos fora)
-          return {
-            type: "image" as const,
-            source: {
-              type: "base64" as const,
-              media_type: imgMediaType,
-              data: imgBuffer.toString("base64"),
-            },
-          }
-        })()
+      : {
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: "image/png" as const,
+            data: pngBuffer.toString("base64"),
+          },
+        }
 
     const reportTool: Anthropic.Tool = {
       name: "report_sections",
@@ -763,12 +710,6 @@ export async function POST(request: NextRequest) {
       })),
     })
 
-    // Se a entrada era PDF, retorna o PNG convertido pro frontend
-    // usar no preview e no corte. O PNG está em 600px de largura.
-    const previewPngBase64 = isPdf
-      ? pngBuffer.toString("base64")
-      : undefined
-
     return NextResponse.json({
       success: true,
       analysis: {
@@ -777,8 +718,6 @@ export async function POST(request: NextRequest) {
         sections: mergedSections,
         cuts_found: Math.max(0, mergedSections.length - 1),
       },
-      // Quando a entrada é PDF, retorna o PNG pra preview/corte
-      preview_png_base64: previewPngBase64,
       duration_ms: durationMs,
     })
   } catch (error: unknown) {
