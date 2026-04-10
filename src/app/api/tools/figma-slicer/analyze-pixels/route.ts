@@ -13,7 +13,11 @@ export const maxDuration = 120 // Opus é mais lento (~15-30s) que Sonnet (~5s)
 // CONSTANTES
 // ============================================================================
 
-const TARGET_WIDTH = 600 // largura de análise = largura de output
+// Largura de ANÁLISE: 1024px dá mais resolução pro Claude Opus
+// identificar boundaries com precisão. As coordenadas Y são nesta escala.
+// O frontend mostra o preview em 1200px (do export) — coordenadas são
+// proporcionais então a conversão funciona.
+const TARGET_WIDTH = 1024
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
 // Claude Vision tem limite de ~5 MB em base64 (~3.7 MB em binário).
@@ -36,7 +40,7 @@ const GAP_VARIANCE_MAX = 400 // linha uniforme
 function buildClaudePrompt(height: number): string {
   return `Você é um especialista em email marketing que monta emails no Omnisend e Klaviyo. Analise esta imagem de email marketing e identifique as SEÇÕES VISUAIS DISTINTAS que devem virar fatias separadas.
 
-Você está recebendo um PDF (para qualidade visual) e uma imagem PNG de 600 pixels de largura por ${height} pixels de altura. Use o PDF para entender o conteúdo visual com clareza. As coordenadas Y que você retornar devem ser em PIXELS da imagem PNG de 600×${height}px.
+A imagem que você está vendo tem EXATAMENTE 600 pixels de largura e ${height} pixels de altura. Todas as coordenadas Y que você retornar DEVEM estar entre 0 e ${height}. Use EXATAMENTE esta escala.
 
 ## COMO PENSAR
 
@@ -500,23 +504,12 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    // Manda PDF + PNG juntos pro Claude.
-    // PDF = qualidade vetorial pra entender conteúdo (igual ao Claude web).
-    // PNG de 600px = referência de escala pra coordenadas Y.
+    // Manda APENAS o PNG de 600px pro Claude Opus.
+    // Sem PDF, sem refinement. Simplicidade total.
+    // O Claude Opus olha a imagem de 600px diretamente e retorna
+    // coordenadas exatas nessa escala.
     const contentBlocks: Anthropic.ContentBlockParam[] = []
 
-    if (pdfBuffer) {
-      contentBlocks.push({
-        type: "document",
-        source: {
-          type: "base64",
-          media_type: "application/pdf",
-          data: pdfBuffer.toString("base64"),
-        },
-      })
-    }
-
-    // Sempre manda o PNG de 600px pra referência de escala
     let claudePngBase64 = pngBuffer.toString("base64")
     let claudePngType: "image/png" | "image/jpeg" = "image/png"
     if (pngBuffer.length > CLAUDE_MAX_BYTES) {
