@@ -7,7 +7,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("FigmaSlicer.AnalyzeHybrid")
 
 export const runtime = "nodejs"
-export const maxDuration = 60
+export const maxDuration = 120 // Opus é mais lento (~15-30s) que Sonnet (~5s)
 
 // ============================================================================
 // CONSTANTES
@@ -544,7 +544,7 @@ export async function POST(request: NextRequest) {
 
     const claudeStart = Date.now()
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-opus-4-6",
       max_tokens: 4096,
       tools: [reportTool],
       tool_choice: { type: "tool", name: "report_sections" },
