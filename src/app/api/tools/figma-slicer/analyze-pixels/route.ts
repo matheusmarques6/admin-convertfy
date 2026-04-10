@@ -24,7 +24,9 @@ const MIN_SECTION_HEIGHT = 150
 
 // Refinamento por pixel: ao redor da sugestão do Claude, procura o gap
 // de whitespace mais próximo pra alinhar o corte exatamente numa zona vazia.
-const REFINE_RADIUS = 60 // ±N pixels ao redor da sugestão do Claude
+// Max 40px — mais que isso e o refine começa a pegar transições falsas
+// (bordas de botão, linhas entre cards de produtos, etc).
+const REFINE_RADIUS = 40 // ±N pixels ao redor da sugestão do Claude
 const GAP_VARIANCE_MAX = 400 // linha uniforme
 
 // ============================================================================
@@ -621,17 +623,32 @@ export async function POST(request: NextRequest) {
       .toBuffer({ resolveWithObject: true })
     const rows = computeRowStats(rawPixels, info.width, info.height, info.channels)
 
+    // SAFEGUARD DE DISTÂNCIA: o pixel refine NÃO pode deslocar mais
+    // que 30px da sugestão do Claude. O Claude viu a imagem inteira
+    // e decidiu semanticamente onde cortar — o refine só deveria
+    // fazer micro-ajustes pra alinhar ao pixel exato da transição.
+    // Se o refine tenta mover 50px, provavelmente achou uma transição
+    // falsa (borda de botão, linha entre produtos, etc).
+    const MAX_REFINE_DISTANCE = 30
+
     for (let i = 0; i < analysis.sections.length - 1; i++) {
       const suggested = analysis.sections[i].y_end
-      // Não pode mover pra antes da seção atual nem pra depois da próxima
       const minY = analysis.sections[i].y_start + MIN_SECTION_HEIGHT
       const maxY =
         analysis.sections[i + 1].y_end - MIN_SECTION_HEIGHT
       if (minY >= maxY) continue
 
       const refined = refineCut(rows, suggested, minY, maxY)
-      analysis.sections[i].y_end = refined
-      analysis.sections[i + 1].y_start = refined
+
+      // Safeguard: se moveu mais que 30px, o refine provavelmente
+      // achou uma transição falsa. Mantém o ponto do Claude.
+      const distance = Math.abs(refined - suggested)
+      const finalY = distance <= MAX_REFINE_DISTANCE ? refined : suggested
+
+      log.info(`  Cut ${i + 1}: Claude=${suggested} → refine=${refined} (Δ${distance}px) → final=${finalY}${distance > MAX_REFINE_DISTANCE ? " [REVERTED - too far]" : ""}`)
+
+      analysis.sections[i].y_end = finalY
+      analysis.sections[i + 1].y_start = finalY
     }
 
     // ========================================================================
