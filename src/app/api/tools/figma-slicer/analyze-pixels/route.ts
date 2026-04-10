@@ -36,7 +36,7 @@ const GAP_VARIANCE_MAX = 400 // linha uniforme
 function buildClaudePrompt(height: number): string {
   return `Você é um especialista em email marketing que monta emails no Omnisend e Klaviyo. Analise esta imagem de email marketing e identifique as SEÇÕES VISUAIS DISTINTAS que devem virar fatias separadas.
 
-A imagem tem 600 pixels de largura e ${height} pixels de altura.
+Você está recebendo um PDF (para qualidade visual) e uma imagem PNG de 600 pixels de largura por ${height} pixels de altura. Use o PDF para entender o conteúdo visual com clareza. As coordenadas Y que você retornar devem ser em PIXELS da imagem PNG de 600×${height}px.
 
 ## COMO PENSAR
 
@@ -500,23 +500,44 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    const fileContentBlock = pdfBuffer
-      ? {
-          type: "document" as const,
-          source: {
-            type: "base64" as const,
-            media_type: "application/pdf" as const,
-            data: pdfBuffer.toString("base64"),
-          },
+    // Manda PDF + PNG juntos pro Claude.
+    // PDF = qualidade vetorial pra entender conteúdo (igual ao Claude web).
+    // PNG de 600px = referência de escala pra coordenadas Y.
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
+
+    if (pdfBuffer) {
+      contentBlocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: pdfBuffer.toString("base64"),
+        },
+      })
+    }
+
+    // Sempre manda o PNG de 600px pra referência de escala
+    let claudePngBase64 = pngBuffer.toString("base64")
+    let claudePngType: "image/png" | "image/jpeg" = "image/png"
+    if (pngBuffer.length > CLAUDE_MAX_BYTES) {
+      for (const q of [90, 80, 70]) {
+        const jpg = await sharp(pngBuffer).jpeg({ quality: q, mozjpeg: true }).toBuffer()
+        if (jpg.length <= CLAUDE_MAX_BYTES) {
+          claudePngBase64 = jpg.toString("base64")
+          claudePngType = "image/jpeg"
+          break
         }
-      : {
-          type: "image" as const,
-          source: {
-            type: "base64" as const,
-            media_type: "image/png" as const,
-            data: pngBuffer.toString("base64"),
-          },
-        }
+      }
+    }
+
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: claudePngType,
+        data: claudePngBase64,
+      },
+    })
 
     const reportTool: Anthropic.Tool = {
       name: "report_sections",
@@ -568,7 +589,7 @@ export async function POST(request: NextRequest) {
         {
           role: "user",
           content: [
-            fileContentBlock,
+            ...contentBlocks,
             { type: "text", text: buildClaudePrompt(height) },
           ],
         },
@@ -625,39 +646,18 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // PASSO 5: refinamento por pixel — alinha cada corte ao gap mais próximo
+    // PASSO 5: DESATIVADO — confia 100% nas coordenadas do Claude Opus
+    //
+    // O pixel refinement estava PIORANDO os cortes do Claude. O Opus
+    // com PDF funciona perfeitamente no Claude web sem nenhum refinamento.
+    // Cada vez que o refine tentava "melhorar", ele achava transições
+    // falsas (bordas de botão, linhas entre cards de produto) e movia
+    // os cortes pra posições erradas.
+    //
+    // As coordenadas do Claude Opus são usadas EXATAMENTE como retornadas.
     // ========================================================================
-    const { data: rawPixels, info } = await sharp(pngBuffer)
-      .raw()
-      .toBuffer({ resolveWithObject: true })
-    const rows = computeRowStats(rawPixels, info.width, info.height, info.channels)
-
-    // SAFEGUARD DE DISTÂNCIA: o pixel refine NÃO pode deslocar mais
-    // que 30px da sugestão do Claude. O Claude viu a imagem inteira
-    // e decidiu semanticamente onde cortar — o refine só deveria
-    // fazer micro-ajustes pra alinhar ao pixel exato da transição.
-    // Se o refine tenta mover 50px, provavelmente achou uma transição
-    // falsa (borda de botão, linha entre produtos, etc).
-    const MAX_REFINE_DISTANCE = 30
-
     for (let i = 0; i < analysis.sections.length - 1; i++) {
-      const suggested = analysis.sections[i].y_end
-      const minY = analysis.sections[i].y_start + MIN_SECTION_HEIGHT
-      const maxY =
-        analysis.sections[i + 1].y_end - MIN_SECTION_HEIGHT
-      if (minY >= maxY) continue
-
-      const refined = refineCut(rows, suggested, minY, maxY)
-
-      // Safeguard: se moveu mais que 30px, o refine provavelmente
-      // achou uma transição falsa. Mantém o ponto do Claude.
-      const distance = Math.abs(refined - suggested)
-      const finalY = distance <= MAX_REFINE_DISTANCE ? refined : suggested
-
-      log.info(`  Cut ${i + 1}: Claude=${suggested} → refine=${refined} (Δ${distance}px) → final=${finalY}${distance > MAX_REFINE_DISTANCE ? " [REVERTED - too far]" : ""}`)
-
-      analysis.sections[i].y_end = finalY
-      analysis.sections[i + 1].y_start = finalY
+      log.info(`  Cut ${i + 1}: Claude=${analysis.sections[i].y_end} (used as-is)`)
     }
 
     // ========================================================================
