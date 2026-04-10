@@ -105,14 +105,27 @@ Um **product grid** (grade de produtos) é SEMPRE uma seção sozinha, contendo 
 7. **NUNCA crie seções menores que 150 pixels.**
    Se uma seção ficaria menor que isso, ela deve ser mergida com a vizinha.
 
-## DICAS PRÁTICAS
+## COMO RACIOCINAR SOBRE OS BOUNDARIES (FUNDAMENTAL)
 
-- Olhe pelo fundo: mudanças de cor de fundo (ex: escuro→branco→preto) são pistas fortes de fronteiras entre seções.
-- Olhe pelo conteúdo funcional: "o que esse bloco está tentando comunicar?" Se a resposta é a mesma, é a mesma seção.
-- Olhe pelo espaçamento: onde há faixas de fundo vazio entre blocos, geralmente é onde cortar.
-- NÃO se prenda a 5 seções ou qualquer número fixo. Cada email pede um número diferente.
-- SEMPRE reserve a última seção APENAS para o footer.
-- SEMPRE isole product grids em seções próprias.
+Para cada fronteira entre seções, siga este raciocínio exato:
+
+1. **Inspeção visual primeiro**: Antes de definir coordenadas, entenda O QUE cada bloco é semanticamente (hero? body? grid de produtos? CTA? footer?). A classificação semântica vem antes da análise de pixels.
+
+2. **Olhe pelo fundo**: Mudanças de cor de fundo (escuro→branco→preto) são pistas fortes de fronteiras entre seções. Um bloco de fundo escuro que vira branco é quase sempre um boundary real.
+
+3. **Olhe pelo conteúdo funcional**: "O que esse bloco está tentando comunicar?" Se a resposta é a mesma, é a mesma seção.
+
+4. **Anti-aliasing vai pra seção SEGUINTE**: Se há 2-3 pixels de transição gradual entre duas cores (borda de bloco escuro "sangrando" no fundo branco), o boundary vai ANTES desses pixels de transição. Assim o final da seção anterior fica LIMPO (cor pura) e a próxima seção absorve os pixels de transição.
+
+5. **Breathing room**: Não corte rente a botões ou elementos visuais. Deixe 3-5 pixels de margem (fundo uniforme) depois de um botão antes de começar o boundary. Se o boundary cai exatamente em cima de um botão, recue até encontrar fundo limpo.
+
+6. **Títulos são seções separadas de grids**: Se um título diz "NOSSOS PRODUTOS" ou "ESCOLHA SEU FAVORITO" seguido de um grid de cards, o título é uma seção SEPARADA do grid (ou faz parte da seção anterior ao grid).
+
+7. **NÃO se prenda a 5 seções ou qualquer número fixo.** Cada email pede um número diferente.
+
+8. **SEMPRE reserve a última seção APENAS para o footer.**
+
+9. **SEMPRE isole product grids em seções próprias.**
 
 ## VALIDAÇÃO
 
@@ -186,15 +199,26 @@ function computeRowStats(
 }
 
 /**
- * Dado uma sugestão de corte do Claude e as estatísticas das linhas,
- * encontra o ponto EXATO mais próximo onde há uma fronteira visual real.
+ * REFINAMENTO 3-PASS + ANTI-ALIASING
  *
- * Estratégias, em ordem de prioridade:
- * 1. Procura a ZONA de whitespace (linhas uniformes consecutivas) mais próxima
- *    da sugestão, e retorna o CENTRO dessa zona.
- * 2. Se não encontrar whitespace, procura a maior transição de cor Y→Y+1
- *    dentro do raio.
- * 3. Se nada melhor for encontrado, mantém a sugestão original.
+ * Replica a metodologia exata do Claude Opus quando faz cortes perfeitos:
+ *
+ * PASS 1 (grosso, cada 10 linhas): mapeia as zonas de cor na janela ±60px
+ * ao redor da sugestão. Encontra a região aproximada de transição.
+ *
+ * PASS 2 (fino, cada 3 linhas): escaneia ±15px ao redor do hit do Pass 1.
+ * Estreita a zona pra ~10px.
+ *
+ * PASS 3 (pixel-perfect, cada 1 linha): encontra o pixel EXATO da transição.
+ *
+ * ANTI-ALIASING RULE: Quando há 2-3 pixels de transição gradual entre duas
+ * cores (anti-aliasing de bordas de blocos), o boundary vai no ÚLTIMO pixel
+ * limpo da seção que TERMINA — assim a seção seguinte absorve os pixels de
+ * transição e o final da seção anterior fica "clean".
+ *
+ * BREATHING ROOM: Se o boundary cai exatamente em cima de um botão ou
+ * elemento visual (detectado por alta variância), recua 3-5px pra dar
+ * respiro visual.
  */
 function refineCut(
   rows: RowStats[],
@@ -206,69 +230,146 @@ function refineCut(
   const searchMin = Math.max(minY, Math.max(0, suggestedY - REFINE_RADIUS))
   const searchMax = Math.min(
     maxY,
-    Math.min(height - 1, suggestedY + REFINE_RADIUS)
+    Math.min(height - 2, suggestedY + REFINE_RADIUS)
   )
 
   if (searchMin >= searchMax) return suggestedY
 
-  // Estratégia 1: procurar zonas de whitespace próximas
-  interface GapRange {
-    start: number
-    end: number
-  }
-  const gaps: GapRange[] = []
-  let currentGapStart = -1
-
-  for (let y = searchMin; y <= searchMax; y++) {
-    const isUniform = rows[y].variance < GAP_VARIANCE_MAX
-    if (isUniform) {
-      if (currentGapStart === -1) currentGapStart = y
-    } else {
-      if (currentGapStart !== -1) {
-        gaps.push({ start: currentGapStart, end: y - 1 })
-        currentGapStart = -1
-      }
-    }
-  }
-  if (currentGapStart !== -1) {
-    gaps.push({ start: currentGapStart, end: searchMax })
-  }
-
-  // Pega o gap mais próximo da sugestão (com tamanho >= 5px)
-  const validGaps = gaps.filter((g) => g.end - g.start >= 5)
-  if (validGaps.length > 0) {
-    let closestGap: GapRange = validGaps[0]
-    let closestDist = Math.abs(
-      (closestGap.start + closestGap.end) / 2 - suggestedY
-    )
-    for (const g of validGaps) {
-      const centerY = (g.start + g.end) / 2
-      const dist = Math.abs(centerY - suggestedY)
-      if (dist < closestDist) {
-        closestGap = g
-        closestDist = dist
-      }
-    }
-    return Math.round((closestGap.start + closestGap.end) / 2)
-  }
-
-  // Estratégia 2: maior transição de cor no raio
-  let bestY = suggestedY
-  let bestScore = 0
-  for (let y = searchMin; y < searchMax; y++) {
+  // Helper: diferença de cor RGB entre duas linhas adjacentes
+  function colorDiff(y: number): number {
+    if (y < 0 || y + 1 >= height) return 0
     const curr = rows[y]
     const next = rows[y + 1]
-    const dist =
+    return (
       Math.abs(curr.avgR - next.avgR) +
       Math.abs(curr.avgG - next.avgG) +
       Math.abs(curr.avgB - next.avgB)
-    if (dist > bestScore) {
-      bestScore = dist
-      bestY = y
+    )
+  }
+
+  // ---- PASS 1: Gross scan (every 10 rows) ----
+  // Encontra a região aproximada com maior transição de cor.
+  let pass1BestY = suggestedY
+  let pass1BestScore = 0
+
+  for (let y = searchMin; y < searchMax; y += 10) {
+    const score = colorDiff(y)
+    if (score > pass1BestScore) {
+      pass1BestScore = score
+      pass1BestY = y
     }
   }
 
-  return bestScore > 30 ? bestY : suggestedY
+  // Se nenhuma transição forte foi encontrada no scan grosso,
+  // tenta encontrar um whitespace gap (faixa de linhas uniformes)
+  if (pass1BestScore < 20) {
+    // Procura o gap mais próximo da sugestão
+    let gapStart = -1
+    let bestGapCenter = suggestedY
+    let bestGapDist = Infinity
+
+    for (let y = searchMin; y <= searchMax; y++) {
+      const isUniform = rows[y].variance < GAP_VARIANCE_MAX
+      if (isUniform) {
+        if (gapStart === -1) gapStart = y
+      } else {
+        if (gapStart !== -1 && y - gapStart >= 5) {
+          const center = Math.round((gapStart + y - 1) / 2)
+          const dist = Math.abs(center - suggestedY)
+          if (dist < bestGapDist) {
+            bestGapDist = dist
+            bestGapCenter = center
+          }
+        }
+        gapStart = -1
+      }
+    }
+    // Gap no final
+    if (gapStart !== -1 && searchMax - gapStart >= 5) {
+      const center = Math.round((gapStart + searchMax) / 2)
+      const dist = Math.abs(center - suggestedY)
+      if (dist < bestGapDist) {
+        bestGapCenter = center
+      }
+    }
+
+    if (bestGapDist < REFINE_RADIUS) {
+      return bestGapCenter
+    }
+    return suggestedY
+  }
+
+  // ---- PASS 2: Fine scan (every 3 rows) ±15px around Pass 1 hit ----
+  const pass2Min = Math.max(searchMin, pass1BestY - 15)
+  const pass2Max = Math.min(searchMax, pass1BestY + 15)
+
+  let pass2BestY = pass1BestY
+  let pass2BestScore = pass1BestScore
+
+  for (let y = pass2Min; y < pass2Max; y += 3) {
+    const score = colorDiff(y)
+    if (score > pass2BestScore) {
+      pass2BestScore = score
+      pass2BestY = y
+    }
+  }
+
+  // ---- PASS 3: Pixel-perfect scan (every 1 row) ±5px around Pass 2 hit ----
+  const pass3Min = Math.max(searchMin, pass2BestY - 5)
+  const pass3Max = Math.min(searchMax, pass2BestY + 5)
+
+  let finalY = pass2BestY
+  let finalScore = pass2BestScore
+
+  for (let y = pass3Min; y < pass3Max; y++) {
+    const score = colorDiff(y)
+    if (score > finalScore) {
+      finalScore = score
+      finalY = y
+    }
+  }
+
+  // ---- ANTI-ALIASING RULE ----
+  // Se há transição gradual (2-3 pixels com mudança intermediária),
+  // mover o boundary pra ANTES dos pixels de transição — assim o
+  // final da seção anterior fica "limpo" e a seção seguinte absorve
+  // o anti-aliasing.
+  //
+  // Checo: se a linha ANTES do boundary também tem uma mudança
+  // moderada (score 10-50% do peak), é anti-aliasing. Recuo.
+  if (finalY > searchMin + 2) {
+    const prevDiff = colorDiff(finalY - 1)
+    const prevPrevDiff = colorDiff(finalY - 2)
+
+    // Se a diferença no pixel anterior é significativa (>25% do peak)
+    // mas menor que o peak, isso indica anti-aliasing gradual.
+    if (prevDiff > finalScore * 0.2 && prevDiff < finalScore * 0.8) {
+      finalY -= 1 // recua 1px
+      // Se o anterior também é anti-aliasing, recua mais 1px
+      if (prevPrevDiff > finalScore * 0.1 && prevPrevDiff < prevDiff) {
+        finalY -= 1
+      }
+    }
+  }
+
+  // ---- BREATHING ROOM ----
+  // Se o boundary cai numa linha de alta variância (dentro de conteúdo
+  // visual, não numa zona limpa), recua até encontrar uma linha uniforme.
+  if (rows[finalY] && rows[finalY].variance > GAP_VARIANCE_MAX) {
+    for (let retreat = 1; retreat <= 5; retreat++) {
+      const candidateY = finalY - retreat
+      if (
+        candidateY >= searchMin &&
+        rows[candidateY] &&
+        rows[candidateY].variance < GAP_VARIANCE_MAX
+      ) {
+        finalY = candidateY
+        break
+      }
+    }
+  }
+
+  return Math.max(searchMin, Math.min(searchMax, finalY))
 }
 
 // ============================================================================

@@ -11,11 +11,10 @@ export const maxDuration = 120
 const TARGET_WIDTH = 600 // largura de ANÁLISE (coordenadas do Claude)
 const MAX_BATCH_SIZE = 30
 const FIGMA_CHUNK_SIZE = 8
-// Scale=3 gera 1800px de largura (pra um frame de 600px no Figma).
-// NÃO redimensionamos pro 600px no export — mantemos a alta resolução
-// pra que o preview e os slices fiquem nítidos. A análise (Claude)
-// recebe uma versão downscaled no endpoint de analyze.
-const FIGMA_EXPORT_SCALE = 3
+// Scale=4 gera 2400px de largura (pra um frame de 600px no Figma).
+// Equivalente ao 300 DPI que o Claude Opus usa (2500px) quando
+// processa PDFs. Mantemos alta res pra cortar com qualidade.
+const FIGMA_EXPORT_SCALE = 4
 
 /**
  * Delay helper para retries.
