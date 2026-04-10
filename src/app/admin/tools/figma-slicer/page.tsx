@@ -217,28 +217,20 @@ export default function FigmaSlicerPage() {
             continue
           }
 
-          // Analisa com Claude Vision + pixel refinement.
-          // Envia como File binário (não como base64 text) pra evitar
-          // estourar o body limit do Vercel (4.5MB). O PNG base64 de
-          // um email de 1200×7000 pode ter 8-10MB em texto.
+          // Analisa: envia o PDF pro Claude como document block
+          // (qualidade vetorial total, igual ao Claude web).
+          // O servidor converte pra PNG internamente e retorna o PNG
+          // no campo preview_png_base64 pra o frontend usar no preview.
           setProcessingStatus({
             phase: "analyzing",
             current: i + 1,
             total: funnel.emails.length,
           })
 
-          // Converte base64 → Blob binário (muito menor que base64 text)
-          const binaryData = Uint8Array.from(
-            atob(imageData.base64),
-            (c) => c.charCodeAt(0)
-          )
-          const imageBlob = new Blob([binaryData], { type: "image/jpeg" })
-          const imageFile = new File([imageBlob], `${email.name}.jpg`, {
-            type: "image/jpeg",
-          })
-
           const formData = new FormData()
-          formData.append("image", imageFile)
+          // Envia o PDF como pdfBase64 (texto). PDFs são pequenos
+          // (~100-500KB), não estoura o body limit.
+          formData.append("pdfBase64", imageData.base64)
 
           try {
             const analyzeRes = await fetch(
@@ -251,6 +243,7 @@ export default function FigmaSlicerPage() {
             const analyzeData = await safeJsonResponse<{
               success: boolean
               error?: string
+              preview_png_base64?: string
               analysis?: {
                 width: number
                 height: number
@@ -293,14 +286,15 @@ export default function FigmaSlicerPage() {
                     : `${Date.now()}-${Math.random()}`,
               }))
 
-            // dimensions = escala de ANÁLISE (600px) — coordenadas das
-            // sections estão nesta escala. A imagem real (imageBase64) está
-            // em alta res (1200-1800px). O client-slicer escala
-            // proporcionalmente na hora de cropar.
+            // Se veio preview PNG do servidor (caso PDF), usa ele pro
+            // display e pro corte. Senão usa o base64 original.
+            const displayBase64 =
+              analyzeData.preview_png_base64 || imageData.base64
+
             newResults.push({
               email,
               sections: sectionsWithIds,
-              imageBase64: imageData.base64,
+              imageBase64: displayBase64,
               dimensions: {
                 width: analyzeData.analysis.width,
                 height: analyzeData.analysis.height,

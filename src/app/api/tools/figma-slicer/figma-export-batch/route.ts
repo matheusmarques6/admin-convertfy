@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       const figmaExportUrl =
         `https://api.figma.com/v1/images/${fileKey}` +
         `?ids=${idsParam}` +
-        `&format=png` +
+        `&format=pdf` +
         `&scale=${FIGMA_EXPORT_SCALE}` +
         `&use_absolute_bounds=true`
 
@@ -249,40 +249,23 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const meta = await sharp(origBuffer).metadata()
-        const origWidth = meta.width ?? 0
-        const origHeight = meta.height ?? 0
-
-        if (!origWidth || !origHeight) {
-          log.warn("Invalid dimensions from Figma", { nodeId, origWidth, origHeight })
-          results[nodeId] = null
-          return
-        }
-
-        // Mantém a resolução alta (scale=2 = 1200px) mas converte pra
-        // JPEG com quality alta pra reduzir o tamanho do payload.
-        // PNG de 1200×7000 pode ser 8-10MB → JPEG q90 fica ~1-2MB.
-        // Isso evita estourar o body limit quando o frontend envia
-        // pro analyze-pixels e mantém qualidade visual excelente.
-        const optimizedBuffer = await sharp(origBuffer)
-          .jpeg({ quality: 92, mozjpeg: true })
-          .toBuffer()
-
+        // Retorna o PDF raw sem processamento. O PDF mantém qualidade
+        // vetorial (texto nítido, imagens em alta res). A conversão
+        // pra PNG acontece DEPOIS da análise, na hora de cortar.
         results[nodeId] = {
-          base64: optimizedBuffer.toString("base64"),
-          width: origWidth,
-          height: origHeight,
-          originalWidth: origWidth,
-          originalHeight: origHeight,
+          base64: origBuffer.toString("base64"),
+          width: 0, // PDF não tem dimensões em pixels — serão lidas na conversão
+          height: 0,
+          originalWidth: 0,
+          originalHeight: 0,
         }
 
-        log.info("Exported email (high-res)", {
+        log.info("Exported email as PDF", {
           nodeId,
-          size: `${origWidth}x${origHeight}`,
-          payloadKB: Math.round(optimizedBuffer.length / 1024),
+          payloadKB: Math.round(origBuffer.length / 1024),
         })
       } catch (err) {
-        log.warn("Failed to process image", {
+        log.warn("Failed to process PDF", {
           nodeId,
           error: err instanceof Error ? err.message : String(err),
         })

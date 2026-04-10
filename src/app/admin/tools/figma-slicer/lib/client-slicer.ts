@@ -133,7 +133,7 @@ export async function buildFunnelZipClientSide(
 
     const safeEmail = sanitizeFsName(email.emailName, "email")
     const folder = `${safeFunnel}/${safeEmail}`
-    const imgSrc = `data:image/jpeg;base64,${email.imageBase64}`
+    const imgSrc = `data:image/png;base64,${email.imageBase64}`
 
     let img: HTMLImageElement
     try {

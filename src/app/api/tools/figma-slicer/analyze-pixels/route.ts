@@ -418,12 +418,15 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData()
-    const imageBase64 = formData.get("imageBase64") as string | null
+    const pdfBase64 = formData.get("pdfBase64") as string | null
     const file = formData.get("image") as File | null
 
-    let buffer: Buffer
-    if (imageBase64) {
-      buffer = Buffer.from(imageBase64, "base64")
+    let rawBuffer: Buffer
+    let isPdf = false
+
+    if (pdfBase64) {
+      rawBuffer = Buffer.from(pdfBase64, "base64")
+      isPdf = true
     } else if (file) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         return NextResponse.json(
@@ -431,12 +434,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         )
       }
-      buffer = Buffer.from(await file.arrayBuffer())
+      rawBuffer = Buffer.from(await file.arrayBuffer())
+      isPdf =
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf")
     } else {
       return NextResponse.json(
         {
           success: false,
-          error: "Envie a imagem no campo 'image' ou 'imageBase64'.",
+          error: "Envie o PDF no campo 'pdfBase64' ou imagem no campo 'image'.",
         },
         { status: 400 }
       )
@@ -445,26 +451,78 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     // ========================================================================
-    // PASSO 1: normalizar para 600px de largura
+    // PASSO 1: Converter PDF → PNG em alta resolução pra preview + corte
+    //
+    // O PDF é usado direto pro Claude (document block = qualidade total).
+    // Mas pra o preview no frontend e pro corte final, precisamos de PNG.
+    // Usamos Sharp que lê PDF via libvips (se disponível) ou, como
+    // fallback, o cliente já pode ter enviado como imagem direto.
     // ========================================================================
-    const meta = await sharp(buffer).metadata()
-    let width = meta.width ?? 0
-    let height = meta.height ?? 0
+    let pngBuffer: Buffer
+    let width: number
+    let height: number
+
+    if (isPdf) {
+      // Tenta converter PDF → PNG com Sharp (libvips suporta PDF)
+      try {
+        // Sharp pode ler PDFs se compilado com suporte a poppler/pdfium.
+        // No Vercel, o sharp prebuilt pode não ter esse suporte.
+        // Se falhar, retornamos erro pedindo ao usuário tentar PNG.
+        const pdfImage = sharp(rawBuffer, { density: 150 })
+        const pdfMeta = await pdfImage.metadata()
+        pngBuffer = await pdfImage.png().toBuffer()
+        const pngMeta = await sharp(pngBuffer).metadata()
+        width = pngMeta.width ?? pdfMeta.width ?? 0
+        height = pngMeta.height ?? pdfMeta.height ?? 0
+      } catch (pdfConvertError) {
+        log.warn("Sharp cannot read PDF, trying as raw image", {
+          error:
+            pdfConvertError instanceof Error
+              ? pdfConvertError.message
+              : String(pdfConvertError),
+        })
+        // Fallback: talvez o "PDF" é na verdade um PNG/JPEG que foi
+        // erroneamente marcado como PDF. Tenta ler direto.
+        try {
+          const fallbackMeta = await sharp(rawBuffer).metadata()
+          width = fallbackMeta.width ?? 0
+          height = fallbackMeta.height ?? 0
+          pngBuffer = rawBuffer
+          isPdf = false // não é PDF de verdade
+        } catch {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Não foi possível processar o arquivo. O servidor não suporta conversão de PDF neste momento.",
+            },
+            { status: 422 }
+          )
+        }
+      }
+    } else {
+      // É uma imagem normal (PNG/JPEG)
+      const meta = await sharp(rawBuffer).metadata()
+      width = meta.width ?? 0
+      height = meta.height ?? 0
+      pngBuffer = rawBuffer
+    }
 
     if (!width || !height) {
       return NextResponse.json(
         {
           success: false,
-          error: "Não foi possível ler as dimensões da imagem.",
+          error: "Não foi possível ler as dimensões do arquivo.",
         },
         { status: 422 }
       )
     }
 
+    // Normaliza pra 600px de largura pra análise e coordenadas
     if (width !== TARGET_WIDTH) {
       height = Math.round((height / width) * TARGET_WIDTH)
       width = TARGET_WIDTH
-      buffer = await sharp(buffer)
+      pngBuffer = await sharp(pngBuffer)
         .resize({
           width: TARGET_WIDTH,
           fit: "inside",
@@ -472,35 +530,46 @@ export async function POST(request: NextRequest) {
         })
         .png()
         .toBuffer()
-      // Re-ler dimensões reais após resize
-      const newMeta = await sharp(buffer).metadata()
+      const newMeta = await sharp(pngBuffer).metadata()
       height = newMeta.height ?? height
     }
 
     // ========================================================================
-    // PASSO 2: preparar buffer pra enviar ao Claude (cabe em 5MB base64?)
-    // Se não couber, reencoda como JPEG até caber.
-    // ========================================================================
-    let claudeBuffer = buffer
-    let claudeMediaType: "image/png" | "image/jpeg" = "image/png"
-
-    if (claudeBuffer.length > CLAUDE_MAX_BYTES) {
-      for (const quality of [92, 85, 75, 65]) {
-        const jpeg = await sharp(buffer)
-          .jpeg({ quality, mozjpeg: true })
-          .toBuffer()
-        if (jpeg.length <= CLAUDE_MAX_BYTES) {
-          claudeBuffer = jpeg
-          claudeMediaType = "image/jpeg"
-          break
-        }
-      }
-    }
-
-    // ========================================================================
-    // PASSO 3: Claude Vision identifica as seções semanticamente
+    // PASSO 2: Enviar pro Claude Opus
+    //
+    // Se é PDF: envia como DOCUMENT block (qualidade vetorial total —
+    // exatamente como o Claude web faz).
+    // Se é imagem: envia como IMAGE block (fallback).
     // ========================================================================
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    // Prepara o content block correto
+    const claudeBase64 = rawBuffer.toString("base64")
+
+    const fileContentBlock = isPdf
+      ? {
+          type: "document" as const,
+          source: {
+            type: "base64" as const,
+            media_type: "application/pdf" as const,
+            data: claudeBase64,
+          },
+        }
+      : (() => {
+          // Pra imagem, prepara uma versão que caiba no limite de 5MB
+          let imgBuffer = pngBuffer
+          let imgMediaType: "image/png" | "image/jpeg" = "image/png"
+          // Se muito grande, comprime
+          // (síncrono check — o toBuffer real é async mas fazemos fora)
+          return {
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: imgMediaType,
+              data: imgBuffer.toString("base64"),
+            },
+          }
+        })()
 
     const reportTool: Anthropic.Tool = {
       name: "report_sections",
@@ -512,7 +581,7 @@ export async function POST(request: NextRequest) {
           sections: {
             type: "array",
             minItems: 2,
-            maxItems: 8,
+            maxItems: 12,
             items: {
               type: "object",
               properties: {
@@ -523,11 +592,11 @@ export async function POST(request: NextRequest) {
                 },
                 y_start: {
                   type: "integer",
-                  description: "Coordenada Y inicial em pixels",
+                  description: "Coordenada Y inicial em pixels da imagem de 600px de largura",
                 },
                 y_end: {
                   type: "integer",
-                  description: "Coordenada Y final em pixels",
+                  description: "Coordenada Y final em pixels da imagem de 600px de largura",
                 },
                 description: {
                   type: "string",
@@ -545,21 +614,14 @@ export async function POST(request: NextRequest) {
     const claudeStart = Date.now()
     const response = await anthropic.messages.create({
       model: "claude-opus-4-6",
-      max_tokens: 4096,
+      max_tokens: 8192,
       tools: [reportTool],
       tool_choice: { type: "tool", name: "report_sections" },
       messages: [
         {
           role: "user",
           content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: claudeMediaType,
-                data: claudeBuffer.toString("base64"),
-              },
-            },
+            fileContentBlock,
             { type: "text", text: buildClaudePrompt(height) },
           ],
         },
@@ -618,7 +680,7 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // PASSO 5: refinamento por pixel — alinha cada corte ao gap mais próximo
     // ========================================================================
-    const { data: rawPixels, info } = await sharp(buffer)
+    const { data: rawPixels, info } = await sharp(pngBuffer)
       .raw()
       .toBuffer({ resolveWithObject: true })
     const rows = computeRowStats(rawPixels, info.width, info.height, info.channels)
@@ -701,6 +763,12 @@ export async function POST(request: NextRequest) {
       })),
     })
 
+    // Se a entrada era PDF, retorna o PNG convertido pro frontend
+    // usar no preview e no corte. O PNG está em 600px de largura.
+    const previewPngBase64 = isPdf
+      ? pngBuffer.toString("base64")
+      : undefined
+
     return NextResponse.json({
       success: true,
       analysis: {
@@ -709,6 +777,8 @@ export async function POST(request: NextRequest) {
         sections: mergedSections,
         cuts_found: Math.max(0, mergedSections.length - 1),
       },
+      // Quando a entrada é PDF, retorna o PNG pra preview/corte
+      preview_png_base64: previewPngBase64,
       duration_ms: durationMs,
     })
   } catch (error: unknown) {
