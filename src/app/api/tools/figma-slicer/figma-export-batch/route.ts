@@ -11,10 +11,12 @@ export const maxDuration = 120
 const TARGET_WIDTH = 600 // largura de ANÁLISE (coordenadas do Claude)
 const MAX_BATCH_SIZE = 30
 const FIGMA_CHUNK_SIZE = 8
-// Scale=4 gera 2400px de largura (pra um frame de 600px no Figma).
-// Equivalente ao 300 DPI que o Claude Opus usa (2500px) quando
-// processa PDFs. Mantemos alta res pra cortar com qualidade.
-const FIGMA_EXPORT_SCALE = 4
+// Scale=2 gera 1200px de largura (pra um frame de 600px no Figma).
+// Scale=4 (2400px) causava timeout no Vercel porque o download de 8
+// imagens de 2400px do CDN do Figma levava >120s. Scale=2 é o sweet
+// spot: 2x a resolução final (600px), rápido pra baixar, e os slices
+// ficam nítidos porque cropamos em 1200px e resizamos pra 600px.
+const FIGMA_EXPORT_SCALE = 2
 
 /**
  * Delay helper para retries.

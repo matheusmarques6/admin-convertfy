@@ -143,48 +143,68 @@ export default function FigmaSlicerPage() {
       })
 
       try {
-        // Passo 1: exportar todos os emails numa única chamada
-        const exportRes = await fetch(
-          "/api/tools/figma-slicer/figma-export-batch",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileKey: structure.fileKey,
-              nodeIds: funnel.emails.map((e) => e.id),
-            }),
-          }
-        )
-        const exportData = await safeJsonResponse<{
-          success: boolean
-          error?: string
-          images?: Record<
-            string,
-            { base64: string; width: number; height: number } | null
-          >
-        }>(exportRes, "Erro ao exportar do Figma")
-        if (!exportData.success) {
-          throw new Error(exportData.error || "Erro ao exportar do Figma")
-        }
-
-        // Passo 2: analisar cada email sequencialmente (evita sobrecarga)
-        setProcessingStatus({
-          phase: "analyzing",
-          current: 0,
-          total: funnel.emails.length,
-        })
-
+        // ================================================================
+        // PROCESSA 1 EMAIL POR VEZ (export + analyze sequencial)
+        //
+        // Antes: 1 batch com todos os IDs → timeout no Vercel (>120s).
+        // Agora: exporta e analisa cada email individualmente. Cada
+        // chamada demora ~5-15s e cabe no timeout facilmente.
+        // Progress mostra: "Exportando e analisando email 3 de 7..."
+        // ================================================================
         const newResults: EmailResult[] = []
 
         for (let i = 0; i < funnel.emails.length; i++) {
           const email = funnel.emails[i]
           setProcessingStatus({
-            phase: "analyzing",
+            phase: "exporting",
             current: i + 1,
             total: funnel.emails.length,
           })
 
-          const imageData = exportData.images?.[email.id] ?? null
+          // Exporta 1 email do Figma
+          let imageData: {
+            base64: string
+            width: number
+            height: number
+          } | null = null
+
+          try {
+            const exportRes = await fetch(
+              "/api/tools/figma-slicer/figma-export-batch",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  fileKey: structure.fileKey,
+                  nodeIds: [email.id], // 1 ID por vez
+                }),
+              }
+            )
+            const exportData = await safeJsonResponse<{
+              success: boolean
+              error?: string
+              images?: Record<
+                string,
+                { base64: string; width: number; height: number } | null
+              >
+            }>(exportRes, `Erro ao exportar "${email.name}"`)
+
+            if (exportData.success && exportData.images) {
+              imageData = exportData.images[email.id] ?? null
+            }
+          } catch (exportErr) {
+            newResults.push({
+              email,
+              sections: [],
+              imageBase64: "",
+              dimensions: null,
+              error:
+                exportErr instanceof Error
+                  ? exportErr.message
+                  : "Falha ao exportar do Figma",
+            })
+            continue
+          }
 
           if (!imageData) {
             newResults.push({
@@ -192,10 +212,17 @@ export default function FigmaSlicerPage() {
               sections: [],
               imageBase64: "",
               dimensions: null,
-              error: "Falha ao exportar do Figma",
+              error: "Figma não retornou imagem para este email",
             })
             continue
           }
+
+          // Analisa com Claude Vision + pixel refinement
+          setProcessingStatus({
+            phase: "analyzing",
+            current: i + 1,
+            total: funnel.emails.length,
+          })
 
           const formData = new FormData()
           formData.append("imageBase64", imageData.base64)

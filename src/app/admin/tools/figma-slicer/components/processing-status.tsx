@@ -37,7 +37,7 @@ export function ProcessingStatus({ status, funnelName }: ProcessingStatusProps) 
             title="Exportando do Figma"
             subtitle={
               isExporting
-                ? `Baixando ${status.total} imagens em alta resolução...`
+                ? `Exportando email ${status.current} de ${status.total}...`
                 : "Concluído"
             }
             active={isExporting}
