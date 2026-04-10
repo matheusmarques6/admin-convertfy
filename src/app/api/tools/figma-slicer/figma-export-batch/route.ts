@@ -259,16 +259,13 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // NÃO redimensiona pra 600px. Mantém a resolução alta do Figma
-        // (scale=3 = 1800px pra frames de 600px). O downscale pra análise
-        // acontece no endpoint analyze-pixels, e o downscale pra slicing
-        // acontece no client-slicer. Isso mantém a qualidade visual alta
-        // no preview e nos slices finais.
-        //
-        // Usamos PNG com compressão moderada (nível 6, não 9) pra manter
-        // boa qualidade sem explodir o tamanho.
+        // Mantém a resolução alta (scale=2 = 1200px) mas converte pra
+        // JPEG com quality alta pra reduzir o tamanho do payload.
+        // PNG de 1200×7000 pode ser 8-10MB → JPEG q90 fica ~1-2MB.
+        // Isso evita estourar o body limit quando o frontend envia
+        // pro analyze-pixels e mantém qualidade visual excelente.
         const optimizedBuffer = await sharp(origBuffer)
-          .png({ compressionLevel: 6 })
+          .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer()
 
         results[nodeId] = {

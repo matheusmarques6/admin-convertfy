@@ -108,7 +108,7 @@ export function ResultsDashboard({
                 {result.imageBase64 ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={`data:image/png;base64,${result.imageBase64}`}
+                    src={`data:image/jpeg;base64,${result.imageBase64}`}
                     alt={result.email.name}
                     className="w-full h-full object-cover object-top"
                   />

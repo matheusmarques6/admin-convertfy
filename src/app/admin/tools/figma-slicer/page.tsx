@@ -217,15 +217,28 @@ export default function FigmaSlicerPage() {
             continue
           }
 
-          // Analisa com Claude Vision + pixel refinement
+          // Analisa com Claude Vision + pixel refinement.
+          // Envia como File binário (não como base64 text) pra evitar
+          // estourar o body limit do Vercel (4.5MB). O PNG base64 de
+          // um email de 1200×7000 pode ter 8-10MB em texto.
           setProcessingStatus({
             phase: "analyzing",
             current: i + 1,
             total: funnel.emails.length,
           })
 
+          // Converte base64 → Blob binário (muito menor que base64 text)
+          const binaryData = Uint8Array.from(
+            atob(imageData.base64),
+            (c) => c.charCodeAt(0)
+          )
+          const imageBlob = new Blob([binaryData], { type: "image/jpeg" })
+          const imageFile = new File([imageBlob], `${email.name}.jpg`, {
+            type: "image/jpeg",
+          })
+
           const formData = new FormData()
-          formData.append("imageBase64", imageData.base64)
+          formData.append("image", imageFile)
 
           try {
             const analyzeRes = await fetch(
@@ -431,8 +444,17 @@ export default function FigmaSlicerPage() {
       // 2. Envia o base64 já normalizado pro analyze (para o servidor
       // não precisar redimensionar de novo e as coords virem no sistema
       // que já está salvo no client).
+      // Envia como File binário (não base64 text) pra evitar 413
+      const manualBinaryData = Uint8Array.from(
+        atob(normalized.base64),
+        (c) => c.charCodeAt(0)
+      )
+      const manualBlob = new Blob([manualBinaryData], { type: "image/png" })
+      const manualFile = new File([manualBlob], `${file.name}`, {
+        type: "image/png",
+      })
       const formData = new FormData()
-      formData.append("imageBase64", normalized.base64)
+      formData.append("image", manualFile)
       const analyzeRes = await fetch("/api/tools/figma-slicer/analyze-pixels", {
         method: "POST",
         body: formData,
