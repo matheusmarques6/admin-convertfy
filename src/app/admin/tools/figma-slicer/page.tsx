@@ -23,7 +23,7 @@ import { EmailSliceEditor } from "./components/email-slice-editor"
 import { ManualUpload } from "./components/manual-upload"
 import {
   buildFunnelZipClientSide,
-  normalizeFileTo600pxBase64,
+  normalizeFileToAnalysisBase64,
   sanitizeFsName,
   triggerBlobDownload,
 } from "./lib/client-slicer"
@@ -441,7 +441,7 @@ export default function FigmaSlicerPage() {
     try {
       // 1. Normaliza pra 600px NO CLIENTE — garantimos que a escala do
       // base64 guardado bate com a escala das coordenadas do analyze.
-      const normalized = await normalizeFileTo600pxBase64(file)
+      const normalized = await normalizeFileToAnalysisBase64(file)
 
       // 2. Envia o base64 já normalizado pro analyze (para o servidor
       // não precisar redimensionar de novo e as coords virem no sistema

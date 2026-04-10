@@ -42,7 +42,7 @@ export function EmailSliceEditor({
   funnelName,
   onBack,
 }: EmailSliceEditorProps) {
-  const imageUrl = `data:image/png;base64,${result.imageBase64}`
+  const imageUrl = `data:image/jpeg;base64,${result.imageBase64}`
   const imageDimensions = result.dimensions || { width: 600, height: 0 }
 
   const [sections, setSections] = useState<SliceSection[]>(result.sections)

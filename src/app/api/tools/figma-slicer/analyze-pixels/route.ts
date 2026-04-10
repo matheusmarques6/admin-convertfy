@@ -40,7 +40,7 @@ const GAP_VARIANCE_MAX = 400 // linha uniforme
 function buildClaudePrompt(height: number): string {
   return `Você é um especialista em email marketing que monta emails no Omnisend e Klaviyo. Analise esta imagem de email marketing e identifique as SEÇÕES VISUAIS DISTINTAS que devem virar fatias separadas.
 
-A imagem que você está vendo tem EXATAMENTE 600 pixels de largura e ${height} pixels de altura. Todas as coordenadas Y que você retornar DEVEM estar entre 0 e ${height}. Use EXATAMENTE esta escala.
+A imagem que você está vendo tem EXATAMENTE ${TARGET_WIDTH} pixels de largura e ${height} pixels de altura. Todas as coordenadas Y que você retornar DEVEM estar entre 0 e ${height}. Use EXATAMENTE esta escala.
 
 ## COMO PENSAR
 
@@ -135,15 +135,21 @@ Para cada fronteira entre seções, siga este raciocínio exato:
 
 ## VALIDAÇÃO
 
-Antes de retornar, VERIFIQUE:
+Antes de retornar, VERIFIQUE CADA ITEM:
 - [ ] A última seção contém APENAS o footer (logo + links + copyright)?
-- [ ] Cada product grid está SOZINHO numa seção?
-- [ ] Títulos acima de grids estão em seções separadas?
-- [ ] CTAs abaixo de grids estão em seções separadas?
+- [ ] Cada product grid está SOZINHO numa seção? (NÃO cortou no meio do grid entre fileira 1 e fileira 2?)
+- [ ] Cada product grid contém TODAS as fileiras de produtos (se tem 4 produtos em 2×2, os 4 estão juntos)?
+- [ ] Títulos acima de grids estão em seções separadas do grid?
+- [ ] CTAs abaixo de grids estão em seções separadas do grid?
+- [ ] Nenhum botão (JETZT ENTDECKEN, BUY NOW, 10% SPAREN, etc) foi separado do bloco acima dele?
+- [ ] Blocos de cupom (GUTSCHEIN + código + botão) estão TODOS na mesma seção?
 - [ ] sections[0].y_start === 0?
 - [ ] sections[last].y_end === ${height}?
-- [ ] Cada y_end é igual ao y_start da próxima?
+- [ ] Cada y_end é igual ao y_start da próxima seção?
 - [ ] Cada seção tem altura >= 150 pixels?
+- [ ] Total de seções está entre 3 e 10?
+
+Se algum item falhou, CORRIJA as coordenadas antes de chamar a tool.
 
 Chame a tool \`report_sections\` com a análise.`
 }
@@ -456,7 +462,7 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     // ========================================================================
-    // PASSO 1: Normalizar a IMAGEM pra 600px (pra pixel refinement + coords)
+    // PASSO 1: Normalizar a IMAGEM pra TARGET_WIDTH (1024px)
     // Se só tem PDF e não tem imagem, erro (frontend deveria mandar ambos).
     // ========================================================================
     let pngBuffer: Buffer
@@ -475,7 +481,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Normaliza pra 600px de largura
+      // Normaliza pra TARGET_WIDTH (1024px)
       if (width !== TARGET_WIDTH) {
         height = Math.round((height / width) * TARGET_WIDTH)
         width = TARGET_WIDTH
@@ -504,9 +510,9 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    // Manda APENAS o PNG de 600px pro Claude Opus.
+    // Manda APENAS o PNG de 1024px pro Claude Opus.
     // Sem PDF, sem refinement. Simplicidade total.
-    // O Claude Opus olha a imagem de 600px diretamente e retorna
+    // O Claude Opus olha a imagem de 1024px diretamente e retorna
     // coordenadas exatas nessa escala.
     const contentBlocks: Anthropic.ContentBlockParam[] = []
 
@@ -553,11 +559,11 @@ export async function POST(request: NextRequest) {
                 },
                 y_start: {
                   type: "integer",
-                  description: "Coordenada Y inicial em pixels da imagem de 600px de largura",
+                  description: "Coordenada Y inicial em pixels",
                 },
                 y_end: {
                   type: "integer",
-                  description: "Coordenada Y final em pixels da imagem de 600px de largura",
+                  description: "Coordenada Y final em pixels",
                 },
                 description: {
                   type: "string",

@@ -133,7 +133,9 @@ export async function buildFunnelZipClientSide(
 
     const safeEmail = sanitizeFsName(email.emailName, "email")
     const folder = `${safeFunnel}/${safeEmail}`
-    const imgSrc = `data:image/png;base64,${email.imageBase64}`
+    // A imagem pode ser PNG ou JPEG — usa um formato genérico
+    // que o browser auto-detecta pelo magic bytes do base64
+    const imgSrc = `data:image/jpeg;base64,${email.imageBase64}`
 
     let img: HTMLImageElement
     try {
@@ -203,7 +205,7 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
  * coordenadas Y retornadas pelo servidor batem com o base64 que a
  * gente guarda e depois usa no corte client-side.
  */
-export async function normalizeFileTo600pxBase64(
+export async function normalizeFileToAnalysisBase64(
   file: File
 ): Promise<{ base64: string; width: number; height: number }> {
   // 1. Lê o File como dataURL
@@ -219,7 +221,8 @@ export async function normalizeFileTo600pxBase64(
   const img = await loadImage(dataUrl)
 
   // 3. Canvas 600 × H (proporcional)
-  const targetWidth = 600
+  // Deve bater com TARGET_WIDTH do analyze-pixels endpoint (1024px)
+  const targetWidth = 1024
   const targetHeight = Math.round(
     (img.naturalHeight / img.naturalWidth) * targetWidth
   )
