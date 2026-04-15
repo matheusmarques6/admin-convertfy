@@ -44,21 +44,6 @@ interface DashboardClientsRevenueProps {
   storeBreakdown?: StoreBreakdownItem[]
 }
 
-// ─── Mock Data ────────────────────────────────────────────
-
-const MOCK_CLIENTS: ClientRevenueRow[] = [
-  { id: "1", name: "Donaris Joias", revenue: 156234, openRate: 36.1, clickRate: 5.2, trend: "up", sparklinePoints: [8, 10, 9, 12, 14, 16, 18], status: "active" },
-  { id: "2", name: "AchaTudo Store", revenue: 124567, openRate: 34.2, clickRate: 4.8, trend: "up", sparklinePoints: [6, 8, 7, 10, 11, 13, 15], status: "active" },
-  { id: "3", name: "Blessed Choice", revenue: 98432, openRate: 38.5, clickRate: 5.8, trend: "up", sparklinePoints: [5, 7, 8, 9, 11, 14, 16], status: "active" },
-  { id: "4", name: "Oak Vintage", revenue: 87654, openRate: 35.1, clickRate: 4.5, trend: "up", sparklinePoints: [7, 6, 8, 10, 12, 13, 15], status: "active" },
-  { id: "5", name: "Clube Rock", revenue: 76543, openRate: 32.8, clickRate: 3.9, trend: "flat", sparklinePoints: [10, 11, 10, 11, 10, 11, 10], status: "active" },
-  { id: "6", name: "Nivalé", revenue: 73210, openRate: 37.2, clickRate: 4.1, trend: "down", sparklinePoints: [18, 16, 15, 13, 11, 9, 7], status: "at-risk" },
-  { id: "7", name: "NUZE", revenue: 54321, openRate: 31.5, clickRate: 3.2, trend: "down", sparklinePoints: [16, 14, 13, 11, 10, 8, 6], status: "at-risk" },
-  { id: "8", name: "Based 3.0", revenue: 42100, openRate: 28.3, clickRate: 2.1, trend: "down", sparklinePoints: [15, 14, 12, 10, 8, 6, 4], status: "at-risk" },
-  { id: "9", name: "EPORTH Energia", revenue: 38900, openRate: 26.8, clickRate: 1.9, trend: "down", sparklinePoints: [14, 13, 11, 9, 7, 5, 3], status: "at-risk" },
-  { id: "10", name: "Moda Viva", revenue: 32450, openRate: 33.4, clickRate: 3.8, trend: "up", sparklinePoints: [6, 7, 8, 10, 11, 13, 14], status: "active" },
-]
-
 const PAGE_SIZE = 5
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -174,26 +159,25 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
 
-  // Map real storeBreakdown to ClientRevenueRow, fallback to mock
+  // Map real storeBreakdown to ClientRevenueRow. Empty when no data — UI shows
+  // "Nenhum cliente encontrado" empty state instead of fake data.
   const allClients: ClientRevenueRow[] = useMemo(() => {
-    if (storeBreakdown && storeBreakdown.length > 0) {
-      return storeBreakdown
-        .map((s, i) => {
-          const rev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-          return {
-            id: s.storeId || String(i),
-            name: s.storeName || s.clientName,
-            revenue: rev,
-            openRate: 0,
-            clickRate: 0,
-            trend: "flat" as TrendDirection,
-            sparklinePoints: [rev, rev, rev, rev, rev, rev, rev],
-            status: "active" as const,
-          }
-        })
-        .sort((a, b) => b.revenue - a.revenue)
-    }
-    return MOCK_CLIENTS
+    if (!storeBreakdown || storeBreakdown.length === 0) return []
+    return storeBreakdown
+      .map((s, i) => {
+        const rev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+        return {
+          id: s.storeId || String(i),
+          name: s.storeName || s.clientName,
+          revenue: rev,
+          openRate: 0,
+          clickRate: 0,
+          trend: "flat" as TrendDirection,
+          sparklinePoints: [rev, rev, rev, rev, rev, rev, rev],
+          status: "active" as const,
+        }
+      })
+      .sort((a, b) => b.revenue - a.revenue)
   }, [storeBreakdown])
 
   const filtered = useMemo(() => {

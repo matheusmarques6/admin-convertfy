@@ -1,11 +1,10 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react"
 import { useProductivityStore } from "@/stores/productivity-store"
 import {
-  Card, CardHeader, DSBadge, ProgressBar,
-  IconTarget, IconPlus, IconChevronRight, IconCheck,
+  Card, DSBadge, ProgressBar,
+  IconTarget, IconPlus, IconChevronRight,
 } from "./ds-atoms"
 
 // ── Progress Circle SVG ──
@@ -32,15 +31,8 @@ function ProgressCircle({ percentage, size = 48, color = "#4E62D8" }: { percenta
   )
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  "on-track": { label: "No caminho", color: "#065F46", bg: "#ECFDF5" },
-  "at-risk": { label: "Em risco", color: "#92400E", bg: "#FFFBEB" },
-  "behind": { label: "Atrasado", color: "#991B1B", bg: "#FEF2F2" },
-  "achieved": { label: "Alcancado", color: "#065F46", bg: "#ECFDF5" },
-}
-
 export function ProductivityGoals() {
-  const { goals, isLoaded, fetchData, apiAction } = useProductivityStore()
+  const { goals, isLoaded, fetchData } = useProductivityStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showNewGoal, setShowNewGoal] = useState(false)
   const [newGoalTitle, setNewGoalTitle] = useState("")

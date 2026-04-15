@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import { PRIORITY_COLORS } from "@/types/productivity"
 

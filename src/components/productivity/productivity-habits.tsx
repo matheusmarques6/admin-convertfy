@@ -23,7 +23,7 @@ function GridCell({ level, color, isToday }: { level: number; color: string; isT
 }
 
 export function ProductivityHabits() {
-  const { habits, isLoaded, fetchData, checkedHabits, toggleHabitCheck, apiAction } = useProductivityStore()
+  const { habits, isLoaded, fetchData, checkedHabits, toggleHabitCheck } = useProductivityStore()
   const [showNewHabit, setShowNewHabit] = useState(false)
   const [newHabitName, setNewHabitName] = useState("")
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null)

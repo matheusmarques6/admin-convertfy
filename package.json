@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "ESLINT_USE_FLAT_CONFIG=true eslint \"src/**/*.{ts,tsx,js,mjs}\" --max-warnings=0",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=true eslint \"src/**/*.{ts,tsx,js,mjs}\" --fix",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -69,6 +71,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -54,130 +54,6 @@ interface DashboardClientHealthProps {
 
 type SortKey = "score" | "attributedRevenue" | "revenuePercent" | "storeRevenue"
 
-// ─── Mock data ────────────────────────────────────────────
-
-const MOCK_CLIENTS: ClientHealth[] = [
-  {
-    id: "1",
-    name: "Based 3.0",
-    storeRevenue: 42000,
-    attributedRevenue: 18000,
-    revenuePercent: 44,
-    score: 28,
-    openRate: 18.2,
-    clickRate: 2.1,
-    ctor: 11.5,
-    bounceRate: 4.8,
-    unsubRate: 0.61,
-    problem: "Bounce rate crítico",
-  },
-  {
-    id: "2",
-    name: "EPORTH Energia",
-    storeRevenue: 245000,
-    attributedRevenue: 89000,
-    revenuePercent: 36,
-    score: 31,
-    openRate: 21.4,
-    clickRate: 2.8,
-    ctor: 13.1,
-    bounceRate: 3.2,
-    unsubRate: 0.52,
-    problem: "Open rate baixo",
-  },
-  {
-    id: "3",
-    name: "NUZE",
-    storeRevenue: 99000,
-    attributedRevenue: 34000,
-    revenuePercent: 35,
-    score: 48,
-    openRate: 28.3,
-    clickRate: 3.9,
-    ctor: 13.8,
-    bounceRate: 2.1,
-    unsubRate: 0.38,
-    problem: "Campanha atrasada",
-  },
-  {
-    id: "4",
-    name: "Donaris Joias",
-    storeRevenue: 412000,
-    attributedRevenue: 156000,
-    revenuePercent: 38,
-    score: 58,
-    openRate: 36.1,
-    clickRate: 5.2,
-    ctor: 14.4,
-    bounceRate: 1.4,
-    unsubRate: 0.23,
-  },
-  {
-    id: "5",
-    name: "Nivalé",
-    storeRevenue: 198000,
-    attributedRevenue: 73000,
-    revenuePercent: 37,
-    score: 65,
-    openRate: 33.7,
-    clickRate: 4.8,
-    ctor: 14.2,
-    bounceRate: 1.6,
-    unsubRate: 0.27,
-  },
-  {
-    id: "6",
-    name: "Clube Rock",
-    storeRevenue: 189000,
-    attributedRevenue: 68000,
-    revenuePercent: 36,
-    score: 76,
-    openRate: 38.2,
-    clickRate: 5.6,
-    ctor: 14.7,
-    bounceRate: 1.1,
-    unsubRate: 0.19,
-  },
-  {
-    id: "7",
-    name: "Blessed Choice",
-    storeRevenue: 267000,
-    attributedRevenue: 98000,
-    revenuePercent: 37,
-    score: 82,
-    openRate: 40.1,
-    clickRate: 6.1,
-    ctor: 15.2,
-    bounceRate: 0.9,
-    unsubRate: 0.15,
-  },
-  {
-    id: "8",
-    name: "Oak Vintage",
-    storeRevenue: 145000,
-    attributedRevenue: 58000,
-    revenuePercent: 40,
-    score: 87,
-    openRate: 42.3,
-    clickRate: 6.8,
-    ctor: 16.1,
-    bounceRate: 0.7,
-    unsubRate: 0.12,
-  },
-  {
-    id: "9",
-    name: "AchaTudo",
-    storeRevenue: 310000,
-    attributedRevenue: 124000,
-    revenuePercent: 40,
-    score: 92,
-    openRate: 44.5,
-    clickRate: 7.2,
-    ctor: 16.2,
-    bounceRate: 0.5,
-    unsubRate: 0.09,
-  },
-]
 
 // (removed TOTAL_CLIENTS — now derived from real data)
 
@@ -356,27 +232,26 @@ export function DashboardClientHealth({
 
   const MAX_VISIBLE = 9
 
-  // Map real storeBreakdown to ClientHealth format, fallback to mock
+  // Map real storeBreakdown to ClientHealth format. Empty when no data — UI shows
+  // empty state instead of fictitious clients.
   const allClients: ClientHealth[] = useMemo(() => {
-    if (storeBreakdown && storeBreakdown.length > 0) {
-      return storeBreakdown.map((s, i) => {
-        const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-        const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
-          (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
-        const pct = storeRev > 0 ? (attributed / storeRev) * 100 : 0
-        // Simple score based on attribution rate (0-100)
-        const score = Math.min(100, Math.round(pct * 2.5))
-        return {
-          id: s.storeId || String(i),
-          name: s.storeName || s.clientName,
-          storeRevenue: storeRev,
-          attributedRevenue: attributed,
-          revenuePercent: Math.round(pct * 10) / 10,
-          score,
-        }
-      })
-    }
-    return MOCK_CLIENTS
+    if (!storeBreakdown || storeBreakdown.length === 0) return []
+    return storeBreakdown.map((s, i) => {
+      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+      const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
+        (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
+      const pct = storeRev > 0 ? (attributed / storeRev) * 100 : 0
+      // Simple score based on attribution rate (0-100)
+      const score = Math.min(100, Math.round(pct * 2.5))
+      return {
+        id: s.storeId || String(i),
+        name: s.storeName || s.clientName,
+        storeRevenue: storeRev,
+        attributedRevenue: attributed,
+        revenuePercent: Math.round(pct * 10) / 10,
+        score,
+      }
+    })
   }, [storeBreakdown])
 
   const totalStores = allClients.length
@@ -488,6 +363,18 @@ export function DashboardClientHealth({
           </thead>
           <TooltipProvider delayDuration={300}>
             <tbody>
+              {sorted.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-5 py-12 text-center text-[12px] text-gray-400 dark:text-gray-500"
+                  >
+                    {loading
+                      ? "Carregando lojas..."
+                      : "Sem dados de saúde no período. Conecte uma loja com integração ativa."}
+                  </td>
+                </tr>
+              )}
               {sorted.map((client) => {
                 const dotColor = getDotColor(client.score)
                 const variant = getScoreVariant(client.score)

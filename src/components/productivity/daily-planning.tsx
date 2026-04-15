@@ -3,11 +3,9 @@
 import { useState, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
-import { PRIORITY_COLORS } from "@/types/productivity"
 import {
-  PriorityDot, Avatar, Checkbox, ProgressBar,
-  Card, DSBadge,
-  IconClose, IconCheck, IconChevronRight, IconSun, IconFlag, IconCalendar,
+  PriorityDot, Checkbox,
+  IconClose, IconCheck, IconChevronRight, IconSun, IconFlag,
 } from "./ds-atoms"
 
 // ============================================================================

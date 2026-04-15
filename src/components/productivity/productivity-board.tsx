@@ -3,11 +3,10 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
-import { TASK_STATUSES, PRIORITY_COLORS, PRIORITY_LABELS } from "@/types/productivity"
+import { TASK_STATUSES, PRIORITY_LABELS } from "@/types/productivity"
 import type { ProductivityTask, TaskGroup } from "@/types/productivity"
 import {
-  PriorityDot, StatusDot, Avatar, Checkbox, ProgressBar,
-  Card, CardHeader, DSBadge,
+  PriorityDot, StatusDot, Avatar, Checkbox,
   IconPlus, IconClose, IconChevronRight,
 } from "./ds-atoms"
 
@@ -524,8 +523,6 @@ function KanbanView({
   selectedTaskId: string | null
   selectTask: (id: string | null) => void
 }) {
-  const { apiAction } = useProductivityStore()
-
   // Kanban has 5 columns: pending, progress, review, blocked, done
   const KANBAN_STATUSES = [
     { id: "pending" as const, label: "Pendente", color: "#9CA3AF" },

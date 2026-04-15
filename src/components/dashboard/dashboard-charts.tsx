@@ -37,24 +37,37 @@ interface DashboardChartsProps {
   loading?: boolean
 }
 
-// ─── Mock data ────────────────────────────────────────────
+// ─── Empty State ──────────────────────────────────────────
 
-const MOCK_REVENUE_CHART: ChartDataPoint[] = Array.from({ length: 30 }, (_, i) => ({
-  date: new Date(2026, 2, i + 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
-  value: Math.floor(20000 + Math.random() * 15000 + i * 500),
-}))
-
-const MOCK_REVENUE_PREVIOUS: ChartDataPoint[] = MOCK_REVENUE_CHART.map((d) => ({
-  ...d,
-  value: Math.floor(d.value * 0.85 + Math.random() * 3000),
-}))
-
-const MOCK_CAMPAIGN_CHART: CampaignDataPoint[] = [
-  { week: "Sem 1", openRate: 32, clickRate: 8 },
-  { week: "Sem 2", openRate: 35, clickRate: 10 },
-  { week: "Sem 3", openRate: 28, clickRate: 7 },
-  { week: "Sem 4", openRate: 38, clickRate: 12 },
-]
+function ChartEmptyState({ title, message }: { title: string; message: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex h-[240px] flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-gray-200 bg-gray-50/50 p-6 text-center dark:border-[#2A2F3D] dark:bg-[#1A1D27]/40">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-gray-300 dark:text-[#5C6378]"
+          >
+            <path d="M3 3v18h18" />
+            <path d="M7 14l4-4 4 4 6-6" />
+          </svg>
+          <p className="text-xs text-gray-500 dark:text-[#8B92A5]">{message}</p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 // ─── Custom Tooltip (DS v3.0) ─────────────────────────────
 
@@ -319,9 +332,9 @@ export function DashboardCharts({
 
   const chartHeight = isMobile ? 180 : isSmall ? 200 : isMedium ? 240 : 280
 
-  const revenue = revenueData ?? MOCK_REVENUE_CHART
-  const previous = compareEnabled ? (revenuePrevious ?? MOCK_REVENUE_PREVIOUS) : undefined
-  const campaign = campaignData ?? MOCK_CAMPAIGN_CHART
+  const hasRevenue = (revenueData?.length ?? 0) > 0
+  const hasPrevious = compareEnabled && (revenuePrevious?.length ?? 0) > 0
+  const hasCampaign = (campaignData?.length ?? 0) > 0
 
   return (
     <div
@@ -333,21 +346,39 @@ export function DashboardCharts({
     >
       {/* Area Chart — Revenue (3/5 on desktop) */}
       <div className="lg:col-span-3">
-        <RevenueChart
-          data={revenue}
-          compareData={previous}
-          chartHeight={chartHeight}
-          loading={loading}
-        />
+        {loading ? (
+          <ChartSkeleton />
+        ) : hasRevenue ? (
+          <RevenueChart
+            data={revenueData!}
+            compareData={hasPrevious ? revenuePrevious : undefined}
+            chartHeight={chartHeight}
+            loading={false}
+          />
+        ) : (
+          <ChartEmptyState
+            title="Receita por período"
+            message="Sem dados de receita para o período selecionado. Conecte uma loja ou ajuste o filtro."
+          />
+        )}
       </div>
 
       {/* Bar Chart — Campaign Performance (2/5) */}
       <div className="lg:col-span-2">
-        <CampaignPerformanceChart
-          data={campaign}
-          chartHeight={chartHeight}
-          loading={loading}
-        />
+        {loading ? (
+          <ChartSkeleton />
+        ) : hasCampaign ? (
+          <CampaignPerformanceChart
+            data={campaignData!}
+            chartHeight={chartHeight}
+            loading={false}
+          />
+        ) : (
+          <ChartEmptyState
+            title="Performance de Campanhas"
+            message="Nenhuma campanha enviada no período selecionado."
+          />
+        )}
       </div>
     </div>
   )

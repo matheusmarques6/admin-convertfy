@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { DailyPlanning } from "./daily-planning"
-import { PRIORITY_COLORS, TASK_STATUSES } from "@/types/productivity"
 import {
-  PriorityDot, StatusDot, Avatar, Checkbox, ProgressBar, ProgressCircle,
+  PriorityDot, Avatar, Checkbox,
   Card, CardHeader, DSBadge, SectionLabel,
   IconFlag, IconCalendar, IconCheck, IconBolt, IconChart,
   IconTarget, IconFire, IconDoc, IconSun, IconMoon,
@@ -22,10 +21,10 @@ export function ProductivityHome() {
   const {
     tasks, calendarEvents, planningDone, setPlanningDone,
     showShutdown, setShowShutdown, goals, habits,
-    kanbanColumns, weeklyBars, checkedHabits, toggleHabitCheck,
-    focusRunning, focusTime, focusSessionCount, focusBreak,
+    kanbanColumns, weeklyBars,
+    focusRunning, focusTime,
     toggleFocus, resetFocus, tickFocus,
-    isLoading, isLoaded, fetchData, profile, apiAction,
+    isLoaded, fetchData, profile, apiAction,
   } = useProductivityStore()
 
   const [showDailyPlanning, setShowDailyPlanning] = useState(false)

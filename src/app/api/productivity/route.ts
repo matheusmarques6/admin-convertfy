@@ -8,9 +8,6 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("ProductivityAPI")
 
 // ── GET: Fetch all productivity data for the current user ──
 
