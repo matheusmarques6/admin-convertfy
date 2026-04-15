@@ -132,6 +132,46 @@ export default function ReportPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
+
+  // Client-side PDF export of the visible report content (#report-content)
+  async function handleExportPdf() {
+    setIsExportingPdf(true)
+    try {
+      const element = document.getElementById("report-content")
+      if (!element) {
+        throw new Error("Conteúdo do relatório não disponível.")
+      }
+      const html2pdf = (await import("html2pdf.js")).default
+      const safeName = (report?.store_name || "relatorio")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "_")
+        .toLowerCase()
+      const period = report?.period || "periodo"
+      await html2pdf()
+        .set({
+          margin: [12, 12, 14, 12],
+          filename: `relatorio_${safeName}_${period}.pdf`,
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: "#FFFFFF" },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"] },
+        })
+        .from(element)
+        .save()
+    } catch (err) {
+      console.error("[ReportPage] export pdf failed", err)
+      alert(
+        err instanceof Error
+          ? `Falha ao exportar PDF: ${err.message}`
+          : "Falha ao exportar PDF"
+      )
+    } finally {
+      setIsExportingPdf(false)
+    }
+  }
 
   // Load report
   useEffect(() => {
@@ -318,6 +358,20 @@ export default function ReportPage() {
                 </a>
               </Button>
             )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              title="Exportar este relatório como PDF (gerado no navegador)"
+            >
+              {isExportingPdf ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Exportar PDF
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="secondary" size="icon">
@@ -366,6 +420,8 @@ export default function ReportPage() {
           </div>
         }
       />
+
+      <div id="report-content" className="space-y-6">
 
       {/* Revenue Metrics */}
       {revenue && (
@@ -716,6 +772,8 @@ export default function ReportPage() {
           </dl>
         </CardContent>
       </Card>
+
+      </div>
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
