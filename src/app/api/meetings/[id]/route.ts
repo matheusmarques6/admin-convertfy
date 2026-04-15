@@ -145,6 +145,7 @@ export async function PUT(
 
     if (body.title !== undefined) updateData.title = body.title
     if (body.client_id !== undefined) updateData.client_id = body.client_id || null
+    if (body.store_id !== undefined) updateData.store_id = body.store_id || null
     if (body.scheduled_at !== undefined) updateData.scheduled_at = body.scheduled_at
     if (body.duration_minutes !== undefined) updateData.duration_minutes = body.duration_minutes
     if (body.status !== undefined) updateData.status = body.status

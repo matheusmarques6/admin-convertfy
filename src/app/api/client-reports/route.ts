@@ -21,6 +21,45 @@ async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, 
   return orgMember.org_id
 }
 
+// GET - List or fetch latest report
+//   ?store_id=...           → list reports for store (most recent first)
+//   ?store_id=...&latest=1   → return only the most recent { report } or null
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_reports")
+    const orgId = await resolveOrgId(supabase, user.id)
+
+    const sp = request.nextUrl.searchParams
+    const storeId = sp.get("store_id")
+    const clientId = sp.get("client_id")
+    const latest = sp.get("latest") === "1" || sp.get("latest") === "true"
+    const limit = Math.min(Number(sp.get("limit") ?? 50), 100)
+
+    let query = supabase
+      .from("client_reports")
+      .select("id, client_id, store_id, store_name, report_type, period, date_range, status, created_at, updated_at")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+
+    if (storeId) query = query.eq("store_id", storeId)
+    if (clientId) query = query.eq("client_id", clientId)
+
+    if (latest) {
+      const { data, error } = await query.limit(1).maybeSingle()
+      if (error) throw error
+      return successResponse(request, { report: data ?? null })
+    }
+
+    const { data, error } = await query.limit(limit)
+    if (error) throw error
+    return successResponse(request, { reports: data ?? [] })
+  } catch (error) {
+    return errorResponse(request, error, "ClientReports.GET")
+  }
+}
+
 // POST - Create a new report
 export async function POST(request: NextRequest) {
   try {

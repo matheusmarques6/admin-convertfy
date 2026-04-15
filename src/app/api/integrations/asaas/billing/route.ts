@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasService, AsaasService } from "@/lib/integrations/asaas"
+import { createAsaasService, AsaasService, AsaasApiError } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -214,14 +214,12 @@ export async function GET(request: NextRequest) {
       recentPayments: allPayments.slice(0, 10),
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro desconhecido"
-    const isAuthError = message.includes("401") || message.includes("403") || message.includes("Unauthorized") || message.includes("access_token")
-
-    if (isAuthError) {
-      log.warn("Asaas auth error:", message)
+    if (error instanceof AsaasApiError && (error.isAuthError || error.isPermissionError)) {
+      log.warn("Asaas auth error", { status: error.status, endpoint: error.endpoint })
       return successResponse(request, {
         connected: false,
-        errorMessage: "Credenciais do Asaas inválidas ou expiradas. Verifique a chave de API nas configurações.",
+        errorMessage: error.message,
+        errorStatus: error.status,
         summary: {
           received: 0, confirmed: 0, pending: 0, overdue: 0, refunded: 0,
           totalClients: 0, activeSubscriptions: 0,

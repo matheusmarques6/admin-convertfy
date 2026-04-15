@@ -10,6 +10,26 @@ export interface AsaasConfig {
   environment?: "sandbox" | "production"
 }
 
+/**
+ * Specialised error thrown by AsaasService.request().
+ * Carries the HTTP status so callers can distinguish auth/permission errors
+ * from generic API failures (ex: 401 → chave invalida; 403 → conta sem acesso).
+ */
+export class AsaasApiError extends Error {
+  public readonly status: number
+  public readonly endpoint: string
+  public readonly isAuthError: boolean
+  public readonly isPermissionError: boolean
+  constructor(message: string, status: number, endpoint: string) {
+    super(message)
+    this.name = "AsaasApiError"
+    this.status = status
+    this.endpoint = endpoint
+    this.isAuthError = status === 401
+    this.isPermissionError = status === 403
+  }
+}
+
 export class AsaasService {
   private apiKey: string
   private baseUrl: string
@@ -34,7 +54,15 @@ export class AsaasService {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.errors?.[0]?.description || `Asaas API error: ${response.status}`)
+      let message: string
+      if (response.status === 401) {
+        message = "Chave de API do Asaas inválida ou expirada. Verifique a integração em Configurações → Integrações."
+      } else if (response.status === 403) {
+        message = "Conta Asaas sem permissão para esta operação. Verifique os escopos da chave de API."
+      } else {
+        message = error.errors?.[0]?.description || `Asaas API error: ${response.status}`
+      }
+      throw new AsaasApiError(message, response.status, endpoint)
     }
 
     return response.json()

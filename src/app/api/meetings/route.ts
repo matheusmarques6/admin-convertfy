@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
       .insert({
         title: body.title,
         client_id: body.client_id || null,
+        store_id: body.store_id || null,
         user_id: user.id,
         created_by: user.id,
         org_id: orgId,

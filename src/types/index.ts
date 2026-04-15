@@ -108,6 +108,7 @@ export interface Meeting {
   id: string
   client_id: string
   user_id: string
+  store_id?: string | null
   title: string
   scheduled_at: string
   duration_minutes: number

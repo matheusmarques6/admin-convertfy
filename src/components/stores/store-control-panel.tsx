@@ -193,6 +193,43 @@ export function StoreControlPanel() {
   const { toast } = useToast()
   const [stores, setStores] = useState<StoreData[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [isLoadingReport, setIsLoadingReport] = useState(false)
+
+  const handleViewReport = useCallback(
+    async (storeId: string) => {
+      setIsLoadingReport(true)
+      try {
+        const res = await fetch(
+          `/api/client-reports?store_id=${encodeURIComponent(storeId)}&latest=1`,
+          { cache: "no-store" }
+        )
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(json?.error || "Falha ao buscar relatório")
+        }
+        const report = json?.data?.report ?? json?.report ?? null
+        if (report?.id) {
+          router.push(`/admin/reports/${report.id}`)
+          return
+        }
+        toast({
+          variant: "destructive",
+          title: "Nenhum relatório encontrado",
+          description: "Esta loja ainda não possui relatórios gerados.",
+        })
+        router.push(`/admin/reports?store_id=${encodeURIComponent(storeId)}`)
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao abrir relatório",
+          description: error instanceof Error ? error.message : "Erro desconhecido",
+        })
+      } finally {
+        setIsLoadingReport(false)
+      }
+    },
+    [router, toast]
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [users, setUsers] = useState<UserData[]>([])
 
@@ -1236,9 +1273,14 @@ export function StoreControlPanel() {
                     variant="secondary"
                     size="sm"
                     className="flex-1"
-                    onClick={() => router.push(`/admin/reports?store_id=${selectedStore.id}`)}
+                    disabled={isLoadingReport}
+                    onClick={() => handleViewReport(selectedStore.id)}
                   >
-                    <TrendingUp className="w-3 h-3 mr-1" />
+                    {isLoadingReport ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <TrendingUp className="w-3 h-3 mr-1" />
+                    )}
                     Ver Relatorio
                   </Button>
                 </div>
