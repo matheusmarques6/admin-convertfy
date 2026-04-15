@@ -517,16 +517,15 @@ Se loja nao tem key propria para 17track, usa `process.env.SEVENTEEN_TRACK_API_K
 
 | Story | Status | Descricao |
 |-------|--------|-----------|
-| 22.2 | Done | Migration: indexes + provider_used + Cache-Control headers |
 | 22.1 | Done | Reordenar cascade + freshness guard + AbortController + safeDecrypt |
+| 22.2 | Done | Migration: indexes + provider_used + Cache-Control headers |
+| 22.3 | Done | Sync real-time no lookup (tracking sem eventos) |
+| 22.4 | Done | Correios API Rastro como provider direto (TOP 1 para BR) |
+| 22.5 | Done | Refatorar cascade para Provider Registry (loop dinamico) |
 
-### Stories em draft
-
-| Story | Status | Descricao |
-|-------|--------|-----------|
-| 22.3 | Draft | Sync real-time no lookup (tracking sem eventos) |
-| 22.4 | Draft | Correios API Rastro como provider direto (TOP 1 para BR) |
-| 22.5 | Draft | Refatorar cascade para Provider Registry (loop dinamico) |
+### Epic 22 — Concluido
+Todas as stories foram entregues. Cron de sync automatico em
+`/api/cron/tracking-sync` (a cada 6h, conforme `vercel.json`).
 
 ### Roadmap de implementacao
 

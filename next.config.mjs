@@ -86,30 +86,103 @@ const nextConfig = {
   async headers() {
     // X-Frame-Options and frame-ancestors are handled in middleware
     // to reliably distinguish embeddable routes from protected ones.
+    //
+    // Content-Security-Policy (Story 57.5):
+    //   - 'self'                   o proprio dominio (admin + portal + APIs)
+    //   - 'unsafe-inline' (script) NECESSARIO p/ Next.js hydration scripts
+    //   - 'unsafe-eval' (script)   NECESSARIO p/ React DevTools em dev e
+    //                              algumas libs (Recharts/Reactflow); pode
+    //                              ser removido em uma proxima iteracao
+    //   - 'unsafe-inline' (style)  NECESSARIO p/ Tailwind atomic classes,
+    //                              shadcn/ui, framer-motion inline styles
+    //   - data: e blob: para imagens/icones embedados
+    //   - https: para imagens (logos de loja vindos de qualquer dominio)
+    //   - Whitelist de connect-src:
+    //       * https://*.supabase.co + wss:// → backend Supabase + realtime
+    //       * https://*.supabase.in / .supabaseusercontent.com → storage assets
+    //       * https://a.klaviyo.com → metricas Klaviyo (admin/portal)
+    //       * https://api.omnisend.com → metricas Omnisend
+    //       * https://api.asaas.com / https://sandbox.asaas.com → cobrancas
+    //       * https://api.wise.com → reconciliacao
+    //       * https://api.openai.com → IA (geracao de copy)
+    //       * https://*.shopify.com / *.myshopify.com → conexao OAuth/Admin API
+    //       * https://graph.facebook.com → Meta Ads (futuro)
+    //       * https://www.googleapis.com → Google Calendar / Analytics
+    //       * https://global.cainiao.com / .correios.com.br / .postnl.nl /
+    //         .trackingmore.com / .17track.net → providers de tracking
+    //       * https://api.resend.com → emails transacionais
+    //       * https://*.vercel-insights.com / *.vercel-analytics.com → analytics
+    //   - frame-ancestors 'none' (redundante com middleware mas mais moderno)
+    //
+    // Comecamos em Report-Only para identificar violacoes em producao SEM
+    // quebrar nada. Apos 7 dias de monitoramento sem violacoes legitimas,
+    // migrar para 'Content-Security-Policy' (enforcement).
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src-elem 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "style-src-elem 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "media-src 'self' data: blob:",
+      [
+        "connect-src 'self'",
+        "https://*.supabase.co wss://*.supabase.co",
+        "https://*.supabase.in https://*.supabaseusercontent.com",
+        "https://a.klaviyo.com",
+        "https://api.omnisend.com",
+        "https://api.asaas.com https://sandbox.asaas.com",
+        "https://api.wise.com",
+        "https://api.openai.com",
+        "https://*.shopify.com https://*.myshopify.com",
+        "https://graph.facebook.com",
+        "https://www.googleapis.com",
+        "https://global.cainiao.com https://api.cainiao.com",
+        "https://proxyapp.correios.com.br",
+        "https://api.postnl.nl",
+        "https://api.trackingmore.com",
+        "https://api.17track.net",
+        "https://api.resend.com",
+        "https://*.vercel-insights.com https://*.vercel-analytics.com",
+      ].join(" "),
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+    ].join("; ")
+
     return [
+      // ── Headers para todas as paginas (admin + portal + APIs) ────────────
+      // Inclui CSP, mas EXCLUI as rotas publicas do widget de tracking que
+      // precisam funcionar em qualquer dominio externo.
       {
-        source: "/(.*)",
+        source: "/((?!api/script|api/tracking|tracking/embed).*)",
         headers: [
-          {
-            key: "X-Content-Type-Options",
-            value: "nosniff",
-          },
-          {
-            key: "X-XSS-Protection",
-            value: "1; mode=block",
-          },
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-          {
-            key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
-          },
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains; preload",
-          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-XSS-Protection", value: "1; mode=block" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          // Report-Only: nao quebra nada, apenas reporta violacoes no
+          // console do browser. Apos validacao, trocar para
+          // 'Content-Security-Policy' para enforcement.
+          { key: "Content-Security-Policy-Report-Only", value: cspDirectives },
+        ],
+      },
+      // ── Widget publico e tracking embed: SEM CSP (precisa rodar em
+      //    qualquer dominio externo onde a loja instalou o script) ──
+      {
+        source: "/api/script/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+      {
+        source: "/api/tracking/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
     ];
