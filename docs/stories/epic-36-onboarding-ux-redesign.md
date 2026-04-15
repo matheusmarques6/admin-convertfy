@@ -60,6 +60,6 @@ Os dois forms parecem de projetos diferentes: cores hardcoded vs tokens shadcn, 
 | Story | Status |
 |-------|--------|
 | 36.1–36.10 | DONE (commit 36c259b) |
-| 36.11 | Ready for Dev |
-| 36.12 | Ready for Dev (dep: 36.11) |
-| 36.13 | Ready for Dev (dep: 36.12) |
+| 36.11 | DONE (stepper usa flex-1 + circulos equidistantes) |
+| 36.12 | DONE (passo Criar App Shopify implementado em /cliente/onboarding) |
+| 36.13 | DONE (validacao + salvamento do token no /api/portal/onboarding/wizard) |
