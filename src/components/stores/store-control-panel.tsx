@@ -230,6 +230,7 @@ export function StoreControlPanel() {
     },
     [router, toast]
   )
+
   const [isLoading, setIsLoading] = useState(true)
   const [users, setUsers] = useState<UserData[]>([])
 

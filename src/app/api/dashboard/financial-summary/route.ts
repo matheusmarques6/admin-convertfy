@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasService } from "@/lib/integrations/asaas"
+import { createAsaasService, AsaasApiError } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -156,11 +156,11 @@ export async function GET(request: NextRequest) {
             upcomingHasMore = upcomingOffset < totalCount
           }
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Unknown error"
-          const isAuthError = message.includes("401") || message.includes("403") || message.includes("Unauthorized")
-
-          if (isAuthError) {
-            log.warn("Asaas auth error in financial summary:", message)
+          // AsaasApiError carrega o status HTTP — usar instanceof em vez de
+          // grep da mensagem (a mensagem nao contem mais '401'/'403' apos
+          // a refatoracao do cliente Asaas).
+          if (err instanceof AsaasApiError && (err.isAuthError || err.isPermissionError)) {
+            log.warn("Asaas auth error in financial summary", { status: err.status, endpoint: err.endpoint })
             asaasConnected = false
           } else {
             log.error("Error fetching Asaas financial data:", err)
