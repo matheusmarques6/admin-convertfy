@@ -26,63 +26,57 @@ interface FlowCardData {
   worstClients: Array<{ name: string; value: number }>
 }
 
-const FLOW_CARDS: FlowCardData[] = [
+// Empty-state templates: design identico aos cards com dados, porem
+// todos os valores sao '—'. Renderizados enquanto o endpoint agregado de
+// flows (cross-loja) nao esta disponivel.
+const EMPTY_FLOW_CARDS: FlowCardData[] = [
   {
     title: "Recuperação de Carrinho",
-    rate: 12.4,
-    revenue: "R$ 98K",
-    delta: 3.2,
+    rate: 0,
+    revenue: "—",
+    delta: 0,
     benchmark: 10,
-    sparklinePoints: "0,20 12,18 24,15 36,16 48,12 60,10 72,6 80,4",
+    sparklinePoints: "",
     tooltip: {
-      emailsEnviados: "14.320",
-      conversoes: "1.776",
-      ticketMedio: "R$ 55",
-      unsubRate: "0.3%",
-      flowsAtivos: "4",
+      emailsEnviados: "—",
+      conversoes: "—",
+      ticketMedio: "—",
+      unsubRate: "—",
+      flowsAtivos: "—",
     },
-    worstClients: [
-      { name: "EPORTH Energia", value: 3.2 },
-      { name: "Based 3.0", value: 4.1 },
-    ],
+    worstClients: [],
   },
   {
     title: "Abandono de Navegação",
-    rate: 4.8,
-    revenue: "R$ 54K",
-    delta: -1.1,
+    rate: 0,
+    revenue: "—",
+    delta: 0,
     benchmark: 4,
-    sparklinePoints: "0,8 12,6 24,8 36,10 48,12 60,14 72,18 80,20",
+    sparklinePoints: "",
     tooltip: {
-      emailsEnviados: "22.540",
-      conversoes: "1.082",
-      ticketMedio: "R$ 50",
-      unsubRate: "0.5%",
-      flowsAtivos: "3",
+      emailsEnviados: "—",
+      conversoes: "—",
+      ticketMedio: "—",
+      unsubRate: "—",
+      flowsAtivos: "—",
     },
-    worstClients: [
-      { name: "NUZE", value: 1.8 },
-      { name: "Donaris Joias", value: 2.4 },
-    ],
+    worstClients: [],
   },
   {
     title: "Win-back",
-    rate: 2.3,
-    revenue: "R$ 28K",
-    delta: -0.8,
+    rate: 0,
+    revenue: "—",
+    delta: 0,
     benchmark: 2.5,
-    sparklinePoints: "0,6 12,8 24,7 36,10 48,14 60,16 72,18 80,20",
+    sparklinePoints: "",
     tooltip: {
-      emailsEnviados: "8.900",
-      conversoes: "205",
-      ticketMedio: "R$ 137",
-      unsubRate: "0.8%",
-      flowsAtivos: "2",
+      emailsEnviados: "—",
+      conversoes: "—",
+      ticketMedio: "—",
+      unsubRate: "—",
+      flowsAtivos: "—",
     },
-    worstClients: [
-      { name: "Based 3.0", value: 0.4 },
-      { name: "EPORTH Energia", value: 0.9 },
-    ],
+    worstClients: [],
   },
 ]
 
@@ -141,11 +135,10 @@ function FlowCardSkeleton() {
 }
 
 function FlowCard({ data }: { data: FlowCardData }) {
+  const hasData = data.rate > 0 || (data.revenue && data.revenue !== "—")
   const isPositive = data.delta > 0
   const sparklineColor = isPositive ? "#10B981" : "#EF4444"
-  const deltaColor = isPositive
-    ? "text-green-500"
-    : "text-red-500"
+  const deltaColor = isPositive ? "text-green-500" : "text-red-500"
   const deltaPrefix = isPositive ? "+" : ""
 
   return (
@@ -167,9 +160,11 @@ function FlowCard({ data }: { data: FlowCardData }) {
             {/* Rate + Sparkline */}
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[24px] font-semibold tabular-nums text-gray-900 dark:text-white dark:text-gray-100">
-                {data.rate}%
+                {hasData ? `${data.rate}%` : "—"}
               </span>
-              <Sparkline points={data.sparklinePoints} color={sparklineColor} />
+              {hasData && data.sparklinePoints && (
+                <Sparkline points={data.sparklinePoints} color={sparklineColor} />
+              )}
             </div>
 
             {/* Revenue + Delta */}
@@ -177,14 +172,11 @@ function FlowCard({ data }: { data: FlowCardData }) {
               <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                 {data.revenue}
               </span>
-              <span
-                className={cn(
-                  "font-mono text-[13px] tabular-nums",
-                  deltaColor
-                )}
-              >
-                {deltaPrefix}{data.delta}%
-              </span>
+              {hasData && (
+                <span className={cn("font-mono text-[13px] tabular-nums", deltaColor)}>
+                  {deltaPrefix}{data.delta}%
+                </span>
+              )}
             </div>
 
             {/* Benchmark */}
@@ -197,19 +189,25 @@ function FlowCard({ data }: { data: FlowCardData }) {
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Piores clientes
               </p>
-              {data.worstClients.map((client) => (
-                <div
-                  key={client.name}
-                  className="flex items-center justify-between py-0.5"
-                >
-                  <span className="text-[12px] text-gray-700 dark:text-white/90 dark:text-gray-300">
-                    {client.name}
-                  </span>
-                  <span className="font-mono text-[12px] tabular-nums text-red-500">
-                    {client.value}%
-                  </span>
-                </div>
-              ))}
+              {data.worstClients.length === 0 ? (
+                <p className="text-[11px] text-gray-400 dark:text-white/40 py-0.5">
+                  —
+                </p>
+              ) : (
+                data.worstClients.map((client) => (
+                  <div
+                    key={client.name}
+                    className="flex items-center justify-between py-0.5"
+                  >
+                    <span className="text-[12px] text-gray-700 dark:text-white/90 dark:text-gray-300">
+                      {client.name}
+                    </span>
+                    <span className="font-mono text-[12px] tabular-nums text-red-500">
+                      {client.value}%
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </TooltipTrigger>
@@ -236,9 +234,12 @@ function FlowCard({ data }: { data: FlowCardData }) {
 
 interface DashboardFlowPerfProps {
   loading?: boolean
+  /** Dados agregados de flows (opcional). Quando nao fornecido, renderiza empty-state. */
+  flows?: FlowCardData[]
 }
 
-export function DashboardFlowPerf({ loading = false }: DashboardFlowPerfProps) {
+export function DashboardFlowPerf({ loading = false, flows }: DashboardFlowPerfProps) {
+  const cards = flows && flows.length > 0 ? flows : EMPTY_FLOW_CARDS
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-3">
@@ -263,7 +264,7 @@ export function DashboardFlowPerf({ loading = false }: DashboardFlowPerfProps) {
           ? Array.from({ length: 3 }).map((_, i) => (
               <FlowCardSkeleton key={i} />
             ))
-          : FLOW_CARDS.map((card) => (
+          : cards.map((card) => (
               <FlowCard key={card.title} data={card} />
             ))}
       </div>
