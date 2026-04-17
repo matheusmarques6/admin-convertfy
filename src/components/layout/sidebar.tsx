@@ -141,36 +141,53 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           collapsed ? "w-[68px]" : "w-[248px]"
         )}
       >
-        {/* Logo */}
+        {/* Header: logo (+ toggle interno quando expandido) */}
         <div
           className={cn(
-            "flex items-center shrink-0",
-            collapsed ? "justify-center h-16 px-2" : "h-20 px-5"
+            "flex items-center shrink-0 h-20",
+            collapsed ? "justify-center px-2" : "justify-between pl-5 pr-2"
           )}
         >
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
             {collapsed ? <LogoIcon size={28} /> : <Logo size="xl" />}
           </Link>
+
+          {/* Toggle — dentro do sidebar quando expandido */}
+          {!collapsed && (
+            <button
+              onClick={toggle}
+              aria-label="Recolher menu"
+              className={cn(
+                "hidden md:flex items-center justify-center shrink-0",
+                "w-8 h-8 rounded-[8px]",
+                "text-white/60 hover:text-white",
+                "hover:bg-white/[0.06] active:bg-white/[0.1]",
+                "transition-colors duration-150"
+              )}
+            >
+              <Icon icon={ChevronLeft} customSize={16} />
+            </button>
+          )}
         </div>
 
-        {/* Toggle expand/collapse — botao na borda direita do sidebar */}
-        <button
-          onClick={toggle}
-          className={cn(
-            "absolute top-6 -right-3.5 z-40",
-            "w-7 h-7 rounded-full flex items-center justify-center",
-            "bg-white dark:bg-white text-gray-600 shadow-md",
-            "hover:bg-gray-100 hover:text-gray-900",
-            "transition-colors duration-150",
-            "hidden md:flex",
-            "border border-gray-200"
-          )}
-        >
-          <Icon
-            icon={collapsed ? ChevronRight : ChevronLeft}
-            customSize={14}
-          />
-        </button>
+        {/* Toggle — dentro do sidebar quando colapsado (abaixo da logo, centralizado) */}
+        {collapsed && (
+          <div className="hidden md:flex justify-center pb-2">
+            <button
+              onClick={toggle}
+              aria-label="Expandir menu"
+              className={cn(
+                "flex items-center justify-center",
+                "w-9 h-9 rounded-[8px]",
+                "text-white/60 hover:text-white",
+                "hover:bg-white/[0.06] active:bg-white/[0.1]",
+                "transition-colors duration-150"
+              )}
+            >
+              <Icon icon={ChevronRight} customSize={16} />
+            </button>
+          </div>
+        )}
 
         {/* Navigation */}
         <ScrollArea className="flex-1 pt-2 pb-4">
