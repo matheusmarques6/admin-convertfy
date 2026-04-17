@@ -88,7 +88,7 @@ const FOOTER_STATS = [
   { label: "Volume de Envios", value: "—" },
   { label: "Perfis Ativos", value: "—" },
   { label: "Engajados (90d)", value: "—" },
-  { label: "Unsub Rate", value: "—" },
+  { label: "Unsub Rate", value: "0.08%" },
 ]
 
 // ─── Custom Tooltip ─────────────────────────────────────

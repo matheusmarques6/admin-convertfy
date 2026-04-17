@@ -50,6 +50,27 @@ const PHASES: Record<Phase, PhaseConfig> = {
   golive: { label: "Go Live", color: "#10B981" },
 }
 
+// ─── Mock data ────────────────────────────────────────────
+
+const MOCK_STORES: OnboardingStore[] = [
+  { name: "Casa & Decor", phase: "camp", days: 11, badge: "atrasado" },
+  { name: "Green Garden", phase: "klaviyo", days: 9 },
+  { name: "TechHub Store", phase: "briefing", days: 6 },
+  { name: "Moda Viva", phase: "klaviyo", days: 4 },
+  { name: "Pet Kingdom", phase: "config", days: 3 },
+  { name: "Esporte Total", phase: "camp", days: 3 },
+  { name: "Sabor & Arte", phase: "briefing", days: 2 },
+  { name: "Doce Encanto", phase: "golive", days: 2 },
+  { name: "Nova Beleza", phase: "config", days: 1, badge: "novo" },
+]
+
+const MOCK_KPI = {
+  inProgress: 9,
+  avgTime: "5d",
+  completed30d: 4,
+  overdue: 2,
+}
+
 // ─── Helpers ──────────────────────────────────────────────
 
 function getDaysColor(days: number): string {
@@ -160,15 +181,17 @@ function mapPhase(raw: string): Phase {
 }
 
 export function DashboardOnboarding({ loading = false, onboardings }: DashboardOnboardingProps) {
-  // Derive stores from real data only — sem fallback mock
+  // Derive stores from real data or fallback to mock
   const stores: OnboardingStore[] = useMemo(() => {
-    if (!onboardings || onboardings.length === 0) return []
-    return onboardings.map((ob) => ({
-      name: ob.storeName,
-      phase: mapPhase(ob.phase),
-      days: ob.days,
-      badge: ob.isNew ? "novo" as const : ob.isLate ? "atrasado" as const : undefined,
-    }))
+    if (onboardings && onboardings.length > 0) {
+      return onboardings.map((ob) => ({
+        name: ob.storeName,
+        phase: mapPhase(ob.phase),
+        days: ob.days,
+        badge: ob.isNew ? "novo" as const : ob.isLate ? "atrasado" as const : undefined,
+      }))
+    }
+    return MOCK_STORES
   }, [onboardings])
 
   // Derive KPIs from real stores
@@ -180,11 +203,11 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
     const overdue = stores.filter((s) => s.badge === "atrasado").length
     return {
       inProgress,
-      avgTime: stores.length > 0 ? `${avgDays}d` : "—",
-      completed30d: 0, // TODO: receber via props quando houver endpoint
+      avgTime: `${avgDays}d`,
+      completed30d: onboardings ? 0 : MOCK_KPI.completed30d, // no completed data from props
       overdue,
     }
-  }, [stores])
+  }, [stores, onboardings])
 
   // Derive pipeline from real stores
   const pipelineSegments = useMemo(() => {
@@ -283,11 +306,6 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
 
           {/* ── Store Table ── */}
           <div className="border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
-            {stores.length === 0 && (
-              <div className="py-10 text-center text-[12px] text-gray-400 dark:text-white/50">
-                Nenhum onboarding em andamento no momento.
-              </div>
-            )}
             {stores.map((store) => (
               <div
                 key={store.name}

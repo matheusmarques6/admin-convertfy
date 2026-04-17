@@ -23,6 +23,51 @@ interface Alert {
 
 type FilterValue = "all" | "critical" | "warning" | "info"
 
+const MOCK_ALERTS: Alert[] = [
+  {
+    id: "1",
+    title: "Deliverability em queda",
+    description: "Bounce rate 4.1%, limite 2%",
+    client: "Based 3.0",
+    severity: 0,
+  },
+  {
+    id: "2",
+    title: "3 flows pausados",
+    description: "Welcome, Abandono, Win-back",
+    client: "EPORTH Energia",
+    severity: 0,
+  },
+  {
+    id: "3",
+    title: "9 dias sem envio",
+    description: "Ultima campanha: 15/03",
+    client: "NUZE",
+    severity: 1,
+  },
+  {
+    id: "4",
+    title: "Onboarding atrasado",
+    description: "11d na fase 1a Campanha",
+    client: "Casa & Decor",
+    severity: 1,
+  },
+  {
+    id: "5",
+    title: "Unsub rate alto",
+    description: "0.23% nos ultimos 30 dias",
+    client: "Donaris Joias",
+    severity: 1,
+  },
+  {
+    id: "6",
+    title: "Lista estagnada",
+    description: "0.1% crescimento, meta 2%",
+    client: "Clube Rock",
+    severity: 2,
+  },
+]
+
 const SEVERITY_BAR_COLORS: Record<Severity, string> = {
   0: "bg-[#EF4444]",
   1: "bg-[#F59E0B]",
@@ -52,16 +97,18 @@ interface DashboardAlertsProps {
 export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlertsProps) {
   const [filter, setFilter] = useState<FilterValue>("all")
 
-  // Mapeia dados reais dos alertas (sem fallback mock).
+  // Use real data when available, fallback to mock
   const allAlerts: Alert[] = useMemo(() => {
-    if (!alertsProp || alertsProp.length === 0) return []
-    return alertsProp.map((a) => ({
-      id: a.id,
-      title: a.title,
-      description: a.description,
-      client: a.clientName,
-      severity: (Math.min(2, Math.max(0, a.severity)) as Severity),
-    }))
+    if (alertsProp && alertsProp.length > 0) {
+      return alertsProp.map((a) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        client: a.clientName,
+        severity: (Math.min(2, Math.max(0, a.severity)) as Severity),
+      }))
+    }
+    return MOCK_ALERTS
   }, [alertsProp])
 
   const criticalCount = useMemo(

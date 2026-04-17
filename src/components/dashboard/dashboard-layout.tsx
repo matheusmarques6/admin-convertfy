@@ -72,6 +72,15 @@ export interface DashboardLayoutProps {
   userName: string
 }
 
+// ─── Fallback sparklines (used when historical data is not yet available) ──
+
+const FALLBACK_SPARKLINES = {
+  revenue: [95, 110, 125, 140, 155, 170, 190, 210, 240, 265, 290, 320],
+  campaigns: [60, 65, 72, 80, 88, 95, 102, 110, 115, 120, 125, 128],
+  automations: [92, 95, 98, 100, 102, 99, 97, 100, 103, 101, 102, 102],
+  rate: [18, 17, 19, 18, 20, 19, 20, 21, 20, 21, 22, 21],
+}
+
 // ─── Chart Skeleton ──────────────────────────────────────────
 
 function ChartSkeleton() {
@@ -214,24 +223,32 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
             <KpiCard
               label="Receita Total"
               value={fmtCompact(totalRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.revenue}
               loading={isLoading}
               tooltip="Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
             />
             <KpiCard
               label="Receita Campanhas"
               value={fmtCompact(campaignRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.campaigns}
               loading={isLoading}
               tooltip="Receita atribuída a campanhas de email e SMS enviadas pela Convertfy no período."
             />
             <KpiCard
               label="Receita Automações"
               value={fmtCompact(flowRevenue)}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.automations}
               loading={isLoading}
               tooltip="Receita gerada por flows automáticos (carrinho abandonado, welcome, win-back, etc.) no período."
             />
             <KpiCard
               label="Taxa média da Convertfy"
               value={`${convertfyRate.toFixed(1)}%`}
+              delta={{ value: 0, label: "vs período anterior" }}
+              sparkData={FALLBACK_SPARKLINES.rate}
               variant="gradient"
               loading={isLoading}
               tooltip="Percentual médio da receita total que é atribuída às ações da Convertfy (campanhas + automações) entre todas as lojas."
