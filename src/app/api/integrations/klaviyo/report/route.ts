@@ -1001,6 +1001,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         connected: true,
+        platform: "klaviyo" as const,
         storeName: store.storeName,
         generatedAt: new Date().toISOString(),
         period,
@@ -1258,6 +1259,7 @@ export async function GET(request: NextRequest) {
     const reportData = {
       success: true,
       connected: true,
+      platform: "klaviyo" as const,
       storeName: store.storeName,
       generatedAt: new Date().toISOString(),
       period,

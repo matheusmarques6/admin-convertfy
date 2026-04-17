@@ -39,6 +39,7 @@ import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCu
 interface KlaviyoReportData {
   success: boolean
   connected: boolean
+  platform?: "klaviyo" | "omnisend" | "none"
   storeName: string
   generatedAt: string
   period: string
@@ -898,7 +899,16 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <div>
             <p className="text-sm font-medium text-warning">Nenhum dado encontrado</p>
             <p className="text-xs text-muted-foreground">
-              Verifique se a API Key do Klaviyo tem permissão para acessar relatórios (Reporting scope).
+              {(() => {
+                const p = reportData.platform
+                if (p === "omnisend") {
+                  return "A integração Omnisend está conectada mas não retornou nenhuma campanha, automação ou receita no período selecionado. Verifique se a loja já enviou campanhas ou se há pedidos atribuídos no Omnisend."
+                }
+                if (p === "klaviyo") {
+                  return "Verifique se a API Key do Klaviyo tem permissão para acessar relatórios (Reporting scope)."
+                }
+                return "Nenhuma plataforma de email marketing está configurada para esta loja. Conecte Klaviyo ou Omnisend na aba Integrações."
+              })()}
             </p>
           </div>
         </div>
