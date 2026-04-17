@@ -173,14 +173,14 @@ export function DashboardTopBar({
 
   return (
     <div className={cn("mb-6", className)}>
-      {/* ──── Row 1: Title + Greeting + Actions ──── */}
+      {/* ──── Row 1: Greeting + Actions ──── */}
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-gray-900 dark:text-white dark:text-[#EAEDF3]">
-            Dashboard
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-white/60 dark:text-[#8B92A5] mt-0.5">
+          <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-gray-900 dark:text-white">
             {getGreeting()}, {userName}
+          </h2>
+          <p className="text-[13px] text-gray-500 dark:text-white/60 mt-0.5">
+            {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
 
