@@ -125,25 +125,25 @@ function MobileClientCard({ client }: { client: ClientRevenueRow }) {
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+        <span className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
           {client.name}
         </span>
         <StatusBadge status={client.status} />
       </div>
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[15px] font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+        <span className="font-mono text-[15px] font-semibold tabular-nums text-gray-900 dark:text-white dark:text-gray-100">
           {formatRevenue(client.revenue)}
         </span>
-        <div className="flex items-center gap-3 text-[12px] text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-3 text-[12px] text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50">
           <span>
             Open{" "}
-            <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300">
+            <span className="font-mono tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
               {formatPercent(client.openRate)}
             </span>
           </span>
           <span>
             Click{" "}
-            <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300">
+            <span className="font-mono tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
               {formatPercent(client.clickRate)}
             </span>
           </span>
@@ -201,20 +201,20 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white",
+        "overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+          <h3 className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
             Clientes por Receita
           </h3>
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                   <Info className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
@@ -228,7 +228,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-white/50" />
             <input
               type="text"
               value={search}
@@ -238,9 +238,9 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
               }}
               placeholder="Buscar cliente..."
               className={cn(
-                "h-8 max-w-[200px] rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-transparent pl-8 pr-3 text-[13px] text-gray-700 placeholder:text-gray-400",
+                "h-8 max-w-[200px] rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-transparent pl-8 pr-3 text-[13px] text-gray-700 dark:text-white/90 placeholder:text-gray-400 dark:text-white/50",
                 "outline-none transition-colors focus:border-[#4E62D8]/40 focus:ring-1 focus:ring-[#4E62D8]/20",
-                "dark:border-[rgba(255,255,255,0.08)] dark:text-gray-300 dark:placeholder:text-gray-500"
+                "dark:border-[rgba(255,255,255,0.08)] dark:text-gray-300 dark:placeholder:text-gray-500 dark:text-white/60"
               )}
             />
           </div>
@@ -266,22 +266,22 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
             <table className="w-full">
               <thead>
                 <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50">
-                  <th className="py-2.5 px-4 text-left text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-left text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Cliente
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Receita
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Open Rate
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Click Rate
                   </th>
-                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Trend
                   </th>
-                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400">
+                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Status
                   </th>
                 </tr>
@@ -289,7 +289,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
               <tbody>
                 {pageData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-[13px] text-gray-400">
+                    <td colSpan={6} className="px-4 py-8 text-center text-[13px] text-gray-400 dark:text-white/50">
                       Nenhum cliente encontrado
                     </td>
                   </tr>
@@ -300,22 +300,22 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
                       className="transition-colors hover:bg-[rgba(0,0,0,0.02)] dark:hover:bg-[rgba(255,255,255,0.02)]"
                     >
                       <td className="px-4 py-2.5">
-                        <span className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+                        <span className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                           {client.name}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="font-mono text-[13px] tabular-nums text-gray-900 dark:text-gray-100">
+                        <span className="font-mono text-[13px] tabular-nums text-gray-900 dark:text-white dark:text-gray-100">
                           {formatRevenue(client.revenue)}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-gray-300">
+                        <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                           {formatPercent(client.openRate)}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-gray-300">
+                        <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                           {formatPercent(client.clickRate)}
                         </span>
                       </td>
@@ -339,7 +339,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
           {/* Mobile Card Stack */}
           <div className="block md:hidden">
             {pageData.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-gray-400">
+              <div className="px-4 py-8 text-center text-[13px] text-gray-400 dark:text-white/50">
                 Nenhum cliente encontrado
               </div>
             ) : (
@@ -353,7 +353,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
 
       {/* ── Footer ── */}
       <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-4 py-2.5 dark:border-[rgba(255,255,255,0.06)]">
-        <p className="text-[12px] text-gray-400">
+        <p className="text-[12px] text-gray-400 dark:text-white/50">
           <span className="font-mono tabular-nums">{showingStart}</span>
           {totalClients > 0 && (
             <>
@@ -371,8 +371,8 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
             className={cn(
               "inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1.5 text-xs font-medium transition-colors",
               canPrev
-                ? "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5"
-                : "cursor-not-allowed text-gray-300 dark:text-gray-600"
+                ? "text-gray-600 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/10 dark:bg-[#242836] dark:text-gray-400 dark:text-white/50 dark:hover:bg-white/5"
+                : "cursor-not-allowed text-gray-300 dark:text-gray-600 dark:text-white/70"
             )}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -385,8 +385,8 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
             className={cn(
               "inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1.5 text-xs font-medium transition-colors",
               canNext
-                ? "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5"
-                : "cursor-not-allowed text-gray-300 dark:text-gray-600"
+                ? "text-gray-600 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/10 dark:bg-[#242836] dark:text-gray-400 dark:text-white/50 dark:hover:bg-white/5"
+                : "cursor-not-allowed text-gray-300 dark:text-gray-600 dark:text-white/70"
             )}
           >
             Próximo

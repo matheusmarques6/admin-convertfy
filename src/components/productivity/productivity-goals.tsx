@@ -52,11 +52,11 @@ export function ProductivityGoals() {
   return (
     <div className="flex-1 overflow-auto">
       {/* Header */}
-      <header className="bg-white border-b border-[rgba(0,0,0,0.08)]">
+      <header className="bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)]">
         <div className="flex justify-between items-center px-6 py-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-[22px] font-semibold text-gray-900 m-0 tracking-[-0.02em]">Metas & OKRs</h1>
-            <span className="bg-gray-100 text-gray-600 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">{totalGoals}</span>
+            <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white m-0 tracking-[-0.02em]">Metas & OKRs</h1>
+            <span className="bg-gray-100 dark:bg-[#242836] text-gray-600 dark:text-white/70 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">{totalGoals}</span>
           </div>
           <div className="flex items-center gap-2">
             <DSBadge type="brand">{quarter}</DSBadge>
@@ -79,30 +79,30 @@ export function ProductivityGoals() {
             { label: "Key Results", value: "—", color: "#4E62D8" },
             { label: "Dias restantes", value: String(Math.max(0, 90 - (now.getMonth() % 3) * 30 - now.getDate())), color: "#9CA3AF" },
           ].map((kpi) => (
-            <div key={kpi.label} className="bg-white rounded-lg border border-[rgba(0,0,0,0.08)] p-4 text-center">
+            <div key={kpi.label} className="bg-white dark:bg-[#1A1D27] rounded-lg border border-[rgba(0,0,0,0.08)] p-4 text-center">
               <div className="text-[24px] font-semibold font-mono tabular-nums" style={{ color: kpi.color }}>{kpi.value}</div>
-              <div className="text-[11px] text-gray-400 mt-1">{kpi.label}</div>
+              <div className="text-[11px] text-gray-400 dark:text-white/50 mt-1">{kpi.label}</div>
             </div>
           ))}
         </div>
 
         {/* New goal form */}
         {showNewGoal && (
-          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-[rgba(0,0,0,0.08)]">
+          <div className="mb-4 p-4 bg-gray-50 dark:bg-[#242836] rounded-lg border border-[rgba(0,0,0,0.08)]">
             <div className="flex gap-3 items-end">
               <div className="flex-1">
-                <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Titulo da meta</label>
+                <label className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase block mb-1">Titulo da meta</label>
                 <input
                   value={newGoalTitle}
                   onChange={(e) => setNewGoalTitle(e.target.value)}
                   placeholder="Ex: Faturar R$150k MRR"
-                  className="w-full h-9 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 focus:outline-none focus:border-brand-400 bg-white"
+                  className="w-full h-9 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 dark:text-white/90 focus:outline-none focus:border-brand-400 bg-white dark:bg-[#1A1D27]"
                   autoFocus
                 />
               </div>
               <button
                 onClick={() => { setShowNewGoal(false); setNewGoalTitle("") }}
-                className="h-9 px-4 rounded-md border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[12px] text-gray-600 hover:bg-gray-50"
+                className="h-9 px-4 rounded-md border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] cursor-pointer text-[12px] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836]"
               >
                 Cancelar
               </button>
@@ -124,11 +124,11 @@ export function ProductivityGoals() {
         {/* Goals list */}
         {goals.length === 0 ? (
           <div className="text-center py-16">
-            <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center mx-auto mb-3 text-gray-400">
+            <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-[#242836] flex items-center justify-center mx-auto mb-3 text-gray-400 dark:text-white/50">
               <IconTarget size={24} />
             </div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Nenhuma meta definida</p>
-            <p className="text-[12px] text-gray-400">Crie metas e key results para acompanhar o progresso do trimestre.</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-white/90 mb-1">Nenhuma meta definida</p>
+            <p className="text-[12px] text-gray-400 dark:text-white/50">Crie metas e key results para acompanhar o progresso do trimestre.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -138,10 +138,10 @@ export function ProductivityGoals() {
                   <ProgressCircle percentage={goal.percentage} color={goal.color} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[14px] font-semibold text-gray-800 truncate">{goal.name}</span>
+                      <span className="text-[14px] font-semibold text-gray-800 dark:text-white truncate">{goal.name}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[12px] text-gray-400">{goal.current}</span>
+                      <span className="text-[12px] text-gray-400 dark:text-white/50">{goal.current}</span>
                       <div className="flex-1 max-w-[200px]">
                         <ProgressBar percentage={goal.percentage} color={goal.color} height={5} />
                       </div>

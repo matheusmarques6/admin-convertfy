@@ -176,10 +176,10 @@ export function DashboardTopBar({
       {/* ──── Row 1: Title + Greeting + Actions ──── */}
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-gray-900 dark:text-[#EAEDF3]">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-gray-900 dark:text-white dark:text-[#EAEDF3]">
             Dashboard
           </h1>
-          <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-0.5">
+          <p className="text-sm text-gray-500 dark:text-white/60 dark:text-[#8B92A5] mt-0.5">
             {getGreeting()}, {userName}
           </p>
         </div>
@@ -204,7 +204,7 @@ export function DashboardTopBar({
             onChange={(e) => handlePeriodChange(e.target.value)}
             className={cn(
               "w-full h-11 rounded-[6px] px-3 text-sm font-medium",
-              "bg-white border border-[rgba(0,0,0,0.08)] text-gray-700",
+              "bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] text-gray-700 dark:text-white/90",
               "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-[#EAEDF3]",
               "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
               "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
@@ -255,13 +255,13 @@ export function DashboardTopBar({
         <div className="flex-1" />
 
         {/* Range indicator text */}
-        <span className="text-sm text-gray-500 dark:text-[#8B92A5] tabular-nums font-mono whitespace-nowrap">
+        <span className="text-sm text-gray-500 dark:text-white/60 dark:text-[#8B92A5] tabular-nums font-mono whitespace-nowrap">
           {formatDateRange(effectiveRange)}
         </span>
 
         {/* Compare toggle */}
         <label className="flex items-center gap-2 cursor-pointer shrink-0">
-          <span className="text-sm text-gray-500 dark:text-[#8B92A5] hidden sm:inline">
+          <span className="text-sm text-gray-500 dark:text-white/60 dark:text-[#8B92A5] hidden sm:inline">
             vs anterior
           </span>
           <Switch

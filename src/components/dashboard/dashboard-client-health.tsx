@@ -84,7 +84,7 @@ function getDotColor(score: number): string | null {
 
 function getRevenueColor(percent: number): string {
   if (percent >= 35) return "text-emerald-600 dark:text-emerald-400"
-  if (percent >= 20) return "text-gray-700 dark:text-gray-300"
+  if (percent >= 20) return "text-gray-700 dark:text-white/90 dark:text-gray-300"
   return "text-red-600 dark:text-red-400"
 }
 
@@ -109,7 +109,7 @@ function ClientHealthSkeleton() {
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white",
+        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -150,7 +150,7 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
     <div className="min-w-[240px] space-y-0 p-1 text-[12px]">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
             Faturamento Loja
           </span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
@@ -158,7 +158,7 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
             Faturamento Atribuído
           </span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
@@ -166,7 +166,7 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">% da Receita</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">% da Receita</span>
           <span className="font-mono tabular-nums text-[#4E62D8] dark:text-[#7B8CEA]">
             {client.revenuePercent.toFixed(1)}%
           </span>
@@ -177,31 +177,31 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
 
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">Open Rate</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Open Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
             {client.openRate?.toFixed(1)}%
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">Click Rate</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Click Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
             {client.clickRate?.toFixed(1)}%
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">CTOR</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">CTOR</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
             {client.ctor?.toFixed(1)}%
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">Bounce</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Bounce</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
             {client.bounceRate?.toFixed(1)}%
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
-          <span className="text-gray-400 dark:text-gray-500">Unsub Rate</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Unsub Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
             {client.unsubRate?.toFixed(2)}%
           </span>
@@ -280,7 +280,7 @@ export function DashboardClientHealth({
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white",
+        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -288,13 +288,13 @@ export function DashboardClientHealth({
       <div className="flex items-center justify-between px-5 py-4">
         <div>
           <div className="flex items-center gap-1.5">
-            <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+            <h3 className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
               Saúde das Lojas
             </h3>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
@@ -304,7 +304,7 @@ export function DashboardClientHealth({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <p className="mt-0.5 text-[12px] text-gray-400 dark:text-gray-500">
+          <p className="mt-0.5 text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
             {needsAttention} precisam atenção &middot; {Math.min(MAX_VISIBLE, totalStores)} de{" "}
             {totalStores}
           </p>
@@ -318,7 +318,7 @@ export function DashboardClientHealth({
               setPage(0)
             }}
           >
-            <SelectTrigger className="h-8 w-[140px] border-gray-200 text-xs dark:border-gray-700">
+            <SelectTrigger className="h-8 w-[140px] border-gray-200 dark:border-white/10 text-xs dark:border-gray-700">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -344,19 +344,19 @@ export function DashboardClientHealth({
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50">
-              <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Loja
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Fat. Loja
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Fat. Atrib.
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 % Receita
               </th>
-              <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Score
               </th>
             </tr>
@@ -367,7 +367,7 @@ export function DashboardClientHealth({
                 <tr>
                   <td
                     colSpan={5}
-                    className="px-5 py-12 text-center text-[12px] text-gray-400 dark:text-gray-500"
+                    className="px-5 py-12 text-center text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60"
                   >
                     {loading
                       ? "Carregando lojas..."
@@ -400,19 +400,19 @@ export function DashboardClientHealth({
                                 )}
                               />
                             )}
-                            <span className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+                            <span className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                               {client.name}
                             </span>
                           </div>
                         </td>
 
                         {/* Fat. Loja */}
-                        <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                           {formatCompact(client.storeRevenue)}
                         </td>
 
                         {/* Fat. Atrib. */}
-                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-medium tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-medium tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                           {formatCompact(client.attributedRevenue)}
                         </td>
 
@@ -455,7 +455,7 @@ export function DashboardClientHealth({
 
       {/* ── Footer ─────────────────────────────────────── */}
       <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-5 py-3 dark:border-[rgba(255,255,255,0.06)]">
-        <span className="text-[12px] text-gray-400 dark:text-gray-500">
+        <span className="text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
           {Math.min(MAX_VISIBLE, totalStores)} de {totalStores} lojas
         </span>
         <div className="flex gap-1.5">
@@ -465,8 +465,8 @@ export function DashboardClientHealth({
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             className={cn(
               "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-              "border border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400",
-              "hover:bg-gray-50 dark:hover:bg-gray-800",
+              "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 dark:border-gray-700 dark:text-gray-400 dark:text-white/50",
+              "hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-gray-800",
               "disabled:cursor-not-allowed disabled:opacity-40"
             )}
           >
@@ -478,8 +478,8 @@ export function DashboardClientHealth({
             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
             className={cn(
               "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-              "border border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400",
-              "hover:bg-gray-50 dark:hover:bg-gray-800",
+              "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 dark:border-gray-700 dark:text-gray-400 dark:text-white/50",
+              "hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-gray-800",
               "disabled:cursor-not-allowed disabled:opacity-40"
             )}
           >

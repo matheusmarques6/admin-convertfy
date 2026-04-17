@@ -76,7 +76,7 @@ const MOCK_KPI = {
 function getDaysColor(days: number): string {
   if (days > 7) return "text-red-600 dark:text-red-400"
   if (days > 5) return "text-amber-600 dark:text-amber-400"
-  return "text-gray-500 dark:text-gray-400"
+  return "text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50"
 }
 
 // ─── Skeleton ─────────────────────────────────────────────
@@ -155,12 +155,12 @@ function KpiCell({
           "text-[20px] font-semibold font-mono tabular-nums",
           isRed
             ? "text-red-600 dark:text-red-400"
-            : "text-gray-900 dark:text-[#EAEDF3]"
+            : "text-gray-900 dark:text-white dark:text-[#EAEDF3]"
         )}
       >
         {value}
       </div>
-      <div className="text-[11px] text-gray-400 dark:text-gray-500">
+      <div className="text-[11px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
         {label}
       </div>
     </div>
@@ -225,7 +225,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-6",
+        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -236,13 +236,13 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
           {/* ── Header ── */}
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+              <h3 className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
                 Onboarding
               </h3>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                       <Info className="h-3.5 w-3.5" />
                     </button>
                   </TooltipTrigger>
@@ -294,10 +294,10 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
                   className="inline-block h-1.5 w-1.5 rounded-full"
                   style={{ backgroundColor: PHASES[seg.phase].color }}
                 />
-                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                <span className="text-[11px] text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50">
                   {PHASES[seg.phase].label}
                 </span>
-                <span className="text-[11px] font-mono tabular-nums text-gray-400 dark:text-gray-500">
+                <span className="text-[11px] font-mono tabular-nums text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                   {seg.count}
                 </span>
               </div>
@@ -313,7 +313,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
               >
                 {/* Left: store name + badge */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+                  <span className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                     {store.name}
                   </span>
                   {store.badge === "novo" && (
@@ -334,7 +334,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
                     className="inline-block h-1.5 w-1.5 rounded-full"
                     style={{ backgroundColor: PHASES[store.phase].color }}
                   />
-                  <span className="text-[12px] text-gray-500 dark:text-gray-400">
+                  <span className="text-[12px] text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50">
                     {PHASES[store.phase].label}
                   </span>
                 </div>
@@ -353,7 +353,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
           </div>
 
           {/* ── Footer ── */}
-          <div className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">
+          <div className="mt-3 text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
             {kpi.inProgress} em andamento &middot; m&eacute;dia {kpi.avgTime}
           </div>
         </>

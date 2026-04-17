@@ -92,7 +92,7 @@ function CustomTooltip({ active, payload, label, coordinate, viewBox }: CustomTo
         transform: showOnLeft ? "translateX(-110%)" : "translateX(10%)",
       }}
     >
-      <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-1.5 font-medium">
+      <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mb-1.5 font-medium">
         {label}
       </p>
 
@@ -111,7 +111,7 @@ function CustomTooltip({ active, payload, label, coordinate, viewBox }: CustomTo
             <span className="inline-block w-2 h-0.5 rounded-full bg-gray-400 opacity-45" />
             Anterior
           </span>
-          <span className="font-mono tabular-nums font-medium text-gray-400">
+          <span className="font-mono tabular-nums font-medium text-gray-400 dark:text-white/50">
             R$ {previousValue}K
           </span>
         </div>
@@ -121,31 +121,31 @@ function CustomTooltip({ active, payload, label, coordinate, viewBox }: CustomTo
 
       <div className="space-y-1 text-[11px]">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-400 dark:text-[#8B92A5]">Fat. Atribuido</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-[#8B92A5]">Fat. Atribuido</span>
           <span className="font-mono tabular-nums">
             R$ {(data.fatAtribuido / 1000).toFixed(0)}K
           </span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-400 dark:text-[#8B92A5]">Campanhas</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-[#8B92A5]">Campanhas</span>
           <span className="font-mono tabular-nums">
             R$ {(data.campanhas / 1000).toFixed(0)}K
           </span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-400 dark:text-[#8B92A5]">Automacoes</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-[#8B92A5]">Automacoes</span>
           <span className="font-mono tabular-nums">
             R$ {(data.automacoes / 1000).toFixed(0)}K
           </span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-400 dark:text-[#8B92A5]">Fat. Total Lojas</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-[#8B92A5]">Fat. Total Lojas</span>
           <span className="font-mono tabular-nums">
             R$ {(data.fatTotalLojas / 1000).toFixed(0)}K
           </span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-400 dark:text-[#8B92A5]">Taxa Receita</span>
+          <span className="text-gray-400 dark:text-white/50 dark:text-[#8B92A5]">Taxa Receita</span>
           <span className="font-mono tabular-nums">
             {data.taxaReceita.toFixed(1)}%
           </span>
@@ -201,19 +201,19 @@ function ChartSkeleton() {
       {/* Header skeleton */}
       <div className="mb-5">
         <div className="h-4 w-36 bg-gray-100 dark:bg-[#242836] rounded animate-pulse" />
-        <div className="h-3 w-52 bg-gray-50 dark:bg-[#1E2130] rounded animate-pulse mt-1.5" />
+        <div className="h-3 w-52 bg-gray-50 dark:bg-[#242836] dark:bg-[#1E2130] rounded animate-pulse mt-1.5" />
       </div>
 
       {/* Legend skeleton */}
       <div className="flex items-center gap-6 mb-4">
         <div className="h-3 w-16 bg-gray-100 dark:bg-[#242836] rounded animate-pulse" />
-        <div className="h-3 w-28 bg-gray-50 dark:bg-[#1E2130] rounded animate-pulse" />
+        <div className="h-3 w-28 bg-gray-50 dark:bg-[#242836] dark:bg-[#1E2130] rounded animate-pulse" />
       </div>
 
       {/* Chart area skeleton */}
       <div
         className={cn(
-          "h-[280px] bg-gray-50 dark:bg-[#1E2130] rounded-[8px] animate-pulse",
+          "h-[280px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1E2130] rounded-[8px] animate-pulse",
           "flex items-end justify-between px-6 pb-6 gap-3",
         )}
       >
@@ -266,13 +266,13 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
       {/* Header */}
       <div className="mb-1">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-[14px] font-medium leading-5 text-gray-700 dark:text-[#C8CDD8]">
+          <h3 className="text-[14px] font-medium leading-5 text-gray-700 dark:text-white/90 dark:text-[#C8CDD8]">
             Receita Atribuida
           </h3>
           <TooltipProvider delayDuration={200}>
             <InfoTooltip>
               <TooltipTrigger asChild>
-                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                   <Info className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
@@ -282,20 +282,20 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
             </InfoTooltip>
           </TooltipProvider>
         </div>
-        <p className="text-[12px] text-gray-400 dark:text-[#5C6378] mt-0.5">
+        <p className="text-[12px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-0.5">
           Atual vs anterior (milhares R$)
         </p>
       </div>
 
       {/* Legend */}
       <div className="flex items-center gap-5 mb-4 mt-3">
-        <span className="flex items-center gap-1.5 text-[12px] text-gray-600 dark:text-[#A0A7B8]">
+        <span className="flex items-center gap-1.5 text-[12px] text-gray-600 dark:text-white/70 dark:text-[#A0A7B8]">
           <svg width="16" height="2" viewBox="0 0 16 2" className="shrink-0">
             <line x1="0" y1="1" x2="16" y2="1" stroke="#4E62D8" strokeWidth="2" />
           </svg>
           Atual
         </span>
-        <span className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-[#5C6378]">
+        <span className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-white/50 dark:text-[#5C6378]">
           <svg width="16" height="2" viewBox="0 0 16 2" className="shrink-0">
             <line
               x1="0" y1="1" x2="16" y2="1"
@@ -313,7 +313,7 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
       <div className="h-[280px] relative">
         {!hasRealData && !loading && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
-            <p className="text-sm text-gray-400 dark:text-[#5C6378]">Aguardando dados do sync</p>
+            <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378]">Aguardando dados do sync</p>
           </div>
         )}
         <ResponsiveContainer width="100%" height="100%">

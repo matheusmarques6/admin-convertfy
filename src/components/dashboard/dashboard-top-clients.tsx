@@ -45,7 +45,7 @@ const topClientColumns: ColumnDef<TopClient>[] = [
     type: "text",
     mobilePriority: "title",
     cell: (row) => (
-      <span className="font-medium text-gray-900 dark:text-[#EAEDF3]">
+      <span className="font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
         {row.name}
       </span>
     ),

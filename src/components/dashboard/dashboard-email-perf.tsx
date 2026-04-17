@@ -117,13 +117,13 @@ function EmailPerfTooltip({
         "text-sm text-white dark:text-[#EAEDF3]",
       )}
     >
-      <p className="text-xs text-gray-400 dark:text-[#5C6378] mb-1">{label}</p>
+      <p className="text-xs text-gray-400 dark:text-white/50 dark:text-[#5C6378] mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p
           key={i}
           className={cn(
             "font-mono tabular-nums font-medium",
-            entry.dataKey === "previous" && "text-gray-400 dark:text-[#5C6378]",
+            entry.dataKey === "previous" && "text-gray-400 dark:text-white/50 dark:text-[#5C6378]",
           )}
         >
           {entry.dataKey === "current" ? "Atual: " : "Anterior: "}
@@ -158,7 +158,7 @@ function MetricTile({
         "border",
         selected
           ? "border-[#7B8CEA] bg-[#4E62D8]/5 dark:border-[#7B8CEA] dark:bg-[#4E62D8]/10"
-          : "border-black/[0.08] bg-transparent hover:bg-gray-50 dark:border-white/[0.08] dark:hover:bg-white/[0.03]",
+          : "border-black/[0.08] bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:border-white/[0.08] dark:hover:bg-white/[0.03]",
       )}
     >
       <span
@@ -166,7 +166,7 @@ function MetricTile({
           "text-xs leading-none",
           selected
             ? "text-[#4E62D8] dark:text-[#7B8CEA]"
-            : "text-gray-500 dark:text-[#8B92A5]",
+            : "text-gray-500 dark:text-white/60 dark:text-[#8B92A5]",
         )}
       >
         {metric.label}
@@ -176,7 +176,7 @@ function MetricTile({
           "mt-1.5 text-2xl font-semibold font-mono tabular-nums leading-none",
           selected
             ? "text-[#4E62D8] dark:text-[#7B8CEA]"
-            : "text-gray-900 dark:text-[#EAEDF3]",
+            : "text-gray-900 dark:text-white dark:text-[#EAEDF3]",
         )}
       >
         {metric.value}
@@ -204,7 +204,7 @@ function EmailPerfSkeleton() {
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-black/[0.08] bg-white p-6",
+        "rounded-[8px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-white/[0.08] dark:bg-[#1A1D27]",
       )}
     >
@@ -269,7 +269,7 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-black/[0.08] bg-white p-6",
+        "rounded-[8px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-white/[0.08] dark:bg-[#1A1D27]",
       )}
     >
@@ -277,13 +277,13 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-medium text-gray-700 dark:text-[#C1C7D4]">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-white/90 dark:text-[#C1C7D4]">
               Performance do Email
             </h3>
             <TooltipProvider delayDuration={200}>
               <InfoTooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                  <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
@@ -293,11 +293,11 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
               </InfoTooltip>
             </TooltipProvider>
           </div>
-          <p className="mt-0.5 text-xs text-gray-400 dark:text-[#5C6378] font-mono tabular-nums">
+          <p className="mt-0.5 text-xs text-gray-400 dark:text-white/50 dark:text-[#5C6378] font-mono tabular-nums">
             198.6K entregues &middot; R$ 847K receita atribuida
           </p>
         </div>
-        <div className="flex items-center gap-4 shrink-0 text-xs text-gray-500 dark:text-[#8B92A5]">
+        <div className="flex items-center gap-4 shrink-0 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-4 h-0 border-t-2 border-[#4E62D8] dark:border-[#7B8CEA]" />
             Atual
@@ -399,10 +399,10 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
         <div className="flex items-center justify-between gap-4">
           {FOOTER_STATS.map((stat) => (
             <div key={stat.label} className="flex flex-col items-center text-center">
-              <span className="text-[11px] text-gray-400 dark:text-[#5C6378]">
+              <span className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378]">
                 {stat.label}
               </span>
-              <span className="mt-0.5 text-[13px] font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <span className="mt-0.5 text-[13px] font-semibold font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {stat.value}
               </span>
             </div>

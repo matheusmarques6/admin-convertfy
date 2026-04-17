@@ -62,7 +62,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-lg w-full max-w-[640px] max-h-[85vh] flex flex-col shadow-lg overflow-hidden">
+      <div className="relative bg-white dark:bg-[#1A1D27] rounded-lg w-full max-w-[640px] max-h-[85vh] flex flex-col shadow-lg overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-brand-400 via-brand to-brand-800 px-6 py-4 flex items-center justify-between text-white shrink-0">
           <div className="flex items-center gap-2">
@@ -87,7 +87,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
               key={i}
               className={cn(
                 "flex items-center gap-2 cursor-pointer transition-colors duration-fast ease-out-expo",
-                i === step ? "text-brand-400" : i < step ? "text-positive-text" : "text-gray-400"
+                i === step ? "text-brand-400" : i < step ? "text-positive-text" : "text-gray-400 dark:text-white/50"
               )}
               onClick={() => i <= step && setStep(i)}
             >
@@ -95,7 +95,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
                 "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0",
                 i === step ? "bg-brand-400 text-white" :
                 i < step ? "bg-positive-text text-white" :
-                "bg-gray-100 text-gray-400"
+                "bg-gray-100 dark:bg-[#242836] text-gray-400 dark:text-white/50"
               )}>
                 {i < step ? <IconCheck size={12} /> : i + 1}
               </div>
@@ -111,8 +111,8 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
           {/* Step 1: Review tasks */}
           {step === 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">Como foi ontem?</h3>
-              <p className="text-[12px] text-gray-400 mb-4">Revise o que completou e o que ficou pendente.</p>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">Como foi ontem?</h3>
+              <p className="text-[12px] text-gray-400 dark:text-white/50 mb-4">Revise o que completou e o que ficou pendente.</p>
 
               {/* Mood selector */}
               <div className="flex gap-3 mb-5">
@@ -128,29 +128,29 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
                       "flex-1 flex flex-col items-center gap-2 py-4 rounded-md border-2 cursor-pointer transition-all duration-fast ease-out-expo",
                       mood === m.id
                         ? "border-brand-400 bg-brand-50"
-                        : "border-[rgba(0,0,0,0.08)] bg-white hover:bg-gray-50"
+                        : "border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836]"
                     )}
                   >
                     <span className="text-[24px]">{m.emoji}</span>
-                    <span className={cn("text-[12px] font-medium", mood === m.id ? "text-brand-400" : "text-gray-600")}>{m.label}</span>
+                    <span className={cn("text-[12px] font-medium", mood === m.id ? "text-brand-400" : "text-gray-600 dark:text-white/70")}>{m.label}</span>
                   </button>
                 ))}
               </div>
 
               {/* Calendar preview */}
-              <div className="mb-4 p-3 bg-gray-50 rounded-md border border-gray-100">
-                <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Compromissos hoje</div>
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-[#242836] rounded-md border border-gray-100 dark:border-white/10">
+                <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2">Compromissos hoje</div>
                 {calendarEvents.map((ev) => (
                   <div key={ev.id} className="flex items-center gap-2 py-[4px]">
                     <div className="w-[3px] h-5 rounded-[2px] shrink-0" style={{ background: ev.color }} />
-                    <span className="text-[11px] font-semibold text-gray-500 font-mono min-w-9">{ev.time}</span>
-                    <span className="text-[12px] text-gray-600">{ev.name}</span>
+                    <span className="text-[11px] font-semibold text-gray-500 dark:text-white/60 font-mono min-w-9">{ev.time}</span>
+                    <span className="text-[12px] text-gray-600 dark:text-white/70">{ev.name}</span>
                   </div>
                 ))}
               </div>
 
               {/* Task list */}
-              <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Tarefas disponiveis</div>
+              <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2">Tarefas disponiveis</div>
               {tasks.filter((t) => t.status !== "done").map((t) => (
                 <div
                   key={t.id}
@@ -159,13 +159,13 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
                     "flex items-center gap-3 py-2 px-3 rounded-sm cursor-pointer border mb-1 transition-colors duration-fast ease-out-expo",
                     selectedTasks.has(t.id)
                       ? "bg-brand-50 border-brand-100"
-                      : "bg-white border-gray-100 hover:bg-gray-50"
+                      : "bg-white dark:bg-[#1A1D27] border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836]"
                   )}
                 >
                   <Checkbox checked={selectedTasks.has(t.id)} />
                   <PriorityDot priority={t.priority} />
-                  <span className="flex-1 text-[13px] font-medium text-gray-800">{t.name}</span>
-                  <span className="text-[10px] text-gray-400 font-mono">{t.estimatedTime}</span>
+                  <span className="flex-1 text-[13px] font-medium text-gray-800 dark:text-white">{t.name}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-white/50 font-mono">{t.estimatedTime}</span>
                 </div>
               ))}
             </div>
@@ -174,8 +174,8 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
           {/* Step 2: Define objectives */}
           {step === 1 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">{steps[1].label}</h3>
-              <p className="text-[12px] text-gray-400 mb-4">{steps[1].desc}</p>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">{steps[1].label}</h3>
+              <p className="text-[12px] text-gray-400 dark:text-white/50 mb-4">{steps[1].desc}</p>
 
               {objectives.map((obj, i) => (
                 <div key={i} className="flex items-center gap-3 mb-3">
@@ -190,7 +190,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
                       setObjectives(next)
                     }}
                     placeholder={`Objetivo ${i + 1}`}
-                    className="flex-1 h-9 px-3 rounded-sm border border-[rgba(0,0,0,0.08)] text-[13px] font-sans text-gray-700 focus:outline-none focus:shadow-ring-brand"
+                    className="flex-1 h-9 px-3 rounded-sm border border-[rgba(0,0,0,0.08)] text-[13px] font-sans text-gray-700 dark:text-white/90 focus:outline-none focus:shadow-ring-brand"
                   />
                 </div>
               ))}
@@ -206,48 +206,48 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
           {/* Step 3: Prioritize */}
           {step === 2 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">{steps[2].label}</h3>
-              <p className="text-[12px] text-gray-400 mb-4">{steps[2].desc}</p>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">{steps[2].label}</h3>
+              <p className="text-[12px] text-gray-400 dark:text-white/50 mb-4">{steps[2].desc}</p>
 
-              <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Resumo do dia</div>
+              <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2">Resumo do dia</div>
 
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-gray-50 rounded-sm p-3 text-center">
-                  <div className="text-[20px] font-semibold text-gray-900 font-mono">{selectedTasks.size}</div>
-                  <div className="text-[10px] text-gray-400 mt-1">Tarefas</div>
+                <div className="bg-gray-50 dark:bg-[#242836] rounded-sm p-3 text-center">
+                  <div className="text-[20px] font-semibold text-gray-900 dark:text-white font-mono">{selectedTasks.size}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-white/50 mt-1">Tarefas</div>
                 </div>
-                <div className="bg-gray-50 rounded-sm p-3 text-center">
-                  <div className="text-[20px] font-semibold text-gray-900 font-mono">{calendarEvents.length}</div>
-                  <div className="text-[10px] text-gray-400 mt-1">Reunioes</div>
+                <div className="bg-gray-50 dark:bg-[#242836] rounded-sm p-3 text-center">
+                  <div className="text-[20px] font-semibold text-gray-900 dark:text-white font-mono">{calendarEvents.length}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-white/50 mt-1">Reunioes</div>
                 </div>
-                <div className="bg-gray-50 rounded-sm p-3 text-center">
-                  <div className="text-[20px] font-semibold text-gray-900 font-mono">
+                <div className="bg-gray-50 dark:bg-[#242836] rounded-sm p-3 text-center">
+                  <div className="text-[20px] font-semibold text-gray-900 dark:text-white font-mono">
                     {objectives.filter((o) => o.trim()).length}
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-1">Objetivos</div>
+                  <div className="text-[10px] text-gray-400 dark:text-white/50 mt-1">Objetivos</div>
                 </div>
               </div>
 
               {/* Selected tasks ordered */}
-              <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Ordem de execucao</div>
+              <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2">Ordem de execucao</div>
               {tasks.filter((t) => selectedTasks.has(t.id)).map((t, i) => (
-                <div key={t.id} className="flex items-center gap-3 py-2 px-3 bg-white border border-gray-100 rounded-sm mb-1">
-                  <span className="text-[11px] font-semibold text-gray-400 font-mono w-4">{i + 1}</span>
+                <div key={t.id} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-[#1A1D27] border border-gray-100 dark:border-white/10 rounded-sm mb-1">
+                  <span className="text-[11px] font-semibold text-gray-400 dark:text-white/50 font-mono w-4">{i + 1}</span>
                   <PriorityDot priority={t.priority} />
-                  <span className="flex-1 text-[13px] font-medium text-gray-800">{t.name}</span>
-                  <span className="text-[10px] text-gray-400 font-mono">{t.time !== "-" ? t.time : ""}</span>
-                  <span className="text-[10px] text-gray-400 font-mono bg-gray-50 px-1 rounded-[3px]">{t.estimatedTime}</span>
+                  <span className="flex-1 text-[13px] font-medium text-gray-800 dark:text-white">{t.name}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-white/50 font-mono">{t.time !== "-" ? t.time : ""}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-white/50 font-mono bg-gray-50 dark:bg-[#242836] px-1 rounded-[3px]">{t.estimatedTime}</span>
                 </div>
               ))}
 
               {/* Objectives */}
               {objectives.filter((o) => o.trim()).length > 0 && (
                 <>
-                  <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2 mt-4">Objetivos</div>
+                  <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2 mt-4">Objetivos</div>
                   {objectives.filter((o) => o.trim()).map((obj, i) => (
                     <div key={i} className="flex items-center gap-2 py-1">
                       <IconFlag size={12} />
-                      <span className="text-[13px] text-gray-700">{obj}</span>
+                      <span className="text-[13px] text-gray-700 dark:text-white/90">{obj}</span>
                     </div>
                   ))}
                 </>
@@ -260,7 +260,7 @@ export function DailyPlanning({ open, onClose }: DailyPlanningProps) {
         <div className="px-6 py-3 border-t border-[rgba(0,0,0,0.08)] flex justify-between shrink-0">
           <button
             onClick={() => step > 0 ? setStep(step - 1) : onClose()}
-            className="h-9 px-4 rounded-sm border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[13px] font-medium text-gray-600 hover:bg-gray-50 transition-colors duration-fast ease-out-expo"
+            className="h-9 px-4 rounded-sm border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] cursor-pointer text-[13px] font-medium text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] transition-colors duration-fast ease-out-expo"
           >
             {step === 0 ? "Cancelar" : "Voltar"}
           </button>

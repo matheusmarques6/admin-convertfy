@@ -131,7 +131,7 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white",
+        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]",
         "flex flex-col self-start"
       )}
@@ -139,13 +139,13 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <span className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+          <span className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
             Alertas
           </span>
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                   <Info className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
@@ -164,9 +164,9 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
           value={filter}
           onChange={(e) => setFilter(e.target.value as FilterValue)}
           className={cn(
-            "h-7 rounded-md border border-[rgba(0,0,0,0.08)] bg-white px-2 text-xs text-gray-600",
+            "h-7 rounded-md border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] px-2 text-xs text-gray-600 dark:text-white/70",
             "outline-none focus:ring-1 focus:ring-gray-300",
-            "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-gray-400 dark:focus:ring-gray-600"
+            "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-gray-400 dark:text-white/50 dark:focus:ring-gray-600"
           )}
         >
           {FILTER_OPTIONS.map((opt) => (
@@ -206,16 +206,16 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100 leading-tight">
+                <p className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-gray-100 leading-tight">
                   {alert.title}
                 </p>
-                <p className="text-[12px] text-gray-400 dark:text-gray-500 leading-tight mt-0.5">
+                <p className="text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60 leading-tight mt-0.5">
                   {alert.description}
                 </p>
               </div>
 
               {/* Client name */}
-              <span className="text-[12px] font-medium text-gray-600 dark:text-gray-400 shrink-0 self-center">
+              <span className="text-[12px] font-medium text-gray-600 dark:text-white/70 dark:text-gray-400 dark:text-white/50 shrink-0 self-center">
                 {alert.client}
               </span>
             </div>
@@ -225,7 +225,7 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
 
       {/* Footer */}
       <div className="px-4 py-3">
-        <p className="text-[12px] text-gray-400 dark:text-gray-500">
+        <p className="text-[12px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
           {filteredAlerts.length} de {allAlerts.length} alertas
         </p>
       </div>

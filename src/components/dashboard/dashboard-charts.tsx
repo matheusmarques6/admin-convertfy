@@ -46,7 +46,7 @@ function ChartEmptyState({ title, message }: { title: string; message: string })
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex h-[240px] flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-gray-200 bg-gray-50/50 p-6 text-center dark:border-[#2A2F3D] dark:bg-[#1A1D27]/40">
+        <div className="flex h-[240px] flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#242836]/50 p-6 text-center dark:border-[#2A2F3D] dark:bg-[#1A1D27]/40">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="32"
@@ -62,7 +62,7 @@ function ChartEmptyState({ title, message }: { title: string; message: string })
             <path d="M3 3v18h18" />
             <path d="M7 14l4-4 4 4 6-6" />
           </svg>
-          <p className="text-xs text-gray-500 dark:text-[#8B92A5]">{message}</p>
+          <p className="text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">{message}</p>
         </div>
       </CardContent>
     </Card>
@@ -82,7 +82,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
         "text-sm text-white dark:text-[#EAEDF3]",
       )}
     >
-      <p className="text-xs text-gray-400 dark:text-[#5C6378] mb-1">{label}</p>
+      <p className="text-xs text-gray-400 dark:text-white/50 dark:text-[#5C6378] mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="font-mono tabular-nums font-medium">
           {entry.name === "value" ? "R$ " : ""}
@@ -103,7 +103,7 @@ function ChartSkeleton() {
         <div className="h-4 w-40 bg-gray-100 dark:bg-[#242836] rounded animate-pulse" />
       </CardHeader>
       <CardContent>
-        <div className="h-[240px] bg-gray-50 dark:bg-[#1A1D27] rounded-[8px] animate-pulse flex items-end justify-between px-8 pb-8 gap-2">
+        <div className="h-[240px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1A1D27] rounded-[8px] animate-pulse flex items-end justify-between px-8 pb-8 gap-2">
           {[40, 65, 50, 80, 60, 75, 90, 55].map((h, i) => (
             <div
               key={i}
@@ -149,7 +149,7 @@ function RevenueChart({
             Receita por período
           </CardTitle>
           {compareData && (
-            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-[#8B92A5]">
+            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-0.5 bg-[#4E62D8] dark:bg-[#7B8CEA] rounded-full" />
                 Atual
@@ -303,11 +303,11 @@ function CampaignPerformanceChart({
 
         {/* Manual legend (DS v3.0 — more control than Recharts Legend) */}
         <div className="flex items-center justify-center gap-6 mt-3">
-          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#8B92A5]">
+          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#4E62D8] dark:bg-[#7B8CEA]" />
             Open Rate
           </span>
-          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#8B92A5]">
+          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#A8B2EE] dark:bg-[#5A6EE0]" />
             Click Rate
           </span>

@@ -124,7 +124,7 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-6",
+        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -134,13 +134,13 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
         <>
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+              <h3 className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
                 Performance por Semana
               </h3>
               <TooltipProvider delayDuration={200}>
                 <InfoTooltip>
                   <TooltipTrigger asChild>
-                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+                    <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                       <Info className="h-3.5 w-3.5" />
                     </button>
                   </TooltipTrigger>
@@ -157,7 +157,7 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
                     className="inline-block h-2.5 w-2.5 rounded-sm"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                  <span className="text-[11px] text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50">
                     {item.label}
                   </span>
                 </div>
@@ -167,7 +167,7 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
           <div className="h-[220px] w-full relative">
             {!hasRealData && !loading && (
               <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
-                <p className="text-sm text-gray-400 dark:text-[#5C6378]">Aguardando dados do sync</p>
+                <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378]">Aguardando dados do sync</p>
               </div>
             )}
             <ResponsiveContainer width="100%" height="100%">

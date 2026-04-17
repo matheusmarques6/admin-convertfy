@@ -126,7 +126,7 @@ export function DateRangePanel({
     >
       <div
         className={cn(
-          "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
+          "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
           "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]",
         )}
       >
@@ -145,7 +145,7 @@ export function DateRangePanel({
                     "transition-colors duration-150 cursor-pointer",
                     isPresetActive(preset, localRange)
                       ? "bg-[#EEF0FB] text-[#4E62D8] font-medium dark:bg-[rgba(123,140,234,0.12)] dark:text-[#7B8CEA]"
-                      : "text-gray-600 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-[#242836]",
+                      : "text-gray-600 dark:text-white/70 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-[#242836]",
                   )}
                 >
                   {preset.label}
@@ -169,7 +169,7 @@ export function DateRangePanel({
                 day_range_middle:
                   "aria-selected:bg-[#EEF0FB] aria-selected:text-[#4E62D8] dark:aria-selected:bg-[rgba(123,140,234,0.12)] dark:aria-selected:text-[#7B8CEA]",
                 day_today:
-                  "font-semibold text-gray-900 dark:text-[#EAEDF3]",
+                  "font-semibold text-gray-900 dark:text-white dark:text-[#EAEDF3]",
               }}
             />
           </div>
@@ -177,7 +177,7 @@ export function DateRangePanel({
           {/* Right: Inputs + actions */}
           <div className="border-l border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] pl-4 flex flex-col gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-[#5C6378] mb-1 block">
+              <label className="text-xs font-medium text-gray-500 dark:text-white/60 dark:text-[#5C6378] mb-1 block">
                 De
               </label>
               <Input
@@ -189,7 +189,7 @@ export function DateRangePanel({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-[#5C6378] mb-1 block">
+              <label className="text-xs font-medium text-gray-500 dark:text-white/60 dark:text-[#5C6378] mb-1 block">
                 Até
               </label>
               <Input
@@ -276,7 +276,7 @@ export function MobileDateSheet({
                   "min-h-[44px] transition-colors duration-150",
                   isPresetActive(preset, localRange)
                     ? "bg-[#EEF0FB] text-[#4E62D8] font-medium dark:bg-[rgba(123,140,234,0.12)] dark:text-[#7B8CEA]"
-                    : "text-gray-600 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-[#242836]",
+                    : "text-gray-600 dark:text-white/70 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-[#242836]",
                 )}
               >
                 {preset.label}
@@ -301,14 +301,14 @@ export function MobileDateSheet({
               day_range_middle:
                 "aria-selected:bg-[#EEF0FB] aria-selected:text-[#4E62D8] dark:aria-selected:bg-[rgba(123,140,234,0.12)] dark:aria-selected:text-[#7B8CEA]",
               day_today:
-                "font-semibold text-gray-900 dark:text-[#EAEDF3]",
+                "font-semibold text-gray-900 dark:text-white dark:text-[#EAEDF3]",
             }}
           />
 
           {/* Inputs De/Até */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-[#5C6378] mb-1 block">
+              <label className="text-xs font-medium text-gray-500 dark:text-white/60 dark:text-[#5C6378] mb-1 block">
                 De
               </label>
               <Input
@@ -326,7 +326,7 @@ export function MobileDateSheet({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-[#5C6378] mb-1 block">
+              <label className="text-xs font-medium text-gray-500 dark:text-white/60 dark:text-[#5C6378] mb-1 block">
                 Até
               </label>
               <Input

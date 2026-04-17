@@ -108,7 +108,7 @@ export function ProductivityFocus() {
       {/* Fullscreen toggle */}
       <button
         onClick={toggleFullscreen}
-        className="absolute top-4 right-4 z-20 px-3 py-1.5 rounded-md border border-gray-700 bg-transparent text-gray-400 text-[11px] font-medium cursor-pointer hover:bg-gray-800 hover:text-gray-300 transition-colors flex items-center gap-1.5"
+        className="absolute top-4 right-4 z-20 px-3 py-1.5 rounded-md border border-gray-700 bg-transparent text-gray-400 dark:text-white/50 text-[11px] font-medium cursor-pointer hover:bg-gray-800 hover:text-gray-300 transition-colors flex items-center gap-1.5"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           {isFullscreen ? (
@@ -126,10 +126,10 @@ export function ProductivityFocus() {
       <div className="relative z-10 flex flex-col items-center gap-8 max-w-[400px] w-full px-6">
         {/* Label */}
         <div className="text-center">
-          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wider mb-1">
             {focusBreak ? "Pausa" : "Modo Foco"}
           </div>
-          <div className="text-[12px] text-gray-500">
+          <div className="text-[12px] text-gray-500 dark:text-white/60">
             Sessao {focusSessionCount + 1}
           </div>
         </div>
@@ -149,7 +149,7 @@ export function ProductivityFocus() {
         <div className="flex items-center gap-4">
           <button
             onClick={resetFocus}
-            className="w-12 h-12 rounded-full border border-gray-700 bg-transparent text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-800 transition-colors"
+            className="w-12 h-12 rounded-full border border-gray-700 bg-transparent text-gray-400 dark:text-white/50 flex items-center justify-center cursor-pointer hover:bg-gray-800 transition-colors"
           >
             <IconRefresh size={18} />
           </button>
@@ -166,7 +166,7 @@ export function ProductivityFocus() {
           </button>
           <button
             onClick={() => setShowTaskPicker(!showTaskPicker)}
-            className="w-12 h-12 rounded-full border border-gray-700 bg-transparent text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-800 transition-colors"
+            className="w-12 h-12 rounded-full border border-gray-700 bg-transparent text-gray-400 dark:text-white/50 flex items-center justify-center cursor-pointer hover:bg-gray-800 transition-colors"
           >
             <IconTarget size={18} />
           </button>
@@ -182,7 +182,7 @@ export function ProductivityFocus() {
                 "text-[11px] py-[4px] px-3 rounded-full border cursor-pointer transition-colors",
                 category === cat.id
                   ? "border-[#4E62D8] bg-[#4E62D8]/20 text-[#7B8CEA] font-medium"
-                  : "border-gray-700 bg-transparent text-gray-500 hover:border-gray-600"
+                  : "border-gray-700 bg-transparent text-gray-500 dark:text-white/60 hover:border-gray-600"
               )}
             >
               {cat.label}
@@ -203,7 +203,7 @@ export function ProductivityFocus() {
             </button>
             <button
               onClick={() => setSelectedTaskId(null)}
-              className="text-[10px] text-gray-500 cursor-pointer bg-transparent border-none hover:underline"
+              className="text-[10px] text-gray-500 dark:text-white/60 cursor-pointer bg-transparent border-none hover:underline"
             >
               Remover
             </button>
@@ -211,7 +211,7 @@ export function ProductivityFocus() {
         ) : (
           <button
             onClick={() => setShowTaskPicker(!showTaskPicker)}
-            className="w-full px-4 py-3 bg-gray-800 rounded-lg border border-dashed border-gray-600 text-[12px] text-gray-400 cursor-pointer hover:bg-gray-750 hover:border-gray-500 transition-colors flex items-center justify-center gap-2"
+            className="w-full px-4 py-3 bg-gray-800 rounded-lg border border-dashed border-gray-600 text-[12px] text-gray-400 dark:text-white/50 cursor-pointer hover:bg-gray-750 hover:border-gray-500 transition-colors flex items-center justify-center gap-2"
           >
             <IconTarget size={14} /> Selecionar uma tarefa para focar
           </button>
@@ -220,9 +220,9 @@ export function ProductivityFocus() {
         {/* Task picker dropdown */}
         {showTaskPicker && (
           <div className="w-full bg-gray-800 rounded-lg border border-gray-700 max-h-[200px] overflow-auto">
-            <div className="p-2 text-[10px] font-semibold text-gray-500 uppercase">Vincular tarefa</div>
+            <div className="p-2 text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase">Vincular tarefa</div>
             {pendingTasks.length === 0 ? (
-              <div className="p-4 text-center text-[12px] text-gray-500">Nenhuma tarefa pendente</div>
+              <div className="p-4 text-center text-[12px] text-gray-500 dark:text-white/60">Nenhuma tarefa pendente</div>
             ) : (
               pendingTasks.map((t) => (
                 <button
@@ -252,7 +252,7 @@ export function ProductivityFocus() {
                 "text-[10px] py-[3px] px-3 rounded-md border cursor-pointer transition-colors",
                 focusTime === p.seconds
                   ? "border-[#4E62D8] bg-[#4E62D8]/20 text-[#7B8CEA] font-medium"
-                  : "border-gray-700 bg-transparent text-gray-500 hover:border-gray-600"
+                  : "border-gray-700 bg-transparent text-gray-500 dark:text-white/60 hover:border-gray-600"
               )}
             >
               {p.label}
@@ -269,7 +269,7 @@ export function ProductivityFocus() {
           ].map((s) => (
             <div key={s.label} className="bg-gray-800 rounded-lg p-3 text-center border border-gray-700/50">
               <div className="text-[16px] font-semibold text-white font-mono tabular-nums">{s.value}</div>
-              <div className="text-[9px] text-gray-500 mt-1 uppercase">{s.label}</div>
+              <div className="text-[9px] text-gray-500 dark:text-white/60 mt-1 uppercase">{s.label}</div>
             </div>
           ))}
         </div>

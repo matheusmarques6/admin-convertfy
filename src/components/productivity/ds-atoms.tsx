@@ -33,7 +33,7 @@ export function StatusDot({ color }: { color: string }) {
 export function Avatar({ initials, size = 24 }: { initials: string; size?: number }) {
   return (
     <div
-      className="rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-600 shrink-0 border-[1.5px] border-white"
+      className="rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center font-semibold text-gray-600 dark:text-white/70 dark:text-white/80 shrink-0 border-[1.5px] border-white dark:border-white/20"
       style={{
         width: size,
         height: size,
@@ -54,7 +54,7 @@ export function Checkbox({ checked, onChange }: { checked: boolean; onChange?: (
         "w-[14px] h-[14px] rounded-[4px] shrink-0 flex items-center justify-center transition-all duration-fast ease-out-expo",
         checked
           ? "bg-positive-text border-none"
-          : "bg-transparent border-[1.5px] border-gray-300"
+          : "bg-transparent border-[1.5px] border-gray-300 dark:border-white/30"
       )}
     >
       {checked && (
@@ -78,7 +78,7 @@ export function ProgressBar({
 }) {
   return (
     <div
-      className="bg-gray-100 rounded-full overflow-hidden flex-1"
+      className="bg-gray-100 dark:bg-[#242836] dark:bg-white/10 rounded-full overflow-hidden flex-1"
       style={{ height }}
     >
       <div
@@ -136,7 +136,7 @@ export function ProgressCircle({
 export function Card({ children, className, style, onClick }: { children: ReactNode; className?: string; style?: React.CSSProperties; onClick?: () => void }) {
   return (
     <div
-      className={cn("bg-white rounded-md border border-[rgba(0,0,0,0.08)] px-6 py-4", className)}
+      className={cn("bg-white dark:bg-[#1A1D27] rounded-md border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] px-6 py-4", className)}
       style={style}
       onClick={onClick}
     >
@@ -158,8 +158,8 @@ export function CardHeader({
   return (
     <div className="flex justify-between items-center mb-3">
       <div className="flex items-center gap-2">
-        <span className="text-gray-400">{icon}</span>
-        <span className="text-sm font-semibold text-gray-800">{title}</span>
+        <span className="text-gray-400 dark:text-white/50">{icon}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-white">{title}</span>
       </div>
       {right}
     </div>
@@ -194,7 +194,7 @@ export function DSBadge({
 /** Section label — uppercase label para zonas */
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[11px] font-semibold text-gray-400 tracking-[0.06em] uppercase mb-3">
+    <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 dark:text-white/40 tracking-[0.06em] uppercase mb-3">
       {children}
     </div>
   )

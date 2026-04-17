@@ -75,7 +75,7 @@ function UpcomingMeetings({ meetings, loading }: { meetings: Meeting[]; loading?
         {loading ? (
           <QuickSectionSkeleton rows={3} />
         ) : meetings.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-[#5C6378] py-4 text-center">
+          <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378] py-4 text-center">
             Nenhuma reunião agendada
           </p>
         ) : (
@@ -84,13 +84,13 @@ function UpcomingMeetings({ meetings, loading }: { meetings: Meeting[]; loading?
               key={meeting.id}
               className={cn(
                 "flex items-center gap-3 p-3 rounded-[6px]",
-                "hover:bg-gray-50 dark:hover:bg-[#242836]",
+                "hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-[#242836]",
                 "transition-colors duration-150",
               )}
             >
               {/* Time */}
               <div className="shrink-0 text-center w-14">
-                <span className="text-sm font-mono tabular-nums font-semibold text-gray-900 dark:text-[#EAEDF3]">
+                <span className="text-sm font-mono tabular-nums font-semibold text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                   {formatTime(meeting.scheduled_at)}
                 </span>
               </div>
@@ -100,10 +100,10 @@ function UpcomingMeetings({ meetings, loading }: { meetings: Meeting[]; loading?
 
               {/* Details */}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-700 dark:text-[#EAEDF3] truncate">
+                <p className="text-sm font-medium text-gray-700 dark:text-white/90 dark:text-[#EAEDF3] truncate">
                   {meeting.title}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-[#5C6378]">
+                <p className="text-xs text-gray-400 dark:text-white/50 dark:text-[#5C6378]">
                   {formatRelativeDate(meeting.scheduled_at)}
                 </p>
               </div>
@@ -153,7 +153,7 @@ function PendingTasks({ tasks, loading }: { tasks: TaskItem[]; loading?: boolean
         {loading ? (
           <QuickSectionSkeleton rows={5} />
         ) : sortedTasks.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-[#5C6378] py-4 text-center">
+          <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378] py-4 text-center">
             Nenhuma tarefa pendente
           </p>
         ) : (
@@ -165,7 +165,7 @@ function PendingTasks({ tasks, loading }: { tasks: TaskItem[]; loading?: boolean
                 key={task.id}
                 className={cn(
                   "flex items-center gap-3 p-2.5 rounded-[6px]",
-                  "hover:bg-gray-50 dark:hover:bg-[#242836]",
+                  "hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] dark:hover:bg-[#242836]",
                   "transition-colors duration-150 group",
                 )}
               >
@@ -181,7 +181,7 @@ function PendingTasks({ tasks, loading }: { tasks: TaskItem[]; loading?: boolean
 
                 {/* Task title */}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-gray-700 dark:text-[#EAEDF3] truncate">
+                  <p className="text-sm text-gray-700 dark:text-white/90 dark:text-[#EAEDF3] truncate">
                     {task.title}
                   </p>
                 </div>
@@ -193,7 +193,7 @@ function PendingTasks({ tasks, loading }: { tasks: TaskItem[]; loading?: boolean
                       "text-[11px] font-mono tabular-nums shrink-0",
                       isOverdue
                         ? "text-[#991B1B] dark:text-[#FCA5A5]"
-                        : "text-gray-400 dark:text-[#5C6378]",
+                        : "text-gray-400 dark:text-white/50 dark:text-[#5C6378]",
                     )}
                   >
                     {formatDueDate(task.due_date)}

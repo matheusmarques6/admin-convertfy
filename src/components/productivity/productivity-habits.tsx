@@ -14,7 +14,7 @@ function GridCell({ level, color, isToday }: { level: number; color: string; isT
     <div
       className={cn(
         "w-3 h-3 rounded-[3px] transition-transform hover:scale-125",
-        level === 0 && !isToday && "bg-gray-100",
+        level === 0 && !isToday && "bg-gray-100 dark:bg-[#242836]",
         isToday && level === 0 && "border-[1.5px] border-brand-400 bg-transparent",
       )}
       style={level > 0 ? { background: color, opacity: level === 1 ? 0.55 : 1 } : undefined}
@@ -42,11 +42,11 @@ export function ProductivityHabits() {
       {/* Main content */}
       <div className="flex-1 overflow-auto">
         {/* Header */}
-        <header className="bg-white border-b border-[rgba(0,0,0,0.08)]">
+        <header className="bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)]">
           <div className="flex justify-between items-center px-6 py-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-[22px] font-semibold text-gray-900 m-0 tracking-[-0.02em]">Habitos</h1>
-              <span className="bg-gray-100 text-gray-600 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">{habits.length}</span>
+              <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white m-0 tracking-[-0.02em]">Habitos</h1>
+              <span className="bg-gray-100 dark:bg-[#242836] text-gray-600 dark:text-white/70 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">{habits.length}</span>
             </div>
             <div className="flex items-center gap-2">
               {maxStreak > 0 && <DSBadge type="positive">{maxStreak}d streak</DSBadge>}
@@ -63,20 +63,20 @@ export function ProductivityHabits() {
         <div className="p-6 max-w-[800px]">
           {/* New habit form */}
           {showNewHabit && (
-            <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-[rgba(0,0,0,0.08)]">
+            <div className="mb-4 p-4 bg-gray-50 dark:bg-[#242836] rounded-lg border border-[rgba(0,0,0,0.08)]">
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
-                  <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Nome do habito</label>
+                  <label className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase block mb-1">Nome do habito</label>
                   <input
                     value={newHabitName}
                     onChange={(e) => setNewHabitName(e.target.value)}
                     placeholder="Ex: 30 min leitura"
-                    className="w-full h-9 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 focus:outline-none focus:border-brand-400 bg-white"
+                    className="w-full h-9 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[13px] text-gray-700 dark:text-white/90 focus:outline-none focus:border-brand-400 bg-white dark:bg-[#1A1D27]"
                     autoFocus
                   />
                 </div>
                 <button onClick={() => { setShowNewHabit(false); setNewHabitName("") }}
-                  className="h-9 px-4 rounded-md border border-[rgba(0,0,0,0.08)] bg-white cursor-pointer text-[12px] text-gray-600 hover:bg-gray-50">
+                  className="h-9 px-4 rounded-md border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] cursor-pointer text-[12px] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836]">
                   Cancelar
                 </button>
                 <button
@@ -97,7 +97,7 @@ export function ProductivityHabits() {
             <CardHeader icon={<IconCheck />} title="Hoje" right={<DSBadge type="brand">{new Date().toLocaleDateString("pt-BR", { weekday: "long" })}</DSBadge>} />
 
             {habits.length === 0 ? (
-              <div className="text-center py-8 text-[12px] text-gray-400">
+              <div className="text-center py-8 text-[12px] text-gray-400 dark:text-white/50">
                 Nenhum habito cadastrado. Crie seu primeiro habito.
               </div>
             ) : (
@@ -113,7 +113,7 @@ export function ProductivityHabits() {
                       }}
                       className={cn(
                         "flex items-center gap-3 py-3 px-3 rounded-md cursor-pointer transition-all duration-fast",
-                        isChecked ? "bg-[#ECFDF5]" : "hover:bg-gray-50"
+                        isChecked ? "bg-[#ECFDF5]" : "hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836]"
                       )}
                     >
                       {/* Checkbox */}
@@ -134,7 +134,7 @@ export function ProductivityHabits() {
                       {/* Name */}
                       <span className={cn(
                         "flex-1 text-[13px] font-medium",
-                        isChecked ? "text-gray-400 line-through" : "text-gray-800"
+                        isChecked ? "text-gray-400 dark:text-white/50 line-through" : "text-gray-800 dark:text-white"
                       )}>
                         {h.name}
                       </span>
@@ -158,10 +158,10 @@ export function ProductivityHabits() {
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full" style={{ background: h.color }} />
-                  <span className="text-[13px] font-semibold text-gray-800">{h.name}</span>
+                  <span className="text-[13px] font-semibold text-gray-800 dark:text-white">{h.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-gray-400">Streak: <strong className="text-[#065F46] font-mono">{h.streak}d</strong></span>
+                  <span className="text-[11px] text-gray-400 dark:text-white/50">Streak: <strong className="text-[#065F46] font-mono">{h.streak}d</strong></span>
                 </div>
               </div>
 
@@ -174,7 +174,7 @@ export function ProductivityHabits() {
                       color={h.color}
                       isToday={d === 2}
                     />
-                    <div className="text-[8px] text-gray-400 text-center mt-1">
+                    <div className="text-[8px] text-gray-400 dark:text-white/50 text-center mt-1">
                       {["D", "S", "T", "Q", "Q", "S", "S"][i]}
                     </div>
                   </div>
@@ -187,10 +187,10 @@ export function ProductivityHabits() {
 
       {/* Detail panel */}
       {selectedHabit && (
-        <div className="w-[340px] border-l border-[rgba(0,0,0,0.08)] bg-white p-6 overflow-auto shrink-0">
+        <div className="w-[340px] border-l border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6 overflow-auto shrink-0">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-[14px] font-semibold text-gray-800">{selectedHabit.name}</h3>
-            <button onClick={() => setSelectedHabitId(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none">
+            <h3 className="text-[14px] font-semibold text-gray-800 dark:text-white">{selectedHabit.name}</h3>
+            <button onClick={() => setSelectedHabitId(null)} className="text-gray-400 dark:text-white/50 hover:text-gray-600 dark:text-white/70 cursor-pointer bg-transparent border-none">
               ✕
             </button>
           </div>
@@ -203,15 +203,15 @@ export function ProductivityHabits() {
               { label: "Total feitos", value: "—" },
               { label: "Taxa 7d", value: `${Math.round((selectedHabit.days.filter(d => d === 1).length / 7) * 100)}%` },
             ].map((s) => (
-              <div key={s.label} className="bg-gray-50 rounded-md p-3 text-center">
-                <div className="text-[18px] font-semibold text-gray-900 font-mono tabular-nums">{s.value}</div>
-                <div className="text-[10px] text-gray-400 mt-1">{s.label}</div>
+              <div key={s.label} className="bg-gray-50 dark:bg-[#242836] rounded-md p-3 text-center">
+                <div className="text-[18px] font-semibold text-gray-900 dark:text-white font-mono tabular-nums">{s.value}</div>
+                <div className="text-[10px] text-gray-400 dark:text-white/50 mt-1">{s.label}</div>
               </div>
             ))}
           </div>
 
           {/* Weekly distribution */}
-          <div className="text-[11px] font-semibold text-gray-400 uppercase mb-2">Distribuicao semanal</div>
+          <div className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase mb-2">Distribuicao semanal</div>
           <div className="flex items-end gap-1 h-16 mb-4">
             {["D", "S", "T", "Q", "Q", "S", "S"].map((day, i) => {
               const val = selectedHabit.days[i] === 1 ? 1 : 0
@@ -225,7 +225,7 @@ export function ProductivityHabits() {
                       minHeight: 4,
                     }}
                   />
-                  <span className="text-[9px] text-gray-400">{day}</span>
+                  <span className="text-[9px] text-gray-400 dark:text-white/50">{day}</span>
                 </div>
               )
             })}

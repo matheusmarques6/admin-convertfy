@@ -263,12 +263,12 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="h-4 w-4 text-emerald-500" />
-                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Recebido</span>
+                <span className="text-[13px] font-medium text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">Recebido</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.received || 0)}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-1">
                 {data?.counts.received || 0} assinaturas pagas
               </p>
             </div>
@@ -276,12 +276,12 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="h-4 w-4 text-amber-500" />
-                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Pendente</span>
+                <span className="text-[13px] font-medium text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">Pendente</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.pending || 0)}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-1">
                 {data?.counts.pending || 0} assinaturas a receber
               </p>
             </div>
@@ -289,25 +289,25 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <AlertCircle className="h-4 w-4 text-red-500" />
-                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Vencido</span>
+                <span className="text-[13px] font-medium text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">Vencido</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.overdue || 0)}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-1">
                 {data?.counts.overdue || 0} assinaturas vencidas
               </p>
             </div>
 
             <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <DollarSign className="h-4 w-4 text-gray-500 dark:text-[#8B92A5]" />
-                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Total Período</span>
+                <DollarSign className="h-4 w-4 text-gray-500 dark:text-white/60 dark:text-[#8B92A5]" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">Total Período</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-1">
                 {data?.counts.total || 0} assinaturas no período
               </p>
             </div>
@@ -315,12 +315,12 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Repeat className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
-                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">MRR</span>
+                <span className="text-[13px] font-medium text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">MRR</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                 {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378] mt-1">
                 Receita recorrente mensal
               </p>
             </div>

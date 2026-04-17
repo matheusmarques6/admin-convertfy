@@ -111,7 +111,7 @@ function FlowCardSkeleton() {
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
+        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -154,19 +154,19 @@ function FlowCard({ data }: { data: FlowCardData }) {
         <TooltipTrigger asChild>
           <div
             className={cn(
-              "cursor-default rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
+              "cursor-default rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
               "transition-shadow hover:shadow-sm",
               "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
             )}
           >
             {/* Title */}
-            <p className="mb-1 text-[13px] font-medium leading-tight text-gray-500 dark:text-gray-400">
+            <p className="mb-1 text-[13px] font-medium leading-tight text-gray-500 dark:text-white/60 dark:text-gray-400 dark:text-white/50">
               {data.title}
             </p>
 
             {/* Rate + Sparkline */}
             <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-[24px] font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+              <span className="font-mono text-[24px] font-semibold tabular-nums text-gray-900 dark:text-white dark:text-gray-100">
                 {data.rate}%
               </span>
               <Sparkline points={data.sparklinePoints} color={sparklineColor} />
@@ -174,7 +174,7 @@ function FlowCard({ data }: { data: FlowCardData }) {
 
             {/* Revenue + Delta */}
             <div className="mb-0.5 flex items-center gap-2">
-              <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-gray-300">
+              <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                 {data.revenue}
               </span>
               <span
@@ -188,13 +188,13 @@ function FlowCard({ data }: { data: FlowCardData }) {
             </div>
 
             {/* Benchmark */}
-            <p className="mb-1 text-[11px] text-gray-400 dark:text-gray-500">
+            <p className="mb-1 text-[11px] text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
               Benchmark: {data.benchmark}%
             </p>
 
             {/* Worst Clients */}
             <div className="mt-3 border-t border-[rgba(0,0,0,0.06)] pt-3 dark:border-[rgba(255,255,255,0.06)]">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Piores clientes
               </p>
               {data.worstClients.map((client) => (
@@ -202,7 +202,7 @@ function FlowCard({ data }: { data: FlowCardData }) {
                   key={client.name}
                   className="flex items-center justify-between py-0.5"
                 >
-                  <span className="text-[12px] text-gray-700 dark:text-gray-300">
+                  <span className="text-[12px] text-gray-700 dark:text-white/90 dark:text-gray-300">
                     {client.name}
                   </span>
                   <span className="font-mono text-[12px] tabular-nums text-red-500">
@@ -242,13 +242,13 @@ export function DashboardFlowPerf({ loading = false }: DashboardFlowPerfProps) {
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-3">
-        <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
+        <h3 className="text-[14px] font-medium text-gray-700 dark:text-white/90 dark:text-gray-300">
           Performance dos Flows
         </h3>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
+              <button type="button" className="text-gray-300 hover:text-gray-500 dark:text-white/60 dark:text-[#5C6378] dark:hover:text-[#8B92A5] transition-colors">
                 <Info className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
