@@ -86,8 +86,8 @@ export default function HealthMonitorPage() {
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
-  const stores: StoreHealth[] = data?.stores ?? data?.data?.stores ?? []
-  const summary: Summary | null = data?.summary ?? data?.data?.summary ?? null
+  const stores: StoreHealth[] = data?.stores ?? []
+  const summary: Summary | null = data?.summary ?? null
 
   return (
     <div className="max-w-[1400px]">

@@ -48,8 +48,8 @@ export default function ListHygienePage() {
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
-  const stores: StoreHygiene[] = data?.stores ?? data?.data?.stores ?? []
-  const summary: Summary | null = data?.summary ?? data?.data?.summary ?? null
+  const stores: StoreHygiene[] = data?.stores ?? []
+  const summary: Summary | null = data?.summary ?? null
 
   return (
     <div className="max-w-[1200px]">

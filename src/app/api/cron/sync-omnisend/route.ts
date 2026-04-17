@@ -22,7 +22,7 @@ const log = logger.child("CronSyncOmnisend")
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
-const MAX_DURATION_MS = 240_000 // 80% of 300s
+const MAX_DURATION_MS = 270_000 // 90% of 300s (deixa margem para finalizar graciosamente)
 
 interface SyncResult {
   storeId: string

@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
         .from("client_stores")
         .select("id, store_name, email_platform")
         .eq("org_id", orgId)
-        .eq("is_active", true),
+        .eq("is_active", true)
+        .limit(500),
     ])
 
     const storeNames = new Map<string, string>()

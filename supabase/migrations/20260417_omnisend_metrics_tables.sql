@@ -77,9 +77,15 @@ CREATE INDEX IF NOT EXISTS idx_omnisend_camp_store
 
 ALTER TABLE omnisend_campaign_metrics ENABLE ROW LEVEL SECURITY;
 
+-- Org isolation: usuarios so veem campanhas das lojas da propria org
+-- (mesmo padrao de klaviyo_campaign_metrics e store_revenue_summary)
 DROP POLICY IF EXISTS "omnisend_campaigns_select_org" ON omnisend_campaign_metrics;
 CREATE POLICY "omnisend_campaigns_select_org" ON omnisend_campaign_metrics
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (
+    org_id = current_org_id()
+    OR can_access_store(store_id)
+  );
 
 DROP POLICY IF EXISTS "omnisend_campaigns_write_service" ON omnisend_campaign_metrics;
 CREATE POLICY "omnisend_campaigns_write_service" ON omnisend_campaign_metrics
@@ -137,16 +143,28 @@ CREATE INDEX IF NOT EXISTS idx_omnisend_flow_store
 
 ALTER TABLE omnisend_flow_metrics ENABLE ROW LEVEL SECURITY;
 
+-- Org isolation (mesmo padrao de klaviyo_flow_metrics)
 DROP POLICY IF EXISTS "omnisend_flows_select_org" ON omnisend_flow_metrics;
 CREATE POLICY "omnisend_flows_select_org" ON omnisend_flow_metrics
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (
+    org_id = current_org_id()
+    OR can_access_store(store_id)
+  );
 
 DROP POLICY IF EXISTS "omnisend_flows_write_service" ON omnisend_flow_metrics;
 CREATE POLICY "omnisend_flows_write_service" ON omnisend_flow_metrics
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- ── 4. Coluna email_platform em client_stores (derivada) ────────────────
+-- ── 4. Colunas de credencial/plataforma em client_stores ────────────────
+-- Garante que a coluna omnisend_api_key existe (pode ter sido criada
+-- anteriormente via SQL direto, fora de migration formal).
+ALTER TABLE client_stores
+  ADD COLUMN IF NOT EXISTS omnisend_api_key TEXT,
+  ADD COLUMN IF NOT EXISTS omnisend_validated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS omnisend_validation_error TEXT;
 
+-- Coluna email_platform derivada das credenciais
 ALTER TABLE client_stores
   ADD COLUMN IF NOT EXISTS email_platform TEXT
     CHECK (email_platform IN ('klaviyo', 'omnisend', 'none'));

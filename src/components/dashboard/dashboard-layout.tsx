@@ -133,8 +133,8 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
-  const sparklines = kpiSeries?.sparklines ?? kpiSeries?.data?.sparklines
-  const deltas = kpiSeries?.deltas ?? kpiSeries?.data?.deltas
+  const sparklines = kpiSeries?.sparklines
+  const deltas = kpiSeries?.deltas
 
   // ─── Flow performance agregado (real data from klaviyo_flow_metrics) ──
   const { data: flowsAgg } = useSWR(
@@ -142,7 +142,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
-  const flowCards = flowsAgg?.flows ?? flowsAgg?.data?.flows ?? undefined
+  const flowCards = flowsAgg?.flows ?? undefined
 
   // ─── Computed KPI values from REAL data ─────────────────
 

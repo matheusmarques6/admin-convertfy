@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
       .select("id, store_name, email_platform, client_id, clients(name)")
       .eq("org_id", orgId)
       .eq("is_active", true)
+      .limit(500)
 
     if (!stores || stores.length === 0) {
       return successResponse(request, { stores: [], summary: null, period })

@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
       .eq("org_id", orgId)
       .eq("is_active", true)
       .order("store_name")
+      .limit(500)
 
     if (storesErr) throw storesErr
     if (!stores || stores.length === 0) {
@@ -82,17 +83,22 @@ export async function GET(request: NextRequest) {
       const campaignRevenue = rev?.campaign_revenue ?? 0
       const flowRevenue = rev?.flow_revenue ?? 0
 
-      const totalBRL = await convertToBRL(totalRevenue, currency)
-      const campaignBRL = await convertToBRL(campaignRevenue, currency)
-      const flowBRL = await convertToBRL(flowRevenue, currency)
-
       const emailCamps = campaigns.filter((c) => c.channel === "email" || !c.channel)
       const smsCamps = campaigns.filter((c) => c.channel === "sms")
 
-      const emailRevenue = emailCamps.reduce((s, c) => s + c.conversion_value, 0)
-      const smsRevenue = smsCamps.reduce((s, c) => s + c.conversion_value, 0)
+      const emailRevenueOriginal = emailCamps.reduce((s, c) => s + c.conversion_value, 0)
+      const smsRevenueOriginal = smsCamps.reduce((s, c) => s + c.conversion_value, 0)
       const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
       const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
+
+      // Paraleliza as 5 conversoes BRL por loja
+      const [totalBRL, campaignBRL, flowBRL, emailBRL, smsBRL] = await Promise.all([
+        convertToBRL(totalRevenue, currency),
+        convertToBRL(campaignRevenue, currency),
+        convertToBRL(flowRevenue, currency),
+        convertToBRL(emailRevenueOriginal, currency),
+        convertToBRL(smsRevenueOriginal, currency),
+      ])
 
       const campRecipients = campaigns.reduce((s, c) => s + c.recipients, 0)
       const campOpened = campaigns.reduce((s, c) => s + c.opened, 0)
@@ -128,11 +134,11 @@ export async function GET(request: NextRequest) {
         currency,
         totalRevenueBRL: Math.round(totalBRL * 100) / 100,
         email: {
-          revenue: await convertToBRL(emailRevenue, currency),
+          revenue: Math.round(emailBRL * 100) / 100,
           recipients: emailRecipients,
         },
         sms: {
-          revenue: await convertToBRL(smsRevenue, currency),
+          revenue: Math.round(smsBRL * 100) / 100,
           recipients: smsRecipients,
         },
         campaigns: {

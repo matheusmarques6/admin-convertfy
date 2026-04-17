@@ -36,8 +36,8 @@ export default function InsightsPage() {
     { revalidateOnFocus: false, dedupingInterval: 120_000 }
   )
 
-  const insights: Insight[] = data?.insights ?? data?.data?.insights ?? []
-  const generatedAt = data?.generatedAt ?? data?.data?.generatedAt
+  const insights: Insight[] = data?.insights ?? []
+  const generatedAt = data?.generatedAt
 
   return (
     <div className="max-w-[900px]">

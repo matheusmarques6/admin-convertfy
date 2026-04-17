@@ -21,7 +21,7 @@ export function StoreOverviewGrid() {
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
-  const stores: StoreOverviewData[] = data?.stores ?? data?.data?.stores ?? []
+  const stores: StoreOverviewData[] = data?.stores ?? []
 
   const filtered = search.trim()
     ? stores.filter((s) => {
