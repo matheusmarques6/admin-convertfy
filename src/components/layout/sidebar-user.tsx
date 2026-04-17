@@ -75,7 +75,7 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
   const avatarEl = (
     <Avatar className="h-8 w-8 shrink-0 rounded-full">
       <AvatarImage src={user?.avatar_url} />
-      <AvatarFallback className="rounded-full bg-gray-200 text-gray-600 text-[11px] font-semibold dark:bg-[#242836] dark:text-[#8B92A5]">
+      <AvatarFallback className="rounded-full bg-gray-200 text-gray-600 text-[11px] font-semibold dark:bg-white/10 dark:text-white">
         {getInitials(user?.name || "U")}
       </AvatarFallback>
     </Avatar>
@@ -86,7 +86,7 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
       <button
         className={cn(
           "flex items-center w-full rounded-[6px] transition-colors duration-150 outline-none",
-          "hover:bg-gray-50 dark:hover:bg-[#242836]",
+          "hover:bg-gray-50 dark:hover:bg-white/[0.05]",
           collapsed ? "justify-center p-1.5 mx-auto" : "gap-3 px-3 py-2.5"
         )}
       >
@@ -94,14 +94,14 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
         {!collapsed && (
           <>
             <div className="text-left overflow-hidden flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700 dark:text-[#EAEDF3] truncate leading-tight">
+              <p className="text-sm font-medium text-gray-700 dark:text-white truncate leading-tight">
                 {user?.name || "Usuario"}
               </p>
-              <p className="text-xs text-gray-400 dark:text-[#5C6378] truncate leading-tight">
+              <p className="text-xs text-gray-400 dark:text-white/50 truncate leading-tight">
                 {user?.email}
               </p>
             </div>
-            <ChevronUp className="h-3.5 w-3.5 text-gray-400 dark:text-[#5C6378] shrink-0" />
+            <ChevronUp className="h-3.5 w-3.5 text-gray-400 dark:text-white/40 shrink-0" />
           </>
         )}
       </button>

@@ -43,8 +43,8 @@ export function SidebarItem({
         "min-h-[36px] md:min-h-[36px]",
         collapsed ? "w-10 h-10 justify-center mx-auto" : "px-3 py-2",
         active
-          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-[rgba(123,140,234,0.12)] dark:text-[#7B8CEA]"
-          : "text-gray-600 hover:bg-gray-50 dark:text-[#8B92A5] dark:hover:bg-[#242836]"
+          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-[#4E62D8]/15 dark:text-[#A8B2EE]"
+          : "text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-white/[0.05] dark:hover:text-white"
       )}
     >
       <Icon
@@ -53,8 +53,8 @@ export function SidebarItem({
         className={cn(
           "shrink-0",
           active
-            ? "text-[#4E62D8] dark:text-[#7B8CEA]"
-            : "text-gray-400 dark:text-[#5C6378]"
+            ? "text-[#4E62D8] dark:text-[#A8B2EE]"
+            : "text-gray-400 dark:text-white/50"
         )}
       />
       {!collapsed && <span className="truncate">{label}</span>}

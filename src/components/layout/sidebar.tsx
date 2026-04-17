@@ -133,8 +133,11 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-full bg-white border-r border-[rgba(0,0,0,0.08)]",
-          "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]",
+          // Sempre tema escuro (sidebar branded preto, independente do tema global)
+          "dark",
+          "flex flex-col h-full border-r",
+          // Preto puro + border branca sutil
+          "bg-black border-white/10",
           "transition-all duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           "relative z-30",
           collapsed ? "w-16" : "w-[240px]"
@@ -143,7 +146,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
         {/* Logo area */}
         <div
           className={cn(
-            "flex items-center shrink-0 h-16 border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+            "flex items-center shrink-0 h-16 border-b border-white/10",
             collapsed ? "justify-center px-2" : "px-4 gap-3"
           )}
         >
@@ -158,9 +161,8 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           className={cn(
             "absolute top-[22px] -right-3 z-40",
             "w-6 h-6 rounded-full flex items-center justify-center",
-            "bg-white border border-[rgba(0,0,0,0.08)] shadow-sm",
-            "dark:bg-[#242836] dark:border-[rgba(255,255,255,0.08)]",
-            "hover:bg-gray-50 dark:hover:bg-[#2E3347]",
+            "bg-[#1A1D27] border border-white/10 shadow-sm",
+            "hover:bg-[#242836]",
             "transition-colors duration-150",
             "hidden md:flex"
           )}
@@ -168,7 +170,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           <Icon
             icon={collapsed ? ChevronRight : ChevronLeft}
             customSize={14}
-            className="text-gray-500 dark:text-[#8B92A5]"
+            className="text-[#8B92A5]"
           />
         </button>
 
@@ -179,12 +181,12 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
               <div key={group.key} className={cn(idx > 0 && "mt-1")}>
                 {/* Group label */}
                 {!collapsed && group.label && (
-                  <p className="px-5 pt-4 pb-1 text-[10px] font-medium text-gray-400 uppercase tracking-[0.06em] dark:text-[#5C6378]">
+                  <p className="px-5 pt-4 pb-1 text-[10px] font-medium uppercase tracking-[0.06em] text-white/40">
                     {group.label}
                   </p>
                 )}
                 {collapsed && idx > 0 && (
-                  <div className="h-px bg-[rgba(0,0,0,0.06)] dark:bg-[rgba(255,255,255,0.06)] mx-3 my-2" />
+                  <div className="h-px bg-white/10 mx-3 my-2" />
                 )}
                 <div className="space-y-0.5">
                   {group.items.map((item) => (
@@ -203,7 +205,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
         </ScrollArea>
 
         {/* Footer */}
-        <div className="mt-auto shrink-0 border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+        <div className="mt-auto shrink-0 border-t border-white/10">
           {/* Settings + Notifications */}
           <div className="py-2 space-y-0.5">
             <SidebarItem
@@ -221,7 +223,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           </div>
 
           {/* User */}
-          <div className="border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <div className="border-t border-white/10">
             <SidebarUser user={user} collapsed={collapsed} />
           </div>
         </div>
