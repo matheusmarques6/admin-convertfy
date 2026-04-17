@@ -133,62 +133,60 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          // Sempre tema escuro (sidebar branded preto, independente do tema global)
           "dark",
           "flex flex-col h-full border-r",
-          // Preto puro + border branca sutil
-          "bg-black border-white/10",
+          "bg-black border-white/[0.06]",
           "transition-all duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           "relative z-30",
-          collapsed ? "w-16" : "w-[240px]"
+          collapsed ? "w-[60px]" : "w-[232px]"
         )}
       >
-        {/* Logo area */}
+        {/* Logo area — tall, clean, no bottom border */}
         <div
           className={cn(
-            "flex items-center shrink-0 h-16 border-b border-white/10",
-            collapsed ? "justify-center px-2" : "px-4 gap-3"
+            "flex items-center shrink-0",
+            collapsed ? "justify-center h-16 px-2" : "h-[72px] px-5"
           )}
         >
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
-            {collapsed ? <LogoIcon size={28} /> : <Logo size="md" />}
+            {collapsed ? <LogoIcon size={24} /> : <Logo size="lg" />}
           </Link>
         </div>
 
-        {/* Collapse toggle button — floats on the border */}
+        {/* Collapse toggle */}
         <button
           onClick={toggle}
           className={cn(
-            "absolute top-[22px] -right-3 z-40",
+            "absolute top-[30px] -right-3 z-40",
             "w-6 h-6 rounded-full flex items-center justify-center",
-            "bg-[#1A1D27] border border-white/10 shadow-sm",
-            "hover:bg-[#242836]",
+            "bg-[#1A1D27] border border-white/[0.08] shadow-sm",
+            "hover:bg-[#2A2F3D]",
             "transition-colors duration-150",
             "hidden md:flex"
           )}
         >
           <Icon
             icon={collapsed ? ChevronRight : ChevronLeft}
-            customSize={14}
-            className="text-[#8B92A5]"
+            customSize={12}
+            className="text-white/50"
           />
         </button>
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 py-2">
+        <ScrollArea className="flex-1 pt-2 pb-4">
           <nav>
             {groupedNavigation.map((group, idx) => (
-              <div key={group.key} className={cn(idx > 0 && "mt-1")}>
+              <div key={group.key} className={cn(idx > 0 && "mt-5")}>
                 {/* Group label */}
                 {!collapsed && group.label && (
-                  <p className="px-5 pt-4 pb-1 text-[10px] font-medium uppercase tracking-[0.06em] text-white/40">
+                  <p className="px-6 pb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/30">
                     {group.label}
                   </p>
                 )}
                 {collapsed && idx > 0 && (
-                  <div className="h-px bg-white/10 mx-3 my-2" />
+                  <div className="h-px bg-white/[0.06] mx-3 my-3" />
                 )}
-                <div className="space-y-0.5">
+                <div className="space-y-[2px]">
                   {group.items.map((item) => (
                     <SidebarItem
                       key={item.name}
@@ -205,9 +203,8 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
         </ScrollArea>
 
         {/* Footer */}
-        <div className="mt-auto shrink-0 border-t border-white/10">
-          {/* Settings + Notifications */}
-          <div className="py-2 space-y-0.5">
+        <div className="mt-auto shrink-0 border-t border-white/[0.06]">
+          <div className="py-2 space-y-[2px]">
             <SidebarItem
               icon={Settings}
               label="Configuracoes"
@@ -223,7 +220,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           </div>
 
           {/* User */}
-          <div className="border-t border-white/10">
+          <div className="border-t border-white/[0.06]">
             <SidebarUser user={user} collapsed={collapsed} />
           </div>
         </div>

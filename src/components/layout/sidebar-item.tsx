@@ -38,23 +38,24 @@ export function SidebarItem({
       href={href}
       onClick={onClick}
       className={cn(
-        "relative mx-2 flex items-center gap-3 rounded-[6px] text-sm font-medium",
-        "transition-colors duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
-        "min-h-[36px] md:min-h-[36px]",
-        collapsed ? "w-10 h-10 justify-center mx-auto" : "px-3 py-2",
+        "relative flex items-center rounded-[8px] text-[13px] font-medium",
+        "transition-all duration-150",
+        collapsed
+          ? "w-9 h-9 justify-center mx-auto"
+          : "mx-3 gap-3 px-3 h-9",
         active
-          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-[#4E62D8]/15 dark:text-[#A8B2EE]"
-          : "text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-white/[0.05] dark:hover:text-white"
+          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-white/[0.08] dark:text-white"
+          : "text-gray-600 hover:bg-gray-50 dark:text-white/60 dark:hover:bg-white/[0.04] dark:hover:text-white/90"
       )}
     >
       <Icon
         icon={icon}
-        size={20}
+        size={16}
         className={cn(
           "shrink-0",
           active
-            ? "text-[#4E62D8] dark:text-[#A8B2EE]"
-            : "text-gray-400 dark:text-white/50"
+            ? "text-[#4E62D8] dark:text-white"
+            : "text-gray-400 dark:text-white/40"
         )}
       />
       {!collapsed && <span className="truncate">{label}</span>}
