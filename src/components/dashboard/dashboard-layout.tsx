@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useMemo, lazy, Suspense } from "react"
+import useSWR from "swr"
 import { DashboardTopBar } from "./dashboard-top-bar"
 import type { DateRange } from "./date-range-panel"
 import { TotalRevenueBanner, type TotalRevenueData, type RevenueStoreItem } from "./total-revenue-banner"
@@ -125,6 +126,24 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
 
   const isLoading = !revenueResolved.current
 
+  // ─── KPI sparklines + deltas (real data from store_revenue_summary) ──
+  const fetcher = (url: string) => fetch(url).then((r) => r.json())
+  const { data: kpiSeries } = useSWR(
+    `/api/dashboard/kpi-series?period=${revenuePeriod}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const sparklines = kpiSeries?.sparklines ?? kpiSeries?.data?.sparklines
+  const deltas = kpiSeries?.deltas ?? kpiSeries?.data?.deltas
+
+  // ─── Flow performance agregado (real data from klaviyo_flow_metrics) ──
+  const { data: flowsAgg } = useSWR(
+    `/api/dashboard/flows-aggregate?period=${revenuePeriod}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const flowCards = flowsAgg?.flows ?? flowsAgg?.data?.flows ?? undefined
+
   // ─── Computed KPI values from REAL data ─────────────────
 
   const totalRevenue = revenueData?.totalRevenue ?? 0
@@ -224,24 +243,32 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
             <KpiCard
               label="Receita Total"
               value={fmtCompact(totalRevenue)}
+              delta={deltas?.total}
+              sparkData={sparklines?.total}
               loading={isLoading}
               tooltip="Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
             />
             <KpiCard
               label="Receita Campanhas"
               value={fmtCompact(campaignRevenue)}
+              delta={deltas?.campaign}
+              sparkData={sparklines?.campaign}
               loading={isLoading}
               tooltip="Receita atribuída a campanhas de email e SMS enviadas pela Convertfy no período."
             />
             <KpiCard
               label="Receita Automações"
               value={fmtCompact(flowRevenue)}
+              delta={deltas?.flow}
+              sparkData={sparklines?.flow}
               loading={isLoading}
               tooltip="Receita gerada por flows automáticos (carrinho abandonado, welcome, win-back, etc.) no período."
             />
             <KpiCard
               label="Taxa média da Convertfy"
               value={`${convertfyRate.toFixed(1)}%`}
+              delta={deltas?.rate}
+              sparkData={sparklines?.rate}
               variant="gradient"
               loading={isLoading}
               tooltip="Percentual médio da receita total que é atribuída às ações da Convertfy (campanhas + automações) entre todas as lojas."
@@ -289,7 +316,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
               <ChartSkeleton />
             </div>
           }>
-            <DashboardFlowPerf loading={isLoading} />
+            <DashboardFlowPerf loading={isLoading} flows={flowCards} />
           </Suspense>
         </AnimatedItem>
 
