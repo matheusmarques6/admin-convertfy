@@ -24,16 +24,35 @@ export async function GET(request: NextRequest) {
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    const { data: stores, error: storesErr } = await supabase
-      .from("client_stores")
-      .select("id, store_name, store_url, platform, email_platform, is_active, client_id, clients(name)")
-      .eq("org_id", orgId)
-      .eq("is_active", true)
-      .order("store_name")
-      .limit(500)
+    // SELECT resiliente: tenta com email_platform/omnisend_api_key (colunas
+    // novas), fallback sem quando a migration 20260417 nao foi aplicada.
+    async function fetchStores(selectCols: string) {
+      return supabase
+        .from("client_stores")
+        .select(selectCols)
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .order("store_name")
+        .limit(500)
+    }
 
-    if (storesErr) throw storesErr
-    if (!stores || stores.length === 0) {
+    let storesQuery = await fetchStores(
+      "id, store_name, store_url, platform, email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, is_active, client_id, clients(name)"
+    )
+
+    if (storesQuery.error && /email_platform|omnisend_api_key/.test(storesQuery.error.message || "")) {
+      log.warn("email_platform/omnisend_api_key columns not found — falling back", { msg: storesQuery.error.message })
+      storesQuery = await fetchStores(
+        "id, store_name, store_url, platform, klaviyo_private_key, klaviyo_api_key, is_active, client_id, clients(name)"
+      )
+    }
+
+    if (storesQuery.error) throw storesQuery.error
+    const stores = (storesQuery.data || []) as unknown as Array<Record<string, unknown> & {
+      id: string; store_name: string; store_url?: string; platform?: string;
+      client_id?: string | null; clients?: { name: string } | { name: string }[] | null;
+    }>
+    if (stores.length === 0) {
       return successResponse(request, { stores: [], period })
     }
 
@@ -62,10 +81,19 @@ export async function GET(request: NextRequest) {
       const campaigns = campByStore.get(store.id) || []
       const flows = flowByStore.get(store.id) || []
 
-      // Detecta plataforma: prioriza email_platform do banco; fallback pela fonte com dados
-      let platform = (store.email_platform as string) || rev?.platform || "none"
-      if (platform !== "klaviyo" && platform !== "omnisend" && platform !== "none") {
-        platform = "none"
+      // Detecta plataforma em 3 camadas (robusto a migration pendente):
+      //  1. Coluna email_platform (se migration aplicada)
+      //  2. Fonte do revenue na tabela store_revenue_summary
+      //  3. Presenca de credencial (omnisend_api_key / klaviyo_*_key)
+      const s = store as Record<string, unknown>
+      let platform: "klaviyo" | "omnisend" | "none" =
+        (s.email_platform as "klaviyo" | "omnisend" | "none" | undefined) ||
+        rev?.platform ||
+        "none"
+
+      if (platform === "none") {
+        if (s.omnisend_api_key) platform = "omnisend"
+        else if (s.klaviyo_private_key || s.klaviyo_api_key) platform = "klaviyo"
       }
 
       // Currency: Klaviyo pega da account info; Omnisend ja esta em currency da loja

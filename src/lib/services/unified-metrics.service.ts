@@ -73,26 +73,40 @@ export async function getUnifiedRevenue(
   periodLabels: string[],
   storeIds?: string[]
 ): Promise<UnifiedRevenueRow[]> {
-  let query = supabase
-    .from("store_revenue_summary")
-    .select(`
-      store_id, period_label,
-      klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue,
-      omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue,
-      store_total_revenue, total_leads, engaged_leads, engagement_rate,
-      store_orders, currency, sync_status
-    `)
-    .eq("org_id", orgId)
-    .in("period_label", periodLabels)
+  const selectWithOmnisend = `
+    store_id, period_label,
+    klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue,
+    omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue,
+    store_total_revenue, total_leads, engaged_leads, engagement_rate,
+    store_orders, currency, sync_status
+  `
+  const selectWithoutOmnisend = `
+    store_id, period_label,
+    klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue,
+    store_total_revenue, total_leads, engaged_leads, engagement_rate,
+    store_orders, currency, sync_status
+  `
 
-  if (storeIds && storeIds.length > 0) {
-    query = query.in("store_id", storeIds)
+  async function runQuery(selectCols: string) {
+    let q = supabase
+      .from("store_revenue_summary")
+      .select(selectCols)
+      .eq("org_id", orgId)
+      .in("period_label", periodLabels)
+    if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
+    return q
   }
 
-  const { data, error } = await query
+  let result = await runQuery(selectWithOmnisend)
+  if (result.error && /omnisend_/.test(result.error.message || "")) {
+    // Migration 20260417 nao aplicada — usa fallback sem colunas omnisend
+    result = await runQuery(selectWithoutOmnisend)
+  }
+  const { data, error } = result
   if (error) throw error
 
-  return (data || []).map((r) => {
+  const rows = (data || []) as unknown as Record<string, unknown>[]
+  return rows.map((r) => {
     const klavTotal = Number(r.klaviyo_total_revenue) || 0
     const omnTotal = Number(r.omnisend_total_revenue) || 0
     const klavCamp = Number(r.klaviyo_campaign_revenue) || 0
@@ -108,8 +122,8 @@ export async function getUnifiedRevenue(
     else if (omnTotal > 0) platform = "omnisend"
 
     return {
-      store_id: r.store_id,
-      period_label: r.period_label,
+      store_id: String(r.store_id),
+      period_label: String(r.period_label),
       total_revenue: klavTotal + omnTotal,
       campaign_revenue: klavCamp + omnCamp,
       flow_revenue: klavFlow + omnFlow,
@@ -118,8 +132,8 @@ export async function getUnifiedRevenue(
       engaged_leads: Number(r.engaged_leads) || 0,
       engagement_rate: Number(r.engagement_rate) || 0,
       store_orders: Number(r.store_orders) || 0,
-      currency: r.currency,
-      sync_status: r.sync_status || "pending",
+      currency: (r.currency as string) ?? null,
+      sync_status: String(r.sync_status || "pending"),
       platform,
     }
   })

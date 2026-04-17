@@ -33,19 +33,31 @@ export async function GET(request: NextRequest) {
         .select("type, severity, title, message, store:client_stores(store_name)")
         .eq("status", "active")
         .limit(20),
-      supabase
-        .from("client_stores")
-        .select("id, store_name, email_platform")
-        .eq("org_id", orgId)
-        .eq("is_active", true)
-        .limit(500),
+      // Resiliente a migration pendente: tenta com email_platform, fallback sem
+      (async () => {
+        const r = await supabase
+          .from("client_stores")
+          .select("id, store_name, email_platform")
+          .eq("org_id", orgId)
+          .eq("is_active", true)
+          .limit(500)
+        if (r.error && /email_platform/.test(r.error.message || "")) {
+          return await supabase
+            .from("client_stores")
+            .select("id, store_name")
+            .eq("org_id", orgId)
+            .eq("is_active", true)
+            .limit(500)
+        }
+        return r
+      })(),
     ])
 
     const storeNames = new Map<string, string>()
     const platformCount = { klaviyo: 0, omnisend: 0, none: 0 }
     for (const s of storesMeta || []) {
       storeNames.set(s.id, s.store_name || "Loja")
-      const p = (s.email_platform as string) || "none"
+      const p = ((s as Record<string, unknown>).email_platform as string) || "none"
       if (p === "klaviyo" || p === "omnisend" || p === "none") {
         platformCount[p as keyof typeof platformCount]++
       }

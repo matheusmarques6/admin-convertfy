@@ -21,12 +21,23 @@ export async function GET(request: NextRequest) {
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    const { data: storesMeta } = await supabase
-      .from("client_stores")
-      .select("id, store_name, email_platform, client_id, clients(name)")
-      .eq("org_id", orgId)
-      .eq("is_active", true)
-      .limit(500)
+    // Resiliente a migration pendente
+    async function fetchStores(selectCols: string) {
+      return supabase
+        .from("client_stores")
+        .select(selectCols)
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .limit(500)
+    }
+    let storesRes = await fetchStores("id, store_name, email_platform, client_id, clients(name)")
+    if (storesRes.error && /email_platform/.test(storesRes.error.message || "")) {
+      storesRes = await fetchStores("id, store_name, client_id, clients(name)")
+    }
+    const storesMeta = (storesRes.data || []) as unknown as Array<Record<string, unknown> & {
+      id: string; store_name: string; client_id?: string | null;
+      clients?: { name: string } | { name: string }[] | null;
+    }>
 
     if (!storesMeta || storesMeta.length === 0) {
       return successResponse(request, { stores: [], summary: null, period })
@@ -75,7 +86,7 @@ export async function GET(request: NextRequest) {
         id: storeMeta.id,
         storeName: storeMeta.store_name,
         clientName: clientData?.name || "—",
-        platform: (storeMeta.email_platform as string) || "none",
+        platform: ((storeMeta as Record<string, unknown>).email_platform as string) || "none",
         totalLeads,
         engagedLeads,
         unengaged,
