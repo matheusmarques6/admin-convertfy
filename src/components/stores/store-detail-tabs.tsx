@@ -1,22 +1,14 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { format } from "date-fns"
-import {
-  Loader2,
-  Save,
-  Eye,
-  EyeOff,
-} from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
 import { formatCurrency } from "@/lib/utils"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
@@ -25,9 +17,8 @@ import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
 import { useStorePerformance, StorePerformanceContext } from "@/lib/hooks/use-store-performance"
-import { toast } from "@/lib/hooks/use-toast"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
-import { IntegrationCardsGrid } from "@/components/stores/integration-card"
+import { IntegrationsPanel } from "@/components/stores/integrations-panel"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 interface IntegrationStatusData {
@@ -79,28 +70,6 @@ const VALID_TABS = [
   "overview", "integrations", "onboarding", "briefing", "reports",
 ] as const
 
-interface CredentialsFormState {
-  shopify_store_domain: string
-  shopify_access_token: string
-  klaviyo_public_key: string
-  klaviyo_private_key: string
-  klaviyo_list_id: string
-  omnisend_api_key: string
-  ga4_property_id: string
-  ga4_credentials_json: string
-}
-
-const EMPTY_CREDENTIALS: CredentialsFormState = {
-  shopify_store_domain: "",
-  shopify_access_token: "",
-  klaviyo_public_key: "",
-  klaviyo_private_key: "",
-  klaviyo_list_id: "",
-  omnisend_api_key: "",
-  ga4_property_id: "",
-  ga4_credentials_json: "",
-}
-
 export function StoreDetailTabs({
   storeId,
   storeName,
@@ -119,7 +88,6 @@ export function StoreDetailTabs({
   currency: storeCurrency,
 }: StoreDetailTabsProps) {
   const searchParams = useSearchParams()
-  const router = useRouter()
 
   // Controlled tab from ?tab= query param
   const tabParam = searchParams.get("tab")
@@ -328,22 +296,7 @@ export function StoreDetailTabs({
 
       {/* ─── Integrações ───────────────────────────────────── */}
       {activeTab === "integrations" && (
-        <div className="space-y-6">
-          <IntegrationCardsGrid
-            storeId={storeId}
-            integrationStatus={integrationStatus}
-            storeUrl={storeUrl}
-          />
-
-          {/* Credentials Form */}
-          <CredentialsForm
-            storeId={storeId}
-            clientId={clientId}
-            integrationStatus={integrationStatus}
-            platform={platform}
-            onSaved={() => router.refresh()}
-          />
-        </div>
+        <IntegrationsPanel storeId={storeId} storeUrl={storeUrl} />
       )}
 
       {/* ─── Onboarding (resolve Problema #5) ─────────────── */}
@@ -447,286 +400,3 @@ function LatestCampaignsTable({
 }
 
 // --- Credentials Form (Integrations Tab) ---
-function CredentialsForm({
-  storeId,
-  clientId: _clientId,
-  integrationStatus,
-  platform,
-  onSaved,
-}: {
-  storeId: string
-  clientId: string | null
-  integrationStatus: Record<string, IntegrationStatusData>
-  platform?: string | null
-  onSaved: () => void
-}) {
-  void platform
-  void _clientId
-  const [form, setForm] = useState<CredentialsFormState>({ ...EMPTY_CREDENTIALS })
-  const [isSaving, setIsSaving] = useState(false)
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})
-
-  const togglePasswordVisibility = (field: string) => {
-    setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }))
-  }
-
-  const shopifyConfigured = integrationStatus.shopify?.configured ?? false
-  const klaviyoConfigured = integrationStatus.klaviyo?.configured ?? false
-  const ga4Configured = integrationStatus.ga4?.configured ?? false
-
-  const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: Record<string, any> = { store_id: storeId }
-
-      if (form.shopify_store_domain.trim()) payload.shopify_store_domain = form.shopify_store_domain.trim()
-      if (form.shopify_access_token.trim()) payload.shopify_access_token = form.shopify_access_token.trim()
-      if (form.klaviyo_public_key.trim()) payload.klaviyo_public_key = form.klaviyo_public_key.trim()
-      if (form.klaviyo_private_key.trim()) payload.klaviyo_private_key = form.klaviyo_private_key.trim()
-      if (form.klaviyo_list_id.trim()) payload.klaviyo_list_id = form.klaviyo_list_id.trim()
-      if (form.omnisend_api_key.trim()) payload.omnisend_api_key = form.omnisend_api_key.trim()
-      if (form.ga4_property_id.trim()) payload.ga4_property_id = form.ga4_property_id.trim()
-      if (form.ga4_credentials_json.trim()) {
-        try {
-          payload.ga4_credentials = JSON.parse(form.ga4_credentials_json.trim())
-        } catch {
-          toast({ variant: "destructive", title: "JSON inválido", description: "As credenciais do Google Analytics devem ser um JSON válido" })
-          setIsSaving(false)
-          return
-        }
-      }
-
-      if (Object.keys(payload).length <= 1) {
-        toast({ variant: "destructive", title: "Nenhum campo preenchido", description: "Preencha ao menos um campo de credencial para salvar." })
-        setIsSaving(false)
-        return
-      }
-
-      const response = await fetch("/api/client-stores/credentials", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Erro ao salvar credenciais")
-      }
-
-      toast({ title: "Credenciais salvas", description: "As credenciais foram atualizadas com sucesso." })
-      setForm({ ...EMPTY_CREDENTIALS })
-      onSaved()
-    } catch (error) {
-      toast({ variant: "destructive", title: "Erro ao salvar", description: error instanceof Error ? error.message : "Erro desconhecido" })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Card className="rounded-[8px]">
-      <CardHeader>
-        <CardTitle className="text-sm font-semibold">Credenciais de Integração</CardTitle>
-        <CardDescription>
-          Configure as credenciais das integrações desta loja. Campos sensíveis são criptografados.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-8">
-        {/* Shopify Section */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              Integração Shopify
-            </h4>
-            <Badge variant={shopifyConfigured ? "positive" : "neutral"} className="text-xs">
-              {shopifyConfigured ? "Configurado" : "Não configurado"}
-            </Badge>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Domínio da Loja</Label>
-              <Input
-                placeholder="minhaloja.myshopify.com"
-                value={form.shopify_store_domain}
-                onChange={(e) => setForm({ ...form, shopify_store_domain: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">Domínio .myshopify.com da sua loja</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Admin API Access Token</Label>
-              <div className="relative">
-                <Input
-                  type={showPasswords.shopify_access_token ? "text" : "password"}
-                  placeholder="shpat_xxxxxxxxxxxxxxxx"
-                  value={form.shopify_access_token}
-                  onChange={(e) => setForm({ ...form, shopify_access_token: e.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => togglePasswordVisibility("shopify_access_token")}
-                >
-                  {showPasswords.shopify_access_token ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Klaviyo Section */}
-        <div className="border-t pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              Integração Klaviyo
-            </h4>
-            <Badge variant={klaviyoConfigured ? "positive" : "neutral"} className="text-xs">
-              {klaviyoConfigured ? "Configurado" : "Não configurado"}
-            </Badge>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Public API Key / Site ID</Label>
-              <Input
-                placeholder="XXXXXX (6 caracteres)"
-                value={form.klaviyo_public_key}
-                onChange={(e) => setForm({ ...form, klaviyo_public_key: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Private API Key *</Label>
-              <div className="relative">
-                <Input
-                  type={showPasswords.klaviyo_private_key ? "text" : "password"}
-                  placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  value={form.klaviyo_private_key}
-                  onChange={(e) => setForm({ ...form, klaviyo_private_key: e.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => togglePasswordVisibility("klaviyo_private_key")}
-                >
-                  {showPasswords.klaviyo_private_key ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>List ID (opcional)</Label>
-              <Input
-                placeholder="ID da lista principal"
-                value={form.klaviyo_list_id}
-                onChange={(e) => setForm({ ...form, klaviyo_list_id: e.target.value })}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Omnisend Section */}
-        <div className="border-t pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              Integração Omnisend
-            </h4>
-            <Badge variant={form.omnisend_api_key || integrationStatus?.omnisend?.connected ? "positive" : "neutral"} className="text-xs">
-              {form.omnisend_api_key || integrationStatus?.omnisend?.connected ? "Configurado" : "Não configurado"}
-            </Badge>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>API Key *</Label>
-              <div className="relative">
-                <Input
-                  type={showPasswords.omnisend_api_key ? "text" : "password"}
-                  placeholder="Cole sua API Key do Omnisend"
-                  value={form.omnisend_api_key}
-                  onChange={(e) => setForm({ ...form, omnisend_api_key: e.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => togglePasswordVisibility("omnisend_api_key")}
-                >
-                  {showPasswords.omnisend_api_key ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Encontre em Omnisend → Settings → API Keys. Use uma chave com permissões de leitura.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* GA4 Section */}
-        <div className="border-t pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              Integração Google Analytics (GA4)
-            </h4>
-            <Badge variant={ga4Configured ? "positive" : "neutral"} className="text-xs">
-              {ga4Configured ? "Configurado" : "Não configurado"}
-            </Badge>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Property ID</Label>
-              <Input
-                placeholder="123456789"
-                value={form.ga4_property_id}
-                onChange={(e) => setForm({ ...form, ga4_property_id: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Service Account Credentials (JSON)</Label>
-              <textarea
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono text-xs"
-                placeholder='{"type": "service_account", "project_id": "...", ...}'
-                value={form.ga4_credentials_json}
-                onChange={(e) => setForm({ ...form, ga4_credentials_json: e.target.value })}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Save Button */}
-        <div className="flex justify-end pt-4 border-t">
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Salvar Credenciais
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}

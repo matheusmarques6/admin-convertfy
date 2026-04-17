@@ -9,7 +9,179 @@ import { validateShopifyCredentials, validateKlaviyoCredentials, validateOmnisen
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
 
+import { decrypt, decryptCredentialsJson } from "@/lib/crypto"
+import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
+
 const log = logger.child("ClientStoresCredentials")
+
+/**
+ * Mascara uma credencial exibindo apenas os ultimos 4 caracteres.
+ * Ex: 'pk_live_1234567890abcdef' → '••••••••••••cdef'
+ */
+function maskCredential(value: string | null | undefined): string | null {
+  if (!value || typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (trimmed.length <= 4) return "••••"
+  return "••••••••" + trimmed.slice(-4)
+}
+
+/**
+ * GET /api/client-stores/credentials?store_id=xxx
+ *
+ * Retorna credenciais MASCARADAS (ultimos 4 chars) + status de cada
+ * integracao. NUNCA retorna credenciais em plaintext.
+ *
+ * Formato de resposta:
+ *   {
+ *     credentials: {
+ *       shopify: { store_domain, access_token_masked, configured },
+ *       klaviyo: { public_key, private_key_masked, list_id, configured },
+ *       omnisend: { api_key_masked, configured },
+ *       ga4: { property_id, credentials_configured },
+ *       meta: { access_token_masked, configured },
+ *     },
+ *     status: IntegrationStatus  // derived state per integration
+ *   }
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+
+    const storeId = request.nextUrl.searchParams.get("store_id")
+    if (!storeId) throw new AppError("store_id e obrigatorio", 400)
+
+    await requireStoreAccess(storeId, user.id)
+
+    const adminClient = createAdminClient()
+    const { data: store, error } = await adminClient
+      .from("client_stores")
+      .select(`
+        id,
+        shopify_store_domain,
+        shopify_access_token,
+        shopify_api_key,
+        shopify_api_secret,
+        klaviyo_api_key,
+        klaviyo_private_key,
+        klaviyo_public_key,
+        klaviyo_list_id,
+        omnisend_api_key,
+        ga4_property_id,
+        ga4_credentials,
+        meta_access_token,
+        meta_page_id,
+        meta_ad_account_id
+      `)
+      .eq("id", storeId)
+      .single()
+
+    if (error || !store) throw new AppError("Loja nao encontrada", 404)
+
+    // Descriptografa campos para mascarar (nunca expoe plaintext ao cliente)
+    function safeDecrypt(value: string | null | undefined): string | null {
+      if (!value) return null
+      try {
+        return decrypt(value)
+      } catch {
+        return null
+      }
+    }
+
+    const shopifyToken = safeDecrypt(store.shopify_access_token)
+    const klaviyoPrivate = safeDecrypt(store.klaviyo_private_key)
+    const klaviyoPublic = safeDecrypt(store.klaviyo_public_key)
+    const omnisendKey = safeDecrypt(store.omnisend_api_key)
+    const metaToken = safeDecrypt(store.meta_access_token)
+    const ga4Json = store.ga4_credentials
+      ? (() => { try { return decryptCredentialsJson(store.ga4_credentials) } catch { return null } })()
+      : null
+
+    const integrationStatus = await getStoreIntegrationStatus(storeId)
+
+    return successResponse(request, {
+      credentials: {
+        shopify: {
+          store_domain: store.shopify_store_domain || "",
+          access_token_masked: maskCredential(shopifyToken),
+          configured: !!shopifyToken && !!store.shopify_store_domain,
+        },
+        klaviyo: {
+          public_key: klaviyoPublic || "",
+          private_key_masked: maskCredential(klaviyoPrivate),
+          list_id: store.klaviyo_list_id || "",
+          configured: !!klaviyoPrivate,
+        },
+        omnisend: {
+          api_key_masked: maskCredential(omnisendKey),
+          configured: !!omnisendKey,
+        },
+        ga4: {
+          property_id: store.ga4_property_id || "",
+          credentials_configured: !!ga4Json,
+          client_email: (ga4Json && typeof ga4Json === "object" && "client_email" in ga4Json)
+            ? String(ga4Json.client_email)
+            : null,
+        },
+        meta: {
+          access_token_masked: maskCredential(metaToken),
+          page_id: store.meta_page_id || "",
+          ad_account_id: store.meta_ad_account_id || "",
+          configured: !!metaToken,
+        },
+      },
+      status: integrationStatus,
+    })
+  } catch (error) {
+    return errorResponse(request, error, "credentials.GET")
+  }
+}
+
+/**
+ * DELETE /api/client-stores/credentials?store_id=xxx&integration=klaviyo
+ *
+ * Remove credenciais de uma integracao especifica.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+
+    const storeId = request.nextUrl.searchParams.get("store_id")
+    const integration = request.nextUrl.searchParams.get("integration")
+    if (!storeId) throw new AppError("store_id e obrigatorio", 400)
+    if (!integration) throw new AppError("integration e obrigatorio", 400)
+
+    await requireStoreAccess(storeId, user.id)
+
+    const FIELDS_BY_INTEGRATION: Record<string, string[]> = {
+      shopify: ["shopify_store_domain", "shopify_access_token", "shopify_api_key", "shopify_api_secret", "shopify_validated_at", "shopify_validation_error"],
+      klaviyo: ["klaviyo_api_key", "klaviyo_private_key", "klaviyo_public_key", "klaviyo_list_id", "klaviyo_validated_at", "klaviyo_validation_error", "klaviyo_missing_scopes", "klaviyo_has_reporting_access"],
+      omnisend: ["omnisend_api_key", "omnisend_validated_at", "omnisend_validation_error", "omnisend_has_reporting_access"],
+      ga4: ["ga4_property_id", "ga4_credentials"],
+      meta: ["meta_access_token", "meta_page_id", "meta_user_id", "meta_ad_account_id", "meta_instagram_account_id"],
+    }
+
+    const fields = FIELDS_BY_INTEGRATION[integration]
+    if (!fields) throw new AppError(`Integracao '${integration}' invalida`, 400)
+
+    const adminClient = createAdminClient()
+    const updates: Record<string, null> = {}
+    for (const f of fields) updates[f] = null
+
+    const { error } = await adminClient
+      .from("client_stores")
+      .update(updates)
+      .eq("id", storeId)
+
+    if (error) throw error
+
+    log.info(`Credentials deleted for integration ${integration}`, { storeId })
+    return successResponse(request, { success: true, integration })
+  } catch (error) {
+    return errorResponse(request, error, "credentials.DELETE")
+  }
+}
 
 /**
  * Auto-mark an onboarding step as completed when credentials are saved.
