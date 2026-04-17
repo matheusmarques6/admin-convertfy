@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
+import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KpiSeries")
@@ -15,71 +16,60 @@ export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAdminClient()
-    const userClient = (await import("@/lib/supabase/server")).createClient
-    const uc = await userClient()
+    const uc = await createClient()
     const user = await requireAuth(uc)
     const orgId = await resolveOrgId(user.id)
+    const supabase = await createAdminClient()
 
     const selectedPeriod = request.nextUrl.searchParams.get("period") || "30d"
 
-    const { data: rows, error } = await supabase
-      .from("store_revenue_summary")
-      .select(`
-        store_id,
-        period_label,
-        klaviyo_total_revenue,
-        klaviyo_campaign_revenue,
-        klaviyo_flow_revenue,
-        store_total_revenue,
-        sync_status,
-        client_stores!inner(id, klaviyo_api_key, klaviyo_private_key)
-      `)
-      .eq("org_id", orgId)
-      .in("period_label", PERIODS as unknown as string[])
-      .in("sync_status", ["ok", "partial"])
-
-    if (error) throw error
-
-    type Row = NonNullable<typeof rows>[number]
+    const rows = await getUnifiedRevenue(supabase, orgId, PERIODS as unknown as string[])
 
     const currencyCache = new Map<string, string>()
-    async function getCurrency(storeId: string): Promise<string> {
+    async function getCurrency(storeId: string, fallback: string | null): Promise<string> {
       if (currencyCache.has(storeId)) return currencyCache.get(storeId)!
       try {
         const info = await getCachedAccountInfo(storeId)
-        const c = info?.currency || "BRL"
+        const c = info?.currency || fallback || "BRL"
         currencyCache.set(storeId, c)
         return c
       } catch {
-        return "BRL"
+        return fallback || "BRL"
       }
     }
 
-    const byPeriod: Record<string, { total: number; campaign: number; flow: number }> = {}
-    for (const p of PERIODS) byPeriod[p] = { total: 0, campaign: 0, flow: 0 }
+    const byPeriod: Record<string, { total: number; campaign: number; flow: number; rates: number[] }> = {}
+    for (const p of PERIODS) byPeriod[p] = { total: 0, campaign: 0, flow: 0, rates: [] }
 
-    for (const row of (rows || []) as Row[]) {
-      const pl = row.period_label as string
-      if (!byPeriod[pl]) continue
+    for (const row of rows) {
+      if (!byPeriod[row.period_label]) continue
 
-      const currency = await getCurrency(row.store_id)
-      const totalBRL = await convertToBRL(Number(row.klaviyo_total_revenue), currency)
-      const campBRL = await convertToBRL(Number(row.klaviyo_campaign_revenue), currency)
-      const flowBRL = await convertToBRL(Number(row.klaviyo_flow_revenue), currency)
+      const currency = await getCurrency(row.store_id, row.currency)
+      const totalBRL = await convertToBRL(row.total_revenue, currency)
+      const campBRL = await convertToBRL(row.campaign_revenue, currency)
+      const flowBRL = await convertToBRL(row.flow_revenue, currency)
 
-      byPeriod[pl].total += totalBRL
-      byPeriod[pl].campaign += campBRL
-      byPeriod[pl].flow += flowBRL
+      byPeriod[row.period_label].total += totalBRL
+      byPeriod[row.period_label].campaign += campBRL
+      byPeriod[row.period_label].flow += flowBRL
+
+      if (row.total_revenue > 0) {
+        const attributed = row.campaign_revenue + row.flow_revenue
+        const rate = row.total_revenue > 0 ? (attributed / row.total_revenue) * 100 : 0
+        byPeriod[row.period_label].rates.push(rate)
+      }
     }
 
     const sparkTotal = PERIODS.map((p) => Math.round(byPeriod[p].total))
     const sparkCampaign = PERIODS.map((p) => Math.round(byPeriod[p].campaign))
     const sparkFlow = PERIODS.map((p) => Math.round(byPeriod[p].flow))
+    const sparkRate = PERIODS.map((p) => {
+      const rates = byPeriod[p].rates
+      return rates.length > 0 ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0
+    })
 
     const current = byPeriod[selectedPeriod] || byPeriod["30d"]
     const currentDays = PERIOD_DAYS[selectedPeriod] || 30
-
     const ref = byPeriod["90d"]
     const refDays = 90
 
@@ -94,51 +84,15 @@ export async function GET(request: NextRequest) {
     const deltaCampaign = calcDelta(current.campaign, currentDays, ref.campaign, refDays)
     const deltaFlow = calcDelta(current.flow, currentDays, ref.flow, refDays)
 
-    const storesWithRev = (rows || []).filter(
-      (r: Row) => r.period_label === selectedPeriod && Number(r.klaviyo_total_revenue) > 0
-    )
-    const convertfyRates = await Promise.all(
-      storesWithRev.map(async (r: Row) => {
-        const currency = await getCurrency(r.store_id)
-        const storeRev = await convertToBRL(Number(r.klaviyo_total_revenue), currency)
-        const attributed = await convertToBRL(
-          Number(r.klaviyo_campaign_revenue) + Number(r.klaviyo_flow_revenue), currency
-        )
-        return storeRev > 0 ? (attributed / storeRev) * 100 : 0
-      })
-    )
-    const avgConvertfyRate = convertfyRates.length > 0
-      ? convertfyRates.reduce((a, b) => a + b, 0) / convertfyRates.length
+    const currentRateAvg = current.rates.length > 0
+      ? current.rates.reduce((a, b) => a + b, 0) / current.rates.length
       : 0
-
-    const prevConvertfyRates = await Promise.all(
-      ((rows || []) as Row[])
-        .filter((r) => r.period_label === "90d" && Number(r.klaviyo_total_revenue) > 0)
-        .map(async (r) => {
-          const currency = await getCurrency(r.store_id)
-          const storeRev = await convertToBRL(Number(r.klaviyo_total_revenue), currency)
-          const attributed = await convertToBRL(
-            Number(r.klaviyo_campaign_revenue) + Number(r.klaviyo_flow_revenue), currency
-          )
-          return storeRev > 0 ? (attributed / storeRev) * 100 : 0
-        })
-    )
-    const prevAvgRate = prevConvertfyRates.length > 0
-      ? prevConvertfyRates.reduce((a, b) => a + b, 0) / prevConvertfyRates.length
+    const refRateAvg = ref.rates.length > 0
+      ? ref.rates.reduce((a, b) => a + b, 0) / ref.rates.length
       : 0
-    const deltaRate = prevAvgRate > 0
-      ? Math.round(((avgConvertfyRate - prevAvgRate) / prevAvgRate) * 1000) / 10
+    const deltaRate = refRateAvg > 0
+      ? Math.round(((currentRateAvg - refRateAvg) / refRateAvg) * 1000) / 10
       : 0
-
-    const sparkRate = PERIODS.map((p) => {
-      const periodRows = ((rows || []) as Row[]).filter(
-        (r) => r.period_label === p && Number(r.klaviyo_total_revenue) > 0
-      )
-      if (periodRows.length === 0) return 0
-      return Math.round(
-        periodRows.reduce((sum, _r) => sum + 50, 0) / periodRows.length
-      )
-    })
 
     return successResponse(request, {
       period: selectedPeriod,

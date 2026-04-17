@@ -4,6 +4,7 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
+import { getUnifiedFlows } from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("FlowsAggregate")
@@ -13,22 +14,10 @@ export const dynamic = "force-dynamic"
 type FlowCategory = "cart_recovery" | "browse_abandon" | "winback" | "welcome" | "other"
 
 const FLOW_PATTERNS: { category: FlowCategory; patterns: RegExp[] }[] = [
-  {
-    category: "cart_recovery",
-    patterns: [/cart/i, /carrin/i, /abandon.*cart/i, /checkout/i],
-  },
-  {
-    category: "browse_abandon",
-    patterns: [/browse/i, /navega/i, /abandon.*brows/i, /product.*view/i],
-  },
-  {
-    category: "winback",
-    patterns: [/win.?back/i, /re.?engag/i, /lapsed/i, /retorn/i, /inativo/i],
-  },
-  {
-    category: "welcome",
-    patterns: [/welcome/i, /boas.?vindas/i, /onboard/i, /new.*subscri/i],
-  },
+  { category: "cart_recovery", patterns: [/cart/i, /carrin/i, /abandon.*cart/i, /checkout/i] },
+  { category: "browse_abandon", patterns: [/browse/i, /navega/i, /abandon.*brows/i, /product.*view/i] },
+  { category: "winback", patterns: [/win.?back/i, /re.?engag/i, /lapsed/i, /retorn/i, /inativo/i] },
+  { category: "welcome", patterns: [/welcome/i, /boas.?vindas/i, /onboard/i, /new.*subscri/i] },
 ]
 
 const CATEGORY_LABELS: Record<FlowCategory, { title: string; benchmark: number }> = {
@@ -48,56 +37,36 @@ function categorizeFlow(flowName: string): FlowCategory {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAdminClient()
     const uc = await createClient()
     const user = await requireAuth(uc)
     const orgId = await resolveOrgId(user.id)
+    const supabase = await createAdminClient()
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    const { data: rows, error } = await supabase
-      .from("klaviyo_flow_metrics")
-      .select(`
-        store_id,
-        flow_id,
-        flow_name,
-        flow_status,
-        recipients,
-        delivered,
-        opened,
-        open_rate,
-        clicked,
-        click_rate,
-        conversions,
-        conversion_rate,
-        conversion_value,
-        revenue_per_recipient,
-        bounced,
-        bounce_rate,
-        unsubscribed,
-        unsubscribe_rate,
-        client_stores!inner(id, store_name, client_id, clients(name))
-      `)
-      .eq("org_id", orgId)
-      .eq("period_label", period)
-      .eq("flow_status", "live")
-
-    if (error) throw error
-    if (!rows || rows.length === 0) {
+    const flows = await getUnifiedFlows(supabase, orgId, period, undefined, true)
+    if (flows.length === 0) {
       return successResponse(request, { flows: [], period })
     }
 
+    // Carrega metadados das lojas (nome + currency para conversao BRL)
+    const storeIds = Array.from(new Set(flows.map((f) => f.store_id)))
+    const { data: storesMeta } = await supabase
+      .from("client_stores")
+      .select("id, store_name, email_platform")
+      .in("id", storeIds)
+
+    const storeNames = new Map<string, string>()
+    const storePlatform = new Map<string, string>()
+    for (const s of storesMeta || []) {
+      storeNames.set(s.id, s.store_name || "Loja")
+      storePlatform.set(s.id, s.email_platform || "klaviyo")
+    }
+
     const aggregated = new Map<FlowCategory, {
-      totalRecipients: number
-      totalDelivered: number
-      totalOpened: number
-      totalClicked: number
-      totalConversions: number
-      totalRevenueBRL: number
-      totalBounced: number
-      totalUnsubscribed: number
-      flowCount: number
-      conversionRates: number[]
+      totalRecipients: number; totalDelivered: number; totalOpened: number; totalClicked: number
+      totalConversions: number; totalRevenueBRL: number; totalBounced: number; totalUnsubscribed: number
+      flowCount: number; conversionRates: number[]
       storeConversions: Map<string, { storeName: string; rate: number }>
     }>()
 
@@ -109,40 +78,38 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    for (const row of rows) {
+    for (const row of flows) {
       const category = categorizeFlow(row.flow_name || "")
       const agg = aggregated.get(category)!
 
+      // Klaviyo: pega currency via cache. Omnisend: usa BRL (Omnisend sync ja converte).
       let currency = "BRL"
-      try {
-        const info = await getCachedAccountInfo(row.store_id)
-        currency = info?.currency || "BRL"
-      } catch { /* ignore */ }
+      if (row.platform === "klaviyo") {
+        try {
+          const info = await getCachedAccountInfo(row.store_id)
+          currency = info?.currency || "BRL"
+        } catch { /* ignore */ }
+      }
+      const revBRL = await convertToBRL(row.conversion_value, currency)
 
-      const revBRL = await convertToBRL(Number(row.conversion_value) || 0, currency)
-
-      agg.totalRecipients += Number(row.recipients) || 0
-      agg.totalDelivered += Number(row.delivered) || 0
-      agg.totalOpened += Number(row.opened) || 0
-      agg.totalClicked += Number(row.clicked) || 0
-      agg.totalConversions += Number(row.conversions) || 0
+      agg.totalRecipients += row.recipients
+      agg.totalDelivered += row.delivered
+      agg.totalOpened += row.opened
+      agg.totalClicked += row.clicked
+      agg.totalConversions += row.conversions
       agg.totalRevenueBRL += revBRL
-      agg.totalBounced += Number(row.bounced) || 0
-      agg.totalUnsubscribed += Number(row.unsubscribed) || 0
+      agg.totalBounced += row.bounced
+      agg.totalUnsubscribed += row.unsubscribed
       agg.flowCount++
 
-      if (Number(row.conversion_rate) > 0) {
-        agg.conversionRates.push(Number(row.conversion_rate))
+      if (row.conversion_rate > 0) {
+        agg.conversionRates.push(row.conversion_rate)
       }
 
-      const storeData = row.client_stores as unknown as {
-        store_name: string; client_id: string | null; clients: { name: string } | null
-      }
-      const storeName = storeData?.store_name || "Loja"
+      const storeName = storeNames.get(row.store_id) || "Loja"
       const existing = agg.storeConversions.get(row.store_id)
-      const rate = Number(row.conversion_rate) || 0
-      if (!existing || rate < existing.rate) {
-        agg.storeConversions.set(row.store_id, { storeName, rate })
+      if (!existing || row.conversion_rate < existing.rate) {
+        agg.storeConversions.set(row.store_id, { storeName, rate: row.conversion_rate })
       }
     }
 

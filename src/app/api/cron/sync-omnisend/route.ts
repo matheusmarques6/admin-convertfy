@@ -131,11 +131,11 @@ export async function GET(request: NextRequest) {
           period_end: now.toISOString(),
           store_total_revenue: data.totalStoreRevenue,
           store_orders: data.totalOrders,
-          // Store Omnisend revenue in the same columns as Klaviyo
-          // (a store uses either Klaviyo OR Omnisend, not both)
-          klaviyo_total_revenue: data.totalCampaignRevenue + data.totalAutomationRevenue,
-          klaviyo_campaign_revenue: data.totalCampaignRevenue,
-          klaviyo_flow_revenue: data.totalAutomationRevenue,
+          // Colunas omnisend_* dedicadas (uma loja usa UMA plataforma,
+          // entao Klaviyo e Omnisend nao se sobrepoem)
+          omnisend_total_revenue: data.totalCampaignRevenue + data.totalAutomationRevenue,
+          omnisend_campaign_revenue: data.totalCampaignRevenue,
+          omnisend_flow_revenue: data.totalAutomationRevenue,
           total_leads: data.totalContacts,
           engaged_leads: data.subscribedContacts,
           engagement_rate: data.totalContacts > 0
@@ -156,6 +156,88 @@ export async function GET(request: NextRequest) {
         if (upsertError) {
           log.error("Failed to upsert revenue summary", { storeId: store.id, error: upsertError })
         }
+
+        // Persistir metricas granulares das campanhas em omnisend_campaign_metrics
+        if (data.campaignRows.length > 0) {
+          const campaignPayload = data.campaignRows.map((c) => ({
+            store_id: c.store_id,
+            org_id: c.org_id,
+            campaign_id: c.campaign_id,
+            campaign_name: c.campaign_name,
+            campaign_status: c.campaign_status,
+            send_time: c.send_time,
+            subject: c.subject,
+            channel: c.channel || "email",
+            period_start: periodStart.toISOString(),
+            period_end: now.toISOString(),
+            period_label: "30d",
+            recipients: c.recipients,
+            delivered: c.delivered,
+            delivery_rate: c.delivery_rate,
+            opened: c.opened,
+            open_rate: c.open_rate,
+            clicked: c.clicked,
+            click_rate: c.click_rate,
+            conversions: c.conversions,
+            conversion_rate: c.conversion_rate,
+            conversion_value: c.conversion_value,
+            revenue_per_recipient: c.revenue_per_recipient,
+            bounced: c.bounced,
+            bounce_rate: c.bounce_rate,
+            unsubscribed: c.unsubscribed,
+            unsubscribe_rate: c.unsubscribe_rate,
+            spam_complaints: c.spam_complaints,
+            fetched_at: now.toISOString(),
+            expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          }))
+          const { error: campErr } = await adminClient
+            .from("omnisend_campaign_metrics")
+            .upsert(campaignPayload, { onConflict: "store_id,campaign_id,period_start,period_end" })
+          if (campErr) log.warn("Failed to upsert omnisend_campaign_metrics", { error: campErr })
+        }
+
+        // Persistir metricas granulares dos flows/automacoes em omnisend_flow_metrics
+        if (data.automationRows.length > 0) {
+          const flowPayload = data.automationRows.map((a) => ({
+            store_id: a.store_id,
+            org_id: a.org_id,
+            flow_id: a.automation_id,
+            flow_name: a.automation_name,
+            flow_status: a.automation_status || "live",
+            trigger_type: a.trigger_type,
+            period_start: periodStart.toISOString(),
+            period_end: now.toISOString(),
+            period_label: "30d",
+            recipients: a.recipients,
+            delivered: a.delivered,
+            delivery_rate: a.delivery_rate,
+            opened: a.opened,
+            open_rate: a.open_rate,
+            clicked: a.clicked,
+            click_rate: a.click_rate,
+            conversions: a.conversions,
+            conversion_rate: a.conversion_rate,
+            conversion_value: a.conversion_value,
+            revenue_per_recipient: a.revenue_per_recipient,
+            bounced: a.bounced,
+            bounce_rate: a.bounce_rate,
+            unsubscribed: a.unsubscribed,
+            unsubscribe_rate: a.unsubscribe_rate,
+            fetched_at: now.toISOString(),
+            expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          }))
+          const { error: flowErr } = await adminClient
+            .from("omnisend_flow_metrics")
+            .upsert(flowPayload, { onConflict: "store_id,flow_id,period_start,period_end" })
+          if (flowErr) log.warn("Failed to upsert omnisend_flow_metrics", { error: flowErr })
+        }
+
+        // Marcar a plataforma da loja (idempotente)
+        await adminClient
+          .from("client_stores")
+          .update({ email_platform: "omnisend" })
+          .eq("id", store.id)
+          .neq("email_platform", "omnisend")
 
         results.push({
           storeId: store.id,

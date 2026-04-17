@@ -10,6 +10,7 @@ export interface StoreOverviewData {
   storeName: string
   storeUrl?: string
   platform?: string
+  emailPlatform?: "klaviyo" | "omnisend" | "none"
   clientId?: string
   clientName: string
   currency: string
@@ -73,8 +74,8 @@ export function StoreOverviewCard({ store }: { store: StoreOverviewData }) {
         "transition-all duration-200 group"
       )}
     >
-      {/* Header: nome + cliente */}
-      <div className="flex items-start justify-between mb-3">
+      {/* Header: nome + cliente + platform badge */}
+      <div className="flex items-start justify-between mb-3 gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Icon icon={Store} size={16} className="text-gray-400 dark:text-white/40 shrink-0" />
@@ -86,9 +87,21 @@ export function StoreOverviewCard({ store }: { store: StoreOverviewData }) {
             {store.clientName}
           </p>
         </div>
-        {store.syncStatus === "ok" && (
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {store.emailPlatform === "klaviyo" && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#4E62D8]/10 text-[#4E62D8] dark:bg-[#7B8CEA]/15 dark:text-[#A8B2EE]">
+              Klaviyo
+            </span>
+          )}
+          {store.emailPlatform === "omnisend" && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+              Omnisend
+            </span>
+          )}
+          {store.syncStatus === "ok" && (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1" />
+          )}
+        </div>
       </div>
 
       {/* Receita Total */}

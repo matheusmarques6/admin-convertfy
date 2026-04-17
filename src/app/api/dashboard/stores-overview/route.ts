@@ -4,6 +4,11 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
+import {
+  getUnifiedRevenue,
+  getUnifiedCampaigns,
+  getUnifiedFlows,
+} from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoresOverview")
@@ -21,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const { data: stores, error: storesErr } = await supabase
       .from("client_stores")
-      .select("id, store_name, store_url, platform, is_active, client_id, clients(name)")
+      .select("id, store_name, store_url, platform, email_platform, is_active, client_id, clients(name)")
       .eq("org_id", orgId)
       .eq("is_active", true)
       .order("store_name")
@@ -33,36 +38,20 @@ export async function GET(request: NextRequest) {
 
     const storeIds = stores.map((s) => s.id)
 
-    const [{ data: revRows }, { data: campRows }, { data: flowRows }] = await Promise.all([
-      supabase
-        .from("store_revenue_summary")
-        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, total_leads, engaged_leads, engagement_rate, store_orders, currency, sync_status")
-        .eq("org_id", orgId)
-        .eq("period_label", period)
-        .in("store_id", storeIds),
-      supabase
-        .from("klaviyo_campaign_metrics")
-        .select("store_id, campaign_id, campaign_name, channel, recipients, delivered, opened, open_rate, clicked, click_rate, click_to_open_rate, conversions, conversion_rate, conversion_value, bounced, bounce_rate, unsubscribed, unsubscribe_rate")
-        .eq("org_id", orgId)
-        .eq("period_label", period)
-        .in("store_id", storeIds),
-      supabase
-        .from("klaviyo_flow_metrics")
-        .select("store_id, flow_id, flow_name, flow_status, recipients, delivered, opened, open_rate, clicked, click_rate, click_to_open_rate, conversions, conversion_rate, conversion_value, bounced, bounce_rate, unsubscribed, unsubscribe_rate")
-        .eq("org_id", orgId)
-        .eq("period_label", period)
-        .eq("flow_status", "live")
-        .in("store_id", storeIds),
+    const [revenueRows, campaignRows, flowRows] = await Promise.all([
+      getUnifiedRevenue(supabase, orgId, [period], storeIds),
+      getUnifiedCampaigns(supabase, orgId, period, storeIds),
+      getUnifiedFlows(supabase, orgId, period, storeIds, true),
     ])
 
-    const revMap = new Map((revRows || []).map((r) => [r.store_id, r]))
-    const campByStore = new Map<string, typeof campRows>()
-    for (const c of campRows || []) {
+    const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
+    const campByStore = new Map<string, typeof campaignRows>()
+    for (const c of campaignRows) {
       if (!campByStore.has(c.store_id)) campByStore.set(c.store_id, [])
       campByStore.get(c.store_id)!.push(c)
     }
     const flowByStore = new Map<string, typeof flowRows>()
-    for (const f of flowRows || []) {
+    for (const f of flowRows) {
       if (!flowByStore.has(f.store_id)) flowByStore.set(f.store_id, [])
       flowByStore.get(f.store_id)!.push(f)
     }
@@ -72,15 +61,26 @@ export async function GET(request: NextRequest) {
       const campaigns = campByStore.get(store.id) || []
       const flows = flowByStore.get(store.id) || []
 
-      let currency = "BRL"
-      try {
-        const info = await getCachedAccountInfo(store.id)
-        currency = info?.currency || rev?.currency || "BRL"
-      } catch { /* fallback */ }
+      // Detecta plataforma: prioriza email_platform do banco; fallback pela fonte com dados
+      let platform = (store.email_platform as string) || rev?.platform || "none"
+      if (platform !== "klaviyo" && platform !== "omnisend" && platform !== "none") {
+        platform = "none"
+      }
 
-      const totalRevenue = Number(rev?.klaviyo_total_revenue) || 0
-      const campaignRevenue = Number(rev?.klaviyo_campaign_revenue) || 0
-      const flowRevenue = Number(rev?.klaviyo_flow_revenue) || 0
+      // Currency: Klaviyo pega da account info; Omnisend ja esta em currency da loja
+      let currency = "BRL"
+      if (platform === "klaviyo") {
+        try {
+          const info = await getCachedAccountInfo(store.id)
+          currency = info?.currency || rev?.currency || "BRL"
+        } catch { /* fallback */ }
+      } else {
+        currency = rev?.currency || "BRL"
+      }
+
+      const totalRevenue = rev?.total_revenue ?? 0
+      const campaignRevenue = rev?.campaign_revenue ?? 0
+      const flowRevenue = rev?.flow_revenue ?? 0
 
       const totalBRL = await convertToBRL(totalRevenue, currency)
       const campaignBRL = await convertToBRL(campaignRevenue, currency)
@@ -89,24 +89,22 @@ export async function GET(request: NextRequest) {
       const emailCamps = campaigns.filter((c) => c.channel === "email" || !c.channel)
       const smsCamps = campaigns.filter((c) => c.channel === "sms")
 
-      const emailRevenue = emailCamps.reduce((s, c) => s + (Number(c.conversion_value) || 0), 0)
-      const smsRevenue = smsCamps.reduce((s, c) => s + (Number(c.conversion_value) || 0), 0)
+      const emailRevenue = emailCamps.reduce((s, c) => s + c.conversion_value, 0)
+      const smsRevenue = smsCamps.reduce((s, c) => s + c.conversion_value, 0)
+      const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
+      const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
 
-      const emailRecipients = emailCamps.reduce((s, c) => s + (Number(c.recipients) || 0), 0)
-      const smsRecipients = smsCamps.reduce((s, c) => s + (Number(c.recipients) || 0), 0)
+      const campRecipients = campaigns.reduce((s, c) => s + c.recipients, 0)
+      const campOpened = campaigns.reduce((s, c) => s + c.opened, 0)
+      const campClicked = campaigns.reduce((s, c) => s + c.clicked, 0)
+      const campDelivered = campaigns.reduce((s, c) => s + c.delivered, 0)
+      const campBounced = campaigns.reduce((s, c) => s + c.bounced, 0)
+      const campUnsubs = campaigns.reduce((s, c) => s + c.unsubscribed, 0)
 
-      const campRecipients = campaigns.reduce((s, c) => s + (Number(c.recipients) || 0), 0)
-      const campOpened = campaigns.reduce((s, c) => s + (Number(c.opened) || 0), 0)
-      const campClicked = campaigns.reduce((s, c) => s + (Number(c.clicked) || 0), 0)
-      const campDelivered = campaigns.reduce((s, c) => s + (Number(c.delivered) || 0), 0)
-      const campBounced = campaigns.reduce((s, c) => s + (Number(c.bounced) || 0), 0)
-      const campUnsubs = campaigns.reduce((s, c) => s + (Number(c.unsubscribed) || 0), 0)
-
-      const _flowRecipients = flows.reduce((s, f) => s + (Number(f.recipients) || 0), 0)
-      const flowOpened = flows.reduce((s, f) => s + (Number(f.opened) || 0), 0)
-      const flowClicked = flows.reduce((s, f) => s + (Number(f.clicked) || 0), 0)
-      const flowDelivered = flows.reduce((s, f) => s + (Number(f.delivered) || 0), 0)
-      const flowConversions = flows.reduce((s, f) => s + (Number(f.conversions) || 0), 0)
+      const flowOpened = flows.reduce((s, f) => s + f.opened, 0)
+      const flowClicked = flows.reduce((s, f) => s + f.clicked, 0)
+      const flowDelivered = flows.reduce((s, f) => s + f.delivered, 0)
+      const flowConversions = flows.reduce((s, f) => s + f.conversions, 0)
 
       const avgOpenRate = campDelivered > 0 ? (campOpened / campDelivered) * 100 : 0
       const avgClickRate = campDelivered > 0 ? (campClicked / campDelivered) * 100 : 0
@@ -124,6 +122,7 @@ export async function GET(request: NextRequest) {
         storeName: store.store_name,
         storeUrl: store.store_url,
         platform: store.platform,
+        emailPlatform: platform as "klaviyo" | "omnisend" | "none",
         clientId: store.client_id,
         clientName: client?.name || "—",
         currency,
@@ -154,9 +153,9 @@ export async function GET(request: NextRequest) {
           conversions: flowConversions,
         },
         audience: {
-          totalLeads: Number(rev?.total_leads) || 0,
-          engagedLeads: Number(rev?.engaged_leads) || 0,
-          engagementRate: Number(rev?.engagement_rate) || 0,
+          totalLeads: rev?.total_leads ?? 0,
+          engagedLeads: rev?.engaged_leads ?? 0,
+          engagementRate: rev?.engagement_rate ?? 0,
         },
         syncStatus: rev?.sync_status || "pending",
       }

@@ -2,6 +2,10 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import {
+  getUnifiedRevenue,
+  getUnifiedCampaigns,
+} from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("HealthMonitor")
@@ -12,6 +16,7 @@ interface StoreHealth {
   id: string
   storeName: string
   clientName: string
+  platform: string
   deliveryRate: number
   bounceRate: number
   openRate: number
@@ -41,13 +46,13 @@ function calculateHealthScore(s: {
   if (s.unsubRate > 0.5) { score -= 15; issues.push(`Unsub rate alto: ${s.unsubRate.toFixed(2)}%`) }
   else if (s.unsubRate > 0.3) { score -= 5; issues.push(`Unsub rate acima da media: ${s.unsubRate.toFixed(2)}%`) }
 
-  if (s.openRate < 15) { score -= 15; issues.push(`Open rate baixo: ${s.openRate.toFixed(1)}%`) }
-  else if (s.openRate < 20) { score -= 5; issues.push(`Open rate abaixo da media: ${s.openRate.toFixed(1)}%`) }
+  if (s.openRate < 15 && s.openRate > 0) { score -= 15; issues.push(`Open rate baixo: ${s.openRate.toFixed(1)}%`) }
+  else if (s.openRate < 20 && s.openRate > 0) { score -= 5; issues.push(`Open rate abaixo da media: ${s.openRate.toFixed(1)}%`) }
 
-  if (s.deliveryRate < 95) { score -= 20; issues.push(`Deliverability baixa: ${s.deliveryRate.toFixed(1)}%`) }
-  else if (s.deliveryRate < 98) { score -= 5; issues.push(`Deliverability abaixo do ideal: ${s.deliveryRate.toFixed(1)}%`) }
+  if (s.deliveryRate < 95 && s.deliveryRate > 0) { score -= 20; issues.push(`Deliverability baixa: ${s.deliveryRate.toFixed(1)}%`) }
+  else if (s.deliveryRate < 98 && s.deliveryRate > 0) { score -= 5; issues.push(`Deliverability abaixo do ideal: ${s.deliveryRate.toFixed(1)}%`) }
 
-  if (s.engagementRate < 20) { score -= 10; issues.push(`Engajamento baixo: ${s.engagementRate.toFixed(0)}%`) }
+  if (s.engagementRate < 20 && s.engagementRate > 0) { score -= 10; issues.push(`Engajamento baixo: ${s.engagementRate.toFixed(0)}%`) }
 
   return { score: Math.max(0, score), issues }
 }
@@ -61,31 +66,26 @@ export async function GET(request: NextRequest) {
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    const [{ data: stores }, { data: revRows }, { data: campRows }] = await Promise.all([
-      supabase
-        .from("client_stores")
-        .select("id, store_name, client_id, clients(name)")
-        .eq("org_id", orgId)
-        .eq("is_active", true),
-      supabase
-        .from("store_revenue_summary")
-        .select("store_id, total_leads, engaged_leads, engagement_rate")
-        .eq("org_id", orgId)
-        .eq("period_label", period),
-      supabase
-        .from("klaviyo_campaign_metrics")
-        .select("store_id, recipients, delivered, opened, clicked, bounced, unsubscribed, spam_complaints")
-        .eq("org_id", orgId)
-        .eq("period_label", period),
-    ])
+    const { data: stores } = await supabase
+      .from("client_stores")
+      .select("id, store_name, email_platform, client_id, clients(name)")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
 
     if (!stores || stores.length === 0) {
       return successResponse(request, { stores: [], summary: null, period })
     }
 
-    const revMap = new Map((revRows || []).map((r) => [r.store_id, r]))
-    const campByStore = new Map<string, typeof campRows>()
-    for (const c of campRows || []) {
+    const storeIds = stores.map((s) => s.id)
+
+    const [revenueRows, campaignRows] = await Promise.all([
+      getUnifiedRevenue(supabase, orgId, [period], storeIds),
+      getUnifiedCampaigns(supabase, orgId, period, storeIds),
+    ])
+
+    const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
+    const campByStore = new Map<string, typeof campaignRows>()
+    for (const c of campaignRows) {
       if (!campByStore.has(c.store_id)) campByStore.set(c.store_id, [])
       campByStore.get(c.store_id)!.push(c)
     }
@@ -94,23 +94,21 @@ export async function GET(request: NextRequest) {
       const rev = revMap.get(store.id)
       const camps = campByStore.get(store.id) || []
 
-      const totalRecipients = camps.reduce((s, c) => s + (Number(c.recipients) || 0), 0)
-      const totalDelivered = camps.reduce((s, c) => s + (Number(c.delivered) || 0), 0)
-      const totalOpened = camps.reduce((s, c) => s + (Number(c.opened) || 0), 0)
-      const totalClicked = camps.reduce((s, c) => s + (Number(c.clicked) || 0), 0)
-      const totalBounced = camps.reduce((s, c) => s + (Number(c.bounced) || 0), 0)
-      const totalUnsubs = camps.reduce((s, c) => s + (Number(c.unsubscribed) || 0), 0)
-      const totalSpam = camps.reduce((s, c) => s + (Number(c.spam_complaints) || 0), 0)
+      const totalRecipients = camps.reduce((s, c) => s + c.recipients, 0)
+      const totalDelivered = camps.reduce((s, c) => s + c.delivered, 0)
+      const totalOpened = camps.reduce((s, c) => s + c.opened, 0)
+      const totalClicked = camps.reduce((s, c) => s + c.clicked, 0)
+      const totalBounced = camps.reduce((s, c) => s + c.bounced, 0)
+      const totalUnsubs = camps.reduce((s, c) => s + c.unsubscribed, 0)
+      const totalSpam = camps.reduce((s, c) => s + c.spam_complaints, 0)
 
-      const deliveryRate = totalRecipients > 0 ? (totalDelivered / totalRecipients) * 100 : 100
+      const deliveryRate = totalRecipients > 0 ? (totalDelivered / totalRecipients) * 100 : 0
       const bounceRate = totalRecipients > 0 ? (totalBounced / totalRecipients) * 100 : 0
       const openRate = totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0
       const clickRate = totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0
       const unsubRate = totalDelivered > 0 ? (totalUnsubs / totalDelivered) * 100 : 0
       const spamRate = totalDelivered > 0 ? (totalSpam / totalDelivered) * 100 : 0
-      const engagementRate = Number(rev?.engagement_rate) || 0
-      const totalLeads = Number(rev?.total_leads) || 0
-      const engagedLeads = Number(rev?.engaged_leads) || 0
+      const engagementRate = rev?.engagement_rate ?? 0
 
       const { score, issues } = calculateHealthScore({
         deliveryRate, bounceRate, openRate, unsubRate, spamRate, engagementRate,
@@ -122,6 +120,7 @@ export async function GET(request: NextRequest) {
         id: store.id,
         storeName: store.store_name,
         clientName: client?.name || "—",
+        platform: (store.email_platform as string) || "none",
         deliveryRate: Math.round(deliveryRate * 10) / 10,
         bounceRate: Math.round(bounceRate * 100) / 100,
         openRate: Math.round(openRate * 10) / 10,
@@ -129,8 +128,8 @@ export async function GET(request: NextRequest) {
         unsubRate: Math.round(unsubRate * 100) / 100,
         spamRate: Math.round(spamRate * 1000) / 1000,
         engagementRate: Math.round(engagementRate * 10) / 10,
-        totalLeads,
-        engagedLeads,
+        totalLeads: rev?.total_leads ?? 0,
+        engagedLeads: rev?.engaged_leads ?? 0,
         score,
         issues,
       }

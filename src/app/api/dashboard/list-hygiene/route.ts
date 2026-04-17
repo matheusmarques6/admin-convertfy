@@ -2,6 +2,10 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import {
+  getUnifiedRevenue,
+  getUnifiedCampaigns,
+} from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ListHygiene")
@@ -17,53 +21,60 @@ export async function GET(request: NextRequest) {
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    const [{ data: revRows }, { data: campRows }] = await Promise.all([
-      supabase
-        .from("store_revenue_summary")
-        .select("store_id, total_leads, engaged_leads, engagement_rate, client_stores!inner(id, store_name, client_id, clients(name))")
-        .eq("org_id", orgId)
-        .eq("period_label", period),
-      supabase
-        .from("klaviyo_campaign_metrics")
-        .select("store_id, recipients, delivered, bounced, unsubscribed, spam_complaints")
-        .eq("org_id", orgId)
-        .eq("period_label", period),
+    const { data: storesMeta } = await supabase
+      .from("client_stores")
+      .select("id, store_name, email_platform, client_id, clients(name)")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+
+    if (!storesMeta || storesMeta.length === 0) {
+      return successResponse(request, { stores: [], summary: null, period })
+    }
+
+    const storeIds = storesMeta.map((s) => s.id)
+
+    const [revenueRows, campaignRows] = await Promise.all([
+      getUnifiedRevenue(supabase, orgId, [period], storeIds),
+      getUnifiedCampaigns(supabase, orgId, period, storeIds),
     ])
 
+    const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
     const campByStore = new Map<string, { recipients: number; delivered: number; bounced: number; unsubs: number; spam: number }>()
-    for (const c of campRows || []) {
+    for (const c of campaignRows) {
       const existing = campByStore.get(c.store_id) || { recipients: 0, delivered: 0, bounced: 0, unsubs: 0, spam: 0 }
-      existing.recipients += Number(c.recipients) || 0
-      existing.delivered += Number(c.delivered) || 0
-      existing.bounced += Number(c.bounced) || 0
-      existing.unsubs += Number(c.unsubscribed) || 0
-      existing.spam += Number(c.spam_complaints) || 0
+      existing.recipients += c.recipients
+      existing.delivered += c.delivered
+      existing.bounced += c.bounced
+      existing.unsubs += c.unsubscribed
+      existing.spam += c.spam_complaints
       campByStore.set(c.store_id, existing)
     }
 
-    const stores = (revRows || []).map((r) => {
-      const storeData = r.client_stores as unknown as {
-        id: string; store_name: string; client_id: string | null; clients: { name: string } | null
-      }
-      const camp = campByStore.get(r.store_id)
+    const stores = storesMeta.map((storeMeta) => {
+      const rev = revMap.get(storeMeta.id)
+      const camp = campByStore.get(storeMeta.id)
+      const clientData = Array.isArray(storeMeta.clients) ? storeMeta.clients[0] : storeMeta.clients
 
-      const totalLeads = Number(r.total_leads) || 0
-      const engagedLeads = Number(r.engaged_leads) || 0
+      const totalLeads = rev?.total_leads ?? 0
+      const engagedLeads = rev?.engaged_leads ?? 0
       const unengaged = Math.max(0, totalLeads - engagedLeads)
-      const engagementRate = Number(r.engagement_rate) || 0
+      const engagementRate = rev?.engagement_rate ?? 0
 
       const bounceRate = camp && camp.recipients > 0 ? (camp.bounced / camp.recipients) * 100 : 0
       const unsubRate = camp && camp.delivered > 0 ? (camp.unsubs / camp.delivered) * 100 : 0
       const spamRate = camp && camp.delivered > 0 ? (camp.spam / camp.delivered) * 100 : 0
 
-      const suppressionRecommended = unengaged > 0 && (engagementRate < 30 || bounceRate > 2 || spamRate > 0.1)
+      const suppressionRecommended = unengaged > 0 && (
+        engagementRate < 30 || bounceRate > 2 || spamRate > 0.1
+      )
 
       const estimatedSavings = suppressionRecommended ? Math.round(unengaged * 0.002 * 100) / 100 : 0
 
       return {
-        id: r.store_id,
-        storeName: storeData.store_name,
-        clientName: storeData.clients?.name || "—",
+        id: storeMeta.id,
+        storeName: storeMeta.store_name,
+        clientName: clientData?.name || "—",
+        platform: (storeMeta.email_platform as string) || "none",
         totalLeads,
         engagedLeads,
         unengaged,
