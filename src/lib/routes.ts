@@ -76,6 +76,7 @@ export const ROUTES = {
     TEAM: "/admin/team",
     NOTIFICATIONS: "/admin/notifications",
     ONBOARDING: "/admin/onboarding",
+    HEALTH: "/admin/health",
     TOOLS: "/admin/tools",
 
     SETTINGS: {

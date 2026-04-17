@@ -24,6 +24,7 @@ import {
   Target,
   Flame,
   Zap,
+  Heart,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -80,6 +81,7 @@ const navigation: NavItem[] = [
   { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Reports", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "operacional", requiredFeatures: ["onboarding_control", "onboarding_view"] },
+  { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart, group: "operacional" },
 ]
 
 // ---------------------------------------------------------------------------
