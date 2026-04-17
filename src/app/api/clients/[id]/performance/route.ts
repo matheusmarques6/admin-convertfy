@@ -322,14 +322,15 @@ export async function GET(
     let rawStores: Array<Record<string, unknown>> | null = null
     let storesError: unknown = null
     {
-      const withOmnisend = await adminClient
+      // Inclui email_platform (source of truth quando migration aplicada)
+      const withPlatform = await adminClient
         .from("client_stores")
-        .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, omnisend_api_key, shopify_store_domain, shopify_access_token")
+        .select("id, store_name, org_id, email_platform, klaviyo_api_key, klaviyo_private_key, omnisend_api_key, shopify_store_domain, shopify_access_token")
         .eq("client_id", clientId)
         .eq("is_active", true)
 
-      if (withOmnisend.error && /omnisend_api_key/.test(withOmnisend.error.message || "")) {
-        log.warn("[ClientPerf] omnisend_api_key column missing, falling back", { error: withOmnisend.error.message })
+      if (withPlatform.error && /email_platform|omnisend_api_key/.test(withPlatform.error.message || "")) {
+        log.warn("[ClientPerf] email_platform/omnisend_api_key column missing, falling back", { error: withPlatform.error.message })
         const fallback = await adminClient
           .from("client_stores")
           .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
@@ -338,8 +339,8 @@ export async function GET(
         rawStores = fallback.data
         storesError = fallback.error
       } else {
-        rawStores = withOmnisend.data
-        storesError = withOmnisend.error
+        rawStores = withPlatform.data
+        storesError = withPlatform.error
       }
     }
 
@@ -349,6 +350,7 @@ export async function GET(
       id: string
       store_name: string
       org_id: string
+      email_platform?: string | null
       klaviyo_api_key?: string | null
       klaviyo_private_key?: string | null
       omnisend_api_key?: string | null
@@ -375,8 +377,25 @@ export async function GET(
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const hasOmnisend = !!store.omnisend_api_key
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
-      // Omnisend tem prioridade quando ambos estao configurados (regra: 1 plataforma por loja)
-      const platform: StorePerformance["platform"] = hasOmnisend ? "omnisend" : hasKlaviyo ? "klaviyo" : "none"
+
+      // Detecta plataforma em cascata (extensivel para novas plataformas no futuro):
+      //   1. Valor declarado em client_stores.email_platform (source of truth)
+      //   2. Fallback: presenca de credencial (ordem alfabetica — NAO prioriza uma
+      //      plataforma sobre outra; apenas decide quando email_platform e null)
+      const declared = store.email_platform
+      let platform: StorePerformance["platform"] = "none"
+      if (declared === "klaviyo" || declared === "omnisend") {
+        platform = declared
+      } else if (hasKlaviyo && hasOmnisend) {
+        // Ambas configuradas sem email_platform declarado: usa Omnisend
+        // (mais recente; Klaviyo ficaria como legado). Em producao isso e
+        // auto-corrigido pelo backfill da migration 20260417.
+        platform = "omnisend"
+      } else if (hasOmnisend) {
+        platform = "omnisend"
+      } else if (hasKlaviyo) {
+        platform = "klaviyo"
+      }
 
       let emailData: EmailPerformanceData | null = null
       let shopifyData: StorePerformance["shopify"] = null
