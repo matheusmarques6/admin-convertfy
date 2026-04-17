@@ -77,6 +77,8 @@ export const ROUTES = {
     NOTIFICATIONS: "/admin/notifications",
     ONBOARDING: "/admin/onboarding",
     HEALTH: "/admin/health",
+    INSIGHTS: "/admin/insights",
+    LIST_HYGIENE: "/admin/list-hygiene",
     TOOLS: "/admin/tools",
 
     SETTINGS: {

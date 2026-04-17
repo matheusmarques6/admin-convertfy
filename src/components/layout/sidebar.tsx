@@ -25,6 +25,8 @@ import {
   Flame,
   Zap,
   Heart,
+  Sparkles,
+  ListFilter,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -82,6 +84,8 @@ const navigation: NavItem[] = [
   { name: "Reports", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "operacional", requiredFeatures: ["onboarding_control", "onboarding_view"] },
   { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart, group: "operacional" },
+  { name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles, group: "operacional" },
+  { name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter, group: "operacional" },
 ]
 
 // ---------------------------------------------------------------------------
