@@ -13,6 +13,7 @@ import {
   Eye,
   CheckCircle2,
   AlertTriangle,
+  LayoutGrid,
 } from "lucide-react"
 import { Icon, BrandIcon } from "@/components/ui/icon"
 import { AlertBanner } from "@/components/ui/alert-banner"
@@ -26,6 +27,7 @@ import { ActionMenu } from "@/components/ui/action-menu"
 import { CountBadge } from "@/components/ui/count-badge"
 import { useToast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { StoreOverviewGrid } from "./store-overview-grid"
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -99,7 +101,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 export function StoresPageTabs() {
   const router = useRouter()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<"stores" | "alerts">("stores")
+  const [activeTab, setActiveTab] = useState<"overview" | "stores" | "alerts">("overview")
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
   const [noFeedbackCount, setNoFeedbackCount] = useState(0)
 
@@ -373,7 +375,11 @@ export function StoresPageTabs() {
 
       {/* SegmentedTabs: Lojas | Alertas */}
       <div className="flex items-center justify-between gap-4">
-        <SegmentedTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "stores" | "alerts")}>
+        <SegmentedTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "stores" | "alerts")}>
+          <SegmentedTabItem value="overview">
+            <Icon icon={LayoutGrid} size={16} className="mr-1.5" />
+            Overview
+          </SegmentedTabItem>
           <SegmentedTabItem value="stores">
             <Icon icon={Store} size={16} className="mr-1.5" />
             Lojas
@@ -420,7 +426,9 @@ export function StoresPageTabs() {
       </div>
 
       {/* Tab content */}
-      {activeTab === "stores" ? (
+      {activeTab === "overview" ? (
+        <StoreOverviewGrid />
+      ) : activeTab === "stores" ? (
         <DataTable
           columns={storeColumns}
           data={stores}
