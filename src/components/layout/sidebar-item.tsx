@@ -44,8 +44,8 @@ export function SidebarItem({
           ? "w-9 h-9 justify-center mx-auto"
           : "mx-3 gap-3 px-3 h-9",
         active
-          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-white/[0.08] dark:text-white"
-          : "text-gray-600 hover:bg-gray-50 dark:text-white/60 dark:hover:bg-white/[0.04] dark:hover:text-white/90"
+          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-white/[0.1] dark:text-white"
+          : "text-gray-600 hover:bg-gray-50 dark:text-white/80 dark:hover:bg-white/[0.05] dark:hover:text-white"
       )}
     >
       <Icon
@@ -55,7 +55,7 @@ export function SidebarItem({
           "shrink-0",
           active
             ? "text-[#4E62D8] dark:text-white"
-            : "text-gray-400 dark:text-white/40"
+            : "text-gray-400 dark:text-white/70"
         )}
       />
       {!collapsed && <span className="truncate">{label}</span>}
