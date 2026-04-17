@@ -52,7 +52,7 @@ const PHASES: Record<Phase, PhaseConfig> = {
 
 // ─── Mock data ────────────────────────────────────────────
 
-const MOCK_STORES: OnboardingStore[] = [
+const _MOCK_STORES: OnboardingStore[] = [
   { name: "Casa & Decor", phase: "camp", days: 11, badge: "atrasado" },
   { name: "Green Garden", phase: "klaviyo", days: 9 },
   { name: "TechHub Store", phase: "briefing", days: 6 },
@@ -64,7 +64,7 @@ const MOCK_STORES: OnboardingStore[] = [
   { name: "Nova Beleza", phase: "config", days: 1, badge: "novo" },
 ]
 
-const MOCK_KPI = {
+const _MOCK_KPI = {
   inProgress: 9,
   avgTime: "5d",
   completed30d: 4,
@@ -191,7 +191,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
         badge: ob.isNew ? "novo" as const : ob.isLate ? "atrasado" as const : undefined,
       }))
     }
-    return MOCK_STORES
+    return []
   }, [onboardings])
 
   // Derive KPIs from real stores
@@ -204,10 +204,10 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
     return {
       inProgress,
       avgTime: `${avgDays}d`,
-      completed30d: onboardings ? 0 : MOCK_KPI.completed30d, // no completed data from props
+      completed30d: 0,
       overdue,
     }
-  }, [stores, onboardings])
+  }, [stores])
 
   // Derive pipeline from real stores
   const pipelineSegments = useMemo(() => {

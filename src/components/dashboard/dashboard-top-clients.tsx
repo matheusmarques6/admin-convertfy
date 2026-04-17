@@ -23,7 +23,7 @@ interface DashboardTopClientsProps {
 
 // ─── Mock data ────────────────────────────────────────────
 
-const MOCK_TOP_CLIENTS: TopClient[] = [
+const _MOCK_TOP_CLIENTS: TopClient[] = [
   { id: "1", name: "AchaTudo Store", plan: "Premium", revenue30d: 125400, healthScore: 92 },
   { id: "2", name: "Based 3.0", plan: "Enterprise", revenue30d: 98750, healthScore: 88 },
   { id: "3", name: "LensEVO", plan: "Premium", revenue30d: 87200, healthScore: 95 },
@@ -95,7 +95,7 @@ export function DashboardTopClients({
   clients,
   loading = false,
 }: DashboardTopClientsProps) {
-  const data = clients ?? MOCK_TOP_CLIENTS
+  const data = clients ?? []
 
   return (
     <div className="mt-6">

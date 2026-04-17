@@ -23,7 +23,7 @@ interface Alert {
 
 type FilterValue = "all" | "critical" | "warning" | "info"
 
-const MOCK_ALERTS: Alert[] = [
+const _MOCK_ALERTS: Alert[] = [
   {
     id: "1",
     title: "Deliverability em queda",
@@ -108,7 +108,7 @@ export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlerts
         severity: (Math.min(2, Math.max(0, a.severity)) as Severity),
       }))
     }
-    return MOCK_ALERTS
+    return []
   }, [alertsProp])
 
   const criticalCount = useMemo(
