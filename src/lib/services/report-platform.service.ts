@@ -40,20 +40,57 @@ export interface UnifiedRevenueSummary {
  */
 export async function detectStorePlatform(storeId: string): Promise<EmailPlatform> {
   const supabase = createAdminClient()
-  const { data } = await supabase
+
+  // Tenta ler email_platform + omnisend_api_key (migration 20260417+).
+  // Se colunas nao existem, faz fallback para ler apenas Klaviyo e detectar
+  // Omnisend separadamente, evitando falha silenciosa.
+  const withNew = await supabase
     .from("client_stores")
     .select("email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key")
     .eq("id", storeId)
     .maybeSingle()
 
-  if (!data) return "none"
+  if (!withNew.error && withNew.data) {
+    const rec = withNew.data as Record<string, unknown>
+    const declared = rec.email_platform as string | null | undefined
+    if (declared === "klaviyo" || declared === "omnisend") return declared
+    if (rec.omnisend_api_key) return "omnisend"
+    if (rec.klaviyo_private_key || rec.klaviyo_api_key) return "klaviyo"
+    return "none"
+  }
 
-  const declared = (data as Record<string, unknown>).email_platform as string | null | undefined
-  if (declared === "klaviyo" || declared === "omnisend") return declared
+  // Fallback: tentar omnisend_api_key sem email_platform
+  if (withNew.error && /email_platform/.test(withNew.error.message || "")) {
+    log.warn("[detectStorePlatform] email_platform column missing, trying omnisend-only", { storeId })
+    const withOmnisend = await supabase
+      .from("client_stores")
+      .select("omnisend_api_key, klaviyo_private_key, klaviyo_api_key")
+      .eq("id", storeId)
+      .maybeSingle()
 
-  const rec = data as Record<string, unknown>
-  if (rec.omnisend_api_key) return "omnisend"
-  if (rec.klaviyo_private_key || rec.klaviyo_api_key) return "klaviyo"
+    if (!withOmnisend.error && withOmnisend.data) {
+      const rec = withOmnisend.data as Record<string, unknown>
+      if (rec.omnisend_api_key) return "omnisend"
+      if (rec.klaviyo_private_key || rec.klaviyo_api_key) return "klaviyo"
+      return "none"
+    }
+
+    // Ultimo fallback: apenas klaviyo (omnisend_api_key tambem ausente)
+    if (withOmnisend.error && /omnisend_api_key/.test(withOmnisend.error.message || "")) {
+      log.warn("[detectStorePlatform] omnisend_api_key also missing, klaviyo-only fallback", { storeId })
+      const legacyOnly = await supabase
+        .from("client_stores")
+        .select("klaviyo_private_key, klaviyo_api_key")
+        .eq("id", storeId)
+        .maybeSingle()
+
+      if (legacyOnly.data) {
+        const rec = legacyOnly.data as Record<string, unknown>
+        if (rec.klaviyo_private_key || rec.klaviyo_api_key) return "klaviyo"
+      }
+    }
+  }
+
   return "none"
 }
 
