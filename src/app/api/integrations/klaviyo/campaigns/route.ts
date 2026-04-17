@@ -3,6 +3,8 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { detectStorePlatform } from "@/lib/services/report-platform.service"
+import { buildOmnisendCampaignsResponse } from "@/lib/integrations/omnisend/campaigns-flows-builder"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntKlaviyoCampaigns")
@@ -398,6 +400,28 @@ export async function GET(request: NextRequest) {
 
     // Validate user has access to this store (multi-tenant isolation)
     const store = await requireStoreAccess(storeId, user.id)
+
+    // Platform dispatcher: se a loja usa Omnisend, delega ao builder Omnisend
+    const platform = await detectStorePlatform(storeId)
+    if (platform === "omnisend") {
+      try {
+        const response = await buildOmnisendCampaignsResponse(
+          { storeId, storeName: store.storeName, orgId: store.orgId },
+          period,
+          customStartDate,
+          customEndDate,
+          statusFilter
+        )
+        return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
+      } catch (err) {
+        log.error("[Omnisend Campaigns] build failed", err)
+        return NextResponse.json({
+          success: false,
+          platform: "omnisend",
+          error: err instanceof Error ? err.message : "Falha ao buscar campanhas Omnisend",
+        }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      }
+    }
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)

@@ -3,6 +3,8 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { detectStorePlatform } from "@/lib/services/report-platform.service"
+import { buildOmnisendReport } from "@/lib/integrations/omnisend/report-builder"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoReport")
@@ -875,6 +877,29 @@ export async function GET(request: NextRequest) {
 
     // Validate user has access to this store (multi-tenant isolation)
     const store = await requireStoreAccess(storeId, user.id)
+
+    // Platform dispatcher: se a loja usa Omnisend, delega ao builder Omnisend
+    // que produz uma resposta no mesmo formato deste endpoint.
+    const platform = await detectStorePlatform(storeId)
+    if (platform === "omnisend") {
+      try {
+        const omnisendReport = await buildOmnisendReport(
+          { storeId, storeName: store.storeName, orgId: store.orgId },
+          period,
+          customStartDate,
+          customEndDate
+        )
+        return NextResponse.json(omnisendReport, { headers: corsHeaders(request.headers.get("origin")) })
+      } catch (err) {
+        log.error("[Omnisend Report] build failed", err)
+        return NextResponse.json({
+          success: false,
+          connected: false,
+          platform: "omnisend",
+          error: err instanceof Error ? err.message : "Falha ao gerar report Omnisend",
+        }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      }
+    }
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)

@@ -9,6 +9,8 @@ import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import type { KlaviyoPerformanceData } from "@/lib/services/klaviyo-performance.service"
 
+type EmailPerformanceData = KlaviyoPerformanceData & { platform?: "klaviyo" | "omnisend" }
+
 const log = logger.child("ClientPerformance")
 
 export const maxDuration = 30
@@ -18,8 +20,10 @@ interface StorePerformance {
   storeId: string
   storeName: string
   hasKlaviyo: boolean
+  hasOmnisend: boolean
   hasShopify: boolean
-  klaviyo: KlaviyoPerformanceData | null
+  platform: "klaviyo" | "omnisend" | "none"
+  klaviyo: EmailPerformanceData | null
   shopify: {
     totalRevenue: number
     totalOrders: number
@@ -147,6 +151,123 @@ async function readKlaviyoFromCacheTables(
 }
 
 /**
+ * Le dados Omnisend do cache (tabelas omnisend_*) e mapeia para
+ * KlaviyoPerformanceData — garantindo que o agregador downstream
+ * funcione identicamente para as duas plataformas.
+ */
+async function readOmnisendFromCacheTables(
+  adminClient: SupabaseClient,
+  storeId: string,
+  period: string,
+): Promise<EmailPerformanceData | null> {
+  if (!(CACHED_PERIODS as readonly string[]).includes(period)) return null
+
+  const { data: summary } = await adminClient
+    .from("store_revenue_summary")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .single()
+
+  if (!summary || summary.sync_status === "error") return null
+
+  const [{ data: campaigns }, { data: flows }] = await Promise.all([
+    adminClient
+      .from("omnisend_campaign_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_label", period),
+    adminClient
+      .from("omnisend_flow_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_label", period),
+  ])
+
+  const campList = campaigns || []
+  const flowList = flows || []
+
+  let totalDelivered = 0, totalOpens = 0, totalClicks = 0
+  let bounceRateSum = 0, unsubRateSum = 0, rateCount = 0
+
+  for (const c of campList) {
+    totalDelivered += c.delivered || 0
+    totalOpens += c.opened || 0
+    totalClicks += c.clicked || 0
+    if (c.delivered > 0) {
+      bounceRateSum += Number(c.bounce_rate) || 0
+      unsubRateSum += Number(c.unsubscribe_rate) || 0
+      rateCount++
+    }
+  }
+  for (const f of flowList) {
+    totalDelivered += f.delivered || 0
+    totalOpens += f.opened || 0
+    totalClicks += f.clicked || 0
+    if (f.delivered > 0) {
+      bounceRateSum += Number(f.bounce_rate) || 0
+      unsubRateSum += Number(f.unsubscribe_rate) || 0
+      rateCount++
+    }
+  }
+
+  const avgOpenRate = totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0
+  const avgClickRate = totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0
+  const bounceRate = rateCount > 0 ? bounceRateSum / rateCount : 0
+  const unsubscribeRate = rateCount > 0 ? unsubRateSum / rateCount : 0
+
+  const campaignRevenue = Number(summary.omnisend_campaign_revenue) || 0
+  const flowRevenue = Number(summary.omnisend_flow_revenue) || 0
+  const attributedRevenue = campaignRevenue + flowRevenue
+  const storeRevenue = Number(summary.store_total_revenue) || 0
+
+  return {
+    platform: "omnisend",
+    storeRevenue,
+    storeOrders: summary.store_orders || 0,
+    attributedRevenue,
+    campaignRevenue,
+    flowRevenue,
+    recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
+    sentCampaigns: campList.length,
+    totalFlows: flowList.length,
+    liveFlows: flowList.filter(f => f.flow_status === "live" || f.flow_status === "enabled").length,
+    totalDelivered,
+    totalOpens,
+    totalClicks,
+    avgOpenRate,
+    avgClickRate,
+    bounceRate,
+    unsubscribeRate,
+    totalLeads: summary.total_leads || 0,
+    engagedLeads: summary.engaged_leads || 0,
+    engagementRate: Number(summary.engagement_rate) || 0,
+    recentCampaigns: campList.map(c => ({
+      campaignId: c.campaign_id,
+      name: c.campaign_name || "Unknown",
+      sendTime: c.send_time || "",
+      recipients: c.recipients || 0,
+      delivered: c.delivered || 0,
+      opened: c.opened || 0,
+      clicked: c.clicked || 0,
+      conversions: c.conversions || 0,
+      openRate: Number(c.open_rate) || 0,
+      clickRate: Number(c.click_rate) || 0,
+      revenue: Number(c.conversion_value) || 0,
+    })),
+    topFlows: flowList.map(f => ({
+      flowId: f.flow_id,
+      name: f.flow_name || "Unknown",
+      status: f.flow_status || "unknown",
+      delivered: f.delivered || 0,
+      revenue: Number(f.conversion_value) || 0,
+      openRate: Number(f.open_rate) || 0,
+      clickRate: Number(f.click_rate) || 0,
+    })),
+  }
+}
+
+/**
  * GET /api/clients/[id]/performance
  *
  * Aggregates performance data across all stores for a client.
@@ -196,15 +317,44 @@ export async function GET(
     }
 
     // Get client stores and decrypt credentials
-    const { data: rawStores, error: storesError } = await adminClient
-      .from("client_stores")
-      .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
-      .eq("client_id", clientId)
-      .eq("is_active", true)
+    // Nota: tentamos ler omnisend_api_key; se a coluna nao existir (migration
+    // pendente), fazemos fallback sem ela para nao quebrar o endpoint.
+    let rawStores: Array<Record<string, unknown>> | null = null
+    let storesError: unknown = null
+    {
+      const withOmnisend = await adminClient
+        .from("client_stores")
+        .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, omnisend_api_key, shopify_store_domain, shopify_access_token")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+
+      if (withOmnisend.error && /omnisend_api_key/.test(withOmnisend.error.message || "")) {
+        log.warn("[ClientPerf] omnisend_api_key column missing, falling back", { error: withOmnisend.error.message })
+        const fallback = await adminClient
+          .from("client_stores")
+          .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+        rawStores = fallback.data
+        storesError = fallback.error
+      } else {
+        rawStores = withOmnisend.data
+        storesError = withOmnisend.error
+      }
+    }
 
     if (storesError) throw storesError
     // No decryption needed — only boolean checks used downstream (Story 51.3)
-    const stores = rawStores || []
+    const stores = (rawStores || []) as Array<{
+      id: string
+      store_name: string
+      org_id: string
+      klaviyo_api_key?: string | null
+      klaviyo_private_key?: string | null
+      omnisend_api_key?: string | null
+      shopify_store_domain?: string | null
+      shopify_access_token?: string | null
+    }>
     if (!stores || stores.length === 0) {
       return successResponse(request, {
         period,
@@ -223,20 +373,23 @@ export async function GET(
     // This prevents overwhelming the Klaviyo API with concurrent requests
     const fetchStorePerformance = async (store: typeof stores[0]): Promise<StorePerformance> => {
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
+      const hasOmnisend = !!store.omnisend_api_key
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
+      // Omnisend tem prioridade quando ambos estao configurados (regra: 1 plataforma por loja)
+      const platform: StorePerformance["platform"] = hasOmnisend ? "omnisend" : hasKlaviyo ? "klaviyo" : "none"
 
-      let klaviyoData: KlaviyoPerformanceData | null = null
+      let emailData: EmailPerformanceData | null = null
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Klaviyo: pure cache read — no live API calls
-      if (hasKlaviyo) {
-        klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period)
-        if (klaviyoData) {
-          log.info(`[ClientPerf] Cache HIT for store ${store.id}/${period}`)
-        } else {
-          log.info(`[ClientPerf] Cache MISS for store ${store.id}/${period}`)
-        }
+      // Email platform: pure cache read — no live API calls
+      if (platform === "omnisend") {
+        emailData = await readOmnisendFromCacheTables(adminClient, store.id, period)
+        log.info(`[ClientPerf] Omnisend cache ${emailData ? "HIT" : "MISS"} for store ${store.id}/${period}`)
+      } else if (platform === "klaviyo") {
+        emailData = await readKlaviyoFromCacheTables(adminClient, store.id, period)
+        if (emailData) emailData.platform = "klaviyo"
+        log.info(`[ClientPerf] Klaviyo cache ${emailData ? "HIT" : "MISS"} for store ${store.id}/${period}`)
       }
 
       // Fetch Shopify data via direct module call
@@ -263,8 +416,10 @@ export async function GET(
         storeId: store.id,
         storeName: store.store_name,
         hasKlaviyo,
+        hasOmnisend,
         hasShopify,
-        klaviyo: klaviyoData,
+        platform,
+        klaviyo: emailData,
         shopify: shopifyData,
         errors,
       }

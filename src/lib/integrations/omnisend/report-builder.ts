@@ -1,0 +1,761 @@
+/**
+ * Omnisend Report Builder
+ *
+ * Produz uma resposta JSON no mesmo formato de /api/integrations/klaviyo/report
+ * porem a partir de dados Omnisend (cache em tabelas omnisend_* e, como
+ * fallback, live-fetch via syncOmnisendForStore).
+ *
+ * Objetivo: permitir que o endpoint Klaviyo "dispatch" para esta funcao
+ * quando a loja usa somente Omnisend, garantindo que os reports existentes
+ * (Reports page, Overview, Analise, fullscreen) funcionem sem exigir
+ * Klaviyo API key.
+ */
+
+import { createAdminClient } from "@/lib/supabase/server"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("OmnisendReportBuilder")
+
+const CACHE_FRESH_MS = 35 * 60 * 1000 // 35 minutes (cron runs every 30min)
+
+const PERIOD_DAYS: Record<string, number> = {
+  "today": 1,
+  "yesterday": 1,
+  "1d": 1,
+  "7d": 7,
+  "15d": 15,
+  "30d": 30,
+  "90d": 90,
+  "12m": 365,
+}
+
+function daysForPeriod(period: string, customStart?: string | null, customEnd?: string | null): number {
+  if (period === "custom" && customStart && customEnd) {
+    const ms = new Date(customEnd).getTime() - new Date(customStart).getTime()
+    return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)))
+  }
+  return PERIOD_DAYS[period] ?? 30
+}
+
+function dateRangeForPeriod(period: string, customStart?: string | null, customEnd?: string | null) {
+  const now = new Date()
+  const end = customEnd ? new Date(customEnd) : now
+  const days = daysForPeriod(period, customStart, customEnd)
+  const start = customStart
+    ? new Date(customStart)
+    : new Date(end.getTime() - days * 24 * 60 * 60 * 1000)
+
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return { startDateStr: toStr(start), endDateStr: toStr(end) }
+}
+
+function getCurrencySymbol(currency: string): string {
+  switch ((currency || "").toUpperCase()) {
+    case "BRL": return "R$"
+    case "USD": return "$"
+    case "EUR": return "€"
+    case "GBP": return "£"
+    default: return currency || ""
+  }
+}
+
+export interface OmnisendReportResponse {
+  success: boolean
+  connected: boolean
+  platform: "omnisend"
+  storeName: string
+  generatedAt: string
+  period: string
+  dateRange: { start: string; end: string }
+  account: {
+    currency: string
+    currencySymbol: string
+    locale: string
+  }
+  revenue: {
+    storeRevenue: number
+    storeOrders: number
+    totalRevenue: number
+    klaviyoAttributedRevenue: number
+    campaignRevenue: number
+    flowRevenue: number
+    totalOrders: number
+    klaviyoAttributedOrders: number
+    averageOrderValue: number
+    recoveryRate: number
+  }
+  emailPerformance: {
+    delivered: number
+    opened: number
+    clicked: number
+    bounceRate: number
+    unsubscribeRate: number
+    openRate: number
+    clickRate: number
+    clickToOpenRate: number
+  }
+  overview: {
+    totalSubscribers: number
+    totalLists: number
+    totalSegments: number
+    totalFlows: number
+    liveFlows: number
+    totalCampaigns: number
+    sentCampaigns: number
+    campaignsInPeriod: number
+    totalTemplates: number
+  }
+  engagement: {
+    engagedProfiles: number
+    engagementRate: string
+    engaged90dSegmentName: string | null
+  }
+  automation: {
+    totalFlows: number
+    liveFlows: number
+    draftFlows: number
+    automationCoverage: string
+  }
+  growth: {
+    campaignsLast30Days: number
+  }
+  campaignPerformance: {
+    totalRevenue: number
+    totalConversions: number
+    totalDelivered: number
+    avgOpenRate: number
+    avgClickRate: number
+    campaigns: Array<{
+      campaignId: string
+      name: string
+      revenue: number
+      conversions: number
+      delivered: number
+      opens: number
+      clicks: number
+      openRate: number
+      clickRate: number
+      bounceRate: number
+      unsubscribeRate: number
+      sendTime: string | null
+    }>
+  }
+  flowPerformance: {
+    totalRevenue: number
+    totalConversions: number
+    totalDelivered: number
+    avgOpenRate: number
+    avgClickRate: number
+    flows: Array<{
+      flowId: string
+      name: string
+      status: string
+      revenue: number
+      conversions: number
+      delivered: number
+      opens: number
+      clicks: number
+      openRate: number
+      clickRate: number
+      bounceRate: number
+      unsubscribeRate: number
+    }>
+  }
+  lists: Array<{ id: string; name: string; profileCount: number; created: string }>
+  segments: Array<{
+    id: string
+    name: string
+    profileCount: number
+    isActive: boolean
+    isStarred: boolean
+    created: string
+  }>
+  flows: Array<{ id: string; name: string; status: string; triggerType: string }>
+  campaigns: {
+    total: number
+    sent: number
+    scheduled: number
+    drafts: number
+    recentCampaigns: Array<{
+      id: string
+      name: string
+      status: string
+      sendTime: string | null
+      revenue: number
+      delivered: number
+      opens: number
+      clicks: number
+      openRate: number
+      clickRate: number
+    }>
+    allInPeriod: Array<{
+      id: string
+      name: string
+      status: string
+      sendTime: string | null
+    }>
+  }
+  integrations: {
+    hasEcommerce: boolean
+  }
+  fromCache?: boolean
+  fetchedAt?: string
+}
+
+interface StoreContext {
+  storeId: string
+  storeName: string
+  orgId: string
+}
+
+/**
+ * Le dados do cache Omnisend (tabelas omnisend_*) para o periodo.
+ * Retorna null se nao houver dados frescos em cache.
+ */
+async function readFromCache(storeId: string, period: string) {
+  const admin = createAdminClient()
+
+  const { data: summary } = await admin
+    .from("store_revenue_summary")
+    .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, store_orders, total_subscribers, engaged_profiles, engagement_rate, currency, sync_status, fetched_at")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .maybeSingle()
+
+  if (!summary) return null
+
+  const fetchedAt = summary.fetched_at ? new Date(summary.fetched_at as string) : null
+  if (!fetchedAt || Date.now() - fetchedAt.getTime() > CACHE_FRESH_MS) return null
+  if (summary.sync_status !== "ok" && summary.sync_status !== "partial") return null
+
+  const [{ data: campaignRows }, { data: flowRows }] = await Promise.all([
+    admin
+      .from("omnisend_campaign_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_label", period),
+    admin
+      .from("omnisend_flow_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_label", period),
+  ])
+
+  return {
+    summary,
+    campaignRows: campaignRows || [],
+    flowRows: flowRows || [],
+    fetchedAt: summary.fetched_at as string,
+  }
+}
+
+/**
+ * Gera o response a partir dos dados em cache.
+ */
+function buildFromCache(
+  store: StoreContext,
+  period: string,
+  dateRange: { startDateStr: string; endDateStr: string },
+  cache: NonNullable<Awaited<ReturnType<typeof readFromCache>>>
+): OmnisendReportResponse {
+  const s = cache.summary as Record<string, unknown>
+  const currency = (s.currency as string) || "BRL"
+
+  const campaignRevenue = Number(s.omnisend_campaign_revenue) || 0
+  const flowRevenue = Number(s.omnisend_flow_revenue) || 0
+  const storeRevenue = Number(s.store_total_revenue) || 0
+  const storeOrders = Number(s.store_orders) || 0
+  const attributedRevenue = campaignRevenue + flowRevenue
+
+  // Aggregate email perf from campaign + flow rows
+  let totalDelivered = 0
+  let totalOpens = 0
+  let totalClicks = 0
+  let totalConversions = 0
+  let bounceRateSum = 0
+  let unsubRateSum = 0
+  let rateCount = 0
+
+  const campaignsArr = cache.campaignRows.map((c: Record<string, unknown>) => {
+    const delivered = Number(c.delivered) || 0
+    const opened = Number(c.opened) || 0
+    const clicked = Number(c.clicked) || 0
+    const conversions = Number(c.conversions) || 0
+
+    totalDelivered += delivered
+    totalOpens += opened
+    totalClicks += clicked
+    totalConversions += conversions
+    if (delivered > 0) {
+      bounceRateSum += Number(c.bounce_rate) || 0
+      unsubRateSum += Number(c.unsubscribe_rate) || 0
+      rateCount++
+    }
+
+    return {
+      campaignId: c.campaign_id as string,
+      name: (c.campaign_name as string) || "Untitled",
+      revenue: Number(c.conversion_value) || 0,
+      conversions,
+      delivered,
+      opens: opened,
+      clicks: clicked,
+      openRate: Number(c.open_rate) || 0,
+      clickRate: Number(c.click_rate) || 0,
+      bounceRate: Number(c.bounce_rate) || 0,
+      unsubscribeRate: Number(c.unsubscribe_rate) || 0,
+      sendTime: (c.send_time as string) || null,
+      status: (c.campaign_status as string) || "sent",
+    }
+  })
+
+  const flowsArr = cache.flowRows.map((f: Record<string, unknown>) => {
+    const delivered = Number(f.delivered) || 0
+    const opened = Number(f.opened) || 0
+    const clicked = Number(f.clicked) || 0
+    const conversions = Number(f.conversions) || 0
+
+    totalDelivered += delivered
+    totalOpens += opened
+    totalClicks += clicked
+    totalConversions += conversions
+    if (delivered > 0) {
+      bounceRateSum += Number(f.bounce_rate) || 0
+      unsubRateSum += Number(f.unsubscribe_rate) || 0
+      rateCount++
+    }
+
+    return {
+      flowId: f.flow_id as string,
+      name: (f.flow_name as string) || "Untitled",
+      status: (f.flow_status as string) || "live",
+      triggerType: (f.trigger_type as string) || "custom",
+      revenue: Number(f.conversion_value) || 0,
+      conversions,
+      delivered,
+      opens: opened,
+      clicks: clicked,
+      openRate: Number(f.open_rate) || 0,
+      clickRate: Number(f.click_rate) || 0,
+      bounceRate: Number(f.bounce_rate) || 0,
+      unsubscribeRate: Number(f.unsubscribe_rate) || 0,
+    }
+  })
+
+  const avgBounceRate = rateCount > 0 ? bounceRateSum / rateCount : 0
+  const avgUnsubscribeRate = rateCount > 0 ? unsubRateSum / rateCount : 0
+  const openRate = totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0
+  const clickRate = totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0
+  const clickToOpenRate = totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0
+
+  const campaignDelivered = campaignsArr.reduce((sum, c) => sum + c.delivered, 0)
+  const campaignOpens = campaignsArr.reduce((sum, c) => sum + c.opens, 0)
+  const campaignClicks = campaignsArr.reduce((sum, c) => sum + c.clicks, 0)
+  const flowDelivered = flowsArr.reduce((sum, f) => sum + f.delivered, 0)
+  const flowOpens = flowsArr.reduce((sum, f) => sum + f.opens, 0)
+  const flowClicks = flowsArr.reduce((sum, f) => sum + f.clicks, 0)
+
+  const sentCampaignsCount = campaignsArr.length
+  const liveFlowsCount = flowsArr.filter((f) => f.status === "live" || f.status === "enabled").length
+
+  const totalSubscribers = Number(s.total_subscribers) || 0
+  const engagedProfiles = Number(s.engaged_profiles) || 0
+  const engagementRate = Number(s.engagement_rate) || 0
+
+  return {
+    success: true,
+    connected: true,
+    platform: "omnisend",
+    storeName: store.storeName,
+    generatedAt: new Date().toISOString(),
+    period,
+    dateRange: { start: dateRange.startDateStr, end: dateRange.endDateStr },
+    account: {
+      currency,
+      currencySymbol: getCurrencySymbol(currency),
+      locale: "pt-BR",
+    },
+    revenue: {
+      storeRevenue,
+      storeOrders,
+      totalRevenue: attributedRevenue,
+      klaviyoAttributedRevenue: attributedRevenue,
+      campaignRevenue,
+      flowRevenue,
+      totalOrders: totalConversions,
+      klaviyoAttributedOrders: totalConversions,
+      averageOrderValue: totalConversions > 0 ? attributedRevenue / totalConversions : 0,
+      recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
+    },
+    emailPerformance: {
+      delivered: totalDelivered,
+      opened: totalOpens,
+      clicked: totalClicks,
+      bounceRate: avgBounceRate,
+      unsubscribeRate: avgUnsubscribeRate,
+      openRate,
+      clickRate,
+      clickToOpenRate,
+    },
+    overview: {
+      totalSubscribers,
+      totalLists: 0,
+      totalSegments: 0,
+      totalFlows: flowsArr.length,
+      liveFlows: liveFlowsCount,
+      totalCampaigns: sentCampaignsCount,
+      sentCampaigns: sentCampaignsCount,
+      campaignsInPeriod: sentCampaignsCount,
+      totalTemplates: 0,
+    },
+    engagement: {
+      engagedProfiles,
+      engagementRate: engagementRate > 0 ? engagementRate.toFixed(1) : "0",
+      engaged90dSegmentName: null,
+    },
+    automation: {
+      totalFlows: flowsArr.length,
+      liveFlows: liveFlowsCount,
+      draftFlows: flowsArr.length - liveFlowsCount,
+      automationCoverage: flowsArr.length > 0
+        ? ((liveFlowsCount / flowsArr.length) * 100).toFixed(0)
+        : "0",
+    },
+    growth: {
+      campaignsLast30Days: sentCampaignsCount,
+    },
+    campaignPerformance: {
+      totalRevenue: campaignRevenue,
+      totalConversions: campaignsArr.reduce((sum, c) => sum + c.conversions, 0),
+      totalDelivered: campaignDelivered,
+      avgOpenRate: campaignDelivered > 0 ? (campaignOpens / campaignDelivered) * 100 : 0,
+      avgClickRate: campaignDelivered > 0 ? (campaignClicks / campaignDelivered) * 100 : 0,
+      campaigns: campaignsArr
+        .map(({ status: _status, ...rest }) => rest)
+        .sort((a, b) => b.revenue - a.revenue),
+    },
+    flowPerformance: {
+      totalRevenue: flowRevenue,
+      totalConversions: flowsArr.reduce((sum, f) => sum + f.conversions, 0),
+      totalDelivered: flowDelivered,
+      avgOpenRate: flowDelivered > 0 ? (flowOpens / flowDelivered) * 100 : 0,
+      avgClickRate: flowDelivered > 0 ? (flowClicks / flowDelivered) * 100 : 0,
+      flows: flowsArr
+        .map(({ triggerType: _t, ...rest }) => rest)
+        .sort((a, b) => b.revenue - a.revenue),
+    },
+    lists: [],
+    segments: [],
+    flows: flowsArr.map((f) => ({
+      id: f.flowId,
+      name: f.name,
+      status: f.status,
+      triggerType: f.triggerType,
+    })),
+    campaigns: {
+      total: sentCampaignsCount,
+      sent: sentCampaignsCount,
+      scheduled: 0,
+      drafts: 0,
+      recentCampaigns: campaignsArr
+        .map((c) => ({
+          id: c.campaignId,
+          name: c.name,
+          status: c.status,
+          sendTime: c.sendTime,
+          revenue: c.revenue,
+          delivered: c.delivered,
+          opens: c.opens,
+          clicks: c.clicks,
+          openRate: c.openRate,
+          clickRate: c.clickRate,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+      allInPeriod: campaignsArr.map((c) => ({
+        id: c.campaignId,
+        name: c.name,
+        status: c.status,
+        sendTime: c.sendTime,
+      })),
+    },
+    integrations: { hasEcommerce: true },
+    fromCache: true,
+    fetchedAt: cache.fetchedAt,
+  }
+}
+
+/**
+ * Gera o response a partir de uma chamada live (syncOmnisendForStore).
+ */
+async function buildFromLiveFetch(
+  store: StoreContext,
+  period: string,
+  dateRange: { startDateStr: string; endDateStr: string },
+  days: number,
+  apiKey: string
+): Promise<OmnisendReportResponse> {
+  const result = await syncOmnisendForStore({
+    storeId: store.storeId,
+    orgId: store.orgId,
+    apiKey,
+    periodDays: days,
+  })
+
+  if (!result.ok || !result.data) {
+    throw new Error(result.error || "Falha ao buscar dados Omnisend")
+  }
+
+  const d = result.data
+  const campaignRevenue = d.totalCampaignRevenue
+  const flowRevenue = d.totalAutomationRevenue
+  const attributedRevenue = campaignRevenue + flowRevenue
+  const storeRevenue = d.totalStoreRevenue
+  const storeOrders = d.totalOrders
+  const currency = d.currency || "BRL"
+
+  let totalDelivered = 0
+  let totalOpens = 0
+  let totalClicks = 0
+  let totalConversions = 0
+  let bounceRateSum = 0
+  let unsubRateSum = 0
+  let rateCount = 0
+
+  const campaignsArr = d.campaignRows.map((c) => {
+    totalDelivered += c.delivered
+    totalOpens += c.opened
+    totalClicks += c.clicked
+    totalConversions += c.conversions
+    if (c.delivered > 0) {
+      bounceRateSum += c.bounce_rate
+      unsubRateSum += c.unsubscribe_rate
+      rateCount++
+    }
+    return {
+      campaignId: c.campaign_id,
+      name: c.campaign_name,
+      status: c.campaign_status,
+      revenue: c.conversion_value,
+      conversions: c.conversions,
+      delivered: c.delivered,
+      opens: c.opened,
+      clicks: c.clicked,
+      openRate: c.open_rate,
+      clickRate: c.click_rate,
+      bounceRate: c.bounce_rate,
+      unsubscribeRate: c.unsubscribe_rate,
+      sendTime: c.send_time,
+    }
+  })
+
+  const flowsArr = d.automationRows.map((f) => {
+    totalDelivered += f.delivered
+    totalOpens += f.opened
+    totalClicks += f.clicked
+    totalConversions += f.conversions
+    if (f.delivered > 0) {
+      bounceRateSum += f.bounce_rate
+      unsubRateSum += f.unsubscribe_rate
+      rateCount++
+    }
+    return {
+      flowId: f.automation_id,
+      name: f.automation_name,
+      status: f.automation_status,
+      triggerType: f.trigger_type || "custom",
+      revenue: f.conversion_value,
+      conversions: f.conversions,
+      delivered: f.delivered,
+      opens: f.opened,
+      clicks: f.clicked,
+      openRate: f.open_rate,
+      clickRate: f.click_rate,
+      bounceRate: f.bounce_rate,
+      unsubscribeRate: f.unsubscribe_rate,
+    }
+  })
+
+  const avgBounceRate = rateCount > 0 ? bounceRateSum / rateCount : 0
+  const avgUnsubscribeRate = rateCount > 0 ? unsubRateSum / rateCount : 0
+  const openRate = totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0
+  const clickRate = totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0
+  const clickToOpenRate = totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0
+
+  const campaignDelivered = campaignsArr.reduce((sum, c) => sum + c.delivered, 0)
+  const campaignOpens = campaignsArr.reduce((sum, c) => sum + c.opens, 0)
+  const campaignClicks = campaignsArr.reduce((sum, c) => sum + c.clicks, 0)
+  const flowDelivered = flowsArr.reduce((sum, f) => sum + f.delivered, 0)
+  const flowOpens = flowsArr.reduce((sum, f) => sum + f.opens, 0)
+  const flowClicks = flowsArr.reduce((sum, f) => sum + f.clicks, 0)
+
+  const sentCampaignsCount = campaignsArr.length
+  const liveFlowsCount = flowsArr.filter((f) => f.status === "enabled" || f.status === "active" || f.status === "live").length
+  const totalSubscribers = d.subscribedContacts
+
+  return {
+    success: true,
+    connected: true,
+    platform: "omnisend",
+    storeName: store.storeName,
+    generatedAt: new Date().toISOString(),
+    period,
+    dateRange: { start: dateRange.startDateStr, end: dateRange.endDateStr },
+    account: {
+      currency,
+      currencySymbol: getCurrencySymbol(currency),
+      locale: "pt-BR",
+    },
+    revenue: {
+      storeRevenue,
+      storeOrders,
+      totalRevenue: attributedRevenue,
+      klaviyoAttributedRevenue: attributedRevenue,
+      campaignRevenue,
+      flowRevenue,
+      totalOrders: totalConversions,
+      klaviyoAttributedOrders: totalConversions,
+      averageOrderValue: totalConversions > 0 ? attributedRevenue / totalConversions : 0,
+      recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
+    },
+    emailPerformance: {
+      delivered: totalDelivered,
+      opened: totalOpens,
+      clicked: totalClicks,
+      bounceRate: avgBounceRate,
+      unsubscribeRate: avgUnsubscribeRate,
+      openRate,
+      clickRate,
+      clickToOpenRate,
+    },
+    overview: {
+      totalSubscribers,
+      totalLists: 0,
+      totalSegments: d.segments.length,
+      totalFlows: flowsArr.length,
+      liveFlows: liveFlowsCount,
+      totalCampaigns: sentCampaignsCount,
+      sentCampaigns: sentCampaignsCount,
+      campaignsInPeriod: sentCampaignsCount,
+      totalTemplates: 0,
+    },
+    engagement: {
+      engagedProfiles: totalSubscribers,
+      engagementRate: totalSubscribers > 0 && d.totalContacts > 0
+        ? ((totalSubscribers / d.totalContacts) * 100).toFixed(1)
+        : "0",
+      engaged90dSegmentName: null,
+    },
+    automation: {
+      totalFlows: flowsArr.length,
+      liveFlows: liveFlowsCount,
+      draftFlows: flowsArr.length - liveFlowsCount,
+      automationCoverage: flowsArr.length > 0
+        ? ((liveFlowsCount / flowsArr.length) * 100).toFixed(0)
+        : "0",
+    },
+    growth: {
+      campaignsLast30Days: sentCampaignsCount,
+    },
+    campaignPerformance: {
+      totalRevenue: campaignRevenue,
+      totalConversions: campaignsArr.reduce((sum, c) => sum + c.conversions, 0),
+      totalDelivered: campaignDelivered,
+      avgOpenRate: campaignDelivered > 0 ? (campaignOpens / campaignDelivered) * 100 : 0,
+      avgClickRate: campaignDelivered > 0 ? (campaignClicks / campaignDelivered) * 100 : 0,
+      campaigns: campaignsArr
+        .map(({ status: _status, ...rest }) => rest)
+        .sort((a, b) => b.revenue - a.revenue),
+    },
+    flowPerformance: {
+      totalRevenue: flowRevenue,
+      totalConversions: flowsArr.reduce((sum, f) => sum + f.conversions, 0),
+      totalDelivered: flowDelivered,
+      avgOpenRate: flowDelivered > 0 ? (flowOpens / flowDelivered) * 100 : 0,
+      avgClickRate: flowDelivered > 0 ? (flowClicks / flowDelivered) * 100 : 0,
+      flows: flowsArr
+        .map(({ triggerType: _t, ...rest }) => rest)
+        .sort((a, b) => b.revenue - a.revenue),
+    },
+    lists: [],
+    segments: d.segments.map((seg) => ({
+      id: seg.segmentID,
+      name: seg.name,
+      profileCount: seg.contactsCount,
+      isActive: true,
+      isStarred: false,
+      created: seg.createdAt || "",
+    })),
+    flows: flowsArr.map((f) => ({
+      id: f.flowId,
+      name: f.name,
+      status: f.status,
+      triggerType: f.triggerType,
+    })),
+    campaigns: {
+      total: sentCampaignsCount,
+      sent: sentCampaignsCount,
+      scheduled: 0,
+      drafts: 0,
+      recentCampaigns: campaignsArr
+        .map((c) => ({
+          id: c.campaignId,
+          name: c.name,
+          status: c.status,
+          sendTime: c.sendTime,
+          revenue: c.revenue,
+          delivered: c.delivered,
+          opens: c.opens,
+          clicks: c.clicks,
+          openRate: c.openRate,
+          clickRate: c.clickRate,
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+      allInPeriod: campaignsArr.map((c) => ({
+        id: c.campaignId,
+        name: c.name,
+        status: c.status,
+        sendTime: c.sendTime,
+      })),
+    },
+    integrations: { hasEcommerce: true },
+    fromCache: false,
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * Constroi o report Omnisend completo (cache-first, live-fetch como fallback).
+ */
+export async function buildOmnisendReport(
+  store: StoreContext,
+  period: string,
+  customStartDate?: string | null,
+  customEndDate?: string | null
+): Promise<OmnisendReportResponse> {
+  const dateRange = dateRangeForPeriod(period, customStartDate, customEndDate)
+
+  // 1) Tenta cache
+  try {
+    const cached = await readFromCache(store.storeId, period)
+    if (cached) {
+      log.info("[Omnisend Report] Serving from cache", { storeId: store.storeId, period })
+      return buildFromCache(store, period, dateRange, cached)
+    }
+  } catch (err) {
+    log.warn("[Omnisend Report] Cache read failed, falling through to live", { error: err })
+  }
+
+  // 2) Live fetch
+  const credentials = await getStoreCredentials(store.storeId, store.orgId)
+  const apiKey = credentials.omnisend_api_key
+  if (!apiKey) {
+    throw new Error("API Key Omnisend não configurada para esta loja")
+  }
+
+  const days = daysForPeriod(period, customStartDate, customEndDate)
+  log.info("[Omnisend Report] Cache miss, live-fetching", { storeId: store.storeId, period, days })
+  return buildFromLiveFetch(store, period, dateRange, days, apiKey)
+}
