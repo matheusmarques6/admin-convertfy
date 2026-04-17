@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo } from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -17,8 +16,8 @@ import {
   Rocket,
   Settings,
   Bell,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight,
   X,
   Columns3,
   LayoutDashboard,
@@ -28,10 +27,10 @@ import {
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { LogoIcon } from "@/components/ui/logo"
+import { Logo, LogoIcon } from "@/components/ui/logo"
 import { Icon } from "@/components/ui/icon"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
@@ -142,83 +141,36 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           collapsed ? "w-[68px]" : "w-[248px]"
         )}
       >
-        {/* Header — logo grande + toggle discreto dentro do sidebar */}
+        {/* Logo */}
         <div
           className={cn(
-            "flex items-center shrink-0 h-[84px]",
-            collapsed ? "justify-center px-2" : "justify-between pl-6 pr-3"
+            "flex items-center shrink-0",
+            collapsed ? "justify-center h-16 px-2" : "h-20 px-5"
           )}
         >
-          <Link
-            href={ROUTES.ADMIN.DASHBOARD}
-            className="flex items-center"
-            aria-label="Convertfy"
-          >
-            {collapsed ? (
-              <LogoIcon size={32} />
-            ) : (
-              <Image
-                src="/images/logo-da-convertfy-com-escrito-branco.svg"
-                alt="Convertfy"
-                width={180}
-                height={48}
-                priority
-                className="h-12 w-auto select-none"
-              />
-            )}
+          <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
+            {collapsed ? <LogoIcon size={28} /> : <Logo size="xl" />}
           </Link>
-
-          {/* Collapse toggle — dentro do sidebar, visual clean, so quando expandido */}
-          {!collapsed && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={toggle}
-                  aria-label="Recolher menu"
-                  className={cn(
-                    "hidden md:flex items-center justify-center",
-                    "w-8 h-8 rounded-[8px]",
-                    "text-white/50 hover:text-white",
-                    "hover:bg-white/[0.06] active:bg-white/[0.1]",
-                    "transition-all duration-150"
-                  )}
-                >
-                  <Icon icon={PanelLeftClose} size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8} className="text-xs">
-                Recolher
-              </TooltipContent>
-            </Tooltip>
-          )}
         </div>
 
-        {/* Quando collapsed, mostra o toggle na borda esquerda do conteudo
-            principal (via botao flutuante) para nao conflitar com a logo */}
-        {collapsed && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={toggle}
-                aria-label="Expandir menu"
-                className={cn(
-                  "absolute top-7 -right-[14px] z-40",
-                  "hidden md:flex items-center justify-center",
-                  "w-7 h-7 rounded-full",
-                  "bg-white text-black shadow-[0_2px_8px_rgba(0,0,0,0.2)]",
-                  "hover:bg-gray-50",
-                  "transition-all duration-150",
-                  "ring-1 ring-black/5"
-                )}
-              >
-                <Icon icon={PanelLeftOpen} customSize={14} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={16} className="text-xs">
-              Expandir
-            </TooltipContent>
-          </Tooltip>
-        )}
+        {/* Toggle expand/collapse — botao na borda direita do sidebar */}
+        <button
+          onClick={toggle}
+          className={cn(
+            "absolute top-6 -right-3.5 z-40",
+            "w-7 h-7 rounded-full flex items-center justify-center",
+            "bg-white dark:bg-white text-gray-600 shadow-md",
+            "hover:bg-gray-100 hover:text-gray-900",
+            "transition-colors duration-150",
+            "hidden md:flex",
+            "border border-gray-200"
+          )}
+        >
+          <Icon
+            icon={collapsed ? ChevronRight : ChevronLeft}
+            customSize={14}
+          />
+        </button>
 
         {/* Navigation */}
         <ScrollArea className="flex-1 pt-2 pb-4">
