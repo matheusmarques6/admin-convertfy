@@ -46,6 +46,7 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
 
   const credentials: IntegrationCredentials | null = data?.credentials ?? null
   const status: Record<string, IntegrationStatusData> = data?.status ?? {}
+  const [syncingEmail, setSyncingEmail] = useState(false)
 
   const handleSaved = useCallback(() => {
     mutate()
@@ -69,6 +70,43 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
     }
   }, [storeId, toast, mutate])
 
+  const klaviyoConfigured = Boolean(
+    (credentials?.klaviyo as { configured?: boolean } | undefined)?.configured,
+  )
+  const omnisendConfigured = Boolean(
+    (credentials?.omnisend as { configured?: boolean } | undefined)?.configured,
+  )
+  const hasEmailPlatform = klaviyoConfigured || omnisendConfigured
+
+  const handleSyncEmail = useCallback(async () => {
+    setSyncingEmail(true)
+    try {
+      const res = await fetch(`/api/client-stores/${storeId}/sync-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period: "30d" }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(payload?.error || payload?.message || "Falha ao sincronizar")
+      }
+      const platform = payload?.platform === "omnisend" ? "Omnisend" : "Klaviyo"
+      toast({
+        title: `${platform} sincronizado`,
+        description: `${payload?.campaigns ?? 0} campanhas • ${payload?.automations ?? 0} automações`,
+      })
+      mutate()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao sincronizar",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+      })
+    } finally {
+      setSyncingEmail(false)
+    }
+  }, [storeId, toast, mutate])
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -79,19 +117,37 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
             Conecte as plataformas desta loja. Credenciais são criptografadas com AES-256-GCM.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleRevalidateAll}
-          disabled={revalidatingAll || isLoading}
-        >
-          {revalidatingAll ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-          ) : (
-            <Icon icon={RefreshCw} size={16} className="mr-1.5" />
+        <div className="flex items-center gap-2">
+          {hasEmailPlatform && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleSyncEmail}
+              disabled={syncingEmail || isLoading}
+              title="Força sincronização imediata de campanhas, automações e receita do email marketing"
+            >
+              {syncingEmail ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Icon icon={Zap} size={16} className="mr-1.5" />
+              )}
+              Sincronizar agora
+            </Button>
           )}
-          Revalidar todas
-        </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRevalidateAll}
+            disabled={revalidatingAll || isLoading}
+          >
+            {revalidatingAll ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Icon icon={RefreshCw} size={16} className="mr-1.5" />
+            )}
+            Revalidar todas
+          </Button>
+        </div>
       </div>
 
       {/* Grid de cards */}

@@ -10,8 +10,13 @@
 import { SupabaseClient } from "@supabase/supabase-js"
 import type { KlaviyoSyncData, CampaignMetricRow, AudienceItem } from "./klaviyo-sync.service"
 import type { KlaviyoPerformanceData, KlaviyoCampaignItem } from "./klaviyo-performance.service"
+import type { OmnisendSyncData } from "./omnisend-sync.service"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
+
+const PERIOD_DAYS: Record<string, number> = {
+  today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90,
+}
 
 const log = logger.child("SyncPersistence")
 
@@ -149,6 +154,149 @@ export async function upsertSyncResults(
 
   // Sync campaigns to calendar table
   await syncCampaignsToCalendarFromCron(supabase, store, data.campRows)
+}
+
+/**
+ * Upserts Omnisend sync results into the same cache tables
+ * that Klaviyo uses, but in the omnisend_* columns. Also
+ * persists granular rows into omnisend_campaign_metrics and
+ * omnisend_flow_metrics.
+ *
+ * Shared by: cron sync-omnisend + manual per-store trigger.
+ */
+export async function upsertOmnisendSyncResults(
+  supabase: SupabaseClient,
+  store: StoreInfo,
+  data: OmnisendSyncData,
+  period: string,
+): Promise<void> {
+  if (!store.org_id) {
+    log.warn(`[SyncPersistence] Skipping Omnisend summary for store ${store.id}: missing org_id`)
+    return
+  }
+
+  const days = PERIOD_DAYS[period] ?? 30
+  const now = new Date()
+  const periodStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+  const nowIso = now.toISOString()
+  const periodStartIso = periodStart.toISOString()
+
+  const engagementRate = data.totalContacts > 0
+    ? Math.round((data.subscribedContacts / data.totalContacts) * 10000) / 100
+    : 0
+
+  const summaryPayload = {
+    store_id: store.id,
+    org_id: store.org_id,
+    period_label: period,
+    period_start: periodStartIso,
+    period_end: nowIso,
+    store_total_revenue: data.totalStoreRevenue,
+    store_orders: data.totalOrders,
+    omnisend_total_revenue: data.totalCampaignRevenue + data.totalAutomationRevenue,
+    omnisend_campaign_revenue: data.totalCampaignRevenue,
+    omnisend_flow_revenue: data.totalAutomationRevenue,
+    total_leads: data.totalContacts,
+    engaged_leads: data.subscribedContacts,
+    engagement_rate: engagementRate,
+    sync_status: "ok",
+    sync_source: "omnisend",
+    sync_error: null,
+    currency: data.currency,
+    fetched_at: nowIso,
+    expires_at: expiresAt,
+  }
+
+  const { error: summaryErr } = await supabase
+    .from("store_revenue_summary")
+    .upsert(summaryPayload, { onConflict: "store_id,period_label" })
+  if (summaryErr) {
+    log.error(`[SyncPersistence] Failed to upsert Omnisend summary for ${store.id}/${period}:`, summaryErr.message)
+  }
+
+  if (data.campaignRows.length > 0) {
+    const campaignPayload = data.campaignRows.map((c) => ({
+      store_id: c.store_id,
+      org_id: c.org_id,
+      campaign_id: c.campaign_id,
+      campaign_name: c.campaign_name,
+      campaign_status: c.campaign_status,
+      send_time: c.send_time,
+      subject: c.subject,
+      channel: c.channel || "email",
+      period_start: periodStartIso,
+      period_end: nowIso,
+      period_label: period,
+      recipients: c.recipients,
+      delivered: c.delivered,
+      delivery_rate: c.delivery_rate,
+      opened: c.opened,
+      open_rate: c.open_rate,
+      clicked: c.clicked,
+      click_rate: c.click_rate,
+      conversions: c.conversions,
+      conversion_rate: c.conversion_rate,
+      conversion_value: c.conversion_value,
+      revenue_per_recipient: c.revenue_per_recipient,
+      bounced: c.bounced,
+      bounce_rate: c.bounce_rate,
+      unsubscribed: c.unsubscribed,
+      unsubscribe_rate: c.unsubscribe_rate,
+      spam_complaints: c.spam_complaints,
+      fetched_at: nowIso,
+      expires_at: expiresAt,
+    }))
+    const { error: campErr } = await supabase
+      .from("omnisend_campaign_metrics")
+      .upsert(campaignPayload, { onConflict: "store_id,campaign_id,period_start,period_end" })
+    if (campErr) {
+      log.warn(`[SyncPersistence] Failed to upsert omnisend_campaign_metrics for ${store.id}/${period}:`, campErr.message)
+    }
+  }
+
+  if (data.automationRows.length > 0) {
+    const flowPayload = data.automationRows.map((a) => ({
+      store_id: a.store_id,
+      org_id: a.org_id,
+      flow_id: a.automation_id,
+      flow_name: a.automation_name,
+      flow_status: a.automation_status || "live",
+      trigger_type: a.trigger_type,
+      period_start: periodStartIso,
+      period_end: nowIso,
+      period_label: period,
+      recipients: a.recipients,
+      delivered: a.delivered,
+      delivery_rate: a.delivery_rate,
+      opened: a.opened,
+      open_rate: a.open_rate,
+      clicked: a.clicked,
+      click_rate: a.click_rate,
+      conversions: a.conversions,
+      conversion_rate: a.conversion_rate,
+      conversion_value: a.conversion_value,
+      revenue_per_recipient: a.revenue_per_recipient,
+      bounced: a.bounced,
+      bounce_rate: a.bounce_rate,
+      unsubscribed: a.unsubscribed,
+      unsubscribe_rate: a.unsubscribe_rate,
+      fetched_at: nowIso,
+      expires_at: expiresAt,
+    }))
+    const { error: flowErr } = await supabase
+      .from("omnisend_flow_metrics")
+      .upsert(flowPayload, { onConflict: "store_id,flow_id,period_start,period_end" })
+    if (flowErr) {
+      log.warn(`[SyncPersistence] Failed to upsert omnisend_flow_metrics for ${store.id}/${period}:`, flowErr.message)
+    }
+  }
+
+  await supabase
+    .from("client_stores")
+    .update({ email_platform: "omnisend" })
+    .eq("id", store.id)
+    .neq("email_platform", "omnisend")
 }
 
 /**

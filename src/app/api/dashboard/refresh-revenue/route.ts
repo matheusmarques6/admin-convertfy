@@ -22,7 +22,7 @@ import {
 } from "@/lib/services/klaviyo-sync.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
 import { detectStorePlatform } from "@/lib/services/report-platform.service"
-import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
+import { upsertSyncResults, upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
 
 const log = logger.child("RefreshRevenue")
 
@@ -141,7 +141,10 @@ async function refreshStoreForPeriod(
       apiKey,
       periodDays: days,
     })
-    if (result.ok) return { status: "ok" }
+    if (result.ok && result.data) {
+      await upsertOmnisendSyncResults(supabase, { id: store.id, org_id: store.org_id }, result.data, period)
+      return { status: "ok" }
+    }
     return { status: "error", error: result.error || "Omnisend sync failed" }
   }
 
