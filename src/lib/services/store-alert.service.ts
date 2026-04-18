@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 
 const log = logger.child('StoreAlertService');
 
-export type AlertType = 'low_revenue' | 'klaviyo_account_error' | 'campaign_failure' | 'low_recovery_rate';
+export type AlertType = 'low_revenue' | 'klaviyo_account_error' | 'omnisend_account_error' | 'campaign_failure' | 'low_recovery_rate';
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertStatus = 'active' | 'acknowledged' | 'resolved';
 
@@ -211,6 +211,7 @@ class StoreAlertService {
         by_type: {
           low_revenue: 0,
           klaviyo_account_error: 0,
+          omnisend_account_error: 0,
           campaign_failure: 0,
           low_recovery_rate: 0,
         },
@@ -221,6 +222,7 @@ class StoreAlertService {
     const byType: Record<AlertType, number> = {
       low_revenue: 0,
       klaviyo_account_error: 0,
+      omnisend_account_error: 0,
       campaign_failure: 0,
       low_recovery_rate: 0,
     };

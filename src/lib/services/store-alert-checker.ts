@@ -12,8 +12,10 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { storeAlertService, type CreateAlertData } from './store-alert.service';
 import { getStoreCredentials } from '@/lib/services/credentials.service';
 import { getKlaviyoRevenueForStore } from '@/lib/integrations/klaviyo/report-summary';
+import { getOmnisendRevenueForStore } from '@/lib/integrations/omnisend/report-summary';
 import { getShopifyReportForStore } from '@/lib/integrations/shopify/report';
 import { testApiConnection as testKlaviyoConnection } from '@/lib/integrations/klaviyo/account';
+import { omnisendRequest } from '@/lib/integrations/omnisend/client';
 import { logger } from '@/lib/logger';
 
 const log = logger.child('StoreAlertChecker');
@@ -26,6 +28,7 @@ export interface CheckResult {
   checks: {
     revenue: 'ok' | 'alert' | 'skipped' | 'error';
     klaviyo_health: 'ok' | 'alert' | 'skipped' | 'error';
+    omnisend_health: 'ok' | 'alert' | 'skipped' | 'error';
     campaign_failures: 'ok' | 'alert' | 'skipped' | 'error';
     recovery_rate: 'ok' | 'alert' | 'skipped' | 'error';
   };
@@ -37,8 +40,10 @@ interface StoreForCheck {
   store_name: string;
   is_active: boolean;
   alert_revenue_threshold: number;
+  email_platform: 'klaviyo' | 'omnisend' | null;
   klaviyo_private_key: string | null;
   klaviyo_api_key: string | null;
+  omnisend_api_key: string | null;
   shopify_access_token: string | null;
 }
 
@@ -50,7 +55,7 @@ export async function runAllChecks(storeId?: string): Promise<CheckResult[]> {
 
   let query = supabase
     .from('client_stores')
-    .select('id, client_id, store_name, is_active, alert_revenue_threshold, klaviyo_private_key, klaviyo_api_key, shopify_access_token')
+    .select('id, client_id, store_name, is_active, alert_revenue_threshold, email_platform, klaviyo_private_key, klaviyo_api_key, omnisend_api_key, shopify_access_token')
     .eq('is_active', true);
 
   if (storeId) {
@@ -86,6 +91,7 @@ export async function runAllChecks(storeId?: string): Promise<CheckResult[]> {
         checks: {
           revenue: 'error',
           klaviyo_health: 'error',
+          omnisend_health: 'error',
           campaign_failures: 'error',
           recovery_rate: 'error',
         },
@@ -112,20 +118,24 @@ async function checkStore(store: StoreForCheck): Promise<CheckResult> {
     checks: {
       revenue: 'skipped',
       klaviyo_health: 'skipped',
+      omnisend_health: 'skipped',
       campaign_failures: 'skipped',
       recovery_rate: 'skipped',
     },
   };
 
   const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key);
+  const hasOmnisend = !!store.omnisend_api_key;
+  const hasEmailPlatform = hasKlaviyo || hasOmnisend;
   const hasShopify = !!store.shopify_access_token;
 
   // Run checks in parallel where possible
-  const [revenueResult, klaviyoHealthResult, campaignResult, recoveryResult] = await Promise.allSettled([
-    hasKlaviyo || hasShopify ? checkRevenue(store) : Promise.resolve(null),
+  const [revenueResult, klaviyoHealthResult, omnisendHealthResult, campaignResult, recoveryResult] = await Promise.allSettled([
+    hasEmailPlatform || hasShopify ? checkRevenue(store) : Promise.resolve(null),
     hasKlaviyo ? checkKlaviyoHealth(store) : Promise.resolve(null),
-    hasKlaviyo ? checkCampaignFailures(store) : Promise.resolve(null),
-    hasKlaviyo || hasShopify ? checkRecoveryRate(store) : Promise.resolve(null),
+    hasOmnisend ? checkOmnisendHealth(store) : Promise.resolve(null),
+    hasEmailPlatform ? checkCampaignFailures(store) : Promise.resolve(null),
+    hasEmailPlatform || hasShopify ? checkRecoveryRate(store) : Promise.resolve(null),
   ]);
 
   // Process revenue check
@@ -144,6 +154,15 @@ async function checkStore(store: StoreForCheck): Promise<CheckResult> {
     result.alerts_resolved += klaviyoHealthResult.value.resolved;
   } else if (klaviyoHealthResult.status === 'rejected') {
     result.checks.klaviyo_health = 'error';
+  }
+
+  // Process Omnisend health check
+  if (omnisendHealthResult.status === 'fulfilled' && omnisendHealthResult.value !== null) {
+    result.checks.omnisend_health = omnisendHealthResult.value.status;
+    result.alerts_created += omnisendHealthResult.value.created;
+    result.alerts_resolved += omnisendHealthResult.value.resolved;
+  } else if (omnisendHealthResult.status === 'rejected') {
+    result.checks.omnisend_health = 'error';
   }
 
   // Process campaign failures check
@@ -179,37 +198,51 @@ interface SingleCheckResult {
 async function checkRevenue(store: StoreForCheck): Promise<SingleCheckResult> {
   try {
     const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key);
+    const hasOmnisend = !!store.omnisend_api_key;
     const hasShopify = !!store.shopify_access_token;
 
+    const getEmailRevenue = (period: string) => {
+      if (store.email_platform === 'omnisend' && hasOmnisend) {
+        return getOmnisendRevenueForStore(store.id, period).catch(() => null);
+      }
+      if (hasKlaviyo) {
+        return getKlaviyoRevenueForStore(store.id, period).catch(() => null);
+      }
+      if (hasOmnisend) {
+        return getOmnisendRevenueForStore(store.id, period).catch(() => null);
+      }
+      return Promise.resolve(null);
+    };
+
     // Get current 30-day revenue
-    const [shopifyCurrent, klaviyoCurrentResult] = await Promise.all([
+    const [shopifyCurrent, emailCurrentResult] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
-      hasKlaviyo ? getKlaviyoRevenueForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
+      getEmailRevenue('30d'),
     ]);
 
     // Get 90-day revenue (to calculate 3-month average)
-    const [shopify90d, klaviyo90dResult] = await Promise.all([
+    const [shopify90d, email90dResult] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '90d').catch(() => null) : Promise.resolve(null),
-      hasKlaviyo ? getKlaviyoRevenueForStore(store.id, '90d').catch(() => null) : Promise.resolve(null),
+      getEmailRevenue('90d'),
     ]);
 
-    const klaviyoCurrent = klaviyoCurrentResult?.success ? klaviyoCurrentResult.data : null;
-    const klaviyo90d = klaviyo90dResult?.success ? klaviyo90dResult.data : null;
+    const emailCurrent = emailCurrentResult?.success ? emailCurrentResult.data : null;
+    const email90d = email90dResult?.success ? email90dResult.data : null;
 
     // Calculate current total revenue
     let currentRevenue = 0;
     if (shopifyCurrent?.connected && shopifyCurrent.summary) {
       currentRevenue = shopifyCurrent.summary.totalRevenue || 0;
-    } else if (klaviyoCurrent) {
-      currentRevenue = klaviyoCurrent.totalRevenue || 0;
+    } else if (emailCurrent) {
+      currentRevenue = emailCurrent.totalRevenue || 0;
     }
 
     // Calculate 3-month average (90d total / 3)
     let revenue90d = 0;
     if (shopify90d?.connected && shopify90d.summary) {
       revenue90d = shopify90d.summary.totalRevenue || 0;
-    } else if (klaviyo90d) {
-      revenue90d = klaviyo90d.totalRevenue || 0;
+    } else if (email90d) {
+      revenue90d = email90d.totalRevenue || 0;
     }
 
     const monthlyAverage = revenue90d / 3;
@@ -291,51 +324,115 @@ async function checkKlaviyoHealth(store: StoreForCheck): Promise<SingleCheckResu
 }
 
 /**
- * Check 3: Campaign failures in the last 7 days
+ * Check 2b: Omnisend API connection health (via /v3/brands)
  */
-async function checkCampaignFailures(store: StoreForCheck): Promise<SingleCheckResult> {
+async function checkOmnisendHealth(store: StoreForCheck): Promise<SingleCheckResult> {
   try {
     const creds = await getStoreCredentials(store.id);
-    const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key;
+    const apiKey = creds.omnisend_api_key;
 
     if (!apiKey) {
       return { status: 'ok', created: 0, resolved: 0 };
     }
 
-    // Import klaviyoRequest dynamically to get campaigns
-    const { klaviyoRequest } = await import('@/lib/integrations/klaviyo/client');
+    let isConnected = true;
+    try {
+      // /v3/brands is a lightweight endpoint that validates the key
+      const resp = await omnisendRequest<{ brandID?: string }>(apiKey, '/v3/brands', {
+        logTag: 'AlertChecker.Omnisend',
+      });
+      isConnected = !!resp;
+    } catch {
+      isConnected = false;
+    }
 
-    // Fetch recent campaigns with failed/cancelled status
-    const response = await klaviyoRequest<{
-      data: Array<{
-        id: string;
-        attributes: {
-          name: string;
-          status: string;
-          send_time: string | null;
-        };
-      }>;
-    }>(apiKey, `/campaigns/?filter=equals(messages.channel,"email")&sort=-updated_at&page[size]=20`, {
-      logTag: 'AlertChecker',
-    });
+    if (!isConnected) {
+      const alertData: CreateAlertData = {
+        store_id: store.id,
+        client_id: store.client_id,
+        type: 'omnisend_account_error',
+        severity: 'critical',
+        title: 'Erro na conta Omnisend',
+        message: `A conexão com a API da Omnisend falhou para a loja ${store.store_name}. Verifique se a chave API está válida e a conta está ativa.`,
+        metadata: { tested_at: new Date().toISOString() },
+      };
 
-    const campaigns = response?.data || [];
-    const failedCampaigns = campaigns.filter(
-      (c) => c.attributes.status === 'cancelled' || c.attributes.status === 'failed'
-    );
+      const alert = await storeAlertService.createAlert(alertData);
+      return { status: 'alert', created: alert ? 1 : 0, resolved: 0 };
+    }
 
-    // Filter to only last 7 days
+    const resolved = await storeAlertService.autoResolveAlerts(store.id, 'omnisend_account_error');
+    return { status: 'ok', created: 0, resolved };
+  } catch (err) {
+    log.error(`Omnisend health check error for store ${store.id}:`, err);
+    return { status: 'error', created: 0, resolved: 0 };
+  }
+}
+
+/**
+ * Check 3: Campaign failures in the last 7 days
+ */
+async function checkCampaignFailures(store: StoreForCheck): Promise<SingleCheckResult> {
+  try {
+    const creds = await getStoreCredentials(store.id);
+    const klaviyoKey = creds.klaviyo_private_key || creds.klaviyo_api_key;
+    const omnisendKey = creds.omnisend_api_key;
+    const useOmnisend = store.email_platform === 'omnisend' && !!omnisendKey;
+    const useKlaviyo = !useOmnisend && !!klaviyoKey;
+
+    if (!useOmnisend && !useKlaviyo) {
+      return { status: 'ok', created: 0, resolved: 0 };
+    }
+
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const recentFailures = failedCampaigns.filter((c) => {
-      const sendTime = c.attributes.send_time;
-      if (!sendTime) return false;
-      return new Date(sendTime) >= sevenDaysAgo;
-    });
+    const recentFailures: Array<{ id: string; name: string; status: string }> = [];
+
+    if (useKlaviyo) {
+      const { klaviyoRequest } = await import('@/lib/integrations/klaviyo/client');
+
+      const response = await klaviyoRequest<{
+        data: Array<{
+          id: string;
+          attributes: { name: string; status: string; send_time: string | null };
+        }>;
+      }>(klaviyoKey, `/campaigns/?filter=equals(messages.channel,"email")&sort=-updated_at&page[size]=20`, {
+        logTag: 'AlertChecker',
+      });
+
+      const campaigns = response?.data || [];
+      const failedCampaigns = campaigns.filter(
+        (c) => c.attributes.status === 'cancelled' || c.attributes.status === 'failed'
+      );
+
+      for (const c of failedCampaigns) {
+        const sendTime = c.attributes.send_time;
+        if (sendTime && new Date(sendTime) >= sevenDaysAgo) {
+          recentFailures.push({ id: c.id, name: c.attributes.name, status: c.attributes.status });
+        }
+      }
+    } else {
+      // Omnisend: /v3/campaigns lista campanhas com status; usar status "error"/"paused"
+      const response = await omnisendRequest<{
+        campaigns?: Array<{ campaignID: string; name: string; status: string; sentDate?: string; createdDate?: string }>;
+      }>(omnisendKey!, `/v3/campaigns?limit=50`, { logTag: 'AlertChecker.Omnisend' });
+
+      const campaigns = response?.campaigns || [];
+      const failedCampaigns = campaigns.filter(
+        (c) => c.status === 'error' || c.status === 'failed' || c.status === 'canceled'
+      );
+
+      for (const c of failedCampaigns) {
+        const sendTime = c.sentDate || c.createdDate;
+        if (sendTime && new Date(sendTime) >= sevenDaysAgo) {
+          recentFailures.push({ id: c.campaignID, name: c.name, status: c.status });
+        }
+      }
+    }
 
     if (recentFailures.length > 0) {
-      const names = recentFailures.map((c) => c.attributes.name).join(', ');
+      const names = recentFailures.map((c) => c.name).join(', ');
       const alertData: CreateAlertData = {
         store_id: store.id,
         client_id: store.client_id,
@@ -344,11 +441,8 @@ async function checkCampaignFailures(store: StoreForCheck): Promise<SingleCheckR
         title: `${recentFailures.length} campanha(s) com falha`,
         message: `A loja ${store.store_name} tem ${recentFailures.length} campanha(s) com falha nos últimos 7 dias: ${names}`,
         metadata: {
-          failed_campaigns: recentFailures.map((c) => ({
-            id: c.id,
-            name: c.attributes.name,
-            status: c.attributes.status,
-          })),
+          failed_campaigns: recentFailures,
+          platform: useOmnisend ? 'omnisend' : 'klaviyo',
           checked_at: new Date().toISOString(),
         },
       };
@@ -373,16 +467,22 @@ async function checkCampaignFailures(store: StoreForCheck): Promise<SingleCheckR
 async function checkRecoveryRate(store: StoreForCheck): Promise<SingleCheckResult> {
   try {
     const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key);
+    const hasOmnisend = !!store.omnisend_api_key;
     const hasShopify = !!store.shopify_access_token;
 
-    if (!hasKlaviyo) {
+    if (!hasKlaviyo && !hasOmnisend) {
       return { status: 'ok', created: 0, resolved: 0 };
     }
 
+    const useOmnisend = store.email_platform === 'omnisend' && hasOmnisend;
+    const platformLabel = useOmnisend ? 'Omnisend' : 'Klaviyo';
+
     // Get 30-day revenue data
-    const [shopifyResult, klaviyoResultRaw] = await Promise.all([
+    const [shopifyResult, emailResultRaw] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
-      getKlaviyoRevenueForStore(store.id, '30d').catch(() => null),
+      useOmnisend
+        ? getOmnisendRevenueForStore(store.id, '30d').catch(() => null)
+        : getKlaviyoRevenueForStore(store.id, '30d').catch(() => null),
     ]);
 
     let totalRevenue = 0;
@@ -390,15 +490,15 @@ async function checkRecoveryRate(store: StoreForCheck): Promise<SingleCheckResul
       totalRevenue = shopifyResult.summary.totalRevenue || 0;
     }
 
-    const klaviyoData = klaviyoResultRaw?.success ? klaviyoResultRaw.data : null;
-    const klaviyoRevenue = klaviyoData?.totalRevenue || 0;
+    const emailData = emailResultRaw?.success ? emailResultRaw.data : null;
+    const emailRevenue = emailData?.totalRevenue || 0;
 
     // Skip if no total revenue (can't calculate rate)
     if (totalRevenue <= 0) {
       return { status: 'ok', created: 0, resolved: 0 };
     }
 
-    const recoveryRate = (klaviyoRevenue / totalRevenue) * 100;
+    const recoveryRate = (emailRevenue / totalRevenue) * 100;
 
     if (recoveryRate < 10) {
       const alertData: CreateAlertData = {
@@ -407,10 +507,11 @@ async function checkRecoveryRate(store: StoreForCheck): Promise<SingleCheckResul
         type: 'low_recovery_rate',
         severity: 'warning',
         title: `Taxa de recuperação em ${recoveryRate.toFixed(1)}%`,
-        message: `A loja ${store.store_name} está com taxa de recuperação de email de ${recoveryRate.toFixed(1)}% (abaixo de 10%). Receita Klaviyo: R$ ${klaviyoRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / Total: R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
+        message: `A loja ${store.store_name} está com taxa de recuperação de email de ${recoveryRate.toFixed(1)}% (abaixo de 10%). Receita ${platformLabel}: R$ ${emailRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / Total: R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
         metadata: {
           recovery_rate: Math.round(recoveryRate * 10) / 10,
-          klaviyo_revenue: klaviyoRevenue,
+          email_platform: useOmnisend ? 'omnisend' : 'klaviyo',
+          email_revenue: emailRevenue,
           total_revenue: totalRevenue,
           threshold: 10,
         },
