@@ -45,9 +45,14 @@ export class OmnisendPermissionError extends Error {
 export const OMNISEND_API_BASE = "https://api.omnisend.com"
 export const OMNISEND_V3 = `${OMNISEND_API_BASE}/v3`
 export const OMNISEND_V5 = `${OMNISEND_API_BASE}/v5`
+/** Statistics API batch — saiu do Beta em 2026-03-15 (GA) */
+export const OMNISEND_V2026 = `${OMNISEND_API_BASE}/v2026-03-15`
 
-/** Rate limit: 400 req/min ≈ 150ms between requests minimum */
+/** Rate limit global: 400 req/min ≈ 150ms minimo entre requests.
+ *  Atencao: endpoint /v3/campaigns esta em tier "1 RPS per Client" — usar
+ *  OMNISEND_CAMPAIGNS_INTERVAL_MS para operacoes contra esse endpoint. */
 const MIN_REQUEST_INTERVAL_MS = 160
+export const OMNISEND_CAMPAIGNS_INTERVAL_MS = 1100
 const MAX_RETRY_AFTER_MS = 10_000
 const OMNISEND_FETCH_TIMEOUT_MS = 15_000
 const MAX_RETRIES = 3
@@ -199,9 +204,12 @@ export async function omnisendPaginateV3<TItem>(
     maxPages?: number
     limit?: number
     queryParams?: Record<string, string>
+    /** Intervalo minimo entre paginas. Usar OMNISEND_CAMPAIGNS_INTERVAL_MS
+     *  (1100ms) para endpoints de tier "1 RPS per Client" como /v3/campaigns. */
+    intervalMs?: number
   }
 ): Promise<TItem[]> {
-  const { logTag = "Omnisend", maxPages = 20, limit = 250, queryParams = {} } = options || {}
+  const { logTag = "Omnisend", maxPages = 20, limit = 250, queryParams = {}, intervalMs } = options || {}
   const allItems: TItem[] = []
   let offset = 0
 
@@ -224,6 +232,11 @@ export async function omnisendPaginateV3<TItem>(
     if (!paging?.next || items.length < limit) break
 
     offset += items.length
+
+    // Respeita tier de rate limit especifico do endpoint (alguns sao 1 RPS)
+    if (intervalMs && intervalMs > MIN_REQUEST_INTERVAL_MS) {
+      await sleep(intervalMs - MIN_REQUEST_INTERVAL_MS)
+    }
   }
 
   return allItems
