@@ -439,9 +439,10 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = klaviyoRaw as any
         if (raw?.rateLimited) {
+          const bannerPlatform = (raw?.platform === "omnisend" ? "omnisend" : "klaviyo") as "klaviyo" | "omnisend"
           return (
             <div className="max-w-6xl mx-auto px-8 pt-4">
-              <RateLimitBanner fromCache={!!raw.fromCache} fetchedAt={raw.fetchedAt} />
+              <RateLimitBanner fromCache={!!raw.fromCache} fetchedAt={raw.fetchedAt} platform={bannerPlatform} />
             </div>
           )
         }

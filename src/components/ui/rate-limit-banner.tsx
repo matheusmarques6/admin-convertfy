@@ -4,11 +4,15 @@ import { Clock, Info } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+type EmailPlatform = "klaviyo" | "omnisend"
+
 interface RateLimitBannerProps {
   /** Response has rateLimited: true and fromCache: true */
   fromCache: boolean
   /** ISO timestamp of when the cache was fetched */
   fetchedAt?: string
+  /** Email platform (Klaviyo or Omnisend) — used in the message text */
+  platform?: EmailPlatform
 }
 
 function formatTimeAgo(isoDate: string): string {
@@ -21,19 +25,27 @@ function formatTimeAgo(isoDate: string): string {
   return `${days} dia${days !== 1 ? "s" : ""}`
 }
 
+function platformLabel(platform?: EmailPlatform): string {
+  if (platform === "omnisend") return "Omnisend"
+  if (platform === "klaviyo") return "Klaviyo"
+  return "plataforma de e-mail"
+}
+
 /**
- * Banner shown when Klaviyo API is rate-limited.
+ * Banner shown when the email platform API is rate-limited.
  *
  * - fromCache=true: shows warning with timestamp (data is from cache)
  * - fromCache=false: shows info that data is temporarily unavailable
  */
-export function RateLimitBanner({ fromCache, fetchedAt }: RateLimitBannerProps) {
+export function RateLimitBanner({ fromCache, fetchedAt, platform }: RateLimitBannerProps) {
+  const label = platformLabel(platform)
+
   if (fromCache && fetchedAt) {
     return (
       <Alert variant="warning" className="mb-4">
         <Icon icon={Clock} size={16} />
         <AlertDescription>
-          {"Exibindo dados de "}{formatTimeAgo(fetchedAt)}{" atr\u00e1s. A Klaviyo est\u00e1 temporariamente limitando requisi\u00e7\u00f5es. Os dados ser\u00e3o atualizados automaticamente."}
+          {`Exibindo dados de ${formatTimeAgo(fetchedAt)} atrás. A ${label} está temporariamente limitando requisições. Os dados serão atualizados automaticamente.`}
         </AlertDescription>
       </Alert>
     )
@@ -43,7 +55,7 @@ export function RateLimitBanner({ fromCache, fetchedAt }: RateLimitBannerProps) 
     <Alert className="mb-4 border-muted-foreground/30 bg-muted/50">
       <Icon icon={Info} size={16} />
       <AlertDescription>
-        {"N\u00e3o foi poss\u00edvel carregar dados devido a uma limita\u00e7\u00e3o da Klaviyo. Assim que normalizar, os dados estar\u00e3o dispon\u00edveis."}
+        {`Não foi possível carregar dados devido a uma limitação da ${label}. Assim que normalizar, os dados estarão disponíveis.`}
       </AlertDescription>
     </Alert>
   )

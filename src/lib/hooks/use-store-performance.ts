@@ -60,6 +60,7 @@ export interface RateLimitInfo {
   fromCache: boolean
   fetchedAt?: string
   partial?: boolean
+  platform?: "klaviyo" | "omnisend"
 }
 
 export interface StorePerformanceState {
@@ -188,8 +189,9 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     const fromCache = sources.some((s) => s?.rateLimited && s?.fromCache)
     const fetchedAt = sources.find((s) => s?.rateLimited && s?.fetchedAt)?.fetchedAt
     const partial = reportData?.partial === true
+    const platform = reportData?.platform === "omnisend" ? "omnisend" : "klaviyo"
 
-    return { rateLimited: true, fromCache, fetchedAt, partial }
+    return { rateLimited: true, fromCache, fetchedAt, partial, platform }
   }, [campaignsData, flowsData, reportData])
 
   return {

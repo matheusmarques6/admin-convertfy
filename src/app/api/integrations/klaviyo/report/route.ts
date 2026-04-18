@@ -1427,6 +1427,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({
               success: true,
               rateLimited: true,
+              platform: "klaviyo" as const,
               partial: true,
               fromCache: true,
               fetchedAt: cached.fetchedAt,
@@ -1451,7 +1452,7 @@ export async function GET(request: NextRequest) {
       }
       // No cache available — return friendly message (status 200, not 429)
       return NextResponse.json(
-        { success: true, rateLimited: true, error: "rate_limited_no_cache", message: "Dados temporariamente indisponiveis por limitacao da Klaviyo." },
+        { success: true, rateLimited: true, platform: "klaviyo" as const, error: "rate_limited_no_cache", message: "Dados temporariamente indisponíveis por limitação da Klaviyo." },
         { headers: corsHeaders(origin) }
       )
     }

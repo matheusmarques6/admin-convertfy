@@ -886,12 +886,14 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const rateLimitFromCache = (klaviyoRaw as any)?.fromCache === true
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rateLimitFetchedAt = (klaviyoRaw as any)?.fetchedAt as string | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rateLimitPlatform = ((klaviyoRaw as any)?.platform === "omnisend" ? "omnisend" : "klaviyo") as "klaviyo" | "omnisend"
 
   // Main Render
   return (
     <>
       {isRateLimited && (
-        <RateLimitBanner fromCache={rateLimitFromCache} fetchedAt={rateLimitFetchedAt} />
+        <RateLimitBanner fromCache={rateLimitFromCache} fetchedAt={rateLimitFetchedAt} platform={rateLimitPlatform} />
       )}
       {isAllDataZero && !isRateLimited && (
         <div className="flex items-center gap-3 p-4 mb-4 rounded-[8px] border border-warning/30 bg-warning/5">

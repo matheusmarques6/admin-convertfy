@@ -104,6 +104,7 @@ export function StorePerformanceKPIs() {
         <RateLimitBanner
           fromCache={rateLimitInfo.fromCache}
           fetchedAt={rateLimitInfo.fetchedAt}
+          platform={rateLimitInfo.platform}
         />
       )}
 
