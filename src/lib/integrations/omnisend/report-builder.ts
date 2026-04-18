@@ -542,6 +542,11 @@ async function buildFromLiveFetch(
   })
 
   if (!result.ok || !result.data) {
+    // Re-lanca a classe de erro original para a camada acima conseguir
+    // detectar rate limit e servir cache stale ou resposta graciosa.
+    if (result.errorType === "rate_limit") {
+      throw new OmnisendRateLimitError(result.retryAfterMs ?? 60_000)
+    }
     throw new Error(result.error || "Falha ao buscar dados Omnisend")
   }
 

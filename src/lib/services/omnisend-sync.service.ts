@@ -25,6 +25,9 @@ import {
   OMNISEND_V5,
   OMNISEND_V2026,
   OMNISEND_CAMPAIGNS_INTERVAL_MS,
+  OmnisendRateLimitError,
+  OmnisendInvalidKeyError,
+  OmnisendPermissionError,
   sleep,
 } from "@/lib/integrations/omnisend/client"
 
@@ -199,10 +202,14 @@ export interface OmnisendSyncData {
   currency: string
 }
 
+export type SyncErrorType = "rate_limit" | "invalid_key" | "permission" | "unknown"
+
 export interface SyncResult<T> {
   ok: boolean
   data?: T
   error?: string
+  errorType?: SyncErrorType
+  retryAfterMs?: number
 }
 
 // ── Brand info ────────────────────────────────────────────
@@ -747,6 +754,15 @@ export async function syncOmnisendForStore(params: {
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error)
     log.error("Omnisend sync failed", { storeId, error: errMsg })
-    return { ok: false, error: errMsg }
+    if (error instanceof OmnisendRateLimitError) {
+      return { ok: false, error: errMsg, errorType: "rate_limit", retryAfterMs: error.retryAfterMs }
+    }
+    if (error instanceof OmnisendInvalidKeyError) {
+      return { ok: false, error: errMsg, errorType: "invalid_key" }
+    }
+    if (error instanceof OmnisendPermissionError) {
+      return { ok: false, error: errMsg, errorType: "permission" }
+    }
+    return { ok: false, error: errMsg, errorType: "unknown" }
   }
 }
