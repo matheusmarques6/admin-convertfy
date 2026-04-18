@@ -48,7 +48,7 @@ import type { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
+import { StoreEmailPerformanceReport } from "./store-email-performance-report"
 import { RecoveryAnalysis } from "./recovery-analysis"
 
 interface ClientReportsProps {
@@ -214,7 +214,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
     setIsCreating(true)
     try {
       // Build API URL with custom dates if needed
-      let apiUrl = `/api/integrations/klaviyo/report?store_id=${selectedStore}&period=${selectedPeriod}`
+      let apiUrl = `/api/integrations/email-platform/report?store_id=${selectedStore}&period=${selectedPeriod}`
       if (selectedPeriod === "custom" && customStartDate && customEndDate) {
         apiUrl += `&start_date=${customStartDate}&end_date=${customEndDate}`
       }
@@ -807,10 +807,10 @@ export function ClientReports({ clientId }: ClientReportsProps) {
 
           {viewingReport && (
             <div ref={reportRef}>
-              <KlaviyoPerformanceReport
+              <StoreEmailPerformanceReport
                 storeId={viewingReport.store_id}
                 storeName={viewingReport.store_name}
-                savedReportData={viewingReport.report_data as unknown as Parameters<typeof KlaviyoPerformanceReport>[0]['savedReportData']}
+                savedReportData={viewingReport.report_data as unknown as Parameters<typeof StoreEmailPerformanceReport>[0]['savedReportData']}
               />
             </div>
           )}

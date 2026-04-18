@@ -314,11 +314,11 @@ export default function NewReportPage() {
         const apiEndpoints: string[] = []
 
         if (reportType === "klaviyo" || reportType === "combined") {
-          let klaviyoUrl = `/api/integrations/klaviyo/report?store_id=${selectedStore}&period=${selectedPeriod}`
+          let emailPlatformUrl = `/api/integrations/email-platform/report?store_id=${selectedStore}&period=${selectedPeriod}`
           if (selectedPeriod === "custom") {
-            klaviyoUrl += `&start_date=${customStartDate}&end_date=${customEndDate}`
+            emailPlatformUrl += `&start_date=${customStartDate}&end_date=${customEndDate}`
           }
-          apiEndpoints.push(klaviyoUrl)
+          apiEndpoints.push(emailPlatformUrl)
         }
 
         if (reportType === "shopify" || reportType === "combined") {

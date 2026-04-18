@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger"
 import {
   omnisendRequest,
   omnisendPaginateV3,
+  omnisendPaginateV5,
   OMNISEND_V3,
   OMNISEND_V5,
   OMNISEND_V2026,
@@ -31,17 +32,15 @@ import {
   sleep,
 } from "@/lib/integrations/omnisend/client"
 
+/** Converte ISO 8601 ou Date para YYYY-MM-DD (formato exigido por /v3/orders). */
+function toYMD(date: string | Date): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return d.toISOString().slice(0, 10)
+}
+
 const log = logger.child("OmnisendSync")
 
 // ── Types ─────────────────────────────────────────────────
-
-export interface OmnisendBrand {
-  brandID: string
-  website?: string
-  platform?: string
-  currency?: string
-  createdAt?: string
-}
 
 export interface OmnisendCampaignStats {
   sent?: number
@@ -213,11 +212,17 @@ export interface SyncResult<T> {
 }
 
 // ── Brand info ────────────────────────────────────────────
+//
+// NOTE: Omnisend nao expoe um GET /v5/brands/current com API key — esse
+// endpoint e OAuth POST usado para CONECTAR a loja. Derivamos currency dos
+// proprios orders (cada order tem `currency`) como fallback seguro. Se nao
+// houver orders no periodo, caimos em "USD".
 
-export async function fetchBrandInfo(apiKey: string): Promise<OmnisendBrand | null> {
-  return omnisendRequest<OmnisendBrand>(apiKey, `${OMNISEND_V5}/brands/current`, {
-    logTag: "OmnisendBrand",
-  })
+export function deriveCurrencyFromOrders(orders: OmnisendOrder[], fallback = "USD"): string {
+  for (const o of orders) {
+    if (o.currency && typeof o.currency === "string") return o.currency
+  }
+  return fallback
 }
 
 // ── Campaigns ─────────────────────────────────────────────
@@ -296,9 +301,11 @@ export async function fetchCampaignStatsV5(
 }
 
 // ── Automations ───────────────────────────────────────────
-
+//
+// Omnisend expoe automations em /v5 (a v3 nao esta documentada).
+// /v5 usa paginacao cursor (paging.next como URL completa).
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
-  return omnisendPaginateV3<OmnisendAutomation>(apiKey, `${OMNISEND_V3}/automations`, "automations", {
+  return omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
     logTag: "OmnisendAutomations",
   })
 }
@@ -317,19 +324,14 @@ export async function fetchAutomationStatsV5(
 }
 
 // ── Segments ──────────────────────────────────────────────
-
-interface SegmentsResponse {
-  segments: OmnisendSegment[]
-  paging?: { next?: string }
-}
-
+//
+// /v5/segments usa paginacao cursor — a versao antiga lia apenas a primeira
+// pagina (truncando em 250 segmentos) porque so usava o GET direto.
 export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> {
-  const resp = await omnisendRequest<SegmentsResponse>(
-    apiKey,
-    `${OMNISEND_V5}/segments?limit=250`,
-    { logTag: "OmnisendSegments" }
-  )
-  return resp?.segments || []
+  return omnisendPaginateV5<OmnisendSegment>(apiKey, `${OMNISEND_V5}/segments`, "segments", {
+    logTag: "OmnisendSegments",
+    maxPages: 40, // cap em 10k segmentos
+  })
 }
 
 // ── Orders (for revenue attribution) ──────────────────────
@@ -339,52 +341,59 @@ export async function fetchOrders(
   startDate: string,
   endDate: string
 ): Promise<OmnisendOrder[]> {
+  // Omnisend /v3/orders exige dateFrom/dateTo no formato YYYY-MM-DD.
+  // Passar ISO 8601 completo resulta em 422 ou truncamento silencioso.
   return omnisendPaginateV3<OmnisendOrder>(apiKey, `${OMNISEND_V3}/orders`, "orders", {
     logTag: "OmnisendOrders",
     queryParams: {
-      dateFrom: startDate,
-      dateTo: endDate,
+      dateFrom: toYMD(startDate),
+      dateTo: toYMD(endDate),
     },
     maxPages: 50, // Orders can be many — cap at 50 pages (12,500 orders)
   })
 }
 
 // ── Contacts / Audience ───────────────────────────────────
+//
+// /v5/contacts e cursor-based — NAO retorna `paging.total` nem `totalCount`.
+// A versao antiga usava `limit=1` + `paging.total` e sempre retornava 1
+// (bug critico). Para obter a contagem real precisamos paginar via cursor.
+//
+// Cap: 200 paginas * 250 contatos = 50k. Contas maiores sao raras no
+// nicho; se atingir o cap, logamos warning e reportamos o valor parcial.
 
-interface ContactsCountResponse {
-  totalCount?: number
-  contacts?: OmnisendContact[]
-  paging?: { pages?: number; total?: number }
+const CONTACTS_MAX_PAGES = 200
+const CONTACTS_PAGE_LIMIT = 250
+
+async function countContacts(
+  apiKey: string,
+  logTag: string,
+  queryParams: Record<string, string>
+): Promise<number> {
+  const initialParams = new URLSearchParams({ ...queryParams, limit: String(CONTACTS_PAGE_LIMIT) })
+  let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
+  let count = 0
+
+  for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
+    const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
+    if (!resp) break
+    const contacts = (resp.contacts as OmnisendContact[]) || []
+    count += contacts.length
+    const paging = resp.paging as { next?: string } | undefined
+    url = paging?.next || null
+  }
+
+  return count
 }
 
 export async function fetchContactCounts(apiKey: string): Promise<{
   totalContacts: number
   subscribedContacts: number
 }> {
-  // Fetch total count (use limit=1 to minimize payload)
-  const totalResp = await omnisendRequest<ContactsCountResponse>(
-    apiKey,
-    `${OMNISEND_V5}/contacts?limit=1`,
-    { logTag: "OmnisendContactsTotal" }
-  )
-
-  // Fetch subscribed count
-  const subscribedResp = await omnisendRequest<ContactsCountResponse>(
-    apiKey,
-    `${OMNISEND_V5}/contacts?limit=1&status=subscribed`,
-    { logTag: "OmnisendContactsSubscribed" }
-  )
-
-  const totalContacts =
-    totalResp?.paging?.total ??
-    totalResp?.totalCount ??
-    (totalResp?.contacts?.length || 0)
-
-  const subscribedContacts =
-    subscribedResp?.paging?.total ??
-    subscribedResp?.totalCount ??
-    (subscribedResp?.contacts?.length || 0)
-
+  const totalContacts = await countContacts(apiKey, "OmnisendContactsTotal", {})
+  const subscribedContacts = await countContacts(apiKey, "OmnisendContactsSubscribed", {
+    status: "subscribed",
+  })
   return { totalContacts, subscribedContacts }
 }
 
@@ -465,8 +474,8 @@ const STATS_METRICS = [
  */
 async function fetchBatchCampaignStats(
   apiKey: string,
-  dateFromISO: string,
-  dateToISO: string
+  dateFrom: string,
+  dateTo: string
 ): Promise<Map<string, OmnisendCampaignStats>> {
   const resultMap = new Map<string, OmnisendCampaignStats>()
   try {
@@ -476,10 +485,14 @@ async function fetchBatchCampaignStats(
       body: {
         metrics: STATS_METRICS,
         dimensions: ["campaignId"],
-        filter: { dateFrom: dateFromISO, dateTo: dateToISO },
+        filter: { dateFrom: toYMD(dateFrom), dateTo: toYMD(dateTo) },
       },
     })
-    const rows = resp?.rows || resp?.data || []
+    if (!resp) {
+      log.warn("Batch campaign stats returned null — endpoint indisponivel ou payload invalido (ver log [OmnisendBatchStatsCamp])")
+      return resultMap
+    }
+    const rows = resp.rows || resp.data || []
     for (const row of rows) {
       const id = String(row.dimensions?.campaignId || "")
       if (!id) continue
@@ -487,7 +500,16 @@ async function fetchBatchCampaignStats(
     }
     log.info(`Batch campaign stats: ${resultMap.size} entries`)
   } catch (err) {
-    log.warn("Batch campaign stats unavailable, will fallback", {
+    // Propagar erros de auth/rate-limit; demais sao engolidos com log EXPLICITO
+    // para permitir fallback via v5/{id}/statistics sem mascarar o problema.
+    if (
+      err instanceof OmnisendRateLimitError ||
+      err instanceof OmnisendInvalidKeyError ||
+      err instanceof OmnisendPermissionError
+    ) {
+      throw err
+    }
+    log.error("Batch campaign stats request error — usando fallback v5", {
       error: err instanceof Error ? err.message : String(err),
     })
   }
@@ -499,8 +521,8 @@ async function fetchBatchCampaignStats(
  */
 async function fetchBatchAutomationStats(
   apiKey: string,
-  dateFromISO: string,
-  dateToISO: string
+  dateFrom: string,
+  dateTo: string
 ): Promise<Map<string, OmnisendCampaignStats>> {
   const resultMap = new Map<string, OmnisendCampaignStats>()
   try {
@@ -510,10 +532,14 @@ async function fetchBatchAutomationStats(
       body: {
         metrics: STATS_METRICS,
         dimensions: ["automationId"],
-        filter: { dateFrom: dateFromISO, dateTo: dateToISO },
+        filter: { dateFrom: toYMD(dateFrom), dateTo: toYMD(dateTo) },
       },
     })
-    const rows = resp?.rows || resp?.data || []
+    if (!resp) {
+      log.warn("Batch automation stats returned null — endpoint indisponivel ou payload invalido (ver log [OmnisendBatchStatsAuto])")
+      return resultMap
+    }
+    const rows = resp.rows || resp.data || []
     for (const row of rows) {
       const id = String(row.dimensions?.automationId || "")
       if (!id) continue
@@ -521,7 +547,14 @@ async function fetchBatchAutomationStats(
     }
     log.info(`Batch automation stats: ${resultMap.size} entries`)
   } catch (err) {
-    log.warn("Batch automation stats unavailable, will fallback", {
+    if (
+      err instanceof OmnisendRateLimitError ||
+      err instanceof OmnisendInvalidKeyError ||
+      err instanceof OmnisendPermissionError
+    ) {
+      throw err
+    }
+    log.error("Batch automation stats request error — usando fallback v5", {
       error: err instanceof Error ? err.message : String(err),
     })
   }
@@ -565,30 +598,27 @@ export async function syncOmnisendForStore(params: {
   const { storeId, orgId, apiKey, periodDays } = params
 
   try {
-    // 1. Fetch brand info (currency, etc.)
-    const brand = await fetchBrandInfo(apiKey)
-    const currency = brand?.currency || "USD"
-
-    await sleep(200)
-
-    // 2. Fetch campanhas em todos os status relevantes para relatorio
+    // 1. Fetch campanhas em todos os status relevantes para relatorio
     //    (sent + scheduled + inProgress + paused). Descartamos drafts.
     const campaigns = await fetchAllReportCampaigns(apiKey)
     log.info(`Fetched ${campaigns.length} report-eligible campaigns`, { storeId })
 
     await sleep(200)
 
-    // 3. Fetch automations
+    // 2. Fetch automations (v5 cursor-based)
     const automations = await fetchAutomations(apiKey)
     log.info(`Fetched ${automations.length} automations`, { storeId })
 
     await sleep(200)
 
-    // 4. Fetch orders for revenue attribution
+    // 3. Fetch orders for revenue attribution (dateFrom/To normalizados YYYY-MM-DD dentro de fetchOrders)
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
     const orders = await fetchOrders(apiKey, startDate, endDate)
     log.info(`Fetched ${orders.length} orders for ${periodDays}d period`, { storeId })
+
+    // Currency derivada dos proprios orders (Omnisend nao expoe GET brand com API key)
+    const currency = deriveCurrencyFromOrders(orders, "USD")
 
     await sleep(200)
 

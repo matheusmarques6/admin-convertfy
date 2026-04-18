@@ -163,7 +163,7 @@ export default function EditReportPage() {
       const apiEndpoints: string[] = []
 
       if (report.report_type === "klaviyo" || report.report_type === "combined") {
-        let url = `/api/integrations/klaviyo/report?store_id=${report.store_id}&period=${report.period}`
+        let url = `/api/integrations/email-platform/report?store_id=${report.store_id}&period=${report.period}`
         if (report.date_range?.start && report.date_range?.end) {
           url += `&start_date=${report.date_range.start.split('T')[0]}&end_date=${report.date_range.end.split('T')[0]}`
         }

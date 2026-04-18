@@ -14,7 +14,7 @@ export async function OPTIONS(request: NextRequest) {
 
 
 
-// GET - Get store report (Klaviyo + Shopify data)
+// GET - Get store report (email platform + Shopify data)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,7 +52,7 @@ export async function GET(
     // Verify store belongs to client
     const { data: store, error: storeError } = await adminClient
       .from("client_stores")
-      .select("id, client_id, store_name, platform, store_url, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
+      .select("id, client_id, store_name, platform, store_url, email_platform, klaviyo_private_key, klaviyo_api_key, omnisend_api_key, shopify_access_token, shopify_store_domain")
       .eq("id", storeId)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -65,13 +65,14 @@ export async function GET(
     const baseUrl = request.nextUrl.origin
     const refreshParam = forceRefresh ? "&force_refresh=true" : ""
 
-    // Fetch Klaviyo and Shopify reports in parallel
+    // Fetch email platform and Shopify reports in parallel
     const cookie = request.headers.get("cookie") || ""
     const headers = { Cookie: cookie }
 
-    const [klaviyoResult, shopifyResult] = await Promise.allSettled([
-      (store.klaviyo_private_key || store.klaviyo_api_key)
-        ? fetch(`${baseUrl}/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}${refreshParam}`, { headers })
+    const hasEmailPlatform = !!(store.klaviyo_private_key || store.klaviyo_api_key || store.omnisend_api_key)
+    const [emailPlatformResult, shopifyResult] = await Promise.allSettled([
+      hasEmailPlatform
+        ? fetch(`${baseUrl}/api/integrations/email-platform/report?store_id=${storeId}&period=${period}${refreshParam}`, { headers })
             .then(r => r.ok ? r.json() : null)
         : Promise.resolve(null),
       (store.shopify_access_token && store.shopify_store_domain)
@@ -80,11 +81,11 @@ export async function GET(
         : Promise.resolve(null),
     ])
 
-    const klaviyoReport = klaviyoResult.status === "fulfilled" ? klaviyoResult.value : null
+    const emailPlatformReport = emailPlatformResult.status === "fulfilled" ? emailPlatformResult.value : null
     const shopifyReport = shopifyResult.status === "fulfilled" ? shopifyResult.value : null
 
-    if (klaviyoResult.status === "rejected") {
-      log.error("[Portal Store Report] Klaviyo error:", klaviyoResult.reason)
+    if (emailPlatformResult.status === "rejected") {
+      log.error("[Portal Store Report] Email platform error:", emailPlatformResult.reason)
     }
     if (shopifyResult.status === "rejected") {
       log.error("[Portal Store Report] Shopify error:", shopifyResult.reason)
@@ -134,36 +135,39 @@ export async function GET(
           is_active: true,
           currency: "BRL",
           hasKlaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
+          hasOmnisend: !!store.omnisend_api_key,
+          hasEmailPlatform,
+          emailPlatform: store.email_platform,
           hasShopify: !!(store.shopify_access_token && store.shopify_store_domain),
         },
         period,
-        klaviyo: klaviyoReport
+        klaviyo: emailPlatformReport
           ? {
-              connected: klaviyoReport.connected,
-              account: klaviyoReport.account,
+              connected: emailPlatformReport.connected,
+              account: emailPlatformReport.account,
               // Flat fields expected by portal page
-              totalLeads: klaviyoReport.overview?.totalSubscribers || 0,
-              engagedLeads: klaviyoReport.engagement?.engagedProfiles || 0,
-              engagementRate: parseFloat(klaviyoReport.engagement?.engagementRate) || 0,
-              totalRevenue: klaviyoReport.revenue?.totalRevenue || 0,
-              campaignRevenue: klaviyoReport.revenue?.campaignRevenue || 0,
-              flowRevenue: klaviyoReport.revenue?.flowRevenue || 0,
-              emailsSent: klaviyoReport.emailPerformance?.delivered || 0,
-              openRate: klaviyoReport.emailPerformance?.openRate || 0,
-              clickRate: klaviyoReport.emailPerformance?.clickRate || 0,
-              conversionRate: klaviyoReport.revenue?.totalOrders && klaviyoReport.emailPerformance?.delivered
-                ? (klaviyoReport.revenue.totalOrders / klaviyoReport.emailPerformance.delivered) * 100
+              totalLeads: emailPlatformReport.overview?.totalSubscribers || 0,
+              engagedLeads: emailPlatformReport.engagement?.engagedProfiles || 0,
+              engagementRate: parseFloat(emailPlatformReport.engagement?.engagementRate) || 0,
+              totalRevenue: emailPlatformReport.revenue?.totalRevenue || 0,
+              campaignRevenue: emailPlatformReport.revenue?.campaignRevenue || 0,
+              flowRevenue: emailPlatformReport.revenue?.flowRevenue || 0,
+              emailsSent: emailPlatformReport.emailPerformance?.delivered || 0,
+              openRate: emailPlatformReport.emailPerformance?.openRate || 0,
+              clickRate: emailPlatformReport.emailPerformance?.clickRate || 0,
+              conversionRate: emailPlatformReport.revenue?.totalOrders && emailPlatformReport.emailPerformance?.delivered
+                ? (emailPlatformReport.revenue.totalOrders / emailPlatformReport.emailPerformance.delivered) * 100
                 : 0,
-              unsubscribeRate: klaviyoReport.emailPerformance?.unsubscribeRate || 0,
-              bounceRate: klaviyoReport.emailPerformance?.bounceRate || 0,
-              delivered: klaviyoReport.emailPerformance?.delivered || 0,
-              lists: (klaviyoReport.lists || []).slice(0, 10).map((l: Record<string, unknown>) => ({
+              unsubscribeRate: emailPlatformReport.emailPerformance?.unsubscribeRate || 0,
+              bounceRate: emailPlatformReport.emailPerformance?.bounceRate || 0,
+              delivered: emailPlatformReport.emailPerformance?.delivered || 0,
+              lists: (emailPlatformReport.lists || []).slice(0, 10).map((l: Record<string, unknown>) => ({
                 name: l.name,
                 count: (l.profileCount as number) || 0,
               })),
               recentCampaigns: (
-                (klaviyoReport.campaignPerformance?.campaigns as Record<string, unknown>[]) ||
-                (klaviyoReport.campaigns?.recentCampaigns as Record<string, unknown>[]) ||
+                (emailPlatformReport.campaignPerformance?.campaigns as Record<string, unknown>[]) ||
+                (emailPlatformReport.campaigns?.recentCampaigns as Record<string, unknown>[]) ||
                 []
               ).slice(0, 10).map((c: Record<string, unknown>) => ({
                 id: c.campaignId || c.id,
@@ -178,7 +182,7 @@ export async function GET(
                 openRate: c.openRate || 0,
                 clickRate: c.clickRate || 0,
               })),
-              topFlows: ((klaviyoReport.flowPerformance?.flows as Record<string, unknown>[]) || [])
+              topFlows: ((emailPlatformReport.flowPerformance?.flows as Record<string, unknown>[]) || [])
                 .slice(0, 5).map((f: Record<string, unknown>) => ({
                   id: f.flowId || f.id,
                   name: f.name,

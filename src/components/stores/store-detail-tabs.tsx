@@ -9,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { Progress } from "@/components/ui/progress"
-import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
+import { StoreEmailPerformanceReport } from "@/components/clients/store-email-performance-report"
 import { formatCurrency } from "@/lib/utils"
-import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
+import { useStoreEmailCampaigns, useStoreEmailFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
@@ -142,14 +142,14 @@ export function StoreDetailTabs({
     isLoading: campaignsInitialLoading,
     isValidating: _campaignsLoading,
     mutate: _mutateCampaigns,
-  } = useKlaviyoCampaigns(emailPlatformConnected ? storeId : null, period, customDates)
+  } = useStoreEmailCampaigns(emailPlatformConnected ? storeId : null, period, customDates)
 
   const {
     data: _flowsData,
     isLoading: _flowsInitialLoading,
     isValidating: _flowsLoading,
     mutate: _mutateFlows,
-  } = useKlaviyoFlows(emailPlatformConnected ? storeId : null, period, customDates)
+  } = useStoreEmailFlows(emailPlatformConnected ? storeId : null, period, customDates)
 
   // Store performance hook for overview tab
   const storePerformance = useStorePerformance(storeId, emailPlatformConnected)
@@ -331,7 +331,7 @@ export function StoreDetailTabs({
 
       {/* ─── Reports ───────────────────────────────────────── */}
       {activeTab === "reports" && (
-        <KlaviyoPerformanceReport storeId={storeId} storeName={storeName} />
+        <StoreEmailPerformanceReport storeId={storeId} storeName={storeName} />
       )}
     </div>
   )

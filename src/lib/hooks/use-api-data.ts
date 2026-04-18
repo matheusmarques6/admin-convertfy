@@ -41,7 +41,7 @@ const DEFAULT_OPTIONS: SWRConfiguration = {
   errorRetryCount: 2,
 }
 
-// Report endpoints (Klaviyo, Shopify, GA4) change infrequently.
+// Report endpoints (email platform, Shopify, GA4) change infrequently.
 const REPORT_OPTIONS: SWRConfiguration = {
   ...DEFAULT_OPTIONS,
   dedupingInterval: 60_000, // 1min dedup
@@ -57,10 +57,11 @@ const ASAAS_OPTIONS: SWRConfiguration = {
 }
 
 // ---------------------------------------------------------------------------
-// Hook: Klaviyo Report
+// Hook: Store Email Platform Report
+// Dispatcher: serve Klaviyo ou Omnisend conforme email_platform da loja.
 // ---------------------------------------------------------------------------
-export function useKlaviyoReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
-  const key = storeId ? `/api/integrations/klaviyo/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
+export function useStoreEmailReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/email-platform/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
@@ -81,18 +82,18 @@ export function useGA4Report(storeId: string | null, period: string, customDates
 }
 
 // ---------------------------------------------------------------------------
-// Hook: Klaviyo Campaigns
+// Hook: Store Email Platform Campaigns (Klaviyo ou Omnisend via dispatcher)
 // ---------------------------------------------------------------------------
-export function useKlaviyoCampaigns(storeId: string | null, period: string, customDates?: CustomDateRange) {
-  const key = storeId ? `/api/integrations/klaviyo/campaigns?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
+export function useStoreEmailCampaigns(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
-// Hook: Klaviyo Flows
+// Hook: Store Email Platform Flows (Klaviyo flows ou Omnisend automations)
 // ---------------------------------------------------------------------------
-export function useKlaviyoFlows(storeId: string | null, period: string, customDates?: CustomDateRange) {
-  const key = storeId ? `/api/integrations/klaviyo/flows?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
+export function useStoreEmailFlows(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/email-platform/flows?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 

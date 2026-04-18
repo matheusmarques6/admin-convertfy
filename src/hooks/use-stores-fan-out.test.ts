@@ -48,7 +48,7 @@ describe("fetchStoreReport", () => {
     await fetchStoreReport("store-123", range, controller.signal)
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/integrations/klaviyo/report?store_id=store-123&period=custom&start_date=2026-01-01&end_date=2026-01-31",
+      "/api/integrations/email-platform/report?store_id=store-123&period=custom&start_date=2026-01-01&end_date=2026-01-31",
       { signal: controller.signal }
     )
   })

@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         platform: "omnisend",
-        message: "Loja usa Omnisend — consulte /api/integrations/klaviyo/report (com dispatcher) para dados unificados",
+        message: "Loja usa Omnisend — consulte /api/integrations/email-platform/report para dados unificados",
         metrics: [],
         lists: [],
         flows: [],

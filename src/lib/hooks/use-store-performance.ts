@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, createContext, useContext, useCallback } from "react"
-import { useKlaviyoCampaigns, useKlaviyoFlows, useKlaviyoReport } from "@/lib/hooks/use-api-data"
+import { useStoreEmailCampaigns, useStoreEmailFlows, useStoreEmailReport } from "@/lib/hooks/use-api-data"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 export const PERIODS = [
@@ -78,7 +78,7 @@ export interface StorePerformanceState {
   rateLimitInfo: RateLimitInfo | null
 }
 
-export function useStorePerformance(storeId: string, klaviyoConnected: boolean): StorePerformanceState {
+export function useStorePerformance(storeId: string, emailPlatformConnected: boolean): StorePerformanceState {
   const [period, setPeriodRaw] = useState("30d")
   const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
 
@@ -89,7 +89,7 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     }
   }, [])
 
-  const effectiveStoreId = klaviyoConnected ? storeId : null
+  const effectiveStoreId = emailPlatformConnected ? storeId : null
 
   const {
     data: campaignsRaw,
@@ -97,7 +97,7 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     isValidating: campaignsValidating,
     error: campaignsError,
     mutate: mutateCampaigns,
-  } = useKlaviyoCampaigns(effectiveStoreId, period, customDates)
+  } = useStoreEmailCampaigns(effectiveStoreId, period, customDates)
 
   const {
     data: flowsRaw,
@@ -105,7 +105,7 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     isValidating: flowsValidating,
     error: flowsError,
     mutate: mutateFlows,
-  } = useKlaviyoFlows(effectiveStoreId, period, customDates)
+  } = useStoreEmailFlows(effectiveStoreId, period, customDates)
 
   const {
     data: reportRaw,
@@ -113,12 +113,12 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     isValidating: reportValidating,
     error: reportError,
     mutate: mutateReport,
-  } = useKlaviyoReport(effectiveStoreId, period, customDates)
+  } = useStoreEmailReport(effectiveStoreId, period, customDates)
 
   const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
   const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
 
-  // Klaviyo report returns pre-calculated revenue & recovery data from the backend
+  // Email platform report returns pre-calculated revenue & recovery data from the backend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reportData = reportRaw as any
 

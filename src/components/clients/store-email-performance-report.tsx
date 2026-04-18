@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { format } from "date-fns"
-import { useKlaviyoReport, useShopifyReport } from "@/lib/hooks/use-api-data"
+import { useStoreEmailReport, useShopifyReport } from "@/lib/hooks/use-api-data"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 import {
   Users,
@@ -36,7 +36,7 @@ import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
-interface KlaviyoReportData {
+interface StoreEmailReportData {
   success: boolean
   connected: boolean
   platform?: "klaviyo" | "omnisend" | "none"
@@ -190,10 +190,10 @@ interface ShopifyReportData {
   }>
 }
 
-interface KlaviyoPerformanceReportProps {
+interface StoreEmailPerformanceReportProps {
   storeId: string
   storeName: string
-  savedReportData?: KlaviyoReportData | null
+  savedReportData?: StoreEmailReportData | null
 }
 
 type DateRange = "7d" | "30d" | "90d" | "all" | "custom"
@@ -284,7 +284,7 @@ const CircularProgress = ({
 }
 
 // ============ MAIN COMPONENT ============
-export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
+export function StoreEmailPerformanceReport({ storeId, storeName, savedReportData }: StoreEmailPerformanceReportProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange>(
     (savedReportData?.period as DateRange) || "30d"
@@ -307,12 +307,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // SWR hooks for data fetching
   const {
-    data: klaviyoRaw,
-    error: klaviyoError,
+    data: reportRaw,
+    error: reportError,
     isLoading: klaviyoLoading,
-    isValidating: klaviyoValidating,
-    mutate: mutateKlaviyo,
-  } = useKlaviyoReport(storeId, dateRange, customDates)
+    isValidating: reportValidating,
+    mutate: mutateReport,
+  } = useStoreEmailReport(storeId, dateRange, customDates)
 
   const {
     data: shopifyRaw,
@@ -320,16 +320,16 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   } = useShopifyReport(storeId, dateRange, customDates)
 
   // Derive typed data from SWR responses
-  const reportData: KlaviyoReportData | null =
-    savedReportData || (klaviyoRaw as KlaviyoReportData)?.success ? (klaviyoRaw as KlaviyoReportData) : null
+  const reportData: StoreEmailReportData | null =
+    savedReportData || (reportRaw as StoreEmailReportData)?.success ? (reportRaw as StoreEmailReportData) : null
   const shopifyData: ShopifyReportData | null =
     (shopifyRaw as ShopifyReportData)?.success && (shopifyRaw as ShopifyReportData)?.connected ? (shopifyRaw as ShopifyReportData) : null
 
   const isLoading = klaviyoLoading && !savedReportData
-  const error = klaviyoError
-    ? (klaviyoError instanceof Error ? klaviyoError.message : "Erro de conexão")
-    : (klaviyoRaw && !(klaviyoRaw as KlaviyoReportData)?.success)
-      ? ((klaviyoRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
+  const error = reportError
+    ? (reportError instanceof Error ? reportError.message : "Erro de conexão")
+    : (reportRaw && !(reportRaw as StoreEmailReportData)?.success)
+      ? ((reportRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
       : null
 
   // Set dateRange when savedReportData changes
@@ -421,7 +421,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <h3 className="text-lg font-semibold text-foreground">Erro ao Carregar</h3>
           <p className="text-sm text-muted-foreground">{errorMessage}</p>
         </div>
-        <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}><RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente</Button>
+        <Button onClick={() => { mutateReport(); mutateShopify() }}><RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente</Button>
       </div>
     )
   }
@@ -881,13 +881,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // Detect rate limiting from report response
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isRateLimited = (klaviyoRaw as any)?.rateLimited === true
+  const isRateLimited = (reportRaw as any)?.rateLimited === true
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rateLimitFromCache = (klaviyoRaw as any)?.fromCache === true
+  const rateLimitFromCache = (reportRaw as any)?.fromCache === true
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rateLimitFetchedAt = (klaviyoRaw as any)?.fetchedAt as string | undefined
+  const rateLimitFetchedAt = (reportRaw as any)?.fetchedAt as string | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rateLimitPlatform = ((klaviyoRaw as any)?.platform === "omnisend" ? "omnisend" : "klaviyo") as "klaviyo" | "omnisend"
+  const rateLimitPlatform = ((reportRaw as any)?.platform === "omnisend" ? "omnisend" : "klaviyo") as "klaviyo" | "omnisend"
 
   // Main Render
   return (
@@ -938,8 +938,8 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             />
             </>
           )}
-          <Button variant="secondary" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={klaviyoValidating} className="bg-card border-border h-9 w-9 hover:bg-muted">
-            <RefreshCw className={`w-4 h-4 ${klaviyoValidating ? "animate-spin" : ""}`} />
+          <Button variant="secondary" size="icon" onClick={() => { mutateReport(); mutateShopify() }} disabled={reportValidating} className="bg-card border-border h-9 w-9 hover:bg-muted">
+            <RefreshCw className={`w-4 h-4 ${reportValidating ? "animate-spin" : ""}`} />
           </Button>
           <Button variant="secondary" size="icon" onClick={openFullscreenReport} className="bg-card border-border h-9 w-9 hover:bg-muted" title="Abrir em nova página">
             <ExternalLink className="w-4 h-4" />

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { useKlaviyoReport, useShopifyReport } from "@/lib/hooks/use-api-data"
+import { useStoreEmailReport, useShopifyReport } from "@/lib/hooks/use-api-data"
 import {
   Users,
   Mail,
@@ -33,7 +33,7 @@ import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
-interface KlaviyoReportData {
+interface StoreEmailReportData {
   success: boolean
   connected: boolean
   storeName: string
@@ -186,7 +186,7 @@ interface ShopifyReportData {
   }>
 }
 
-interface KlaviyoFullscreenReportProps {
+interface StoreEmailFullscreenReportProps {
   storeId: string
   storeName: string
   period: string
@@ -258,18 +258,18 @@ const CircularProgress = ({
 }
 
 // ============ MAIN COMPONENT ============
-export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoFullscreenReportProps) {
+export function StoreEmailFullscreenReport({ storeId, storeName, period }: StoreEmailFullscreenReportProps) {
   const router = useRouter()
   const [isExporting, setIsExporting] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
   // SWR hooks
   const {
-    data: klaviyoRaw,
-    error: klaviyoError,
+    data: reportRaw,
+    error: reportError,
     isLoading,
-    mutate: mutateKlaviyo,
-  } = useKlaviyoReport(storeId, period)
+    mutate: mutateReport,
+  } = useStoreEmailReport(storeId, period)
 
   const {
     data: shopifyRaw,
@@ -277,15 +277,15 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
   } = useShopifyReport(storeId, period)
 
   // Derive typed data from SWR
-  const reportData: KlaviyoReportData | null =
-    (klaviyoRaw as KlaviyoReportData)?.success ? (klaviyoRaw as KlaviyoReportData) : null
+  const reportData: StoreEmailReportData | null =
+    (reportRaw as StoreEmailReportData)?.success ? (reportRaw as StoreEmailReportData) : null
   const shopifyData: ShopifyReportData | null =
     (shopifyRaw as ShopifyReportData)?.success && (shopifyRaw as ShopifyReportData)?.connected ? (shopifyRaw as ShopifyReportData) : null
 
-  const error = klaviyoError
-    ? (klaviyoError instanceof Error ? klaviyoError.message : "Erro de conexão")
-    : (klaviyoRaw && !(klaviyoRaw as KlaviyoReportData)?.success)
-      ? ((klaviyoRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
+  const error = reportError
+    ? (reportError instanceof Error ? reportError.message : "Erro de conexão")
+    : (reportRaw && !(reportRaw as StoreEmailReportData)?.success)
+      ? ((reportRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
       : null
 
   const handleExportPDF = async () => {
@@ -355,7 +355,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <Button variant="secondary" onClick={() => router.back()}>
             <ArrowLeft className="w-4 h-4 mr-2" />Voltar
           </Button>
-          <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}>
+          <Button onClick={() => { mutateReport(); mutateShopify() }}>
             <RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente
           </Button>
         </div>
@@ -424,7 +424,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <span className="text-sm text-muted-foreground">{getFormattedDateRange()}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={isLoading} className="bg-card border-border h-9 w-9">
+          <Button variant="secondary" size="icon" onClick={() => { mutateReport(); mutateShopify() }} disabled={isLoading} className="bg-card border-border h-9 w-9">
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90 h-9 px-4">
@@ -437,7 +437,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
       {/* Rate limit banner */}
       {(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = klaviyoRaw as any
+        const raw = reportRaw as any
         if (raw?.rateLimited) {
           const bannerPlatform = (raw?.platform === "omnisend" ? "omnisend" : "klaviyo") as "klaviyo" | "omnisend"
           return (

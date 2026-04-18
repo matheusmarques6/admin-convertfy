@@ -189,7 +189,49 @@ export async function omnisendRequest<T>(
   return null
 }
 
-// ── Pagination helper ─────────────────────────────────────
+// ── Pagination helpers ────────────────────────────────────
+
+/**
+ * Paginate through an Omnisend v5 list endpoint (cursor-based).
+ *
+ * Omnisend v5 returns `paging.next` as a FULL URL with an opaque cursor
+ * embedded in it. We follow that URL directly instead of building
+ * offset-based query params.
+ *
+ * Returns all items and the total count of pages fetched. Stops at
+ * `maxPages` for safety (default 200 pages ≈ 50k items with limit=250).
+ */
+export async function omnisendPaginateV5<TItem>(
+  apiKey: string,
+  basePath: string,
+  itemsKey: string,
+  options?: {
+    logTag?: string
+    maxPages?: number
+    limit?: number
+    queryParams?: Record<string, string>
+  }
+): Promise<TItem[]> {
+  const { logTag = "Omnisend", maxPages = 200, limit = 250, queryParams = {} } = options || {}
+  const allItems: TItem[] = []
+
+  const initialParams = new URLSearchParams({ ...queryParams, limit: String(limit) })
+  let url: string | null = `${basePath}${basePath.includes("?") ? "&" : "?"}${initialParams}`
+
+  for (let page = 0; page < maxPages && url; page++) {
+    const response: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
+    if (!response) break
+
+    const items = (response[itemsKey] as TItem[]) || []
+    allItems.push(...items)
+
+    const paging = response.paging as { next?: string; previous?: string } | undefined
+    url = paging?.next || null
+    if (!url) break
+  }
+
+  return allItems
+}
 
 /**
  * Paginate through an Omnisend v3 list endpoint.

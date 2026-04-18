@@ -119,7 +119,7 @@ export async function fetchStoreReport(
     end_date: range.endDate,
   })
 
-  const res = await fetch(`/api/integrations/klaviyo/report?${params}`, { signal })
+  const res = await fetch(`/api/integrations/email-platform/report?${params}`, { signal })
 
   if (!res.ok) {
     const text = await res.text()

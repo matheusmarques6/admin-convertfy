@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { KlaviyoFullscreenReport } from "@/components/clients/klaviyo-fullscreen-report"
+import { StoreEmailFullscreenReport } from "@/components/clients/store-email-fullscreen-report"
 
 function ReportContent() {
   const searchParams = useSearchParams()
@@ -53,7 +53,7 @@ function ReportContent() {
   }
 
   return (
-    <KlaviyoFullscreenReport
+    <StoreEmailFullscreenReport
       storeId={storeId}
       storeName={storeName}
       period={period}
