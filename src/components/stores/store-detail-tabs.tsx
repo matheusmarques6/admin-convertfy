@@ -133,6 +133,8 @@ export function StoreDetailTabs({
   }
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
+  const omnisendConnected = integrationStatus.omnisend?.connected || false
+  const emailPlatformConnected = klaviyoConnected || omnisendConnected
   const _shopifyConnected = integrationStatus?.shopify?.connected ?? false
 
   const {
@@ -140,17 +142,17 @@ export function StoreDetailTabs({
     isLoading: campaignsInitialLoading,
     isValidating: _campaignsLoading,
     mutate: _mutateCampaigns,
-  } = useKlaviyoCampaigns(klaviyoConnected ? storeId : null, period, customDates)
+  } = useKlaviyoCampaigns(emailPlatformConnected ? storeId : null, period, customDates)
 
   const {
     data: _flowsData,
     isLoading: _flowsInitialLoading,
     isValidating: _flowsLoading,
     mutate: _mutateFlows,
-  } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period, customDates)
+  } = useKlaviyoFlows(emailPlatformConnected ? storeId : null, period, customDates)
 
   // Store performance hook for overview tab
-  const storePerformance = useStorePerformance(storeId, klaviyoConnected)
+  const storePerformance = useStorePerformance(storeId, emailPlatformConnected)
 
   return (
     <div className="space-y-6">
@@ -168,7 +170,7 @@ export function StoreDetailTabs({
         <StorePerformanceContext.Provider value={storePerformance}>
           <div className="space-y-6">
             {/* Performance KPIs with period selector */}
-            {klaviyoConnected && <StorePerformanceKPIs />}
+            {emailPlatformConnected && <StorePerformanceKPIs />}
 
             {/* Info cards grid */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -261,10 +263,13 @@ export function StoreDetailTabs({
                   <CardTitle className="text-sm font-semibold">Integrações</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  {["shopify", "klaviyo", "ga4"].map((key) => {
+                  {["shopify", "klaviyo", "omnisend", "ga4"]
+                  .filter((key) => key !== "klaviyo" || !omnisendConnected)
+                  .filter((key) => key !== "omnisend" || !klaviyoConnected)
+                  .map((key) => {
                     const status = integrationStatus[key]
                     const isConnected = status?.connected
-                    const labels: Record<string, string> = { shopify: "Shopify", klaviyo: "Klaviyo", ga4: "Google Analytics" }
+                    const labels: Record<string, string> = { shopify: "Shopify", klaviyo: "Klaviyo", omnisend: "Omnisend", ga4: "Google Analytics" }
                     return (
                       <div key={key} className="flex justify-between items-center">
                         <span className="text-muted-foreground">{labels[key]}</span>
@@ -279,7 +284,7 @@ export function StoreDetailTabs({
             </div>
 
             {/* Últimas campanhas (mini table, max 5) */}
-            {klaviyoConnected && (
+            {emailPlatformConnected && (
               <LatestCampaignsTable
                 storeId={storeId}
                 data={campaignsData as { campaigns: CampaignData[]; currency?: string } | undefined}
@@ -289,7 +294,7 @@ export function StoreDetailTabs({
             )}
 
             {/* Performance Tables (campaigns + flows) */}
-            {klaviyoConnected && <StorePerformanceTables />}
+            {emailPlatformConnected && <StorePerformanceTables />}
           </div>
         </StorePerformanceContext.Provider>
       )}

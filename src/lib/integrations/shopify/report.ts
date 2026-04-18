@@ -1067,7 +1067,10 @@ export async function generateShopifyReport(
   const { shopify_store_domain, shopify_access_token: accessToken } = storeData
 
   if (!shopify_store_domain || !accessToken) {
-    throw new Error("Credenciais Shopify nao configuradas")
+    return {
+      success: false,
+      connected: false,
+    } as unknown as ShopifyFullReportData
   }
 
   const storeDomain = normalizeShopifyDomain(shopify_store_domain)
