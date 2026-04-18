@@ -228,10 +228,13 @@ export function deriveCurrencyFromOrders(orders: OmnisendOrder[], fallback = "US
 // ── Campaigns ─────────────────────────────────────────────
 
 export async function fetchCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  // /v3/campaigns esta em tier restrito (1 RPS per client) — usar intervalo de
-  // 1100ms entre paginas para evitar 429.
-  // NOTE: Omnisend v3 /campaigns so aceita sort em: sent,clicked,bounced,
-  // complained,opened,unsubscribed (NAO aceita createdAt).
+  // OMNISEND_CAMPAIGNS_INTERVAL_MS (1100ms) e defesa EMPIRICA contra 429
+  // observados em /v3/campaigns — nao ha doc oficial de tier "1 RPS per client".
+  // NOTE: comentario anterior afirmava que v3 /campaigns so aceita sort em
+  // sent/clicked/bounced/... (rejeitando createdAt) — ISSO NAO FOI CONFIRMADO
+  // NA DOC OFICIAL. Pode ter vindo de um 422 observado empiricamente. A doc
+  // v2026-03-15 nova aceita createdAt/updatedAt/name. Validar em staging
+  // antes de mudar a estrategia.
   return omnisendPaginateV3<OmnisendCampaign>(apiKey, `${OMNISEND_V3}/campaigns`, "campaigns", {
     logTag: "OmnisendCampaigns",
     intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
@@ -449,6 +452,13 @@ interface BatchStatsResponse {
   data?: BatchStatRow[] // Omnisend as vezes usa `data` em vez de `rows`
 }
 
+// Metricas do Statistics API (v2026-preview). Nomes confirmados na doc oficial
+// "What's New - April 2026": totalOrders, totalRevenue, attributedRevenue,
+// totalOrderedProductUnits, attributedOrderedProductUnits.
+// NOTE: mantemos "ordersCount" como alias temporario — normalizeStats aceita
+// ambos. Demais metricas (clickToOpenRate, complaintRate, averageOrderValue,
+// uniqueOpened, etc.) nao foram confirmadas textualmente na doc; se a API
+// rejeitar o POST, remover os nao-suportados aqui.
 const STATS_METRICS = [
   "sent",
   "delivered",
@@ -461,6 +471,7 @@ const STATS_METRICS = [
   "unsubscribed",
   "totalRevenue",
   "attributedRevenue",
+  "totalOrders",
   "ordersCount",
   "averageOrderValue",
   "clickToOpenRate",
@@ -567,6 +578,10 @@ async function fetchBatchAutomationStats(
  * resto do pipeline espera.
  */
 function normalizeStats(m: Record<string, number>): OmnisendCampaignStats {
+  // Nome oficial do campo na doc do Statistics API (v2026-preview) e
+  // "totalOrders". Mantemos fallback para "ordersCount" para compatibilidade
+  // com respostas antigas ou casos em que a API aceite o alias.
+  const totalOrders = m.totalOrders ?? m.ordersCount
   return {
     sent: m.sent,
     delivered: m.delivered,
@@ -579,8 +594,8 @@ function normalizeStats(m: Record<string, number>): OmnisendCampaignStats {
     unsubscribed: m.unsubscribed,
     totalRevenue: m.totalRevenue ?? m.attributedRevenue,
     revenue: m.attributedRevenue ?? m.totalRevenue,
-    ordersCount: m.ordersCount,
-    orders: m.ordersCount,
+    ordersCount: totalOrders,
+    orders: totalOrders,
     averageOrderValue: m.averageOrderValue,
     clickToOpenRate: m.clickToOpenRate,
     complaintRate: m.complaintRate,

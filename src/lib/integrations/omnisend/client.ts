@@ -45,12 +45,18 @@ export class OmnisendPermissionError extends Error {
 export const OMNISEND_API_BASE = "https://api.omnisend.com"
 export const OMNISEND_V3 = `${OMNISEND_API_BASE}/v3`
 export const OMNISEND_V5 = `${OMNISEND_API_BASE}/v5`
-/** Statistics API batch — saiu do Beta em 2026-03-15 (GA) */
-export const OMNISEND_V2026 = `${OMNISEND_API_BASE}/v2026-03-15`
+/** Statistics API — ainda em Beta em abr/2026 conforme artigo oficial
+ *  "What's New - April 2026": https://support.omnisend.com/en/articles/14320182
+ *  URL base documentada: https://api-docs.omnisend.com/v2026-preview/reference/statistics
+ *  NOTE: versao anterior dessa constante usava "/v2026-03-15" com rotulo GA —
+ *  nao ha confirmacao documental de GA; a doc ainda chama de Beta. */
+export const OMNISEND_V2026 = `${OMNISEND_API_BASE}/v2026-preview`
 
-/** Rate limit global: 400 req/min ≈ 150ms minimo entre requests.
- *  Atencao: endpoint /v3/campaigns esta em tier "1 RPS per Client" — usar
- *  OMNISEND_CAMPAIGNS_INTERVAL_MS para operacoes contra esse endpoint. */
+/** Rate limit global documentado: 400 req/min (≈150ms entre requests).
+ *  https://api-docs.omnisend.com/reference/rate-limit-timeouts-errors
+ *  NOTE: OMNISEND_CAMPAIGNS_INTERVAL_MS (1100ms) e defesa EMPIRICA para 429
+ *  observados em /v3/campaigns — NAO ha documentacao oficial de tier
+ *  "1 RPS per Client". Manter como workaround ate confirmar com a Omnisend. */
 const MIN_REQUEST_INTERVAL_MS = 160
 export const OMNISEND_CAMPAIGNS_INTERVAL_MS = 1100
 const MAX_RETRY_AFTER_MS = 10_000
