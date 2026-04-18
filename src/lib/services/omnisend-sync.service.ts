@@ -225,18 +225,20 @@ export async function fetchBrandInfo(apiKey: string): Promise<OmnisendBrand | nu
 export async function fetchCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
   // /v3/campaigns esta em tier restrito (1 RPS per client) — usar intervalo de
   // 1100ms entre paginas para evitar 429.
+  // NOTE: Omnisend v3 /campaigns so aceita sort em: sent,clicked,bounced,
+  // complained,opened,unsubscribed (NAO aceita createdAt).
   return omnisendPaginateV3<OmnisendCampaign>(apiKey, `${OMNISEND_V3}/campaigns`, "campaigns", {
     logTag: "OmnisendCampaigns",
-    queryParams: { sort: "createdAt", sortDirection: "desc" },
     intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
   })
 }
 
 export async function fetchSentCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
   // Filter to only sent campaigns (status=sent) — tier 1 RPS
+  // sort=sent ordena pela data de envio (desc = mais recentes primeiro).
   return omnisendPaginateV3<OmnisendCampaign>(apiKey, `${OMNISEND_V3}/campaigns`, "campaigns", {
     logTag: "OmnisendSentCampaigns",
-    queryParams: { status: "sent", sort: "createdAt", sortDirection: "desc" },
+    queryParams: { status: "sent", sort: "sent", sortDirection: "desc" },
     intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
   })
 }
@@ -252,13 +254,21 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
   const seen = new Set<string>()
 
   for (const status of statusList) {
+    // Omnisend v3 /campaigns rejeita sort=createdAt. Para status=sent
+    // usamos sort=sent; para os demais status nao enviamos sort pois os
+    // campos validos (sent/clicked/bounced/opened/...) so existem para sent.
+    const queryParams: Record<string, string> =
+      status === "sent"
+        ? { status, sort: "sent", sortDirection: "desc" }
+        : { status }
+
     const batch = await omnisendPaginateV3<OmnisendCampaign>(
       apiKey,
       `${OMNISEND_V3}/campaigns`,
       "campaigns",
       {
         logTag: `OmnisendCampaigns_${status}`,
-        queryParams: { status, sort: "createdAt", sortDirection: "desc" },
+        queryParams,
         intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
       }
     )
@@ -334,8 +344,6 @@ export async function fetchOrders(
     queryParams: {
       dateFrom: startDate,
       dateTo: endDate,
-      sort: "createdAt",
-      sortDirection: "desc",
     },
     maxPages: 50, // Orders can be many — cap at 50 pages (12,500 orders)
   })
