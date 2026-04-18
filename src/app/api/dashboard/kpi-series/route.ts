@@ -26,8 +26,13 @@ export async function GET(request: NextRequest) {
     const rows = await getUnifiedRevenue(supabase, orgId, PERIODS as unknown as string[])
 
     const currencyCache = new Map<string, string>()
-    async function getCurrency(storeId: string, fallback: string | null): Promise<string> {
+    async function getCurrency(storeId: string, fallback: string | null, platform?: string): Promise<string> {
       if (currencyCache.has(storeId)) return currencyCache.get(storeId)!
+      if (platform === "omnisend") {
+        const c = fallback || "BRL"
+        currencyCache.set(storeId, c)
+        return c
+      }
       try {
         const info = await getCachedAccountInfo(storeId)
         const c = info?.currency || fallback || "BRL"
@@ -44,7 +49,7 @@ export async function GET(request: NextRequest) {
     for (const row of rows) {
       if (!byPeriod[row.period_label]) continue
 
-      const currency = await getCurrency(row.store_id, row.currency)
+      const currency = await getCurrency(row.store_id, row.currency, row.platform)
       const totalBRL = await convertToBRL(row.total_revenue, currency)
       const campBRL = await convertToBRL(row.campaign_revenue, currency)
       const flowBRL = await convertToBRL(row.flow_revenue, currency)
