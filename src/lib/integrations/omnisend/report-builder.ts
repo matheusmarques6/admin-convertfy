@@ -14,6 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OmnisendReportBuilder")
@@ -201,9 +202,13 @@ export interface OmnisendReportResponse {
   integrations: {
     hasEcommerce: boolean
   }
+  rateLimited?: boolean
   fromCache?: boolean
   fetchedAt?: string
 }
+
+/** Cache stale aceitavel como fallback quando live-fetch falha (24h) */
+const STALE_CACHE_MAX_MS = 24 * 60 * 60 * 1000
 
 interface StoreContext {
   storeId: string
@@ -242,6 +247,38 @@ async function readFromCache(storeId: string, period: string) {
       .select("*")
       .eq("store_id", storeId)
       .eq("period_label", period),
+  ])
+
+  return {
+    summary,
+    campaignRows: campaignRows || [],
+    flowRows: flowRows || [],
+    fetchedAt: summary.fetched_at as string,
+  }
+}
+
+/**
+ * Le dados do cache Omnisend com threshold relaxado (24h) para servir
+ * como fallback quando o live-fetch falha (rate limit, timeout, etc.).
+ */
+async function readFromCacheStale(storeId: string, period: string) {
+  const admin = createAdminClient()
+
+  const { data: summary } = await admin
+    .from("store_revenue_summary")
+    .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, store_orders, total_subscribers, engaged_profiles, engagement_rate, currency, sync_status, fetched_at")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .maybeSingle()
+
+  if (!summary) return null
+
+  const fetchedAt = summary.fetched_at ? new Date(summary.fetched_at as string) : null
+  if (!fetchedAt || Date.now() - fetchedAt.getTime() > STALE_CACHE_MAX_MS) return null
+
+  const [{ data: campaignRows }, { data: flowRows }] = await Promise.all([
+    admin.from("omnisend_campaign_metrics").select("*").eq("store_id", storeId).eq("period_label", period),
+    admin.from("omnisend_flow_metrics").select("*").eq("store_id", storeId).eq("period_label", period),
   ])
 
   return {
@@ -727,7 +764,14 @@ async function buildFromLiveFetch(
 }
 
 /**
- * Constroi o report Omnisend completo (cache-first, live-fetch como fallback).
+ * Constroi o report Omnisend completo.
+ *
+ * Estrategia:
+ *   1. Cache fresco (< 35min) → serve imediatamente
+ *   2. Cache stale (> 35min) → guarda como fallback, tenta live-fetch
+ *   3. Live-fetch sucesso → serve dados frescos
+ *   4. Live-fetch falha (rate limit, erro) → serve cache stale se disponivel
+ *   5. Tudo falha → retorna response com rateLimited ou erro
  */
 export async function buildOmnisendReport(
   store: StoreContext,
@@ -737,25 +781,81 @@ export async function buildOmnisendReport(
 ): Promise<OmnisendReportResponse> {
   const dateRange = dateRangeForPeriod(period, customStartDate, customEndDate)
 
-  // 1) Tenta cache
+  // 1) Tenta cache fresco
+  let staleCache: NonNullable<Awaited<ReturnType<typeof readFromCache>>> | null = null
   try {
     const cached = await readFromCache(store.storeId, period)
     if (cached) {
-      log.info("[Omnisend Report] Serving from cache", { storeId: store.storeId, period })
+      log.info("[Omnisend Report] Serving from fresh cache", { storeId: store.storeId, period })
       return buildFromCache(store, period, dateRange, cached)
     }
   } catch (err) {
-    log.warn("[Omnisend Report] Cache read failed, falling through to live", { error: err })
+    log.warn("[Omnisend Report] Cache read failed", { error: err })
   }
 
-  // 2) Live fetch
+  // 2) Tenta cache stale (ate 24h) como fallback
+  try {
+    staleCache = await readFromCacheStale(store.storeId, period)
+  } catch { /* ignore */ }
+
+  // 3) Live fetch
   const credentials = await getStoreCredentials(store.storeId, store.orgId)
   const apiKey = credentials.omnisend_api_key
   if (!apiKey) {
+    // Sem API key e sem cache → erro
+    if (staleCache) {
+      log.info("[Omnisend Report] No API key, serving stale cache", { storeId: store.storeId })
+      return buildFromCache(store, period, dateRange, staleCache)
+    }
     throw new Error("API Key Omnisend não configurada para esta loja")
   }
 
   const days = daysForPeriod(period, customStartDate, customEndDate)
-  log.info("[Omnisend Report] Cache miss, live-fetching", { storeId: store.storeId, period, days })
-  return buildFromLiveFetch(store, period, dateRange, days, apiKey)
+  try {
+    log.info("[Omnisend Report] Cache miss, live-fetching", { storeId: store.storeId, period, days })
+    return await buildFromLiveFetch(store, period, dateRange, days, apiKey)
+  } catch (err) {
+    // Rate limited ou erro → serve cache stale se disponivel
+    if (staleCache) {
+      log.warn("[Omnisend Report] Live-fetch failed, serving stale cache", {
+        storeId: store.storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      const response = buildFromCache(store, period, dateRange, staleCache)
+      response.rateLimited = err instanceof OmnisendRateLimitError
+      response.fromCache = true
+      return response
+    }
+
+    // Sem cache e sem live → retorna response com rateLimited
+    if (err instanceof OmnisendRateLimitError) {
+      log.warn("[Omnisend Report] Rate limited, no cache available", { storeId: store.storeId })
+      return {
+        success: true,
+        connected: true,
+        platform: "omnisend",
+        rateLimited: true,
+        storeName: store.storeName,
+        generatedAt: new Date().toISOString(),
+        period,
+        dateRange: { start: dateRange.startDateStr, end: dateRange.endDateStr },
+        account: { currency: "BRL", currencySymbol: "R$", locale: "pt-BR" },
+        revenue: { storeRevenue: 0, storeOrders: 0, totalRevenue: 0, klaviyoAttributedRevenue: 0, campaignRevenue: 0, flowRevenue: 0, totalOrders: 0, klaviyoAttributedOrders: 0, averageOrderValue: 0, recoveryRate: 0 },
+        emailPerformance: { delivered: 0, opened: 0, clicked: 0, bounceRate: 0, unsubscribeRate: 0, openRate: 0, clickRate: 0, clickToOpenRate: 0 },
+        overview: { totalSubscribers: 0, totalLists: 0, totalSegments: 0, totalFlows: 0, liveFlows: 0, totalCampaigns: 0, sentCampaigns: 0, campaignsInPeriod: 0, totalTemplates: 0 },
+        engagement: { engagedProfiles: 0, engagementRate: "0", engaged90dSegmentName: null },
+        automation: { totalFlows: 0, liveFlows: 0, draftFlows: 0, automationCoverage: "0" },
+        growth: { campaignsLast30Days: 0 },
+        campaignPerformance: { totalRevenue: 0, totalConversions: 0, totalDelivered: 0, avgOpenRate: 0, avgClickRate: 0, campaigns: [] },
+        flowPerformance: { totalRevenue: 0, totalConversions: 0, totalDelivered: 0, avgOpenRate: 0, avgClickRate: 0, flows: [] },
+        lists: [], segments: [], flows: [],
+        campaigns: { total: 0, sent: 0, scheduled: 0, drafts: 0, recentCampaigns: [], allInPeriod: [] },
+        integrations: { hasEcommerce: true },
+        fromCache: false,
+        fetchedAt: new Date().toISOString(),
+      } as OmnisendReportResponse
+    }
+
+    throw err
+  }
 }
