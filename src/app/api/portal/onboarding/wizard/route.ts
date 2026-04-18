@@ -42,15 +42,31 @@ export async function GET(request: NextRequest) {
       .single()
 
     // Get stores for this client
-    const { data: stores } = await adminClient
-      .from("client_stores")
-      .select(`
+    // Inclui omnisend_api_key; resiliente a migration pendente
+    const selectNew = `
+        id, store_name, store_url, platform, niche, country, language,
+        target_audience, free_shipping_type, shopify_collaborator_code,
+        shopify_access_token, klaviyo_api_key, klaviyo_private_key, omnisend_api_key
+      `
+    const selectLegacy = `
         id, store_name, store_url, platform, niche, country, language,
         target_audience, free_shipping_type, shopify_collaborator_code,
         shopify_access_token, klaviyo_api_key, klaviyo_private_key
-      `)
+      `
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let storesResp: any = await adminClient
+      .from("client_stores")
+      .select(selectNew)
       .eq("client_id", portalUser.client_id)
       .eq("is_active", true)
+    if (storesResp.error && /omnisend_api_key/.test(storesResp.error.message || "")) {
+      storesResp = await adminClient
+        .from("client_stores")
+        .select(selectLegacy)
+        .eq("client_id", portalUser.client_id)
+        .eq("is_active", true)
+    }
+    const stores = (storesResp.data || []) as Array<Record<string, unknown>>
 
     // Check if client has an approved onboarding (skip wizard)
     const { data: approvedOnboarding } = await adminClient
@@ -69,7 +85,10 @@ export async function GET(request: NextRequest) {
     const step2Complete = !!(store?.store_name && store?.niche)
     const isShopify = (store?.platform || "shopify") === "shopify"
     const step3Complete = isShopify ? !!store?.shopify_collaborator_code : true
-    const step4Complete = !!(store?.klaviyo_private_key || store?.klaviyo_api_key)
+    // Step 4: "plataforma de email" — aceita Klaviyo OU Omnisend
+    const hasKlaviyo = !!(store?.klaviyo_private_key || store?.klaviyo_api_key)
+    const hasOmnisend = !!store?.omnisend_api_key
+    const step4Complete = hasKlaviyo || hasOmnisend
 
     return successResponse(request, {
       wizardComplete: hasApprovedOnboarding || (step1Complete && step2Complete && step3Complete && step4Complete),
@@ -78,7 +97,8 @@ export async function GET(request: NextRequest) {
         personalInfo: { complete: step1Complete },
         storeData: { complete: step2Complete },
         shopifyCode: { complete: step3Complete },
-        klaviyoKeys: { complete: step4Complete },
+        klaviyoKeys: { complete: step4Complete }, // Mantido nome legado — ver emailPlatformKeys
+        emailPlatformKeys: { complete: step4Complete },
       },
       data: {
         name: portalUser.name || "",
@@ -97,7 +117,9 @@ export async function GET(request: NextRequest) {
           free_shipping_type: store.free_shipping_type || "",
           shopify_collaborator_code: store.shopify_collaborator_code || "",
           has_shopify: !!store.shopify_access_token,
-          has_klaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
+          has_klaviyo: hasKlaviyo,
+          has_omnisend: hasOmnisend,
+          has_email_platform: step4Complete,
         } : null,
       },
     })
@@ -405,8 +427,56 @@ export async function POST(request: NextRequest) {
           .update({ klaviyo_has_reporting_access: true })
           .eq("id", store_id)
 
-        log.info("Wizard step 4 saved", { storeId: store_id })
+        log.info("Wizard step 4 saved (klaviyo)", { storeId: store_id })
         return successResponse(request, { success: true, step: "klaviyo_keys" })
+      }
+
+      case "omnisend_keys": {
+        const { store_id, api_key } = data
+
+        if (!store_id) throw new AppError("store_id é obrigatório", 400)
+        if (!api_key) throw new AppError("api_key é obrigatório", 400)
+
+        // Verify store belongs to this client
+        const { data: ownedStoreOmni } = await adminClient
+          .from("client_stores")
+          .select("id, org_id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
+
+        if (!ownedStoreOmni) throw new AppError("Loja não encontrada", 404)
+
+        // Test the key via /v5/brands/current (endpoint mais leve)
+        let omniRes: Response
+        try {
+          omniRes = await fetch("https://api.omnisend.com/v5/brands/current", {
+            headers: {
+              "X-API-KEY": api_key,
+              Accept: "application/json",
+            },
+          })
+        } catch {
+          throw new AppError("Não foi possível conectar ao Omnisend. Tente novamente.", 502)
+        }
+
+        if (omniRes.status === 401) {
+          throw new AppError("Chave da API Omnisend inválida. Verifique e tente novamente.", 400)
+        }
+        if (omniRes.status === 403) {
+          throw new AppError("Chave sem permissões necessárias. Confira as permissões da API key no Omnisend.", 400)
+        }
+        if (!omniRes.ok) {
+          throw new AppError("Erro ao validar chave do Omnisend. Tente novamente.", 400)
+        }
+
+        // Save encrypted key via centralized service
+        await updateStoreCredentials(store_id, {
+          omnisend_api_key: api_key,
+        }, "omnisend", { orgId: ownedStoreOmni.org_id })
+
+        log.info("Wizard step 4 saved (omnisend)", { storeId: store_id })
+        return successResponse(request, { success: true, step: "omnisend_keys" })
       }
 
       default:

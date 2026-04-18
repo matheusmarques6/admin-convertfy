@@ -181,7 +181,11 @@ export async function POST(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Get all active stores with Klaviyo credentials (filter empty strings too)
+    // Get all active stores with Klaviyo credentials.
+    // Obs: este endpoint sincroniza campanhas Klaviyo na tabela `campaigns` para
+    // o calendario de campanhas. Lojas Omnisend sao sincronizadas pelo cron
+    // dedicado (sync-omnisend) que grava direto em omnisend_campaign_metrics —
+    // por isso NAO precisam aparecer aqui.
     const { data: stores, error: storesError } = await adminClient
       .from("client_stores")
       .select("id, store_name")
@@ -197,14 +201,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          message: "Nenhuma loja com Klaviyo configurado",
+          message: "Nenhuma loja Klaviyo configurada (lojas Omnisend sao sincronizadas automaticamente pelo cron sync-omnisend)",
           results: [],
         },
         { headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
-    log.debug(`[SyncAll] Found ${stores.length} stores with Klaviyo keys`)
+    log.debug(`[SyncAll] Found ${stores.length} Klaviyo stores to sync`)
 
     // C4 FIX: Call sync logic directly instead of internal HTTP
     const results: Array<{ store_name: string; synced: number; errors: number; status: string }> = []

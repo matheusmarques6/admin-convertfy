@@ -35,10 +35,31 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Verify store belongs to this client
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select(`
+    // Verify store belongs to this client.
+    // Resiliente a migration 20260417 pendente: se colunas omnisend_* nao
+    // existirem, usa SELECT legacy sem elas.
+    const selectNew = `
+        id,
+        store_name,
+        platform,
+        store_url,
+        email_platform,
+        shopify_store_domain,
+        shopify_access_token,
+        shopify_validated_at,
+        shopify_validation_error,
+        klaviyo_api_key,
+        klaviyo_private_key,
+        klaviyo_public_key,
+        klaviyo_validated_at,
+        klaviyo_validation_error,
+        klaviyo_missing_scopes,
+        klaviyo_has_reporting_access,
+        omnisend_api_key,
+        omnisend_validated_at,
+        omnisend_validation_error
+      `
+    const selectLegacy = `
         id,
         store_name,
         platform,
@@ -54,12 +75,23 @@ export async function GET(request: NextRequest) {
         klaviyo_validation_error,
         klaviyo_missing_scopes,
         klaviyo_has_reporting_access
-      `)
+      `
+    let storeResp = await adminClient
+      .from("client_stores")
+      .select(selectNew)
       .eq("id", storeId)
       .eq("client_id", portalUser.client_id)
       .single()
-
-    if (storeError || !store) {
+    if (storeResp.error && /email_platform|omnisend_api_key/.test(storeResp.error.message || "")) {
+      storeResp = await adminClient
+        .from("client_stores")
+        .select(selectLegacy)
+        .eq("id", storeId)
+        .eq("client_id", portalUser.client_id)
+        .single()
+    }
+    const store = storeResp.data as Record<string, unknown> | null
+    if (storeResp.error || !store) {
       throw new AppError("Loja não encontrada", 404)
     }
 
@@ -73,13 +105,18 @@ export async function GET(request: NextRequest) {
     // Derive status from real validation columns (same source of truth as store detail page)
     const shopifyStatus = deriveStatus(
       !!store.shopify_access_token,
-      store.shopify_validated_at,
-      store.shopify_validation_error
+      store.shopify_validated_at as string | null,
+      store.shopify_validation_error as string | null
     )
     const klaviyoStatus = deriveStatus(
       !!(store.klaviyo_private_key || store.klaviyo_api_key),
-      store.klaviyo_validated_at,
-      store.klaviyo_validation_error
+      store.klaviyo_validated_at as string | null,
+      store.klaviyo_validation_error as string | null
+    )
+    const omnisendStatus = deriveStatus(
+      !!store.omnisend_api_key,
+      store.omnisend_validated_at as string | null,
+      store.omnisend_validation_error as string | null
     )
 
     return successResponse(request, {
@@ -87,6 +124,7 @@ export async function GET(request: NextRequest) {
         id: store.id,
         store_name: store.store_name,
         platform: store.platform,
+        email_platform: store.email_platform ?? null,
         store_url: store.store_url,
         shopify_store_domain: store.shopify_store_domain || "",
       },
@@ -94,7 +132,7 @@ export async function GET(request: NextRequest) {
         shopify: {
           connected: shopifyStatus.connected || shopifyStatus.status === "pending_validation",
           status: shopifyStatus.status,
-          domain: store.shopify_store_domain || "",
+          domain: (store.shopify_store_domain as string) || "",
           connected_at: shopifyStatus.validated_at || null,
           error: shopifyStatus.error || null,
         },
@@ -106,6 +144,12 @@ export async function GET(request: NextRequest) {
           error: klaviyoStatus.error || null,
           hasReportingAccess: store.klaviyo_has_reporting_access ?? undefined,
           missingScopes: store.klaviyo_missing_scopes ?? undefined,
+        },
+        omnisend: {
+          connected: omnisendStatus.connected || omnisendStatus.status === "pending_validation",
+          status: omnisendStatus.status,
+          connected_at: omnisendStatus.validated_at || null,
+          error: omnisendStatus.error || null,
         },
         tracking: {
           active: trackingStore?.is_active || false,
@@ -152,6 +196,8 @@ export async function PUT(request: NextRequest) {
       // Klaviyo fields
       klaviyo_private_key,
       klaviyo_public_key,
+      // Omnisend fields
+      omnisend_api_key,
       // Tracking fields
       activate_tracking,
       widget_config,
@@ -221,6 +267,21 @@ export async function PUT(request: NextRequest) {
       await updateStoreCredentials(store_id, creds, "klaviyo", { resetValidation: true, orgId: store.org_id })
 
       return successResponse(request, { success: true, message: "Credenciais Klaviyo atualizadas" })
+    }
+
+    if (integration_type === "omnisend") {
+      if (!omnisend_api_key) {
+        throw new AppError("API Key do Omnisend é obrigatória", 400)
+      }
+
+      await updateStoreCredentials(
+        store_id,
+        { omnisend_api_key },
+        "omnisend",
+        { resetValidation: true, orgId: store.org_id }
+      )
+
+      return successResponse(request, { success: true, message: "Credenciais Omnisend atualizadas" })
     }
 
     if (integration_type === "tracking") {

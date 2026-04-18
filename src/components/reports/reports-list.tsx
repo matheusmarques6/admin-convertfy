@@ -75,6 +75,7 @@ interface PendingStore {
   client_id: string
   client_name: string
   has_klaviyo: boolean
+  has_omnisend: boolean
   has_shopify: boolean
 }
 
@@ -529,6 +530,11 @@ export function ReportsList({
                       {store.has_klaviyo && (
                         <Badge variant="neutral" showDot={false} className="text-xs bg-primary/10 text-primary border-primary/30">
                           Klaviyo
+                        </Badge>
+                      )}
+                      {store.has_omnisend && (
+                        <Badge variant="neutral" showDot={false} className="text-xs bg-violet-500/10 text-violet-500 border-violet-500/30">
+                          Omnisend
                         </Badge>
                       )}
                       {store.has_shopify && (

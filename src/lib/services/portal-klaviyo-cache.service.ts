@@ -137,36 +137,109 @@ export async function fetchKlaviyoFromCache(
     })()
   }
 
-  // 2. Get campaign + flow detail using period_label (not exact period dates)
-  let campaignQuery = supabase
-    .from("klaviyo_campaign_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) campaignQuery = campaignQuery.eq("org_id", orgId)
-
-  let flowQuery = supabase
-    .from("klaviyo_flow_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) flowQuery = flowQuery.eq("org_id", orgId)
-
-  const [campaignsResult, flowsResult] = await Promise.all([
-    campaignQuery,
-    flowQuery,
+  // 2. Get campaign + flow detail de AMBAS plataformas (klaviyo + omnisend).
+  //    Cada loja usa UMA plataforma — a outra tabela so retorna vazio.
+  const [klavCampaigns, klavFlows, omniCampaigns, omniFlows] = await Promise.all([
+    fetchCampaignsFromTable(supabase, "klaviyo_campaign_metrics", storeId, period, orgId),
+    fetchFlowsFromTable(supabase, "klaviyo_flow_metrics", storeId, period, orgId),
+    fetchCampaignsFromTable(supabase, "omnisend_campaign_metrics", storeId, period, orgId),
+    fetchFlowsFromTable(supabase, "omnisend_flow_metrics", storeId, period, orgId),
   ])
+
+  const campaigns = [...klavCampaigns, ...omniCampaigns]
+    .sort((a, b) => (b.conversion_value || 0) - (a.conversion_value || 0))
+  const flows = [...klavFlows, ...omniFlows]
+    .sort((a, b) => (b.conversion_value || 0) - (a.conversion_value || 0))
+
+  // Se summary tem omnisend_*_revenue mas nao tem klaviyo_*_revenue populado,
+  // mesclamos — o portal consome via klaviyo_*_revenue por compatibilidade.
+  const mergedSummary = mergeOmnisendIntoSummary(summary as Record<string, unknown>)
 
   return {
     data: {
-      summary: summary as CachedRevenueSummary,
-      campaigns: (campaignsResult.data || []) as CachedCampaignRow[],
-      flows: (flowsResult.data || []) as CachedFlowRow[],
+      summary: mergedSummary,
+      campaigns,
+      flows,
     },
     isStale,
     fetchedAt: summary.fetched_at || null,
+  }
+}
+
+/**
+ * Le campanhas de qualquer uma das tabelas (klaviyo_campaign_metrics ou
+ * omnisend_campaign_metrics). Retorna vazio se a tabela nao existir ou
+ * se o store/period nao tiver dados.
+ */
+async function fetchCampaignsFromTable(
+  supabase: SupabaseClient,
+  tableName: string,
+  storeId: string,
+  period: string,
+  orgId?: string
+): Promise<CachedCampaignRow[]> {
+  let q = supabase
+    .from(tableName)
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .order("conversion_value", { ascending: false })
+  if (orgId) q = q.eq("org_id", orgId)
+  const res = await q
+  if (res.error) {
+    // Tabela pode nao existir (migration pendente) — silencia
+    log.debug(`[CacheRead] ${tableName} query error (ignored): ${res.error.message}`)
+    return []
+  }
+  return (res.data || []) as CachedCampaignRow[]
+}
+
+async function fetchFlowsFromTable(
+  supabase: SupabaseClient,
+  tableName: string,
+  storeId: string,
+  period: string,
+  orgId?: string
+): Promise<CachedFlowRow[]> {
+  let q = supabase
+    .from(tableName)
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .order("conversion_value", { ascending: false })
+  if (orgId) q = q.eq("org_id", orgId)
+  const res = await q
+  if (res.error) {
+    log.debug(`[CacheRead] ${tableName} query error (ignored): ${res.error.message}`)
+    return []
+  }
+  return (res.data || []) as CachedFlowRow[]
+}
+
+/**
+ * Consolida revenue de Klaviyo + Omnisend no formato CachedRevenueSummary.
+ * Como cada loja usa UMA plataforma, tipicamente apenas uma das colunas tem
+ * valor. O portal consome via klaviyo_*_revenue por retrocompatibilidade do
+ * shape — entao copiamos os valores omnisend para essas chaves quando
+ * klaviyo esta zerado.
+ */
+function mergeOmnisendIntoSummary(row: Record<string, unknown>): CachedRevenueSummary {
+  const klaviyoCamp = Number(row.klaviyo_campaign_revenue) || 0
+  const klaviyoFlow = Number(row.klaviyo_flow_revenue) || 0
+  const klaviyoTotal = Number(row.klaviyo_total_revenue) || (klaviyoCamp + klaviyoFlow)
+  const omniCamp = Number(row.omnisend_campaign_revenue) || 0
+  const omniFlow = Number(row.omnisend_flow_revenue) || 0
+  const omniTotal = Number(row.omnisend_total_revenue) || (omniCamp + omniFlow)
+
+  const campaignRevenue = klaviyoCamp > 0 ? klaviyoCamp : omniCamp
+  const flowRevenue = klaviyoFlow > 0 ? klaviyoFlow : omniFlow
+  const totalRevenue = klaviyoTotal > 0 ? klaviyoTotal : omniTotal
+
+  return {
+    ...(row as unknown as CachedRevenueSummary),
+    klaviyo_campaign_revenue: campaignRevenue,
+    klaviyo_flow_revenue: flowRevenue,
+    klaviyo_total_revenue: totalRevenue,
   }
 }
 
@@ -179,30 +252,19 @@ async function buildSyntheticFallback(
   supabase: SupabaseClient,
   orgId?: string,
 ): Promise<KlaviyoCacheResult> {
-  // CA5: Check if detail tables have real data from a previous successful sync
-  let fallbackCampaignQuery = supabase
-    .from("klaviyo_campaign_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) fallbackCampaignQuery = fallbackCampaignQuery.eq("org_id", orgId)
-
-  let fallbackFlowQuery = supabase
-    .from("klaviyo_flow_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) fallbackFlowQuery = fallbackFlowQuery.eq("org_id", orgId)
-
-  const [campaignsResult, flowsResult] = await Promise.all([
-    fallbackCampaignQuery,
-    fallbackFlowQuery,
+  // CA5: Check if detail tables have real data from a previous successful sync.
+  //      Busca em AMBAS plataformas (klaviyo + omnisend).
+  const [klavCamp, klavFlow, omniCamp, omniFlow] = await Promise.all([
+    fetchCampaignsFromTable(supabase, "klaviyo_campaign_metrics", storeId, period, orgId),
+    fetchFlowsFromTable(supabase, "klaviyo_flow_metrics", storeId, period, orgId),
+    fetchCampaignsFromTable(supabase, "omnisend_campaign_metrics", storeId, period, orgId),
+    fetchFlowsFromTable(supabase, "omnisend_flow_metrics", storeId, period, orgId),
   ])
 
-  const campaigns = (campaignsResult.data || []) as CachedCampaignRow[]
-  const flows = (flowsResult.data || []) as CachedFlowRow[]
+  const campaigns = [...klavCamp, ...omniCamp]
+    .sort((a, b) => (b.conversion_value || 0) - (a.conversion_value || 0))
+  const flows = [...klavFlow, ...omniFlow]
+    .sort((a, b) => (b.conversion_value || 0) - (a.conversion_value || 0))
 
   if (campaigns.length > 0 || flows.length > 0) {
     // Build synthetic summary from detail data

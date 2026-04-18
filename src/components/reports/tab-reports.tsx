@@ -64,6 +64,7 @@ export interface PendingStore {
   client_id: string
   client_name: string
   has_klaviyo: boolean
+  has_omnisend: boolean
   has_shopify: boolean
 }
 

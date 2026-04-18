@@ -22,6 +22,7 @@ export interface StoreOption {
   client_id: string
   client_name: string
   has_klaviyo: boolean
+  has_omnisend: boolean
   has_shopify: boolean
 }
 
@@ -220,10 +221,13 @@ export function GenerateReportModal({ open, onOpenChange, stores, onGenerated }:
                   </div>
                   <div className="flex gap-1 shrink-0">
                     {store.has_klaviyo && (
-                      <Badge variant="neutral" showDot={false} className="text-[10px] px-1.5">K</Badge>
+                      <Badge variant="neutral" showDot={false} className="text-[10px] px-1.5" title="Klaviyo">K</Badge>
+                    )}
+                    {store.has_omnisend && (
+                      <Badge variant="neutral" showDot={false} className="text-[10px] px-1.5" title="Omnisend">O</Badge>
                     )}
                     {store.has_shopify && (
-                      <Badge variant="neutral" showDot={false} className="text-[10px] px-1.5">S</Badge>
+                      <Badge variant="neutral" showDot={false} className="text-[10px] px-1.5" title="Shopify">S</Badge>
                     )}
                   </div>
                 </button>

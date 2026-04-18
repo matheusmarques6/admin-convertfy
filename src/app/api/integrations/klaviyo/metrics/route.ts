@@ -89,6 +89,23 @@ export async function GET(request: NextRequest) {
     // Validate user has access to this store (multi-tenant isolation)
     await requireStoreAccess(storeId, user.id)
 
+    // Este endpoint e Klaviyo-especifico. Para lojas Omnisend, retorna um
+    // response vazio com platform: "omnisend" — consumidores devem usar o
+    // endpoint /report unificado, que ja faz dispatch correto.
+    const { detectStorePlatform } = await import("@/lib/services/report-platform.service")
+    const platform = await detectStorePlatform(storeId)
+    if (platform === "omnisend") {
+      return NextResponse.json({
+        success: true,
+        platform: "omnisend",
+        message: "Loja usa Omnisend — consulte /api/integrations/klaviyo/report (com dispatcher) para dados unificados",
+        metrics: [],
+        lists: [],
+        flows: [],
+        campaigns: [],
+      })
+    }
+
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {

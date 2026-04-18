@@ -5,7 +5,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
-import { KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
+import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
 const log = logger.child("TotalRevenue")
 
@@ -55,9 +55,12 @@ type EnhancedTotalRevenueResponse = TotalRevenueResponse & DataStatusMeta & {
 
 async function buildStoreBreakdown(rows: Array<{
   store_id: string
-  klaviyo_total_revenue: number | string
-  klaviyo_campaign_revenue: number | string
-  klaviyo_flow_revenue: number | string
+  klaviyo_total_revenue?: number | string | null
+  klaviyo_campaign_revenue?: number | string | null
+  klaviyo_flow_revenue?: number | string | null
+  omnisend_total_revenue?: number | string | null
+  omnisend_campaign_revenue?: number | string | null
+  omnisend_flow_revenue?: number | string | null
   currency?: string | null
   sync_status: string
   fetched_at: string | null
@@ -71,9 +74,11 @@ async function buildStoreBreakdown(rows: Array<{
       clients: { name: string } | null
     }
     const currency = s.currency || "BRL"
-    const totalRev = Number(s.klaviyo_total_revenue)
-    const campaignRev = Number(s.klaviyo_campaign_revenue)
-    const flowRev = Number(s.klaviyo_flow_revenue)
+    // Cada loja usa UMA plataforma — soma as duas (a nao-usada e zero).
+    // Isso permite que o dashboard consolide receita independente da fonte.
+    const totalRev = Number(s.klaviyo_total_revenue || 0) + Number(s.omnisend_total_revenue || 0)
+    const campaignRev = Number(s.klaviyo_campaign_revenue || 0) + Number(s.omnisend_campaign_revenue || 0)
+    const flowRev = Number(s.klaviyo_flow_revenue || 0) + Number(s.omnisend_flow_revenue || 0)
 
     const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
       convertToBRL(totalRev, currency),
@@ -189,14 +194,22 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const adminClient = createAdminClient()
 
-    // Count total Klaviyo stores for this org
-    const { count: totalKlaviyoStores } = await adminClient
+    // Conta lojas com QUALQUER plataforma de email marketing (Klaviyo ou Omnisend).
+    // Resiliente a migration pendente: se omnisend_api_key nao existe, cai no
+    // filtro legado so-Klaviyo.
+    let countResp = await adminClient
       .from("client_stores")
       .select("id", { count: "exact", head: true })
       .eq("org_id", orgId)
-      .or(KLAVIYO_CREDENTIALS_FILTER)
-
-    const storesCount = totalKlaviyoStores ?? 0
+      .or(ANY_EMAIL_PLATFORM_FILTER)
+    if (countResp.error && /omnisend_api_key/.test(countResp.error.message || "")) {
+      countResp = await adminClient
+        .from("client_stores")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .or(KLAVIYO_CREDENTIALS_FILTER)
+    }
+    const storesCount = countResp.count ?? 0
 
     if (storesCount === 0) {
       const elapsed = Date.now() - startTime
@@ -213,10 +226,24 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    // Read from store_revenue_summary (no expires_at filter — we calculate staleness ourselves)
-    let query = supabase
-      .from("store_revenue_summary")
-      .select(`
+    // Read from store_revenue_summary (no expires_at filter — we calculate staleness ourselves).
+    // Seleciona colunas de AMBAS plataformas (klaviyo + omnisend). Cada loja usa
+    // UMA plataforma, entao apenas uma das colunas tem valor > 0.
+    const selectNew = `
+        store_id,
+        klaviyo_total_revenue,
+        klaviyo_campaign_revenue,
+        klaviyo_flow_revenue,
+        omnisend_total_revenue,
+        omnisend_campaign_revenue,
+        omnisend_flow_revenue,
+        store_total_revenue,
+        currency,
+        sync_status,
+        fetched_at,
+        client_stores!inner(id, store_name, client_id, clients(name))
+      `
+    const selectLegacy = `
         store_id,
         klaviyo_total_revenue,
         klaviyo_campaign_revenue,
@@ -226,15 +253,24 @@ export async function GET(request: NextRequest) {
         sync_status,
         fetched_at,
         client_stores!inner(id, store_name, client_id, clients(name))
-      `)
-      .eq("period_label", period)
-      .eq("org_id", orgId)
+      `
 
-    if (filterStoreIds && filterStoreIds.length > 0) {
-      query = query.in("store_id", filterStoreIds)
+    async function runQuery(cols: string) {
+      let q = supabase
+        .from("store_revenue_summary")
+        .select(cols)
+        .eq("period_label", period)
+        .eq("org_id", orgId)
+      if (filterStoreIds && filterStoreIds.length > 0) q = q.in("store_id", filterStoreIds)
+      return q
     }
 
-    const { data: summaries, error } = await query
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let queryResp: any = await runQuery(selectNew)
+    if (queryResp.error && /omnisend_/.test(queryResp.error.message || "")) {
+      queryResp = await runQuery(selectLegacy)
+    }
+    const { data: summaries, error } = queryResp
 
     if (error) {
       if (error.code === "42P01") {
@@ -248,7 +284,8 @@ export async function GET(request: NextRequest) {
       throw error
     }
 
-    const rows = summaries || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (summaries || []) as any[]
 
     if (rows.length === 0) {
       const elapsed = Date.now() - startTime

@@ -4,7 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
-import { KLAVIYO_CREDENTIALS_FILTER, getStoreCredentials } from "@/lib/services/credentials.service"
+import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER, getStoreCredentials } from "@/lib/services/credentials.service"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import {
   getTimezoneOffset,
@@ -20,6 +20,8 @@ import {
   fetchCampaignNames,
   fetchAudienceForStore,
 } from "@/lib/services/klaviyo-sync.service"
+import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
 
 const log = logger.child("RefreshRevenue")
@@ -116,11 +118,37 @@ interface StoreRow {
   org_id: string | null
 }
 
+const PERIOD_DAYS: Record<string, number> = {
+  today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90,
+}
+
 async function refreshStoreForPeriod(
   supabase: SupabaseClient,
   store: StoreRow,
   period: string,
 ): Promise<{ status: "ok" | "error"; error?: string }> {
+  // Dispatcher por plataforma
+  const platform = await detectStorePlatform(store.id)
+
+  if (platform === "omnisend") {
+    const credentials = await getStoreCredentials(store.id, store.org_id ?? undefined)
+    const apiKey = credentials.omnisend_api_key
+    if (!apiKey) return { status: "error", error: "No Omnisend API key" }
+    const days = PERIOD_DAYS[period] ?? 30
+    const result = await syncOmnisendForStore({
+      storeId: store.id,
+      orgId: store.org_id ?? "",
+      apiKey,
+      periodDays: days,
+    })
+    if (result.ok) return { status: "ok" }
+    return { status: "error", error: result.error || "Omnisend sync failed" }
+  }
+
+  if (platform !== "klaviyo") {
+    return { status: "error", error: `Unsupported platform: ${platform}` }
+  }
+
   const credentials = await getStoreCredentials(store.id)
   const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
   if (!apiKey) return { status: "error", error: "No API key" }
@@ -210,12 +238,22 @@ export async function POST(request: NextRequest) {
     log.info(`[RefreshRevenue] Starting refresh for org ${orgId}/${period}`)
 
     try {
-      // Get ALL stores with Klaviyo credentials for this org
-      const { data: stores, error: storesError } = await adminClient
+      // Get ALL stores with Klaviyo OR Omnisend credentials for this org.
+      // Resiliente a migration pendente: fallback para so-Klaviyo se omnisend_api_key
+      // coluna nao existe.
+      let storesResp = await adminClient
         .from("client_stores")
         .select("id, store_name, org_id")
         .eq("org_id", orgId)
-        .or(KLAVIYO_CREDENTIALS_FILTER)
+        .or(ANY_EMAIL_PLATFORM_FILTER)
+      if (storesResp.error && /omnisend_api_key/.test(storesResp.error.message || "")) {
+        storesResp = await adminClient
+          .from("client_stores")
+          .select("id, store_name, org_id")
+          .eq("org_id", orgId)
+          .or(KLAVIYO_CREDENTIALS_FILTER)
+      }
+      const { data: stores, error: storesError } = storesResp
 
       if (storesError || !stores || stores.length === 0) {
         log.warn("[RefreshRevenue] No stores found for org", orgId)

@@ -39,6 +39,10 @@ interface StoreOption {
   store_name: string
   client_id: string
   has_klaviyo: boolean
+  has_omnisend: boolean
+  /** True se a loja tem QUALQUER plataforma de email marketing (Klaviyo ou Omnisend) */
+  has_email_platform: boolean
+  email_platform: "klaviyo" | "omnisend" | "none"
   has_shopify: boolean
 }
 
@@ -52,8 +56,8 @@ type ReportTypeOption = {
 const REPORT_TYPES: ReportTypeOption[] = [
   {
     value: "klaviyo",
-    label: "Klaviyo",
-    description: "Relatório de email marketing via Klaviyo",
+    label: "Email Marketing",
+    description: "Relatório de email marketing (Klaviyo ou Omnisend — detecta automaticamente)",
     requiresIntegration: true,
   },
   {
@@ -65,7 +69,7 @@ const REPORT_TYPES: ReportTypeOption[] = [
   {
     value: "combined",
     label: "Combinado",
-    description: "Relatório combinando Klaviyo e Shopify",
+    description: "Relatório combinando email marketing + Shopify",
     requiresIntegration: true,
   },
   {
@@ -153,22 +157,38 @@ export default function NewReportPage() {
       setIsLoadingStores(true)
       try {
         const supabase = createClient()
-        const { data, error } = await supabase
-          .from("client_stores")
-          .select("id, store_name, client_id, klaviyo_private_key, klaviyo_api_key, shopify_access_token")
-          .eq("is_active", true)
-          .order("store_name")
+        // Tenta ler com email_platform + omnisend_api_key (migration aplicada)
+        // e cai no fallback legado se as colunas nao existem.
+        const selectNew = "id, store_name, client_id, email_platform, klaviyo_private_key, klaviyo_api_key, omnisend_api_key, shopify_access_token"
+        const selectLegacy = "id, store_name, client_id, klaviyo_private_key, klaviyo_api_key, shopify_access_token"
 
-        if (error) throw error
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let resp: any = await supabase.from("client_stores").select(selectNew).eq("is_active", true).order("store_name")
+        if (resp.error && /email_platform|omnisend_api_key/.test(resp.error.message || "")) {
+          resp = await supabase.from("client_stores").select(selectLegacy).eq("is_active", true).order("store_name")
+        }
+        if (resp.error) throw resp.error
 
         // Map to store options with integration flags
-        const storeOptions: StoreOption[] = (data || []).map(store => ({
-          id: store.id,
-          store_name: store.store_name,
-          client_id: store.client_id,
-          has_klaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
-          has_shopify: !!store.shopify_access_token,
-        }))
+        const storeOptions: StoreOption[] = (resp.data || []).map((raw: Record<string, unknown>) => {
+          const store = raw as Record<string, unknown>
+          const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
+          const hasOmnisend = !!store.omnisend_api_key
+          const declared = store.email_platform as "klaviyo" | "omnisend" | "none" | undefined
+          const platform: StoreOption["email_platform"] = declared && declared !== "none"
+            ? declared
+            : hasOmnisend ? "omnisend" : hasKlaviyo ? "klaviyo" : "none"
+          return {
+            id: store.id as string,
+            store_name: store.store_name as string,
+            client_id: store.client_id as string,
+            has_klaviyo: hasKlaviyo,
+            has_omnisend: hasOmnisend,
+            has_email_platform: platform !== "none",
+            email_platform: platform,
+            has_shopify: !!store.shopify_access_token,
+          }
+        })
 
         setStores(storeOptions)
       } catch (error) {
@@ -214,11 +234,12 @@ export default function NewReportPage() {
 
     switch (reportType) {
       case "klaviyo":
-        return selectedStoreDetails.has_klaviyo
+        // "klaviyo" aqui e o tipo "email marketing" — aceita Klaviyo OU Omnisend
+        return selectedStoreDetails.has_email_platform
       case "shopify":
         return selectedStoreDetails.has_shopify
       case "combined":
-        return selectedStoreDetails.has_klaviyo && selectedStoreDetails.has_shopify
+        return selectedStoreDetails.has_email_platform && selectedStoreDetails.has_shopify
       case "manual":
         return true
       default:
@@ -510,6 +531,9 @@ export default function NewReportPage() {
                                   {store.has_klaviyo && (
                                     <Badge variant="neutral" showDot={false} className="text-xs">Klaviyo</Badge>
                                   )}
+                                  {store.has_omnisend && (
+                                    <Badge variant="neutral" showDot={false} className="text-xs">Omnisend</Badge>
+                                  )}
                                   {store.has_shopify && (
                                     <Badge variant="neutral" showDot={false} className="text-xs">Shopify</Badge>
                                   )}
@@ -549,14 +573,14 @@ export default function NewReportPage() {
 
                       if (selectedStoreDetails && type.requiresIntegration) {
                         if (type.value === "klaviyo") {
-                          isAvailable = selectedStoreDetails.has_klaviyo
-                          unavailableReason = "Klaviyo não configurado"
+                          isAvailable = selectedStoreDetails.has_email_platform
+                          unavailableReason = "Nenhuma plataforma de email (Klaviyo/Omnisend) configurada"
                         } else if (type.value === "shopify") {
                           isAvailable = selectedStoreDetails.has_shopify
                           unavailableReason = "Shopify não configurado"
                         } else if (type.value === "combined") {
-                          isAvailable = selectedStoreDetails.has_klaviyo && selectedStoreDetails.has_shopify
-                          unavailableReason = "Requer Klaviyo e Shopify"
+                          isAvailable = selectedStoreDetails.has_email_platform && selectedStoreDetails.has_shopify
+                          unavailableReason = "Requer plataforma de email + Shopify"
                         }
                       }
 
@@ -731,6 +755,12 @@ export default function NewReportPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_omnisend ? "bg-success" : "bg-muted"}`} />
+                        <span className={`text-sm ${selectedStoreDetails.has_omnisend ? "" : "text-muted-foreground"}`}>
+                          Omnisend {selectedStoreDetails.has_omnisend ? "conectado" : "não configurado"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_shopify ? "bg-success" : "bg-muted"}`} />
                         <span className={`text-sm ${selectedStoreDetails.has_shopify ? "" : "text-muted-foreground"}`}>
                           Shopify {selectedStoreDetails.has_shopify ? "conectado" : "não configurado"}
@@ -749,7 +779,7 @@ export default function NewReportPage() {
                 <ul className="text-sm text-muted-foreground space-y-2">
                   <li className="flex items-start gap-2">
                     <ChevronDown className="h-4 w-4 mt-0.5 rotate-[-90deg]" />
-                    <span>Relatórios Klaviyo mostram métricas de email marketing e receita atribuída.</span>
+                    <span>Relatórios de Email Marketing (Klaviyo ou Omnisend) mostram métricas de campanhas, automações e receita atribuída.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <ChevronDown className="h-4 w-4 mt-0.5 rotate-[-90deg]" />

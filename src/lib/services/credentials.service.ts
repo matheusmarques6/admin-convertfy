@@ -39,6 +39,15 @@ export const KLAVIYO_CREDENTIALS_FILTER =
 export const OMNISEND_CREDENTIALS_FILTER =
   "omnisend_api_key.not.is.null"
 
+/**
+ * Supabase OR filter string para lojas com QUALQUER plataforma de email
+ * marketing configurada (Klaviyo OU Omnisend). Usar em endpoints que
+ * agregam metricas independente de plataforma (dashboard total-revenue,
+ * health-monitor, etc.).
+ */
+export const ANY_EMAIL_PLATFORM_FILTER =
+  "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null,omnisend_api_key.not.is.null"
+
 // Fields that must contain only ASCII printable characters (0x20-0x7E).
 // meta_access_token is excluded — it comes from OAuth callback, not manual input.
 const FIELDS_TO_VALIDATE: ReadonlySet<string> = new Set([
@@ -321,6 +330,14 @@ export async function updateStoreCredentials(
       updateData.klaviyo_validation_error = null
       updateData.klaviyo_missing_scopes = null
       updateData.klaviyo_has_reporting_access = null
+      // Marca email_platform na loja
+      updateData.email_platform = "klaviyo"
+    } else if (integrationKey === "omnisend") {
+      // Use individual validation columns for Omnisend
+      updateData.omnisend_validated_at = resetValidation ? null : now
+      updateData.omnisend_validation_error = null
+      // Marca email_platform na loja
+      updateData.email_platform = "omnisend"
     } else {
       // GA4, Meta, Google Ads/Calendar still use legacy JSON column
       const { data: current } = await adminClient

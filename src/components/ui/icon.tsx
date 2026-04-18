@@ -78,6 +78,7 @@ export function BrandIcon({ src, alt, size = 20, className }: BrandIconProps) {
 export const BRAND_ICONS = {
   shopify: '/images/logo shopify (1).png',
   klaviyo: '/images/logo-klaviyo-fundo-preto (1).png',
+  omnisend: '/images/integrations/omnisend.svg',
   google: '/images/logo google (1).png',
   meta: '/images/logo meta (1).png',
   convertfyWhite: '/images/logo da convertfy com escrito branco.png',

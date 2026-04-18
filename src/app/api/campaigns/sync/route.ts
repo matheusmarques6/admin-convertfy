@@ -270,11 +270,19 @@ export async function POST(request: NextRequest) {
       throw new AppError("Loja não encontrada ou sem permissão", 403)
     }
 
-    // Get store with Klaviyo credentials (decrypted)
+    // Este endpoint sincroniza campanhas da API Klaviyo para a tabela
+    // `campaigns` (calendario). Lojas Omnisend NAO precisam deste sync — o
+    // cron dedicado sync-omnisend grava direto em omnisend_campaign_metrics.
     const storeData = await getStoreCredentials(store_id)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
-      throw new AppError("Klaviyo API Key não configurada para esta loja", 400)
+      if (storeData.omnisend_api_key) {
+        throw new AppError(
+          "Esta loja usa Omnisend — o sync de campanhas e feito automaticamente pelo cron sync-omnisend (nao e necessario sincronizar manualmente)",
+          400
+        )
+      }
+      throw new AppError("Klaviyo API Key nao configurada para esta loja", 400)
     }
 
     log.debug(`[Klaviyo Sync] Fetching campaigns for store: ${storeData.store_name}`)

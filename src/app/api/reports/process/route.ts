@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
-import { getKlaviyoRevenueForStore, type KlaviyoRevenueSummary } from "@/lib/integrations/klaviyo/report-summary"
+import { type KlaviyoRevenueSummary } from "@/lib/integrations/klaviyo/report-summary"
 import { KlaviyoRateLimitError } from "@/lib/integrations/klaviyo"
+import { getUnifiedRevenueSummary, type UnifiedRevenueSummary } from "@/lib/services/report-platform.service"
+
+// UnifiedRevenueSummary e shape-compatible com KlaviyoRevenueSummary
+// (ambos tem totalRevenue, campaignRevenue, flowRevenue, storeRevenue, currency,
+// partial, missing). Alias local para downstream nao ter que mudar nomes.
+type StoreRevenue = KlaviyoRevenueSummary | UnifiedRevenueSummary
 import { logger } from "@/lib/logger"
 import type { ReportJobResult, ReportJobStoreProgress } from "@/types/report"
 
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     // Step 6: Process stores sequentially
     // CR3: Collect revenue data from return values instead of re-reading cache
-    const revenueMap = new Map<string, KlaviyoRevenueSummary>()
+    const revenueMap = new Map<string, StoreRevenue>()
     let pausedDueToRateLimit = false
     let pausedDueToTimeout = false
 
@@ -124,7 +130,8 @@ export async function POST(request: NextRequest) {
       })
 
       try {
-        const result = await getKlaviyoRevenueForStore(
+        // Usa dispatcher unificado que detecta Klaviyo vs Omnisend automaticamente
+        const result = await getUnifiedRevenueSummary(
           storeId,
           job.period,
           job.start_date,
@@ -323,7 +330,7 @@ async function buildResultSnapshot(
   supabase: ReturnType<typeof createAdminClient>,
   jobId: string,
   storeIds: string[],
-  revenueMap: Map<string, KlaviyoRevenueSummary>,
+  revenueMap: Map<string, StoreRevenue>,
   orgId: string,
 ): Promise<ReportJobResult> {
   // Re-fetch latest progress to know each store's final status

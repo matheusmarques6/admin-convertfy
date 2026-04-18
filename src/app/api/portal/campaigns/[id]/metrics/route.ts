@@ -41,16 +41,31 @@ export async function GET(
       return successResponse(request, { metrics: null })
     }
 
-    // 2. Fetch full metrics from cache
-    // Defense in depth: filter by store_id even after validating ownership
-    const { data: metrics } = await adminClient
-      .from("klaviyo_campaign_metrics")
-      .select("*")
-      .eq("store_id", campaign.store_id)
-      .eq("campaign_id", campaign.klaviyo_campaign_id)
-      .order("fetched_at", { ascending: false })
-      .limit(1)
-      .single()
+    // 2. Fetch full metrics from cache — tenta Klaviyo primeiro, depois Omnisend.
+    //    O campo klaviyo_campaign_id e reutilizado para armazenar o ID externo
+    //    independente da plataforma (em lojas Omnisend, ele contem o campaignID
+    //    do Omnisend).
+    const [klaviyoMetrics, omnisendMetrics] = await Promise.all([
+      adminClient
+        .from("klaviyo_campaign_metrics")
+        .select("*")
+        .eq("store_id", campaign.store_id)
+        .eq("campaign_id", campaign.klaviyo_campaign_id)
+        .order("fetched_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      adminClient
+        .from("omnisend_campaign_metrics")
+        .select("*")
+        .eq("store_id", campaign.store_id)
+        .eq("campaign_id", campaign.klaviyo_campaign_id)
+        .order("fetched_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    // Prefere qualquer um que tenha resultado (cada loja usa UMA plataforma).
+    const metrics = klaviyoMetrics.data || omnisendMetrics.data
 
     if (!metrics) {
       return successResponse(request, { metrics: null })
