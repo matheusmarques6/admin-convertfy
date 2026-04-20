@@ -383,11 +383,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {
         log.error("[Omnisend Flows] build failed", err)
+        const isRateLimit = err instanceof Error && err.name === "OmnisendRateLimitError"
         return NextResponse.json({
-          success: false,
+          success: isRateLimit,
           platform: "omnisend",
-          error: err instanceof Error ? err.message : "Falha ao buscar flows Omnisend",
-        }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+          rateLimited: isRateLimit,
+          fromCache: false,
+          error: isRateLimit ? undefined : (err instanceof Error ? err.message : "Falha ao buscar flows Omnisend"),
+          summary: {},
+          flows: [],
+          currency: "BRL",
+        }, { status: isRateLimit ? 200 : 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     }
 

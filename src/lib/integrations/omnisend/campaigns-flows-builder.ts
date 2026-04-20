@@ -12,10 +12,12 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OmnisendCampaignsFlowsBuilder")
 const CACHE_FRESH_MS = 35 * 60 * 1000
+const STALE_CACHE_MAX_MS = 24 * 60 * 60 * 1000
 
 const PERIOD_DAYS: Record<string, number> = {
   today: 1, yesterday: 1, "1d": 1, "7d": 7, "15d": 15,
@@ -241,63 +243,136 @@ export async function buildOmnisendCampaignsResponse(
     log.warn("[Omnisend Campaigns] Cache read failed, falling through", { error: err })
   }
 
-  // 2) Live fetch
+  // 2) Tenta cache stale como fallback (ate 24h)
+  let staleCache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string } | null = null
+  try {
+    const { data: staleCached } = await admin
+      .from("omnisend_campaign_metrics")
+      .select("*")
+      .eq("store_id", store.storeId)
+      .eq("period_label", period)
+      .order("fetched_at", { ascending: false })
+
+    if (staleCached && staleCached.length > 0) {
+      const latestFetchedAt = new Date(staleCached[0].fetched_at as string)
+      if (Date.now() - latestFetchedAt.getTime() < STALE_CACHE_MAX_MS) {
+        const { data: summaryRow } = await admin
+          .from("store_revenue_summary")
+          .select("currency")
+          .eq("store_id", store.storeId)
+          .limit(1)
+          .single()
+        staleCache = {
+          data: staleCached,
+          currency: (summaryRow?.currency as string) || "BRL",
+          fetchedAt: staleCached[0].fetched_at as string,
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 3) Live fetch
   const credentials = await getStoreCredentials(store.storeId, store.orgId)
   const apiKey = credentials.omnisend_api_key
-  if (!apiKey) throw new Error("API Key Omnisend não configurada")
-
-  const days = daysForPeriod(period, customStartDate, customEndDate)
-  const result = await syncOmnisendForStore({
-    storeId: store.storeId,
-    orgId: store.orgId,
-    apiKey,
-    periodDays: days,
-  })
-
-  if (!result.ok || !result.data) {
-    throw new Error(result.error || "Falha ao sincronizar Omnisend")
+  if (!apiKey) {
+    if (staleCache) {
+      return buildCampaignsFromStaleCache(staleCache, startDateStr, endDateStr, period, statusFilter)
+    }
+    throw new Error("API Key Omnisend não configurada")
   }
 
-  const campaigns: CampaignResponseRow[] = result.data.campaignRows.map((c) => ({
-    id: c.campaign_id,
-    name: c.campaign_name,
-    status: c.campaign_status,
-    sendTime: c.send_time,
-    createdAt: c.send_time || "",
-    channel: c.channel,
-    subject: c.subject,
-    recipients: c.recipients,
-    delivered: c.delivered,
-    deliveryRate: c.delivery_rate,
-    opened: c.opened,
-    openRate: c.open_rate,
-    clicked: c.clicked,
-    clickRate: c.click_rate,
-    clickToOpenRate: c.delivered > 0 && c.opened > 0 ? (c.clicked / c.opened) * 100 : 0,
-    conversions: c.conversions,
-    conversionRate: c.conversion_rate,
-    conversionValue: c.conversion_value,
-    revenuePerRecipient: c.revenue_per_recipient,
-    averageOrderValue: c.conversions > 0 ? c.conversion_value / c.conversions : 0,
-    bounced: c.bounced,
-    bounceRate: c.bounce_rate,
-    unsubscribed: c.unsubscribed,
-    unsubscribeRate: c.unsubscribe_rate,
-    revenue: c.conversion_value,
-  }))
+  const days = daysForPeriod(period, customStartDate, customEndDate)
+  try {
+    const result = await syncOmnisendForStore({
+      storeId: store.storeId,
+      orgId: store.orgId,
+      apiKey,
+      periodDays: days,
+    })
 
+    if (!result.ok || !result.data) {
+      if (staleCache) {
+        log.warn("[Omnisend Campaigns] Sync failed, serving stale cache", { storeId: store.storeId, error: result.error })
+        const resp = buildCampaignsFromStaleCache(staleCache, startDateStr, endDateStr, period, statusFilter)
+        resp.rateLimited = result.errorType === "rate_limit"
+        return resp
+      }
+      throw new Error(result.error || "Falha ao sincronizar Omnisend")
+    }
+
+    const campaigns: CampaignResponseRow[] = result.data.campaignRows.map((c) => ({
+      id: c.campaign_id,
+      name: c.campaign_name,
+      status: c.campaign_status,
+      sendTime: c.send_time,
+      createdAt: c.send_time || "",
+      channel: c.channel,
+      subject: c.subject,
+      recipients: c.recipients,
+      delivered: c.delivered,
+      deliveryRate: c.delivery_rate,
+      opened: c.opened,
+      openRate: c.open_rate,
+      clicked: c.clicked,
+      clickRate: c.click_rate,
+      clickToOpenRate: c.delivered > 0 && c.opened > 0 ? (c.clicked / c.opened) * 100 : 0,
+      conversions: c.conversions,
+      conversionRate: c.conversion_rate,
+      conversionValue: c.conversion_value,
+      revenuePerRecipient: c.revenue_per_recipient,
+      averageOrderValue: c.conversions > 0 ? c.conversion_value / c.conversions : 0,
+      bounced: c.bounced,
+      bounceRate: c.bounce_rate,
+      unsubscribed: c.unsubscribed,
+      unsubscribeRate: c.unsubscribe_rate,
+      revenue: c.conversion_value,
+    }))
+
+    const filtered = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns
+    filtered.sort(sortCampaigns)
+
+    return {
+      success: true,
+      period: { start: startDateStr, end: endDateStr, label: period },
+      fromCache: false,
+      fetchedAt: new Date().toISOString(),
+      currency: result.data.currency || "BRL",
+      summary: aggregateCampaignSummary(filtered),
+      campaigns: filtered,
+      platform: "omnisend",
+    }
+  } catch (err) {
+    if (staleCache) {
+      log.warn("[Omnisend Campaigns] Live-fetch failed, serving stale cache", {
+        storeId: store.storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      const resp = buildCampaignsFromStaleCache(staleCache, startDateStr, endDateStr, period, statusFilter)
+      resp.rateLimited = err instanceof OmnisendRateLimitError
+      return resp
+    }
+    throw err
+  }
+}
+
+function buildCampaignsFromStaleCache(
+  cache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string },
+  startDateStr: string, endDateStr: string, period: string, statusFilter?: string | null
+) {
+  const campaigns = cache.data.map((r) => mapCachedCampaign(r))
   const filtered = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns
   filtered.sort(sortCampaigns)
 
   return {
-    success: true,
+    success: true as const,
     period: { start: startDateStr, end: endDateStr, label: period },
-    fromCache: false,
-    fetchedAt: new Date().toISOString(),
-    currency: result.data.currency || "BRL",
+    fromCache: true,
+    fetchedAt: cache.fetchedAt,
+    currency: cache.currency,
     summary: aggregateCampaignSummary(filtered),
     campaigns: filtered,
-    platform: "omnisend",
+    platform: "omnisend" as const,
+    rateLimited: false,
   }
 }
 
@@ -353,61 +428,133 @@ export async function buildOmnisendFlowsResponse(
     log.warn("[Omnisend Flows] Cache read failed, falling through", { error: err })
   }
 
-  // 2) Live fetch
+  // 2) Tenta cache stale como fallback (ate 24h)
+  let staleFlowCache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string } | null = null
+  try {
+    const { data: staleCached } = await admin
+      .from("omnisend_flow_metrics")
+      .select("*")
+      .eq("store_id", store.storeId)
+      .eq("period_label", period)
+      .order("fetched_at", { ascending: false })
+
+    if (staleCached && staleCached.length > 0) {
+      const latestFetchedAt = new Date(staleCached[0].fetched_at as string)
+      if (Date.now() - latestFetchedAt.getTime() < STALE_CACHE_MAX_MS) {
+        const { data: summaryRow } = await admin
+          .from("store_revenue_summary")
+          .select("currency")
+          .eq("store_id", store.storeId)
+          .limit(1)
+          .single()
+        staleFlowCache = {
+          data: staleCached,
+          currency: (summaryRow?.currency as string) || "BRL",
+          fetchedAt: staleCached[0].fetched_at as string,
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 3) Live fetch
   const credentials = await getStoreCredentials(store.storeId, store.orgId)
   const apiKey = credentials.omnisend_api_key
-  if (!apiKey) throw new Error("API Key Omnisend não configurada")
-
-  const days = daysForPeriod(period, customStartDate, customEndDate)
-  const result = await syncOmnisendForStore({
-    storeId: store.storeId,
-    orgId: store.orgId,
-    apiKey,
-    periodDays: days,
-  })
-
-  if (!result.ok || !result.data) {
-    throw new Error(result.error || "Falha ao sincronizar Omnisend")
+  if (!apiKey) {
+    if (staleFlowCache) {
+      return buildFlowsFromStaleCache(staleFlowCache, startDateStr, endDateStr, period)
+    }
+    throw new Error("API Key Omnisend não configurada")
   }
 
-  const flows: FlowResponseRow[] = result.data.automationRows.map((f) => ({
-    id: f.automation_id,
-    name: f.automation_name,
-    status: f.automation_status,
-    triggerType: f.trigger_type || "custom",
-    created: "",
-    archived: false,
-    recipients: f.recipients,
-    delivered: f.delivered,
-    deliveryRate: f.delivery_rate,
-    opened: f.opened,
-    openRate: f.open_rate,
-    clicked: f.clicked,
-    clickRate: f.click_rate,
-    clickToOpenRate: f.opened > 0 ? (f.clicked / f.opened) * 100 : 0,
-    conversions: f.conversions,
-    conversionRate: f.conversion_rate,
-    conversionValue: f.conversion_value,
-    revenuePerRecipient: f.revenue_per_recipient,
-    averageOrderValue: f.conversions > 0 ? f.conversion_value / f.conversions : 0,
-    bounced: f.bounced,
-    bounceRate: f.bounce_rate,
-    unsubscribed: f.unsubscribed,
-    unsubscribeRate: f.unsubscribe_rate,
-    revenue: f.conversion_value,
-  }))
+  const days = daysForPeriod(period, customStartDate, customEndDate)
+  try {
+    const result = await syncOmnisendForStore({
+      storeId: store.storeId,
+      orgId: store.orgId,
+      apiKey,
+      periodDays: days,
+    })
 
+    if (!result.ok || !result.data) {
+      if (staleFlowCache) {
+        log.warn("[Omnisend Flows] Sync failed, serving stale cache", { storeId: store.storeId, error: result.error })
+        const resp = buildFlowsFromStaleCache(staleFlowCache, startDateStr, endDateStr, period)
+        resp.rateLimited = result.errorType === "rate_limit"
+        return resp
+      }
+      throw new Error(result.error || "Falha ao sincronizar Omnisend")
+    }
+
+    const flows: FlowResponseRow[] = result.data.automationRows.map((f) => ({
+      id: f.automation_id,
+      name: f.automation_name,
+      status: f.automation_status,
+      triggerType: f.trigger_type || "custom",
+      created: "",
+      archived: false,
+      recipients: f.recipients,
+      delivered: f.delivered,
+      deliveryRate: f.delivery_rate,
+      opened: f.opened,
+      openRate: f.open_rate,
+      clicked: f.clicked,
+      clickRate: f.click_rate,
+      clickToOpenRate: f.opened > 0 ? (f.clicked / f.opened) * 100 : 0,
+      conversions: f.conversions,
+      conversionRate: f.conversion_rate,
+      conversionValue: f.conversion_value,
+      revenuePerRecipient: f.revenue_per_recipient,
+      averageOrderValue: f.conversions > 0 ? f.conversion_value / f.conversions : 0,
+      bounced: f.bounced,
+      bounceRate: f.bounce_rate,
+      unsubscribed: f.unsubscribed,
+      unsubscribeRate: f.unsubscribe_rate,
+      revenue: f.conversion_value,
+    }))
+
+    flows.sort((a, b) => b.conversionValue - a.conversionValue)
+
+    return {
+      success: true,
+      period: { start: startDateStr, end: endDateStr, label: period },
+      fromCache: false,
+      fetchedAt: new Date().toISOString(),
+      currency: result.data.currency || "BRL",
+      summary: aggregateFlowSummary(flows),
+      flows,
+      platform: "omnisend",
+    }
+  } catch (err) {
+    if (staleFlowCache) {
+      log.warn("[Omnisend Flows] Live-fetch failed, serving stale cache", {
+        storeId: store.storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      const resp = buildFlowsFromStaleCache(staleFlowCache, startDateStr, endDateStr, period)
+      resp.rateLimited = err instanceof OmnisendRateLimitError
+      return resp
+    }
+    throw err
+  }
+}
+
+function buildFlowsFromStaleCache(
+  cache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string },
+  startDateStr: string, endDateStr: string, period: string
+) {
+  const flows = cache.data.map((r) => mapCachedFlow(r))
   flows.sort((a, b) => b.conversionValue - a.conversionValue)
 
   return {
-    success: true,
+    success: true as const,
     period: { start: startDateStr, end: endDateStr, label: period },
-    fromCache: false,
-    fetchedAt: new Date().toISOString(),
-    currency: result.data.currency || "BRL",
+    fromCache: true,
+    fetchedAt: cache.fetchedAt,
+    currency: cache.currency,
     summary: aggregateFlowSummary(flows),
     flows,
-    platform: "omnisend",
+    platform: "omnisend" as const,
+    rateLimited: false,
   }
 }
 

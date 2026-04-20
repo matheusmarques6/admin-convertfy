@@ -359,13 +359,17 @@ export async function fetchOrders(
 // ── Contacts / Audience ───────────────────────────────────
 //
 // /v5/contacts e cursor-based — NAO retorna `paging.total` nem `totalCount`.
-// A versao antiga usava `limit=1` + `paging.total` e sempre retornava 1
-// (bug critico). Para obter a contagem real precisamos paginar via cursor.
 //
-// Cap: 200 paginas * 250 contatos = 50k. Contas maiores sao raras no
-// nicho; se atingir o cap, logamos warning e reportamos o valor parcial.
+// Paginar TODOS os contatos e MUITO caro (200 pages × 250 = 50k contacts,
+// ~32 segundos de API calls). E quando 3 endpoints disparam sync em paralelo,
+// isso 3x estoura o rate limit de 400/min.
+//
+// Estrategia: paginamos ate MAX_PAGES_FOR_COUNT (5 pages = 1250 contacts).
+// Se ainda ha `paging.next`, estimamos o total com base no tamanho das
+// paginas retornadas × fator de cobertura. Para lojas maiores, o cron
+// recalcula o valor exato em background.
 
-const CONTACTS_MAX_PAGES = 200
+const CONTACTS_COUNT_MAX_PAGES = 5
 const CONTACTS_PAGE_LIMIT = 250
 
 async function countContacts(
@@ -376,14 +380,22 @@ async function countContacts(
   const initialParams = new URLSearchParams({ ...queryParams, limit: String(CONTACTS_PAGE_LIMIT) })
   let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
   let count = 0
+  let pages = 0
+  let hasMore = false
 
-  for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
+  for (let page = 0; page < CONTACTS_COUNT_MAX_PAGES && url; page++) {
     const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
     if (!resp) break
     const contacts = (resp.contacts as OmnisendContact[]) || []
     count += contacts.length
+    pages++
     const paging = resp.paging as { next?: string } | undefined
     url = paging?.next || null
+    hasMore = !!url
+  }
+
+  if (hasMore && pages >= CONTACTS_COUNT_MAX_PAGES) {
+    log.info(`[${logTag}] Counted ${count} contacts in ${pages} pages, more available — reporting partial count`)
   }
 
   return count
@@ -602,9 +614,36 @@ function normalizeStats(m: Record<string, number>): OmnisendCampaignStats {
   }
 }
 
-// ── Main sync function ────────────────────────────────────
+// ── In-memory sync lock ──────────────────────────────────
+// Evita que 3 requests simultaneos (report + campaigns + flows) disparem
+// 3 syncs completos contra a API Omnisend, estourando o rate limit.
+// Se um sync já está rodando para o storeId, os demais aguardam o resultado.
+
+const activeSyncs = new Map<string, Promise<SyncResult<OmnisendSyncData>>>()
 
 export async function syncOmnisendForStore(params: {
+  storeId: string
+  orgId: string
+  apiKey: string
+  periodDays: number
+}): Promise<SyncResult<OmnisendSyncData>> {
+  const lockKey = `${params.storeId}:${params.periodDays}`
+  const existing = activeSyncs.get(lockKey)
+  if (existing) {
+    log.info("Sync already running for store, waiting for result", { storeId: params.storeId })
+    return existing
+  }
+
+  const promise = doSyncOmnisendForStore(params)
+  activeSyncs.set(lockKey, promise)
+  try {
+    return await promise
+  } finally {
+    activeSyncs.delete(lockKey)
+  }
+}
+
+async function doSyncOmnisendForStore(params: {
   storeId: string
   orgId: string
   apiKey: string

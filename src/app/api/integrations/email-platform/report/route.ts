@@ -892,12 +892,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(omnisendReport, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {
         log.error("[Omnisend Report] build failed", err)
+        const isRateLimit = err instanceof Error && err.name === "OmnisendRateLimitError"
         return NextResponse.json({
-          success: false,
-          connected: false,
+          success: isRateLimit,
+          connected: true,
           platform: "omnisend",
-          error: err instanceof Error ? err.message : "Falha ao gerar report Omnisend",
-        }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+          rateLimited: isRateLimit,
+          fromCache: false,
+          error: isRateLimit ? undefined : (err instanceof Error ? err.message : "Falha ao gerar report Omnisend"),
+        }, { status: isRateLimit ? 200 : 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     }
 
