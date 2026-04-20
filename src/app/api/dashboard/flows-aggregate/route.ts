@@ -3,7 +3,6 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
-import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
 import { getUnifiedFlows } from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
@@ -49,18 +48,27 @@ export async function GET(request: NextRequest) {
       return successResponse(request, { flows: [], period })
     }
 
-    // Carrega metadados das lojas (nome + currency para conversao BRL)
+    // Carrega metadados das lojas (nome + currency para conversao BRL).
+    // Currency vem do client_stores (persistido no sync da loja) em vez de
+    // chamar Klaviyo Account API (que exigiria apiKey e 401 para Omnisend).
     const storeIds = Array.from(new Set(flows.map((f) => f.store_id)))
-    const { data: storesMeta } = await supabase
-      .from("client_stores")
-      .select("id, store_name, email_platform")
-      .in("id", storeIds)
+    async function fetchStoresMeta(cols: string) {
+      return supabase.from("client_stores").select(cols).in("id", storeIds)
+    }
+    let metaResp = await fetchStoresMeta("id, store_name, email_platform, currency")
+    if (metaResp.error && /email_platform|currency/.test(metaResp.error.message || "")) {
+      metaResp = await fetchStoresMeta("id, store_name")
+    }
+    const storesMeta = (metaResp.data || []) as unknown as Array<{
+      id: string; store_name?: string | null;
+      email_platform?: string | null; currency?: string | null;
+    }>
 
     const storeNames = new Map<string, string>()
-    const storePlatform = new Map<string, string>()
-    for (const s of storesMeta || []) {
+    const storeCurrency = new Map<string, string>()
+    for (const s of storesMeta) {
       storeNames.set(s.id, s.store_name || "Loja")
-      storePlatform.set(s.id, s.email_platform || "klaviyo")
+      storeCurrency.set(s.id, s.currency || "BRL")
     }
 
     const aggregated = new Map<FlowCategory, {
@@ -82,14 +90,9 @@ export async function GET(request: NextRequest) {
       const category = categorizeFlow(row.flow_name || "")
       const agg = aggregated.get(category)!
 
-      // Klaviyo: pega currency via cache. Omnisend: usa BRL (Omnisend sync ja converte).
-      let currency = "BRL"
-      if (row.platform === "klaviyo") {
-        try {
-          const info = await getCachedAccountInfo(row.store_id)
-          currency = info?.currency || "BRL"
-        } catch { /* ignore */ }
-      }
+      // Currency vem do client_stores. Omnisend sync ja converte para BRL
+      // internamente, entao convertToBRL e no-op nesse caso.
+      const currency = storeCurrency.get(row.store_id) || "BRL"
       const revBRL = await convertToBRL(row.conversion_value, currency)
 
       agg.totalRecipients += row.recipients

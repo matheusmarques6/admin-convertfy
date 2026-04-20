@@ -3,7 +3,6 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
-import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
 import {
   getUnifiedRevenue,
   getUnifiedCampaigns,
@@ -37,13 +36,13 @@ export async function GET(request: NextRequest) {
     }
 
     let storesQuery = await fetchStores(
-      "id, store_name, store_url, platform, email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, is_active, client_id, clients(name)"
+      "id, store_name, store_url, platform, email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, currency, is_active, client_id, clients(name)"
     )
 
     if (storesQuery.error && /email_platform|omnisend_api_key/.test(storesQuery.error.message || "")) {
       log.warn("email_platform/omnisend_api_key columns not found — falling back", { msg: storesQuery.error.message })
       storesQuery = await fetchStores(
-        "id, store_name, store_url, platform, klaviyo_private_key, klaviyo_api_key, is_active, client_id, clients(name)"
+        "id, store_name, store_url, platform, klaviyo_private_key, klaviyo_api_key, currency, is_active, client_id, clients(name)"
       )
     }
 
@@ -96,16 +95,10 @@ export async function GET(request: NextRequest) {
         else if (s.klaviyo_private_key || s.klaviyo_api_key) platform = "klaviyo"
       }
 
-      // Currency: Klaviyo pega da account info; Omnisend ja esta em currency da loja
-      let currency = "BRL"
-      if (platform === "klaviyo") {
-        try {
-          const info = await getCachedAccountInfo(store.id)
-          currency = info?.currency || rev?.currency || "BRL"
-        } catch { /* fallback */ }
-      } else {
-        currency = rev?.currency || "BRL"
-      }
+      // Currency: prioriza o que veio no revenue row (atualizado no sync),
+      // depois client_stores.currency, depois BRL. Nao chamamos Klaviyo
+      // Account API aqui — exigiria apiKey e 401 para lojas Omnisend.
+      const currency = rev?.currency || (s.currency as string | undefined) || "BRL"
 
       const totalRevenue = rev?.total_revenue ?? 0
       const campaignRevenue = rev?.campaign_revenue ?? 0

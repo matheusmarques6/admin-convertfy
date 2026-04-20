@@ -3,7 +3,6 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
-import { getCachedAccountInfo } from "@/lib/integrations/klaviyo/cached-metadata"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { logger } from "@/lib/logger"
 
@@ -25,22 +24,15 @@ export async function GET(request: NextRequest) {
 
     const rows = await getUnifiedRevenue(supabase, orgId, PERIODS as unknown as string[])
 
+    // Currency ja vem do DB (store_revenue_summary.currency). Evitamos chamar
+    // Klaviyo Account API aqui: para lojas Omnisend nao ha apiKey Klaviyo
+    // (retornaria 401) e a informacao persistida e suficiente.
     const currencyCache = new Map<string, string>()
-    async function getCurrency(storeId: string, fallback: string | null, platform?: string): Promise<string> {
+    function getCurrency(storeId: string, fallback: string | null): string {
       if (currencyCache.has(storeId)) return currencyCache.get(storeId)!
-      if (platform === "omnisend") {
-        const c = fallback || "BRL"
-        currencyCache.set(storeId, c)
-        return c
-      }
-      try {
-        const info = await getCachedAccountInfo(storeId)
-        const c = info?.currency || fallback || "BRL"
-        currencyCache.set(storeId, c)
-        return c
-      } catch {
-        return fallback || "BRL"
-      }
+      const c = fallback || "BRL"
+      currencyCache.set(storeId, c)
+      return c
     }
 
     const byPeriod: Record<string, { total: number; campaign: number; flow: number; rates: number[] }> = {}
@@ -49,7 +41,7 @@ export async function GET(request: NextRequest) {
     for (const row of rows) {
       if (!byPeriod[row.period_label]) continue
 
-      const currency = await getCurrency(row.store_id, row.currency, row.platform)
+      const currency = getCurrency(row.store_id, row.currency)
       const totalBRL = await convertToBRL(row.total_revenue, currency)
       const campBRL = await convertToBRL(row.campaign_revenue, currency)
       const flowBRL = await convertToBRL(row.flow_revenue, currency)
