@@ -638,12 +638,36 @@ async function doSyncOmnisendForStore(params: {
     //    (sent + scheduled + inProgress + paused). Descartamos drafts.
     const campaigns = await fetchAllReportCampaigns(apiKey)
     log.info(`Fetched ${campaigns.length} report-eligible campaigns`, { storeId })
+    if (campaigns.length > 0) {
+      const sample = campaigns[0]
+      const keys = Object.keys(sample).filter(k => k !== "campaignID" && k !== "name")
+      log.info(`[DIAG] Campaign sample fields: ${keys.join(", ")}`, {
+        storeId,
+        hasStats: !!sample.stats,
+        sampleKeys: keys.slice(0, 20),
+        statsKeys: sample.stats ? Object.keys(sample.stats) : [],
+        rawStatsSnippet: sample.stats ? JSON.stringify(sample.stats).slice(0, 300) : "null",
+        statisticsField: typeof (sample as Record<string, unknown>).statistics,
+        trackingField: typeof (sample as Record<string, unknown>).tracking,
+      })
+    }
 
     await sleep(200)
 
     // 2. Fetch automations (v5 cursor-based)
     const automations = await fetchAutomations(apiKey)
     log.info(`Fetched ${automations.length} automations`, { storeId })
+    if (automations.length > 0) {
+      const sample = automations[0]
+      const keys = Object.keys(sample).filter(k => k !== "automationID" && k !== "name")
+      log.info(`[DIAG] Automation sample fields: ${keys.join(", ")}`, {
+        storeId,
+        hasStats: !!sample.stats,
+        sampleKeys: keys.slice(0, 20),
+        statsKeys: sample.stats ? Object.keys(sample.stats) : [],
+        rawStatsSnippet: sample.stats ? JSON.stringify(sample.stats).slice(0, 300) : "null",
+      })
+    }
 
     await sleep(200)
 
@@ -651,7 +675,12 @@ async function doSyncOmnisendForStore(params: {
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
     const orders = await fetchOrders(apiKey, startDate, endDate)
-    log.info(`Fetched ${orders.length} orders for ${periodDays}d period`, { storeId })
+    log.info(`Fetched ${orders.length} orders for ${periodDays}d period`, {
+      storeId,
+      dateFrom: toYMD(startDate),
+      dateTo: toYMD(endDate),
+      sampleOrder: orders.length > 0 ? JSON.stringify(orders[0]).slice(0, 400) : "none",
+    })
 
     // Currency derivada dos proprios orders (Omnisend nao expoe GET brand com API key)
     const currency = deriveCurrencyFromOrders(orders, "USD")
@@ -676,6 +705,7 @@ async function doSyncOmnisendForStore(params: {
     //     todas as campanhas do periodo, sem limite de 20.
     const batchCampaignStats = await fetchBatchCampaignStats(apiKey, startDate, endDate)
     const batchAutomationStats = await fetchBatchAutomationStats(apiKey, startDate, endDate)
+    log.info(`[DIAG] Batch stats results: campaigns=${batchCampaignStats.size}, automations=${batchAutomationStats.size}`, { storeId })
 
     // Merge: stats do batch tem prioridade sobre o stats inline do v3
     for (const camp of campaigns) {
@@ -717,6 +747,18 @@ async function doSyncOmnisendForStore(params: {
     }
 
     // 7. Map campaigns to rows
+    if (campaigns.length > 0) {
+      const withStats = campaigns.filter(c => c.stats && Object.keys(c.stats).length > 0).length
+      log.info(`[DIAG] Post-enrichment: ${withStats}/${campaigns.length} campaigns have stats`, { storeId })
+      if (withStats === 0 && campaigns.length > 0) {
+        const raw = campaigns[0] as Record<string, unknown>
+        const allKeys = Object.keys(raw)
+        log.warn(`[DIAG] First campaign has NO stats. All keys: ${allKeys.join(", ")}`, {
+          storeId,
+          rawSnippet: JSON.stringify(raw).slice(0, 500),
+        })
+      }
+    }
     const campaignRows: OmnisendCampaignRow[] = campaigns.map((c) => {
       const s = c.stats || ({} as OmnisendCampaignStats)
       const sent = s.sent || 0
