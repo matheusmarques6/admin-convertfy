@@ -340,21 +340,22 @@ function buildFromCache(
   let unsubRateSum = 0
   let rateCount = 0
 
-  const campaignsArr = cache.campaignRows.map((c: Record<string, unknown>) => {
+  // Janela do periodo para filtrar campanhas (status=sent E send_time dentro).
+  // O sync persiste TODAS as campanhas (nao apenas da janela) para alimentar
+  // o calendario; o filtro do periodo acontece aqui no report-builder.
+  const dateFromMs = new Date(`${dateRange.startDateStr}T00:00:00`).getTime()
+  const dateToMs = new Date(`${dateRange.endDateStr}T23:59:59.999`).getTime()
+  const isInPeriod = (sendTime: string | null): boolean => {
+    if (!sendTime) return false
+    const t = new Date(sendTime).getTime()
+    return !Number.isNaN(t) && t >= dateFromMs && t <= dateToMs
+  }
+
+  const campaignsArrAll = cache.campaignRows.map((c: Record<string, unknown>) => {
     const delivered = Number(c.delivered) || 0
     const opened = Number(c.opened) || 0
     const clicked = Number(c.clicked) || 0
     const conversions = Number(c.conversions) || 0
-
-    totalDelivered += delivered
-    totalOpens += opened
-    totalClicks += clicked
-    totalConversions += conversions
-    if (delivered > 0) {
-      bounceRateSum += Number(c.bounce_rate) || 0
-      unsubRateSum += Number(c.unsubscribe_rate) || 0
-      rateCount++
-    }
 
     return {
       campaignId: c.campaign_id as string,
@@ -372,6 +373,22 @@ function buildFromCache(
       status: (c.campaign_status as string) || "sent",
     }
   })
+
+  const campaignsArr = campaignsArrAll.filter(
+    (c) => c.status === "sent" && isInPeriod(c.sendTime)
+  )
+
+  for (const c of campaignsArr) {
+    totalDelivered += c.delivered
+    totalOpens += c.opens
+    totalClicks += c.clicks
+    totalConversions += c.conversions
+    if (c.delivered > 0) {
+      bounceRateSum += c.bounceRate
+      unsubRateSum += c.unsubscribeRate
+      rateCount++
+    }
+  }
 
   const flowsArr = cache.flowRows.map((f: Record<string, unknown>) => {
     const delivered = Number(f.delivered) || 0
@@ -612,32 +629,45 @@ async function buildFromLiveFetch(
   let unsubRateSum = 0
   let rateCount = 0
 
-  const campaignsArr = d.campaignRows.map((c) => {
+  const dateFromMs = new Date(`${dateRange.startDateStr}T00:00:00`).getTime()
+  const dateToMs = new Date(`${dateRange.endDateStr}T23:59:59.999`).getTime()
+  const isInPeriod = (sendTime: string | null): boolean => {
+    if (!sendTime) return false
+    const t = new Date(sendTime).getTime()
+    return !Number.isNaN(t) && t >= dateFromMs && t <= dateToMs
+  }
+
+  const campaignsArrAll = d.campaignRows.map((c) => ({
+    campaignId: c.campaign_id,
+    name: c.campaign_name,
+    status: c.campaign_status,
+    revenue: c.conversion_value,
+    conversions: c.conversions,
+    delivered: c.delivered,
+    opens: c.opened,
+    clicks: c.clicked,
+    openRate: c.open_rate,
+    clickRate: c.click_rate,
+    bounceRate: c.bounce_rate,
+    unsubscribeRate: c.unsubscribe_rate,
+    sendTime: c.send_time,
+  }))
+
+  const campaignsArr = campaignsArrAll.filter(
+    (c) => c.status === "sent" && isInPeriod(c.sendTime)
+  )
+
+  for (const c of campaignsArr) {
     totalDelivered += c.delivered
-    totalOpens += c.opened
-    totalClicks += c.clicked
+    totalOpens += c.opens
+    totalClicks += c.clicks
     totalConversions += c.conversions
     if (c.delivered > 0) {
-      bounceRateSum += c.bounce_rate
-      unsubRateSum += c.unsubscribe_rate
+      bounceRateSum += c.bounceRate
+      unsubRateSum += c.unsubscribeRate
       rateCount++
     }
-    return {
-      campaignId: c.campaign_id,
-      name: c.campaign_name,
-      status: c.campaign_status,
-      revenue: c.conversion_value,
-      conversions: c.conversions,
-      delivered: c.delivered,
-      opens: c.opened,
-      clicks: c.clicked,
-      openRate: c.open_rate,
-      clickRate: c.click_rate,
-      bounceRate: c.bounce_rate,
-      unsubscribeRate: c.unsubscribe_rate,
-      sendTime: c.send_time,
-    }
-  })
+  }
 
   const flowsArr = d.automationRows.map((f) => {
     totalDelivered += f.delivered
