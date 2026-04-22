@@ -1,6 +1,6 @@
 /**
- * TEMPORARY — Round 5: Statistics API body format discovery
- * The endpoint EXISTS (400 not 404) but needs { queries: [...] } format
+ * TEMPORARY — Round 6: Statistics API with CORRECT body format
+ * Required fields: alias, metrics[], dateRange{from,to}, dimensions[]
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -46,75 +46,83 @@ export async function GET(request: NextRequest) {
   const url = "https://api.omnisend.com/api/analytics/statistics"
   const results: Record<string, unknown> = { store: store.store_name, timestamp: new Date().toISOString() }
 
-  // Variant 1: queries array with metrics + date range
-  results["v1_queries_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+  // V1: all required fields from error message
+  results["v1_correct_format"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
     queries: [{
+      alias: "revenue_30d",
       metrics: ["totalRevenue", "totalOrders", "attributedRevenue", "attributedOrders"],
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["timestamp"]
     }]
   })})
 
-  // Variant 2: queries with filter object
-  results["v2_queries_with_filter"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+  // V2: date range as ISO datetime
+  results["v2_iso_dates"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
     queries: [{
-      metrics: ["totalRevenue", "totalOrders", "attributedRevenue", "attributedOrders"],
-      filter: { dateFrom: "2026-03-23", dateTo: "2026-04-22" }
-    }]
-  })})
-
-  // Variant 3: queries with name + period
-  results["v3_queries_named"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{
-      name: "revenue_30d",
+      alias: "revenue",
       metrics: ["totalRevenue", "totalOrders", "attributedRevenue"],
-      period: { from: "2026-03-23", to: "2026-04-22" }
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: ["timestamp"]
     }]
   })})
 
-  // Variant 4: single metric, minimal
-  results["v4_single_metric"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+  // V3: dimension as "day" instead of "timestamp"
+  results["v3_day_dimension"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
     queries: [{
-      metric: "totalRevenue",
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
+      alias: "rev",
+      metrics: ["totalRevenue", "totalOrders"],
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["day"]
     }]
   })})
 
-  // Variant 5: queries with dimensions (groupBy)
-  results["v5_with_dimensions"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+  // V4: dimension as "date"
+  results["v4_date_dimension"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
     queries: [{
+      alias: "rev",
+      metrics: ["totalRevenue"],
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["date"]
+    }]
+  })})
+
+  // V5: multiple dimensions including campaign
+  results["v5_campaign_dimension"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "by_campaign",
       metrics: ["totalRevenue", "attributedRevenue"],
-      dimensions: ["channel"],
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["timestamp", "campaign"]
     }]
   })})
 
-  // Variant 6: try the /reports endpoint too
-  results["v6_reports_queries"] = await safeFetch("https://api.omnisend.com/api/analytics/reports", { method: "POST", headers: h, body: JSON.stringify({
+  // V6: try "month" dimension
+  results["v6_month_dimension"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
     queries: [{
+      alias: "rev",
+      metrics: ["totalRevenue", "attributedRevenue", "totalOrders"],
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["month"]
+    }]
+  })})
+
+  // V7: try with just totalRevenue as single metric
+  results["v7_single_totalRevenue"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "test",
+      metrics: ["totalRevenue"],
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["timestamp"]
+    }]
+  })})
+
+  // V8: stable version header instead of preview
+  results["v8_stable_version"] = await safeFetch(url, { method: "POST", headers: { ...h, "Omnisend-Version": "2026-03-15" }, body: JSON.stringify({
+    queries: [{
+      alias: "revenue",
       metrics: ["totalRevenue", "totalOrders", "attributedRevenue"],
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
-    }]
-  })})
-
-  // Variant 7: try with stable version header
-  results["v7_stable_version"] = await safeFetch(url, { method: "POST", headers: { ...h, "Omnisend-Version": "2026-03-15" }, body: JSON.stringify({
-    queries: [{
-      metrics: ["totalRevenue", "totalOrders", "attributedRevenue", "attributedOrders"],
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
-    }]
-  })})
-
-  // Variant 8: metrics as string not array
-  results["v8_metrics_string"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{
-      metrics: "totalRevenue,totalOrders,attributedRevenue",
-      dateFrom: "2026-03-23",
-      dateTo: "2026-04-22"
+      dateRange: { from: "2026-03-23", to: "2026-04-22" },
+      dimensions: ["timestamp"]
     }]
   })})
 
