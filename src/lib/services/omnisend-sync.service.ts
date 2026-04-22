@@ -24,19 +24,12 @@ import {
   omnisendPaginateV5,
   OMNISEND_V3,
   OMNISEND_V5,
-  OMNISEND_V2026,
   OMNISEND_CAMPAIGNS_INTERVAL_MS,
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
   OmnisendPermissionError,
   sleep,
 } from "@/lib/integrations/omnisend/client"
-
-/** Converte ISO 8601 ou Date para YYYY-MM-DD (formato exigido por /v3/orders). */
-function toYMD(date: string | Date): string {
-  const d = typeof date === "string" ? new Date(date) : date
-  return d.toISOString().slice(0, 10)
-}
 
 const log = logger.child("OmnisendSync")
 
@@ -77,30 +70,50 @@ export interface OmnisendSegment {
 }
 
 export interface OmnisendCampaign {
-  campaignID: string
+  campaignID?: string
+  id?: string
   name: string
-  status: string // draft, scheduled, inProgress, sent, paused
-  type?: string // regular, abTest
-  channel?: string // email, sms, push
+  status: string
+  type?: string
+  channel?: string
   subject?: string
   createdAt?: string
   updatedAt?: string
-  sendAt?: string // scheduled send time
+  sendAt?: string
   completedAt?: string
   stats?: OmnisendCampaignStats
-  // v3 API also nests these
+  statistics?: OmnisendCampaignStats
   [key: string]: unknown
 }
 
+function getCampaignId(c: OmnisendCampaign): string {
+  return c.campaignID || c.id || ""
+}
+
+function getCampaignStats(c: OmnisendCampaign): OmnisendCampaignStats {
+  return c.stats || c.statistics || ({} as OmnisendCampaignStats)
+}
+
 export interface OmnisendAutomation {
-  automationID: string
+  automationID?: string
+  id?: string
   name: string
-  status: string // enabled, disabled, draft
+  status: string
   triggerType?: string
+  trigger?: string
   createdAt?: string
   updatedAt?: string
   stats?: OmnisendCampaignStats
+  statistics?: OmnisendCampaignStats
   [key: string]: unknown
+}
+
+function getAutomationId(a: OmnisendAutomation): string {
+  return a.automationID || a.id || ""
+}
+
+function getAutomationStats(a: OmnisendAutomation): OmnisendCampaignStats {
+  return a.stats || a.statistics || ({} as OmnisendCampaignStats)
 }
 
 export interface OmnisendOrder {
@@ -211,45 +224,7 @@ export interface SyncResult<T> {
   retryAfterMs?: number
 }
 
-// ── Brand info ────────────────────────────────────────────
-//
-// NOTE: Omnisend nao expoe um GET /v5/brands/current com API key — esse
-// endpoint e OAuth POST usado para CONECTAR a loja. Derivamos currency dos
-// proprios orders (cada order tem `currency`) como fallback seguro. Se nao
-// houver orders no periodo, caimos em "USD".
-
-export function deriveCurrencyFromOrders(orders: OmnisendOrder[], fallback = "USD"): string {
-  for (const o of orders) {
-    if (o.currency && typeof o.currency === "string") return o.currency
-  }
-  return fallback
-}
-
 // ── Campaigns ─────────────────────────────────────────────
-
-export async function fetchCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  // OMNISEND_CAMPAIGNS_INTERVAL_MS (1100ms) e defesa EMPIRICA contra 429
-  // observados em /v3/campaigns — nao ha doc oficial de tier "1 RPS per client".
-  // NOTE: comentario anterior afirmava que v3 /campaigns so aceita sort em
-  // sent/clicked/bounced/... (rejeitando createdAt) — ISSO NAO FOI CONFIRMADO
-  // NA DOC OFICIAL. Pode ter vindo de um 422 observado empiricamente. A doc
-  // v2026-03-15 nova aceita createdAt/updatedAt/name. Validar em staging
-  // antes de mudar a estrategia.
-  return omnisendPaginateV3<OmnisendCampaign>(apiKey, `${OMNISEND_V3}/campaigns`, "campaigns", {
-    logTag: "OmnisendCampaigns",
-    intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
-  })
-}
-
-export async function fetchSentCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  // Filter to only sent campaigns (status=sent) — tier 1 RPS
-  // sort=sent ordena pela data de envio (desc = mais recentes primeiro).
-  return omnisendPaginateV3<OmnisendCampaign>(apiKey, `${OMNISEND_V3}/campaigns`, "campaigns", {
-    logTag: "OmnisendSentCampaigns",
-    queryParams: { status: "sent", sort: "sent", sortDirection: "desc" },
-    intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
-  })
-}
 
 /**
  * Busca campanhas em TODOS os status relevantes para relatorio.
@@ -258,7 +233,7 @@ export async function fetchSentCampaigns(apiKey: string): Promise<OmnisendCampai
  * comparado com a versao anterior que fazia 1 request por status.
  */
 export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  const REPORT_STATUSES = new Set(["sent", "scheduled", "inProgress", "paused"])
+  const EXCLUDE_STATUSES = new Set(["draft"])
 
   const all = await omnisendPaginateV3<OmnisendCampaign>(
     apiKey,
@@ -269,90 +244,68 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
       intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
     }
   )
-  return all.filter((c) => REPORT_STATUSES.has(c.status))
-}
 
-// ── Campaign Stats v5 (detailed) ──────────────────────────
+  if (all.length > 0) {
+    const statusBreakdown: Record<string, number> = {}
+    for (const c of all) {
+      const s = (c.status || "unknown").toLowerCase()
+      statusBreakdown[s] = (statusBreakdown[s] || 0) + 1
+    }
+    log.info(`[DIAG] Campaign statuses: ${JSON.stringify(statusBreakdown)}, total=${all.length}`)
+  }
 
-export async function fetchCampaignStatsV5(
-  apiKey: string,
-  campaignID: string
-): Promise<OmnisendCampaignStats | null> {
-  return omnisendRequest<OmnisendCampaignStats>(
-    apiKey,
-    `${OMNISEND_V5}/campaigns/${campaignID}/statistics`,
-    { logTag: "OmnisendCampaignStats" }
-  )
+  return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
 }
 
 // ── Automations ───────────────────────────────────────────
-//
-// Omnisend expoe automations em /v5 (a v3 nao esta documentada).
-// /v5 usa paginacao cursor (paging.next como URL completa).
+
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
   return omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
     logTag: "OmnisendAutomations",
   })
 }
 
-// ── Automation Stats v5 (detailed) ────────────────────────
-
-export async function fetchAutomationStatsV5(
-  apiKey: string,
-  automationID: string
-): Promise<OmnisendCampaignStats | null> {
-  return omnisendRequest<OmnisendCampaignStats>(
-    apiKey,
-    `${OMNISEND_V5}/automations/${automationID}/statistics`,
-    { logTag: "OmnisendAutomationStats" }
-  )
-}
-
 // ── Segments ──────────────────────────────────────────────
-//
-// /v5/segments usa paginacao cursor — a versao antiga lia apenas a primeira
-// pagina (truncando em 250 segmentos) porque so usava o GET direto.
+
 export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> {
   return omnisendPaginateV5<OmnisendSegment>(apiKey, `${OMNISEND_V5}/segments`, "segments", {
     logTag: "OmnisendSegments",
-    maxPages: 40, // cap em 10k segmentos
+    maxPages: 40,
   })
 }
 
-// ── Orders (for revenue attribution) ──────────────────────
+// ── Events (revenue attribution via placed order events) ─
 
-export async function fetchOrders(
+export interface OmnisendEvent {
+  eventID?: string
+  eventName?: string
+  email?: string
+  contactID?: string
+  createdAt?: string
+  systemName?: string
+  action?: string
+  [key: string]: unknown
+}
+
+export async function fetchPlacedOrderEvents(
   apiKey: string,
   startDate: string,
   endDate: string
-): Promise<OmnisendOrder[]> {
-  // Omnisend /v3/orders exige dateFrom/dateTo no formato YYYY-MM-DD.
-  // Passar ISO 8601 completo resulta em 422 ou truncamento silencioso.
-  return omnisendPaginateV3<OmnisendOrder>(apiKey, `${OMNISEND_V3}/orders`, "orders", {
-    logTag: "OmnisendOrders",
+): Promise<OmnisendEvent[]> {
+  return omnisendPaginateV5<OmnisendEvent>(apiKey, `${OMNISEND_V5}/events`, "events", {
+    logTag: "OmnisendPlacedOrders",
     queryParams: {
-      dateFrom: toYMD(startDate),
-      dateTo: toYMD(endDate),
+      from: startDate,
+      to: endDate,
     },
-    maxPages: 50, // Orders can be many — cap at 50 pages (12,500 orders)
+    maxPages: 200,
   })
 }
 
 // ── Contacts / Audience ───────────────────────────────────
-//
-// /v5/contacts e cursor-based — NAO retorna `paging.total` nem `totalCount`.
-//
-// Paginar TODOS os contatos e MUITO caro (200 pages × 250 = 50k contacts,
-// ~32 segundos de API calls). E quando 3 endpoints disparam sync em paralelo,
-// isso 3x estoura o rate limit de 400/min.
-//
-// Estrategia: paginamos ate MAX_PAGES_FOR_COUNT (5 pages = 1250 contacts).
-// Se ainda ha `paging.next`, estimamos o total com base no tamanho das
-// paginas retornadas × fator de cobertura. Para lojas maiores, o cron
-// recalcula o valor exato em background.
 
-const CONTACTS_COUNT_MAX_PAGES = 5
 const CONTACTS_PAGE_LIMIT = 250
+const CONTACTS_MAX_PAGES = 100
 
 async function countContacts(
   apiKey: string,
@@ -363,23 +316,32 @@ async function countContacts(
   let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
   let count = 0
   let pages = 0
-  let hasMore = false
 
-  for (let page = 0; page < CONTACTS_COUNT_MAX_PAGES && url; page++) {
+  for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
     const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
     if (!resp) break
+
+    // Primeira pagina: tentar extrair total direto do paging (se a API fornecer)
+    if (page === 0) {
+      const paging = resp.paging as Record<string, unknown> | undefined
+      if (paging && typeof paging.total === "number") {
+        log.info(`[${logTag}] Got total from paging.total: ${paging.total}`)
+        return paging.total as number
+      }
+      if (typeof (resp as Record<string, unknown>).totalCount === "number") {
+        log.info(`[${logTag}] Got total from totalCount: ${(resp as Record<string, unknown>).totalCount}`)
+        return (resp as Record<string, unknown>).totalCount as number
+      }
+    }
+
     const contacts = (resp.contacts as OmnisendContact[]) || []
     count += contacts.length
     pages++
     const paging = resp.paging as { next?: string } | undefined
     url = paging?.next || null
-    hasMore = !!url
   }
 
-  if (hasMore && pages >= CONTACTS_COUNT_MAX_PAGES) {
-    log.info(`[${logTag}] Counted ${count} contacts in ${pages} pages, more available — reporting partial count`)
-  }
-
+  log.info(`[${logTag}] Counted ${count} contacts in ${pages} pages`)
   return count
 }
 
@@ -394,34 +356,6 @@ export async function fetchContactCounts(apiKey: string): Promise<{
   return { totalContacts, subscribedContacts }
 }
 
-// ── Revenue from orders ───────────────────────────────────
-
-function computeRevenueFromOrders(orders: OmnisendOrder[]): {
-  totalRevenue: number
-  totalOrders: number
-  campaignRevenue: number
-  automationRevenue: number
-} {
-  let totalRevenue = 0
-  let campaignRevenue = 0
-  let automationRevenue = 0
-  let totalOrders = 0
-
-  for (const order of orders) {
-    const sum = order.orderSum || 0
-    totalRevenue += sum
-    totalOrders++
-
-    if (order.campaignID) {
-      campaignRevenue += sum
-    } else if (order.automationID) {
-      automationRevenue += sum
-    }
-  }
-
-  return { totalRevenue, totalOrders, campaignRevenue, automationRevenue }
-}
-
 // ── Compute rates helper ──────────────────────────────────
 
 function safeRate(numerator: number, denominator: number): number {
@@ -429,172 +363,10 @@ function safeRate(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 10000) / 100
 }
 
-// ── Statistics API batch (v2026-03-15) ────────────────────
-//
-// Endpoint: POST /v2026-03-15/statistics
-// Retorna metricas de TODAS as campaigns/automations em UMA chamada, com
-// dateFrom/dateTo nativo. Substitui os loops de /v5/{id}/statistics que
-// eram limitados a 20 itens por conta do rate limit de 1 RPS.
-
-interface BatchStatRow {
-  dimensions: Record<string, string | number>
-  metrics: Record<string, number>
-}
-
-interface BatchStatsResponse {
-  rows?: BatchStatRow[]
-  data?: BatchStatRow[] // Omnisend as vezes usa `data` em vez de `rows`
-}
-
-// Metricas do Statistics API (v2026-preview). Nomes confirmados na doc oficial
-// "What's New - April 2026": totalOrders, totalRevenue, attributedRevenue,
-// totalOrderedProductUnits, attributedOrderedProductUnits.
-// NOTE: mantemos "ordersCount" como alias temporario — normalizeStats aceita
-// ambos. Demais metricas (clickToOpenRate, complaintRate, averageOrderValue,
-// uniqueOpened, etc.) nao foram confirmadas textualmente na doc; se a API
-// rejeitar o POST, remover os nao-suportados aqui.
-const STATS_METRICS = [
-  "sent",
-  "delivered",
-  "uniqueOpened",
-  "opened",
-  "uniqueClicked",
-  "clicked",
-  "bounced",
-  "complained",
-  "unsubscribed",
-  "totalRevenue",
-  "attributedRevenue",
-  "totalOrders",
-  "ordersCount",
-  "averageOrderValue",
-  "clickToOpenRate",
-  "complaintRate",
-]
-
-/**
- * Busca em lote stats de todas as campanhas no periodo via Statistics API.
- * Retorna um Map<campaignId, stats> — vazio se o endpoint nao estiver
- * disponivel (conta sem acesso beta, etc.).
- */
-async function fetchBatchCampaignStats(
-  apiKey: string,
-  dateFrom: string,
-  dateTo: string
-): Promise<Map<string, OmnisendCampaignStats>> {
-  const resultMap = new Map<string, OmnisendCampaignStats>()
-  try {
-    const resp = await omnisendRequest<BatchStatsResponse>(apiKey, `${OMNISEND_V2026}/statistics`, {
-      method: "POST",
-      logTag: "OmnisendBatchStatsCamp",
-      body: {
-        metrics: STATS_METRICS,
-        dimensions: ["campaignId"],
-        filter: { dateFrom: toYMD(dateFrom), dateTo: toYMD(dateTo) },
-      },
-    })
-    if (!resp) {
-      log.warn("Batch campaign stats returned null — endpoint indisponivel ou payload invalido (ver log [OmnisendBatchStatsCamp])")
-      return resultMap
-    }
-    const rows = resp.rows || resp.data || []
-    for (const row of rows) {
-      const id = String(row.dimensions?.campaignId || "")
-      if (!id) continue
-      resultMap.set(id, normalizeStats(row.metrics))
-    }
-    log.info(`Batch campaign stats: ${resultMap.size} entries`)
-  } catch (err) {
-    // Propagar erros de auth/rate-limit; demais sao engolidos com log EXPLICITO
-    // para permitir fallback via v5/{id}/statistics sem mascarar o problema.
-    if (
-      err instanceof OmnisendRateLimitError ||
-      err instanceof OmnisendInvalidKeyError ||
-      err instanceof OmnisendPermissionError
-    ) {
-      throw err
-    }
-    log.error("Batch campaign stats request error — usando fallback v5", {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-  return resultMap
-}
-
-/**
- * Mesmo padrao para automations.
- */
-async function fetchBatchAutomationStats(
-  apiKey: string,
-  dateFrom: string,
-  dateTo: string
-): Promise<Map<string, OmnisendCampaignStats>> {
-  const resultMap = new Map<string, OmnisendCampaignStats>()
-  try {
-    const resp = await omnisendRequest<BatchStatsResponse>(apiKey, `${OMNISEND_V2026}/statistics`, {
-      method: "POST",
-      logTag: "OmnisendBatchStatsAuto",
-      body: {
-        metrics: STATS_METRICS,
-        dimensions: ["automationId"],
-        filter: { dateFrom: toYMD(dateFrom), dateTo: toYMD(dateTo) },
-      },
-    })
-    if (!resp) {
-      log.warn("Batch automation stats returned null — endpoint indisponivel ou payload invalido (ver log [OmnisendBatchStatsAuto])")
-      return resultMap
-    }
-    const rows = resp.rows || resp.data || []
-    for (const row of rows) {
-      const id = String(row.dimensions?.automationId || "")
-      if (!id) continue
-      resultMap.set(id, normalizeStats(row.metrics))
-    }
-    log.info(`Batch automation stats: ${resultMap.size} entries`)
-  } catch (err) {
-    if (
-      err instanceof OmnisendRateLimitError ||
-      err instanceof OmnisendInvalidKeyError ||
-      err instanceof OmnisendPermissionError
-    ) {
-      throw err
-    }
-    log.error("Batch automation stats request error — usando fallback v5", {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-  return resultMap
-}
-
-/**
- * Normaliza o formato de metrics do Statistics API para OmnisendCampaignStats.
- * O batch retorna metricas em `metrics.{nome}`; mapeamos para os nomes que o
- * resto do pipeline espera.
- */
-function normalizeStats(m: Record<string, number>): OmnisendCampaignStats {
-  // Nome oficial do campo na doc do Statistics API (v2026-preview) e
-  // "totalOrders". Mantemos fallback para "ordersCount" para compatibilidade
-  // com respostas antigas ou casos em que a API aceite o alias.
-  const totalOrders = m.totalOrders ?? m.ordersCount
-  return {
-    sent: m.sent,
-    delivered: m.delivered,
-    opened: m.opened,
-    uniqueOpened: m.uniqueOpened,
-    clicked: m.clicked,
-    uniqueClicked: m.uniqueClicked,
-    bounced: m.bounced,
-    complained: m.complained,
-    unsubscribed: m.unsubscribed,
-    totalRevenue: m.totalRevenue ?? m.attributedRevenue,
-    revenue: m.attributedRevenue ?? m.totalRevenue,
-    ordersCount: totalOrders,
-    orders: totalOrders,
-    averageOrderValue: m.averageOrderValue,
-    clickToOpenRate: m.clickToOpenRate,
-    complaintRate: m.complaintRate,
-  }
-}
+// ── Statistics API (REMOVIDA) ─────────────────────────────
+// Os endpoints /v2026-preview/statistics, /v5/campaigns/{id}/statistics e
+// /v5/automations/{id}/statistics NAO existem publicamente (404 confirmado).
+// Stats vem inline na resposta de /v3/campaigns e /v5/automations.
 
 // ── In-memory sync lock ──────────────────────────────────
 // Evita que 3 requests simultaneos (report + campaigns + flows) disparem
@@ -671,19 +443,18 @@ async function doSyncOmnisendForStore(params: {
 
     await sleep(200)
 
-    // 3. Fetch orders for revenue attribution (dateFrom/To normalizados YYYY-MM-DD dentro de fetchOrders)
+    // 3. Fetch placed order events for revenue attribution
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const orders = await fetchOrders(apiKey, startDate, endDate)
-    log.info(`Fetched ${orders.length} orders for ${periodDays}d period`, {
+    const events = await fetchPlacedOrderEvents(apiKey, startDate, endDate)
+    log.info(`Fetched ${events.length} events for ${periodDays}d period`, {
       storeId,
-      dateFrom: toYMD(startDate),
-      dateTo: toYMD(endDate),
-      sampleOrder: orders.length > 0 ? JSON.stringify(orders[0]).slice(0, 400) : "none",
+      sampleEvent: events.length > 0 ? JSON.stringify(events[0]).slice(0, 600) : "none",
+      sampleKeys: events.length > 0 ? Object.keys(events[0]) : [],
     })
 
-    // Currency derivada dos proprios orders (Omnisend nao expoe GET brand com API key)
-    const currency = deriveCurrencyFromOrders(orders, "USD")
+    // Currency: tenta extrair dos eventos; default EUR para lojas europeias
+    const currency = "EUR"
 
     await sleep(200)
 
@@ -697,70 +468,53 @@ async function doSyncOmnisendForStore(params: {
     const segments = await fetchSegments(apiKey)
     log.info(`Fetched ${segments.length} segments`, { storeId })
 
-    // 6. Compute revenue from orders
-    const orderRevenue = computeRevenueFromOrders(orders)
-
-    // 6b. Enrich TODAS as campanhas/automations via Statistics API batch
-    //     (POST /v2026-03-15/statistics) — UMA chamada retorna stats para
-    //     todas as campanhas do periodo, sem limite de 20.
-    const batchCampaignStats = await fetchBatchCampaignStats(apiKey, startDate, endDate)
-    const batchAutomationStats = await fetchBatchAutomationStats(apiKey, startDate, endDate)
-    log.info(`[DIAG] Batch stats results: campaigns=${batchCampaignStats.size}, automations=${batchAutomationStats.size}`, { storeId })
-
-    // Merge: stats do batch tem prioridade sobre o stats inline do v3
-    for (const camp of campaigns) {
-      const fromBatch = batchCampaignStats.get(camp.campaignID)
-      if (fromBatch) {
-        camp.stats = { ...camp.stats, ...fromBatch }
+    // 6. Revenue: computar dos eventos placed order
+    //    TODO: refinar quando soubermos o shape exato dos events
+    let totalEventRevenue = 0
+    let totalEventOrders = 0
+    for (const evt of events) {
+      const val = Number((evt as Record<string, unknown>).value
+        || (evt as Record<string, unknown>).$value
+        || (evt as Record<string, unknown>).orderSum
+        || 0)
+      if (val > 0) {
+        totalEventRevenue += val
+        totalEventOrders++
       }
     }
-    for (const auto of automations) {
-      const fromBatch = batchAutomationStats.get(auto.automationID)
-      if (fromBatch) {
-        auto.stats = { ...auto.stats, ...fromBatch }
-      }
-    }
+    log.info(`[DIAG] Events revenue: ${totalEventRevenue}, orders: ${totalEventOrders}`, { storeId })
 
-    // 6c. Fallback: se o batch endpoint falhou (conta sem acesso, erro 403, etc.),
-    //     enriquece as primeiras 20 campanhas/automations via v5/statistics
-    //     como antes — garantindo ao menos parte dos dados.
-    if (batchCampaignStats.size === 0 && campaigns.length > 0) {
-      log.warn("Batch stats unavailable, falling back to v5/campaigns/{id}/statistics (first 20)")
-      for (const camp of campaigns.slice(0, 20)) {
-        try {
-          const detailed = await fetchCampaignStatsV5(apiKey, camp.campaignID)
-          if (detailed) camp.stats = { ...camp.stats, ...detailed }
-          await sleep(200)
-        } catch { /* non-critical */ }
+    // Stats inline: a API retorna stats/statistics no proprio objeto da campanha/automation.
+    // Batch Statistics API e v5/{id}/statistics NAO existem publicamente (404).
+    // Usamos APENAS os stats inline do v3/v5.
+    if (campaigns.length > 0) {
+      const withStats = campaigns.filter(c => getCampaignStats(c) && Object.keys(getCampaignStats(c)).length > 0).length
+      log.info(`[DIAG] Campaigns with inline stats: ${withStats}/${campaigns.length}`, { storeId })
+      if (withStats === 0) {
+        const raw = campaigns[0] as Record<string, unknown>
+        log.warn(`[DIAG] First campaign raw keys: ${Object.keys(raw).join(", ")}`, {
+          storeId,
+          rawSnippet: JSON.stringify(raw).slice(0, 600),
+        })
       }
     }
-    if (batchAutomationStats.size === 0 && automations.length > 0) {
-      log.warn("Batch stats unavailable, falling back to v5/automations/{id}/statistics (first 20)")
-      const activeAutomations = automations.filter(a => a.status === "enabled" || a.status === "active")
-      for (const auto of activeAutomations.slice(0, 20)) {
-        try {
-          const detailed = await fetchAutomationStatsV5(apiKey, auto.automationID)
-          if (detailed) auto.stats = { ...auto.stats, ...detailed }
-          await sleep(200)
-        } catch { /* non-critical */ }
+    if (automations.length > 0) {
+      const withStats = automations.filter(a => getAutomationStats(a) && Object.keys(getAutomationStats(a)).length > 0).length
+      log.info(`[DIAG] Automations with inline stats: ${withStats}/${automations.length}`, { storeId })
+      if (withStats === 0) {
+        const raw = automations[0] as Record<string, unknown>
+        log.warn(`[DIAG] First automation raw keys: ${Object.keys(raw).join(", ")}`, {
+          storeId,
+          rawSnippet: JSON.stringify(raw).slice(0, 600),
+        })
       }
     }
 
     // 7. Map campaigns to rows
-    if (campaigns.length > 0) {
-      const withStats = campaigns.filter(c => c.stats && Object.keys(c.stats).length > 0).length
-      log.info(`[DIAG] Post-enrichment: ${withStats}/${campaigns.length} campaigns have stats`, { storeId })
-      if (withStats === 0 && campaigns.length > 0) {
-        const raw = campaigns[0] as Record<string, unknown>
-        const allKeys = Object.keys(raw)
-        log.warn(`[DIAG] First campaign has NO stats. All keys: ${allKeys.join(", ")}`, {
-          storeId,
-          rawSnippet: JSON.stringify(raw).slice(0, 500),
-        })
-      }
-    }
-    const campaignRows: OmnisendCampaignRow[] = campaigns.map((c) => {
-      const s = c.stats || ({} as OmnisendCampaignStats)
+    const campaignRows: OmnisendCampaignRow[] = campaigns
+      .filter(c => getCampaignId(c))
+      .map((c) => {
+      const s = getCampaignStats(c)
       const sent = s.sent || 0
       const delivered = s.delivered || 0
       const opened = s.uniqueOpened || s.opened || 0
@@ -774,7 +528,7 @@ async function doSyncOmnisendForStore(params: {
       return {
         store_id: storeId,
         org_id: orgId,
-        campaign_id: c.campaignID,
+        campaign_id: getCampaignId(c),
         campaign_name: c.name || "Untitled",
         campaign_status: c.status,
         channel: c.channel || "email",
@@ -805,15 +559,16 @@ async function doSyncOmnisendForStore(params: {
     //    historico completo mesmo para flows pausados/desativados.
     const automationRows: OmnisendAutomationRow[] = automations
       .filter((a) => {
+        if (!getAutomationId(a)) return false
         const isLive = a.status === "enabled" || a.status === "active"
-        const s = a.stats || ({} as OmnisendCampaignStats)
+        const s = getAutomationStats(a)
         const hasActivity = (s.delivered || 0) > 0
           || (s.totalRevenue || s.revenue || 0) > 0
           || (s.ordersCount || s.orders || 0) > 0
         return isLive || hasActivity
       })
       .map((a) => {
-        const s = a.stats || ({} as OmnisendCampaignStats)
+        const s = getAutomationStats(a)
         const sent = s.sent || 0
         const delivered = s.delivered || 0
         const opened = s.uniqueOpened || s.opened || 0
@@ -826,10 +581,10 @@ async function doSyncOmnisendForStore(params: {
         return {
           store_id: storeId,
           org_id: orgId,
-          automation_id: a.automationID,
+          automation_id: getAutomationId(a),
           automation_name: a.name || "Untitled",
           automation_status: a.status,
-          trigger_type: a.triggerType || null,
+          trigger_type: a.triggerType || a.trigger || null,
           recipients: sent,
           delivered,
           delivery_rate: safeRate(delivered, sent),
@@ -860,8 +615,8 @@ async function doSyncOmnisendForStore(params: {
         segments,
         totalCampaignRevenue,
         totalAutomationRevenue,
-        totalStoreRevenue: orderRevenue.totalRevenue,
-        totalOrders: orderRevenue.totalOrders,
+        totalStoreRevenue: totalEventRevenue,
+        totalOrders: totalEventOrders,
         totalContacts,
         subscribedContacts,
         currency,

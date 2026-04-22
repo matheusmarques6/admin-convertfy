@@ -115,6 +115,7 @@ export async function omnisendRequest<T>(
         method,
         headers: {
           "X-API-KEY": apiKey,
+          "Omnisend-Version": "2024-10-22",
           "Accept": "application/json",
           "Content-Type": "application/json",
         },
