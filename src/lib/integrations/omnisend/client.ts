@@ -161,6 +161,11 @@ export async function omnisendRequest<T>(
           throw new OmnisendPermissionError("Insufficient permissions for this endpoint")
         }
 
+        if (response.status === 404) {
+          log.info(`[${logTag}] 404 Not Found — endpoint or resource does not exist`)
+          return null
+        }
+
         log.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
         return null
       }
