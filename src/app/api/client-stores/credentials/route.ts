@@ -469,6 +469,112 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Deriva o novo email_platform a partir do estado atual da loja + payload
+ * de fields. Retorna null se nao ha alteracao significativa.
+ */
+function derivePlatformAfterUpdate(
+  currentStore: { email_platform?: string | null; omnisend_api_key?: string | null; klaviyo_private_key?: string | null; klaviyo_api_key?: string | null },
+  fields: Record<string, unknown>
+): "klaviyo" | "omnisend" | "none" {
+  const nextOmnisend = "omnisend_api_key" in fields
+    ? Boolean(fields.omnisend_api_key)
+    : Boolean(currentStore.omnisend_api_key)
+  const nextKlaviyoPriv = "klaviyo_private_key" in fields
+    ? Boolean(fields.klaviyo_private_key)
+    : Boolean(currentStore.klaviyo_private_key)
+  const nextKlaviyoPub = "klaviyo_api_key" in fields
+    ? Boolean(fields.klaviyo_api_key)
+    : Boolean(currentStore.klaviyo_api_key)
+  const nextKlaviyo = nextKlaviyoPriv || nextKlaviyoPub
+
+  // Se ambos setados, prioriza aquele que esta sendo definido AGORA neste
+  // request (indica intencao explicita de trocar). Se so um esta setado,
+  // vence ele. Se nenhum, retorna "none".
+  const addingOmnisend = "omnisend_api_key" in fields && Boolean(fields.omnisend_api_key)
+  const addingKlaviyo = ("klaviyo_private_key" in fields && Boolean(fields.klaviyo_private_key))
+    || ("klaviyo_api_key" in fields && Boolean(fields.klaviyo_api_key))
+
+  if (addingOmnisend && !addingKlaviyo) return "omnisend"
+  if (addingKlaviyo && !addingOmnisend) return "klaviyo"
+  if (nextOmnisend && !nextKlaviyo) return "omnisend"
+  if (nextKlaviyo && !nextOmnisend) return "klaviyo"
+  if (nextOmnisend && nextKlaviyo) {
+    // Ambas credenciais presentes e sem indicacao de troca no request:
+    // manter o email_platform atual (se valido) para nao oscilar.
+    if (currentStore.email_platform === "omnisend" || currentStore.email_platform === "klaviyo") {
+      return currentStore.email_platform
+    }
+    return "klaviyo"
+  }
+  return "none"
+}
+
+/**
+ * Migra a loja para uma nova plataforma de email marketing. Quando o
+ * usuario troca de Klaviyo para Omnisend (ou vice-versa), os caches da
+ * plataforma antiga ficam orfaos — o overview continua somando revenue
+ * de Klaviyo que nao corresponde mais a realidade da loja. Este helper
+ * executa o cleanup idempotente.
+ *
+ * Seguro para rodar quando newPlatform == oldPlatform (noop na troca).
+ */
+async function migrateEmailPlatform(
+  storeId: string,
+  newPlatform: "klaviyo" | "omnisend" | "none",
+  oldPlatform: string | null | undefined,
+) {
+  const admin = createAdminClient()
+
+  // Sempre atualiza email_platform para refletir o estado atual das
+  // credenciais (mesmo que nao seja uma "troca" completa).
+  if (oldPlatform !== newPlatform) {
+    await admin
+      .from("client_stores")
+      .update({ email_platform: newPlatform })
+      .eq("id", storeId)
+  }
+
+  const switchingFromKlaviyo = oldPlatform === "klaviyo" && newPlatform === "omnisend"
+  const switchingFromOmnisend = oldPlatform === "omnisend" && newPlatform === "klaviyo"
+
+  if (switchingFromKlaviyo) {
+    log.info("[PlatformMigrate] Klaviyo -> Omnisend cleanup", { storeId })
+    await admin
+      .from("store_revenue_summary")
+      .update({
+        klaviyo_total_revenue: 0,
+        klaviyo_campaign_revenue: 0,
+        klaviyo_flow_revenue: 0,
+      })
+      .eq("store_id", storeId)
+    await admin.from("klaviyo_campaign_metrics").delete().eq("store_id", storeId)
+    await admin.from("klaviyo_flow_metrics").delete().eq("store_id", storeId)
+  } else if (switchingFromOmnisend) {
+    log.info("[PlatformMigrate] Omnisend -> Klaviyo cleanup", { storeId })
+    await admin
+      .from("store_revenue_summary")
+      .update({
+        omnisend_total_revenue: 0,
+        omnisend_campaign_revenue: 0,
+        omnisend_flow_revenue: 0,
+      })
+      .eq("store_id", storeId)
+    // omnisend_total_orders sera zerado se a coluna existir
+    await admin
+      .from("store_revenue_summary")
+      .update({ omnisend_total_orders: 0 })
+      .eq("store_id", storeId)
+      .then((res) => {
+        if (res.error && !/omnisend_total_orders/.test(res.error.message || "")) {
+          log.warn("[PlatformMigrate] Failed to zero omnisend_total_orders", { error: res.error.message })
+        }
+      })
+    await admin.from("omnisend_campaign_metrics").delete().eq("store_id", storeId)
+    await admin.from("omnisend_flow_metrics").delete().eq("store_id", storeId)
+  }
+}
+
 // PUT - Update store with encrypted credentials
 export async function PUT(request: NextRequest) {
   try {
@@ -523,6 +629,15 @@ export async function PUT(request: NextRequest) {
       return successResponse(request, { success: true, message: "No fields to update" })
     }
 
+    // STEP 0: snapshot pre-update do estado de plataforma, para detectar
+    // troca Klaviyo <-> Omnisend e executar o cleanup apos salvar.
+    const adminForLookup = createAdminClient()
+    const { data: preStore } = await adminForLookup
+      .from("client_stores")
+      .select("email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key")
+      .eq("id", store_id)
+      .single()
+
     // STEP 1: Save credentials FIRST (before validation).
     // This prevents data loss if Klaviyo/Shopify API validation times out.
     const { data, error } = await supabase
@@ -535,6 +650,23 @@ export async function PUT(request: NextRequest) {
     if (error) throw error
 
     log.info("Store updated (pre-validation)", { store_id, fields: Object.keys(updates) })
+
+    // STEP 1.5: Reage a troca de plataforma de email marketing. Se o
+    // usuario adicionou credenciais de uma nova plataforma, zera os
+    // caches da antiga para nao poluir o overview. Falhas nao bloqueiam
+    // o save — apenas logam.
+    try {
+      const newPlatform = derivePlatformAfterUpdate(
+        (preStore as { email_platform?: string | null; omnisend_api_key?: string | null; klaviyo_private_key?: string | null; klaviyo_api_key?: string | null }) || {},
+        fields as Record<string, unknown>,
+      )
+      const oldPlatform = preStore?.email_platform as string | null | undefined
+      if (oldPlatform !== newPlatform || (oldPlatform === undefined && newPlatform !== "none")) {
+        await migrateEmailPlatform(store_id, newPlatform, oldPlatform)
+      }
+    } catch (migrationError) {
+      log.warn("Platform migration cleanup failed (credentials already saved)", { store_id, error: migrationError })
+    }
 
     // STEP 2: Validate credentials asynchronously and update validation fields.
     // Even if this times out, the credentials are already persisted.
