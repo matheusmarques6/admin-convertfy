@@ -187,6 +187,11 @@ export async function upsertOmnisendSyncResults(
     ? Math.round((engagedCount / data.totalContacts) * 10000) / 100
     : 0
 
+  // omnisend_total_revenue reflete exatamente o attributedRevenue da
+  // Statistics API — e a fonte de verdade da receita atribuida ao Omnisend.
+  // omnisend_campaign_revenue/omnisend_flow_revenue mantem o breakdown
+  // derivado (campaign=0, flow=attributed) que o report usa como fallback
+  // enquanto a API nao suporta dimension=campaign|workflow.
   const summaryPayload = {
     store_id: store.id,
     org_id: store.org_id,
@@ -195,7 +200,8 @@ export async function upsertOmnisendSyncResults(
     period_end: nowIso,
     store_total_revenue: data.totalStoreRevenue,
     store_orders: data.totalOrders,
-    omnisend_total_revenue: data.totalCampaignRevenue + data.totalAutomationRevenue,
+    omnisend_total_revenue: data.totalAttributedRevenue,
+    omnisend_total_orders: data.totalAttributedOrders,
     omnisend_campaign_revenue: data.totalCampaignRevenue,
     omnisend_flow_revenue: data.totalAutomationRevenue,
     total_leads: data.totalContacts,
@@ -209,9 +215,34 @@ export async function upsertOmnisendSyncResults(
     expires_at: expiresAt,
   }
 
-  const { error: summaryErr } = await supabase
+  log.info("[SyncPersist] writing row", {
+    store_id: store.id,
+    period_label: period,
+    store_total_revenue: data.totalStoreRevenue,
+    store_orders: data.totalOrders,
+    omnisend_total_revenue: data.totalAttributedRevenue,
+    omnisend_total_orders: data.totalAttributedOrders,
+    total_leads: data.totalContacts,
+    engaged_leads: engagedCount,
+  })
+
+  // Fallback: se a migration 20260422_omnisend_total_orders nao foi
+  // aplicada ainda, faz retry sem essa coluna para nao quebrar o sync.
+  let summaryErr: { message: string } | null = null
+  const firstRes = await supabase
     .from("store_revenue_summary")
     .upsert(summaryPayload, { onConflict: "store_id,period_label" })
+  if (firstRes.error && /omnisend_total_orders/.test(firstRes.error.message || "")) {
+    log.warn("[SyncPersist] omnisend_total_orders column missing, retrying without it")
+    const { omnisend_total_orders: _drop, ...payloadWithoutOrders } = summaryPayload
+    void _drop
+    const retryRes = await supabase
+      .from("store_revenue_summary")
+      .upsert(payloadWithoutOrders, { onConflict: "store_id,period_label" })
+    summaryErr = retryRes.error
+  } else {
+    summaryErr = firstRes.error
+  }
   if (summaryErr) {
     log.error(`[SyncPersistence] Failed to upsert Omnisend summary for ${store.id}/${period}:`, summaryErr.message)
   }

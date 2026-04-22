@@ -208,6 +208,8 @@ export interface OmnisendSyncData {
   segments: OmnisendSegment[]
   totalCampaignRevenue: number
   totalAutomationRevenue: number
+  totalAttributedRevenue: number
+  totalAttributedOrders: number
   totalStoreRevenue: number
   totalOrders: number
   totalContacts: number
@@ -666,9 +668,33 @@ async function doSyncOmnisendForStore(params: {
         }
       })
 
-    // 9. Revenue: Stats API provides totals, campaign rows provide inline breakdown
-    const totalCampaignRevenue = campaignRows.reduce((sum, r) => sum + r.conversion_value, 0)
-    const totalAutomationRevenue = revenueStats.attributedRevenue - totalCampaignRevenue
+    // 9. Revenue: Statistics API (Omnisend-Version 2026-03-15) retorna
+    //    attributedRevenue/Orders como totais agregados. NAO suporta breakdown
+    //    por campaign/workflow (unsupported dimension). Como fallback aceito,
+    //    atribuimos tudo a "flow_revenue" (maioria da atribuicao vem de
+    //    automations) e deixamos campaign_revenue em 0.
+    //
+    //    TODO: Omnisend Statistics API (2026-preview/2026-03-15) nao suporta
+    //    dimension='campaign'|'workflow' para attributedRevenue. Revisar
+    //    quando a API for GA e fornecer o breakdown.
+    const totalAttributedRevenue = Math.max(0, revenueStats.attributedRevenue)
+    const totalAttributedOrders = Math.max(0, revenueStats.attributedOrders)
+    const totalCampaignRevenue = 0
+    const totalAutomationRevenue = totalAttributedRevenue
+
+    log.info("[OmnisendSync] Sync summary", {
+      storeId,
+      totalRevenue: revenueStats.totalRevenue,
+      totalOrders: revenueStats.totalOrders,
+      attributedRevenue: totalAttributedRevenue,
+      attributedOrders: totalAttributedOrders,
+      totalContacts,
+      subscribedContacts,
+      engagedContacts: engaged.count,
+      engagedSource: engaged.source,
+      campaignsSent: campaignRows.length,
+      automationsActive: liveAutomationCount,
+    })
 
     return {
       ok: true,
@@ -676,8 +702,10 @@ async function doSyncOmnisendForStore(params: {
         campaignRows,
         automationRows,
         segments,
-        totalCampaignRevenue: Math.max(0, totalCampaignRevenue),
-        totalAutomationRevenue: Math.max(0, totalAutomationRevenue),
+        totalCampaignRevenue,
+        totalAutomationRevenue,
+        totalAttributedRevenue,
+        totalAttributedOrders,
         totalStoreRevenue: revenueStats.totalRevenue,
         totalOrders: revenueStats.totalOrders,
         totalContacts,
