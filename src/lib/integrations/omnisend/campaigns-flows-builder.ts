@@ -11,9 +11,26 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { syncOmnisendForStore, type OmnisendSyncData } from "@/lib/services/omnisend-sync.service"
+import { upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
+
+/** Persiste os dados do sync vivo nas tabelas omnisend_*_metrics +
+ *  store_revenue_summary. Chamado pelos builders de campaigns/flows apos
+ *  um live-fetch bem-sucedido, garantindo que o overview e os reports
+ *  futuros servidos via cache vejam os mesmos numeros. Falhas nao
+ *  bloqueiam a resposta do endpoint. */
+async function persistLiveFetch(storeId: string, orgId: string, period: string, data: OmnisendSyncData) {
+  try {
+    const admin = createAdminClient()
+    await upsertOmnisendSyncResults(admin, { id: storeId, org_id: orgId }, data, period)
+  } catch (err) {
+    log.warn("[Omnisend Builder] Live-fetch persistence failed (non-fatal)", {
+      storeId, period, error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
 
 const log = logger.child("OmnisendCampaignsFlowsBuilder")
 const CACHE_FRESH_MS = 35 * 60 * 1000
@@ -300,6 +317,9 @@ export async function buildOmnisendCampaignsResponse(
       throw new Error(result.error || "Falha ao sincronizar Omnisend")
     }
 
+    // Persiste o sync vivo (idempotente com o cron)
+    await persistLiveFetch(store.storeId, store.orgId, period, result.data)
+
     const campaigns: CampaignResponseRow[] = result.data.campaignRows.map((c) => ({
       id: c.campaign_id,
       name: c.campaign_name,
@@ -484,6 +504,8 @@ export async function buildOmnisendFlowsResponse(
       }
       throw new Error(result.error || "Falha ao sincronizar Omnisend")
     }
+
+    await persistLiveFetch(store.storeId, store.orgId, period, result.data)
 
     const flows: FlowResponseRow[] = result.data.automationRows.map((f) => ({
       id: f.automation_id,

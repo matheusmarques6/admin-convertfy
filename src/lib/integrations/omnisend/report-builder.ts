@@ -14,6 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
 
@@ -606,6 +607,27 @@ async function buildFromLiveFetch(
       throw new OmnisendRateLimitError(result.retryAfterMs ?? 60_000)
     }
     throw new Error(result.error || "Falha ao buscar dados Omnisend")
+  }
+
+  // Persiste os dados vivos em store_revenue_summary +
+  // omnisend_campaign_metrics + omnisend_flow_metrics, mesma rotina do cron.
+  // Antes, apenas o cron persistia; a aba Reports fazia live-fetch mas nao
+  // escrevia no DB — resultado: overview mostrava 0 campanhas / 0 flows
+  // ate o proximo cron. Falhas aqui nao bloqueiam o render do report.
+  try {
+    const admin = createAdminClient()
+    await upsertOmnisendSyncResults(
+      admin,
+      { id: store.storeId, org_id: store.orgId },
+      result.data,
+      period,
+    )
+  } catch (persistErr) {
+    log.warn("[Omnisend Report] Live-fetch persistence failed (non-fatal)", {
+      storeId: store.storeId,
+      period,
+      error: persistErr instanceof Error ? persistErr.message : String(persistErr),
+    })
   }
 
   const d = result.data

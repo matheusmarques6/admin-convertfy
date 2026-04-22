@@ -249,16 +249,56 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
     }
   )
 
+  if (all.length === 0) {
+    // Rede de seguranca: a Omnisend-Version 2026-03-15 parece manter /v5/campaigns,
+    // mas o Addendum observou que essa rota pode "quebrar silenciosamente" quando
+    // a plataforma migra clientes para o novo shape de /api/campaigns. Quando a
+    // paginacao /v5 retorna vazio, tentamos /api/campaigns (que usa o mesmo
+    // nome de item "campaigns" mas paginacao `paging.cursors.after`).
+    log.warn("[OmnisendCampaigns_v5] /v5/campaigns returned 0 items, trying /api/campaigns fallback")
+    const fallback = await paginateApiCampaigns(apiKey)
+    if (fallback.length > 0) {
+      log.info(`[OmnisendCampaigns_api_fallback] Recovered ${fallback.length} campaigns via /api/campaigns`)
+      return fallback.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
+    }
+  }
+
   if (all.length > 0) {
     const statusBreakdown: Record<string, number> = {}
     for (const c of all) {
       const s = (c.status || "unknown").toLowerCase()
       statusBreakdown[s] = (statusBreakdown[s] || 0) + 1
     }
-    log.info(`[DIAG] Campaign statuses: ${JSON.stringify(statusBreakdown)}, total=${all.length}`)
+    const sample = all[0] as Record<string, unknown>
+    log.info(`[DIAG] Campaign statuses: ${JSON.stringify(statusBreakdown)}, total=${all.length}, sampleKeys=${Object.keys(sample).slice(0, 15).join(",")}`)
   }
 
   return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
+}
+
+/** Fallback: paginar /api/campaigns com cursor (Omnisend-Version 2026-03-15).
+ *  Shape: { campaigns: [...], paging: { cursors: { after?: string } } }. */
+async function paginateApiCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
+  const allItems: OmnisendCampaign[] = []
+  let after: string | undefined
+  const MAX_PAGES = 50
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({ limit: "250" })
+    if (after) params.set("after", after)
+    const resp = await omnisendRequest<{
+      campaigns?: OmnisendCampaign[]
+      data?: OmnisendCampaign[]
+      paging?: { cursors?: { after?: string } }
+    }>(apiKey, `${OMNISEND_API}/campaigns?${params}`, { logTag: "OmnisendCampaigns_api" })
+    if (!resp) break
+    const items = resp.campaigns || resp.data || []
+    allItems.push(...items)
+    after = resp.paging?.cursors?.after
+    if (!after || items.length === 0) break
+  }
+
+  return allItems
 }
 
 /**
@@ -300,9 +340,36 @@ async function enrichCampaignsWithV3Stats(
 // ── Automations ───────────────────────────────────────────
 
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
-  return omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
+  const v5 = await omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
     logTag: "OmnisendAutomations",
   })
+  if (v5.length > 0) {
+    const sample = v5[0] as Record<string, unknown>
+    log.info(`[DIAG] Automation sample keys: ${Object.keys(sample).slice(0, 15).join(",")}, total=${v5.length}`)
+    return v5
+  }
+  // Fallback analogo a paginateApiCampaigns
+  log.warn("[OmnisendAutomations] /v5/automations returned 0 items, trying /api/automations fallback")
+  const allItems: OmnisendAutomation[] = []
+  let after: string | undefined
+  for (let page = 0; page < 50; page++) {
+    const params = new URLSearchParams({ limit: "250" })
+    if (after) params.set("after", after)
+    const resp = await omnisendRequest<{
+      automations?: OmnisendAutomation[]
+      data?: OmnisendAutomation[]
+      paging?: { cursors?: { after?: string } }
+    }>(apiKey, `${OMNISEND_API}/automations?${params}`, { logTag: "OmnisendAutomations_api" })
+    if (!resp) break
+    const items = resp.automations || resp.data || []
+    allItems.push(...items)
+    after = resp.paging?.cursors?.after
+    if (!after || items.length === 0) break
+  }
+  if (allItems.length > 0) {
+    log.info(`[OmnisendAutomations_api_fallback] Recovered ${allItems.length} automations via /api/automations`)
+  }
+  return allItems
 }
 
 // ── Segments ──────────────────────────────────────────────
