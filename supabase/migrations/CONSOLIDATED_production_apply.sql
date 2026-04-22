@@ -387,7 +387,13 @@ END; $$;
 REVOKE ALL ON FUNCTION acquire_sync_lock FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION acquire_sync_lock TO service_role;
 
--- acquire_cron_lock (alias usado pelo refresh-revenue endpoint)
+-- acquire_cron_lock: dropar versoes anteriores antes de recriar
+DO $$ DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT oid::regprocedure::text AS sig FROM pg_proc WHERE proname = 'acquire_cron_lock'
+  LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP;
+END $$;
+
 CREATE OR REPLACE FUNCTION acquire_cron_lock(
   p_lock_name TEXT,
   p_ttl_seconds INTEGER,
@@ -407,8 +413,8 @@ BEGIN
   RETURN v_updated > 0;
 END; $$;
 
-REVOKE ALL ON FUNCTION acquire_cron_lock FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION acquire_cron_lock TO service_role;
+REVOKE ALL ON FUNCTION acquire_cron_lock(TEXT, INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION acquire_cron_lock(TEXT, INTEGER, TEXT) TO service_role;
 
 -- ── 9. Widening rate columns em klaviyo tables (DECIMAL(5,2) → NUMERIC)
 
