@@ -182,8 +182,9 @@ export async function upsertOmnisendSyncResults(
   const nowIso = now.toISOString()
   const periodStartIso = periodStart.toISOString()
 
+  const engagedCount = data.engagedContacts ?? data.subscribedContacts
   const engagementRate = data.totalContacts > 0
-    ? Math.round((data.subscribedContacts / data.totalContacts) * 10000) / 100
+    ? Math.round((engagedCount / data.totalContacts) * 10000) / 100
     : 0
 
   const summaryPayload = {
@@ -198,7 +199,7 @@ export async function upsertOmnisendSyncResults(
     omnisend_campaign_revenue: data.totalCampaignRevenue,
     omnisend_flow_revenue: data.totalAutomationRevenue,
     total_leads: data.totalContacts,
-    engaged_leads: data.subscribedContacts,
+    engaged_leads: engagedCount,
     engagement_rate: engagementRate,
     sync_status: "ok",
     sync_source: "omnisend",

@@ -20,11 +20,8 @@
 import { logger } from "@/lib/logger"
 import {
   omnisendRequest,
-  omnisendPaginateV3,
   omnisendPaginateV5,
-  OMNISEND_V3,
   OMNISEND_V5,
-  OMNISEND_CAMPAIGNS_INTERVAL_MS,
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
   OmnisendPermissionError,
@@ -211,6 +208,8 @@ export interface OmnisendSyncData {
   totalOrders: number
   totalContacts: number
   subscribedContacts: number
+  engagedContacts: number
+  engagedSource: "segment" | "fallback"
   currency: string
 }
 
@@ -235,13 +234,12 @@ export interface SyncResult<T> {
 export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
   const EXCLUDE_STATUSES = new Set(["draft"])
 
-  const all = await omnisendPaginateV3<OmnisendCampaign>(
+  const all = await omnisendPaginateV5<OmnisendCampaign>(
     apiKey,
-    `${OMNISEND_V3}/campaigns`,
+    `${OMNISEND_V5}/campaigns`,
     "campaigns",
     {
-      logTag: "OmnisendCampaigns_all",
-      intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
+      logTag: "OmnisendCampaigns_v5",
     }
   )
 
@@ -295,11 +293,47 @@ export async function fetchPlacedOrderEvents(
   return omnisendPaginateV5<OmnisendEvent>(apiKey, `${OMNISEND_V5}/events`, "events", {
     logTag: "OmnisendPlacedOrders",
     queryParams: {
+      eventName: "placed order",
       from: startDate,
       to: endDate,
     },
     maxPages: 200,
   })
+}
+
+// ── Engaged 90D via Segments ─────────────────────────────
+
+const ENGAGED_SEGMENT_PATTERNS = [
+  /90\s*d[ií]as/i,
+  /last\s*90/i,
+  /90\s*day/i,
+  /engajad[oa]s?.*90/i,
+  /abri.*email.*90/i,
+  /opened.*email.*90/i,
+  /engaged.*90/i,
+]
+
+async function findEngaged90dFromSegments(
+  segments: OmnisendSegment[],
+  subscribedCount: number
+): Promise<{ count: number; source: "segment" | "fallback"; segmentName?: string }> {
+  const matched = segments.find((seg) =>
+    ENGAGED_SEGMENT_PATTERNS.some((p) => p.test(seg.name || ""))
+  )
+
+  if (matched && typeof matched.contactsCount === "number") {
+    log.info("[OmnisendEngaged] Using segment", {
+      segmentId: matched.segmentID || (matched as unknown as Record<string, unknown>).id,
+      segmentName: matched.name,
+      count: matched.contactsCount,
+    })
+    return { count: matched.contactsCount, source: "segment", segmentName: matched.name }
+  }
+
+  log.warn("[OmnisendEngaged] No 90d engaged segment found, using subscribed as fallback", {
+    availableSegments: segments.map((s) => s.name).slice(0, 20),
+  })
+  return { count: subscribedCount, source: "fallback" }
 }
 
 // ── Contacts / Audience ───────────────────────────────────
@@ -468,6 +502,9 @@ async function doSyncOmnisendForStore(params: {
     const segments = await fetchSegments(apiKey)
     log.info(`Fetched ${segments.length} segments`, { storeId })
 
+    // 5c. Engaged 90D via segment matching
+    const engaged = await findEngaged90dFromSegments(segments, subscribedContacts)
+
     // 6. Revenue: computar dos eventos placed order
     //    TODO: refinar quando soubermos o shape exato dos events
     let totalEventRevenue = 0
@@ -619,6 +656,8 @@ async function doSyncOmnisendForStore(params: {
         totalOrders: totalEventOrders,
         totalContacts,
         subscribedContacts,
+        engagedContacts: engaged.count,
+        engagedSource: engaged.source,
         currency,
       },
     }
