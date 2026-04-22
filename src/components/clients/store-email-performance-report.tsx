@@ -46,6 +46,11 @@ interface StoreEmailReportData {
   dateRange: { start: string; end: string }
   account?: { currency: string; currencySymbol: string; locale: string }
   revenue: {
+    /** Receita TOTAL da loja no periodo (Statistics/Klaviyo metric-aggregates). */
+    storeRevenue?: number
+    /** Pedidos TOTAIS da loja no periodo. */
+    storeOrders?: number
+    /** Atribuida a email: soma de campaign + flow revenue. */
     totalRevenue: number
     klaviyoAttributedRevenue: number
     campaignRevenue: number
@@ -53,6 +58,8 @@ interface StoreEmailReportData {
     totalOrders: number
     klaviyoAttributedOrders: number
     averageOrderValue: number
+    /** storeRevenue > 0 ? (attributed / storeRevenue) * 100 : 0 */
+    recoveryRate?: number
     uniqueCustomers: number
     estimatedROI: string
     timeSeries: Array<{ date: string; revenue: number; orders: number }>
@@ -431,9 +438,25 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
   const { formatCurrency, formatCurrencyCompact } = createCurrencyFormatters(reportCurrency)
 
   // ============ DATA CALCULATIONS ============
-  const totalRevenue = shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0
-  const totalOrders = shopifyData?.summary?.totalOrders || reportData.revenue?.totalOrders || 0
-  const avgTicket = shopifyData?.summary?.averageOrderValue || (totalOrders > 0 ? totalRevenue / totalOrders : 0)
+  // Prioridade: Shopify (quando conectado) > storeRevenue da plataforma de email
+  // (Statistics API / metric-aggregates) > totalRevenue (atribuida, caminho legado).
+  // storeRevenue reflete a receita TOTAL da loja; totalRevenue reflete apenas a
+  // receita atribuida ao email marketing. Sem essa prioridade, o card
+  // "FATURAMENTO TOTAL" exibia o attributed (~€12K) em vez do store (~€371K)
+  // e o TICKET MEDIO ficava em ~3,14 (12853/4089 em vez de 371644/4089).
+  const totalRevenue =
+    shopifyData?.summary?.totalRevenue
+    || reportData.revenue?.storeRevenue
+    || reportData.revenue?.totalRevenue
+    || 0
+  const totalOrders =
+    shopifyData?.summary?.totalOrders
+    || reportData.revenue?.storeOrders
+    || reportData.revenue?.totalOrders
+    || 0
+  const avgTicket =
+    shopifyData?.summary?.averageOrderValue
+    || (totalOrders > 0 ? totalRevenue / totalOrders : 0)
   const totalCustomers = shopifyData?.customers?.totalCustomers || reportData.revenue?.uniqueCustomers || 0
 
   const emailRevenue = reportData.revenue?.klaviyoAttributedRevenue || 0

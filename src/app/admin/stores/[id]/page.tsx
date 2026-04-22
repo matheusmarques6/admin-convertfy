@@ -14,7 +14,7 @@ import { ExternalLink } from "lucide-react"
 export const dynamic = "force-dynamic"
 
 async function getStore(id: string) {
-  let adminClient
+  let adminClient: ReturnType<typeof createAdminClient>
   try {
     adminClient = createAdminClient()
   } catch (err) {
@@ -98,13 +98,25 @@ async function getStore(id: string) {
     .limit(1)
     .maybeSingle()
 
-  // Fetch revenue summary for KPIs
-  const { data: revenueSummary } = await adminClient
-    .from("store_revenue_summary")
-    .select("klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status")
-    .eq("store_id", id)
-    .eq("period_label", "30d")
-    .maybeSingle()
+  // Fetch revenue summary for KPIs (header da loja).
+  // Inclui colunas omnisend_* com SELECT resiliente: se a migration 20260417
+  // nao foi aplicada, faz retry sem essas colunas.
+  async function fetchRevenueSummary(withOmnisend: boolean) {
+    const cols = withOmnisend
+      ? "klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, omnisend_total_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status"
+      : "klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status"
+    return adminClient
+      .from("store_revenue_summary")
+      .select(cols)
+      .eq("store_id", id)
+      .eq("period_label", "30d")
+      .maybeSingle()
+  }
+  let revSumRes = await fetchRevenueSummary(true)
+  if (revSumRes.error && /omnisend_/.test(revSumRes.error.message || "")) {
+    revSumRes = await fetchRevenueSummary(false)
+  }
+  const revenueSummary = revSumRes.data
 
   return {
     ...store,
@@ -212,12 +224,31 @@ export default async function StoreDetailPage({
           </div>
 
           {/* Right: Mini KPIs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <MiniKpi label="Receita 30d" value={store.revenueSummary?.klaviyo_total_revenue ? `${store.revenueSummary.currency === "USD" ? "$" : "R$"} ${Number(store.revenueSummary.klaviyo_total_revenue).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} />
-            <MiniKpi label="Pedidos 30d" value={store.revenueSummary?.store_orders ? String(store.revenueSummary.store_orders) : "—"} />
-            <MiniKpi label="Engajamento" value={store.revenueSummary?.engagement_rate ? `${Number(store.revenueSummary.engagement_rate).toFixed(1)}%` : "—"} />
-            <MiniKpi label="Contatos" value={store.revenueSummary?.total_leads ? Number(store.revenueSummary.total_leads).toLocaleString("pt-BR") : "—"} />
-          </div>
+          {(() => {
+            // "Receita 30d" reflete a receita TOTAL da loja (store_total_revenue),
+            // nao o revenue atribuido a email. Para lojas Omnisend, preenchido pela
+            // Statistics API (totalRevenue). Fallback para klaviyo_total_revenue +
+            // omnisend_total_revenue quando store_total_revenue ainda nao foi
+            // calculado (lojas em pre-sync).
+            const rs = store.revenueSummary as Record<string, unknown> | null
+            const storeRev = Number(rs?.store_total_revenue) || 0
+            const klavRev = Number(rs?.klaviyo_total_revenue) || 0
+            const omnRev = Number(rs?.omnisend_total_revenue) || 0
+            const revenueValue = storeRev || (klavRev + omnRev)
+            const currency = (rs?.currency as string | undefined) || "BRL"
+            const currencySymbol = currency === "USD" ? "$"
+              : currency === "EUR" ? "€"
+              : currency === "GBP" ? "£"
+              : "R$"
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                <MiniKpi label="Receita 30d" value={revenueValue > 0 ? `${currencySymbol} ${revenueValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} />
+                <MiniKpi label="Pedidos 30d" value={rs?.store_orders ? String(rs.store_orders) : "—"} />
+                <MiniKpi label="Engajamento" value={rs?.engagement_rate ? `${Number(rs.engagement_rate).toFixed(1)}%` : "—"} />
+                <MiniKpi label="Contatos" value={rs?.total_leads ? Number(rs.total_leads).toLocaleString("pt-BR") : "—"} />
+              </div>
+            )
+          })()}
         </div>
       </div>
 
