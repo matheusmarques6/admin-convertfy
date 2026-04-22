@@ -100,7 +100,11 @@ export async function GET(request: NextRequest) {
       // Account API aqui — exigiria apiKey e 401 para lojas Omnisend.
       const currency = rev?.currency || (s.currency as string | undefined) || "BRL"
 
-      const totalRevenue = rev?.total_revenue ?? 0
+      // Card "RECEITA TOTAL" reflete a receita TOTAL da loja (de Shopify/
+      // Statistics API), nao a receita atribuida a email marketing. Para
+      // Omnisend store_total_revenue vem da totalRevenue da Statistics API
+      // (~€383K), e nao da omnisend_total_revenue (~€12K attributed).
+      const totalRevenue = rev?.store_total_revenue ?? rev?.total_revenue ?? 0
       const campaignRevenue = rev?.campaign_revenue ?? 0
       const flowRevenue = rev?.flow_revenue ?? 0
 
