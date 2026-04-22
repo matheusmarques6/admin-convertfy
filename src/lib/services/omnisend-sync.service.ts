@@ -97,9 +97,12 @@ export interface OmnisendAutomation {
   automationID?: string
   id?: string
   name: string
-  status: string
+  /** Legacy/derived. A partir da v2026 a API retorna `isEnabled` booleano. */
+  status?: string
+  /** Campo autoritativo a partir da Omnisend-Version 2026-03-15. */
+  isEnabled?: boolean
   triggerType?: string
-  trigger?: string
+  trigger?: string | Record<string, unknown>
   createdAt?: string
   updatedAt?: string
   stats?: OmnisendCampaignStats
@@ -113,6 +116,23 @@ function getAutomationId(a: OmnisendAutomation): string {
 
 function getAutomationStats(a: OmnisendAutomation): OmnisendCampaignStats {
   return a.stats || a.statistics || ({} as OmnisendCampaignStats)
+}
+
+/** Normaliza o status da automation para o formato esperado pelo cache.
+ *  A v2026 retorna `isEnabled: boolean`; quando true mapeamos para "live"
+ *  para bater com o filtro `flow_status=live` em getUnifiedFlows. */
+function getAutomationStatusStr(a: OmnisendAutomation): string {
+  if (a.isEnabled === true) return "live"
+  if (a.isEnabled === false) return "disabled"
+  if (a.status) return a.status
+  return "unknown"
+}
+
+/** True quando a automation esta ativamente rodando (aceita ambos os formatos). */
+function isAutomationLive(a: OmnisendAutomation): boolean {
+  if (a.isEnabled === true) return true
+  if (a.isEnabled === false) return false
+  return a.status === "enabled" || a.status === "active" || a.status === "live"
 }
 
 
@@ -593,15 +613,17 @@ async function doSyncOmnisendForStore(params: {
     //    Inclui qualquer automation que esteja live OU que tenha tido
     //    atividade no periodo (delivered > 0 ou revenue > 0). Isso garante
     //    historico completo mesmo para flows pausados/desativados.
+    const liveAutomationCount = automations.filter((a) => isAutomationLive(a)).length
+    log.info(`[DIAG] ${liveAutomationCount} automations active (isEnabled=true)`, { storeId })
+
     const automationRows: OmnisendAutomationRow[] = automations
       .filter((a) => {
         if (!getAutomationId(a)) return false
-        const isLive = a.status === "enabled" || a.status === "active"
         const s = getAutomationStats(a)
         const hasActivity = (s.delivered || 0) > 0
           || (s.totalRevenue || s.revenue || 0) > 0
           || (s.ordersCount || s.orders || 0) > 0
-        return isLive || hasActivity
+        return isAutomationLive(a) || hasActivity
       })
       .map((a) => {
         const s = getAutomationStats(a)
@@ -613,14 +635,19 @@ async function doSyncOmnisendForStore(params: {
         const unsubscribed = s.unsubscribed || 0
         const revenue = s.totalRevenue || s.revenue || 0
         const automationOrders = s.ordersCount || s.orders || 0
+        const triggerType = typeof a.trigger === "string"
+          ? a.trigger
+          : (a.triggerType || (a.trigger && typeof a.trigger === "object" && typeof (a.trigger as Record<string, unknown>).event === "string"
+              ? (a.trigger as Record<string, unknown>).event as string
+              : null))
 
         return {
           store_id: storeId,
           org_id: orgId,
           automation_id: getAutomationId(a),
           automation_name: a.name || "Untitled",
-          automation_status: a.status,
-          trigger_type: a.triggerType || a.trigger || null,
+          automation_status: getAutomationStatusStr(a),
+          trigger_type: triggerType,
           recipients: sent,
           delivered,
           delivery_rate: safeRate(delivered, sent),
