@@ -7,7 +7,7 @@ import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { buildOmnisendReport } from "@/lib/integrations/omnisend/report-builder"
 import { logger } from "@/lib/logger"
 
-const log = logger.child("KlaviyoReport")
+const log = logger.child("EmailPlatformReport")
 import {
   KLAVIYO_API_URL,
   KLAVIYO_REVISION,
@@ -1459,6 +1459,6 @@ export async function GET(request: NextRequest) {
         { headers: corsHeaders(origin) }
       )
     }
-    return errorResponse(request, error, "IntegrationsKlaviyoReport")
+    return errorResponse(request, error, "EmailPlatformReport")
   }
 }

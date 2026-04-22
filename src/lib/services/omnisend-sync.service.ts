@@ -252,42 +252,24 @@ export async function fetchSentCampaigns(apiKey: string): Promise<OmnisendCampai
 }
 
 /**
- * Busca campanhas em TODOS os status relevantes para relatorio
- * (sent + scheduled + inProgress + paused). Nao inclui drafts por default
- * pois sao rascunhos que nao afetam analytics.
+ * Busca campanhas em TODOS os status relevantes para relatorio.
+ * Faz UMA chamada paginada sem filtro de status (retorna tudo) e
+ * descarta drafts em memoria — reduz ~4x o numero de API calls
+ * comparado com a versao anterior que fazia 1 request por status.
  */
 export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  const statusList = ["sent", "scheduled", "inProgress", "paused"]
-  const all: OmnisendCampaign[] = []
-  const seen = new Set<string>()
+  const REPORT_STATUSES = new Set(["sent", "scheduled", "inProgress", "paused"])
 
-  for (const status of statusList) {
-    // Omnisend v3 /campaigns rejeita sort=createdAt. Para status=sent
-    // usamos sort=sent; para os demais status nao enviamos sort pois os
-    // campos validos (sent/clicked/bounced/opened/...) so existem para sent.
-    const queryParams: Record<string, string> =
-      status === "sent"
-        ? { status, sort: "sent", sortDirection: "desc" }
-        : { status }
-
-    const batch = await omnisendPaginateV3<OmnisendCampaign>(
-      apiKey,
-      `${OMNISEND_V3}/campaigns`,
-      "campaigns",
-      {
-        logTag: `OmnisendCampaigns_${status}`,
-        queryParams,
-        intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
-      }
-    )
-    for (const c of batch) {
-      if (!seen.has(c.campaignID)) {
-        seen.add(c.campaignID)
-        all.push(c)
-      }
+  const all = await omnisendPaginateV3<OmnisendCampaign>(
+    apiKey,
+    `${OMNISEND_V3}/campaigns`,
+    "campaigns",
+    {
+      logTag: "OmnisendCampaigns_all",
+      intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
     }
-  }
-  return all
+  )
+  return all.filter((c) => REPORT_STATUSES.has(c.status))
 }
 
 // ── Campaign Stats v5 (detailed) ──────────────────────────

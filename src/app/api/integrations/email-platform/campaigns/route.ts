@@ -7,7 +7,7 @@ import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { buildOmnisendCampaignsResponse } from "@/lib/integrations/omnisend/campaigns-flows-builder"
 import { logger } from "@/lib/logger"
 
-const log = logger.child("IntKlaviyoCampaigns")
+const log = logger.child("EmailPlatformCampaigns")
 import {
   KLAVIYO_API_URL,
   MIN_REQUEST_INTERVAL,
@@ -731,6 +731,6 @@ export async function GET(request: NextRequest) {
         { headers: corsHeaders(origin) }
       )
     }
-    return errorResponse(request, error, "IntegrationsKlaviyoCampaigns")
+    return errorResponse(request, error, "EmailPlatformCampaigns")
   }
 }

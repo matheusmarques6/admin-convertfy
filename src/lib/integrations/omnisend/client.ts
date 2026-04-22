@@ -59,7 +59,7 @@ export const OMNISEND_V2026 = `${OMNISEND_API_BASE}/v2026-preview`
  *  "1 RPS per Client". Manter como workaround ate confirmar com a Omnisend. */
 const MIN_REQUEST_INTERVAL_MS = 160
 export const OMNISEND_CAMPAIGNS_INTERVAL_MS = 1100
-const MAX_RETRY_AFTER_MS = 10_000
+const MAX_RETRY_AFTER_MS = 120_000
 const OMNISEND_FETCH_TIMEOUT_MS = 15_000
 const MAX_RETRIES = 3
 
@@ -130,13 +130,13 @@ export async function omnisendRequest<T>(
         const rawWaitTime = resetHeader ? parseInt(resetHeader) * 1000 : 2000
 
         if (rawWaitTime > MAX_RETRY_AFTER_MS) {
-          log.warn(`[${logTag}] Rate limited ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Throwing.`)
+          log.warn(`[${logTag}] Rate limited ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Deferring.`)
           throw new OmnisendRateLimitError(rawWaitTime)
         }
 
-        log.warn(`[${logTag}] Rate limited. Waiting ${rawWaitTime}ms`)
+        log.warn(`[${logTag}] Rate limited. Waiting ${rawWaitTime}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
         if (attempt < MAX_RETRIES) {
-          await sleep(rawWaitTime)
+          await sleep(rawWaitTime + 500)
           continue
         }
         throw new OmnisendRateLimitError(rawWaitTime)
