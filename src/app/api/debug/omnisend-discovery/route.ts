@@ -1,8 +1,10 @@
 /**
- * TEMPORARY — Round 7: Build up from the v4 base that DID parse
- * v4 (round 5) gave detailed errors = JSON parsed OK but fields missing
- * All round 6 variants gave "invalid request body" = JSON rejected
- * Strategy: start from v4 base, add one field at a time
+ * TEMPORARY — Round 8: ALL FLAT STRINGS (no arrays/objects in query items)
+ *
+ * Pattern: queries with array values = "invalid request body"
+ *          queries with only string values = detailed validation errors
+ *
+ * Hypothesis: metrics/dimensions/dateRange must be strings, not arrays/objects
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -45,67 +47,114 @@ export async function GET(request: NextRequest) {
     "Accept": "application/json",
   }
 
-  const url = "https://api.omnisend.com/api/analytics/statistics"
+  const statsUrl = "https://api.omnisend.com/api/analytics/statistics"
+  const reportsUrl = "https://api.omnisend.com/api/analytics/reports"
   const results: Record<string, unknown> = { store: store.store_name }
 
-  // BASE: exact same as v4 from round 5 (this one got detailed errors = parsing OK)
-  results["t01_base_v4"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ metric: "totalRevenue", dateFrom: "2026-03-23", dateTo: "2026-04-22" }]
+  // ALL FLAT STRINGS — no arrays, no nested objects
+
+  // S1: all 4 required fields as strings
+  results["s1_all_strings"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "timestamp"
+    }]
   })})
 
-  // T02: add alias
-  results["t02_add_alias"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metric: "totalRevenue", dateFrom: "2026-03-23", dateTo: "2026-04-22" }]
+  // S2: metrics comma-separated
+  results["s2_metrics_csv"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue,totalOrders,attributedRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "timestamp"
+    }]
   })})
 
-  // T03: alias + metrics array (not metric string)
-  results["t03_metrics_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateFrom: "2026-03-23", dateTo: "2026-04-22" }]
+  // S3: dateRange as from/to strings
+  results["s3_dateRange_from_to"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateFrom: "2026-03-23",
+      dateTo: "2026-04-22",
+      dimensions: "timestamp"
+    }]
   })})
 
-  // T04: alias + metrics + dateRange as string
-  results["t04_dateRange_string"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: "2026-03-23/2026-04-22" }]
+  // S4: dimensions as "day"
+  results["s4_dim_day"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "day"
+    }]
   })})
 
-  // T05: alias + metrics + dateRange as object with from/to
-  results["t05_dateRange_obj"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" } }]
+  // S5: dimensions as "date"
+  results["s5_dim_date"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "date"
+    }]
   })})
 
-  // T06: alias + metrics + dateRange obj + dimensions as object
-  results["t06_dims_object"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" }, dimensions: { timestamp: "day" } }]
+  // S6: try metric (singular) instead of metrics
+  results["s6_metric_singular"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metric: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "timestamp"
+    }]
   })})
 
-  // T07: alias + metrics + dateRange obj + dimensions as array of objects
-  results["t07_dims_array_obj"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" }, dimensions: [{ type: "timestamp", granularity: "day" }] }]
+  // S7: interval field (from /reports error hint)
+  results["s7_with_interval"] = await safeFetch(statsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      dimensions: "timestamp",
+      interval: "day"
+    }]
   })})
 
-  // T08: alias + metrics + dateRange obj + timestamp dimension as {name,value}
-  results["t08_dims_name_value"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" }, dimensions: [{ name: "timestamp", value: "day" }] }]
+  // REPORTS endpoint — different required fields (interval instead of dimensions)
+  // R1: all flat strings
+  results["r1_reports_flat"] = await safeFetch(reportsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      interval: "day",
+      dateFrom: "2026-03-23",
+      dateTo: "2026-04-22"
+    }]
   })})
 
-  // T09: everything flat — alias + metrics + from + to + dimensions as strings array
-  results["t09_flat_from_to"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], from: "2026-03-23", to: "2026-04-22", dimensions: ["timestamp"] }]
+  // R2: with dateRange string
+  results["r2_reports_dateRange"] = await safeFetch(reportsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      interval: "month",
+      dateRange: "2026-03-23/2026-04-22"
+    }]
   })})
 
-  // T10: try the /reports endpoint with same base format
-  results["t10_reports_base"] = await safeFetch("https://api.omnisend.com/api/analytics/reports", { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ metric: "totalRevenue", dateFrom: "2026-03-23", dateTo: "2026-04-22" }]
-  })})
-
-  // T11: try completely different structure — maybe it's not "queries" but "query"
-  results["t11_query_singular"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    query: { alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" }, dimensions: ["timestamp"] }
-  })})
-
-  // T12: empty queries to get validation hints
-  results["t12_empty_query"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{}]
+  // R3: interval as part of dateRange
+  results["r3_reports_interval_in_dateRange"] = await safeFetch(reportsUrl, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: "totalRevenue",
+      dateRange: "2026-03-23/2026-04-22",
+      interval: "day"
+    }]
   })})
 
   return NextResponse.json(results, { headers: { "Content-Type": "application/json" } })
