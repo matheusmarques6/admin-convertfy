@@ -390,6 +390,7 @@ const ENGAGED_SEGMENT_PATTERNS = [
 ]
 
 async function findEngaged90dFromSegments(
+  apiKey: string,
   segments: OmnisendSegment[],
   subscribedCount: number
 ): Promise<{ count: number; source: "segment" | "fallback"; segmentName?: string }> {
@@ -397,19 +398,98 @@ async function findEngaged90dFromSegments(
     ENGAGED_SEGMENT_PATTERNS.some((p) => p.test(seg.name || ""))
   )
 
-  if (matched && typeof matched.contactsCount === "number") {
-    log.info("[OmnisendEngaged] Using segment", {
-      segmentId: matched.segmentID || (matched as unknown as Record<string, unknown>).id,
+  if (!matched) {
+    log.warn("[OmnisendEngaged] No 90d engaged segment found, using subscribed as fallback", {
+      availableSegments: segments.map((s) => s.name).slice(0, 20),
+    })
+    return { count: subscribedCount, source: "fallback" }
+  }
+
+  const segmentId = matched.segmentID || (matched as unknown as Record<string, unknown>).id as string | undefined
+  if (!segmentId) {
+    return { count: subscribedCount, source: "fallback", segmentName: matched.name }
+  }
+
+  // Caminho 1: se o payload do /v5/segments trouxe contactsCount, usar direto.
+  if (typeof matched.contactsCount === "number" && matched.contactsCount > 0) {
+    log.info("[OmnisendEngaged] Using segment.contactsCount", {
+      segmentId,
       segmentName: matched.name,
       count: matched.contactsCount,
     })
     return { count: matched.contactsCount, source: "segment", segmentName: matched.name }
   }
 
-  log.warn("[OmnisendEngaged] No 90d engaged segment found, using subscribed as fallback", {
-    availableSegments: segments.map((s) => s.name).slice(0, 20),
+  // Caminho 2: paginar /v5/contacts?segments={id} — se a API honrar o filtro,
+  // o count refletira apenas os contatos do segmento.
+  log.info("[OmnisendEngaged] Paginating contacts filtered by segment", { segmentId, segmentName: matched.name })
+  const count = await countContactsInSegment(apiKey, segmentId)
+  if (count > 0) {
+    return { count, source: "segment", segmentName: matched.name }
+  }
+
+  // Caminho 3: fallback para subscribedContacts se a paginacao filtrada retornou 0
+  // (API pode nao suportar o filtro ou o segmento esta vazio).
+  log.warn("[OmnisendEngaged] Segment count is 0, falling back to subscribedCount", {
+    segmentId,
+    segmentName: matched.name,
   })
-  return { count: subscribedCount, source: "fallback" }
+  return { count: subscribedCount, source: "fallback", segmentName: matched.name }
+}
+
+/** Pagina /v5/contacts?segments={id} e tambem valida client-side via
+ *  contact.segments[] para blindar contra APIs que ignoram o filtro. */
+async function countContactsInSegment(apiKey: string, segmentId: string): Promise<number> {
+  const initialParams = new URLSearchParams({
+    segments: segmentId,
+    limit: String(CONTACTS_PAGE_LIMIT),
+  })
+  let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
+  let count = 0
+  let pages = 0
+  let filterTrusted = true
+
+  for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
+    const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(
+      apiKey,
+      url,
+      { logTag: "OmnisendSegmentContacts" }
+    )
+    if (!resp) break
+
+    if (page === 0) {
+      const paging = resp.paging as Record<string, unknown> | undefined
+      if (paging && typeof paging.total === "number") {
+        log.info(`[OmnisendSegmentContacts] Got total from paging.total: ${paging.total}`)
+        return paging.total as number
+      }
+    }
+
+    const contacts = (resp.contacts as Array<OmnisendContact & { segments?: string[] }>) || []
+    if (filterTrusted && page === 0 && contacts.length > 0) {
+      const anyOutside = contacts.some(
+        (c) => Array.isArray(c.segments) && c.segments.length > 0 && !c.segments.includes(segmentId)
+      )
+      if (anyOutside) {
+        filterTrusted = false
+        log.warn("[OmnisendSegmentContacts] API ignored segments filter, falling back to client-side check")
+      }
+    }
+
+    for (const c of contacts) {
+      if (filterTrusted) {
+        count++
+      } else if (Array.isArray(c.segments) && c.segments.includes(segmentId)) {
+        count++
+      }
+    }
+    pages++
+    const paging = resp.paging as { next?: string } | undefined
+    url = paging?.next || null
+  }
+
+  log.info(`[OmnisendSegmentContacts] Counted ${count} contacts in ${pages} pages (filterTrusted=${filterTrusted})`)
+  return count
 }
 
 // ── Contacts / Audience ───────────────────────────────────
@@ -560,7 +640,7 @@ async function doSyncOmnisendForStore(params: {
     // 5. Segments + engaged 90D
     const segments = await fetchSegments(apiKey)
     log.info(`Fetched ${segments.length} segments`, { storeId })
-    const engaged = await findEngaged90dFromSegments(segments, subscribedContacts)
+    const engaged = await findEngaged90dFromSegments(apiKey, segments, subscribedContacts)
 
     // 6. Revenue via Statistics API (POST /api/analytics/statistics)
     const endDate = new Date().toISOString()
