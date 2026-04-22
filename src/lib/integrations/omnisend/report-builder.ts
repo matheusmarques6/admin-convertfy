@@ -217,18 +217,44 @@ interface StoreContext {
 }
 
 /**
+ * SELECT resiliente da linha store_revenue_summary. Tenta com a coluna
+ * omnisend_total_orders (adicionada em 2026-04-22); faz fallback sem ela
+ * se a migration nao foi aplicada.
+ */
+async function readSummaryRow(
+  admin: ReturnType<typeof createAdminClient>,
+  storeId: string,
+  period: string
+) {
+  const baseCols = "omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status, fetched_at"
+  const withOrders = `${baseCols}, omnisend_total_orders`
+
+  let res = await admin
+    .from("store_revenue_summary")
+    .select(withOrders)
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .maybeSingle()
+
+  if (res.error && /omnisend_total_orders/.test(res.error.message || "")) {
+    res = await admin
+      .from("store_revenue_summary")
+      .select(baseCols)
+      .eq("store_id", storeId)
+      .eq("period_label", period)
+      .maybeSingle()
+  }
+  return res
+}
+
+/**
  * Le dados do cache Omnisend (tabelas omnisend_*) para o periodo.
  * Retorna null se nao houver dados frescos em cache.
  */
 async function readFromCache(storeId: string, period: string) {
   const admin = createAdminClient()
 
-  const { data: summary } = await admin
-    .from("store_revenue_summary")
-    .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, store_orders, total_subscribers, engaged_profiles, engagement_rate, currency, sync_status, fetched_at")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .maybeSingle()
+  const { data: summary } = await readSummaryRow(admin, storeId, period)
 
   if (!summary) return null
 
@@ -264,12 +290,7 @@ async function readFromCache(storeId: string, period: string) {
 async function readFromCacheStale(storeId: string, period: string) {
   const admin = createAdminClient()
 
-  const { data: summary } = await admin
-    .from("store_revenue_summary")
-    .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, store_orders, total_subscribers, engaged_profiles, engagement_rate, currency, sync_status, fetched_at")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .maybeSingle()
+  const { data: summary } = await readSummaryRow(admin, storeId, period)
 
   if (!summary) return null
 
@@ -305,7 +326,10 @@ function buildFromCache(
   const flowRevenue = Number(s.omnisend_flow_revenue) || 0
   const storeRevenue = Number(s.store_total_revenue) || 0
   const storeOrders = Number(s.store_orders) || 0
-  const attributedRevenue = campaignRevenue + flowRevenue
+  // omnisend_total_revenue e a fonte autoritativa (attributedRevenue da
+  // Statistics API). Fallback para soma campaign+flow so para linhas legadas.
+  const attributedRevenue = Number(s.omnisend_total_revenue) || (campaignRevenue + flowRevenue)
+  const attributedOrders = Number(s.omnisend_total_orders) || 0
 
   // Aggregate email perf from campaign + flow rows
   let totalDelivered = 0
@@ -398,9 +422,21 @@ function buildFromCache(
   const sentCampaignsCount = campaignsArr.length
   const liveFlowsCount = flowsArr.filter((f) => f.status === "live" || f.status === "enabled").length
 
-  const totalSubscribers = Number(s.total_subscribers) || 0
-  const engagedProfiles = Number(s.engaged_profiles) || 0
+  // TOTAL DE LEADS e ENGAJADOS 90D vem das colunas total_leads/engaged_leads
+  // (nao total_subscribers/engaged_profiles, que nao existem na tabela).
+  const totalSubscribers = Number(s.total_leads) || 0
+  const engagedProfiles = Number(s.engaged_leads) || 0
   const engagementRate = Number(s.engagement_rate) || 0
+
+  log.info("[ReportBuilder] summary (cache)", {
+    storeId: store.storeId,
+    faturamentoTotal: storeRevenue,
+    totalOrders: storeOrders,
+    receitaAtribuida: attributedRevenue,
+    pedidosAtribuidos: attributedOrders,
+    totalLeads: totalSubscribers,
+    engajados90d: engagedProfiles,
+  })
 
   return {
     success: true,
@@ -418,13 +454,18 @@ function buildFromCache(
     revenue: {
       storeRevenue,
       storeOrders,
+      // FATURAMENTO TOTAL card le `revenue.storeRevenue ?? revenue.totalRevenue`.
+      // Mantemos totalRevenue=attributedRevenue por compat, mas storeRevenue
+      // tem prioridade e sera sempre usado quando disponivel.
       totalRevenue: attributedRevenue,
       klaviyoAttributedRevenue: attributedRevenue,
       campaignRevenue,
       flowRevenue,
-      totalOrders: totalConversions,
-      klaviyoAttributedOrders: totalConversions,
-      averageOrderValue: totalConversions > 0 ? attributedRevenue / totalConversions : 0,
+      // TOTAL DE PEDIDOS = pedidos totais da loja (nao conversions de email)
+      totalOrders: storeOrders,
+      klaviyoAttributedOrders: attributedOrders || totalConversions,
+      // TICKET MEDIO baseado na receita/pedidos TOTAIS da loja (nao atribuidos)
+      averageOrderValue: storeOrders > 0 ? storeRevenue / storeOrders : 0,
       recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
     },
     emailPerformance: {
@@ -553,7 +594,12 @@ async function buildFromLiveFetch(
   const d = result.data
   const campaignRevenue = d.totalCampaignRevenue
   const flowRevenue = d.totalAutomationRevenue
-  const attributedRevenue = campaignRevenue + flowRevenue
+  // Prefer attributedRevenue direto da Statistics API (fonte autoritativa).
+  // Fallback: soma campaign+flow (caminho legado).
+  const attributedRevenue = d.totalAttributedRevenue > 0
+    ? d.totalAttributedRevenue
+    : (campaignRevenue + flowRevenue)
+  const attributedOrders = d.totalAttributedOrders
   const storeRevenue = d.totalStoreRevenue
   const storeOrders = d.totalOrders
   const currency = d.currency || "BRL"
@@ -635,7 +681,25 @@ async function buildFromLiveFetch(
 
   const sentCampaignsCount = campaignsArr.length
   const liveFlowsCount = flowsArr.filter((f) => f.status === "enabled" || f.status === "active" || f.status === "live").length
-  const totalSubscribers = d.subscribedContacts
+  // TOTAL DE LEADS vem dos contatos TOTAIS (nao apenas subscribed).
+  // Subscribed (4290) != total de leads (14094) != engajados 90d (3408).
+  const totalSubscribers = d.totalContacts
+  const engagedProfiles = d.engagedContacts
+  const engagementRateLive = d.totalContacts > 0
+    ? Math.round((engagedProfiles / d.totalContacts) * 10000) / 100
+    : 0
+
+  log.info("[ReportBuilder] summary (live)", {
+    storeId: store.storeId,
+    faturamentoTotal: storeRevenue,
+    totalOrders: storeOrders,
+    receitaAtribuida: attributedRevenue,
+    pedidosAtribuidos: attributedOrders,
+    totalLeads: totalSubscribers,
+    engajados90d: engagedProfiles,
+    campaignsSent: sentCampaignsCount,
+    flowsLive: liveFlowsCount,
+  })
 
   return {
     success: true,
@@ -657,9 +721,9 @@ async function buildFromLiveFetch(
       klaviyoAttributedRevenue: attributedRevenue,
       campaignRevenue,
       flowRevenue,
-      totalOrders: totalConversions,
-      klaviyoAttributedOrders: totalConversions,
-      averageOrderValue: totalConversions > 0 ? attributedRevenue / totalConversions : 0,
+      totalOrders: storeOrders,
+      klaviyoAttributedOrders: attributedOrders || totalConversions,
+      averageOrderValue: storeOrders > 0 ? storeRevenue / storeOrders : 0,
       recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
     },
     emailPerformance: {
@@ -684,10 +748,11 @@ async function buildFromLiveFetch(
       totalTemplates: 0,
     },
     engagement: {
-      engagedProfiles: totalSubscribers,
-      engagementRate: totalSubscribers > 0 && d.totalContacts > 0
-        ? ((totalSubscribers / d.totalContacts) * 100).toFixed(1)
-        : "0",
+      // engagedProfiles = contagem real do segmento "Engajados 90d" (~3408),
+      // NAO subscribedContacts (~4290). O /new page mapeia este campo para
+      // overview.engagedSegmentSize, que alimenta o card "Engajados (90d)".
+      engagedProfiles,
+      engagementRate: engagementRateLive > 0 ? engagementRateLive.toFixed(1) : "0",
       engaged90dSegmentName: null,
     },
     automation: {
