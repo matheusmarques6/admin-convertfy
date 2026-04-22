@@ -1,7 +1,8 @@
 /**
- * TEMPORARY — Round 9: ISOLATE each field type
- * Strategy: use unknown field names for "padding" so only ONE known field
- * is tested at a time. If it parses → that type is correct.
+ * TEMPORARY — Round 10: FINAL FORMAT — all types confirmed
+ * metrics: [{ name: "..." }]
+ * dateRange: { from: "RFC3339", to: "RFC3339" }
+ * dimensions: [{ name: "timestamp", granularity: "..." }]
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -17,7 +18,7 @@ async function safeFetch(url: string, options: RequestInit): Promise<{ status: n
     const res = await fetch(url, { ...options, signal: AbortSignal.timeout(15000) })
     const text = await res.text()
     let body: unknown
-    try { body = JSON.parse(text) } catch { body = text.slice(0, 3000) }
+    try { body = JSON.parse(text) } catch { body = text.slice(0, 5000) }
     return { status: res.status, body }
   } catch (err) {
     return { status: 0, body: err instanceof Error ? err.message : String(err) }
@@ -47,59 +48,85 @@ export async function GET(request: NextRequest) {
   const url = "https://api.omnisend.com/api/analytics/statistics"
   const results: Record<string, unknown> = { store: store.store_name }
 
-  // BASELINE: alias only (all others missing = get validation errors)
-  results["a_baseline"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test" }]
+  // F1: granularity "day"
+  results["f1_day"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "revenue_30d",
+      metrics: [
+        { name: "totalRevenue" },
+        { name: "totalOrders" },
+        { name: "attributedRevenue" },
+        { name: "attributedOrders" }
+      ],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [{ name: "timestamp", granularity: "day" }]
+    }]
   })})
 
-  // TEST metrics — is it an array of strings?
-  results["b1_metrics_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"] }]
+  // F2: granularity "month"
+  results["f2_month"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: [{ name: "totalRevenue" }, { name: "attributedRevenue" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [{ name: "timestamp", granularity: "month" }]
+    }]
   })})
 
-  // TEST metrics — array of objects?
-  results["b2_metrics_obj_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: [{ name: "totalRevenue" }] }]
+  // F3: granularity "total" (aggregate)
+  results["f3_total"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: [{ name: "totalRevenue" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [{ name: "timestamp", granularity: "total" }]
+    }]
   })})
 
-  // TEST dateRange — object with from/to?
-  results["c1_dateRange_obj"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dateRange: { from: "2026-03-23", to: "2026-04-22" } }]
+  // F4: single metric totalRevenue with day granularity
+  results["f4_single_metric"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "test",
+      metrics: [{ name: "totalRevenue" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [{ name: "timestamp", granularity: "day" }]
+    }]
   })})
 
-  // TEST dateRange — object with start/end?
-  results["c2_dateRange_start_end"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dateRange: { start: "2026-03-23", end: "2026-04-22" } }]
+  // F5: with campaign dimension
+  results["f5_campaign_dim"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "by_campaign",
+      metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [
+        { name: "timestamp", granularity: "month" },
+        { name: "campaign" }
+      ]
+    }]
   })})
 
-  // TEST dateRange — object with startDate/endDate?
-  results["c3_dateRange_startDate"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dateRange: { startDate: "2026-03-23", endDate: "2026-04-22" } }]
+  // F6: with workflow/automation dimension
+  results["f6_workflow_dim"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
+    queries: [{
+      alias: "by_workflow",
+      metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [
+        { name: "timestamp", granularity: "month" },
+        { name: "workflow" }
+      ]
+    }]
   })})
 
-  // TEST dimensions — array of strings?
-  results["d1_dims_str_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dimensions: ["timestamp"] }]
-  })})
-
-  // TEST dimensions — array of objects?
-  results["d2_dims_obj_array"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dimensions: [{ name: "timestamp" }] }]
-  })})
-
-  // TEST dimensions — object?
-  results["d3_dims_obj"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", dimensions: { timestamp: "day" } }]
-  })})
-
-  // COMBO: metrics + dateRange (if b1 and c1 both parse)
-  results["e1_metrics_dateRange"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" } }]
-  })})
-
-  // COMBO: all 4 fields
-  results["e2_all_four"] = await safeFetch(url, { method: "POST", headers: h, body: JSON.stringify({
-    queries: [{ alias: "test", metrics: ["totalRevenue"], dateRange: { from: "2026-03-23", to: "2026-04-22" }, dimensions: ["timestamp"] }]
+  // F7: stable version header
+  results["f7_stable"] = await safeFetch(url, { method: "POST", headers: { ...h, "Omnisend-Version": "2026-03-15" }, body: JSON.stringify({
+    queries: [{
+      alias: "rev",
+      metrics: [{ name: "totalRevenue" }, { name: "totalOrders" }],
+      dateRange: { from: "2026-03-23T00:00:00Z", to: "2026-04-22T23:59:59Z" },
+      dimensions: [{ name: "timestamp", granularity: "day" }]
+    }]
   })})
 
   return NextResponse.json(results, { headers: { "Content-Type": "application/json" } })
