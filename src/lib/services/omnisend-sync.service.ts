@@ -23,6 +23,7 @@ import {
   omnisendPaginateV5,
   OMNISEND_V3,
   OMNISEND_V5,
+  OMNISEND_API,
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
   OmnisendPermissionError,
@@ -291,7 +292,68 @@ export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> 
   })
 }
 
-// ── Events (revenue attribution via placed order events) ─
+// ── Statistics API (revenue) ─────────────────────────────
+
+export interface OmnisendStatisticsResult {
+  totalRevenue: number
+  totalOrders: number
+  attributedRevenue: number
+  attributedOrders: number
+}
+
+export async function fetchOmnisendStatistics(
+  apiKey: string,
+  startDate: string,
+  endDate: string
+): Promise<OmnisendStatisticsResult> {
+  const result: OmnisendStatisticsResult = {
+    totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0,
+  }
+
+  try {
+    const resp = await omnisendRequest<{ statistics: Array<{ rows: Array<Record<string, number>> }> }>(
+      apiKey,
+      `${OMNISEND_API}/analytics/statistics`,
+      {
+        method: "POST",
+        logTag: "OmnisendStatistics",
+        body: {
+          queries: [{
+            alias: "revenue",
+            metrics: [
+              { name: "totalRevenue" },
+              { name: "totalOrders" },
+              { name: "attributedRevenue" },
+              { name: "attributedOrders" },
+            ],
+            dateRange: {
+              from: new Date(startDate).toISOString(),
+              to: new Date(endDate).toISOString(),
+            },
+            dimensions: [{ name: "timestamp", granularity: "month" }],
+          }],
+        },
+      }
+    )
+
+    if (resp?.statistics?.[0]?.rows) {
+      for (const row of resp.statistics[0].rows) {
+        result.totalRevenue += row.totalRevenue || 0
+        result.totalOrders += row.totalOrders || 0
+        result.attributedRevenue += row.attributedRevenue || 0
+        result.attributedOrders += row.attributedOrders || 0
+      }
+      log.info(`[OmnisendStatistics] Revenue: total=${result.totalRevenue}, attributed=${result.attributedRevenue}, orders=${result.totalOrders}`)
+    }
+  } catch (err) {
+    if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
+    log.warn("[OmnisendStatistics] Failed, revenue will be 0", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  return result
+}
 
 // ── Engaged 90D via Segments ─────────────────────────────
 
@@ -478,9 +540,10 @@ async function doSyncOmnisendForStore(params: {
     log.info(`Fetched ${segments.length} segments`, { storeId })
     const engaged = await findEngaged90dFromSegments(segments, subscribedContacts)
 
-    // 6. Revenue: NAO disponivel via API publica Omnisend.
-    //    Statistics API, Events API, Orders API — todos retornam 404.
-    //    Revenue fica 0 ate que o Statistics API Beta seja liberado para esta conta.
+    // 6. Revenue via Statistics API (POST /api/analytics/statistics)
+    const endDate = new Date().toISOString()
+    const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
+    const revenueStats = await fetchOmnisendStatistics(apiKey, startDate, endDate)
     const currency = "EUR"
 
     // 7. Map campaigns to rows
@@ -576,9 +639,9 @@ async function doSyncOmnisendForStore(params: {
         }
       })
 
-    // 9. Aggregate campaign revenue from stats
+    // 9. Revenue: Stats API provides totals, campaign rows provide inline breakdown
     const totalCampaignRevenue = campaignRows.reduce((sum, r) => sum + r.conversion_value, 0)
-    const totalAutomationRevenue = automationRows.reduce((sum, r) => sum + r.conversion_value, 0)
+    const totalAutomationRevenue = revenueStats.attributedRevenue - totalCampaignRevenue
 
     return {
       ok: true,
@@ -586,10 +649,10 @@ async function doSyncOmnisendForStore(params: {
         campaignRows,
         automationRows,
         segments,
-        totalCampaignRevenue,
-        totalAutomationRevenue,
-        totalStoreRevenue: 0,
-        totalOrders: 0,
+        totalCampaignRevenue: Math.max(0, totalCampaignRevenue),
+        totalAutomationRevenue: Math.max(0, totalAutomationRevenue),
+        totalStoreRevenue: revenueStats.totalRevenue,
+        totalOrders: revenueStats.totalOrders,
         totalContacts,
         subscribedContacts,
         engagedContacts: engaged.count,

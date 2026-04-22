@@ -45,12 +45,7 @@ export class OmnisendPermissionError extends Error {
 export const OMNISEND_API_BASE = "https://api.omnisend.com"
 export const OMNISEND_V3 = `${OMNISEND_API_BASE}/v3`
 export const OMNISEND_V5 = `${OMNISEND_API_BASE}/v5`
-/** Statistics API — ainda em Beta em abr/2026 conforme artigo oficial
- *  "What's New - April 2026": https://support.omnisend.com/en/articles/14320182
- *  URL base documentada: https://api-docs.omnisend.com/v2026-preview/reference/statistics
- *  NOTE: versao anterior dessa constante usava "/v2026-03-15" com rotulo GA —
- *  nao ha confirmacao documental de GA; a doc ainda chama de Beta. */
-export const OMNISEND_V2026 = `${OMNISEND_API_BASE}/v2026-preview`
+export const OMNISEND_API = `${OMNISEND_API_BASE}/api`
 
 /** Rate limit global documentado: 400 req/min (≈150ms entre requests).
  *  https://api-docs.omnisend.com/reference/rate-limit-timeouts-errors
@@ -114,7 +109,7 @@ export async function omnisendRequest<T>(
       const response = await fetch(url, {
         method,
         headers: {
-          "X-API-KEY": apiKey,
+          "Authorization": `Omnisend-API-Key ${apiKey}`,
           "Omnisend-Version": "2026-03-15",
           "Accept": "application/json",
           "Content-Type": "application/json",
