@@ -786,6 +786,12 @@ async function doSyncOmnisendForStore(params: {
       const campaignOrders = s.ordersCount || s.orders || 0
       const spam = s.complained || 0
 
+      // subject: /v5/ retorna `subjectLine`; /api/ (2026-03-15) retorna
+      // `content.email.subject`. Lemos ambos, com fallback para c.subject.
+      const rawContent = (c as Record<string, unknown>).content as { email?: { subject?: string } } | undefined
+      const subjectLine = (c as Record<string, unknown>).subjectLine as string | undefined
+      const subjectValue = c.subject || subjectLine || rawContent?.email?.subject || null
+
       return {
         store_id: storeId,
         org_id: orgId,
@@ -793,8 +799,19 @@ async function doSyncOmnisendForStore(params: {
         campaign_name: c.name || "Untitled",
         campaign_status: c.status,
         channel: c.channel || "email",
-        subject: c.subject || null,
-        send_time: (c as Record<string, unknown>).startDate as string || c.completedAt || c.sendAt || c.createdAt || null,
+        subject: subjectValue,
+        // send_time: Omnisend mudou de shape entre /v5/ (startDate/endDate) e
+        // /api/ (startedAt/endedAt) na Omnisend-Version 2026-03-15. Suportamos
+        // ambos, mais completedAt/sendAt/createdAt como fallbacks antigos.
+        send_time: (
+          (c as Record<string, unknown>).startDate as string
+          || (c as Record<string, unknown>).startedAt as string
+          || c.completedAt
+          || c.sendAt
+          || (c as Record<string, unknown>).sentAt as string
+          || c.createdAt
+          || null
+        ),
         recipients: sent,
         delivered,
         delivery_rate: safeRate(delivered, sent),
