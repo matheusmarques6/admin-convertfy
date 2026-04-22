@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger"
 import {
   omnisendRequest,
   omnisendPaginateV5,
+  OMNISEND_V3,
   OMNISEND_V5,
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
@@ -113,25 +114,7 @@ function getAutomationStats(a: OmnisendAutomation): OmnisendCampaignStats {
   return a.stats || a.statistics || ({} as OmnisendCampaignStats)
 }
 
-export interface OmnisendOrder {
-  orderID: string
-  orderNumber?: number
-  email?: string
-  createdAt: string
-  currency: string
-  orderSum: number
-  subTotalSum?: number
-  discountSum?: number
-  taxSum?: number
-  shippingSum?: number
-  fulfillmentStatus?: string
-  paymentStatus?: string
-  source?: string
-  attributionSource?: string
-  campaignID?: string
-  automationID?: string
-  [key: string]: unknown
-}
+
 
 export interface OmnisendContact {
   contactID: string
@@ -255,6 +238,42 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
   return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
 }
 
+/**
+ * Enriquece campanhas com stats via GET /v3/campaigns/{campaignID}.
+ * A v3 detail retorna: sent, opened, clicked, bounced, complained, unsubscribed.
+ * Revenue NAO esta disponivel na API publica.
+ */
+async function enrichCampaignsWithV3Stats(
+  apiKey: string,
+  campaigns: OmnisendCampaign[]
+): Promise<void> {
+  for (const camp of campaigns) {
+    const campId = getCampaignId(camp)
+    if (!campId) continue
+    try {
+      const detail = await omnisendRequest<Record<string, unknown>>(
+        apiKey,
+        `${OMNISEND_V3}/campaigns/${campId}`,
+        { logTag: "OmnisendCampaignV3Detail" }
+      )
+      if (detail) {
+        camp.stats = {
+          sent: Number(detail.sent) || 0,
+          delivered: Number(detail.sent) - (Number(detail.bounced) || 0),
+          opened: Number(detail.opened) || 0,
+          clicked: Number(detail.clicked) || 0,
+          bounced: Number(detail.bounced) || 0,
+          complained: Number(detail.complained) || 0,
+          unsubscribed: Number(detail.unsubscribed) || 0,
+        }
+      }
+      await sleep(200)
+    } catch {
+      log.warn(`Failed to fetch v3 detail for campaign ${campId}`)
+    }
+  }
+}
+
 // ── Automations ───────────────────────────────────────────
 
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
@@ -273,33 +292,6 @@ export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> 
 }
 
 // ── Events (revenue attribution via placed order events) ─
-
-export interface OmnisendEvent {
-  eventID?: string
-  eventName?: string
-  email?: string
-  contactID?: string
-  createdAt?: string
-  systemName?: string
-  action?: string
-  [key: string]: unknown
-}
-
-export async function fetchPlacedOrderEvents(
-  apiKey: string,
-  startDate: string,
-  endDate: string
-): Promise<OmnisendEvent[]> {
-  return omnisendPaginateV5<OmnisendEvent>(apiKey, `${OMNISEND_V5}/events`, "events", {
-    logTag: "OmnisendPlacedOrders",
-    queryParams: {
-      eventName: "placed order",
-      from: startDate,
-      to: endDate,
-    },
-    maxPages: 200,
-  })
-}
 
 // ── Engaged 90D via Segments ─────────────────────────────
 
@@ -460,92 +452,36 @@ async function doSyncOmnisendForStore(params: {
 
     await sleep(200)
 
-    // 2. Fetch automations (v5 cursor-based)
+    // 2. Enrich campaigns with stats via v3 detail (GET /v3/campaigns/{id})
+    //    v5 list NAO retorna stats inline; v3 detail retorna sent/opened/clicked/bounced
+    await enrichCampaignsWithV3Stats(apiKey, campaigns)
+    const withStats = campaigns.filter(c => getCampaignStats(c) && Object.keys(getCampaignStats(c)).length > 0).length
+    log.info(`Enriched ${withStats}/${campaigns.length} campaigns with v3 stats`, { storeId })
+
+    await sleep(200)
+
+    // 3. Fetch automations (v5 cursor-based)
+    //    NAO ha endpoint publico para stats de automations — so temos nome/status/trigger
     const automations = await fetchAutomations(apiKey)
     log.info(`Fetched ${automations.length} automations`, { storeId })
-    if (automations.length > 0) {
-      const sample = automations[0]
-      const keys = Object.keys(sample).filter(k => k !== "automationID" && k !== "name")
-      log.info(`[DIAG] Automation sample fields: ${keys.join(", ")}`, {
-        storeId,
-        hasStats: !!sample.stats,
-        sampleKeys: keys.slice(0, 20),
-        statsKeys: sample.stats ? Object.keys(sample.stats) : [],
-        rawStatsSnippet: sample.stats ? JSON.stringify(sample.stats).slice(0, 300) : "null",
-      })
-    }
 
     await sleep(200)
 
-    // 3. Fetch placed order events for revenue attribution
-    const endDate = new Date().toISOString()
-    const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const events = await fetchPlacedOrderEvents(apiKey, startDate, endDate)
-    log.info(`Fetched ${events.length} events for ${periodDays}d period`, {
-      storeId,
-      sampleEvent: events.length > 0 ? JSON.stringify(events[0]).slice(0, 600) : "none",
-      sampleKeys: events.length > 0 ? Object.keys(events[0]) : [],
-    })
-
-    // Currency: tenta extrair dos eventos; default EUR para lojas europeias
-    const currency = "EUR"
-
-    await sleep(200)
-
-    // 5. Fetch contact counts
+    // 4. Contacts
     const { totalContacts, subscribedContacts } = await fetchContactCounts(apiKey)
     log.info(`Contacts: ${totalContacts} total, ${subscribedContacts} subscribed`, { storeId })
 
     await sleep(200)
 
-    // 5b. Fetch segments
+    // 5. Segments + engaged 90D
     const segments = await fetchSegments(apiKey)
     log.info(`Fetched ${segments.length} segments`, { storeId })
-
-    // 5c. Engaged 90D via segment matching
     const engaged = await findEngaged90dFromSegments(segments, subscribedContacts)
 
-    // 6. Revenue: computar dos eventos placed order
-    //    TODO: refinar quando soubermos o shape exato dos events
-    let totalEventRevenue = 0
-    let totalEventOrders = 0
-    for (const evt of events) {
-      const val = Number((evt as Record<string, unknown>).value
-        || (evt as Record<string, unknown>).$value
-        || (evt as Record<string, unknown>).orderSum
-        || 0)
-      if (val > 0) {
-        totalEventRevenue += val
-        totalEventOrders++
-      }
-    }
-    log.info(`[DIAG] Events revenue: ${totalEventRevenue}, orders: ${totalEventOrders}`, { storeId })
-
-    // Stats inline: a API retorna stats/statistics no proprio objeto da campanha/automation.
-    // Batch Statistics API e v5/{id}/statistics NAO existem publicamente (404).
-    // Usamos APENAS os stats inline do v3/v5.
-    if (campaigns.length > 0) {
-      const withStats = campaigns.filter(c => getCampaignStats(c) && Object.keys(getCampaignStats(c)).length > 0).length
-      log.info(`[DIAG] Campaigns with inline stats: ${withStats}/${campaigns.length}`, { storeId })
-      if (withStats === 0) {
-        const raw = campaigns[0] as Record<string, unknown>
-        log.warn(`[DIAG] First campaign raw keys: ${Object.keys(raw).join(", ")}`, {
-          storeId,
-          rawSnippet: JSON.stringify(raw).slice(0, 600),
-        })
-      }
-    }
-    if (automations.length > 0) {
-      const withStats = automations.filter(a => getAutomationStats(a) && Object.keys(getAutomationStats(a)).length > 0).length
-      log.info(`[DIAG] Automations with inline stats: ${withStats}/${automations.length}`, { storeId })
-      if (withStats === 0) {
-        const raw = automations[0] as Record<string, unknown>
-        log.warn(`[DIAG] First automation raw keys: ${Object.keys(raw).join(", ")}`, {
-          storeId,
-          rawSnippet: JSON.stringify(raw).slice(0, 600),
-        })
-      }
-    }
+    // 6. Revenue: NAO disponivel via API publica Omnisend.
+    //    Statistics API, Events API, Orders API — todos retornam 404.
+    //    Revenue fica 0 ate que o Statistics API Beta seja liberado para esta conta.
+    const currency = "EUR"
 
     // 7. Map campaigns to rows
     const campaignRows: OmnisendCampaignRow[] = campaigns
@@ -570,7 +506,7 @@ async function doSyncOmnisendForStore(params: {
         campaign_status: c.status,
         channel: c.channel || "email",
         subject: c.subject || null,
-        send_time: c.completedAt || c.sendAt || c.createdAt || null,
+        send_time: (c as Record<string, unknown>).startDate as string || c.completedAt || c.sendAt || c.createdAt || null,
         recipients: sent,
         delivered,
         delivery_rate: safeRate(delivered, sent),
@@ -652,8 +588,8 @@ async function doSyncOmnisendForStore(params: {
         segments,
         totalCampaignRevenue,
         totalAutomationRevenue,
-        totalStoreRevenue: totalEventRevenue,
-        totalOrders: totalEventOrders,
+        totalStoreRevenue: 0,
+        totalOrders: 0,
         totalContacts,
         subscribedContacts,
         engagedContacts: engaged.count,
