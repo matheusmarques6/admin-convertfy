@@ -249,20 +249,6 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
     }
   )
 
-  if (all.length === 0) {
-    // Rede de seguranca: a Omnisend-Version 2026-03-15 parece manter /v5/campaigns,
-    // mas o Addendum observou que essa rota pode "quebrar silenciosamente" quando
-    // a plataforma migra clientes para o novo shape de /api/campaigns. Quando a
-    // paginacao /v5 retorna vazio, tentamos /api/campaigns (que usa o mesmo
-    // nome de item "campaigns" mas paginacao `paging.cursors.after`).
-    log.warn("[OmnisendCampaigns_v5] /v5/campaigns returned 0 items, trying /api/campaigns fallback")
-    const fallback = await paginateApiCampaigns(apiKey)
-    if (fallback.length > 0) {
-      log.info(`[OmnisendCampaigns_api_fallback] Recovered ${fallback.length} campaigns via /api/campaigns`)
-      return fallback.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
-    }
-  }
-
   if (all.length > 0) {
     const statusBreakdown: Record<string, number> = {}
     for (const c of all) {
@@ -274,31 +260,6 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
   }
 
   return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
-}
-
-/** Fallback: paginar /api/campaigns com cursor (Omnisend-Version 2026-03-15).
- *  Shape: { campaigns: [...], paging: { cursors: { after?: string } } }. */
-async function paginateApiCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
-  const allItems: OmnisendCampaign[] = []
-  let after: string | undefined
-  const MAX_PAGES = 50
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params = new URLSearchParams({ limit: "250" })
-    if (after) params.set("after", after)
-    const resp = await omnisendRequest<{
-      campaigns?: OmnisendCampaign[]
-      data?: OmnisendCampaign[]
-      paging?: { cursors?: { after?: string } }
-    }>(apiKey, `${OMNISEND_API}/campaigns?${params}`, { logTag: "OmnisendCampaigns_api" })
-    if (!resp) break
-    const items = resp.campaigns || resp.data || []
-    allItems.push(...items)
-    after = resp.paging?.cursors?.after
-    if (!after || items.length === 0) break
-  }
-
-  return allItems
 }
 
 /**
@@ -340,36 +301,14 @@ async function enrichCampaignsWithV3Stats(
 // ── Automations ───────────────────────────────────────────
 
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
-  const v5 = await omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
+  const all = await omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
     logTag: "OmnisendAutomations",
   })
-  if (v5.length > 0) {
-    const sample = v5[0] as Record<string, unknown>
-    log.info(`[DIAG] Automation sample keys: ${Object.keys(sample).slice(0, 15).join(",")}, total=${v5.length}`)
-    return v5
+  if (all.length > 0) {
+    const sample = all[0] as Record<string, unknown>
+    log.info(`[DIAG] Automation sample keys: ${Object.keys(sample).slice(0, 15).join(",")}, total=${all.length}`)
   }
-  // Fallback analogo a paginateApiCampaigns
-  log.warn("[OmnisendAutomations] /v5/automations returned 0 items, trying /api/automations fallback")
-  const allItems: OmnisendAutomation[] = []
-  let after: string | undefined
-  for (let page = 0; page < 50; page++) {
-    const params = new URLSearchParams({ limit: "250" })
-    if (after) params.set("after", after)
-    const resp = await omnisendRequest<{
-      automations?: OmnisendAutomation[]
-      data?: OmnisendAutomation[]
-      paging?: { cursors?: { after?: string } }
-    }>(apiKey, `${OMNISEND_API}/automations?${params}`, { logTag: "OmnisendAutomations_api" })
-    if (!resp) break
-    const items = resp.automations || resp.data || []
-    allItems.push(...items)
-    after = resp.paging?.cursors?.after
-    if (!after || items.length === 0) break
-  }
-  if (allItems.length > 0) {
-    log.info(`[OmnisendAutomations_api_fallback] Recovered ${allItems.length} automations via /api/automations`)
-  }
-  return allItems
+  return all
 }
 
 // ── Segments ──────────────────────────────────────────────
@@ -569,21 +508,6 @@ async function countContacts(
   logTag: string,
   queryParams: Record<string, string>
 ): Promise<number> {
-  // Tenta /v5/contacts primeiro; se a primeira pagina retornar sem contatos
-  // e sem paging, faz fallback para /api/contacts (Omnisend-Version 2026-03-15
-  // com paging.cursors.after).
-  const v5Count = await paginateContactsV5(apiKey, logTag, queryParams)
-  if (v5Count > 0) return v5Count
-
-  log.warn(`[${logTag}] /v5/contacts returned 0, trying /api/contacts fallback`)
-  return paginateContactsApi(apiKey, logTag, queryParams)
-}
-
-async function paginateContactsV5(
-  apiKey: string,
-  logTag: string,
-  queryParams: Record<string, string>,
-): Promise<number> {
   const initialParams = new URLSearchParams({ ...queryParams, limit: String(CONTACTS_PAGE_LIMIT) })
   let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
   let count = 0
@@ -593,6 +517,7 @@ async function paginateContactsV5(
     const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
     if (!resp) break
 
+    // Primeira pagina: tentar extrair total direto do paging (se a API fornecer)
     if (page === 0) {
       const paging = resp.paging as Record<string, unknown> | undefined
       if (paging && typeof paging.total === "number") {
@@ -612,49 +537,7 @@ async function paginateContactsV5(
     url = paging?.next || null
   }
 
-  log.info(`[${logTag}] (v5) Counted ${count} contacts in ${pages} pages`)
-  return count
-}
-
-async function paginateContactsApi(
-  apiKey: string,
-  logTag: string,
-  queryParams: Record<string, string>,
-): Promise<number> {
-  let after: string | undefined
-  let count = 0
-  let pages = 0
-
-  for (let page = 0; page < CONTACTS_MAX_PAGES; page++) {
-    const params = new URLSearchParams({ ...queryParams, limit: String(CONTACTS_PAGE_LIMIT) })
-    if (after) params.set("after", after)
-    const resp = await omnisendRequest<{
-      contacts?: OmnisendContact[]
-      data?: OmnisendContact[]
-      paging?: { cursors?: { after?: string }; total?: number }
-      totalCount?: number
-    }>(apiKey, `${OMNISEND_API}/contacts?${params}`, { logTag: `${logTag}_api` })
-    if (!resp) break
-
-    if (page === 0) {
-      if (typeof resp.paging?.total === "number") {
-        log.info(`[${logTag}_api] Got total from paging.total: ${resp.paging.total}`)
-        return resp.paging.total
-      }
-      if (typeof resp.totalCount === "number") {
-        log.info(`[${logTag}_api] Got total from totalCount: ${resp.totalCount}`)
-        return resp.totalCount
-      }
-    }
-
-    const items = resp.contacts || resp.data || []
-    count += items.length
-    pages++
-    after = resp.paging?.cursors?.after
-    if (!after) break
-  }
-
-  log.info(`[${logTag}_api] Counted ${count} contacts in ${pages} pages`)
+  log.info(`[${logTag}] Counted ${count} contacts in ${pages} pages`)
   return count
 }
 
