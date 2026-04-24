@@ -208,7 +208,11 @@ export async function upsertOmnisendSyncResults(
     engaged_leads: engagedCount,
     engagement_rate: engagementRate,
     sync_status: "ok",
-    sync_source: "omnisend",
+    // sync_source tem CHECK CONSTRAINT restrito a 'cron' | 'live' | 'report'
+    // (migration 20260318). "omnisend" viola o check e faz o upsert explodir.
+    // Usamos "cron" quando chamado pelo cron job ou "live" quando quando
+    // chamado via endpoint de live-fetch (nao distinguimos hoje).
+    sync_source: "cron",
     sync_error: null,
     currency: data.currency,
     fetched_at: nowIso,

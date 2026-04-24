@@ -106,25 +106,22 @@ export async function omnisendRequest<T>(
     await waitForRateLimit(apiKey)
 
     try {
-      // Omnisend usa dois schemes de auth diferentes por familia de endpoint:
-      //   /v3/* e /v5/*  → header X-API-KEY (legacy, sem version)
-      //   /api/*         → Authorization: Omnisend-API-Key + Omnisend-Version
-      // Enviar o header errado retorna 400 "API key or access token not provided".
-      const isLegacy = url.includes("/v3/") || url.includes("/v5/")
-      const headers: Record<string, string> = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      }
-      if (isLegacy) {
-        headers["X-API-KEY"] = apiKey
-      } else {
-        headers["Authorization"] = `Omnisend-API-Key ${apiKey}`
-        headers["Omnisend-Version"] = "2026-03-15"
-      }
-
+      // Omnisend aceita multiplas formas de auth simultaneamente. Enviamos
+      // todos os headers e deixamos a API escolher qual usar:
+      //   /v3/* e /v5/* legacy:   X-API-KEY
+      //   /v5/segments e /api/*:  Authorization + Omnisend-Version
+      // Sem o Omnisend-Version, /v5/segments retorna 400 "header required".
+      // Sem X-API-KEY, /v3/campaigns/{id} retorna 400 "not provided".
+      // Enviar os tres cobre todos os endpoints sem branching.
       const response = await fetch(url, {
         method,
-        headers,
+        headers: {
+          "X-API-KEY": apiKey,
+          "Authorization": `Omnisend-API-Key ${apiKey}`,
+          "Omnisend-Version": "2026-03-15",
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
         ...(body && { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(OMNISEND_FETCH_TIMEOUT_MS),
       })
