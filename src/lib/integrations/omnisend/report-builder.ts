@@ -268,18 +268,23 @@ async function readFromCache(storeId: string, period: string) {
       .from("omnisend_campaign_metrics")
       .select("*")
       .eq("store_id", storeId)
-      .eq("period_label", period),
+      .eq("period_label", period)
+      .order("fetched_at", { ascending: false }),
     admin
       .from("omnisend_flow_metrics")
       .select("*")
       .eq("store_id", storeId)
-      .eq("period_label", period),
+      .eq("period_label", period)
+      .order("fetched_at", { ascending: false }),
   ])
 
+  // Dedup defensivo: se o sync historico deixou duplicatas (antes do
+  // cleanup em 83175a0), o report mostrava 9 flows como 36. Aqui so
+  // mantemos o row mais recente por campaign_id / flow_id.
   return {
     summary,
-    campaignRows: campaignRows || [],
-    flowRows: flowRows || [],
+    campaignRows: dedupRowsBy(campaignRows || [], "campaign_id"),
+    flowRows: dedupRowsBy(flowRows || [], "flow_id"),
     fetchedAt: summary.fetched_at as string,
   }
 }
@@ -299,16 +304,32 @@ async function readFromCacheStale(storeId: string, period: string) {
   if (!fetchedAt || Date.now() - fetchedAt.getTime() > STALE_CACHE_MAX_MS) return null
 
   const [{ data: campaignRows }, { data: flowRows }] = await Promise.all([
-    admin.from("omnisend_campaign_metrics").select("*").eq("store_id", storeId).eq("period_label", period),
-    admin.from("omnisend_flow_metrics").select("*").eq("store_id", storeId).eq("period_label", period),
+    admin.from("omnisend_campaign_metrics").select("*").eq("store_id", storeId).eq("period_label", period).order("fetched_at", { ascending: false }),
+    admin.from("omnisend_flow_metrics").select("*").eq("store_id", storeId).eq("period_label", period).order("fetched_at", { ascending: false }),
   ])
 
   return {
     summary,
-    campaignRows: campaignRows || [],
-    flowRows: flowRows || [],
+    campaignRows: dedupRowsBy(campaignRows || [], "campaign_id"),
+    flowRows: dedupRowsBy(flowRows || [], "flow_id"),
     fetchedAt: summary.fetched_at as string,
   }
+}
+
+/** Dedup rows por chave, preservando a primeira (DB ja ordenou por
+ *  fetched_at desc → mantem a mais recente). Cobre o caso de duplicatas
+ *  historicas em omnisend_campaign_metrics / omnisend_flow_metrics antes
+ *  do cleanup automatico ter sido aplicado. */
+function dedupRowsBy<T extends Record<string, unknown>>(rows: T[], key: string): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const r of rows) {
+    const id = String(r[key] ?? "")
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(r)
+  }
+  return out
 }
 
 /**

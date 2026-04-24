@@ -192,28 +192,42 @@ export async function upsertOmnisendSyncResults(
   // omnisend_campaign_revenue/omnisend_flow_revenue mantem o breakdown
   // derivado (campaign=0, flow=attributed) que o report usa como fallback
   // enquanto a API nao suporta dimension=campaign|workflow.
-  const summaryPayload = {
-    store_id: store.id,
-    org_id: store.org_id,
-    period_label: period,
-    period_start: periodStartIso,
-    period_end: nowIso,
+  //
+  // CRITICO: quando Statistics API esta rate-limited, o sync devolve
+  // {totalStoreRevenue: 0, totalAttributedRevenue: 0}. Sem cuidado, isso
+  // SOBRESCREVE valores bons de um sync anterior com zeros, apagando
+  // €371k do Overview. Por isso, quando TODOS os campos de revenue
+  // estao zerados, omitimos os campos do payload — o upsert preserva
+  // os valores existentes na linha.
+  const revenueCollected = data.totalStoreRevenue > 0
+    || data.totalAttributedRevenue > 0
+    || data.totalOrders > 0
+    || data.totalAttributedOrders > 0
+
+  const revenueFields = revenueCollected ? {
     store_total_revenue: data.totalStoreRevenue,
     store_orders: data.totalOrders,
     omnisend_total_revenue: data.totalAttributedRevenue,
     omnisend_total_orders: data.totalAttributedOrders,
     omnisend_campaign_revenue: data.totalCampaignRevenue,
     omnisend_flow_revenue: data.totalAutomationRevenue,
+  } : {}
+
+  const summaryPayload = {
+    store_id: store.id,
+    org_id: store.org_id,
+    period_label: period,
+    period_start: periodStartIso,
+    period_end: nowIso,
+    ...revenueFields,
     total_leads: data.totalContacts,
     engaged_leads: engagedCount,
     engagement_rate: engagementRate,
-    sync_status: "ok",
+    sync_status: revenueCollected ? "ok" : "partial",
     // sync_source tem CHECK CONSTRAINT restrito a 'cron' | 'live' | 'report'
     // (migration 20260318). "omnisend" viola o check e faz o upsert explodir.
-    // Usamos "cron" quando chamado pelo cron job ou "live" quando quando
-    // chamado via endpoint de live-fetch (nao distinguimos hoje).
     sync_source: "cron",
-    sync_error: null,
+    sync_error: revenueCollected ? null : "Statistics API unavailable — revenue preserved from previous sync",
     currency: data.currency,
     fetched_at: nowIso,
     expires_at: expiresAt,
@@ -222,6 +236,7 @@ export async function upsertOmnisendSyncResults(
   log.info("[SyncPersist] writing row", {
     store_id: store.id,
     period_label: period,
+    revenueCollected,
     store_total_revenue: data.totalStoreRevenue,
     store_orders: data.totalOrders,
     omnisend_total_revenue: data.totalAttributedRevenue,
