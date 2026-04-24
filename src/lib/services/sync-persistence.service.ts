@@ -283,8 +283,16 @@ export async function upsertOmnisendSyncResults(
       .from("omnisend_campaign_metrics")
       .upsert(campaignPayload, { onConflict: "store_id,campaign_id,period_start,period_end" })
     if (campErr) {
-      log.warn(`[SyncPersistence] Failed to upsert omnisend_campaign_metrics for ${store.id}/${period}:`, campErr.message)
+      log.error(`[SyncPersistence] Failed to upsert omnisend_campaign_metrics for ${store.id}/${period}`, {
+        error: campErr.message,
+        rowCount: campaignPayload.length,
+        firstRow: JSON.stringify(campaignPayload[0]).slice(0, 500),
+      })
+    } else {
+      log.info(`[SyncPersistence] Upserted ${campaignPayload.length} omnisend_campaign_metrics rows for ${store.id}/${period}`)
     }
+  } else {
+    log.warn(`[SyncPersistence] No campaign rows to upsert for ${store.id}/${period} — data.campaignRows.length=0`)
   }
 
   if (data.automationRows.length > 0) {
@@ -320,8 +328,16 @@ export async function upsertOmnisendSyncResults(
       .from("omnisend_flow_metrics")
       .upsert(flowPayload, { onConflict: "store_id,flow_id,period_start,period_end" })
     if (flowErr) {
-      log.warn(`[SyncPersistence] Failed to upsert omnisend_flow_metrics for ${store.id}/${period}:`, flowErr.message)
+      log.error(`[SyncPersistence] Failed to upsert omnisend_flow_metrics for ${store.id}/${period}`, {
+        error: flowErr.message,
+        rowCount: flowPayload.length,
+        firstRow: JSON.stringify(flowPayload[0]).slice(0, 500),
+      })
+    } else {
+      log.info(`[SyncPersistence] Upserted ${flowPayload.length} omnisend_flow_metrics rows for ${store.id}/${period}`)
     }
+  } else {
+    log.warn(`[SyncPersistence] No automation rows to upsert for ${store.id}/${period} — data.automationRows.length=0`)
   }
 
   await supabase

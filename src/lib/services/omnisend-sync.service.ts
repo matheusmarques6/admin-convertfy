@@ -257,6 +257,11 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
     }
     const sample = all[0] as Record<string, unknown>
     log.info(`[DIAG] Campaign statuses: ${JSON.stringify(statusBreakdown)}, total=${all.length}, sampleKeys=${Object.keys(sample).slice(0, 15).join(",")}`)
+    // Raw JSON do primeiro campaign ajuda a diagnosticar shape (send_time,
+    // subject, channel, etc.) sem precisar rodar o sync com debugger.
+    log.info(`[DIAG] Campaign[0] raw: ${JSON.stringify(sample).slice(0, 600)}`)
+  } else {
+    log.warn(`[DIAG] fetchAllReportCampaigns returned 0 items — /v5/campaigns may have migrated or retornou vazio`)
   }
 
   return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
@@ -307,6 +312,14 @@ export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomati
   if (all.length > 0) {
     const sample = all[0] as Record<string, unknown>
     log.info(`[DIAG] Automation sample keys: ${Object.keys(sample).slice(0, 15).join(",")}, total=${all.length}`)
+    // Raw JSON do primeiro item (truncado) ajuda a diagnosticar mudancas de
+    // shape da API (ex: `isEnabled` ausente, `trigger` virou objeto, etc.)
+    // sem precisar rodar o sync com debugger anexado.
+    log.info(`[DIAG] Automation[0] raw: ${JSON.stringify(sample).slice(0, 600)}`)
+    const enabledCount = all.filter((a) => a.isEnabled === true).length
+    log.info(`[DIAG] Automations with isEnabled=true: ${enabledCount}/${all.length}`)
+  } else {
+    log.warn(`[DIAG] fetchAutomations returned 0 items — /v5/automations may have migrated or API key lacks scope`)
   }
   return all
 }
