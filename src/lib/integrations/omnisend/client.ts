@@ -91,9 +91,13 @@ export async function omnisendRequest<T>(
     method?: "GET" | "POST" | "PATCH" | "PUT"
     body?: Record<string, unknown>
     logTag?: string
+    /** Override da versao da Omnisend API — util para /api/analytics/statistics
+     *  que o Ryan validou usando `2026-preview` especificamente. Default
+     *  `2026-03-15` funciona para todos os outros endpoints. */
+    omnisendVersion?: string
   }
 ): Promise<T | null> {
-  const { method = "GET", body, logTag = "Omnisend" } = options || {}
+  const { method = "GET", body, logTag = "Omnisend", omnisendVersion = "2026-03-15" } = options || {}
   const url = endpoint.startsWith("http") ? endpoint : `${OMNISEND_API_BASE}${endpoint}`
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -118,7 +122,7 @@ export async function omnisendRequest<T>(
         headers: {
           "X-API-KEY": apiKey,
           "Authorization": `Omnisend-API-Key ${apiKey}`,
-          "Omnisend-Version": "2026-03-15",
+          "Omnisend-Version": omnisendVersion,
           "Accept": "application/json",
           "Content-Type": "application/json",
         },

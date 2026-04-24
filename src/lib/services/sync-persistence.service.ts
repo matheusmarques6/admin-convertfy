@@ -293,6 +293,17 @@ export async function upsertOmnisendSyncResults(
         firstRow: JSON.stringify(campaignPayload[0]).slice(0, 500),
       })
     } else {
+      // Cleanup: period_start/period_end mudam a cada sync (nowIso), entao
+      // o onConflict nao colapsa rows de syncs anteriores. Sem isso, a mesma
+      // campanha acumula uma linha por sync — aparecia 5x repetida em
+      // "Ultimas Campanhas". Deletamos rows deste store/period que nao foram
+      // tocadas por este sync (fetched_at antigo).
+      await supabase
+        .from("omnisend_campaign_metrics")
+        .delete()
+        .eq("store_id", store.id)
+        .eq("period_label", period)
+        .lt("fetched_at", nowIso)
       log.info(`[SyncPersistence] Upserted ${campaignPayload.length} omnisend_campaign_metrics rows for ${store.id}/${period}`)
     }
   } else {
@@ -338,6 +349,14 @@ export async function upsertOmnisendSyncResults(
         firstRow: JSON.stringify(flowPayload[0]).slice(0, 500),
       })
     } else {
+      // Mesmo cleanup das campaigns — evita flows duplicados acumulados
+      // entre syncs por causa do period_end mutavel.
+      await supabase
+        .from("omnisend_flow_metrics")
+        .delete()
+        .eq("store_id", store.id)
+        .eq("period_label", period)
+        .lt("fetched_at", nowIso)
       log.info(`[SyncPersistence] Upserted ${flowPayload.length} omnisend_flow_metrics rows for ${store.id}/${period}`)
     }
   } else {

@@ -338,10 +338,47 @@ export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomati
 // ── Segments ──────────────────────────────────────────────
 
 export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> {
-  return omnisendPaginateV5<OmnisendSegment>(apiKey, `${OMNISEND_V5}/segments`, "segments", {
-    logTag: "OmnisendSegments",
-    maxPages: 40,
-  })
+  // Preferencia: /api/segments (Omnisend-Version 2026-03-15) — endpoint
+  // atual confirmado por curl do Ryan. Shape: { segments: [{ segmentID, name, ... }] }
+  // Fallback: /v5/segments (legacy). Logamos o body quando ambos falham para
+  // diagnostico (nao mais fica silenciosamente caindo em fallback).
+  const all: OmnisendSegment[] = []
+  let after: string | undefined
+  const MAX_PAGES = 40
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({ limit: "100" })
+    if (after) params.set("after", after)
+    const resp = await omnisendRequest<{
+      segments?: Array<OmnisendSegment & { id?: string; contactsCount?: number }>
+      data?: Array<OmnisendSegment & { id?: string }>
+      paging?: { cursors?: { after?: string }; next?: string }
+    }>(apiKey, `${OMNISEND_API}/segments?${params}`, { logTag: "OmnisendSegments" })
+    if (!resp) break
+
+    const items = resp.segments || resp.data || []
+    // Normaliza: /api/ retorna segmentID; /v5/ retornava id. Garantimos
+    // que o downstream sempre veja segmentID preenchido.
+    for (const raw of items) {
+      const normalized: OmnisendSegment = {
+        ...raw,
+        segmentID: raw.segmentID || raw.id || "",
+        contactsCount: typeof raw.contactsCount === "number" ? raw.contactsCount : 0,
+        name: raw.name || "",
+      }
+      if (normalized.segmentID) all.push(normalized)
+    }
+
+    after = resp.paging?.cursors?.after
+    if (!after || items.length === 0) break
+  }
+
+  log.info(`[OmnisendSegments] Fetched ${all.length} segments via /api/segments`)
+  if (all.length > 0) {
+    const sample = all[0] as unknown as Record<string, unknown>
+    log.info(`[DIAG] Segment[0] keys: ${Object.keys(sample).slice(0, 10).join(",")}, raw: ${JSON.stringify(sample).slice(0, 400)}`)
+  }
+  return all
 }
 
 // ── Statistics API (revenue) ─────────────────────────────
@@ -380,6 +417,9 @@ export async function fetchOmnisendStatistics(
       {
         method: "POST",
         logTag: "OmnisendStatistics",
+        // Ryan validou a Statistics API com "2026-preview" especificamente.
+        // "2026-03-15" (default global) foi dando inconsistencias recentes.
+        omnisendVersion: "2026-preview",
         body: {
           queries: [{
             alias: "revenue",

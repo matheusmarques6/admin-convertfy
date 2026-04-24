@@ -41,6 +41,10 @@ export async function GET(request: NextRequest) {
 
   const startTime = Date.now()
   const results: SyncResult[] = []
+  // Entry log: se "[CronSyncOmnisend] start" aparecer e "[CronSyncOmnisend] done"
+  // nunca aparecer, o crash e silencioso e sabemos investigar travamento/timeout
+  // em vez de adivinhar.
+  log.info("[CronSyncOmnisend] start", { timestamp: new Date().toISOString() })
 
   try {
     const adminClient = createAdminClient()
@@ -167,6 +171,12 @@ export async function GET(request: NextRequest) {
       duration: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
     })
 
+    log.info("[CronSyncOmnisend] done", {
+      duration: Date.now() - startTime,
+      totalStores: stores.length,
+      ok: okCount,
+      errors: errorCount,
+    })
     return NextResponse.json({
       message: `Synced ${okCount}/${stores.length} stores`,
       duration: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
@@ -174,7 +184,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error)
-    log.error("Cron sync-omnisend failed", { error: errMsg })
+    log.error("[CronSyncOmnisend] crashed", { error: errMsg, duration: Date.now() - startTime })
     return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }

@@ -231,7 +231,7 @@ export async function buildOmnisendCampaignsResponse(
     if (cached && cached.length > 0) {
       const latestFetchedAt = new Date(cached[0].fetched_at as string)
       if (Date.now() - latestFetchedAt.getTime() < CACHE_FRESH_MS) {
-        const campaigns = cached.map((r: Record<string, unknown>) => mapCachedCampaign(r))
+        const campaigns = dedupCampaigns(cached.map((r: Record<string, unknown>) => mapCachedCampaign(r)))
         const filtered = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns
         filtered.sort(sortCampaigns)
 
@@ -379,7 +379,7 @@ function buildCampaignsFromStaleCache(
   cache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string },
   startDateStr: string, endDateStr: string, period: string, statusFilter?: string | null
 ) {
-  const campaigns = cache.data.map((r) => mapCachedCampaign(r))
+  const campaigns = dedupCampaigns(cache.data.map((r) => mapCachedCampaign(r)))
   const filtered = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns
   filtered.sort(sortCampaigns)
 
@@ -420,7 +420,7 @@ export async function buildOmnisendFlowsResponse(
     if (cached && cached.length > 0) {
       const latestFetchedAt = new Date(cached[0].fetched_at as string)
       if (Date.now() - latestFetchedAt.getTime() < CACHE_FRESH_MS) {
-        const flows = cached.map((r: Record<string, unknown>) => mapCachedFlow(r))
+        const flows = dedupFlows(cached.map((r: Record<string, unknown>) => mapCachedFlow(r)))
         flows.sort((a, b) => b.conversionValue - a.conversionValue)
 
         const { data: summaryRow } = await admin
@@ -564,7 +564,7 @@ function buildFlowsFromStaleCache(
   cache: { data: Record<string, unknown>[]; currency: string; fetchedAt: string },
   startDateStr: string, endDateStr: string, period: string
 ) {
-  const flows = cache.data.map((r) => mapCachedFlow(r))
+  const flows = dedupFlows(cache.data.map((r) => mapCachedFlow(r)))
   flows.sort((a, b) => b.conversionValue - a.conversionValue)
 
   return {
@@ -581,6 +581,33 @@ function buildFlowsFromStaleCache(
 }
 
 // ── Helpers ──────────────────────────────────────────────────
+
+/** Remove duplicatas de campaigns por `id`, preservando a com maior receita
+ *  (ou primeira). Rede de seguranca contra rows duplicados em
+ *  omnisend_campaign_metrics (ver cleanup em sync-persistence). Sem isso,
+ *  "Ultimas Campanhas" no Overview mostrava a mesma campanha 5x. */
+function dedupCampaigns(list: CampaignResponseRow[]): CampaignResponseRow[] {
+  const byId = new Map<string, CampaignResponseRow>()
+  for (const c of list) {
+    const existing = byId.get(c.id)
+    if (!existing || c.conversionValue > existing.conversionValue) {
+      byId.set(c.id, c)
+    }
+  }
+  return Array.from(byId.values())
+}
+
+/** Idem para flows. */
+function dedupFlows(list: FlowResponseRow[]): FlowResponseRow[] {
+  const byId = new Map<string, FlowResponseRow>()
+  for (const f of list) {
+    const existing = byId.get(f.id)
+    if (!existing || f.conversionValue > existing.conversionValue) {
+      byId.set(f.id, f)
+    }
+  }
+  return Array.from(byId.values())
+}
 
 function mapCachedCampaign(r: Record<string, unknown>): CampaignResponseRow {
   const delivered = Number(r.delivered) || 0
