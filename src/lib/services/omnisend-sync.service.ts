@@ -420,6 +420,14 @@ export async function fetchOmnisendStatistics(
         // Ryan validou a Statistics API com "2026-preview" especificamente.
         // "2026-03-15" (default global) foi dando inconsistencias recentes.
         omnisendVersion: "2026-preview",
+        // CRITICO: a Statistics API SILENCIOSAMENTE retorna rows vazias (0)
+        // quando recebe X-API-KEY junto com Authorization. Foi isso que
+        // quebrou a receita entre 22/04 (funcionou) e 24/04 (zerou) —
+        // o commit c665ffe adicionou X-API-KEY global pra cobrir endpoints
+        // legacy. Para /api/analytics/statistics precisamos mandar SO o
+        // Authorization, igual ao curl que o Ryan validou (€371k total
+        // + €12.853 attributed em Azzurro Milano).
+        authStyle: "bearer",
         body: {
           queries: [{
             alias: "revenue",

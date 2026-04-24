@@ -95,9 +95,19 @@ export async function omnisendRequest<T>(
      *  que o Ryan validou usando `2026-preview` especificamente. Default
      *  `2026-03-15` funciona para todos os outros endpoints. */
     omnisendVersion?: string
+    /** Estilo de autenticacao:
+     *   - "default" (padrao): envia X-API-KEY + Authorization + Omnisend-Version.
+     *     Cobre /v3/* e /v5/* legacy (que exigem X-API-KEY).
+     *   - "bearer": envia APENAS Authorization + Omnisend-Version.
+     *     Obrigatorio para /api/analytics/statistics — a Statistics API
+     *     rejeita silenciosamente (retorna rows vazias/0) quando recebe
+     *     X-API-KEY junto com Authorization. Validado via curl do Ryan em
+     *     22/04 com Azzurro Milano: retornou €371k total + €12.853
+     *     attributed usando SOMENTE Authorization. */
+    authStyle?: "default" | "bearer"
   }
 ): Promise<T | null> {
-  const { method = "GET", body, logTag = "Omnisend", omnisendVersion = "2026-03-15" } = options || {}
+  const { method = "GET", body, logTag = "Omnisend", omnisendVersion = "2026-03-15", authStyle = "default" } = options || {}
   const url = endpoint.startsWith("http") ? endpoint : `${OMNISEND_API_BASE}${endpoint}`
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -110,22 +120,25 @@ export async function omnisendRequest<T>(
     await waitForRateLimit(apiKey)
 
     try {
-      // Omnisend aceita multiplas formas de auth simultaneamente. Enviamos
-      // todos os headers e deixamos a API escolher qual usar:
-      //   /v3/* e /v5/* legacy:   X-API-KEY
-      //   /v5/segments e /api/*:  Authorization + Omnisend-Version
-      // Sem o Omnisend-Version, /v5/segments retorna 400 "header required".
-      // Sem X-API-KEY, /v3/campaigns/{id} retorna 400 "not provided".
-      // Enviar os tres cobre todos os endpoints sem branching.
+      // Omnisend aceita multiplas formas de auth, mas a combinacao delas
+      // nao e universalmente aceita:
+      //   /v3/* e /v5/* legacy:           exigem X-API-KEY
+      //   /v5/segments e /api/*:          exigem Authorization + Omnisend-Version
+      //   /api/analytics/statistics:      SO aceita Authorization sozinho —
+      //     se receber X-API-KEY junto, retorna 200 com rows vazias (sem erro,
+      //     revenue fica zerado silenciosamente). Por isso authStyle="bearer".
+      const baseHeaders: Record<string, string> = {
+        "Authorization": `Omnisend-API-Key ${apiKey}`,
+        "Omnisend-Version": omnisendVersion,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      }
+      if (authStyle === "default") {
+        baseHeaders["X-API-KEY"] = apiKey
+      }
       const response = await fetch(url, {
         method,
-        headers: {
-          "X-API-KEY": apiKey,
-          "Authorization": `Omnisend-API-Key ${apiKey}`,
-          "Omnisend-Version": omnisendVersion,
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-        },
+        headers: baseHeaders,
         ...(body && { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(OMNISEND_FETCH_TIMEOUT_MS),
       })
