@@ -24,6 +24,7 @@ import {
   OMNISEND_V3,
   OMNISEND_V5,
   OMNISEND_API,
+  OMNISEND_CAMPAIGNS_INTERVAL_MS,
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
   OmnisendPermissionError,
@@ -296,9 +297,19 @@ async function enrichCampaignsWithV3Stats(
           unsubscribed: Number(detail.unsubscribed) || 0,
         }
       }
-      await sleep(200)
-    } catch {
-      log.warn(`Failed to fetch v3 detail for campaign ${campId}`)
+      // /v3/campaigns/{id} tem rate limit "1 RPS per Client" empirico.
+      // sleep(200) era muito agressivo — gerava 429 com Retry-After 59s.
+      await sleep(OMNISEND_CAMPAIGNS_INTERVAL_MS)
+    } catch (err) {
+      // OmnisendRateLimitError nao deve abortar o enrichment inteiro;
+      // apenas logamos a campanha que falhou e seguimos.
+      if (err instanceof OmnisendRateLimitError) {
+        log.warn(`[V3 Enrich] Rate limit persistente para campaign ${campId} — pulando`, {
+          retryAfterMs: err.retryAfterMs,
+        })
+      } else {
+        log.warn(`Failed to fetch v3 detail for campaign ${campId}`)
+      }
     }
   }
 }
@@ -614,10 +625,34 @@ async function doSyncOmnisendForStore(params: {
 }): Promise<SyncResult<OmnisendSyncData>> {
   const { storeId, orgId, apiKey, periodDays } = params
 
+  // Wrapper: executa uma etapa do sync e retorna fallback se falhar.
+  // Rate limits em um endpoint nao podem abortar os outros.
+  async function safely<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await fn()
+    } catch (err) {
+      if (err instanceof OmnisendRateLimitError) {
+        log.warn(`[OmnisendSync:${label}] rate limited — continuing with fallback`, {
+          storeId,
+          retryAfterMs: err.retryAfterMs,
+        })
+      } else if (err instanceof OmnisendInvalidKeyError || err instanceof OmnisendPermissionError) {
+        // Auth / permissao: propagamos pra fora — nao faz sentido continuar sem credencial.
+        throw err
+      } else {
+        log.error(`[OmnisendSync:${label}] failed — continuing with fallback`, {
+          storeId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+      return fallback
+    }
+  }
+
   try {
     // 1. Fetch campanhas em todos os status relevantes para relatorio
     //    (sent + scheduled + inProgress + paused). Descartamos drafts.
-    const campaigns = await fetchAllReportCampaigns(apiKey)
+    const campaigns = await safely("campaigns", () => fetchAllReportCampaigns(apiKey), [] as OmnisendCampaign[])
     log.info(`Fetched ${campaigns.length} report-eligible campaigns`, { storeId })
     if (campaigns.length > 0) {
       const sample = campaigns[0]
@@ -637,7 +672,7 @@ async function doSyncOmnisendForStore(params: {
 
     // 2. Enrich campaigns with stats via v3 detail (GET /v3/campaigns/{id})
     //    v5 list NAO retorna stats inline; v3 detail retorna sent/opened/clicked/bounced
-    await enrichCampaignsWithV3Stats(apiKey, campaigns)
+    await safely("enrichV3", () => enrichCampaignsWithV3Stats(apiKey, campaigns), undefined as void)
     const withStats = campaigns.filter(c => getCampaignStats(c) && Object.keys(getCampaignStats(c)).length > 0).length
     log.info(`Enriched ${withStats}/${campaigns.length} campaigns with v3 stats`, { storeId })
 
@@ -645,26 +680,43 @@ async function doSyncOmnisendForStore(params: {
 
     // 3. Fetch automations (v5 cursor-based)
     //    NAO ha endpoint publico para stats de automations — so temos nome/status/trigger
-    const automations = await fetchAutomations(apiKey)
+    const automations = await safely("automations", () => fetchAutomations(apiKey), [] as OmnisendAutomation[])
     log.info(`Fetched ${automations.length} automations`, { storeId })
 
     await sleep(200)
 
     // 4. Contacts
-    const { totalContacts, subscribedContacts } = await fetchContactCounts(apiKey)
+    const { totalContacts, subscribedContacts } = await safely(
+      "contacts",
+      () => fetchContactCounts(apiKey),
+      { totalContacts: 0, subscribedContacts: 0 },
+    )
     log.info(`Contacts: ${totalContacts} total, ${subscribedContacts} subscribed`, { storeId })
 
     await sleep(200)
 
     // 5. Segments + engaged 90D
-    const segments = await fetchSegments(apiKey)
+    const segments = await safely("segments", () => fetchSegments(apiKey), [] as OmnisendSegment[])
     log.info(`Fetched ${segments.length} segments`, { storeId })
-    const engaged = await findEngaged90dFromSegments(apiKey, segments, subscribedContacts)
+    const engaged = await safely(
+      "engaged90d",
+      () => findEngaged90dFromSegments(apiKey, segments, subscribedContacts),
+      { count: subscribedContacts, source: "fallback" as const },
+    )
 
-    // 6. Revenue via Statistics API (POST /api/analytics/statistics)
+    // 6. Revenue via Statistics API (POST /api/analytics/statistics).
+    //    Se esse endpoint falhar por rate limit (ja vimos Retry-After de
+    //    5.5h), NAO abortamos o sync inteiro — persistimos campaigns,
+    //    automations e contacts que ja foram coletados, com revenue=0.
+    //    O proximo sync tentara novamente. Isso impede que um rate limit
+    //    em um unico endpoint apague todos os metrics no Reports.
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const revenueStats = await fetchOmnisendStatistics(apiKey, startDate, endDate)
+    const revenueStats = await safely(
+      "statistics",
+      () => fetchOmnisendStatistics(apiKey, startDate, endDate),
+      { totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0 } as OmnisendStatisticsResult,
+    )
     const currency = "EUR"
 
     // 7. Map campaigns to rows
