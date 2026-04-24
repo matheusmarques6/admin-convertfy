@@ -652,10 +652,20 @@ function mapCachedFlow(r: Record<string, unknown>): FlowResponseRow {
   const conversions = Number(r.conversions) || 0
   const conversionValue = Number(r.conversion_value) || 0
 
+  // Normaliza status legado: caches gravados antes do commit d5beab4 (22/04)
+  // podiam ter "enabled" ou "active". aggregateFlowSummary ja aceita ambos,
+  // mas a tabela `store-performance-tables.tsx` verifica `status === "live"`
+  // estrito — sem essa normalizacao, flows ativos aparecem com badge "Inativo"
+  // enquanto o Overview mostra "Flows Ativos: N" corretamente.
+  const rawStatus = ((r.flow_status as string) || "").toLowerCase()
+  const status = rawStatus === "enabled" || rawStatus === "active"
+    ? "live"
+    : rawStatus || "live"
+
   return {
     id: r.flow_id as string,
     name: (r.flow_name as string) || "Untitled",
-    status: (r.flow_status as string) || "live",
+    status,
     triggerType: (r.trigger_type as string) || "custom",
     created: "",
     archived: false,

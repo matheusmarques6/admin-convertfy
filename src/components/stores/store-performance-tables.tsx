@@ -165,7 +165,14 @@ export function StorePerformanceTables() {
                         <div className="font-medium truncate" title={f.name}>
                           {f.name}
                         </div>
-                        <StatusBadge status={f.status === "live" ? "live" : "inactive"} className="text-xs mt-1" />
+                        <StatusBadge
+                          status={
+                            f.status === "live" || f.status === "enabled" || f.status === "active"
+                              ? "live"
+                              : "inactive"
+                          }
+                          className="text-xs mt-1"
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         {(delivered).toLocaleString("pt-BR")}
