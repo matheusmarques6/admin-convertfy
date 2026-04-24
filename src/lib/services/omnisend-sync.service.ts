@@ -363,7 +363,18 @@ export async function fetchOmnisendStatistics(
   }
 
   try {
-    const resp = await omnisendRequest<{ statistics: Array<{ rows: Array<Record<string, number>> }> }>(
+    // Payload alinhado ao curl validado pelo Ryan (Azzurro Milano, abr/2026):
+    // - granularity "day" (a API 2026-preview retorna rows diarias com totalRevenue/
+    //   totalOrders/attributedRevenue/attributedOrders por dia)
+    // - Omnisend-Version "2026-preview" (versao que funciona nos testes manuais;
+    //   "2026-03-15" ainda e valida mas deu resultados inconsistentes em alguns
+    //   requests recentes)
+    const resp = await omnisendRequest<{
+      statistics: Array<{
+        alias?: string
+        rows: Array<Record<string, number | string>>
+      }>
+    }>(
       apiKey,
       `${OMNISEND_API}/analytics/statistics`,
       {
@@ -382,20 +393,27 @@ export async function fetchOmnisendStatistics(
               from: new Date(startDate).toISOString(),
               to: new Date(endDate).toISOString(),
             },
-            dimensions: [{ name: "timestamp", granularity: "month" }],
+            dimensions: [{ name: "timestamp", granularity: "day" }],
           }],
         },
       }
     )
 
-    if (resp?.statistics?.[0]?.rows) {
-      for (const row of resp.statistics[0].rows) {
-        result.totalRevenue += row.totalRevenue || 0
-        result.totalOrders += row.totalOrders || 0
-        result.attributedRevenue += row.attributedRevenue || 0
-        result.attributedOrders += row.attributedOrders || 0
+    // Log do response bruto (primeiras 3 rows) para diagnosticar se a API
+    // retorna 0, valores validos, ou shape diferente. Evita adivinhacao
+    // quando a UI mostra R$ 0,00.
+    if (resp?.statistics?.[0]) {
+      const rows = resp.statistics[0].rows || []
+      log.info(`[OmnisendStatistics] Received ${rows.length} rows, first 3: ${JSON.stringify(rows.slice(0, 3))}`)
+      for (const row of rows) {
+        result.totalRevenue += Number(row.totalRevenue) || 0
+        result.totalOrders += Number(row.totalOrders) || 0
+        result.attributedRevenue += Number(row.attributedRevenue) || 0
+        result.attributedOrders += Number(row.attributedOrders) || 0
       }
-      log.info(`[OmnisendStatistics] Revenue: total=${result.totalRevenue}, attributed=${result.attributedRevenue}, orders=${result.totalOrders}`)
+      log.info(`[OmnisendStatistics] Totals: totalRevenue=${result.totalRevenue}, totalOrders=${result.totalOrders}, attributedRevenue=${result.attributedRevenue}, attributedOrders=${result.attributedOrders}`)
+    } else {
+      log.warn(`[OmnisendStatistics] Empty response or malformed shape: ${JSON.stringify(resp).slice(0, 300)}`)
     }
   } catch (err) {
     if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
