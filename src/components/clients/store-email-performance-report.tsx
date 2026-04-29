@@ -442,6 +442,13 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
   // desses dados sao escondidas — zero invencao.
   const isOmnisend = reportData.platform === "omnisend"
 
+  // Cards "Taxa Recorrencia", "Novos Clientes", "Total de Clientes" sao
+  // 100% derivados da Shopify (orders + customers count). Quando a loja
+  // nao tem Shopify conectado, ficam zerados — visualmente sugerem
+  // performance ruim quando na verdade o dado e indisponivel. Mostramos
+  // "—" + tooltip explicativo. Filosofia: zero invencao.
+  const shopifyConnected = !!shopifyData
+
   // ============ DATA CALCULATIONS ============
   // Prioridade: Shopify (quando conectado) > storeRevenue da plataforma de email
   // (Statistics API / metric-aggregates) > totalRevenue (atribuida, caminho legado).
@@ -558,20 +565,30 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <p className="text-2xl font-bold text-primary">{formatPercent(engagementRate)}</p>
               </div>
 
-              <div className="bg-primary/10 rounded-[8px] p-4 border border-primary/20 transition-all hover:border-primary/40">
+              <div
+                className="bg-primary/10 rounded-[8px] p-4 border border-primary/20 transition-all hover:border-primary/40"
+                title={shopifyConnected ? undefined : "Conecte a Shopify para ver a taxa de recorrência"}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   <Repeat className="w-4 h-4 text-primary/80" />
                   <span className="text-xs text-muted-foreground">Taxa Recorrência</span>
                 </div>
-                <p className="text-2xl font-bold text-primary/80">{formatPercent(recurringRate)}</p>
+                <p className="text-2xl font-bold text-primary/80">
+                  {shopifyConnected ? formatPercent(recurringRate) : <span className="text-muted-foreground">—</span>}
+                </p>
               </div>
 
-              <div className="bg-muted/30 rounded-[8px] p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
+              <div
+                className="bg-muted/30 rounded-[8px] p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50"
+                title={shopifyConnected ? undefined : "Conecte a Shopify para ver novos clientes"}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   <UserCheck className="w-4 h-4 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Novos Clientes</span>
                 </div>
-                <p className="text-2xl font-bold text-foreground">{formatNumber(newCustomers)}</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {shopifyConnected ? formatNumber(newCustomers) : <span className="text-muted-foreground">—</span>}
+                </p>
               </div>
             </div>
 
@@ -639,11 +656,18 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Total de Pedidos</p>
               </div>
 
-              <div className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30">
+              <div
+                className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30"
+                title={shopifyConnected || totalCustomers > 0 ? undefined : "Conecte a Shopify para ver o total de clientes"}
+              >
                 <div className="w-12 h-12 rounded-[8px] bg-muted flex items-center justify-center mx-auto mb-3">
                   <Users className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <p className="text-2xl font-bold text-foreground">{formatNumber(totalCustomers)}</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {totalCustomers > 0
+                    ? formatNumber(totalCustomers)
+                    : <span className="text-muted-foreground">—</span>}
+                </p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Total de Clientes</p>
               </div>
             </div>
