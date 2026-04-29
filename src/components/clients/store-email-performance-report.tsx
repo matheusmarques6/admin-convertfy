@@ -775,14 +775,24 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <span className="text-sm text-muted-foreground">Total de Flows</span>
                 <span className="text-sm font-bold text-foreground">{totalFlows}</span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-border/30">
-                <span className="text-sm text-muted-foreground">Receita de Flows</span>
-                <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(flowRevenue)}</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
-              </div>
+              {/* Para Omnisend, escondemos Receita de Flows + % da Receita
+                  porque a API nao expoe breakdown campaigns vs automation
+                  (R5/R6: dimension `workflow`/`automation` rejeitadas para
+                  attributedRevenue). O total atribuido ja aparece no card
+                  "Receita Atribuida Convertfy" acima. Klaviyo continua
+                  mostrando porque la o breakdown e real. */}
+              {!isOmnisend && (
+                <>
+                  <div className="flex justify-between items-center py-2 border-b border-border/30">
+                    <span className="text-sm text-muted-foreground">Receita de Flows</span>
+                    <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(flowRevenue)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
+                    <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -803,14 +813,21 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <span className="text-sm text-muted-foreground">Entregues</span>
                 <span className="text-sm font-bold text-foreground">{formatNumber(reportData.campaignPerformance?.totalDelivered)}</span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-border/30">
-                <span className="text-sm text-muted-foreground">Receita de Campanhas</span>
-                <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(campaignRevenue)}</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
-              </div>
+              {/* Idem ao card de Flows: para Omnisend, sem breakdown
+                  Receita de Campanhas / % da Receita. Total atribuido
+                  esta no card "Receita Atribuida Convertfy" acima. */}
+              {!isOmnisend && (
+                <>
+                  <div className="flex justify-between items-center py-2 border-b border-border/30">
+                    <span className="text-sm text-muted-foreground">Receita de Campanhas</span>
+                    <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(campaignRevenue)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
+                    <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
