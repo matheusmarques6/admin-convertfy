@@ -473,6 +473,141 @@ export async function fetchOmnisendStatistics(
   return result
 }
 
+// ── Reports API (revenue + engagement em UMA chamada) ────
+//
+// Endpoint descoberto via 6 rounds de discovery (R5 retornou 200):
+//   POST /api/analytics/reports
+//   Omnisend-Version: 2026-preview
+//   Body: { queries: [{ alias, metrics, dateRange: {interval:"custom", from, to} }] }
+//
+// Retorna em UMA chamada o que hoje fazemos em duas:
+//   - 5 metrics de revenue (attributedRevenue, attributedOrders, ...)
+//   - 8 metrics de engagement (sent, opened, openedUnique, clicked, ...)
+//
+// Substitui o /api/analytics/statistics para os totais agregados.
+//
+// IMPORTANTE: dimensions de breakdown (campaign, workflow, automation,
+// messageType, etc) NAO sao suportadas — confirmado em R5/R6 com schema
+// correto. O endpoint so agrega por timestamp ou por nada. Por isso este
+// fetch trabalha com totais agregados sem dimension.
+
+export interface OmnisendReportsResult {
+  // Revenue
+  attributedRevenue: number
+  attributedOrders: number
+  attributedOrdersUnique: number
+  attributedRevenuePerOrder: number
+  attributedRevenuePerSent: number
+  // Engagement
+  sent: number
+  opened: number
+  openedUnique: number
+  openRate: number
+  clicked: number
+  clickedUnique: number
+  clickRate: number
+  failed: number
+}
+
+const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
+  attributedRevenue: 0,
+  attributedOrders: 0,
+  attributedOrdersUnique: 0,
+  attributedRevenuePerOrder: 0,
+  attributedRevenuePerSent: 0,
+  sent: 0,
+  opened: 0,
+  openedUnique: 0,
+  openRate: 0,
+  clicked: 0,
+  clickedUnique: 0,
+  clickRate: 0,
+  failed: 0,
+}
+
+export async function fetchOmnisendReports(
+  apiKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<OmnisendReportsResult> {
+  const result: OmnisendReportsResult = { ...EMPTY_REPORTS_RESULT }
+
+  try {
+    const resp = await omnisendRequest<{
+      reports: Array<{
+        alias?: string
+        dimensions?: unknown[]
+        metrics?: Array<{ name: string }>
+        rows?: Array<Record<string, number | string>>
+      }>
+    }>(
+      apiKey,
+      `${OMNISEND_API}/analytics/reports`,
+      {
+        method: "POST",
+        logTag: "OmnisendReports",
+        // Validado em R5: /api/analytics/reports usa Omnisend-Version
+        // 2026-preview com Authorization (sem X-API-KEY).
+        omnisendVersion: "2026-preview",
+        authStyle: "bearer",
+        body: {
+          queries: [{
+            alias: "agg",
+            metrics: [
+              { name: "attributedRevenue" },
+              { name: "attributedOrders" },
+              { name: "attributedOrdersUnique" },
+              { name: "attributedRevenuePerOrder" },
+              { name: "attributedRevenuePerSent" },
+              { name: "sent" },
+              { name: "opened" },
+              { name: "openedUnique" },
+              { name: "openRate" },
+              { name: "clicked" },
+              { name: "clickedUnique" },
+              { name: "clickRate" },
+              { name: "failed" },
+            ],
+            dateRange: {
+              interval: "custom",
+              from: new Date(startDate).toISOString(),
+              to: new Date(endDate).toISOString(),
+            },
+          }],
+        },
+      }
+    )
+
+    const row = resp?.reports?.[0]?.rows?.[0]
+    if (row) {
+      log.info(`[OmnisendReports] row received: ${JSON.stringify(row).slice(0, 400)}`)
+      result.attributedRevenue = Number(row.attributedRevenue) || 0
+      result.attributedOrders = Number(row.attributedOrders) || 0
+      result.attributedOrdersUnique = Number(row.attributedOrdersUnique) || 0
+      result.attributedRevenuePerOrder = Number(row.attributedRevenuePerOrder) || 0
+      result.attributedRevenuePerSent = Number(row.attributedRevenuePerSent) || 0
+      result.sent = Number(row.sent) || 0
+      result.opened = Number(row.opened) || 0
+      result.openedUnique = Number(row.openedUnique) || 0
+      result.openRate = Number(row.openRate) || 0
+      result.clicked = Number(row.clicked) || 0
+      result.clickedUnique = Number(row.clickedUnique) || 0
+      result.clickRate = Number(row.clickRate) || 0
+      result.failed = Number(row.failed) || 0
+      log.info(`[OmnisendReports] totals: revenue=${result.attributedRevenue}, orders=${result.attributedOrders}, sent=${result.sent}, openRate=${result.openRate}`)
+    } else {
+      log.warn(`[OmnisendReports] empty or malformed response: ${JSON.stringify(resp).slice(0, 300)}`)
+    }
+  } catch (err) {
+    if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
+    log.warn("[OmnisendReports] failed, totals will be 0", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  return result
+}
+
 // ── Engaged 90D via Segments ─────────────────────────────
 
 const ENGAGED_SEGMENT_PATTERNS = [
