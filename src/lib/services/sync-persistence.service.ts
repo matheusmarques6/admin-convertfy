@@ -37,9 +37,25 @@ const log = logger.child("SyncPersistence")
  * USAR em TODOS os lugares que lerem/escreverem period_label, senao
  * write em "1d" + read em "today" da cache miss permanente.
  */
-export function normalizePeriodLabel(period: string): string {
+export function normalizePeriodLabel(
+  period: string,
+  customStart?: string | null,
+  customEnd?: string | null,
+): string {
   if (period === "today" || period === "yesterday") return "1d"
   if (period === "1y") return "12m"
+  if (period === "custom") {
+    if (customStart && customEnd) {
+      // Normaliza para YYYY-MM-DD (descarta timezone e horario do ISO).
+      // Constraint do DB exige `custom:%` — precisa de algo apos os ":".
+      const startISO = customStart.slice(0, 10)
+      const endISO = customEnd.slice(0, 10)
+      return `custom:${startISO}:${endISO}`
+    }
+    // Defensivo: "custom" sem datas viola constraint. Fallback pra 30d
+    // pra nao quebrar o sync.
+    return "30d"
+  }
   return period
 }
 

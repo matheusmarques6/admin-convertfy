@@ -923,9 +923,12 @@ export async function buildOmnisendReport(
   customEndDate?: string | null
 ): Promise<OmnisendReportResponse> {
   // Normaliza period_label para o que a constraint do DB aceita.
-  // "today"/"yesterday" → "1d", "1y" → "12m". Sem isso, todas as queries
-  // de cache (read + write) falham e o report fica zerado.
-  const period = normalizePeriodLabel(rawPeriod)
+  //   "today"/"yesterday" → "1d"
+  //   "1y"                → "12m"
+  //   "custom" + datas    → "custom:YYYY-MM-DD:YYYY-MM-DD"
+  // Sem isso, todas as queries de cache (read + write) falham e o
+  // report fica zerado.
+  const period = normalizePeriodLabel(rawPeriod, customStartDate, customEndDate)
   const dateRange = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
 
   // 1) Tenta cache fresco

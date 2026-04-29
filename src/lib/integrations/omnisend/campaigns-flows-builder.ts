@@ -216,9 +216,12 @@ export async function buildOmnisendCampaignsResponse(
   customEndDate?: string | null,
   statusFilter?: string | null
 ) {
-  // "today"/"yesterday"/"1y" sao aliases da UI que a constraint do DB
-  // nao aceita. Normalizamos pra 1d/12m antes de qualquer query.
-  const period = normalizePeriodLabel(rawPeriod)
+  // Normaliza period_label antes de qualquer query:
+  //   "today"/"yesterday" → "1d"
+  //   "1y"                → "12m"
+  //   "custom" + datas    → "custom:YYYY-MM-DD:YYYY-MM-DD"
+  // Sem isso, a constraint do DB rejeita o upsert.
+  const period = normalizePeriodLabel(rawPeriod, customStartDate, customEndDate)
   const { startDateStr, endDateStr } = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
   const admin = createAdminClient()
 
