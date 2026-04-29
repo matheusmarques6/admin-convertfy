@@ -20,6 +20,7 @@
 import { logger } from "@/lib/logger"
 import {
   omnisendRequest,
+  omnisendPaginateV3,
   omnisendPaginateV5,
   OMNISEND_V3,
   OMNISEND_V5,
@@ -269,49 +270,91 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
 }
 
 /**
- * Enriquece campanhas com stats via GET /v3/campaigns/{campaignID}.
- * A v3 detail retorna: sent, opened, clicked, bounced, complained, unsubscribed.
- * Revenue NAO esta disponivel na API publica.
+ * Enriquece campanhas com stats via GET /v3/campaigns?limit=250.
+ *
+ * R3 confirmou que a LISTA /v3/campaigns retorna os mesmos campos de
+ * stats (sent, opened, clicked, bounced, complained, unsubscribed) inline
+ * que o detail /v3/campaigns/{id}, em UMA UNICA chamada com paginacao.
+ *
+ * Substitui o antigo loop N×GET /v3/campaigns/{id} (1.1s entre cada
+ * por rate limit "1 RPS per Client") por 1×GET /v3/campaigns?limit=250.
+ * Para uma loja com 30 campanhas: ~33s de calls reduzido para ~2s.
+ *
+ * Revenue continua NAO disponivel — o /v3 nao expoe receita por campanha
+ * individual (limitacao confirmada via discovery R3).
  */
 async function enrichCampaignsWithV3Stats(
   apiKey: string,
   campaigns: OmnisendCampaign[]
 ): Promise<void> {
+  if (campaigns.length === 0) return
+
+  // /v3/campaigns retorna `{ campaign: [...], paging }` — note `campaign`
+  // singular (nao `campaigns`) — confirmado em R3. Paginacao offset-based.
+  type V3Campaign = {
+    campaignID: string
+    sent?: number
+    opened?: number
+    clicked?: number
+    bounced?: number
+    complained?: number
+    unsubscribed?: number
+  }
+
+  let allV3: V3Campaign[] = []
+  try {
+    allV3 = await omnisendPaginateV3<V3Campaign>(
+      apiKey,
+      `${OMNISEND_V3}/campaigns`,
+      "campaign",
+      {
+        logTag: "OmnisendV3CampaignsList",
+        limit: 250,
+        // /v3/campaigns lista nao tem rate limit "1 RPS per client"
+        // documentado, mas mantemos o intervalo defensivo entre paginas
+        // pra nao queimar burst budget.
+        intervalMs: OMNISEND_CAMPAIGNS_INTERVAL_MS,
+      },
+    )
+  } catch (err) {
+    if (err instanceof OmnisendRateLimitError) {
+      log.warn(`[V3 Enrich] /v3/campaigns rate-limited — pulando enrichment`, {
+        retryAfterMs: err.retryAfterMs,
+      })
+      return
+    }
+    log.warn(`[V3 Enrich] Failed to list /v3/campaigns`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return
+  }
+
+  // Indexa por campaignID pra match O(1) com as campanhas vindas de /v5
+  const v3ById = new Map<string, V3Campaign>()
+  for (const c of allV3) {
+    if (c.campaignID) v3ById.set(c.campaignID, c)
+  }
+  log.info(`[V3 Enrich] List returned ${allV3.length} campaigns; matching against ${campaigns.length} from v5`)
+
+  // Aplica stats inline em cada campanha do /v5
+  let matched = 0
   for (const camp of campaigns) {
     const campId = getCampaignId(camp)
     if (!campId) continue
-    try {
-      const detail = await omnisendRequest<Record<string, unknown>>(
-        apiKey,
-        `${OMNISEND_V3}/campaigns/${campId}`,
-        { logTag: "OmnisendCampaignV3Detail" }
-      )
-      if (detail) {
-        camp.stats = {
-          sent: Number(detail.sent) || 0,
-          delivered: Number(detail.sent) - (Number(detail.bounced) || 0),
-          opened: Number(detail.opened) || 0,
-          clicked: Number(detail.clicked) || 0,
-          bounced: Number(detail.bounced) || 0,
-          complained: Number(detail.complained) || 0,
-          unsubscribed: Number(detail.unsubscribed) || 0,
-        }
-      }
-      // /v3/campaigns/{id} tem rate limit "1 RPS per Client" empirico.
-      // sleep(200) era muito agressivo — gerava 429 com Retry-After 59s.
-      await sleep(OMNISEND_CAMPAIGNS_INTERVAL_MS)
-    } catch (err) {
-      // OmnisendRateLimitError nao deve abortar o enrichment inteiro;
-      // apenas logamos a campanha que falhou e seguimos.
-      if (err instanceof OmnisendRateLimitError) {
-        log.warn(`[V3 Enrich] Rate limit persistente para campaign ${campId} — pulando`, {
-          retryAfterMs: err.retryAfterMs,
-        })
-      } else {
-        log.warn(`Failed to fetch v3 detail for campaign ${campId}`)
-      }
+    const v3 = v3ById.get(campId)
+    if (!v3) continue
+    matched++
+    camp.stats = {
+      sent: Number(v3.sent) || 0,
+      delivered: (Number(v3.sent) || 0) - (Number(v3.bounced) || 0),
+      opened: Number(v3.opened) || 0,
+      clicked: Number(v3.clicked) || 0,
+      bounced: Number(v3.bounced) || 0,
+      complained: Number(v3.complained) || 0,
+      unsubscribed: Number(v3.unsubscribed) || 0,
     }
   }
+  log.info(`[V3 Enrich] Matched ${matched}/${campaigns.length} campaigns with v3 stats`)
 }
 
 // ── Automations ───────────────────────────────────────────
