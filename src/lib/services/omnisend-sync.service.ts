@@ -387,10 +387,13 @@ export async function fetchSegments(apiKey: string): Promise<OmnisendSegment[]> 
   // diagnostico (nao mais fica silenciosamente caindo em fallback).
   const all: OmnisendSegment[] = []
   let after: string | undefined
-  const MAX_PAGES = 40
+  const MAX_PAGES = 80
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const params = new URLSearchParams({ limit: "100" })
+    // Limit max 50: a API /api/segments rejeita >50 com 400
+    // "Must be between 1 and 50". Aumentar MAX_PAGES de 40 pra 80 pra
+    // continuar suportando lojas com ate 4000 segmentos.
+    const params = new URLSearchParams({ limit: "50" })
     if (after) params.set("after", after)
     const resp = await omnisendRequest<{
       segments?: Array<OmnisendSegment & { id?: string; contactsCount?: number }>
