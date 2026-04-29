@@ -12,7 +12,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore, type OmnisendSyncData } from "@/lib/services/omnisend-sync.service"
-import { upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
+import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
 
@@ -211,12 +211,15 @@ function aggregateFlowSummary(flows: FlowResponseRow[]) {
  */
 export async function buildOmnisendCampaignsResponse(
   store: StoreCtx,
-  period: string,
+  rawPeriod: string,
   customStartDate?: string | null,
   customEndDate?: string | null,
   statusFilter?: string | null
 ) {
-  const { startDateStr, endDateStr } = dateRangeForPeriod(period, customStartDate, customEndDate)
+  // "today"/"yesterday"/"1y" sao aliases da UI que a constraint do DB
+  // nao aceita. Normalizamos pra 1d/12m antes de qualquer query.
+  const period = normalizePeriodLabel(rawPeriod)
+  const { startDateStr, endDateStr } = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
   const admin = createAdminClient()
 
   // 1) Cache
@@ -298,7 +301,8 @@ export async function buildOmnisendCampaignsResponse(
     throw new Error("API Key Omnisend não configurada")
   }
 
-  const days = daysForPeriod(period, customStartDate, customEndDate)
+  // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
+  const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
   try {
     const result = await syncOmnisendForStore({
       storeId: store.storeId,
@@ -401,11 +405,13 @@ function buildCampaignsFromStaleCache(
  */
 export async function buildOmnisendFlowsResponse(
   store: StoreCtx,
-  period: string,
+  rawPeriod: string,
   customStartDate?: string | null,
   customEndDate?: string | null
 ) {
-  const { startDateStr, endDateStr } = dateRangeForPeriod(period, customStartDate, customEndDate)
+  // Idem buildOmnisendCampaignsResponse: normaliza period antes de tudo.
+  const period = normalizePeriodLabel(rawPeriod)
+  const { startDateStr, endDateStr } = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
   const admin = createAdminClient()
 
   // 1) Cache
@@ -486,7 +492,8 @@ export async function buildOmnisendFlowsResponse(
     throw new Error("API Key Omnisend não configurada")
   }
 
-  const days = daysForPeriod(period, customStartDate, customEndDate)
+  // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
+  const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
   try {
     const result = await syncOmnisendForStore({
       storeId: store.storeId,

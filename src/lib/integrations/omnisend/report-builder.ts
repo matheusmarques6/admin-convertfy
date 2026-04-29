@@ -14,7 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
-import { upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
+import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
 import { logger } from "@/lib/logger"
 
@@ -918,11 +918,15 @@ async function buildFromLiveFetch(
  */
 export async function buildOmnisendReport(
   store: StoreContext,
-  period: string,
+  rawPeriod: string,
   customStartDate?: string | null,
   customEndDate?: string | null
 ): Promise<OmnisendReportResponse> {
-  const dateRange = dateRangeForPeriod(period, customStartDate, customEndDate)
+  // Normaliza period_label para o que a constraint do DB aceita.
+  // "today"/"yesterday" → "1d", "1y" → "12m". Sem isso, todas as queries
+  // de cache (read + write) falham e o report fica zerado.
+  const period = normalizePeriodLabel(rawPeriod)
+  const dateRange = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
 
   // 1) Tenta cache fresco
   let staleCache: NonNullable<Awaited<ReturnType<typeof readFromCache>>> | null = null
@@ -953,9 +957,10 @@ export async function buildOmnisendReport(
     throw new Error("API Key Omnisend não configurada para esta loja")
   }
 
-  const days = daysForPeriod(period, customStartDate, customEndDate)
+  // daysForPeriod precisa do rawPeriod ("today" = 1, "yesterday" = 1)
+  const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
   try {
-    log.info("[Omnisend Report] Cache miss, live-fetching", { storeId: store.storeId, period, days })
+    log.info("[Omnisend Report] Cache miss, live-fetching", { storeId: store.storeId, period, rawPeriod, days })
     return await buildFromLiveFetch(store, period, dateRange, days, apiKey)
   } catch (err) {
     // Rate limited ou erro → serve cache stale se disponivel

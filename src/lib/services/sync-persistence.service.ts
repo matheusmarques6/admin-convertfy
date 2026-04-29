@@ -20,6 +20,29 @@ const PERIOD_DAYS: Record<string, number> = {
 
 const log = logger.child("SyncPersistence")
 
+/**
+ * Normaliza period_label para o que a constraint `valid_period_label`
+ * aceita em store_revenue_summary, omnisend_campaign_metrics e
+ * omnisend_flow_metrics.
+ *
+ * Constraint atual (migration 20260318_report_generation_cache):
+ *   period_label IN ('7d', '15d', '30d', '90d', '1d', '12m')
+ *   OR period_label LIKE 'custom:%'
+ *
+ * Mapeamentos:
+ *   "today" / "yesterday"  → "1d"   (janela de 1 dia, mesmo bucket)
+ *   "1y"                   → "12m"  (alias da UI)
+ *   demais                 → passa direto
+ *
+ * USAR em TODOS os lugares que lerem/escreverem period_label, senao
+ * write em "1d" + read em "today" da cache miss permanente.
+ */
+export function normalizePeriodLabel(period: string): string {
+  if (period === "today" || period === "yesterday") return "1d"
+  if (period === "1y") return "12m"
+  return period
+}
+
 interface StoreInfo {
   id: string
   org_id?: string | null | undefined
@@ -175,6 +198,8 @@ export async function upsertOmnisendSyncResults(
     return
   }
 
+  const normalizedPeriod = normalizePeriodLabel(period)
+
   const days = PERIOD_DAYS[period] ?? 30
   const now = new Date()
   const periodStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
@@ -216,7 +241,7 @@ export async function upsertOmnisendSyncResults(
   const summaryPayload = {
     store_id: store.id,
     org_id: store.org_id,
-    period_label: period,
+    period_label: normalizedPeriod,
     period_start: periodStartIso,
     period_end: nowIso,
     ...revenueFields,
@@ -235,7 +260,8 @@ export async function upsertOmnisendSyncResults(
 
   log.info("[SyncPersist] writing row", {
     store_id: store.id,
-    period_label: period,
+    period_label: normalizedPeriod,
+    period_input: period,
     revenueCollected,
     store_total_revenue: data.totalStoreRevenue,
     store_orders: data.totalOrders,
@@ -278,7 +304,7 @@ export async function upsertOmnisendSyncResults(
       channel: c.channel || "email",
       period_start: periodStartIso,
       period_end: nowIso,
-      period_label: period,
+      period_label: normalizedPeriod,
       recipients: c.recipients,
       delivered: c.delivered,
       delivery_rate: c.delivery_rate,
@@ -317,9 +343,9 @@ export async function upsertOmnisendSyncResults(
         .from("omnisend_campaign_metrics")
         .delete()
         .eq("store_id", store.id)
-        .eq("period_label", period)
+        .eq("period_label", normalizedPeriod)
         .lt("fetched_at", nowIso)
-      log.info(`[SyncPersistence] Upserted ${campaignPayload.length} omnisend_campaign_metrics rows for ${store.id}/${period}`)
+      log.info(`[SyncPersistence] Upserted ${campaignPayload.length} omnisend_campaign_metrics rows for ${store.id}/${normalizedPeriod}`)
     }
   } else {
     log.warn(`[SyncPersistence] No campaign rows to upsert for ${store.id}/${period} — data.campaignRows.length=0`)
@@ -335,7 +361,7 @@ export async function upsertOmnisendSyncResults(
       trigger_type: a.trigger_type,
       period_start: periodStartIso,
       period_end: nowIso,
-      period_label: period,
+      period_label: normalizedPeriod,
       recipients: a.recipients,
       delivered: a.delivered,
       delivery_rate: a.delivery_rate,
@@ -370,9 +396,9 @@ export async function upsertOmnisendSyncResults(
         .from("omnisend_flow_metrics")
         .delete()
         .eq("store_id", store.id)
-        .eq("period_label", period)
+        .eq("period_label", normalizedPeriod)
         .lt("fetched_at", nowIso)
-      log.info(`[SyncPersistence] Upserted ${flowPayload.length} omnisend_flow_metrics rows for ${store.id}/${period}`)
+      log.info(`[SyncPersistence] Upserted ${flowPayload.length} omnisend_flow_metrics rows for ${store.id}/${normalizedPeriod}`)
     }
   } else {
     log.warn(`[SyncPersistence] No automation rows to upsert for ${store.id}/${period} — data.automationRows.length=0`)
