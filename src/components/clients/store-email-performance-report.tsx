@@ -437,6 +437,11 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
   const reportCurrency = reportData.account?.currency || "BRL"
   const { formatCurrency, formatCurrencyCompact } = createCurrencyFormatters(reportCurrency)
 
+  // Omnisend nao expoe stats por automation individual via API publica
+  // (validado em 6 rounds de discovery). Logo, sections que dependem
+  // desses dados sao escondidas — zero invencao.
+  const isOmnisend = reportData.platform === "omnisend"
+
   // ============ DATA CALCULATIONS ============
   // Prioridade: Shopify (quando conectado) > storeRevenue da plataforma de email
   // (Statistics API / metric-aggregates) > totalRevenue (atribuida, caminho legado).
@@ -810,8 +815,14 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
           </div>
         </div>
 
-        {/* ===== SECTION: TOP AUTOMAÇÕES ===== */}
-        {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
+        {/* ===== SECTION: TOP AUTOMAÇÕES =====
+            Escondido para Omnisend porque a API nao expoe stats por
+            automation individual (delivered/openRate/clickRate/revenue
+            todos retornam 0). Mostrar a tabela com 0 em todas as colunas
+            sugere que os flows nao performam, quando na verdade o dado
+            e indisponivel. Klaviyo continua mostrando normalmente.
+        */}
+        {!isOmnisend && reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
           <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
