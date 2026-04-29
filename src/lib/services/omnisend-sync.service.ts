@@ -525,11 +525,46 @@ const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
   failed: 0,
 }
 
+// Cache em memoria com stale-while-error.
+// Estrutura: chave = sha-like dos parametros (apiKey + startDate + endDate),
+// valor = { data, freshUntil, staleUntil }.
+// freshUntil  = ate aqui retorna sem chamar a API
+// staleUntil  = se a API falhar/rate-limit, ainda servimos isso (com warn)
+//
+// Justificativa: o /api/analytics/reports tem rate limit AGRESSIVO (~3-8s
+// de cooldown apos cada call, validado nos discovery rounds). Sem cache,
+// usuarios abrindo a UI consecutivamente queimariam o budget. Cache de 1h
+// em memoria por instancia Lambda + stale 24h cobre o caso comum sem
+// adicionar complexidade de Redis/DB.
+const REPORTS_FRESH_TTL_MS = 60 * 60 * 1000           // 1h
+const REPORTS_STALE_TTL_MS = 24 * 60 * 60 * 1000      // 24h
+type ReportsCacheEntry = {
+  data: OmnisendReportsResult
+  freshUntil: number
+  staleUntil: number
+}
+const reportsCache = new Map<string, ReportsCacheEntry>()
+
+function reportsCacheKey(apiKey: string, startDate: string, endDate: string): string {
+  // Usar so o sufixo da apiKey (ultimos 12 chars) para nao expor secret no log
+  return `${apiKey.slice(-12)}|${startDate}|${endDate}`
+}
+
 export async function fetchOmnisendReports(
   apiKey: string,
   startDate: string,
   endDate: string,
 ): Promise<OmnisendReportsResult> {
+  const cacheKey = reportsCacheKey(apiKey, startDate, endDate)
+  const now = Date.now()
+  const cached = reportsCache.get(cacheKey)
+
+  // Cache hit fresco — retorna sem chamar a API
+  if (cached && cached.freshUntil > now) {
+    log.info(`[OmnisendReports] cache HIT (fresh) — ${Math.round((cached.freshUntil - now) / 1000)}s remaining`)
+    return cached.data
+  }
+
   const result: OmnisendReportsResult = { ...EMPTY_REPORTS_RESULT }
 
   try {
@@ -595,14 +630,38 @@ export async function fetchOmnisendReports(
       result.clickRate = Number(row.clickRate) || 0
       result.failed = Number(row.failed) || 0
       log.info(`[OmnisendReports] totals: revenue=${result.attributedRevenue}, orders=${result.attributedOrders}, sent=${result.sent}, openRate=${result.openRate}`)
+      // Cache so quando a API retornou dados validos. Vazio nao popula
+      // o cache pra nao mascarar bugs de payload.
+      reportsCache.set(cacheKey, {
+        data: { ...result },
+        freshUntil: Date.now() + REPORTS_FRESH_TTL_MS,
+        staleUntil: Date.now() + REPORTS_STALE_TTL_MS,
+      })
     } else {
       log.warn(`[OmnisendReports] empty or malformed response: ${JSON.stringify(resp).slice(0, 300)}`)
+      // Stale-while-error: se ainda temos cache stale, retorna ele.
+      if (cached && cached.staleUntil > now) {
+        const ageSec = Math.round((now - (cached.freshUntil - REPORTS_FRESH_TTL_MS)) / 1000)
+        log.warn(`[OmnisendReports] empty response — serving STALE cache (age ${ageSec}s)`)
+        return cached.data
+      }
     }
   } catch (err) {
-    if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
-    log.warn("[OmnisendReports] failed, totals will be 0", {
+    // Rate limit ou auth nao se beneficiam de cache stale — propaga pra
+    // chamador decidir o que fazer.
+    if (err instanceof OmnisendInvalidKeyError) throw err
+    log.warn("[OmnisendReports] failed", {
       error: err instanceof Error ? err.message : String(err),
     })
+    // Stale-while-error: rate limit / 5xx / timeout — se temos cache stale,
+    // serve ele em vez de zerar revenue (data poisoning preventido).
+    if (cached && cached.staleUntil > now) {
+      const ageSec = Math.round((now - (cached.freshUntil - REPORTS_FRESH_TTL_MS)) / 1000)
+      log.warn(`[OmnisendReports] error — serving STALE cache (age ${ageSec}s)`)
+      return cached.data
+    }
+    // Sem cache stale + rate limit — repropaga pra chamador
+    if (err instanceof OmnisendRateLimitError) throw err
   }
 
   return result
