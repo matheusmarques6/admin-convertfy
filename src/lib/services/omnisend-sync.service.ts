@@ -18,6 +18,7 @@
  */
 
 import { logger } from "@/lib/logger"
+import { createAdminClient } from "@/lib/supabase/server"
 import {
   omnisendRequest,
   omnisendPaginateV3,
@@ -571,29 +572,94 @@ const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
   failed: 0,
 }
 
-// Cache em memoria com stale-while-error.
-// Estrutura: chave = sha-like dos parametros (apiKey + startDate + endDate),
-// valor = { data, freshUntil, staleUntil }.
-// freshUntil  = ate aqui retorna sem chamar a API
-// staleUntil  = se a API falhar/rate-limit, ainda servimos isso (com warn)
+// Cache em DUAS camadas com stale-while-error.
 //
-// Justificativa: o /api/analytics/reports tem rate limit AGRESSIVO (~3-8s
-// de cooldown apos cada call, validado nos discovery rounds). Sem cache,
-// usuarios abrindo a UI consecutivamente queimariam o budget. Cache de 1h
-// em memoria por instancia Lambda + stale 24h cobre o caso comum sem
-// adicionar complexidade de Redis/DB.
+//   L1 (memoria) — Map<key, entry> dentro do modulo. ~1ms lookup.
+//                  Perde entre cold starts da Lambda no Vercel.
+//
+//   L2 (Supabase) — tabela omnisend_reports_cache. ~50ms lookup.
+//                   Sobrevive cold starts. Migration 20260429.
+//
+// Quando a chamada API e bem-sucedida, popula AMBAS as camadas.
+// Quando falha (rate limit / 5xx / timeout), tenta servir do L1 stale,
+// depois do L2 stale, antes de zerar revenue.
+//
+// Por que duas camadas e nao so DB:
+//   - L1 evita ~50ms de DB roundtrip pra requests consecutivos da mesma
+//     instancia hot
+//   - L2 garante que cron + UI compartilhem cache mesmo em instancias
+//     diferentes (Vercel cria/destroi Lambdas constantemente)
+//
+// Justificativa: o /api/analytics/reports tem rate limit AGRESSIVO
+// (~3-8s cooldown empirico, ate 30min em casos extremos observados nos
+// discovery rounds). Sem cache persistente, cada cold start da Lambda
+// queimaria budget e voltaria 429.
 const REPORTS_FRESH_TTL_MS = 60 * 60 * 1000           // 1h
 const REPORTS_STALE_TTL_MS = 24 * 60 * 60 * 1000      // 24h
+
 type ReportsCacheEntry = {
   data: OmnisendReportsResult
   freshUntil: number
   staleUntil: number
 }
-const reportsCache = new Map<string, ReportsCacheEntry>()
+
+// L1: in-memory cache por instancia Lambda
+const reportsCacheL1 = new Map<string, ReportsCacheEntry>()
 
 function reportsCacheKey(apiKey: string, startDate: string, endDate: string): string {
   // Usar so o sufixo da apiKey (ultimos 12 chars) para nao expor secret no log
   return `${apiKey.slice(-12)}|${startDate}|${endDate}`
+}
+
+// L2: persistent cache via Supabase
+async function readReportsCacheL2(cacheKey: string): Promise<ReportsCacheEntry | null> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("omnisend_reports_cache")
+      .select("data, fresh_until, stale_until")
+      .eq("cache_key", cacheKey)
+      .maybeSingle()
+    if (error || !data) return null
+    return {
+      data: data.data as OmnisendReportsResult,
+      freshUntil: new Date(data.fresh_until as string).getTime(),
+      staleUntil: new Date(data.stale_until as string).getTime(),
+    }
+  } catch (err) {
+    log.warn("[ReportsCacheL2] read failed", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
+async function writeReportsCacheL2(
+  cacheKey: string,
+  entry: ReportsCacheEntry,
+): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from("omnisend_reports_cache")
+      .upsert(
+        {
+          cache_key: cacheKey,
+          data: entry.data as unknown as Record<string, unknown>,
+          fresh_until: new Date(entry.freshUntil).toISOString(),
+          stale_until: new Date(entry.staleUntil).toISOString(),
+          fetched_at: new Date().toISOString(),
+        },
+        { onConflict: "cache_key" },
+      )
+    if (error) {
+      log.warn("[ReportsCacheL2] write failed", { error: error.message })
+    }
+  } catch (err) {
+    log.warn("[ReportsCacheL2] write threw", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 export async function fetchOmnisendReports(
@@ -603,13 +669,30 @@ export async function fetchOmnisendReports(
 ): Promise<OmnisendReportsResult> {
   const cacheKey = reportsCacheKey(apiKey, startDate, endDate)
   const now = Date.now()
-  const cached = reportsCache.get(cacheKey)
 
-  // Cache hit fresco — retorna sem chamar a API
-  if (cached && cached.freshUntil > now) {
-    log.info(`[OmnisendReports] cache HIT (fresh) — ${Math.round((cached.freshUntil - now) / 1000)}s remaining`)
-    return cached.data
+  // L1 (memoria) — fast path, ~1ms
+  const cachedL1 = reportsCacheL1.get(cacheKey)
+  if (cachedL1 && cachedL1.freshUntil > now) {
+    log.info(`[OmnisendReports] cache HIT L1/fresh — ${Math.round((cachedL1.freshUntil - now) / 1000)}s remaining`)
+    return cachedL1.data
   }
+
+  // L2 (Supabase) — sobrevive cold starts, ~50ms
+  // So consulta L2 se L1 nao estiver fresh. Se L2 estiver fresh,
+  // hidrata L1 pra proximas chamadas dessa instancia ficarem em ~1ms.
+  let cachedL2: ReportsCacheEntry | null = null
+  if (!cachedL1 || cachedL1.freshUntil <= now) {
+    cachedL2 = await readReportsCacheL2(cacheKey)
+    if (cachedL2 && cachedL2.freshUntil > now) {
+      log.info(`[OmnisendReports] cache HIT L2/fresh — ${Math.round((cachedL2.freshUntil - now) / 1000)}s remaining`)
+      // Hidrata L1 com o que veio do L2
+      reportsCacheL1.set(cacheKey, cachedL2)
+      return cachedL2.data
+    }
+  }
+
+  // O cache stale relevante para fallback de erro: prefere L1, fallback L2
+  const cached = cachedL1 || cachedL2
 
   const result: OmnisendReportsResult = { ...EMPTY_REPORTS_RESULT }
 
@@ -678,14 +761,19 @@ export async function fetchOmnisendReports(
       log.info(`[OmnisendReports] totals: revenue=${result.attributedRevenue}, orders=${result.attributedOrders}, sent=${result.sent}, openRate=${result.openRate}`)
       // Cache so quando a API retornou dados validos. Vazio nao popula
       // o cache pra nao mascarar bugs de payload.
-      reportsCache.set(cacheKey, {
+      const newEntry: ReportsCacheEntry = {
         data: { ...result },
         freshUntil: Date.now() + REPORTS_FRESH_TTL_MS,
         staleUntil: Date.now() + REPORTS_STALE_TTL_MS,
-      })
+      }
+      // L1: imediato (in-memory)
+      reportsCacheL1.set(cacheKey, newEntry)
+      // L2: async fire-and-forget (nao bloqueia o sync se DB lento).
+      // Erro ja e logado em writeReportsCacheL2.
+      void writeReportsCacheL2(cacheKey, newEntry)
     } else {
       log.warn(`[OmnisendReports] empty or malformed response: ${JSON.stringify(resp).slice(0, 300)}`)
-      // Stale-while-error: se ainda temos cache stale, retorna ele.
+      // Stale-while-error: se ainda temos cache stale (L1 ou L2), retorna ele.
       if (cached && cached.staleUntil > now) {
         const ageSec = Math.round((now - (cached.freshUntil - REPORTS_FRESH_TTL_MS)) / 1000)
         log.warn(`[OmnisendReports] empty response — serving STALE cache (age ${ageSec}s)`)
