@@ -290,6 +290,7 @@ export function StoreDetailTabs({
                 data={campaignsData as { campaigns: CampaignData[]; currency?: string } | undefined}
                 loading={campaignsInitialLoading}
                 currency={storeCurrency}
+                isOmnisend={omnisendConnected && !klaviyoConnected}
               />
             )}
 
@@ -343,11 +344,15 @@ function LatestCampaignsTable({
   data,
   loading,
   currency: storeCurrency,
+  isOmnisend,
 }: {
   storeId: string
   data: { campaigns: CampaignData[]; currency?: string } | undefined
   loading: boolean
   currency?: string
+  // Omnisend nao expoe receita por campanha individual via API publica.
+  // Quando true, mostramos "—" em vez de €0,00 enganoso.
+  isOmnisend: boolean
 }) {
   const currency = data?.currency || storeCurrency || "BRL"
   const campaigns = data?.campaigns?.slice(0, 5) || []
@@ -393,7 +398,18 @@ function LatestCampaignsTable({
                   </td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums">{(c.recipients || 0).toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums">{(c.openRate || 0).toFixed(1)}%</td>
-                  <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatCurrency(c.revenue || 0, currency)}</td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                    {isOmnisend ? (
+                      <span
+                        className="text-muted-foreground"
+                        title="Omnisend não expõe receita por campanha individual via API pública"
+                      >
+                        —
+                      </span>
+                    ) : (
+                      formatCurrency(c.revenue || 0, currency)
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

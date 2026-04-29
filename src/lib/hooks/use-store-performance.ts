@@ -24,6 +24,11 @@ export interface StorePerformanceTotals {
   avgOpenRate: number
   avgClickRate: number
   currency: string
+  // platform: usado pela UI pra decidir se mostra receita por linha
+  // individual em campanhas/flows. Omnisend nao expoe esse dado via API
+  // publica (validado em 6 rounds de discovery), entao tabelas mostram
+  // "—" pra Omnisend e valor real pra Klaviyo.
+  platform: "klaviyo" | "omnisend" | null
 }
 
 interface CampaignItem {
@@ -146,6 +151,13 @@ export function useStorePerformance(storeId: string, emailPlatformConnected: boo
       || flowsData?.currency
       || "BRL"
 
+    const platform: "klaviyo" | "omnisend" | null =
+      reportData?.platform === "omnisend"
+        ? "omnisend"
+        : reportData?.platform === "klaviyo"
+          ? "klaviyo"
+          : null
+
     return {
       storeRevenue: rv.storeRevenue ?? 0,
       storeOrders: rv.storeOrders ?? 0,
@@ -159,6 +171,7 @@ export function useStorePerformance(storeId: string, emailPlatformConnected: boo
       avgOpenRate: cs.avgOpenRate ?? 0,
       avgClickRate: cs.avgClickRate ?? 0,
       currency,
+      platform,
     }
   }, [campaignsData, flowsData, reportData])
 
