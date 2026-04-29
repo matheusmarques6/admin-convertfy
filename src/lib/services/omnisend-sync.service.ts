@@ -964,19 +964,45 @@ async function doSyncOmnisendForStore(params: {
       { count: subscribedContacts, source: "fallback" as const },
     )
 
-    // 6. Revenue via Statistics API (POST /api/analytics/statistics).
-    //    Se esse endpoint falhar por rate limit (ja vimos Retry-After de
-    //    5.5h), NAO abortamos o sync inteiro — persistimos campaigns,
-    //    automations e contacts que ja foram coletados, com revenue=0.
-    //    O proximo sync tentara novamente. Isso impede que um rate limit
-    //    em um unico endpoint apague todos os metrics no Reports.
+    // 6. Revenue + engagement agregados via DUAS APIs distintas:
+    //
+    //    a) /api/analytics/statistics → totalRevenue (loja inteira) e
+    //       totalOrders. Esse endpoint AGRUPA POR EVENT DATE (data do
+    //       Placed Order). E o unico que da o "store total revenue".
+    //
+    //    b) /api/analytics/reports → attributedRevenue + engagement
+    //       (sent, opened, openedUnique, clicked, clickedUnique,
+    //       openRate, clickRate, failed). Endpoint NOVO descoberto via
+    //       discovery R5/R6 — agrupa por SEND DATE (data do envio da
+    //       mensagem). Mais alinhado com o painel oficial do Omnisend.
+    //       Tem cache de 1h com stale-while-error pra nao queimar
+    //       rate limit.
+    //
+    //    Os dois endpoints sao chamados em paralelo. Se um falhar por
+    //    rate limit/erro, o outro pode ainda popular dados — sync nao
+    //    aborta inteiro. Wrapper safely() preserva isso.
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const revenueStats = await safely(
-      "statistics",
-      () => fetchOmnisendStatistics(apiKey, startDate, endDate),
-      { totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0 } as OmnisendStatisticsResult,
-    )
+    const [storeStats, reportsStats] = await Promise.all([
+      safely(
+        "statistics",
+        () => fetchOmnisendStatistics(apiKey, startDate, endDate),
+        { totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0 } as OmnisendStatisticsResult,
+      ),
+      safely(
+        "reports",
+        () => fetchOmnisendReports(apiKey, startDate, endDate),
+        EMPTY_REPORTS_RESULT,
+      ),
+    ])
+    // attributedRevenue: preferencia /reports (mais alinhado com painel
+    // oficial). Fallback /statistics se /reports zerou (rate limit etc).
+    const revenueStats = {
+      totalRevenue: storeStats.totalRevenue,
+      totalOrders: storeStats.totalOrders,
+      attributedRevenue: reportsStats.attributedRevenue || storeStats.attributedRevenue,
+      attributedOrders: reportsStats.attributedOrders || storeStats.attributedOrders,
+    }
     const currency = "EUR"
 
     // 7. Map campaigns to rows
