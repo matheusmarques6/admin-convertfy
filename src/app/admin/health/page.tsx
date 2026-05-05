@@ -18,6 +18,7 @@ interface StoreHealth {
   id: string
   storeName: string
   clientName: string
+  platform?: string
   deliveryRate: number
   bounceRate: number
   openRate: number
@@ -189,9 +190,21 @@ export default function HealthMonitorPage() {
               )}
             >
               <div className="lg:grid grid-cols-[1fr_80px_80px_80px_80px_80px_80px_80px_80px] gap-2 items-center">
-                {/* Store name */}
+                {/* Store name + platform badge */}
                 <div className="mb-2 lg:mb-0">
-                  <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate">{store.storeName}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate">{store.storeName}</p>
+                    {store.platform === "klaviyo" && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#4E62D8]/10 text-[#4E62D8] dark:bg-[#7B8CEA]/15 dark:text-[#A8B2EE]">
+                        Klaviyo
+                      </span>
+                    )}
+                    {store.platform === "omnisend" && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                        Omnisend
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-gray-400 dark:text-white/40 truncate">{store.clientName}</p>
                   {store.issues.length > 0 && (
                     <div className="flex items-center gap-1 mt-1 lg:hidden">

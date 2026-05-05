@@ -554,6 +554,14 @@ export interface OmnisendReportsResult {
   clickedUnique: number
   clickRate: number
   failed: number
+  failRate: number
+  // Health (entregabilidade + reputacao)
+  bounced: number
+  bounceRate: number
+  unsubscribedUnique: number
+  unsubscribeRate: number
+  markedAsSpamUnique: number
+  markedAsSpamRate: number
 }
 
 const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
@@ -570,6 +578,13 @@ const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
   clickedUnique: 0,
   clickRate: 0,
   failed: 0,
+  failRate: 0,
+  bounced: 0,
+  bounceRate: 0,
+  unsubscribedUnique: 0,
+  unsubscribeRate: 0,
+  markedAsSpamUnique: 0,
+  markedAsSpamRate: 0,
 }
 
 // Cache em DUAS camadas com stale-while-error.
@@ -1032,6 +1047,16 @@ export async function fetchOmnisendReports(
               { name: "clickedUnique" },
               { name: "clickRate" },
               { name: "failed" },
+              { name: "failRate" },
+              // Metrics extras necessarios pro Monitor de Saude
+              // (entregabilidade + reputacao). Mesma query, sem custo
+              // de rate limit adicional.
+              { name: "bounced" },
+              { name: "bounceRate" },
+              { name: "unsubscribedUnique" },
+              { name: "unsubscribeRate" },
+              { name: "markedAsSpamUnique" },
+              { name: "markedAsSpamRate" },
             ],
             dateRange: {
               interval: "custom",
@@ -1059,7 +1084,14 @@ export async function fetchOmnisendReports(
       result.clickedUnique = Number(row.clickedUnique) || 0
       result.clickRate = Number(row.clickRate) || 0
       result.failed = Number(row.failed) || 0
-      log.info(`[OmnisendReports] totals: revenue=${result.attributedRevenue}, orders=${result.attributedOrders}, sent=${result.sent}, openRate=${result.openRate}`)
+      result.failRate = Number(row.failRate) || 0
+      result.bounced = Number(row.bounced) || 0
+      result.bounceRate = Number(row.bounceRate) || 0
+      result.unsubscribedUnique = Number(row.unsubscribedUnique) || 0
+      result.unsubscribeRate = Number(row.unsubscribeRate) || 0
+      result.markedAsSpamUnique = Number(row.markedAsSpamUnique) || 0
+      result.markedAsSpamRate = Number(row.markedAsSpamRate) || 0
+      log.info(`[OmnisendReports] totals: revenue=${result.attributedRevenue}, orders=${result.attributedOrders}, sent=${result.sent}, openRate=${result.openRate}, bounceRate=${result.bounceRate}, unsubRate=${result.unsubscribeRate}, spamRate=${result.markedAsSpamRate}`)
       // Cache so quando a API retornou dados validos. Vazio nao popula
       // o cache pra nao mascarar bugs de payload.
       const newEntry: ReportsCacheEntry = {
