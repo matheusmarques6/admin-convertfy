@@ -876,16 +876,16 @@ export async function fetchOmnisendActivityBreakdown(
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
-            // 4a query: engagement diario.
-            //   - sent/opened/clicked: agregados gerais
-            //   - openedUnique: contatos UNICOS que abriram >=1 email no
-            //     dia. Somando os dias do range temos a base de "leads
-            //     engajados" no periodo (proxy direto da metrica que
-            //     Omnisend usa internamente para segments "Engaged").
+            // 4a query: engagement TOTAL agregado do periodo (sem
+            // dimensions). Antes usavamos granularity=day e somavamos
+            // openedUnique de cada dia — overcount enorme: contato que
+            // abriu emails em 30 dias contava 30x. Resultado pratico:
+            // Clube Rock tinha 149k "engajados" em base de 50k (300%),
+            // mostrando 100% de engajamento espurio.
             //
-            // Granularity day (era month) para casar com a recomendacao
-            // do suporte: granularity menor = soma mais precisa do
-            // openedUnique no range.
+            // Sem `dimensions: timestamp`, a API retorna 1 row com o
+            // openedUnique consolidado do range (count distinct sobre
+            // o periodo inteiro), proxy direto de "abriu >= 1 email".
             {
               alias: "engagement",
               metrics: [
@@ -900,7 +900,6 @@ export async function fetchOmnisendActivityBreakdown(
                 from: new Date(startDate).toISOString(),
                 to: new Date(endDate).toISOString(),
               },
-              dimensions: [{ name: "timestamp", granularity: "day" }],
             },
           ],
         },

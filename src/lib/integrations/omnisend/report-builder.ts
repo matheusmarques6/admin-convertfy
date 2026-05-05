@@ -42,20 +42,31 @@ function daysForPeriod(period: string, customStart?: string | null, customEnd?: 
 }
 
 function dateRangeForPeriod(period: string, customStart?: string | null, customEnd?: string | null) {
-  const now = new Date()
-  const end = customEnd ? new Date(customEnd) : now
+  if (customStart && customEnd) {
+    return { startDateStr: customStart.slice(0, 10), endDateStr: customEnd.slice(0, 10) }
+  }
   const days = daysForPeriod(period, customStart, customEnd)
-  // Omnisend "last 30 days" inclui o dia atual: hoje 05/05 com 30d puxa
-  // de 06/04 ate 05/05 (30 dias contando hoje). Por isso subtraimos
-  // (days - 1) — antes subtraiamos days inteiros e gerava 05/04 → 05/05
-  // = 31 dias, causando divergencia ~3% vs dashboard.
-  const start = customStart
-    ? new Date(customStart)
-    : new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000)
+  // "Last N days" inclusivo de hoje no timezone America/Sao_Paulo (UTC-3).
+  // Vercel roda em UTC; sem o fuso, o backend pode ainda estar no dia
+  // anterior quando o usuario brasileiro ja virou o dia (madrugada UTC =
+  // noite BR, e UTC vira dia antes do BR). Resultado pre-fix: range
+  // mostrado "05/04 - 04/05" quando deveria ser "06/04 - 05/05".
+  // Igual o Klaviyo faz via parseDateRangeInTimezone (client.ts:323).
+  const tz = "America/Sao_Paulo"
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  })
+  // en-CA gera YYYY-MM-DD direto
+  const todayStr = fmt.format(new Date())
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const todayLocal = new Date(Date.UTC(y, m - 1, d))
+  const startLocal = new Date(todayLocal)
+  startLocal.setUTCDate(startLocal.getUTCDate() - (days - 1))
 
   const pad = (n: number) => String(n).padStart(2, "0")
-  const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  return { startDateStr: toStr(start), endDateStr: toStr(end) }
+  const toStr = (date: Date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+  return { startDateStr: toStr(startLocal), endDateStr: todayStr }
 }
 
 function getCurrencySymbol(currency: string): string {
@@ -374,6 +385,17 @@ async function buildFromCache(
   // Statistics API). Fallback para soma campaign+flow so para linhas legadas.
   const attributedRevenue = Number(s.omnisend_total_revenue) || (campaignRevenue + flowRevenue)
   const attributedOrders = Number(s.omnisend_total_orders) || 0
+
+  log.info("[ReportBuilder] cache values read", {
+    storeId: store.storeId,
+    period,
+    campaignRevenue,
+    flowRevenue,
+    storeRevenue,
+    attributedRevenue,
+    syncStatus: s.sync_status,
+    fetchedAt: s.fetched_at,
+  })
 
   // Aggregate email perf from campaign + flow rows
   let totalDelivered = 0

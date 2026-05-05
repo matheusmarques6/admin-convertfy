@@ -69,18 +69,27 @@ function daysForPeriod(period: string, customStart?: string | null, customEnd?: 
 }
 
 function dateRangeForPeriod(period: string, customStart?: string | null, customEnd?: string | null) {
-  const now = new Date()
-  const end = customEnd ? new Date(customEnd) : now
+  if (customStart && customEnd) {
+    return { startDateStr: customStart.slice(0, 10), endDateStr: customEnd.slice(0, 10) }
+  }
   const days = daysForPeriod(period, customStart, customEnd)
-  // "Last 30 days" igual Omnisend: inclui hoje (05/05 com 30d → 06/04 a
-  // 05/05, total 30 dias). Subtrair days inteiros gerava 31 dias.
-  const start = customStart
-    ? new Date(customStart)
-    : new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000)
+  // "Last N days" inclusivo de hoje no timezone America/Sao_Paulo.
+  // Sem o fuso, Vercel UTC mostra o dia anterior pra usuarios BR durante
+  // a madrugada UTC (= noite BR). Mantem alinhado com report-builder.
+  const tz = "America/Sao_Paulo"
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  })
+  const todayStr = fmt.format(new Date())
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const todayLocal = new Date(Date.UTC(y, m - 1, d))
+  const startLocal = new Date(todayLocal)
+  startLocal.setUTCDate(startLocal.getUTCDate() - (days - 1))
 
   const pad = (n: number) => String(n).padStart(2, "0")
-  const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  return { startDateStr: toStr(start), endDateStr: toStr(end) }
+  const toStr = (date: Date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+  return { startDateStr: toStr(startLocal), endDateStr: todayStr }
 }
 
 interface StoreCtx {
