@@ -218,7 +218,7 @@ export interface OmnisendSyncData {
   totalContacts: number
   subscribedContacts: number
   engagedContacts: number
-  engagedSource: "segment" | "fallback"
+  engagedSource: "segment" | "fallback" | "statistics-openedUnique"
   currency: string
 }
 
@@ -861,9 +861,16 @@ export async function fetchOmnisendActivityBreakdown(
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
-            // 4a query: engagement agregado (sent/opened/clicked totais)
-            // Substitui chamada redundante a /api/analytics/reports
-            // — economiza 50% do budget Statistics/Reports diario
+            // 4a query: engagement diario.
+            //   - sent/opened/clicked: agregados gerais
+            //   - openedUnique: contatos UNICOS que abriram >=1 email no
+            //     dia. Somando os dias do range temos a base de "leads
+            //     engajados" no periodo (proxy direto da metrica que
+            //     Omnisend usa internamente para segments "Engaged").
+            //
+            // Granularity day (era month) para casar com a recomendacao
+            // do suporte: granularity menor = soma mais precisa do
+            // openedUnique no range.
             {
               alias: "engagement",
               metrics: [
@@ -878,7 +885,7 @@ export async function fetchOmnisendActivityBreakdown(
                 from: new Date(startDate).toISOString(),
                 to: new Date(endDate).toISOString(),
               },
-              dimensions: [{ name: "timestamp", granularity: "month" }],
+              dimensions: [{ name: "timestamp", granularity: "day" }],
             },
           ],
         },
@@ -1081,129 +1088,13 @@ export async function fetchOmnisendReports(
   return result
 }
 
-// ── Engaged 90D via Segments ─────────────────────────────
-
-const ENGAGED_SEGMENT_PATTERNS = [
-  /90\s*d[ií]as/i,
-  /last\s*90/i,
-  /90\s*day/i,
-  /engajad[oa]s?.*90/i,
-  /abri.*email.*90/i,
-  /opened.*email.*90/i,
-  /engaged.*90/i,
-]
-
-async function findEngaged90dFromSegments(
-  apiKey: string,
-  segments: OmnisendSegment[],
-  subscribedCount: number
-): Promise<{ count: number; source: "segment" | "fallback"; segmentName?: string }> {
-  // subscribedCount fica disponivel para logs/diagnostico, mas NAO e
-  // usado como fallback de engagement — fazia o engajamento aparecer
-  // como 100% (engaged === subscribed) em lojas sem segmento "engaged
-  // 90d" ou em lojas que estouravam o cap de 25k. UI mostra "—" quando
-  // engaged_leads === 0.
-  void subscribedCount
-
-  const matched = segments.find((seg) =>
-    ENGAGED_SEGMENT_PATTERNS.some((p) => p.test(seg.name || ""))
-  )
-
-  if (!matched) {
-    log.warn("[OmnisendEngaged] No 90d engaged segment found, returning 0 (will show as —)", {
-      availableSegments: segments.map((s) => s.name).slice(0, 20),
-    })
-    return { count: 0, source: "fallback" }
-  }
-
-  const segmentId = matched.segmentID || (matched as unknown as Record<string, unknown>).id as string | undefined
-  if (!segmentId) {
-    return { count: 0, source: "fallback", segmentName: matched.name }
-  }
-
-  // Caminho 1: se o payload do /v5/segments trouxe contactsCount, usar direto.
-  if (typeof matched.contactsCount === "number" && matched.contactsCount > 0) {
-    log.info("[OmnisendEngaged] Using segment.contactsCount", {
-      segmentId,
-      segmentName: matched.name,
-      count: matched.contactsCount,
-    })
-    return { count: matched.contactsCount, source: "segment", segmentName: matched.name }
-  }
-
-  // Caminho 2: paginar /v5/contacts?segments={id} — se a API honrar o filtro,
-  // o count refletira apenas os contatos do segmento.
-  log.info("[OmnisendEngaged] Paginating contacts filtered by segment", { segmentId, segmentName: matched.name })
-  const count = await countContactsInSegment(apiKey, segmentId)
-  if (count > 0) {
-    return { count, source: "segment", segmentName: matched.name }
-  }
-
-  // Caminho 3: segmento existe mas esta vazio/nao paginavel → 0
-  // (NAO usar subscribedCount — gera 100% de engajamento espurio).
-  log.warn("[OmnisendEngaged] Segment count is 0, returning 0 (will show as —)", {
-    segmentId,
-    segmentName: matched.name,
-  })
-  return { count: 0, source: "fallback", segmentName: matched.name }
-}
-
-/** Pagina /v5/contacts?segments={id} e tambem valida client-side via
- *  contact.segments[] para blindar contra APIs que ignoram o filtro. */
-async function countContactsInSegment(apiKey: string, segmentId: string): Promise<number> {
-  const initialParams = new URLSearchParams({
-    segments: segmentId,
-    limit: String(CONTACTS_PAGE_LIMIT),
-  })
-  let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
-  let count = 0
-  let pages = 0
-  let filterTrusted = true
-
-  for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
-    const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(
-      apiKey,
-      url,
-      { logTag: "OmnisendSegmentContacts" }
-    )
-    if (!resp) break
-
-    if (page === 0) {
-      const paging = resp.paging as Record<string, unknown> | undefined
-      if (paging && typeof paging.total === "number") {
-        log.info(`[OmnisendSegmentContacts] Got total from paging.total: ${paging.total}`)
-        return paging.total as number
-      }
-    }
-
-    const contacts = (resp.contacts as Array<OmnisendContact & { segments?: string[] }>) || []
-    if (filterTrusted && page === 0 && contacts.length > 0) {
-      const anyOutside = contacts.some(
-        (c) => Array.isArray(c.segments) && c.segments.length > 0 && !c.segments.includes(segmentId)
-      )
-      if (anyOutside) {
-        filterTrusted = false
-        log.warn("[OmnisendSegmentContacts] API ignored segments filter, falling back to client-side check")
-      }
-    }
-
-    for (const c of contacts) {
-      if (filterTrusted) {
-        count++
-      } else if (Array.isArray(c.segments) && c.segments.includes(segmentId)) {
-        count++
-      }
-    }
-    pages++
-    const paging = resp.paging as { next?: string } | undefined
-    url = paging?.next || null
-  }
-
-  log.info(`[OmnisendSegmentContacts] Counted ${count} contacts in ${pages} pages (filterTrusted=${filterTrusted})`)
-  return count
-}
-
 // ── Contacts / Audience ───────────────────────────────────
+//
+// "Engaged 90d" antes vinha de um segmento estatico do Omnisend
+// ("Engaged 90 days"); quando o segmento nao existia ou estava vazio,
+// caia em fallback=subscribed e o card de engajamento mostrava 100%.
+// Substituido por openedUnique somado dos dias do periodo via
+// Statistics API (proxy direto de "abriu >= 1 email no range").
 
 const CONTACTS_PAGE_LIMIT = 250
 // 250 * 400 = 100k contatos. Antes era 100 paginas (25k), travando lojas
@@ -1218,8 +1109,11 @@ async function countContacts(
   logTag: string,
   queryParams: Record<string, string>
 ): Promise<number> {
+  // Endpoint /v3/contacts conforme recomendacao do suporte da Omnisend
+  // (e mais estavel que /v5 para contagem). Pagina cursor-based: o
+  // response tem paging.next (URL completa) ate acabar.
   const initialParams = new URLSearchParams({ ...queryParams, limit: String(CONTACTS_PAGE_LIMIT) })
-  let url: string | null = `${OMNISEND_V5}/contacts?${initialParams}`
+  let url: string | null = `${OMNISEND_V3}/contacts?${initialParams}`
   let count = 0
   let pages = 0
 
@@ -1255,10 +1149,13 @@ export async function fetchContactCounts(apiKey: string): Promise<{
   totalContacts: number
   subscribedContacts: number
 }> {
-  const totalContacts = await countContacts(apiKey, "OmnisendContactsTotal", {})
+  // "Total de leads" reflete a base real de leads opt-in (status=subscribed)
+  // — nao o total de contatos que inclui unsubscribed/non-subscribed. Apenas
+  // contagem de subscribed faz sentido como denominador para % engajamento.
   const subscribedContacts = await countContacts(apiKey, "OmnisendContactsSubscribed", {
     status: "subscribed",
   })
+  const totalContacts = subscribedContacts
   return { totalContacts, subscribedContacts }
 }
 
@@ -1389,14 +1286,10 @@ async function doSyncOmnisendForStore(params: {
 
     await sleep(200)
 
-    // 5. Segments + engaged 90D
+    // 5. Segments (apenas para listagem — engaged agora vem do
+    //    activityBreakdown abaixo via openedUnique da Statistics API).
     const segments = await safely("segments", () => fetchSegments(apiKey), [] as OmnisendSegment[])
     log.info(`Fetched ${segments.length} segments`, { storeId })
-    const engaged = await safely(
-      "engaged90d",
-      () => findEngaged90dFromSegments(apiKey, segments, subscribedContacts),
-      { count: subscribedContacts, source: "fallback" as const },
-    )
 
     // 6. Revenue + engagement + breakdown por activity em UMA chamada:
     //
@@ -1648,6 +1541,14 @@ async function doSyncOmnisendForStore(params: {
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
     const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
+    // engagedContacts = openedUnique somado dos dias do periodo
+    // (Statistics API com granularity=day). Substitui o caminho antigo
+    // via segmento "Engaged 90d" que ficava preso em fallback=subscribed
+    // quando o segmento nao existia ou estava vazio — gerava 100% de
+    // engajamento espurio. Agora bate com a metrica que o Omnisend usa
+    // internamente.
+    const engagedContacts = activityBreakdown.engagement.openedUnique || 0
+
     log.info("[OmnisendSync] Sync summary", {
       storeId,
       totalRevenue: revenueStats.totalRevenue,
@@ -1656,8 +1557,8 @@ async function doSyncOmnisendForStore(params: {
       attributedOrders: totalAttributedOrders,
       totalContacts,
       subscribedContacts,
-      engagedContacts: engaged.count,
-      engagedSource: engaged.source,
+      engagedContacts,
+      engagedSource: "statistics-openedUnique",
       campaignsSent: campaignRows.length,
       automationsActive: liveAutomationCount,
     })
@@ -1676,8 +1577,8 @@ async function doSyncOmnisendForStore(params: {
         totalOrders: revenueStats.totalOrders,
         totalContacts,
         subscribedContacts,
-        engagedContacts: engaged.count,
-        engagedSource: engaged.source,
+        engagedContacts,
+        engagedSource: "statistics-openedUnique" as const,
         currency,
       },
     }
