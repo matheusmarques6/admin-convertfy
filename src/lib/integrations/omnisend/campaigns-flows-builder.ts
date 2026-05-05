@@ -72,9 +72,11 @@ function dateRangeForPeriod(period: string, customStart?: string | null, customE
   const now = new Date()
   const end = customEnd ? new Date(customEnd) : now
   const days = daysForPeriod(period, customStart, customEnd)
+  // "Last 30 days" igual Omnisend: inclui hoje (05/05 com 30d → 06/04 a
+  // 05/05, total 30 dias). Subtrair days inteiros gerava 31 dias.
   const start = customStart
     ? new Date(customStart)
-    : new Date(end.getTime() - days * 24 * 60 * 60 * 1000)
+    : new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000)
 
   const pad = (n: number) => String(n).padStart(2, "0")
   const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

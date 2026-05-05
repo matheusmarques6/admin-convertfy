@@ -233,7 +233,8 @@ export async function upsertOmnisendSyncResults(
 
   const days = PERIOD_DAYS[period] ?? 30
   const now = new Date()
-  const periodStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+  // "Last N days" inclui hoje (igual Omnisend dashboard): days-1.
+  const periodStart = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000)
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
   const nowIso = now.toISOString()
   const periodStartIso = periodStart.toISOString()

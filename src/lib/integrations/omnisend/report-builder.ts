@@ -45,9 +45,13 @@ function dateRangeForPeriod(period: string, customStart?: string | null, customE
   const now = new Date()
   const end = customEnd ? new Date(customEnd) : now
   const days = daysForPeriod(period, customStart, customEnd)
+  // Omnisend "last 30 days" inclui o dia atual: hoje 05/05 com 30d puxa
+  // de 06/04 ate 05/05 (30 dias contando hoje). Por isso subtraimos
+  // (days - 1) — antes subtraiamos days inteiros e gerava 05/04 → 05/05
+  // = 31 dias, causando divergencia ~3% vs dashboard.
   const start = customStart
     ? new Date(customStart)
-    : new Date(end.getTime() - days * 24 * 60 * 60 * 1000)
+    : new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000)
 
   const pad = (n: number) => String(n).padStart(2, "0")
   const toStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
