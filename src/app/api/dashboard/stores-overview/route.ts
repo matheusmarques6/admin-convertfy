@@ -119,17 +119,14 @@ export async function GET(request: NextRequest) {
       // campanhas, distorcendo o card quando flows respondem por > 90%
       // do revenue (Vivazz: campanhas R$ 7K, flows R$ 168K — card
       // mostrava R$ 7K em "E-MAIL" e usuario via inconsistencia vs
-      // detalhe da loja). Flows da Omnisend nao tem channel inline,
-      // tratamos como email (case dominante; flows SMS sao raros).
-      const emailFlows = flows.filter((f) => !("channel" in f) || (f as Record<string, unknown>).channel !== "sms")
-      const smsFlows = flows.filter((f) => (f as Record<string, unknown>).channel === "sms")
+      // detalhe da loja). Flows nao tem campo `channel` no
+      // UnifiedFlowRow (omnisend_flow_metrics nao popula channel),
+      // entao tratamos todos como email — case dominante.
+      const flowsRevenueAll = flows.reduce((s, f) => s + f.conversion_value, 0)
 
       const emailRevenueOriginal =
-        emailCamps.reduce((s, c) => s + c.conversion_value, 0) +
-        emailFlows.reduce((s, f) => s + f.conversion_value, 0)
-      const smsRevenueOriginal =
-        smsCamps.reduce((s, c) => s + c.conversion_value, 0) +
-        smsFlows.reduce((s, f) => s + f.conversion_value, 0)
+        emailCamps.reduce((s, c) => s + c.conversion_value, 0) + flowsRevenueAll
+      const smsRevenueOriginal = smsCamps.reduce((s, c) => s + c.conversion_value, 0)
       const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
       const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
 
