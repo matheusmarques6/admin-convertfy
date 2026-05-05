@@ -332,17 +332,35 @@ function dedupRowsBy<T extends Record<string, unknown>>(rows: T[], key: string):
   return out
 }
 
+/** Le currency da source-of-truth (client_stores.currency), nao do
+ *  cache de revenue. Antes pegavamos de store_revenue_summary, mas
+ *  syncs antigos (pre-currency-per-store) deixavam EUR cacheado mesmo
+ *  para lojas BRL. Ler da client_stores garante consistencia imediata. */
+async function getStoreCurrency(storeId: string): Promise<string> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from("client_stores")
+      .select("currency")
+      .eq("id", storeId)
+      .maybeSingle()
+    return (data?.currency as string) || "BRL"
+  } catch {
+    return "BRL"
+  }
+}
+
 /**
  * Gera o response a partir dos dados em cache.
  */
-function buildFromCache(
+async function buildFromCache(
   store: StoreContext,
   period: string,
   dateRange: { startDateStr: string; endDateStr: string },
   cache: NonNullable<Awaited<ReturnType<typeof readFromCache>>>
-): OmnisendReportResponse {
+): Promise<OmnisendReportResponse> {
   const s = cache.summary as Record<string, unknown>
-  const currency = (s.currency as string) || "BRL"
+  const currency = await getStoreCurrency(store.storeId)
 
   const campaignRevenue = Number(s.omnisend_campaign_revenue) || 0
   const flowRevenue = Number(s.omnisend_flow_revenue) || 0
@@ -619,6 +637,11 @@ async function buildFromLiveFetch(
     orgId: store.orgId,
     apiKey,
     periodDays: days,
+    // Alinha com calendar para coincidir com dashboard Omnisend (00:00 do
+    // primeiro dia ate 23:59:59.999 do ultimo). dateRangeForPeriod ja entrega
+    // strings YYYY-MM-DD; aqui so anexamos a parte horaria em UTC.
+    startDate: `${dateRange.startDateStr}T00:00:00.000Z`,
+    endDate: `${dateRange.endDateStr}T23:59:59.999Z`,
   })
 
   if (!result.ok || !result.data) {
@@ -937,7 +960,7 @@ export async function buildOmnisendReport(
     const cached = await readFromCache(store.storeId, period)
     if (cached) {
       log.info("[Omnisend Report] Serving from fresh cache", { storeId: store.storeId, period })
-      return buildFromCache(store, period, dateRange, cached)
+      return await buildFromCache(store, period, dateRange, cached)
     }
   } catch (err) {
     log.warn("[Omnisend Report] Cache read failed", { error: err })
@@ -955,7 +978,7 @@ export async function buildOmnisendReport(
     // Sem API key e sem cache → erro
     if (staleCache) {
       log.info("[Omnisend Report] No API key, serving stale cache", { storeId: store.storeId })
-      return buildFromCache(store, period, dateRange, staleCache)
+      return await buildFromCache(store, period, dateRange, staleCache)
     }
     throw new Error("API Key Omnisend não configurada para esta loja")
   }
@@ -972,7 +995,7 @@ export async function buildOmnisendReport(
         storeId: store.storeId,
         error: err instanceof Error ? err.message : String(err),
       })
-      const response = buildFromCache(store, period, dateRange, staleCache)
+      const response = await buildFromCache(store, period, dateRange, staleCache)
       response.rateLimited = err instanceof OmnisendRateLimitError
       response.fromCache = true
       return response

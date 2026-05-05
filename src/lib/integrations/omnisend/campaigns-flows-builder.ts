@@ -36,6 +36,25 @@ const log = logger.child("OmnisendCampaignsFlowsBuilder")
 const CACHE_FRESH_MS = 35 * 60 * 1000
 const STALE_CACHE_MAX_MS = 24 * 60 * 60 * 1000
 
+/** Le currency da source-of-truth (client_stores.currency). Antes
+ *  pegavamos de store_revenue_summary, que ficava preso em "EUR" depois
+ *  de syncs antigos antes da migration de currency-per-store. Ler da
+ *  client_stores garante que mudancas de moeda na config aparecem na
+ *  hora, sem esperar o cache do summary expirar. */
+async function getStoreCurrency(storeId: string): Promise<string> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from("client_stores")
+      .select("currency")
+      .eq("id", storeId)
+      .maybeSingle()
+    return (data?.currency as string) || "BRL"
+  } catch {
+    return "BRL"
+  }
+}
+
 const PERIOD_DAYS: Record<string, number> = {
   today: 1, yesterday: 1, "1d": 1, "7d": 7, "15d": 15,
   "30d": 30, "90d": 90, "12m": 365,
@@ -241,13 +260,7 @@ export async function buildOmnisendCampaignsResponse(
         const filtered = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns
         filtered.sort(sortCampaigns)
 
-        const { data: summaryRow } = await admin
-          .from("store_revenue_summary")
-          .select("currency")
-          .eq("store_id", store.storeId)
-          .limit(1)
-          .single()
-        const currency = (summaryRow?.currency as string) || "BRL"
+        const currency = await getStoreCurrency(store.storeId)
 
         log.info("[Omnisend Campaigns] Serving from cache", { storeId: store.storeId, period })
         return {
@@ -279,15 +292,9 @@ export async function buildOmnisendCampaignsResponse(
     if (staleCached && staleCached.length > 0) {
       const latestFetchedAt = new Date(staleCached[0].fetched_at as string)
       if (Date.now() - latestFetchedAt.getTime() < STALE_CACHE_MAX_MS) {
-        const { data: summaryRow } = await admin
-          .from("store_revenue_summary")
-          .select("currency")
-          .eq("store_id", store.storeId)
-          .limit(1)
-          .single()
         staleCache = {
           data: staleCached,
-          currency: (summaryRow?.currency as string) || "BRL",
+          currency: await getStoreCurrency(store.storeId),
           fetchedAt: staleCached[0].fetched_at as string,
         }
       }
@@ -312,6 +319,8 @@ export async function buildOmnisendCampaignsResponse(
       orgId: store.orgId,
       apiKey,
       periodDays: days,
+      startDate: `${startDateStr}T00:00:00.000Z`,
+      endDate: `${endDateStr}T23:59:59.999Z`,
     })
 
     if (!result.ok || !result.data) {
@@ -432,13 +441,7 @@ export async function buildOmnisendFlowsResponse(
         const flows = dedupFlows(cached.map((r: Record<string, unknown>) => mapCachedFlow(r)))
         flows.sort((a, b) => b.conversionValue - a.conversionValue)
 
-        const { data: summaryRow } = await admin
-          .from("store_revenue_summary")
-          .select("currency")
-          .eq("store_id", store.storeId)
-          .limit(1)
-          .single()
-        const currency = (summaryRow?.currency as string) || "BRL"
+        const currency = await getStoreCurrency(store.storeId)
 
         log.info("[Omnisend Flows] Serving from cache", { storeId: store.storeId, period })
         return {
@@ -470,15 +473,9 @@ export async function buildOmnisendFlowsResponse(
     if (staleCached && staleCached.length > 0) {
       const latestFetchedAt = new Date(staleCached[0].fetched_at as string)
       if (Date.now() - latestFetchedAt.getTime() < STALE_CACHE_MAX_MS) {
-        const { data: summaryRow } = await admin
-          .from("store_revenue_summary")
-          .select("currency")
-          .eq("store_id", store.storeId)
-          .limit(1)
-          .single()
         staleFlowCache = {
           data: staleCached,
-          currency: (summaryRow?.currency as string) || "BRL",
+          currency: await getStoreCurrency(store.storeId),
           fetchedAt: staleCached[0].fetched_at as string,
         }
       }
@@ -503,6 +500,8 @@ export async function buildOmnisendFlowsResponse(
       orgId: store.orgId,
       apiKey,
       periodDays: days,
+      startDate: `${startDateStr}T00:00:00.000Z`,
+      endDate: `${endDateStr}T23:59:59.999Z`,
     })
 
     if (!result.ok || !result.data) {

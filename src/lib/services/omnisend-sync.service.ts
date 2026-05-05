@@ -1237,6 +1237,12 @@ export async function syncOmnisendForStore(params: {
   orgId: string
   apiKey: string
   periodDays: number
+  // Calendar-aligned ISO range. Quando passado, sobrescreve o calculo
+  // baseado em periodDays (now - Nd). O dashboard do Omnisend agrega por
+  // dia calendar (00:00 ate agora), entao passar startDate=YYYY-MM-DDT00:00:00Z
+  // alinha com os totais que o cliente ve la.
+  startDate?: string
+  endDate?: string
 }): Promise<SyncResult<OmnisendSyncData>> {
   const lockKey = `${params.storeId}:${params.periodDays}`
   const existing = activeSyncs.get(lockKey)
@@ -1259,6 +1265,8 @@ async function doSyncOmnisendForStore(params: {
   orgId: string
   apiKey: string
   periodDays: number
+  startDate?: string
+  endDate?: string
 }): Promise<SyncResult<OmnisendSyncData>> {
   const { storeId, orgId, apiKey, periodDays } = params
 
@@ -1352,8 +1360,25 @@ async function doSyncOmnisendForStore(params: {
     //    Schema oficial confirmado pelo suporte da Omnisend.
     //    Limites: 10/min, 55/dia/brand. 1 chamada cobre TUDO — antes
     //    chamavamos /reports em paralelo, queimando 2 calls/sync.
-    const endDate = new Date().toISOString()
-    const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
+    //
+    //    Datas alinhadas com calendar (00:00 ate agora) para coincidir
+    //    com totais do dashboard Omnisend. Antes: rolling time-based
+    //    (now - 30d * 86400000) causava divergencia ~1.3% (ex: R$255k
+    //    vs R$251k para periodo de 30d). Agora puxamos do inicio do
+    //    primeiro dia da janela ate o instante atual, igual o dashboard.
+    let startDate: string
+    let endDate: string
+    if (params.startDate && params.endDate) {
+      startDate = params.startDate
+      endDate = params.endDate
+    } else {
+      const now = new Date()
+      const start = new Date(now)
+      start.setUTCDate(start.getUTCDate() - (periodDays - 1))
+      start.setUTCHours(0, 0, 0, 0)
+      startDate = start.toISOString()
+      endDate = now.toISOString()
+    }
     const activityBreakdown = await safely(
       "activityBreakdown",
       () => fetchOmnisendActivityBreakdown(apiKey, startDate, endDate),
@@ -1417,6 +1442,24 @@ async function doSyncOmnisendForStore(params: {
       campaignsRevenue: totalCampaignsRevenue,
       automationsRevenue: totalAutomationsRevenue,
       totalStoreRevenue: revenueStats.totalRevenue,
+    })
+
+    // Diagnostico: marketingActivityID retornado pela Statistics API tem
+    // que casar 1:1 com automationID/campaignID do listing /v5. Se logamos
+    // 0 matches e o breakdown teve resultados, o ID esta diferente
+    // (ex: hash, prefixo) e os flows aparecem zerados na UI.
+    const breakdownAutoIds = new Set(activityBreakdown.automations.keys())
+    const listingAutoIds = new Set(automations.map(getAutomationId).filter(Boolean))
+    const matchedAutos = [...listingAutoIds].filter((id) => breakdownAutoIds.has(id)).length
+    const breakdownCampIds = new Set(activityBreakdown.campaigns.keys())
+    const listingCampIds = new Set(campaigns.map(getCampaignId).filter(Boolean))
+    const matchedCamps = [...listingCampIds].filter((id) => breakdownCampIds.has(id)).length
+    log.info("[OmnisendSync] activity ID match", {
+      storeId,
+      automations: { breakdown: breakdownAutoIds.size, listing: listingAutoIds.size, matched: matchedAutos },
+      campaigns: { breakdown: breakdownCampIds.size, listing: listingCampIds.size, matched: matchedCamps },
+      sampleBreakdownAutoIds: [...breakdownAutoIds].slice(0, 3),
+      sampleListingAutoIds: [...listingAutoIds].slice(0, 3),
     })
 
     // 7. Map campaigns to rows

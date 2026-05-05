@@ -16,11 +16,6 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import { useStorePerformanceContext } from "@/lib/hooks/use-store-performance"
 
-// Receita por campanha/automation individual agora e populada via
-// Statistics API com filter por marketingActivityType (schema oficial
-// confirmado pelo suporte da Omnisend, 2026-05-05). Antes mostravamos
-// "—" pq a API nao expunha — agora mostramos valor real igual Klaviyo.
-
 function TableSkeleton() {
   return (
     <Card>
@@ -41,29 +36,12 @@ function TableSkeleton() {
   )
 }
 
-function formatSendDate(dateStr: string): string {
-  try {
-    const date = new Date(dateStr)
-    if (isNaN(date.getTime())) return ""
-    return date.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return ""
-  }
-}
-
 export function StorePerformanceTables() {
-  const { campaigns, flows, loading, error, totals } = useStorePerformanceContext()
+  const { flows, loading, error, totals } = useStorePerformanceContext()
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <TableSkeleton />
         <TableSkeleton />
       </div>
     )
@@ -72,17 +50,16 @@ export function StorePerformanceTables() {
   if (error) return null
 
   const currency = totals?.currency ?? "BRL"
-  const hasCampaigns = campaigns.length > 0
   const hasFlows = flows.length > 0
 
-  if (!hasCampaigns && !hasFlows) {
+  if (!hasFlows) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Icon icon={Zap} customSize={40} className="text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Nenhum dado encontrado neste período</p>
           <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
-            Não há dados de campanhas ou flows para o período selecionado.
+            Não há dados de flows para o período selecionado.
             Tente selecionar um período maior.
           </p>
         </CardContent>
@@ -92,58 +69,6 @@ export function StorePerformanceTables() {
 
   return (
     <div className="space-y-6">
-      {/* Recent Campaigns Table */}
-      {hasCampaigns && (
-        <Card className="rounded-[8px]">
-          <CardHeader>
-            <CardTitle className="text-base">Campanhas recentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campanha</TableHead>
-                  <TableHead className="text-right">Taxa de abertura</TableHead>
-                  <TableHead className="text-right">Taxa de cliques</TableHead>
-                  <TableHead className="text-right">Receita</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.slice(0, 10).map((c) => {
-                  const delivered = c.delivered || c.recipients || 0
-                  const revenuePerRecipient = delivered > 0 ? c.revenue / delivered : 0
-                  const sentDate = c.sendTime ? formatSendDate(c.sendTime) : ""
-                  return (
-                    <TableRow key={c.id}>
-                      <TableCell className="max-w-[280px]">
-                        <div className="font-medium truncate" title={c.name}>
-                          {c.name}
-                        </div>
-                        {sentDate && (
-                          <div className="text-xs text-muted-foreground">Enviada em: {sentDate}</div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {(c.openRate || 0).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {(c.clickRate || 0).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-medium">{formatCurrency(c.revenue, currency)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatCurrency(revenuePerRecipient, currency)} / destinatário
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Top Flows Table */}
       {hasFlows && (
         <Card className="rounded-[8px]">
