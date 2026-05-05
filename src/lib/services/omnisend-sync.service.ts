@@ -1298,30 +1298,31 @@ async function doSyncOmnisendForStore(params: {
       { count: subscribedContacts, source: "fallback" as const },
     )
 
-    // 6. Revenue + engagement agregados via DUAS APIs distintas:
+    // 6. Revenue + engagement + breakdown por activity em UMA chamada:
     //
-    //    a) /api/analytics/statistics → totalRevenue (loja inteira) e
-    //       totalOrders. Esse endpoint AGRUPA POR EVENT DATE (data do
-    //       Placed Order). E o unico que da o "store total revenue".
+    //    POST /api/analytics/statistics com 3 queries:
+    //      - campaigns: revenue por marketingActivityID (filter Campaign)
+    //      - automations: revenue por marketingActivityID (filter Automation)
+    //      - total: totalRevenue da loja
     //
-    //    b) /api/analytics/reports → attributedRevenue + engagement
-    //       (sent, opened, openedUnique, clicked, clickedUnique,
-    //       openRate, clickRate, failed). Endpoint NOVO descoberto via
-    //       discovery R5/R6 — agrupa por SEND DATE (data do envio da
-    //       mensagem). Mais alinhado com o painel oficial do Omnisend.
-    //       Tem cache de 1h com stale-while-error pra nao queimar
-    //       rate limit.
+    //    Schema oficial confirmado pelo suporte da Omnisend.
+    //    Limites: 10/min, 55/dia/brand (rate limiter ja aplica).
     //
-    //    Os dois endpoints sao chamados em paralelo. Se um falhar por
-    //    rate limit/erro, o outro pode ainda popular dados — sync nao
-    //    aborta inteiro. Wrapper safely() preserva isso.
+    //    Mantem fetchOmnisendReports como SECUNDARIO pra trazer engagement
+    //    metrics (sent/opened/clicked agregados) que o /statistics nao da.
+    //    Se rate limit estourar, ambos viram fallback zerado e revenue
+    //    antiga e preservada pelo upsert (revenueCollected guard).
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const [storeStats, reportsStats] = await Promise.all([
+    const [activityBreakdown, reportsStats] = await Promise.all([
       safely(
-        "statistics",
-        () => fetchOmnisendStatistics(apiKey, startDate, endDate),
-        { totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0 } as OmnisendStatisticsResult,
+        "activityBreakdown",
+        () => fetchOmnisendActivityBreakdown(apiKey, startDate, endDate),
+        {
+          campaigns: new Map(),
+          automations: new Map(),
+          total: { revenue: 0, orders: 0 },
+        } as OmnisendActivityBreakdownResult,
       ),
       safely(
         "reports",
@@ -1329,15 +1330,39 @@ async function doSyncOmnisendForStore(params: {
         EMPTY_REPORTS_RESULT,
       ),
     ])
-    // attributedRevenue: preferencia /reports (mais alinhado com painel
-    // oficial). Fallback /statistics se /reports zerou (rate limit etc).
+
+    // Agrega revenue total das campanhas e automations (somando byChannel)
+    let totalCampaignsRevenue = 0
+    let totalCampaignsOrders = 0
+    for (const entry of activityBreakdown.campaigns.values()) {
+      totalCampaignsRevenue += entry.totalRevenue
+      totalCampaignsOrders += entry.totalOrders
+    }
+    let totalAutomationsRevenue = 0
+    let totalAutomationsOrders = 0
+    for (const entry of activityBreakdown.automations.values()) {
+      totalAutomationsRevenue += entry.totalRevenue
+      totalAutomationsOrders += entry.totalOrders
+    }
+
     const revenueStats = {
-      totalRevenue: storeStats.totalRevenue,
-      totalOrders: storeStats.totalOrders,
-      attributedRevenue: reportsStats.attributedRevenue || storeStats.attributedRevenue,
-      attributedOrders: reportsStats.attributedOrders || storeStats.attributedOrders,
+      totalRevenue: activityBreakdown.total.revenue,
+      totalOrders: activityBreakdown.total.orders,
+      // attributedRevenue = soma de campaigns + automations (real, nao mais
+      // 100% jogado em flow). Fallback pra /reports se breakdown falhou.
+      attributedRevenue: (totalCampaignsRevenue + totalAutomationsRevenue) || reportsStats.attributedRevenue,
+      attributedOrders: (totalCampaignsOrders + totalAutomationsOrders) || reportsStats.attributedOrders,
     }
     const currency = "EUR"
+
+    log.info("[OmnisendSync] activity breakdown summary", {
+      storeId,
+      campaignsCount: activityBreakdown.campaigns.size,
+      automationsCount: activityBreakdown.automations.size,
+      campaignsRevenue: totalCampaignsRevenue,
+      automationsRevenue: totalAutomationsRevenue,
+      totalStoreRevenue: revenueStats.totalRevenue,
+    })
 
     // 7. Map campaigns to rows
     const campaignRows: OmnisendCampaignRow[] = campaigns
@@ -1350,8 +1375,11 @@ async function doSyncOmnisendForStore(params: {
       const clicked = s.uniqueClicked || s.clicked || 0
       const bounced = s.bounced || 0
       const unsubscribed = s.unsubscribed || 0
-      const revenue = s.totalRevenue || s.revenue || 0
-      const campaignOrders = s.ordersCount || s.orders || 0
+      // Revenue REAL por campanha individual via activity breakdown.
+      // marketingActivityID === campaignID (confirmado pelo suporte).
+      const breakdownEntry = activityBreakdown.campaigns.get(getCampaignId(c))
+      const revenue = breakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
+      const campaignOrders = breakdownEntry?.totalOrders ?? (s.ordersCount || s.orders || 0)
       const spam = s.complained || 0
 
       // subject: /v5/ retorna `subjectLine`; /api/ (2026-03-15) retorna
@@ -1423,8 +1451,11 @@ async function doSyncOmnisendForStore(params: {
         const clicked = s.uniqueClicked || s.clicked || 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
-        const revenue = s.totalRevenue || s.revenue || 0
-        const automationOrders = s.ordersCount || s.orders || 0
+        // Revenue REAL por automation individual via activity breakdown.
+        // marketingActivityID === automationID (confirmado pelo suporte).
+        const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
+        const revenue = autoBreakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
+        const automationOrders = autoBreakdownEntry?.totalOrders ?? (s.ordersCount || s.orders || 0)
         const triggerType = typeof a.trigger === "string"
           ? a.trigger
           : (a.triggerType || (a.trigger && typeof a.trigger === "object" && typeof (a.trigger as Record<string, unknown>).event === "string"
@@ -1456,19 +1487,19 @@ async function doSyncOmnisendForStore(params: {
         }
       })
 
-    // 9. Revenue: Statistics API (Omnisend-Version 2026-03-15) retorna
-    //    attributedRevenue/Orders como totais agregados. NAO suporta breakdown
-    //    por campaign/workflow (unsupported dimension). Como fallback aceito,
-    //    atribuimos tudo a "flow_revenue" (maioria da atribuicao vem de
-    //    automations) e deixamos campaign_revenue em 0.
+    // 9. Revenue split REAL via activityBreakdown:
+    //    Schema oficial confirmado pelo suporte da Omnisend usando
+    //    marketingActivityType=Campaign|Automation como filter na
+    //    Statistics API. Cada activityID retorna seu attributedRevenue
+    //    individual — somamos pra ter os totais por canal de marketing.
     //
-    //    TODO: Omnisend Statistics API (2026-preview/2026-03-15) nao suporta
-    //    dimension='campaign'|'workflow' para attributedRevenue. Revisar
-    //    quando a API for GA e fornecer o breakdown.
+    //    Fallback: se rate limit estourou e activityBreakdown veio vazio,
+    //    cai pro reportsStats.attributedRevenue (que ainda e agregado
+    //    do /reports endpoint).
     const totalAttributedRevenue = Math.max(0, revenueStats.attributedRevenue)
     const totalAttributedOrders = Math.max(0, revenueStats.attributedOrders)
-    const totalCampaignRevenue = 0
-    const totalAutomationRevenue = totalAttributedRevenue
+    const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
+    const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
     log.info("[OmnisendSync] Sync summary", {
       storeId,
