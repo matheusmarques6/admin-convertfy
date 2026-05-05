@@ -8,6 +8,7 @@ import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { normalizeCampaignStatus } from "@/lib/utils/campaign-status"
 import { Progress } from "@/components/ui/progress"
 import { StoreEmailPerformanceReport } from "@/components/clients/store-email-performance-report"
 import { formatCurrency } from "@/lib/utils"
@@ -335,24 +336,6 @@ export function StoreDetailTabs({
       )}
     </div>
   )
-}
-
-// Normaliza status de campanha vindos das plataformas (Klaviyo/Omnisend)
-// para os labels que o StatusBadge entende. Antes o mapping era binario
-// (status === "sent" ? "sent" : "draft") — qualquer coisa diferente de
-// "sent" virava "Rascunho", incluindo agendadas, pausadas, em envio.
-// Resultado: campanhas agendadas e em envio apareciam como "Rascunho"
-// mesmo tendo destinatarios e receita.
-function normalizeCampaignStatus(status: string | undefined | null): string {
-  const s = (status || "").toLowerCase().trim()
-  if (s === "sent") return "sent"
-  if (s === "scheduled") return "scheduled"
-  if (s === "paused") return "paused"
-  if (s === "draft") return "draft"
-  // Omnisend usa camelCase: inProgress, sending. Klaviyo usa sending.
-  if (s === "inprogress" || s === "in_progress" || s === "sending") return "in_progress"
-  if (s === "cancelled" || s === "canceled") return "cancelled"
-  return s || "draft"
 }
 
 // --- Latest Campaigns Mini Table (max 5) ---

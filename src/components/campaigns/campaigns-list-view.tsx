@@ -17,7 +17,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
+import { normalizeCampaignStatus } from "@/lib/utils/campaign-status"
 import {
   Select,
   SelectContent,
@@ -549,9 +550,7 @@ export function CampaignsListView() {
                             {c.store?.store_name || "-"}
                           </td>
                           <td className="py-2 pr-4">
-                            <Badge variant={c.status === "sent" ? "positive" : "neutral"} showDot={c.status !== "sent" && c.status !== "draft" ? false : undefined} className="text-xs">
-                              {c.status}
-                            </Badge>
+                            <StatusBadge status={normalizeCampaignStatus(c.status)} className="text-xs" />
                           </td>
                           <td className="py-2 pr-4 text-xs capitalize">{c.channel}</td>
                           <td className="py-2 pr-4 text-xs">
