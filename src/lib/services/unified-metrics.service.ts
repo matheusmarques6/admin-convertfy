@@ -139,6 +139,30 @@ export async function getUnifiedRevenue(
   })
 }
 
+/** Dedup por (store_id, id) mantendo a row mais recente (fetched_at desc).
+ *  Necessario porque a UNIQUE constraint dessas tabelas inclui period_start/
+ *  period_end (que mudam a cada sync via nowIso). Sem dedup, syncs concorrentes
+ *  cron + live deixam 2 rows do mesmo flow/campanha — overview somava
+ *  duplicado (visto: 565K em automations vs 302K real). */
+function dedupRows<T extends { store_id: string; fetched_at?: string | null }>(
+  rows: T[],
+  idKey: keyof T,
+): T[] {
+  const seen = new Map<string, T>()
+  for (const r of rows) {
+    const key = `${r.store_id}|${String(r[idKey])}`
+    const existing = seen.get(key)
+    if (!existing) {
+      seen.set(key, r)
+      continue
+    }
+    const a = new Date(r.fetched_at ?? 0).getTime()
+    const b = new Date(existing.fetched_at ?? 0).getTime()
+    if (a > b) seen.set(key, r)
+  }
+  return [...seen.values()]
+}
+
 /** Busca campanhas de ambas as plataformas e retorna unificadas. */
 export async function getUnifiedCampaigns(
   supabase: SupabaseClient,
@@ -149,7 +173,7 @@ export async function getUnifiedCampaigns(
   const selectKlaviyo = `
     store_id, campaign_id, campaign_name, campaign_status, channel,
     recipients, delivered, opened, clicked, conversions, conversion_rate,
-    conversion_value, bounced, unsubscribed, spam_complaints
+    conversion_value, bounced, unsubscribed, spam_complaints, fetched_at
   `
   const selectOmnisend = selectKlaviyo
 
@@ -174,11 +198,14 @@ export async function getUnifiedCampaigns(
     })(),
   ])
 
-  const klaviyo = (klaviyoRes.data || []).map((r) => ({
+  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
+  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
+
+  const klaviyo = klaviyoRows.map((r) => ({
     ...mapCampaignRow(r),
     platform: "klaviyo" as const,
   }))
-  const omnisend = (omnisendRes.data || []).map((r) => ({
+  const omnisend = omnisendRows.map((r) => ({
     ...mapCampaignRow(r),
     platform: "omnisend" as const,
   }))
@@ -197,7 +224,7 @@ export async function getUnifiedFlows(
   const selectCols = `
     store_id, flow_id, flow_name, flow_status,
     recipients, delivered, opened, clicked, conversions, conversion_rate,
-    conversion_value, bounced, unsubscribed
+    conversion_value, bounced, unsubscribed, fetched_at
   `
 
   const [klaviyoRes, omnisendRes] = await Promise.all([
@@ -223,11 +250,14 @@ export async function getUnifiedFlows(
     })(),
   ])
 
-  const klaviyo = (klaviyoRes.data || []).map((r) => ({
+  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+
+  const klaviyo = klaviyoRows.map((r) => ({
     ...mapFlowRow(r),
     platform: "klaviyo" as const,
   }))
-  const omnisend = (omnisendRes.data || []).map((r) => ({
+  const omnisend = omnisendRows.map((r) => ({
     ...mapFlowRow(r),
     platform: "omnisend" as const,
   }))

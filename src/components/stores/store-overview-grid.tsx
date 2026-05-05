@@ -5,8 +5,17 @@ import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import { LayoutGrid, Search } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
-import { PeriodPicker, type PeriodValue } from "@/components/ui/period-picker"
+import { PeriodPicker, type PeriodValue, type PeriodOption } from "@/components/ui/period-picker"
 import { StoreOverviewCard, StoreOverviewCardSkeleton, type StoreOverviewData } from "./store-overview-card"
+
+// O cron Omnisend so popula period_label="30d" (ver sync-omnisend/route.ts).
+// Klaviyo popula 7d/15d/30d/90d/12m, mas o overview agrega ambas plataformas
+// — escolher 7d zerava lojas Omnisend e gerava confusao. Restringimos para
+// 30d ate o cron Omnisend cobrir os demais periods (custa rate limit extra
+// na Statistics API, 55 calls/dia/brand).
+const OVERVIEW_PERIODS: PeriodOption[] = [
+  { value: "30d", label: "30 dias" },
+]
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -31,6 +40,11 @@ export function StoreOverviewGrid() {
     : stores
 
   const totalRevenue = filtered.reduce((s, st) => s + st.totalRevenueBRL, 0)
+  const totalAttributed = filtered.reduce((s, st) => s + (st.attributedRevenueBRL ?? 0), 0)
+  // % media ponderada por receita total: nao podemos so somar
+  // recoveryRate / N porque distorce com lojas grandes vs pequenas.
+  // attributed / total da loja * total agregado e mais fiel.
+  const aggregateRecoveryRate = totalRevenue > 0 ? (totalAttributed / totalRevenue) * 100 : 0
 
   return (
     <div>
@@ -64,17 +78,29 @@ export function StoreOverviewGrid() {
               )}
             />
           </div>
-          <PeriodPicker value={period} onChange={setPeriod} />
+          <PeriodPicker value={period} onChange={setPeriod} options={OVERVIEW_PERIODS} />
         </div>
       </div>
 
       {/* Summary bar */}
       {!isLoading && stores.length > 0 && (
-        <div className="flex items-center gap-6 mb-5 px-1">
+        <div className="flex items-center gap-8 mb-5 px-1">
           <div>
             <span className="text-[11px] text-gray-400 dark:text-white/40 uppercase tracking-wider font-medium">Receita total agregada</span>
             <p className="text-[20px] font-bold font-mono tabular-nums text-gray-900 dark:text-white mt-0.5">
               {totalRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] text-gray-400 dark:text-white/40 uppercase tracking-wider font-medium">Receita atribuída agregada</span>
+            <p className="text-[20px] font-bold font-mono tabular-nums text-gray-900 dark:text-white mt-0.5">
+              {totalAttributed.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] text-gray-400 dark:text-white/40 uppercase tracking-wider font-medium">% Receita atribuída média</span>
+            <p className="text-[20px] font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+              {aggregateRecoveryRate.toFixed(1)}%
             </p>
           </div>
         </div>

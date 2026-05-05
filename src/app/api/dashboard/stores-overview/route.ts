@@ -105,6 +105,9 @@ export async function GET(request: NextRequest) {
       // Omnisend store_total_revenue vem da totalRevenue da Statistics API
       // (~€383K), e nao da omnisend_total_revenue (~€12K attributed).
       const totalRevenue = rev?.store_total_revenue ?? rev?.total_revenue ?? 0
+      // Receita ATRIBUIDA = somatorio Klaviyo + Omnisend total_revenue
+      // (campanhas + flows). Usado pra calcular % Recuperacao Email.
+      const attributedRevenue = rev?.total_revenue ?? 0
       const campaignRevenue = rev?.campaign_revenue ?? 0
       const flowRevenue = rev?.flow_revenue ?? 0
 
@@ -116,14 +119,18 @@ export async function GET(request: NextRequest) {
       const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
       const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
 
-      // Paraleliza as 5 conversoes BRL por loja
-      const [totalBRL, campaignBRL, flowBRL, emailBRL, smsBRL] = await Promise.all([
+      // Paraleliza as conversoes BRL por loja
+      const [totalBRL, campaignBRL, flowBRL, emailBRL, smsBRL, attributedBRL] = await Promise.all([
         convertToBRL(totalRevenue, currency),
         convertToBRL(campaignRevenue, currency),
         convertToBRL(flowRevenue, currency),
         convertToBRL(emailRevenueOriginal, currency),
         convertToBRL(smsRevenueOriginal, currency),
+        convertToBRL(attributedRevenue, currency),
       ])
+      // % de receita da loja recuperada via email/sms marketing.
+      // Mesmo calculo do card "Recuperacao Email" da pagina de detalhe.
+      const recoveryRate = totalBRL > 0 ? (attributedBRL / totalBRL) * 100 : 0
 
       const campRecipients = campaigns.reduce((s, c) => s + c.recipients, 0)
       const campOpened = campaigns.reduce((s, c) => s + c.opened, 0)
@@ -158,6 +165,8 @@ export async function GET(request: NextRequest) {
         clientName: client?.name || "—",
         currency,
         totalRevenueBRL: Math.round(totalBRL * 100) / 100,
+        attributedRevenueBRL: Math.round(attributedBRL * 100) / 100,
+        recoveryRate: Math.round(recoveryRate * 100) / 100,
         email: {
           revenue: Math.round(emailBRL * 100) / 100,
           recipients: emailRecipients,

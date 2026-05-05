@@ -15,6 +15,8 @@ export interface StoreOverviewData {
   clientName: string
   currency: string
   totalRevenueBRL: number
+  attributedRevenueBRL: number
+  recoveryRate: number
   email: { revenue: number; recipients: number }
   sms: { revenue: number; recipients: number }
   campaigns: {
@@ -104,12 +106,18 @@ export function StoreOverviewCard({ store }: { store: StoreOverviewData }) {
         </div>
       </div>
 
-      {/* Receita Total */}
+      {/* Receita Total + Recuperacao Email */}
       <div className="mb-4">
         <p className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1">Receita Total</p>
         <p className="text-[22px] font-bold font-mono tabular-nums text-gray-900 dark:text-white tracking-tight">
           {fmtCurrency(store.totalRevenueBRL)}
         </p>
+        {store.recoveryRate > 0 && (
+          <p className="text-[11px] text-gray-500 dark:text-white/50 mt-1 font-mono tabular-nums">
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{store.recoveryRate.toFixed(1)}%</span>
+            <span className="ml-1">recuperação · {fmtCompact(store.attributedRevenueBRL)} atribuído</span>
+          </p>
+        )}
       </div>
 
       {/* Email / SMS split */}
