@@ -1061,20 +1061,27 @@ async function findEngaged90dFromSegments(
   segments: OmnisendSegment[],
   subscribedCount: number
 ): Promise<{ count: number; source: "segment" | "fallback"; segmentName?: string }> {
+  // subscribedCount fica disponivel para logs/diagnostico, mas NAO e
+  // usado como fallback de engagement — fazia o engajamento aparecer
+  // como 100% (engaged === subscribed) em lojas sem segmento "engaged
+  // 90d" ou em lojas que estouravam o cap de 25k. UI mostra "—" quando
+  // engaged_leads === 0.
+  void subscribedCount
+
   const matched = segments.find((seg) =>
     ENGAGED_SEGMENT_PATTERNS.some((p) => p.test(seg.name || ""))
   )
 
   if (!matched) {
-    log.warn("[OmnisendEngaged] No 90d engaged segment found, using subscribed as fallback", {
+    log.warn("[OmnisendEngaged] No 90d engaged segment found, returning 0 (will show as —)", {
       availableSegments: segments.map((s) => s.name).slice(0, 20),
     })
-    return { count: subscribedCount, source: "fallback" }
+    return { count: 0, source: "fallback" }
   }
 
   const segmentId = matched.segmentID || (matched as unknown as Record<string, unknown>).id as string | undefined
   if (!segmentId) {
-    return { count: subscribedCount, source: "fallback", segmentName: matched.name }
+    return { count: 0, source: "fallback", segmentName: matched.name }
   }
 
   // Caminho 1: se o payload do /v5/segments trouxe contactsCount, usar direto.
@@ -1095,13 +1102,13 @@ async function findEngaged90dFromSegments(
     return { count, source: "segment", segmentName: matched.name }
   }
 
-  // Caminho 3: fallback para subscribedContacts se a paginacao filtrada retornou 0
-  // (API pode nao suportar o filtro ou o segmento esta vazio).
-  log.warn("[OmnisendEngaged] Segment count is 0, falling back to subscribedCount", {
+  // Caminho 3: segmento existe mas esta vazio/nao paginavel → 0
+  // (NAO usar subscribedCount — gera 100% de engajamento espurio).
+  log.warn("[OmnisendEngaged] Segment count is 0, returning 0 (will show as —)", {
     segmentId,
     segmentName: matched.name,
   })
-  return { count: subscribedCount, source: "fallback", segmentName: matched.name }
+  return { count: 0, source: "fallback", segmentName: matched.name }
 }
 
 /** Pagina /v5/contacts?segments={id} e tambem valida client-side via
@@ -1162,7 +1169,12 @@ async function countContactsInSegment(apiKey: string, segmentId: string): Promis
 // ── Contacts / Audience ───────────────────────────────────
 
 const CONTACTS_PAGE_LIMIT = 250
-const CONTACTS_MAX_PAGES = 100
+// 250 * 400 = 100k contatos. Antes era 100 paginas (25k), travando lojas
+// com mais de 25k contatos no cap exato (ex: Blessed Choice mostrava
+// 25.000). Idealmente a API retorna paging.total/totalCount na primeira
+// pagina e nem precisa paginar — o aumento e safety net pra accounts
+// que nao expoem o total inline.
+const CONTACTS_MAX_PAGES = 400
 
 async function countContacts(
   apiKey: string,
