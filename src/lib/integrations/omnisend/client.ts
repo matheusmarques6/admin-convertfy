@@ -74,6 +74,86 @@ async function waitForRateLimit(apiKey: string): Promise<void> {
   lastRequestTime.set(keyHash, Date.now())
 }
 
+// ── Statistics/Reports API rate limiter (mais restrito) ──
+//
+// Limites oficiais confirmados pelo suporte da Omnisend (2026-05-05):
+//   - 10 requests POR MINUTO
+//   - 55 requests POR DIA (por brand, ou seja, por API key)
+//
+// Esses limites sao ESPECIFICOS para /api/analytics/statistics e
+// /api/analytics/reports — outros endpoints (/v3, /v5, /api/segments)
+// usam o rate limit global de 400/min ja coberto por waitForRateLimit.
+//
+// Estrategia (recomendada pelo suporte):
+//   - Throttle: 6.5s entre calls (~9.2/min, dentro de 10/min)
+//   - Limite diario: contador in-memory por keyHash + reset em UTC
+//   - Backoff: 30s -> 60s -> 120s nos 429 (em vez de Retry-After cego)
+//
+// IMPORTANTE: o contador diario reseta em UTC. Se Lambda reciclar,
+// o contador zera prematuramente. Para controle robusto producao
+// real, mover pra Supabase. Por ora, in-memory ja reduz drasticamente
+// o burn de budget vs nao ter nada.
+const STATS_MIN_INTERVAL_MS = 6_500          // ~9.2/min, abaixo do 10/min limit
+const STATS_DAILY_LIMIT = 50                 // 55 oficial - 5 buffer pra retries
+const STATS_BACKOFF_SCHEDULE_MS = [30_000, 60_000, 120_000]
+
+interface StatsRateLimitState {
+  lastCallAt: number
+  todayCount: number
+  todayResetAt: number  // timestamp da meianoite UTC seguinte
+}
+
+const statsRateLimit = new Map<string, StatsRateLimitState>()
+
+function getNextUtcMidnight(): number {
+  const now = new Date()
+  const utc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0))
+  return utc.getTime()
+}
+
+/** Aguarda interval entre calls + verifica limite diario.
+ *  Throw OmnisendRateLimitError se ja batemos limite diario. */
+async function waitForStatsRateLimit(apiKey: string): Promise<void> {
+  const keyHash = apiKey.slice(-8)
+  const now = Date.now()
+  let state = statsRateLimit.get(keyHash)
+  if (!state) {
+    state = { lastCallAt: 0, todayCount: 0, todayResetAt: getNextUtcMidnight() }
+    statsRateLimit.set(keyHash, state)
+  }
+
+  // Reset diario em UTC midnight
+  if (now >= state.todayResetAt) {
+    state.todayCount = 0
+    state.todayResetAt = getNextUtcMidnight()
+  }
+
+  // Limite diario — falhar rapido em vez de chamar API
+  if (state.todayCount >= STATS_DAILY_LIMIT) {
+    const msUntilReset = state.todayResetAt - now
+    throw new OmnisendRateLimitError(msUntilReset)
+  }
+
+  // Throttle interval
+  const elapsed = now - state.lastCallAt
+  if (elapsed < STATS_MIN_INTERVAL_MS) {
+    await sleep(STATS_MIN_INTERVAL_MS - elapsed)
+  }
+  state.lastCallAt = Date.now()
+  state.todayCount++
+}
+
+/** Backoff progressivo do schedule recomendado pelo suporte.
+ *  attempt 0 = 30s, 1 = 60s, 2 = 120s. */
+export function getStatsBackoffMs(attempt: number): number {
+  return STATS_BACKOFF_SCHEDULE_MS[Math.min(attempt, STATS_BACKOFF_SCHEDULE_MS.length - 1)]
+}
+
+/** Indica se o endpoint usa o rate limit restrito da Statistics/Reports API. */
+function isStatsEndpoint(url: string): boolean {
+  return url.includes("/api/analytics/statistics") || url.includes("/api/analytics/reports")
+}
+
 // ── Main request function ─────────────────────────────────
 
 /**
@@ -117,7 +197,24 @@ export async function omnisendRequest<T>(
       await sleep(backoff)
     }
 
-    await waitForRateLimit(apiKey)
+    // Statistics/Reports API tem rate limit MUITO mais restrito (10/min,
+    // 55/dia/brand). Endpoints comuns (/v3, /v5, /api/segments) usam o
+    // rate limiter global de 400/min.
+    if (isStatsEndpoint(url)) {
+      try {
+        await waitForStatsRateLimit(apiKey)
+      } catch (err) {
+        if (err instanceof OmnisendRateLimitError) {
+          log.warn(`[${logTag}] Stats rate limit DAILY exhausted (${STATS_DAILY_LIMIT}/day), throwing`, {
+            retryAfterMs: err.retryAfterMs,
+          })
+          throw err
+        }
+        throw err
+      }
+    } else {
+      await waitForRateLimit(apiKey)
+    }
 
     try {
       // Omnisend aceita multiplas formas de auth, mas a combinacao delas
@@ -150,17 +247,23 @@ export async function omnisendRequest<T>(
         const resetHeader = response.headers.get("X-Rate-Limit-Reset")
         const rawWaitTime = resetHeader ? parseInt(resetHeader) * 1000 : 2000
 
-        if (rawWaitTime > MAX_RETRY_AFTER_MS) {
-          log.warn(`[${logTag}] Rate limited ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Deferring.`)
-          throw new OmnisendRateLimitError(rawWaitTime)
+        // Para Statistics/Reports API, usa o backoff progressivo
+        // recomendado pelo suporte (30s -> 60s -> 120s) em vez de
+        // confiar em Retry-After (que pode ser absurdamente alto, ate 24h)
+        const isStats = isStatsEndpoint(url)
+        const waitTime = isStats ? getStatsBackoffMs(attempt) : rawWaitTime
+
+        if (waitTime > MAX_RETRY_AFTER_MS && !isStats) {
+          log.warn(`[${logTag}] Rate limited ${waitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Deferring.`)
+          throw new OmnisendRateLimitError(waitTime)
         }
 
-        log.warn(`[${logTag}] Rate limited. Waiting ${rawWaitTime}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
+        log.warn(`[${logTag}] Rate limited. Waiting ${waitTime}ms ${isStats ? "(stats backoff)" : ""} (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
         if (attempt < MAX_RETRIES) {
-          await sleep(rawWaitTime + 500)
+          await sleep(waitTime + 500)
           continue
         }
-        throw new OmnisendRateLimitError(rawWaitTime)
+        throw new OmnisendRateLimitError(waitTime)
       }
 
       // ── Server errors (5xx) ─────────────────────────���─
