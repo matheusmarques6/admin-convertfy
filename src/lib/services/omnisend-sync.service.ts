@@ -909,8 +909,22 @@ export async function fetchOmnisendActivityBreakdown(
     for (const block of resp.statistics) {
       if (block.alias === "campaigns") {
         result.campaigns = aggregateActivityRows(block.rows || [])
+        // Sample row pra diagnostico: confere se sent/openedUnique vem
+        // populado por activity (Stats API recente) ou volta vazio
+        // (caso a API ainda nao expoe metrics de engagement por
+        // marketingActivityID — aguardando resposta do suporte).
+        if ((block.rows || []).length > 0) {
+          log.info("[OmnisendActivityBreakdown] campaigns sample row", {
+            sample: JSON.stringify(block.rows![0]).slice(0, 400),
+          })
+        }
       } else if (block.alias === "automations") {
         result.automations = aggregateActivityRows(block.rows || [])
+        if ((block.rows || []).length > 0) {
+          log.info("[OmnisendActivityBreakdown] automations sample row", {
+            sample: JSON.stringify(block.rows![0]).slice(0, 400),
+          })
+        }
       } else if (block.alias === "total") {
         for (const row of block.rows || []) {
           result.total.revenue += Number(row.totalRevenue) || 0
