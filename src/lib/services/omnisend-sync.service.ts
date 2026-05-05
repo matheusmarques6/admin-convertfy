@@ -684,6 +684,13 @@ export interface OmnisendActivityBreakdownEntry {
   /** Total revenue agregado (todos canais) */
   totalRevenue: number
   totalOrders: number
+  /** Engagement por activity individual (sent/opened/clicked) — Statistics
+   *  API expoe esses metrics quando dimension=marketingActivityID. Antes
+   *  /v5/automations retornava stats inline mas nem sempre — UI ficava
+   *  com "—" em Entregues/Abertura/Cliques. */
+  sent: number
+  opened: number
+  clicked: number
   /** Revenue separado por messageChannel: Email, SMS, Push */
   byChannel: Map<string, { revenue: number; orders: number }>
 }
@@ -714,6 +721,11 @@ interface StatisticsRow {
   attributedOrders?: number | string
   totalRevenue?: number | string
   totalOrders?: number | string
+  sent?: number | string
+  opened?: number | string
+  openedUnique?: number | string
+  clicked?: number | string
+  clickedUnique?: number | string
 }
 
 interface StatisticsResponse {
@@ -736,14 +748,22 @@ function aggregateActivityRows(rows: StatisticsRow[]): Map<string, OmnisendActiv
     const channel = row.messageChannel || "Email"
     const revenue = Number(row.attributedRevenue) || 0
     const orders = Number(row.attributedOrders) || 0
+    const sent = Number(row.sent) || 0
+    // Preferimos *Unique pra bater com o que o Omnisend mostra no
+    // dashboard (taxa de abertura por contato unico, nao por evento).
+    const opened = Number(row.openedUnique) || Number(row.opened) || 0
+    const clicked = Number(row.clickedUnique) || Number(row.clicked) || 0
 
     let entry = map.get(id)
     if (!entry) {
-      entry = { totalRevenue: 0, totalOrders: 0, byChannel: new Map() }
+      entry = { totalRevenue: 0, totalOrders: 0, sent: 0, opened: 0, clicked: 0, byChannel: new Map() }
       map.set(id, entry)
     }
     entry.totalRevenue += revenue
     entry.totalOrders += orders
+    entry.sent += sent
+    entry.opened += opened
+    entry.clicked += clicked
 
     const ch = entry.byChannel.get(channel) || { revenue: 0, orders: 0 }
     ch.revenue += revenue
@@ -785,7 +805,18 @@ export async function fetchOmnisendActivityBreakdown(
           queries: [
             {
               alias: "campaigns",
-              metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+              // Engagement (sent/opened/clicked) tambem por marketingActivityID
+              // — antes so puxavamos revenue/orders e a UI mostrava "—" em
+              // Entregues/Abertura/Cliques quando o /v5/automations nao trazia
+              // stats inline. Preferencia por *Unique pra bater com o
+              // dashboard (taxa por contato unico).
+              metrics: [
+                { name: "attributedRevenue" },
+                { name: "attributedOrders" },
+                { name: "sent" },
+                { name: "openedUnique" },
+                { name: "clickedUnique" },
+              ],
               dateRange: {
                 from: new Date(startDate).toISOString(),
                 to: new Date(endDate).toISOString(),
@@ -801,7 +832,13 @@ export async function fetchOmnisendActivityBreakdown(
             },
             {
               alias: "automations",
-              metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+              metrics: [
+                { name: "attributedRevenue" },
+                { name: "attributedOrders" },
+                { name: "sent" },
+                { name: "openedUnique" },
+                { name: "clickedUnique" },
+              ],
               dateRange: {
                 from: new Date(startDate).toISOString(),
                 to: new Date(endDate).toISOString(),
@@ -1479,15 +1516,17 @@ async function doSyncOmnisendForStore(params: {
       .filter(c => getCampaignId(c))
       .map((c) => {
       const s = getCampaignStats(c)
-      const sent = s.sent || 0
-      const delivered = s.delivered || 0
-      const opened = s.uniqueOpened || s.opened || 0
-      const clicked = s.uniqueClicked || s.clicked || 0
+      // Revenue + engagement REAIS por campanha individual via activity
+      // breakdown. marketingActivityID === campaignID (confirmado pelo
+      // suporte). Engagement (sent/opened/clicked) prioriza Statistics
+      // API; fallback no listing /v5 (que nem sempre traz stats inline).
+      const breakdownEntry = activityBreakdown.campaigns.get(getCampaignId(c))
+      const sent = breakdownEntry?.sent || s.sent || 0
+      const delivered = breakdownEntry?.sent || s.delivered || 0
+      const opened = breakdownEntry?.opened || s.uniqueOpened || s.opened || 0
+      const clicked = breakdownEntry?.clicked || s.uniqueClicked || s.clicked || 0
       const bounced = s.bounced || 0
       const unsubscribed = s.unsubscribed || 0
-      // Revenue REAL por campanha individual via activity breakdown.
-      // marketingActivityID === campaignID (confirmado pelo suporte).
-      const breakdownEntry = activityBreakdown.campaigns.get(getCampaignId(c))
       const revenue = breakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
       const campaignOrders = breakdownEntry?.totalOrders ?? (s.ordersCount || s.orders || 0)
       const spam = s.complained || 0
@@ -1555,15 +1594,17 @@ async function doSyncOmnisendForStore(params: {
       })
       .map((a) => {
         const s = getAutomationStats(a)
-        const sent = s.sent || 0
-        const delivered = s.delivered || 0
-        const opened = s.uniqueOpened || s.opened || 0
-        const clicked = s.uniqueClicked || s.clicked || 0
+        // Revenue + engagement REAIS por automation individual via
+        // Statistics API; fallback no listing /v5 quando o breakdown
+        // nao tem entrada. /v5/automations nem sempre retorna stats
+        // inline — antes resultava em "—" em Entregues/Abertura/Cliques.
+        const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
+        const sent = autoBreakdownEntry?.sent || s.sent || 0
+        const delivered = autoBreakdownEntry?.sent || s.delivered || 0
+        const opened = autoBreakdownEntry?.opened || s.uniqueOpened || s.opened || 0
+        const clicked = autoBreakdownEntry?.clicked || s.uniqueClicked || s.clicked || 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
-        // Revenue REAL por automation individual via activity breakdown.
-        // marketingActivityID === automationID (confirmado pelo suporte).
-        const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
         const revenue = autoBreakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
         const automationOrders = autoBreakdownEntry?.totalOrders ?? (s.ordersCount || s.orders || 0)
         const triggerType = typeof a.trigger === "string"

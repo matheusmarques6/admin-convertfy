@@ -834,12 +834,68 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
           </div>
         </div>
 
+        {/* ===== SECTION: TOP CAMPANHAS POR RECEITA =====
+            Receita + engagement por campanha individual via Statistics API
+            (metrics: attributedRevenue/Orders + sent/openedUnique/clickedUnique
+            agrupados por marketingActivityID).
+        */}
+        {reportData.campaignPerformance?.campaigns && reportData.campaignPerformance.campaigns.length > 0 && (
+          <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
+            <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
+              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-primary" />
+                Top Campanhas por Receita
+              </h2>
+            </div>
+            <div className="p-6">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-left">#</th>
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-left">Nome da Campanha</th>
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Entregues</th>
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Abertura</th>
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Cliques</th>
+                    <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Receita</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.campaignPerformance.campaigns
+                    .slice()
+                    .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))
+                    .slice(0, 6)
+                    .map((campaign, i) => {
+                      const showDelivered = campaign.delivered > 0
+                      const showOpenRate = campaign.openRate > 0
+                      const showClickRate = campaign.clickRate > 0
+                      return (
+                        <tr key={campaign.campaignId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 text-sm">
+                            <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
+                          </td>
+                          <td className="py-3 text-sm font-medium text-foreground">{campaign.name}</td>
+                          <td className="py-3 text-sm text-right text-muted-foreground">
+                            {showDelivered ? formatNumber(campaign.delivered) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right text-foreground/80">
+                            {showOpenRate ? formatPercent(campaign.openRate) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right text-foreground/80">
+                            {showClickRate ? formatPercent(campaign.clickRate) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right font-bold text-primary">{formatCurrency(campaign.revenue)}</td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ===== SECTION: TOP AUTOMAÇÕES POR RECEITA =====
-            Receita por automation individual disponivel via Statistics API
+            Engagement por automation individual via Statistics API
             (schema oficial confirmado pelo suporte da Omnisend, 2026-05-05).
-            Engagement (delivered/openRate/clickRate) ainda nao expoe por
-            automation individual no Omnisend — mostramos "—" quando 0
-            pra evitar parecer que a automacao nao performa.
         */}
         {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
           <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
@@ -983,11 +1039,9 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-card px-4 py-2 rounded-[8px] border border-border">
-          <Calendar className="w-4 h-4" />
-          <span>{getFormattedDateRange()}</span>
-        </div>
+      <div className="flex items-center justify-end mb-6">
+        {/* Range mostrado dentro do report (header BLESSED CHOICE) — nao
+            duplicamos aqui pra evitar 3 indicadores de data lado a lado. */}
         <div className="flex items-center gap-3">
           {!savedReportData && (
             <>
