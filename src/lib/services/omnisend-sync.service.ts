@@ -695,6 +695,15 @@ export interface OmnisendActivityBreakdownResult {
   automations: Map<string, OmnisendActivityBreakdownEntry>
   /** Total da loja (sem filtro) */
   total: { revenue: number; orders: number }
+  /** Engagement metrics agregados (toda a conta no periodo) */
+  engagement: {
+    sent: number
+    opened: number
+    openedUnique: number
+    clicked: number
+    clickedUnique: number
+    failed: number
+  }
 }
 
 interface StatisticsRow {
@@ -760,6 +769,7 @@ export async function fetchOmnisendActivityBreakdown(
     campaigns: new Map(),
     automations: new Map(),
     total: { revenue: 0, orders: 0 },
+    engagement: { sent: 0, opened: 0, openedUnique: 0, clicked: 0, clickedUnique: 0, failed: 0 },
   }
 
   try {
@@ -814,6 +824,25 @@ export async function fetchOmnisendActivityBreakdown(
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
+            // 4a query: engagement agregado (sent/opened/clicked totais)
+            // Substitui chamada redundante a /api/analytics/reports
+            // — economiza 50% do budget Statistics/Reports diario
+            {
+              alias: "engagement",
+              metrics: [
+                { name: "sent" },
+                { name: "opened" },
+                { name: "openedUnique" },
+                { name: "clicked" },
+                { name: "clickedUnique" },
+                { name: "failed" },
+              ],
+              dateRange: {
+                from: new Date(startDate).toISOString(),
+                to: new Date(endDate).toISOString(),
+              },
+              dimensions: [{ name: "timestamp", granularity: "month" }],
+            },
           ],
         },
       },
@@ -830,6 +859,7 @@ export async function fetchOmnisendActivityBreakdown(
       campaigns: new Map(),
       automations: new Map(),
       total: { revenue: 0, orders: 0 },
+      engagement: { sent: 0, opened: 0, openedUnique: 0, clicked: 0, clickedUnique: 0, failed: 0 },
     }
 
     for (const block of resp.statistics) {
@@ -842,6 +872,16 @@ export async function fetchOmnisendActivityBreakdown(
           result.total.revenue += Number(row.totalRevenue) || 0
           result.total.orders += Number(row.totalOrders) || 0
         }
+      } else if (block.alias === "engagement") {
+        for (const row of block.rows || []) {
+          const r = row as Record<string, number | string | undefined>
+          result.engagement.sent += Number(r.sent) || 0
+          result.engagement.opened += Number(r.opened) || 0
+          result.engagement.openedUnique += Number(r.openedUnique) || 0
+          result.engagement.clicked += Number(r.clicked) || 0
+          result.engagement.clickedUnique += Number(r.clickedUnique) || 0
+          result.engagement.failed += Number(r.failed) || 0
+        }
       }
     }
 
@@ -850,6 +890,9 @@ export async function fetchOmnisendActivityBreakdown(
       automationsCount: result.automations.size,
       totalRevenue: result.total.revenue,
       totalOrders: result.total.orders,
+      sent: result.engagement.sent,
+      opened: result.engagement.opened,
+      clicked: result.engagement.clicked,
     })
 
     return result
@@ -1300,36 +1343,27 @@ async function doSyncOmnisendForStore(params: {
 
     // 6. Revenue + engagement + breakdown por activity em UMA chamada:
     //
-    //    POST /api/analytics/statistics com 3 queries:
+    //    POST /api/analytics/statistics com 4 queries:
     //      - campaigns: revenue por marketingActivityID (filter Campaign)
     //      - automations: revenue por marketingActivityID (filter Automation)
     //      - total: totalRevenue da loja
+    //      - engagement: sent/opened/clicked agregados
     //
     //    Schema oficial confirmado pelo suporte da Omnisend.
-    //    Limites: 10/min, 55/dia/brand (rate limiter ja aplica).
-    //
-    //    Mantem fetchOmnisendReports como SECUNDARIO pra trazer engagement
-    //    metrics (sent/opened/clicked agregados) que o /statistics nao da.
-    //    Se rate limit estourar, ambos viram fallback zerado e revenue
-    //    antiga e preservada pelo upsert (revenueCollected guard).
+    //    Limites: 10/min, 55/dia/brand. 1 chamada cobre TUDO — antes
+    //    chamavamos /reports em paralelo, queimando 2 calls/sync.
     const endDate = new Date().toISOString()
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    const [activityBreakdown, reportsStats] = await Promise.all([
-      safely(
-        "activityBreakdown",
-        () => fetchOmnisendActivityBreakdown(apiKey, startDate, endDate),
-        {
-          campaigns: new Map(),
-          automations: new Map(),
-          total: { revenue: 0, orders: 0 },
-        } as OmnisendActivityBreakdownResult,
-      ),
-      safely(
-        "reports",
-        () => fetchOmnisendReports(apiKey, startDate, endDate),
-        EMPTY_REPORTS_RESULT,
-      ),
-    ])
+    const activityBreakdown = await safely(
+      "activityBreakdown",
+      () => fetchOmnisendActivityBreakdown(apiKey, startDate, endDate),
+      {
+        campaigns: new Map(),
+        automations: new Map(),
+        total: { revenue: 0, orders: 0 },
+        engagement: { sent: 0, opened: 0, openedUnique: 0, clicked: 0, clickedUnique: 0, failed: 0 },
+      } as OmnisendActivityBreakdownResult,
+    )
 
     // Agrega revenue total das campanhas e automations (somando byChannel)
     let totalCampaignsRevenue = 0
@@ -1350,8 +1384,8 @@ async function doSyncOmnisendForStore(params: {
       totalOrders: activityBreakdown.total.orders,
       // attributedRevenue = soma de campaigns + automations (real, nao mais
       // 100% jogado em flow). Fallback pra /reports se breakdown falhou.
-      attributedRevenue: (totalCampaignsRevenue + totalAutomationsRevenue) || reportsStats.attributedRevenue,
-      attributedOrders: (totalCampaignsOrders + totalAutomationsOrders) || reportsStats.attributedOrders,
+      attributedRevenue: totalCampaignsRevenue + totalAutomationsRevenue,
+      attributedOrders: totalCampaignsOrders + totalAutomationsOrders,
     }
     const currency = "EUR"
 
@@ -1492,10 +1526,6 @@ async function doSyncOmnisendForStore(params: {
     //    marketingActivityType=Campaign|Automation como filter na
     //    Statistics API. Cada activityID retorna seu attributedRevenue
     //    individual — somamos pra ter os totais por canal de marketing.
-    //
-    //    Fallback: se rate limit estourou e activityBreakdown veio vazio,
-    //    cai pro reportsStats.attributedRevenue (que ainda e agregado
-    //    do /reports endpoint).
     const totalAttributedRevenue = Math.max(0, revenueStats.attributedRevenue)
     const totalAttributedOrders = Math.max(0, revenueStats.attributedOrders)
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
