@@ -662,6 +662,206 @@ async function writeReportsCacheL2(
   }
 }
 
+// ── Activity Breakdown via /api/analytics/statistics ─────
+//
+// Schema oficial confirmado pelo suporte da Omnisend (sessao 2026-05-05):
+//   POST /api/analytics/statistics
+//   1 request com 3 queries:
+//     - campaigns: attributedRevenue por marketingActivityID + messageChannel
+//     - automations: idem com filter Automation
+//     - total: totalRevenue da loja
+//
+// Limites oficiais (confirmados):
+//   - 4 queries/request (cabe nossas 3)
+//   - 1 ano de date range/query
+//   - granularity day = max 60 dias; month = sem limite
+//   - 10 requests/min, 55 requests/dia POR brand
+//
+// IDs sao identicos aos retornados por /v5/campaigns e /v5/automations
+// — JOIN local resolve nomes sem chamadas extras.
+
+export interface OmnisendActivityBreakdownEntry {
+  /** Total revenue agregado (todos canais) */
+  totalRevenue: number
+  totalOrders: number
+  /** Revenue separado por messageChannel: Email, SMS, Push */
+  byChannel: Map<string, { revenue: number; orders: number }>
+}
+
+export interface OmnisendActivityBreakdownResult {
+  /** Map<marketingActivityID, breakdown> — campanhas */
+  campaigns: Map<string, OmnisendActivityBreakdownEntry>
+  /** Map<marketingActivityID, breakdown> — automations */
+  automations: Map<string, OmnisendActivityBreakdownEntry>
+  /** Total da loja (sem filtro) */
+  total: { revenue: number; orders: number }
+}
+
+interface StatisticsRow {
+  timestamp?: string
+  marketingActivityID?: string
+  messageChannel?: string
+  attributedRevenue?: number | string
+  attributedOrders?: number | string
+  totalRevenue?: number | string
+  totalOrders?: number | string
+}
+
+interface StatisticsResponse {
+  statistics: Array<{
+    alias?: string
+    rows?: StatisticsRow[]
+  }>
+}
+
+/**
+ * Agrega rows da Statistics API em entries por marketingActivityID,
+ * com breakdown opcional por messageChannel (Email/SMS/Push).
+ * Soma rows do mesmo activityID em diferentes meses → total agregado.
+ */
+function aggregateActivityRows(rows: StatisticsRow[]): Map<string, OmnisendActivityBreakdownEntry> {
+  const map = new Map<string, OmnisendActivityBreakdownEntry>()
+  for (const row of rows) {
+    const id = row.marketingActivityID
+    if (!id) continue
+    const channel = row.messageChannel || "Email"
+    const revenue = Number(row.attributedRevenue) || 0
+    const orders = Number(row.attributedOrders) || 0
+
+    let entry = map.get(id)
+    if (!entry) {
+      entry = { totalRevenue: 0, totalOrders: 0, byChannel: new Map() }
+      map.set(id, entry)
+    }
+    entry.totalRevenue += revenue
+    entry.totalOrders += orders
+
+    const ch = entry.byChannel.get(channel) || { revenue: 0, orders: 0 }
+    ch.revenue += revenue
+    ch.orders += orders
+    entry.byChannel.set(channel, ch)
+  }
+  return map
+}
+
+/**
+ * Busca breakdown de receita atribuida por campanha/automation individual
+ * via Statistics API. Schema oficial do suporte da Omnisend.
+ *
+ * Retorna o mesmo agregado que aparece no painel Sales (com tolerancia
+ * de ~5% pela diferenca event-date vs send-date).
+ */
+export async function fetchOmnisendActivityBreakdown(
+  apiKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<OmnisendActivityBreakdownResult> {
+  const empty: OmnisendActivityBreakdownResult = {
+    campaigns: new Map(),
+    automations: new Map(),
+    total: { revenue: 0, orders: 0 },
+  }
+
+  try {
+    const resp = await omnisendRequest<StatisticsResponse>(
+      apiKey,
+      `${OMNISEND_API}/analytics/statistics`,
+      {
+        method: "POST",
+        logTag: "OmnisendActivityBreakdown",
+        omnisendVersion: "2026-preview",
+        authStyle: "bearer",
+        body: {
+          queries: [
+            {
+              alias: "campaigns",
+              metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+              dateRange: {
+                from: new Date(startDate).toISOString(),
+                to: new Date(endDate).toISOString(),
+              },
+              dimensions: [
+                { name: "timestamp", granularity: "month" },
+                { name: "marketingActivityID" },
+                { name: "messageChannel" },
+              ],
+              filters: [
+                { name: "marketingActivityType", operator: "in", values: ["Campaign"] },
+              ],
+            },
+            {
+              alias: "automations",
+              metrics: [{ name: "attributedRevenue" }, { name: "attributedOrders" }],
+              dateRange: {
+                from: new Date(startDate).toISOString(),
+                to: new Date(endDate).toISOString(),
+              },
+              dimensions: [
+                { name: "timestamp", granularity: "month" },
+                { name: "marketingActivityID" },
+                { name: "messageChannel" },
+              ],
+              filters: [
+                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
+              ],
+            },
+            {
+              alias: "total",
+              metrics: [{ name: "totalRevenue" }, { name: "totalOrders" }],
+              dateRange: {
+                from: new Date(startDate).toISOString(),
+                to: new Date(endDate).toISOString(),
+              },
+              dimensions: [{ name: "timestamp", granularity: "month" }],
+            },
+          ],
+        },
+      },
+    )
+
+    if (!resp?.statistics) {
+      log.warn("[OmnisendActivityBreakdown] empty response shape", {
+        responseSlice: JSON.stringify(resp).slice(0, 300),
+      })
+      return empty
+    }
+
+    const result: OmnisendActivityBreakdownResult = {
+      campaigns: new Map(),
+      automations: new Map(),
+      total: { revenue: 0, orders: 0 },
+    }
+
+    for (const block of resp.statistics) {
+      if (block.alias === "campaigns") {
+        result.campaigns = aggregateActivityRows(block.rows || [])
+      } else if (block.alias === "automations") {
+        result.automations = aggregateActivityRows(block.rows || [])
+      } else if (block.alias === "total") {
+        for (const row of block.rows || []) {
+          result.total.revenue += Number(row.totalRevenue) || 0
+          result.total.orders += Number(row.totalOrders) || 0
+        }
+      }
+    }
+
+    log.info(`[OmnisendActivityBreakdown] aggregated`, {
+      campaignsCount: result.campaigns.size,
+      automationsCount: result.automations.size,
+      totalRevenue: result.total.revenue,
+      totalOrders: result.total.orders,
+    })
+
+    return result
+  } catch (err) {
+    if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
+    log.warn("[OmnisendActivityBreakdown] failed, returning empty", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return empty
+  }
+}
+
 export async function fetchOmnisendReports(
   apiKey: string,
   startDate: string,
