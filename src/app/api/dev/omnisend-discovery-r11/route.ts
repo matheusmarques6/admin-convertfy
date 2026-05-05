@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
   const to = new Date().toISOString()
 
   // Schema do suporte + correcao: timestamp como dimension obrigatoria
-  // Granularity = month reduz rows (1 mes inteiro = 1-2 rows × activityID)
+  // + messageChannel para diferenciar Email/SMS/Push (lojas multi-canal)
+  // Granularity = month reduz rows (1 mes inteiro = 1-2 rows × activityID × channel)
   const body = {
     queries: [
       {
@@ -104,6 +105,7 @@ export async function GET(request: NextRequest) {
         dimensions: [
           { name: "timestamp", granularity: "month" },
           { name: "marketingActivityID" },
+          { name: "messageChannel" },
         ],
         filters: [
           { name: "marketingActivityType", operator: "in", values: ["Campaign"] },
@@ -116,6 +118,7 @@ export async function GET(request: NextRequest) {
         dimensions: [
           { name: "timestamp", granularity: "month" },
           { name: "marketingActivityID" },
+          { name: "messageChannel" },
         ],
         filters: [
           { name: "marketingActivityType", operator: "in", values: ["Automation"] },
