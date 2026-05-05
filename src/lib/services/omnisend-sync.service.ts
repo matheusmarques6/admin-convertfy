@@ -1387,7 +1387,28 @@ async function doSyncOmnisendForStore(params: {
       attributedRevenue: totalCampaignsRevenue + totalAutomationsRevenue,
       attributedOrders: totalCampaignsOrders + totalAutomationsOrders,
     }
-    const currency = "EUR"
+
+    // Currency vem do DB (client_stores.currency, migration 20241217).
+    // Cada loja tem currency diferente (BRL pra Vivazz, EUR pra Azzurro,
+    // USD pra outras). Default BRL pra lojas Brasil que possam estar
+    // sem currency setado (pre-migration).
+    let currency = "BRL"
+    try {
+      const admin = createAdminClient()
+      const { data: storeCurrency } = await admin
+        .from("client_stores")
+        .select("currency")
+        .eq("id", storeId)
+        .maybeSingle()
+      if (storeCurrency?.currency) {
+        currency = storeCurrency.currency
+      }
+    } catch (err) {
+      log.warn("[OmnisendSync] Failed to read store currency, defaulting BRL", {
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     log.info("[OmnisendSync] activity breakdown summary", {
       storeId,
