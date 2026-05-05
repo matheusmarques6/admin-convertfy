@@ -1,6 +1,6 @@
 "use client"
 
-import { Zap, Info } from "lucide-react"
+import { Zap } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -13,39 +13,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from "@/components/ui/tooltip"
 import { formatCurrency } from "@/lib/utils"
 import { useStorePerformanceContext } from "@/lib/hooks/use-store-performance"
 
-// A API publica do Omnisend nao expoe receita por campanha/automation
-// individual (validado em 6 rounds de discovery, 250+ requests). O endpoint
-// /api/analytics/reports so retorna agregado total. Por isso, para Omnisend,
-// mostramos "—" com tooltip explicativo em vez de "€0,00" enganoso.
-const OMNISEND_PER_LINE_REVENUE_TOOLTIP =
-  "Omnisend não expõe receita por campanha individual via API pública. Veja o total atribuído nos cards acima."
-
-function PerLineRevenueUnavailable() {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 text-muted-foreground cursor-help">
-            —
-            <Info className="h-3 w-3" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-xs">
-          {OMNISEND_PER_LINE_REVENUE_TOOLTIP}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
+// Receita por campanha/automation individual agora e populada via
+// Statistics API com filter por marketingActivityType (schema oficial
+// confirmado pelo suporte da Omnisend, 2026-05-05). Antes mostravamos
+// "—" pq a API nao expunha — agora mostramos valor real igual Klaviyo.
 
 function TableSkeleton() {
   return (
@@ -98,7 +72,6 @@ export function StorePerformanceTables() {
   if (error) return null
 
   const currency = totals?.currency ?? "BRL"
-  const isOmnisend = totals?.platform === "omnisend"
   const hasCampaigns = campaigns.length > 0
   const hasFlows = flows.length > 0
 
@@ -157,16 +130,10 @@ export function StorePerformanceTables() {
                         {(c.clickRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        {isOmnisend ? (
-                          <PerLineRevenueUnavailable />
-                        ) : (
-                          <>
-                            <div className="font-medium">{formatCurrency(c.revenue, currency)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatCurrency(revenuePerRecipient, currency)} / destinatário
-                            </div>
-                          </>
-                        )}
+                        <div className="font-medium">{formatCurrency(c.revenue, currency)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(revenuePerRecipient, currency)} / destinatário
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -219,16 +186,10 @@ export function StorePerformanceTables() {
                         {(f.openRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        {isOmnisend ? (
-                          <PerLineRevenueUnavailable />
-                        ) : (
-                          <>
-                            <div className="font-medium">{formatCurrency(f.revenue, currency)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatCurrency(revenuePerRecipient, currency)} / destinatário
-                            </div>
-                          </>
-                        )}
+                        <div className="font-medium">{formatCurrency(f.revenue, currency)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(revenuePerRecipient, currency)} / destinatário
+                        </div>
                       </TableCell>
                     </TableRow>
                   )

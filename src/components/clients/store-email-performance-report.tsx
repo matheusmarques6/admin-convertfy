@@ -437,11 +437,6 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
   const reportCurrency = reportData.account?.currency || "BRL"
   const { formatCurrency, formatCurrencyCompact } = createCurrencyFormatters(reportCurrency)
 
-  // Omnisend nao expoe stats por automation individual via API publica
-  // (validado em 6 rounds de discovery). Logo, sections que dependem
-  // desses dados sao escondidas — zero invencao.
-  const isOmnisend = reportData.platform === "omnisend"
-
   // Cards "Taxa Recorrencia", "Novos Clientes", "Total de Clientes" sao
   // 100% derivados da Shopify (orders + customers count). Quando a loja
   // nao tem Shopify conectado, ficam zerados — visualmente sugerem
@@ -799,24 +794,14 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <span className="text-sm text-muted-foreground">Total de Flows</span>
                 <span className="text-sm font-bold text-foreground">{totalFlows}</span>
               </div>
-              {/* Para Omnisend, escondemos Receita de Flows + % da Receita
-                  porque a API nao expoe breakdown campaigns vs automation
-                  (R5/R6: dimension `workflow`/`automation` rejeitadas para
-                  attributedRevenue). O total atribuido ja aparece no card
-                  "Receita Atribuida Convertfy" acima. Klaviyo continua
-                  mostrando porque la o breakdown e real. */}
-              {!isOmnisend && (
-                <>
-                  <div className="flex justify-between items-center py-2 border-b border-border/30">
-                    <span className="text-sm text-muted-foreground">Receita de Flows</span>
-                    <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(flowRevenue)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                    <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
-                  </div>
-                </>
-              )}
+              <div className="flex justify-between items-center py-2 border-b border-border/30">
+                <span className="text-sm text-muted-foreground">Receita de Flows</span>
+                <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(flowRevenue)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
+                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
+              </div>
             </div>
           </div>
 
@@ -837,33 +822,26 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <span className="text-sm text-muted-foreground">Entregues</span>
                 <span className="text-sm font-bold text-foreground">{formatNumber(reportData.campaignPerformance?.totalDelivered)}</span>
               </div>
-              {/* Idem ao card de Flows: para Omnisend, sem breakdown
-                  Receita de Campanhas / % da Receita. Total atribuido
-                  esta no card "Receita Atribuida Convertfy" acima. */}
-              {!isOmnisend && (
-                <>
-                  <div className="flex justify-between items-center py-2 border-b border-border/30">
-                    <span className="text-sm text-muted-foreground">Receita de Campanhas</span>
-                    <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(campaignRevenue)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                    <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
-                  </div>
-                </>
-              )}
+              <div className="flex justify-between items-center py-2 border-b border-border/30">
+                <span className="text-sm text-muted-foreground">Receita de Campanhas</span>
+                <span className="text-sm font-bold text-foreground">{formatCurrencyCompact(campaignRevenue)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
+                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ===== SECTION: TOP AUTOMAÇÕES =====
-            Escondido para Omnisend porque a API nao expoe stats por
-            automation individual (delivered/openRate/clickRate/revenue
-            todos retornam 0). Mostrar a tabela com 0 em todas as colunas
-            sugere que os flows nao performam, quando na verdade o dado
-            e indisponivel. Klaviyo continua mostrando normalmente.
+        {/* ===== SECTION: TOP AUTOMAÇÕES POR RECEITA =====
+            Receita por automation individual disponivel via Statistics API
+            (schema oficial confirmado pelo suporte da Omnisend, 2026-05-05).
+            Engagement (delivered/openRate/clickRate) ainda nao expoe por
+            automation individual no Omnisend — mostramos "—" quando 0
+            pra evitar parecer que a automacao nao performa.
         */}
-        {!isOmnisend && reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
+        {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
           <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
@@ -884,18 +862,33 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                   </tr>
                 </thead>
                 <tbody>
-                  {reportData.flowPerformance.flows.slice(0, 6).map((flow, i) => (
-                    <tr key={flow.flowId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                      <td className="py-3 text-sm">
-                        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
-                      </td>
-                      <td className="py-3 text-sm font-medium text-foreground">{flow.name}</td>
-                      <td className="py-3 text-sm text-right text-muted-foreground">{formatNumber(flow.delivered)}</td>
-                      <td className="py-3 text-sm text-right text-foreground/80">{formatPercent(flow.openRate)}</td>
-                      <td className="py-3 text-sm text-right text-foreground/80">{formatPercent(flow.clickRate)}</td>
-                      <td className="py-3 text-sm text-right font-bold text-primary">{formatCurrency(flow.revenue)}</td>
-                    </tr>
-                  ))}
+                  {reportData.flowPerformance.flows
+                    .slice()
+                    .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))
+                    .slice(0, 6)
+                    .map((flow, i) => {
+                      const showDelivered = flow.delivered > 0
+                      const showOpenRate = flow.openRate > 0
+                      const showClickRate = flow.clickRate > 0
+                      return (
+                        <tr key={flow.flowId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 text-sm">
+                            <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
+                          </td>
+                          <td className="py-3 text-sm font-medium text-foreground">{flow.name}</td>
+                          <td className="py-3 text-sm text-right text-muted-foreground">
+                            {showDelivered ? formatNumber(flow.delivered) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right text-foreground/80">
+                            {showOpenRate ? formatPercent(flow.openRate) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right text-foreground/80">
+                            {showClickRate ? formatPercent(flow.clickRate) : <span className="text-muted-foreground/50">—</span>}
+                          </td>
+                          <td className="py-3 text-sm text-right font-bold text-primary">{formatCurrency(flow.revenue)}</td>
+                        </tr>
+                      )
+                    })}
                 </tbody>
               </table>
             </div>
