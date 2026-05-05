@@ -337,6 +337,24 @@ export function StoreDetailTabs({
   )
 }
 
+// Normaliza status de campanha vindos das plataformas (Klaviyo/Omnisend)
+// para os labels que o StatusBadge entende. Antes o mapping era binario
+// (status === "sent" ? "sent" : "draft") — qualquer coisa diferente de
+// "sent" virava "Rascunho", incluindo agendadas, pausadas, em envio.
+// Resultado: campanhas agendadas e em envio apareciam como "Rascunho"
+// mesmo tendo destinatarios e receita.
+function normalizeCampaignStatus(status: string | undefined | null): string {
+  const s = (status || "").toLowerCase().trim()
+  if (s === "sent") return "sent"
+  if (s === "scheduled") return "scheduled"
+  if (s === "paused") return "paused"
+  if (s === "draft") return "draft"
+  // Omnisend usa camelCase: inProgress, sending. Klaviyo usa sending.
+  if (s === "inprogress" || s === "in_progress" || s === "sending") return "in_progress"
+  if (s === "cancelled" || s === "canceled") return "cancelled"
+  return s || "draft"
+}
+
 // --- Latest Campaigns Mini Table (max 5) ---
 function LatestCampaignsTable({
   storeId: _storeId,
@@ -389,7 +407,7 @@ function LatestCampaignsTable({
                 <tr key={c.id} className="border-b border-border/50 last:border-0">
                   <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{c.name}</td>
                   <td className="px-4 py-2.5">
-                    <StatusBadge status={c.status === "sent" ? "sent" : "draft"} />
+                    <StatusBadge status={normalizeCampaignStatus(c.status)} />
                   </td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums">{(c.recipients || 0).toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums">{(c.openRate || 0).toFixed(1)}%</td>
