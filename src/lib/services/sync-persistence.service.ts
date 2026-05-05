@@ -81,22 +81,37 @@ export async function upsertSyncResults(
   const syncTimestamp = new Date().toISOString()
   const metricsExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() // 48h TTL (Story 54.9)
 
+  // Normaliza period_label para o que `valid_period_label` aceita.
+  // Aliases da UI ("today", "yesterday", "1y", "custom" puro) violam
+  // a constraint e quebram TODO o upsert silenciosamente — bug confirmado
+  // em producao em 29/04 (Omnisend). Mesmo padrao aqui pra Klaviyo.
+  // data.startDateStr/endDateStr ja vem ISO, normalizePeriodLabel
+  // truncar pra YYYY-MM-DD internamente.
+  const normalizedPeriod = normalizePeriodLabel(period, data.startDateStr, data.endDateStr)
+  if (normalizedPeriod !== period) {
+    log.info(`[SyncPersistence] period_label normalizado`, {
+      store_id: store.id,
+      input: period,
+      normalized: normalizedPeriod,
+    })
+  }
+
   if (data.flowRows.length > 0) {
     const { error: flowErr } = await supabase
       .from("klaviyo_flow_metrics")
       .upsert(
-        data.flowRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
+        data.flowRows.map(r => ({ ...r, period_label: normalizedPeriod, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
         { onConflict: "store_id,flow_id,period_start,period_end" },
       )
     if (flowErr) {
-      log.warn(`[SyncPersistence] Failed to upsert flow metrics for ${store.id}/${period}:`, flowErr.message)
+      log.warn(`[SyncPersistence] Failed to upsert flow metrics for ${store.id}/${normalizedPeriod}:`, flowErr.message)
     } else {
       // Cleanup: remove rows not touched by this sync (stale/removed flows)
       await supabase
         .from("klaviyo_flow_metrics")
         .delete()
         .eq("store_id", store.id)
-        .eq("period_label", period)
+        .eq("period_label", normalizedPeriod)
         .lt("fetched_at", syncTimestamp)
     }
   }
@@ -105,18 +120,18 @@ export async function upsertSyncResults(
     const { error: campErr } = await supabase
       .from("klaviyo_campaign_metrics")
       .upsert(
-        data.campRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
+        data.campRows.map(r => ({ ...r, period_label: normalizedPeriod, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
         { onConflict: "store_id,campaign_id,period_start,period_end" },
       )
     if (campErr) {
-      log.warn(`[SyncPersistence] Failed to upsert campaign metrics for ${store.id}/${period}:`, campErr.message)
+      log.warn(`[SyncPersistence] Failed to upsert campaign metrics for ${store.id}/${normalizedPeriod}:`, campErr.message)
     } else {
       // Cleanup: remove rows not touched by this sync (stale/removed campaigns)
       await supabase
         .from("klaviyo_campaign_metrics")
         .delete()
         .eq("store_id", store.id)
-        .eq("period_label", period)
+        .eq("period_label", normalizedPeriod)
         .lt("fetched_at", syncTimestamp)
     }
   }
@@ -131,7 +146,7 @@ export async function upsertSyncResults(
   const summaryPayload: Record<string, unknown> = {
     store_id: store.id,
     org_id: store.org_id,
-    period_label: period,
+    period_label: normalizedPeriod,
     period_start: data.startDateStr,
     period_end: data.endDateStr,
     currency: data.currency || "BRL",
@@ -168,7 +183,7 @@ export async function upsertSyncResults(
       .from("store_revenue_summary")
       .select("klaviyo_campaign_revenue, klaviyo_flow_revenue")
       .eq("store_id", store.id)
-      .eq("period_label", period)
+      .eq("period_label", normalizedPeriod)
       .single()
 
     const campRev = data.campaignDataAvailable
@@ -188,7 +203,7 @@ export async function upsertSyncResults(
     .from("store_revenue_summary")
     .upsert(summaryPayload, { onConflict: "store_id,period_label" })
   if (summaryErr) {
-    log.error(`[SyncPersistence] Failed to upsert summary for ${store.id}/${period}:`, summaryErr.message)
+    log.error(`[SyncPersistence] Failed to upsert summary for ${store.id}/${normalizedPeriod}:`, summaryErr.message)
   }
 
   // Sync campaigns to calendar table
