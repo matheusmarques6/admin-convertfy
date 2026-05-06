@@ -2,18 +2,17 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
   getUnifiedRevenue,
   getUnifiedCampaigns,
+  getUnifiedFlows,
 } from "@/lib/services/unified-metrics.service"
-import { fetchOmnisendHealth } from "@/lib/services/omnisend-health.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("HealthMonitor")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+export const maxDuration = 30
 
 interface StoreHealth {
   id: string
@@ -33,47 +32,51 @@ interface StoreHealth {
   issues: string[]
 }
 
-/** Score legacy para Klaviyo (campanhas em DB). Score Omnisend usa formula
- *  recomendada pelo suporte (calculateOmnisendHealthScore), aplicada em
- *  cima dos totais agregados de /api/analytics/reports. */
-function calculateKlaviyoHealthScore(s: {
-  deliveryRate: number; bounceRate: number; openRate: number;
-  unsubRate: number; spamRate: number; engagementRate: number; sent: number;
+/** Score 0-100 unificado (Klaviyo OU Omnisend), aplicado em cima dos
+ *  totais agregados de campanhas + flows do periodo. Formula recomendada
+ *  pelo suporte da Omnisend (2026-05-06): 40% conversao + 20% retencao
+ *  + 40% entregabilidade. Funciona pra qualquer plataforma desde que os
+ *  rates estejam normalizados (0-100, percentual). */
+function computeHealthScore(s: {
+  sent: number
+  deliveryRate: number
+  bounceRate: number
+  openRate: number
+  clickRate: number
+  unsubRate: number
+  spamRate: number
 }): { score: number; issues: string[] } {
   if (s.sent === 0) return { score: 0, issues: ["Sem envios no periodo"] }
 
-  let score = 100
+  // Rates em percentual (0-100). Score normalizado em decimal e
+  // multiplicado por 100 no final pra cair em 0-100.
+  const openR = s.openRate / 100
+  const clickR = s.clickRate / 100
+  const failR = (100 - s.deliveryRate) / 100  // proxy de failure
+  const unsubR = s.unsubRate / 100
+  const spamR = s.spamRate / 100
+
+  const raw =
+    openR * 0.20 +
+    clickR * 0.20 +
+    Math.min(0.05, openR * 0.05) * 4 + // proxy de orderRate (sem dado real, usa open)
+    (1 - failR) * 0.15 +
+    (1 - unsubR) * 0.10 +
+    (1 - spamR) * 0.10 +
+    (openR + clickR) * 0.05
+
+  const score = Math.max(0, Math.min(100, Math.round(raw * 100)))
+
   const issues: string[] = []
+  if (s.bounceRate > 3) issues.push(`Bounce rate critico: ${s.bounceRate.toFixed(2)}%`)
+  else if (s.bounceRate > 2) issues.push(`Bounce rate alto: ${s.bounceRate.toFixed(2)}%`)
+  if (s.spamRate > 0.3) issues.push(`Spam rate critico: ${s.spamRate.toFixed(2)}%`)
+  else if (s.spamRate > 0.1) issues.push(`Spam rate elevado: ${s.spamRate.toFixed(3)}%`)
+  if (s.unsubRate > 0.5) issues.push(`Unsub rate alto: ${s.unsubRate.toFixed(2)}%`)
+  if (s.openRate < 15) issues.push(`Open rate baixo: ${s.openRate.toFixed(1)}%`)
+  if (s.deliveryRate < 95) issues.push(`Deliverability baixa: ${s.deliveryRate.toFixed(1)}%`)
 
-  if (s.bounceRate > 3) { score -= 25; issues.push(`Bounce rate critico: ${s.bounceRate.toFixed(1)}%`) }
-  else if (s.bounceRate > 2) { score -= 10; issues.push(`Bounce rate alto: ${s.bounceRate.toFixed(1)}%`) }
-
-  if (s.spamRate > 0.3) { score -= 25; issues.push(`Spam rate critico: ${s.spamRate.toFixed(2)}%`) }
-  else if (s.spamRate > 0.1) { score -= 10; issues.push(`Spam rate elevado: ${s.spamRate.toFixed(2)}%`) }
-
-  if (s.unsubRate > 0.5) { score -= 15; issues.push(`Unsub rate alto: ${s.unsubRate.toFixed(2)}%`) }
-  else if (s.unsubRate > 0.3) { score -= 5; issues.push(`Unsub rate acima da media: ${s.unsubRate.toFixed(2)}%`) }
-
-  if (s.openRate < 15 && s.openRate > 0) { score -= 15; issues.push(`Open rate baixo: ${s.openRate.toFixed(1)}%`) }
-  else if (s.openRate < 20 && s.openRate > 0) { score -= 5; issues.push(`Open rate abaixo da media: ${s.openRate.toFixed(1)}%`) }
-
-  if (s.deliveryRate < 95 && s.deliveryRate > 0) { score -= 20; issues.push(`Deliverability baixa: ${s.deliveryRate.toFixed(1)}%`) }
-  else if (s.deliveryRate < 98 && s.deliveryRate > 0) { score -= 5; issues.push(`Deliverability abaixo do ideal: ${s.deliveryRate.toFixed(1)}%`) }
-
-  if (s.engagementRate < 20 && s.engagementRate > 0) { score -= 10; issues.push(`Engajamento baixo: ${s.engagementRate.toFixed(0)}%`) }
-
-  return { score: Math.max(0, score), issues }
-}
-
-/** Calcula range YYYY-MM-DD pra "last N days" inclusivo de hoje, igual o
- *  resto do app (commits 1f7fd53 / 0280eff). 30d em hoje 05/05 → 06/04→05/05. */
-function dateRangeForPeriod(period: string): { startISO: string; endISO: string } {
-  const now = new Date()
-  const days = period === "7d" ? 7 : period === "15d" ? 15 : period === "90d" ? 90 : 30
-  const start = new Date(now)
-  start.setUTCDate(start.getUTCDate() - (days - 1))
-  start.setUTCHours(0, 0, 0, 0)
-  return { startISO: start.toISOString(), endISO: now.toISOString() }
+  return { score, issues }
 }
 
 export async function GET(request: NextRequest) {
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
 
-    // Resiliente a migration pendente: tenta com email_platform, fallback sem
+    // Resiliente a migration pendente
     async function fetchStores(selectCols: string) {
       return supabase
         .from("client_stores")
@@ -108,15 +111,16 @@ export async function GET(request: NextRequest) {
     }
 
     const storeIds = stores.map((s) => s.id)
-    const { startISO, endISO } = dateRangeForPeriod(period)
 
-    // Klaviyo metrics: continua agregando das tabelas de DB (ja tem cache
-    // via cron). Omnisend metrics: chama fetchOmnisendHealth direto, que
-    // tem cache L1+L2 de 1h (POST /api/analytics/reports e cacheado pelo
-    // proprio omnisend-sync.service.ts).
-    const [revenueRows, campaignRows] = await Promise.all([
+    // CACHE-ONLY: agrega tudo do DB (campaigns + flows + summary) sem
+    // chamar API. Antes fazia live-fetch fetchOmnisendHealth pra cada
+    // loja em paralelo — com 50+ lojas, todas sofriam rate limit
+    // (Statistics: 10/min) e voltavam vazias. O cron sync-omnisend
+    // ja popula tudo no DB, basta agregar.
+    const [revenueRows, campaignRows, flowRows] = await Promise.all([
       getUnifiedRevenue(supabase, orgId, [period], storeIds),
       getUnifiedCampaigns(supabase, orgId, period, storeIds),
+      getUnifiedFlows(supabase, orgId, period, storeIds, false), // inclui inactive
     ])
 
     const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
@@ -125,64 +129,44 @@ export async function GET(request: NextRequest) {
       if (!campByStore.has(c.store_id)) campByStore.set(c.store_id, [])
       campByStore.get(c.store_id)!.push(c)
     }
+    const flowByStore = new Map<string, typeof flowRows>()
+    for (const f of flowRows) {
+      if (!flowByStore.has(f.store_id)) flowByStore.set(f.store_id, [])
+      flowByStore.get(f.store_id)!.push(f)
+    }
 
-    // Para cada loja, decide a fonte de health metrics:
-    //   - Omnisend (tem omnisend_api_key OU email_platform=omnisend):
-    //     fetchOmnisendHealth direto da API com cache 1h
-    //   - Klaviyo: agrega das tabelas klaviyo_campaign_metrics
-    //   - Sem ambos: skip
-    const storeHealths = await Promise.all(stores.map(async (store): Promise<StoreHealth | null> => {
+    const storeHealths: StoreHealth[] = stores.map((store) => {
       const s = store as Record<string, unknown>
       const platform = (s.email_platform as string)
         ?? (s.omnisend_api_key ? "omnisend" : (s.klaviyo_private_key || s.klaviyo_api_key) ? "klaviyo" : "none")
       const client = Array.isArray(store.clients) ? store.clients[0] : store.clients
       const rev = revMap.get(store.id)
-
-      if (platform === "omnisend") {
-        try {
-          const credentials = await getStoreCredentials(store.id, store.org_id)
-          const apiKey = credentials.omnisend_api_key
-          if (!apiKey) return null
-
-          const h = await fetchOmnisendHealth(apiKey, startISO, endISO)
-
-          // Rates da Omnisend vem em decimal (0-1). UI espera 0-100, entao
-          // multiplicamos.
-          const deliveryRate = h.sent > 0 ? Math.round(((h.sent - h.bounced) / h.sent) * 1000) / 10 : 0
-          return {
-            id: store.id,
-            storeName: store.store_name,
-            clientName: client?.name || "—",
-            platform: "omnisend",
-            deliveryRate,
-            bounceRate: Math.round(h.bounceRate * 10000) / 100,
-            openRate: Math.round(h.openRate * 1000) / 10,
-            clickRate: Math.round(h.clickRate * 1000) / 10,
-            unsubRate: Math.round(h.unsubscribeRate * 10000) / 100,
-            spamRate: Math.round(h.markedAsSpamRate * 100000) / 1000,
-            engagementRate: rev?.engagement_rate ?? 0,
-            totalLeads: rev?.total_leads ?? 0,
-            engagedLeads: rev?.engaged_leads ?? 0,
-            score: h.score,
-            issues: h.issues,
-          }
-        } catch (err) {
-          log.warn(`[HealthMonitor] Omnisend fetch failed for store ${store.id}`, { error: err instanceof Error ? err.message : String(err) })
-          return null
-        }
-      }
-
-      // Klaviyo (caminho legacy via DB)
       const camps = campByStore.get(store.id) || []
-      if (camps.length === 0 && platform !== "klaviyo") return null
+      const flows = flowByStore.get(store.id) || []
 
-      const totalRecipients = camps.reduce((sum, c) => sum + c.recipients, 0)
-      const totalDelivered = camps.reduce((sum, c) => sum + c.delivered, 0)
-      const totalOpened = camps.reduce((sum, c) => sum + c.opened, 0)
-      const totalClicked = camps.reduce((sum, c) => sum + c.clicked, 0)
-      const totalBounced = camps.reduce((sum, c) => sum + c.bounced, 0)
-      const totalUnsubs = camps.reduce((sum, c) => sum + c.unsubscribed, 0)
-      const totalSpam = camps.reduce((sum, c) => sum + c.spam_complaints, 0)
+      // Agrega TODAS rows (campaigns + flows) — antes so usava campaigns
+      // pra Klaviyo, fazendo lojas que so tem flows (Omnisend tipico)
+      // mostrarem 0 mesmo tendo dados.
+      const allRows = [
+        ...camps.map((c) => ({
+          recipients: c.recipients, delivered: c.delivered, opened: c.opened,
+          clicked: c.clicked, bounced: c.bounced, unsubscribed: c.unsubscribed,
+          spam: c.spam_complaints || 0,
+        })),
+        ...flows.map((f) => ({
+          recipients: f.recipients, delivered: f.delivered, opened: f.opened,
+          clicked: f.clicked, bounced: f.bounced, unsubscribed: f.unsubscribed,
+          spam: 0, // flow_metrics nao tem coluna spam_complaints
+        })),
+      ]
+
+      const totalRecipients = allRows.reduce((sum, r) => sum + r.recipients, 0)
+      const totalDelivered = allRows.reduce((sum, r) => sum + r.delivered, 0)
+      const totalOpened = allRows.reduce((sum, r) => sum + r.opened, 0)
+      const totalClicked = allRows.reduce((sum, r) => sum + r.clicked, 0)
+      const totalBounced = allRows.reduce((sum, r) => sum + r.bounced, 0)
+      const totalUnsubs = allRows.reduce((sum, r) => sum + r.unsubscribed, 0)
+      const totalSpam = allRows.reduce((sum, r) => sum + r.spam, 0)
 
       const deliveryRate = totalRecipients > 0 ? (totalDelivered / totalRecipients) * 100 : 0
       const bounceRate = totalRecipients > 0 ? (totalBounced / totalRecipients) * 100 : 0
@@ -192,9 +176,8 @@ export async function GET(request: NextRequest) {
       const spamRate = totalDelivered > 0 ? (totalSpam / totalDelivered) * 100 : 0
       const engagementRate = rev?.engagement_rate ?? 0
 
-      const { score, issues } = calculateKlaviyoHealthScore({
-        deliveryRate, bounceRate, openRate, unsubRate, spamRate, engagementRate,
-        sent: totalRecipients,
+      const { score, issues } = computeHealthScore({
+        sent: totalRecipients, deliveryRate, bounceRate, openRate, clickRate, unsubRate, spamRate,
       })
 
       return {
@@ -214,22 +197,31 @@ export async function GET(request: NextRequest) {
         score,
         issues,
       }
-    }))
+    })
 
-    const filtered = storeHealths.filter((h): h is StoreHealth => h !== null)
-    filtered.sort((a, b) => a.score - b.score)
+    storeHealths.sort((a, b) => a.score - b.score)
 
-    const avgScore = filtered.length > 0
-      ? Math.round(filtered.reduce((s, h) => s + h.score, 0) / filtered.length)
+    const withData = storeHealths.filter((h) => h.score > 0)
+    const avgScore = withData.length > 0
+      ? Math.round(withData.reduce((s, h) => s + h.score, 0) / withData.length)
       : 0
-    const criticalCount = filtered.filter((h) => h.score < 50).length
-    const warningCount = filtered.filter((h) => h.score >= 50 && h.score < 70).length
-    const healthyCount = filtered.filter((h) => h.score >= 70).length
-    const totalIssues = filtered.reduce((s, h) => s + h.issues.length, 0)
+    const criticalCount = withData.filter((h) => h.score < 50).length
+    const warningCount = withData.filter((h) => h.score >= 50 && h.score < 70).length
+    const healthyCount = withData.filter((h) => h.score >= 70).length
+    const totalIssues = storeHealths.reduce((s, h) => s + h.issues.length, 0)
+
+    log.info("[HealthMonitor] aggregated", {
+      period,
+      totalStores: storeHealths.length,
+      withData: withData.length,
+      criticalCount,
+      warningCount,
+      healthyCount,
+    })
 
     return successResponse(request, {
-      stores: filtered,
-      summary: { avgScore, criticalCount, warningCount, healthyCount, totalIssues, totalStores: filtered.length },
+      stores: storeHealths,
+      summary: { avgScore, criticalCount, warningCount, healthyCount, totalIssues, totalStores: storeHealths.length },
       period,
     })
   } catch (error) {
