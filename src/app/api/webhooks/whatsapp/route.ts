@@ -253,22 +253,32 @@ async function handleInboundMessage(
       body = `[${message.type}]`
   }
 
-  // Insert message (idempotent via external_id)
-  await admin.from("crm_messages").insert({
-    thread_id: threadId,
-    org_id: orgId,
-    external_id: message.id,
-    direction: "inbound",
-    content_type: contentType,
-    body,
-    media_url: mediaUrl,
-    media_mime: mediaMime,
-    metadata: { raw: message },
-    sent_by_kind: "contact",
-    status: "received",
-  }).select("id").maybeSingle()
-  // Conflict on UNIQUE (thread_id, external_id) is silently ignored — Supabase
-  // returns the constraint error which we treat as duplicate (idempotency).
+  // Idempotente via UNIQUE (thread_id, external_id). upsert com
+  // ignoreDuplicates evita erro quando o mesmo external_id chega duas
+  // vezes (Meta as vezes reenvia eventos).
+  const { error: msgErr } = await admin
+    .from("crm_messages")
+    .upsert(
+      {
+        thread_id: threadId,
+        org_id: orgId,
+        external_id: message.id,
+        direction: "inbound",
+        content_type: contentType,
+        body,
+        media_url: mediaUrl,
+        media_mime: mediaMime,
+        metadata: { raw: message },
+        sent_by_kind: "contact",
+        status: "received",
+      },
+      { onConflict: "thread_id,external_id", ignoreDuplicates: true },
+    )
+
+  if (msgErr) {
+    log.error("[WhatsApp] erro ao persistir mensagem", msgErr)
+    return
+  }
 
   log.info("[WhatsApp] inbound message", { thread_id: threadId, external_id: message.id })
 }

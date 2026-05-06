@@ -93,7 +93,7 @@ export async function POST(
       .from("deals")
       .update(updates)
       .eq("id", id)
-      .select("id, pipeline_id, stage_id, status")
+      .select("id, pipeline_id, stage_id, status, owner_id")
       .single()
 
     if (error) throw error
@@ -118,7 +118,7 @@ export async function POST(
       const { data: ownerOrg } = await admin
         .from("org_members")
         .select("org_id")
-        .eq("profile_id", (fullDeal as any)?.owner_id || "")
+        .eq("profile_id", deal.owner_id)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle()
@@ -126,6 +126,10 @@ export async function POST(
       const resolvedOrgId = ownerOrg?.org_id || null
 
       if (resolvedOrgId) {
+        // idempotency_key inclui timestamp pra permitir multiplos
+        // disparos quando o deal volta pra mesma stage. Janela de 1
+        // minuto pra deduplicar cliques duplos no mesmo move.
+        const minuteBucket = Math.floor(Date.now() / 60000)
         dispatchTrigger({
           trigger_type: "deal_stage_change",
           org_id: resolvedOrgId,
@@ -137,7 +141,7 @@ export async function POST(
             deal: fullDeal as any,
             org_id: resolvedOrgId,
           },
-          idempotency_key: `${id}:${parsed.stage_id}`,
+          idempotency_key: `${id}:${parsed.stage_id}:${minuteBucket}`,
         }).catch((err) => log.error("[Deals] dispatch error", err))
       }
     }
