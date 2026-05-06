@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmInboxThread")
@@ -45,7 +45,7 @@ export async function GET(
       .single()
 
     if (error || !thread) {
-      return errorResponse(request, new Error("Thread nao encontrada"), "not-found", 404)
+      throw new AppError("Thread nao encontrada", 404, "not-found")
     }
 
     let mq = admin

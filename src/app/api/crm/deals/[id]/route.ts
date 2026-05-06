@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmDealDetail")
@@ -43,7 +43,7 @@ export async function GET(
       .single()
 
     if (error || !deal) {
-      return errorResponse(request, new Error("Deal nao encontrado"), "not-found", 404)
+      throw new AppError("Deal nao encontrado", 404, "not-found")
     }
 
     // Activities (timeline)

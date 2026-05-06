@@ -9,7 +9,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 
 export const dynamic = "force-dynamic"
 
@@ -30,7 +30,7 @@ export async function GET(
       .single()
 
     if (error || !action) {
-      return errorResponse(request, new Error("AI action nao encontrada"), "not-found", 404)
+      throw new AppError("AI action nao encontrada", 404, "not-found")
     }
 
     const { data: runs } = await admin
@@ -55,7 +55,7 @@ const patchSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   system_prompt: z.string().min(1).optional(),
   user_prompt_template: z.string().min(1).optional(),
-  output_schema: z.record(z.unknown()).optional(),
+  output_schema: z.record(z.string(), z.unknown()).optional(),
 })
 
 export async function PATCH(

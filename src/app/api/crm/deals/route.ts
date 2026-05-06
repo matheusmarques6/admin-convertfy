@@ -78,7 +78,7 @@ const createDealSchema = z.object({
   store_id: z.string().uuid().nullable().optional(),
   lead_id: z.string().uuid().nullable().optional(),
   source: z.string().nullable().optional(),
-  utm: z.record(z.unknown()).optional().default({}),
+  utm: z.record(z.string(), z.unknown()).optional().default({}),
   tags: z.array(z.string()).optional().default([]),
   owner_id: z.string().uuid(),
   referrer_partner_id: z.string().uuid().nullable().optional(),

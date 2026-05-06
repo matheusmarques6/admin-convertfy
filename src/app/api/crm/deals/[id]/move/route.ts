@@ -12,7 +12,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 
@@ -48,12 +48,14 @@ export async function POST(
       .single()
 
     if (!targetStage) {
-      return errorResponse(request, new Error("Etapa nao encontrada"), "not-found", 404)
+      throw new AppError("Etapa nao encontrada", 404, "not-found")
     }
 
     // Calcula nova position se nao foi informada
-    let position = parsed.position
-    if (position === undefined) {
+    let position: number
+    if (parsed.position !== undefined) {
+      position = parsed.position
+    } else {
       const { data: maxPos } = await admin
         .from("deals")
         .select("position")

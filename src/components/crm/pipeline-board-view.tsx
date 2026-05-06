@@ -17,34 +17,32 @@ import { ROUTES } from "@/lib/routes"
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface PipelineDetailResponse {
-  data: {
-    pipeline: {
-      id: string
-      name: string
-      description: string | null
-      scope: string
-      color: string | null
-      layout: string | null
-      stages: KanbanStage[]
-    }
-    deals: Array<{
-      id: string
-      pipeline_id: string
-      stage_id: string
-      title: string
-      value: number | null
-      currency: string | null
-      probability: number | null
-      status: string
-      source: string | null
-      tags: string[] | null
-      position: number
-      last_stage_changed_at: string | null
-      owner?: { id: string; name: string; avatar_url: string | null } | null
-      client?: { id: string; name: string } | null
-      store?: { id: string; name: string } | null
-    }>
+  pipeline: {
+    id: string
+    name: string
+    description: string | null
+    scope: string
+    color: string | null
+    layout: string | null
+    stages: KanbanStage[]
   }
+  deals: Array<{
+    id: string
+    pipeline_id: string
+    stage_id: string
+    title: string
+    value: number | null
+    currency: string | null
+    probability: number | null
+    status: string
+    source: string | null
+    tags: string[] | null
+    position: number
+    last_stage_changed_at: string | null
+    owner?: { id: string; name: string; avatar_url: string | null } | null
+    client?: { id: string; name: string } | null
+    store?: { id: string; name: string } | null
+  }>
 }
 
 interface PipelineBoardViewProps {
@@ -74,8 +72,8 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
     if (dealParam) setActiveDealId(dealParam)
   }, [searchParams])
 
-  const pipeline = data?.data?.pipeline
-  const allDeals = data?.data?.deals || []
+  const pipeline = data?.pipeline
+  const allDeals = data?.deals || []
 
   // Owners disponiveis para filtro
   const owners = useMemo(() => {

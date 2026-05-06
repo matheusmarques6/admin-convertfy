@@ -55,7 +55,7 @@ export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) 
         setError(json.error?.message || "Erro ao criar lead")
         return
       }
-      onCreated?.(json.data.id)
+      onCreated?.(json.id)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")

@@ -19,7 +19,7 @@ const activitySchema = z.object({
     "meeting", "task", "system", "stage_change", "file_attached",
   ]),
   content: z.string().min(1).max(8000),
-  metadata: z.record(z.unknown()).optional().default({}),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
   due_at: z.string().nullable().optional(),
   is_internal: z.boolean().default(true),
 })

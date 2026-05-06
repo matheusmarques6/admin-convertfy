@@ -24,6 +24,7 @@ import {
   Sparkles,
   FileText,
   UserCheck,
+  type LucideIcon,
 } from "lucide-react"
 import type { CrmAutomationDAG, CrmNodeType } from "@/types/crm-automation"
 
@@ -32,7 +33,7 @@ interface AutomationBuilderProps {
   onChange?: (dag: CrmAutomationDAG) => void
 }
 
-const NODE_TYPES_PALETTE: Array<{ type: CrmNodeType; label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = [
+const NODE_TYPES_PALETTE: Array<{ type: CrmNodeType; label: string; icon: LucideIcon; color: string }> = [
   { type: "trigger", label: "Trigger", icon: Zap, color: "var(--crm-warning-fg)" },
   { type: "condition", label: "Condicao", icon: GitBranch, color: "var(--crm-info-fg)" },
   { type: "wait", label: "Esperar", icon: Clock, color: "var(--crm-gray-600)" },

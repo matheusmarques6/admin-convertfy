@@ -20,8 +20,8 @@ const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
 
 export default function CsDashboardPage() {
-  const { data, isLoading } = useSWR<{ data: CsDashboard }>("/api/crm/dashboard/cs", fetcher)
-  const d = data?.data
+  const { data, isLoading } = useSWR<CsDashboard>("/api/crm/dashboard/cs", fetcher)
+  const d = data
 
   return (
     <CrmPageShell

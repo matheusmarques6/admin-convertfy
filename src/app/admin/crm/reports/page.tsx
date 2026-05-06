@@ -49,14 +49,25 @@ interface ReportData {
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
 
+// Wrappers que aceitam o tipo aberto do recharts v3 (ValueType =
+// number | string | undefined) e normalizam pra number antes de formatar.
+const fmtBRLTooltip = (v: unknown): string => {
+  const n = typeof v === "number" ? v : Number(v) || 0
+  return fmtBRL(n)
+}
+const fmtBRLAxis = (v: unknown): string => {
+  const n = typeof v === "number" ? v : Number(v) || 0
+  return fmtBRL(n)
+}
+
 export default function ReportsPage() {
   const [days, setDays] = useState(30)
-  const { data, isLoading } = useSWR<{ data: ReportData }>(
+  const { data, isLoading } = useSWR<ReportData>(
     `/api/crm/reports/timeseries?days=${days}`,
     fetcher,
   )
 
-  const d = data?.data
+  const d = data
 
   const orgSeries = useMemo(() => {
     return (d?.org_snapshots || []).map((s) => ({
@@ -177,7 +188,7 @@ export default function ReportsPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                   <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRL} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRLAxis} />
                   <Tooltip
                     contentStyle={{
                       fontSize: 12,
@@ -185,7 +196,7 @@ export default function ReportsPage() {
                       border: "1px solid var(--crm-gray-200)",
                       background: "var(--crm-gray-0)",
                     }}
-                    formatter={(v: number) => fmtBRL(v)}
+                    formatter={fmtBRLTooltip}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Area type="monotone" dataKey="pipeline" name="Pipeline" stroke="var(--crm-accent)" fill="url(#g-pipeline)" strokeWidth={2} />
@@ -249,7 +260,7 @@ export default function ReportsPage() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRL} />
+                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRLAxis} />
                     <Tooltip
                       contentStyle={{
                         fontSize: 12,
@@ -257,7 +268,7 @@ export default function ReportsPage() {
                         border: "1px solid var(--crm-gray-200)",
                         background: "var(--crm-gray-0)",
                       }}
-                      formatter={(v: number) => fmtBRL(v)}
+                      formatter={fmtBRLTooltip}
                     />
                     <Area type="monotone" dataKey="mrr" name="MRR" stroke="var(--crm-success-fg)" fill="url(#g-mrr)" strokeWidth={2} />
                   </AreaChart>

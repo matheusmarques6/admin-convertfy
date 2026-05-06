@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmAutomationDetail")
@@ -31,7 +31,7 @@ export async function GET(
       .single()
 
     if (error || !automation) {
-      return errorResponse(request, new Error("Automacao nao encontrada"), "not-found", 404)
+      throw new AppError("Automacao nao encontrada", 404, "not-found")
     }
 
     const { data: runs } = await admin
@@ -52,7 +52,7 @@ const patchSchema = z.object({
   name: z.string().min(1).max(240).optional(),
   description: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
-  trigger: z.record(z.unknown()).optional(),
+  trigger: z.record(z.string(), z.unknown()).optional(),
   dag: z
     .object({
       nodes: z.array(z.unknown()),

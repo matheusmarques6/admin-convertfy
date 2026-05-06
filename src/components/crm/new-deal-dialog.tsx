@@ -46,13 +46,13 @@ export function NewDealDialog({
   const [error, setError] = useState<string | null>(null)
 
   // Search clients
-  const { data: clientsData } = useSWR<{ data: { clients: ClientLite[] } }>(
+  const { data: clientsData } = useSWR<{ clients: ClientLite[] }>(
     open && clientSearch.length >= 2 && !clientId
       ? `/api/clients/search?q=${encodeURIComponent(clientSearch)}`
       : null,
     fetcher,
   )
-  const clientOptions = clientsData?.data?.clients || []
+  const clientOptions = clientsData?.clients || []
 
   useEffect(() => {
     if (open) {
@@ -106,7 +106,7 @@ export function NewDealDialog({
         setError(json.error?.message || "Erro ao criar deal")
         return
       }
-      onCreated?.(json.data.id)
+      onCreated?.(json.id)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")

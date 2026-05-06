@@ -29,12 +29,12 @@ const fmtBRL = (v: number) =>
 export default function SalesDashboardPage() {
   const [days, setDays] = useState(30)
 
-  const { data, isLoading } = useSWR<{ data: DashboardData }>(
+  const { data, isLoading } = useSWR<DashboardData>(
     `/api/crm/dashboard/sales?days=${days}`,
     fetcher,
   )
 
-  const d = data?.data
+  const d = data
 
   return (
     <CrmPageShell

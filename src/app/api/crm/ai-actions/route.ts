@@ -61,7 +61,7 @@ const createSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.7),
   system_prompt: z.string().min(1),
   user_prompt_template: z.string().min(1),
-  output_schema: z.record(z.unknown()).optional().default({}),
+  output_schema: z.record(z.string(), z.unknown()).optional().default({}),
   is_active: z.boolean().optional().default(true),
 })
 

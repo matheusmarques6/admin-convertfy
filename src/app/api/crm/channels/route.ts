@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const parsed = createSchema.parse(body)
 
     if (parsed.type === "whatsapp" && !parsed.whatsapp) {
-      return errorResponse(request, new Error("Config whatsapp obrigatoria"), "validation", 400)
+      throw new AppError("Config whatsapp obrigatoria", 400, "validation")
     }
 
     const externalId = parsed.whatsapp!.phone_number_id

@@ -20,12 +20,12 @@ interface Channel {
 }
 
 export default function ChannelsPage() {
-  const { data, mutate } = useSWR<{ data: { channels: Channel[] } }>(
+  const { data, mutate } = useSWR<{ channels: Channel[] }>(
     "/api/crm/channels",
     fetcher,
   )
 
-  const channels = data?.data?.channels || []
+  const channels = data?.channels || []
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState("")
   const [phoneNumberId, setPhoneNumberId] = useState("")

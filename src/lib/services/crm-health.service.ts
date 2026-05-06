@@ -216,7 +216,7 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
   return { store_id: storeId, health_score: score, components }
 }
 
-export async function computeAllStoresHealth(): Promise<{ total: number; success: number; errors: number }> {
+export async function computeAllStoresHealth(): Promise<{ total: number; ok: number; errors: number }> {
   const admin = createAdminClient()
 
   const { data: stores } = await admin
@@ -225,16 +225,16 @@ export async function computeAllStoresHealth(): Promise<{ total: number; success
     .eq("is_active", true)
 
   if (!stores || stores.length === 0) {
-    return { total: 0, success: 0, errors: 0 }
+    return { total: 0, ok: 0, errors: 0 }
   }
 
-  let success = 0
+  let ok = 0
   let errors = 0
 
   for (const s of stores) {
     try {
       const result = await computeStoreHealth(s.id, s.org_id)
-      if (result) success += 1
+      if (result) ok += 1
       else errors += 1
     } catch (err) {
       log.error("[CrmHealth] store error", { store_id: s.id, err })
@@ -242,5 +242,5 @@ export async function computeAllStoresHealth(): Promise<{ total: number; success
     }
   }
 
-  return { total: stores.length, success, errors }
+  return { total: stores.length, ok, errors }
 }

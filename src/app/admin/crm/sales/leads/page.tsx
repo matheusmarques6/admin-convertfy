@@ -58,13 +58,13 @@ function SalesLeadsPageInner() {
   if (statusFilter) params.set("status", statusFilter)
   params.set("limit", "100")
 
-  const { data, isLoading, mutate } = useSWR<{ data: { leads: LeadRow[]; total: number } }>(
+  const { data, isLoading, mutate } = useSWR<{ leads: LeadRow[]; total: number }>(
     `/api/crm/leads?${params.toString()}`,
     fetcher,
   )
 
-  const leads = data?.data?.leads || []
-  const total = data?.data?.total || 0
+  const leads = data?.leads || []
+  const total = data?.total || 0
 
   return (
     <CrmPageShell

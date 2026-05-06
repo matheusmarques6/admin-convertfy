@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 const runSchema = z.object({
-  trigger_data: z.record(z.unknown()).optional().default({}),
+  trigger_data: z.record(z.string(), z.unknown()).optional().default({}),
   deal_id: z.string().uuid().optional(),
   lead_id: z.string().uuid().optional(),
   thread_id: z.string().uuid().optional(),

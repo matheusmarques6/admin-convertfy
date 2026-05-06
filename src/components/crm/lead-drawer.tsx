@@ -11,35 +11,33 @@ import { ROUTES } from "@/lib/routes"
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface LeadDetailResponse {
-  data: {
-    lead: {
-      id: string
-      name: string
-      email: string | null
-      phone: string | null
-      company: string | null
-      role: string | null
-      source: string | null
-      status: string
-      ai_qualification_score: number | null
-      ai_qualification_reason: string | null
-      notes: string | null
-      tags: string[] | null
-      created_at: string
-      updated_at: string
-      converted_to_deal_id: string | null
-      converted_to_client_id: string | null
-      assignee?: { id: string; name: string; avatar_url: string | null; email: string | null } | null
-    }
-    activities: Array<{
-      id: string
-      type: string
-      content: string
-      is_internal: boolean
-      created_at: string
-      creator?: { id: string; name: string } | null
-    }>
+  lead: {
+    id: string
+    name: string
+    email: string | null
+    phone: string | null
+    company: string | null
+    role: string | null
+    source: string | null
+    status: string
+    ai_qualification_score: number | null
+    ai_qualification_reason: string | null
+    notes: string | null
+    tags: string[] | null
+    created_at: string
+    updated_at: string
+    converted_to_deal_id: string | null
+    converted_to_client_id: string | null
+    assignee?: { id: string; name: string; avatar_url: string | null; email: string | null } | null
   }
+  activities: Array<{
+    id: string
+    type: string
+    content: string
+    is_internal: boolean
+    created_at: string
+    creator?: { id: string; name: string } | null
+  }>
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -73,7 +71,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
 
-  const lead = data?.data?.lead
+  const lead = data?.lead
 
   useEffect(() => {
     if (lead) {

@@ -12,7 +12,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { sendWhatsAppMessage } from "@/lib/services/whatsapp-cloud.service"
 
@@ -44,7 +44,7 @@ export async function POST(
     const parsed = sendSchema.parse(body)
 
     if (parsed.type === "text" && !parsed.body) {
-      return errorResponse(request, new Error("body obrigatorio para mensagens text"), "validation", 400)
+      throw new AppError("body obrigatorio para mensagens text", 400, "validation")
     }
 
     // Le thread + channel
@@ -55,16 +55,15 @@ export async function POST(
       .single()
 
     if (!thread) {
-      return errorResponse(request, new Error("Thread nao encontrada"), "not-found", 404)
+      throw new AppError("Thread nao encontrada", 404, "not-found")
     }
 
     const channel = Array.isArray(thread.channel) ? thread.channel[0] : thread.channel
     if (!channel || (channel as any).type !== "whatsapp") {
-      return errorResponse(
-        request,
-        new Error("Apenas channels WhatsApp sao suportados nesta versao"),
-        "channel-unsupported",
+      throw new AppError(
+        "Apenas channels WhatsApp sao suportados nesta versao",
         400,
+        "channel-unsupported",
       )
     }
 

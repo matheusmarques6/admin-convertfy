@@ -25,11 +25,11 @@ interface PipelineLite {
 export function LeadConvertDialog({ leadId, open, onClose, onConverted }: LeadConvertDialogProps) {
   const { user } = useAuthStore()
 
-  const { data: pipelinesData } = useSWR<{ data: { pipelines: PipelineLite[] } }>(
+  const { data: pipelinesData } = useSWR<{ pipelines: PipelineLite[] }>(
     open ? "/api/crm/pipelines?scope=sales" : null,
     fetcher,
   )
-  const pipelines = pipelinesData?.data?.pipelines || []
+  const pipelines = pipelinesData?.pipelines || []
 
   const [pipelineId, setPipelineId] = useState("")
   const [stageId, setStageId] = useState("")
@@ -85,7 +85,7 @@ export function LeadConvertDialog({ leadId, open, onClose, onConverted }: LeadCo
         setError(json.error?.message || "Erro ao converter")
         return
       }
-      onConverted?.(json.data.deal_id)
+      onConverted?.(json.deal_id)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro")

@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmPipelineDetail")
@@ -37,7 +37,7 @@ export async function GET(
       .single()
 
     if (pErr || !pipeline) {
-      return errorResponse(request, new Error("Pipeline nao encontrada"), "not-found", 404)
+      throw new AppError("Pipeline nao encontrada", 404, "not-found")
     }
 
     const stages = (pipeline.pipeline_stages || []).sort(

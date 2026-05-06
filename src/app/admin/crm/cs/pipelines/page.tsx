@@ -20,12 +20,12 @@ interface PipelineSummary {
 }
 
 export default function CsPipelinesPage() {
-  const { data, isLoading } = useSWR<{ data: { pipelines: PipelineSummary[] } }>(
+  const { data, isLoading } = useSWR<{ pipelines: PipelineSummary[] }>(
     "/api/crm/pipelines?scope=cs",
     fetcher,
   )
 
-  const pipelines = data?.data?.pipelines || []
+  const pipelines = data?.pipelines || []
 
   return (
     <CrmPageShell

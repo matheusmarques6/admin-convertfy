@@ -29,50 +29,48 @@ interface DealDrawerProps {
 }
 
 interface DealDetailResponse {
-  data: {
-    deal: {
-      id: string
-      title: string
-      value: number | null
-      currency: string | null
-      probability: number | null
-      status: string
-      source: string | null
-      tags: string[] | null
-      notes: string | null
-      lost_reason: string | null
-      won_reason: string | null
-      created_at: string
-      updated_at: string
-      pipeline_id: string
-      stage_id: string
-      pipeline?: { id: string; name: string }
-      stage?: { id: string; name: string; stage_type: string | null }
-      owner?: { id: string; name: string; avatar_url: string | null } | null
-      client?: { id: string; name: string } | null
-      store?: { id: string; name: string } | null
-      lead?: { id: string; name: string; email: string | null } | null
-    }
-    activities: Array<{
-      id: string
-      type: string
-      content: string
-      due_at: string | null
-      completed_at: string | null
-      is_internal: boolean
-      created_at: string
-      creator?: { id: string; name: string; avatar_url: string | null } | null
-    }>
-    history: Array<{
-      id: string
-      from_stage_id: string | null
-      to_stage_id: string | null
-      from_stage?: { name: string } | null
-      to_stage?: { name: string } | null
-      created_at: string
-      changed_by?: { id: string; name: string } | null
-    }>
+  deal: {
+    id: string
+    title: string
+    value: number | null
+    currency: string | null
+    probability: number | null
+    status: string
+    source: string | null
+    tags: string[] | null
+    notes: string | null
+    lost_reason: string | null
+    won_reason: string | null
+    created_at: string
+    updated_at: string
+    pipeline_id: string
+    stage_id: string
+    pipeline?: { id: string; name: string }
+    stage?: { id: string; name: string; stage_type: string | null }
+    owner?: { id: string; name: string; avatar_url: string | null } | null
+    client?: { id: string; name: string } | null
+    store?: { id: string; name: string } | null
+    lead?: { id: string; name: string; email: string | null } | null
   }
+  activities: Array<{
+    id: string
+    type: string
+    content: string
+    due_at: string | null
+    completed_at: string | null
+    is_internal: boolean
+    created_at: string
+    creator?: { id: string; name: string; avatar_url: string | null } | null
+  }>
+  history: Array<{
+    id: string
+    from_stage_id: string | null
+    to_stage_id: string | null
+    from_stage?: { name: string } | null
+    to_stage?: { name: string } | null
+    created_at: string
+    changed_by?: { id: string; name: string } | null
+  }>
 }
 
 export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
@@ -89,8 +87,8 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
     if (!open) setNoteContent("")
   }, [open])
 
-  const deal = data?.data?.deal
-  const activities = data?.data?.activities || []
+  const deal = data?.deal
+  const activities = data?.activities || []
 
   const postNote = async () => {
     if (!dealId || !noteContent.trim()) return

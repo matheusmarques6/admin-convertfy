@@ -62,7 +62,7 @@ const createLeadSchema = z.object({
   company: z.string().nullable().optional(),
   role: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
-  utm: z.record(z.unknown()).optional().default({}),
+  utm: z.record(z.string(), z.unknown()).optional().default({}),
   notes: z.string().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
   tags: z.array(z.string()).optional().default([]),

@@ -38,12 +38,12 @@ export default function AutomationDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
-  const { data, mutate } = useSWR<{ data: AutomationDetail }>(
+  const { data, mutate } = useSWR<AutomationDetail>(
     `/api/crm/automations/${id}`,
     fetcher,
   )
 
-  const detail = data?.data
+  const detail = data
   const [dag, setDag] = useState<CrmAutomationDAG | null>(null)
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
@@ -90,9 +90,9 @@ export default function AutomationDetailPage({
         body: JSON.stringify({ trigger_data: { source: "manual_test" } }),
       })
       const json = await res.json()
-      if (json.data?.run_id) {
+      if (json.run_id) {
         mutate()
-        alert(`Run executado: status=${json.data.status}`)
+        alert(`Run executado: status=${json.status}`)
       }
     } finally {
       setRunning(false)

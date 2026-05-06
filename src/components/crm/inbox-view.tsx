@@ -68,20 +68,20 @@ export function InboxView() {
   if (mineOnly) params.set("mine", "1")
   if (search) params.set("search", search)
 
-  const { data: threadsData, mutate: mutateThreads } = useSWR<{ data: { threads: ThreadSummary[] } }>(
+  const { data: threadsData, mutate: mutateThreads } = useSWR<{ threads: ThreadSummary[] }>(
     `/api/crm/inbox/threads?${params.toString()}`,
     fetcher,
     { refreshInterval: 10000 },
   )
 
-  const { data: detailData, mutate: mutateDetail } = useSWR<{ data: ThreadDetail }>(
+  const { data: detailData, mutate: mutateDetail } = useSWR<ThreadDetail>(
     activeThreadId ? `/api/crm/inbox/threads/${activeThreadId}` : null,
     fetcher,
     { refreshInterval: 5000 },
   )
 
-  const threads = threadsData?.data?.threads || []
-  const detail = detailData?.data
+  const threads = threadsData?.threads || []
+  const detail = detailData
 
   // Auto-scroll quando novas mensagens chegam — somente se o usuario ja
   // estava perto do fim. Caso esteja lendo historico, nao interrompe.

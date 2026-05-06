@@ -56,7 +56,7 @@ const dagNodeSchema = z.object({
   id: z.string(),
   type: z.string(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
 })
 
 const dagEdgeSchema = z.object({
@@ -71,7 +71,7 @@ const createSchema = z.object({
   description: z.string().nullable().optional(),
   scope: z.enum(["sales", "cs", "internal", "general"]).default("general"),
   is_active: z.boolean().default(false),
-  trigger: z.record(z.unknown()),
+  trigger: z.record(z.string(), z.unknown()),
   dag: z.object({
     nodes: z.array(dagNodeSchema),
     edges: z.array(dagEdgeSchema),

@@ -22,12 +22,12 @@ interface AutomationSummary {
 }
 
 export default function CrmAutomationsListPage() {
-  const { data, mutate } = useSWR<{ data: { automations: AutomationSummary[] } }>(
+  const { data, mutate } = useSWR<{ automations: AutomationSummary[] }>(
     "/api/crm/automations",
     fetcher,
   )
 
-  const automations = data?.data?.automations || []
+  const automations = data?.automations || []
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState("")
   const [scope, setScope] = useState<"sales" | "cs" | "internal" | "general">("general")
@@ -60,11 +60,11 @@ export default function CrmAutomationsListPage() {
         }),
       })
       const json = await res.json()
-      if (json.data?.id) {
+      if (json.id) {
         await mutate()
         setCreating(false)
         setName("")
-        window.location.href = `/admin/crm/automations/${json.data.id}`
+        window.location.href = `/admin/crm/automations/${json.id}`
       }
     } finally {
       setSubmitting(false)
