@@ -58,9 +58,13 @@ function TimerRing({ percentage, size = 280, color = "#4E62D8" }: { percentage: 
 // ── Beep sintetizado pra notificar fim de ciclo ──
 function playBeep() {
   try {
-    type AudioContextCtor = typeof AudioContext
-    const w = window as unknown as Window & { webkitAudioContext?: AudioContextCtor }
-    const Ctx = w.AudioContext || w.webkitAudioContext
+    // Tipos do DOM nao expoem AudioContext em Window — usamos globalThis
+    // com cast pra cobrir os 2 nomes (AudioContext padrao e webkit antigo).
+    const g = globalThis as unknown as {
+      AudioContext?: typeof AudioContext
+      webkitAudioContext?: typeof AudioContext
+    }
+    const Ctx = g.AudioContext || g.webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
     const osc = ctx.createOscillator()
