@@ -1452,30 +1452,41 @@ async function doSyncOmnisendForStore(params: {
     const statsAttributed = statsCampSum + statsAutoSum
     const reportsAttributed = reportsTotals.attributedRevenue || 0
 
-    // Tolerancia 5%: pequenas divergencias entre event-date e send-date
-    // sao aceitaveis. Acima disso, recalibra pra alinhar com o dashboard.
+    // Calibracao SEMPRE quando ambas fontes tem valor (sem threshold).
+    // Antes usavamos 5% mas pequenas-mas-reais divergencias passavam.
+    // Como /reports e a fonte que bate com o dashboard Omnisend, sempre
+    // alinhamos com ela quando disponivel.
     let totalCampaignRevenueFinal = statsCampSum
     let totalAutomationRevenueFinal = statsAutoSum
     let totalAttributedRevenueFinal = statsAttributed
     if (reportsAttributed > 0 && statsAttributed > 0) {
+      const ratio = reportsAttributed / statsAttributed
+      totalCampaignRevenueFinal = statsCampSum * ratio
+      totalAutomationRevenueFinal = statsAutoSum * ratio
+      totalAttributedRevenueFinal = reportsAttributed
       const divergence = Math.abs(statsAttributed - reportsAttributed) / reportsAttributed
-      if (divergence > 0.05) {
-        const ratio = reportsAttributed / statsAttributed
-        totalCampaignRevenueFinal = statsCampSum * ratio
-        totalAutomationRevenueFinal = statsAutoSum * ratio
-        totalAttributedRevenueFinal = reportsAttributed
-        log.info("[OmnisendSync] Calibrating split to send-date attribution", {
-          storeId,
-          statsAttributed,
-          reportsAttributed,
-          divergencePct: (divergence * 100).toFixed(1),
-          ratio: ratio.toFixed(3),
-          statsCampSum,
-          statsAutoSum,
-          calibratedCampaign: totalCampaignRevenueFinal,
-          calibratedAutomation: totalAutomationRevenueFinal,
-        })
-      }
+      log.info("[OmnisendSync] Calibrating split to send-date attribution", {
+        storeId,
+        statsAttributed,
+        reportsAttributed,
+        divergencePct: (divergence * 100).toFixed(1),
+        ratio: ratio.toFixed(3),
+        statsCampSum,
+        statsAutoSum,
+        calibratedCampaign: totalCampaignRevenueFinal,
+        calibratedAutomation: totalAutomationRevenueFinal,
+      })
+    } else if (statsAttributed > 0 && reportsAttributed === 0) {
+      // /reports falhou (rate limit, timeout) ou veio vazio. Sem fonte
+      // de calibracao usamos statistics direto, MAS logamos warning
+      // pra investigar — provavelmente os valores estarao ~2x inflados
+      // (event-date attribution dupla).
+      log.warn("[OmnisendSync] /reports unavailable — using uncalibrated statistics (may be inflated)", {
+        storeId,
+        statsAttributed,
+        statsCampSum,
+        statsAutoSum,
+      })
     }
 
     const revenueStats = {
