@@ -32,10 +32,11 @@ function ProgressCircle({ percentage, size = 48, color = "#4E62D8" }: { percenta
 }
 
 export function ProductivityGoals() {
-  const { goals, isLoaded, fetchData } = useProductivityStore()
+  const { goals, isLoaded, fetchData, apiAction } = useProductivityStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showNewGoal, setShowNewGoal] = useState(false)
   const [newGoalTitle, setNewGoalTitle] = useState("")
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!isLoaded) fetchData()
@@ -108,14 +109,22 @@ export function ProductivityGoals() {
               </button>
               <button
                 onClick={async () => {
-                  if (!newGoalTitle.trim()) return
-                  // Would call apiAction to create goal
-                  setShowNewGoal(false)
-                  setNewGoalTitle("")
+                  if (!newGoalTitle.trim() || creating) return
+                  setCreating(true)
+                  const ok = await apiAction("create_goal", {
+                    title: newGoalTitle.trim(),
+                    quarter,
+                  })
+                  setCreating(false)
+                  if (ok) {
+                    setShowNewGoal(false)
+                    setNewGoalTitle("")
+                  }
                 }}
-                className="h-9 px-4 rounded-md border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand"
+                disabled={creating || !newGoalTitle.trim()}
+                className="h-9 px-4 rounded-md border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand disabled:opacity-50"
               >
-                Criar
+                {creating ? "Criando..." : "Criar"}
               </button>
             </div>
           </div>

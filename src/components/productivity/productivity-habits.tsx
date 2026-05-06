@@ -23,9 +23,10 @@ function GridCell({ level, color, isToday }: { level: number; color: string; isT
 }
 
 export function ProductivityHabits() {
-  const { habits, isLoaded, fetchData, checkedHabits, toggleHabitCheck } = useProductivityStore()
+  const { habits, isLoaded, fetchData, checkedHabits, toggleHabitCheck, apiAction } = useProductivityStore()
   const [showNewHabit, setShowNewHabit] = useState(false)
   const [newHabitName, setNewHabitName] = useState("")
+  const [creating, setCreating] = useState(false)
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -81,12 +82,18 @@ export function ProductivityHabits() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!newHabitName.trim()) return
-                    setShowNewHabit(false)
-                    setNewHabitName("")
+                    if (!newHabitName.trim() || creating) return
+                    setCreating(true)
+                    const ok = await apiAction("create_habit", { name: newHabitName.trim() })
+                    setCreating(false)
+                    if (ok) {
+                      setShowNewHabit(false)
+                      setNewHabitName("")
+                    }
                   }}
-                  className="h-9 px-4 rounded-md border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand">
-                  Criar
+                  disabled={creating || !newHabitName.trim()}
+                  className="h-9 px-4 rounded-md border-none cursor-pointer text-[12px] font-semibold bg-brand-400 text-white hover:bg-brand disabled:opacity-50">
+                  {creating ? "Criando..." : "Criar"}
                 </button>
               </div>
             </div>

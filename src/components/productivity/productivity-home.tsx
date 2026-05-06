@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { DailyPlanning } from "./daily-planning"
+import { NightlyReflection } from "./nightly-reflection"
 import {
   PriorityDot, Avatar, Checkbox,
   Card, CardHeader, DSBadge, SectionLabel,
@@ -568,66 +569,18 @@ export function ProductivityHome() {
             </div>
           </div>
           <button
-            onClick={() => setShowShutdown(!showShutdown)}
-            className="h-9 px-5 rounded-sm border border-[rgba(0,0,0,0.08)] cursor-pointer text-[13px] font-medium bg-white dark:bg-[#1A1D27] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] transition-colors duration-fast ease-out-expo"
+            onClick={() => setShowShutdown(true)}
+            className="h-9 px-5 rounded-sm border border-indigo-200 dark:border-indigo-800/40 cursor-pointer text-[13px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors duration-fast ease-out-expo flex items-center gap-1.5"
           >
-            Encerrar o dia
+            <IconMoon size={14} />
+            Reflexao do dia
           </button>
         </div>
-
-        {/* Shutdown panel */}
-        {showShutdown && (
-          <Card className="border-2 border-brand-100">
-            <CardHeader
-              icon={<IconMoon />}
-              title="Encerramento"
-              right={<DSBadge type="brand">Ativo</DSBadge>}
-            />
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-[12px] font-semibold text-gray-700 dark:text-white/90 mb-2">Concluido</div>
-                {tasks.filter((t) => t.status === "done").map((t) => (
-                  <div key={t.id} className="flex items-center gap-[6px] py-[3px] text-[12px] text-positive-text">
-                    <IconCheck size={12} /> {t.name}
-                  </div>
-                ))}
-                <div className="text-[20px] font-semibold text-gray-900 dark:text-white mt-2 font-mono">
-                  {tasks.filter((t) => t.status === "done").length}/{tasks.length}
-                </div>
-              </div>
-              <div>
-                <div className="text-[12px] font-semibold text-gray-700 dark:text-white/90 mb-2">Pendente</div>
-                {tasks.filter((t) => t.status !== "done").map((t) => (
-                  <div key={t.id} className="flex items-center gap-[6px] py-[3px] text-[12px] text-gray-600 dark:text-white/70">
-                    <PriorityDot priority={t.priority} /> {t.name}
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div className="text-[12px] font-semibold text-gray-700 dark:text-white/90 mb-2">Amanha</div>
-                <textarea
-                  id="shutdown-tomorrow"
-                  placeholder={"1. Prioridade para amanha\n2. \n3."}
-                  className="w-full h-20 rounded-sm border border-[rgba(0,0,0,0.08)] p-2 text-[12px] font-sans resize-none text-gray-700 dark:text-white/90 focus:outline-none focus:shadow-ring-brand"
-                />
-                <button
-                  onClick={async () => {
-                    const textarea = document.getElementById("shutdown-tomorrow") as HTMLTextAreaElement
-                    await apiAction("shutdown_day", { tomorrow_priorities: textarea?.value || "" })
-                    setShowShutdown(false)
-                  }}
-                  className="w-full mt-2 h-8 rounded-sm border-none bg-brand-400 text-white text-[12px] font-semibold cursor-pointer hover:bg-brand transition-colors duration-fast ease-out-expo"
-                >
-                  Encerrar dia
-                </button>
-              </div>
-            </div>
-          </Card>
-        )}
       </div>
 
-      {/* Daily Planning Modal */}
+      {/* Daily Planning + Nightly Reflection modals */}
       <DailyPlanning open={showDailyPlanning} onClose={() => setShowDailyPlanning(false)} />
+      <NightlyReflection open={showShutdown} onClose={() => setShowShutdown(false)} />
     </div>
   )
 }
