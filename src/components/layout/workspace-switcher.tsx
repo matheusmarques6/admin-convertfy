@@ -1,9 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   WORKSPACES,
   type WorkspaceKey,
@@ -16,180 +20,119 @@ interface WorkspaceSwitcherProps {
 }
 
 /**
- * Switcher visual no topo da sidebar. Mostra o workspace atual com
- * cor + iniciais e abre menu pra trocar. Quando colapsado, vira so
- * um quadrado clicavel com as iniciais.
+ * Switcher minimalista no topo da sidebar.
  *
- * O sidebar inteiro usa o `current` workspace pra filtrar os itens
- * de navegacao — visualmente parece um sistema diferente em cada um.
+ * Expandido: segmented control horizontal estilo Linear/Vercel — 3 abas
+ * compactas com icone + label. Click leva direto pro home do workspace.
+ *
+ * Colapsado: stack vertical de 3 icones com tooltip ao hover.
+ *
+ * Sem descricao embaixo, sem dropdown, sem chevron — direto e visual.
  */
 export function WorkspaceSwitcher({
   current,
   collapsed = false,
 }: WorkspaceSwitcherProps) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const meta = WORKSPACES[current]
+  const goTo = (w: WorkspaceMeta) => router.push(w.homeHref)
 
-  // Fecha menu ao clicar fora
-  useEffect(() => {
-    if (!open) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false)
-      }
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
-    }
-    document.addEventListener("mousedown", onClickOutside)
-    document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside)
-      document.removeEventListener("keydown", onKey)
-    }
-  }, [open])
-
-  const goTo = (w: WorkspaceMeta) => {
-    setOpen(false)
-    router.push(w.homeHref)
-  }
+  const items = Object.values(WORKSPACES)
 
   if (collapsed) {
     return (
-      <div ref={containerRef} className="relative">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="mx-auto flex h-9 w-9 items-center justify-center rounded-md transition-transform hover:scale-105"
+      <TooltipProvider delayDuration={100}>
+        <div
+          className="mx-auto flex flex-col items-center gap-1 p-1 rounded-md"
           style={{
-            background: meta.color,
-            color: meta.colorFg,
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.04)",
           }}
-          aria-label={`Workspace: ${meta.label}`}
-          title={`Workspace: ${meta.label}`}
         >
-          {meta.initials}
-        </button>
-        {open && (
-          <WorkspaceMenu
-            current={current}
-            collapsed
-            onSelect={goTo}
-          />
-        )}
-      </div>
+          {items.map((w) => {
+            const Icon = w.icon
+            const active = w.key === current
+            return (
+              <Tooltip key={w.key}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => goTo(w)}
+                    aria-label={`Workspace ${w.label}`}
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded transition-all",
+                      active
+                        ? "shadow-sm"
+                        : "text-white/55 hover:text-white hover:bg-white/[0.06]"
+                    )}
+                    style={
+                      active
+                        ? {
+                            background: w.color,
+                            color: "#FFFFFF",
+                          }
+                        : undefined
+                    }
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={10} className="text-xs">
+                  {w.label}
+                </TooltipContent>
+              </Tooltip>
+            )
+          })}
+        </div>
+      </TooltipProvider>
     )
   }
 
   return (
-    <div ref={containerRef} className="relative px-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
-          "hover:bg-white/[0.06]",
-        )}
+    <div className="px-3">
+      <div
+        className="grid grid-cols-3 gap-0.5 p-1 rounded-md"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.04)",
+        }}
+        role="tablist"
+        aria-label="Selecionar workspace"
       >
-        <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
-          style={{
-            background: meta.color,
-            color: meta.colorFg,
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-          }}
-        >
-          {meta.initials}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-white leading-tight">
-            {meta.label}
-          </span>
-          <span className="block truncate text-[10px] text-white/50 leading-tight mt-0.5">
-            {meta.description}
-          </span>
-        </span>
-        <ChevronDown
-          className="h-3.5 w-3.5 shrink-0 text-white/50"
-          style={{
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 200ms",
-          }}
-        />
-      </button>
-      {open && (
-        <WorkspaceMenu
-          current={current}
-          onSelect={goTo}
-        />
-      )}
-    </div>
-  )
-}
-
-interface WorkspaceMenuProps {
-  current: WorkspaceKey
-  collapsed?: boolean
-  onSelect: (w: WorkspaceMeta) => void
-}
-
-function WorkspaceMenu({ current, collapsed, onSelect }: WorkspaceMenuProps) {
-  return (
-    <div
-      className={cn(
-        "absolute z-50 mt-1 overflow-hidden rounded-md",
-        "bg-[#0F1117] border border-white/10 shadow-2xl",
-        collapsed ? "left-full ml-2 top-0 w-56" : "left-3 right-3"
-      )}
-    >
-      <div className="px-3 py-2 border-b border-white/[0.06]">
-        <span className="text-[10px] uppercase tracking-wider text-white/45 font-medium">
-          Trocar workspace
-        </span>
-      </div>
-      <div className="p-1">
-        {Object.values(WORKSPACES).map((w) => {
-          const isCurrent = w.key === current
+        {items.map((w) => {
+          const Icon = w.icon
+          const active = w.key === current
           return (
             <button
               key={w.key}
-              onClick={() => onSelect(w)}
+              role="tab"
+              aria-selected={active}
+              onClick={() => goTo(w)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded px-2 py-2 text-left transition-colors",
-                isCurrent ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
+                "relative flex flex-col items-center justify-center gap-1 py-1.5 rounded transition-all",
+                active
+                  ? "text-white"
+                  : "text-white/55 hover:text-white/80 hover:bg-white/[0.04]"
               )}
+              style={
+                active
+                  ? {
+                      background: w.color,
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                    }
+                  : undefined
+              }
+              title={w.description}
             >
+              <Icon className="h-3.5 w-3.5" />
               <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                className="leading-none"
                 style={{
-                  background: w.color,
-                  color: w.colorFg,
                   fontSize: 10,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
+                  fontWeight: active ? 600 : 500,
+                  letterSpacing: "0.01em",
                 }}
               >
-                {w.initials}
+                {w.label}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-medium text-white leading-tight">
-                  {w.label}
-                </span>
-                <span className="block truncate text-[10px] text-white/50 leading-tight mt-0.5">
-                  {w.description}
-                </span>
-              </span>
-              {isCurrent && (
-                <Check className="h-3.5 w-3.5 shrink-0 text-white/70" />
-              )}
             </button>
           )
         })}
