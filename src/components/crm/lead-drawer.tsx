@@ -1,9 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X, Mail, Phone, Building2, Calendar, FileText, Sparkles, ArrowRight } from "lucide-react"
+import { LeadConvertDialog } from "./lead-convert-dialog"
+import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -54,6 +57,7 @@ interface LeadDrawerProps {
 }
 
 export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
+  const router = useRouter()
   const open = !!leadId
   const { data, isLoading, mutate } = useSWR<LeadDetailResponse>(
     leadId ? `/api/crm/leads/${leadId}` : null,
@@ -61,6 +65,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
   )
 
   const [editing, setEditing] = useState(false)
+  const [converting, setConverting] = useState(false)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
@@ -116,6 +121,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
   }
 
   return (
+    <>
     <DialogPrimitive.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
@@ -408,7 +414,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
                     <button
                       className="crm-button-primary mt-3"
                       style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-                      onClick={() => alert("Conversao via wizard sera implementada na proxima iteracao da Fase 2.")}
+                      onClick={() => setConverting(true)}
                     >
                       Converter em deal
                       <ArrowRight className="h-3.5 w-3.5" />
@@ -421,6 +427,20 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+
+    <LeadConvertDialog
+      leadId={leadId}
+      open={converting}
+      onClose={() => setConverting(false)}
+      onConverted={(dealId) => {
+        setConverting(false)
+        mutate()
+        onUpdated?.()
+        // Navega pra ficha do deal recem-criado
+        router.push(ROUTES.ADMIN.CRM.SALES.DEAL_DETAIL(dealId))
+      }}
+    />
+    </>
   )
 }
 

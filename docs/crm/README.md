@@ -49,13 +49,13 @@ com Tailwind do admin). Regras nao-negociaveis:
 
 | Fase | Status | Entrega |
 |------|--------|---------|
-| 1 — Fundacao | EM ANDAMENTO | Migrations + APIs + design tokens + sidebar + placeholders |
-| 2 — Sales | pendente | Kanban funcional + ficha de deal + leads list + Cmd+K |
-| 3 — Customer Success | pendente | Onboarding 30d operacional + state-board + health automatico |
-| 4 — Multiatendimento | pendente | WhatsApp Cloud API + inbox unificado |
-| 5 — Automacao + IA | pendente | DAG engine + ReactFlow builder + AI Actions |
-| 6 — BI | pendente | Snapshots diarios + reports |
-| 7 — Polimento | pendente | Atalhos, mobile, perf |
+| 1 — Fundacao | ✅ | Migrations + APIs + design tokens + sidebar + placeholders |
+| 2 — Sales | ✅ | Kanban + ficha drawer + new deal/lead + dashboard sales + Cmd+K |
+| 3 — Customer Success | ✅ | StateBoard + CS dashboard + health auto + NPS endpoint |
+| 4 — Multiatendimento | ✅ | WhatsApp Cloud API webhook + inbox UI + channels admin |
+| 5 — Automacao + IA | ✅ | DAG executor + AI Actions (Anthropic) + ReactFlow builder + trigger dispatch |
+| 6 — BI snapshot-first | ✅ | Cron diario + 3 tabelas de snapshots + reports com 6 charts + export CSV |
+| 7 — Polimento | ✅ | Atalhos g+letra + lead conversion wizard + lost reason dialog |
 
 ## Referencias
 

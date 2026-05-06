@@ -11,6 +11,7 @@ import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
 import { NewDealDialog } from "./new-deal-dialog"
+import { LostReasonDialog } from "./lost-reason-dialog"
 import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -61,6 +62,11 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
+  const [pendingLostMove, setPendingLostMove] = useState<{
+    dealId: string
+    stageId: string
+    position: number
+  } | null>(null)
 
   // Open drawer if ?deal=<id> in URL
   useEffect(() => {
@@ -88,6 +94,15 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   const totalValue = filteredDeals.reduce((sum, d) => sum + (d.value || 0), 0)
 
   const handleMove = async (dealId: string, toStageId: string, toPosition: number) => {
+    // Detecta se a stage destino e do tipo "lost" — se sim, abre dialog
+    const targetStage = pipeline?.stages.find((s) => s.id === toStageId)
+    if (targetStage?.stage_type === "lost") {
+      setPendingLostMove({ dealId, stageId: toStageId, position: toPosition })
+      // Lanca pra o kanban fazer rollback do optimistic update — o move
+      // real so acontece quando o usuario confirmar a razao.
+      throw new Error("Aguardando razao da perda")
+    }
+
     const res = await fetch(`/api/crm/deals/${dealId}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -97,6 +112,22 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
       throw new Error("Falha ao mover deal")
     }
     await mutate()
+  }
+
+  const confirmLostMove = async (reason: string, comment: string) => {
+    if (!pendingLostMove) return
+    const { dealId, stageId, position } = pendingLostMove
+    setPendingLostMove(null)
+    const res = await fetch(`/api/crm/deals/${dealId}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stage_id: stageId,
+        position,
+        lost_reason: comment ? `${reason} — ${comment}` : reason,
+      }),
+    })
+    if (res.ok) await mutate()
   }
 
   const backHref =
@@ -216,6 +247,15 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
           }}
         />
       )}
+
+      <LostReasonDialog
+        open={pendingLostMove !== null}
+        onConfirm={confirmLostMove}
+        onCancel={() => {
+          setPendingLostMove(null)
+          mutate() // refetch pra reverter optimistic UI do kanban
+        }}
+      />
     </CrmPageShell>
   )
 }

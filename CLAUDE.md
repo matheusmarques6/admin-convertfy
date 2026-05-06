@@ -1011,7 +1011,7 @@ Para o mesmo periodo, `sum(flow_revenue + campaign_revenue)` via Reporting API *
 
 ---
 
-## CRM Convertfy (em construcao — Fase 1)
+## CRM Convertfy (Fases 1-7 completas)
 
 CRM **nativo** integrado ao admin. Deals referenciam `clients`/`client_stores`
 via FK; nada e duplicado. Dois escopos: `sales` (aquisicao) e `cs` (customer
@@ -1027,10 +1027,31 @@ nunca azul/roxo, densidade alta (cards 280px, rows 36px), cinzas dominam
 APIs em `/api/crm/*` seguem o padrao do projeto: `createAdminClient` + Zod
 + `errorResponse/successResponse`. Tipos em `src/types/crm.ts`.
 
-**Mensageria**: WhatsApp Cloud API oficial (Fase 4). Apenas APIs oficiais.
-**Automacao**: DAG em JSON versionado com retry/idempotencia (Fase 5).
-**BI**: snapshot-first via `crm_health_history`, sem agregacao ad-hoc em
-runtime (Fase 6).
+**Mensageria**: WhatsApp Cloud API oficial (v20.0) — webhook em
+`/api/webhooks/whatsapp` com HMAC SHA-256, send via channel config,
+inbox unificado em `/admin/crm/inbox`.
+
+**Automacao**: DAG em JSON versionado em `automations.dag`. Executor em
+`crm-automation-executor.service.ts` com 9 node types (trigger, condition,
+wait, send_whatsapp, create_activity, assign_owner, move_stage,
+update_deal, ai_action). Builder visual ReactFlow em
+`/admin/crm/automations/[id]`. Triggers disparados em deal_created,
+deal_stage_change, lead_created (fire-and-forget via dispatcher).
+
+**AI Actions**: prompts versionados (Anthropic Messages API direto, sem
+SDK), output validado por JSON Schema antes de aplicar no entity-target.
+Telemetria de tokens/cost em `crm_ai_action_runs`.
+
+**BI snapshot-first**: cron diario `/api/cron/crm-snapshot` (06h UTC)
+popula `crm_pipeline_snapshots`, `crm_org_snapshots` e
+`crm_lead_funnel_snapshots`. Reports em `/admin/crm/reports` leem direto
+sem agregacao (recharts + export CSV). Health score em
+`/api/cron/crm-health-compute` (05h UTC) com componentes email 35% +
+revenue 30% + tickets 20% + NPS 15%.
+
+**Atalhos**: Cmd+K (palette global) + sequencia "g+letra" no scope
+/admin/crm/* (g+l=leads, g+p=pipelines, g+c=CS, g+i=inbox, g+a=
+automacoes, g+r=reports, g+d=dashboard).
 
 Documentacao completa em `docs/crm/`.
 
