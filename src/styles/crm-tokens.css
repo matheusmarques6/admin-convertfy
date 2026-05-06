@@ -1,0 +1,209 @@
+/**
+ * CRM Convertfy — Design tokens (Fase 1)
+ *
+ * Tokens copiados literalmente do UI_UX_DESIGN_SYSTEM.md §2.
+ *
+ * Uso: importar em src/app/layout.tsx ou globals.css. Componentes do CRM
+ * referenciam via var(--crm-*) — nunca valores avulsos. Isso garante que
+ * mudar um token muda toda a interface CRM consistentemente.
+ *
+ * Por que prefixo `--crm-`? Pra nao colidir com tokens existentes do
+ * admin (Tailwind config). Quando quisermos unificar o admin todo no
+ * mesmo design system, basta remover o prefixo.
+ */
+
+:root {
+  /* ── Tipografia ───────────────────────────────────────────────── */
+  --crm-font-sans: "Geist", "Inter", "Söhne", "Helvetica Neue", sans-serif;
+  --crm-font-mono: "Geist Mono", "JetBrains Mono", monospace;
+
+  --crm-text-xs: 11px;
+  --crm-text-sm: 12px;
+  --crm-text-base: 13px;
+  --crm-text-md: 14px;
+  --crm-text-lg: 16px;
+  --crm-text-xl: 20px;
+  --crm-text-2xl: 26px;
+  --crm-text-3xl: 32px;
+
+  --crm-weight-regular: 400;
+  --crm-weight-medium: 530;
+
+  --crm-leading-tight: 1.25;
+  --crm-leading-normal: 1.45;
+  --crm-leading-relaxed: 1.6;
+
+  /* ── Cinzas (paleta principal — 80% da UI) ─────────────────────── */
+  --crm-gray-0: #FFFFFF;
+  --crm-gray-50: #FAFAFA;
+  --crm-gray-100: #F4F4F5;
+  --crm-gray-200: #E4E4E7;
+  --crm-gray-300: #D4D4D8;
+  --crm-gray-400: #A1A1AA;
+  --crm-gray-500: #71717A;
+  --crm-gray-600: #52525B;
+  --crm-gray-700: #3F3F46;
+  --crm-gray-800: #27272A;
+  --crm-gray-900: #18181B;
+  --crm-gray-950: #09090B;
+
+  /* ── Cores semanticas (uso escasso) ───────────────────────────── */
+  --crm-success-bg: #ECFDF5;
+  --crm-success-fg: #047857;
+  --crm-success-border: #A7F3D0;
+
+  --crm-warning-bg: #FEFCE8;
+  --crm-warning-fg: #854D0E;
+  --crm-warning-border: #FDE68A;
+
+  --crm-danger-bg: #FEF2F2;
+  --crm-danger-fg: #B91C1C;
+  --crm-danger-border: #FECACA;
+
+  --crm-info-bg: #EFF6FF;
+  --crm-info-fg: #1D4ED8;
+  --crm-info-border: #BFDBFE;
+
+  /* ── Marca: PRETO, nao azul. Nao roxo. ────────────────────────── */
+  --crm-brand: #1F1F1F;
+  --crm-brand-fg: #FFFFFF;
+  --crm-brand-hover: #2A2A2A;
+
+  /* ── Acento (link / focus ring) ───────────────────────────────── */
+  --crm-accent: #2563EB;
+
+  /* ── Espacamento (escala 4px) ─────────────────────────────────── */
+  --crm-space-1: 4px;
+  --crm-space-2: 8px;
+  --crm-space-3: 12px;
+  --crm-space-4: 16px;
+  --crm-space-5: 20px;
+  --crm-space-6: 24px;
+  --crm-space-8: 32px;
+  --crm-space-10: 40px;
+  --crm-space-12: 48px;
+  --crm-space-16: 64px;
+
+  /* ── Border-radius (4px e 6px — nao 8px) ──────────────────────── */
+  --crm-radius-sm: 3px;
+  --crm-radius-md: 4px;
+  --crm-radius-lg: 6px;
+  --crm-radius-full: 9999px;
+
+  /* ── Sombras (quase nada) ─────────────────────────────────────── */
+  --crm-shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --crm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --crm-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --crm-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  /* ── Dimensoes fixas (nao improvisar) ─────────────────────────── */
+  --crm-card-kanban-width: 280px;
+  --crm-column-kanban-width: 296px;
+  --crm-sidebar-width: 216px;
+  --crm-sidebar-collapsed: 56px;
+  --crm-topbar-height: 44px;
+  --crm-table-row-height: 36px;
+  --crm-table-header-height: 32px;
+  --crm-input-height: 32px;
+  --crm-button-height: 32px;
+  --crm-button-height-sm: 28px;
+  --crm-button-height-lg: 36px;
+  --crm-card-padding: 12px;
+
+  /* ── Animacao ─────────────────────────────────────────────────── */
+  --crm-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --crm-duration-fast: 150ms;
+  --crm-duration-normal: 200ms;
+  --crm-duration-slow: 300ms;
+}
+
+/* ── Dark mode — auto via [data-theme="dark"] ──────────────────── */
+[data-theme="dark"],
+.dark {
+  --crm-gray-0: #18181B;
+  --crm-gray-50: #1F1F23;
+  --crm-gray-100: #27272A;
+  --crm-gray-200: #3F3F46;
+  --crm-gray-300: #52525B;
+  --crm-gray-400: #71717A;
+  --crm-gray-500: #A1A1AA;
+  --crm-gray-600: #D4D4D8;
+  --crm-gray-700: #E4E4E7;
+  --crm-gray-800: #F4F4F5;
+  --crm-gray-900: #FAFAFA;
+  --crm-gray-950: #FFFFFF;
+
+  --crm-brand: #FAFAFA;
+  --crm-brand-fg: #18181B;
+  --crm-brand-hover: #E4E4E7;
+
+  --crm-success-bg: rgba(4, 120, 87, 0.15);
+  --crm-warning-bg: rgba(133, 77, 14, 0.15);
+  --crm-danger-bg: rgba(185, 28, 28, 0.15);
+  --crm-info-bg: rgba(29, 78, 216, 0.15);
+}
+
+/* ── Utilities pra rapido uso ─────────────────────────────────── */
+.crm-card {
+  background: var(--crm-gray-0);
+  border: 1px solid var(--crm-gray-200);
+  border-radius: var(--crm-radius-md);
+  padding: var(--crm-card-padding);
+  font-family: var(--crm-font-sans);
+}
+
+.crm-card:hover {
+  border-color: var(--crm-gray-300);
+  box-shadow: var(--crm-shadow-sm);
+}
+
+.crm-button-primary {
+  background: var(--crm-brand);
+  color: var(--crm-brand-fg);
+  height: var(--crm-button-height);
+  padding: 8px 14px;
+  font-size: var(--crm-text-base);
+  font-weight: var(--crm-weight-medium);
+  border-radius: var(--crm-radius-md);
+  border: 0;
+  cursor: pointer;
+  transition: background var(--crm-duration-fast) var(--crm-ease);
+}
+
+.crm-button-primary:hover {
+  background: var(--crm-brand-hover);
+}
+
+.crm-button-ghost {
+  background: transparent;
+  color: var(--crm-gray-700);
+  height: var(--crm-button-height);
+  padding: 8px 14px;
+  font-size: var(--crm-text-base);
+  font-weight: var(--crm-weight-medium);
+  border: 1px solid var(--crm-gray-300);
+  border-radius: var(--crm-radius-md);
+  cursor: pointer;
+  transition: background var(--crm-duration-fast) var(--crm-ease);
+}
+
+.crm-button-ghost:hover {
+  background: var(--crm-gray-100);
+}
+
+.crm-input {
+  background: var(--crm-gray-0);
+  border: 1px solid var(--crm-gray-300);
+  border-radius: var(--crm-radius-md);
+  padding: 0 10px;
+  height: var(--crm-input-height);
+  font-size: var(--crm-text-base);
+  color: var(--crm-gray-900);
+  font-family: var(--crm-font-sans);
+}
+
+.crm-input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 0;
+  border-color: var(--crm-accent);
+}

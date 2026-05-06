@@ -73,6 +73,36 @@ export const ROUTES = {
     },
 
     PIPELINE: "/admin/pipeline",
+
+    CRM: {
+      ROOT: "/admin/crm",
+      SALES: {
+        ROOT: "/admin/crm/sales",
+        PIPELINES: "/admin/crm/sales/pipelines",
+        PIPELINE_DETAIL: (id: string) => `/admin/crm/sales/pipelines/${id}` as const,
+        LEADS: "/admin/crm/sales/leads",
+        LEAD_DETAIL: (id: string) => `/admin/crm/sales/leads/${id}` as const,
+        DEAL_DETAIL: (id: string) => `/admin/crm/sales/deals/${id}` as const,
+        DASHBOARD: "/admin/crm/sales/dashboard",
+      },
+      CS: {
+        ROOT: "/admin/crm/cs",
+        PIPELINES: "/admin/crm/cs/pipelines",
+        PIPELINE_DETAIL: (id: string) => `/admin/crm/cs/pipelines/${id}` as const,
+        DEAL_DETAIL: (id: string) => `/admin/crm/cs/deals/${id}` as const,
+        DASHBOARD: "/admin/crm/cs/dashboard",
+      },
+      INBOX: "/admin/crm/inbox",
+      INBOX_THREAD: (id: string) => `/admin/crm/inbox/${id}` as const,
+      AUTOMATIONS: {
+        LIST: "/admin/crm/automations",
+        NEW: "/admin/crm/automations/new",
+        DETAIL: (id: string) => `/admin/crm/automations/${id}` as const,
+      },
+      REPORTS: "/admin/crm/reports",
+      PARTNERS: "/admin/crm/partners",
+    },
+
     TEAM: "/admin/team",
     NOTIFICATIONS: "/admin/notifications",
     ONBOARDING: "/admin/onboarding",

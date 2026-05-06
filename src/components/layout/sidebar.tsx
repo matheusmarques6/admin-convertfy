@@ -24,6 +24,12 @@ import {
   Heart,
   Sparkles,
   ListFilter,
+  Briefcase,
+  HeartHandshake,
+  Inbox,
+  Workflow,
+  BarChart3,
+  UserPlus,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -54,6 +60,7 @@ interface NavItem {
 const NAV_GROUPS = [
   { key: "principal", label: "" },
   { key: "produtividade", label: "Produtividade" },
+  { key: "crm", label: "CRM" },
   { key: "gestao", label: "Gestao" },
   { key: "marketing", label: "Marketing" },
   { key: "operacional", label: "Operacional" },
@@ -69,6 +76,13 @@ const navigation: NavItem[] = [
   // pra deep-linking, so nao polui mais a sidebar.
   { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
   { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
+  // CRM — comercial + customer success
+  { name: "Comercial", href: ROUTES.ADMIN.CRM.SALES.PIPELINES, icon: Briefcase, group: "crm" },
+  { name: "Leads", href: ROUTES.ADMIN.CRM.SALES.LEADS, icon: UserPlus, group: "crm" },
+  { name: "Customer Success", href: ROUTES.ADMIN.CRM.CS.PIPELINES, icon: HeartHandshake, group: "crm" },
+  { name: "Inbox", href: ROUTES.ADMIN.CRM.INBOX, icon: Inbox, group: "crm" },
+  { name: "Automacoes", href: ROUTES.ADMIN.CRM.AUTOMATIONS.LIST, icon: Workflow, group: "crm" },
+  { name: "Reports CRM", href: ROUTES.ADMIN.CRM.REPORTS, icon: BarChart3, group: "crm" },
   // GESTÃO
   { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "gestao", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "gestao", requiresStoreAccess: true },

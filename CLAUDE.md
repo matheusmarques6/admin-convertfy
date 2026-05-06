@@ -1011,5 +1011,30 @@ Para o mesmo periodo, `sum(flow_revenue + campaign_revenue)` via Reporting API *
 
 ---
 
+## CRM Convertfy (em construcao — Fase 1)
+
+CRM **nativo** integrado ao admin. Deals referenciam `clients`/`client_stores`
+via FK; nada e duplicado. Dois escopos: `sales` (aquisicao) e `cs` (customer
+success). Tabelas estendidas: `pipelines`, `pipeline_stages`, `deals`. Tabelas
+novas: `crm_leads`, `crm_contacts`, `crm_partners`, `crm_deal_history`,
+`crm_deal_activities`, `crm_deal_tags`, `crm_health_history`.
+
+Design tokens em `src/styles/crm-tokens.css` com prefixo `--crm-*`. Regras
+nao-negociaveis: border-radius 4-6px (nunca 8px), brand PRETO (#1F1F1F)
+nunca azul/roxo, densidade alta (cards 280px, rows 36px), cinzas dominam
+(80% da UI), sem sombras grandes (cards usam border).
+
+APIs em `/api/crm/*` seguem o padrao do projeto: `createAdminClient` + Zod
++ `errorResponse/successResponse`. Tipos em `src/types/crm.ts`.
+
+**Mensageria**: WhatsApp Cloud API oficial (Fase 4). Apenas APIs oficiais.
+**Automacao**: DAG em JSON versionado com retry/idempotencia (Fase 5).
+**BI**: snapshot-first via `crm_health_history`, sem agregacao ad-hoc em
+runtime (Fase 6).
+
+Documentacao completa em `docs/crm/`.
+
+---
+
 *Última atualização: Marco 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
