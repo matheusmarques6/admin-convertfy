@@ -1,10 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd"
 import type { KanbanStage } from "./kanban-board"
 import type { DealCardData } from "./deal-card"
-import { Building2, AlertCircle, Heart } from "lucide-react"
+import { Building2 } from "lucide-react"
 
 interface StateBoardProps {
   stages: KanbanStage[]
@@ -55,7 +55,7 @@ export function StateBoard({ stages, deals, onMove, onCardClick }: StateBoardPro
   const [optimistic, setOptimistic] = useState(deals)
   const [moving, setMoving] = useState(false)
 
-  useMemo(() => setOptimistic(deals), [deals])
+  useEffect(() => setOptimistic(deals), [deals])
 
   const dealsByStage = useMemo(() => {
     const map = new Map<string, typeof optimistic>()

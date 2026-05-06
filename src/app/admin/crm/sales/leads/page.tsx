@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import { Plus, Search, UserPlus } from "lucide-react"
@@ -33,6 +33,14 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 export default function SalesLeadsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SalesLeadsPageInner />
+    </Suspense>
+  )
+}
+
+function SalesLeadsPageInner() {
   const searchParams = useSearchParams()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("")

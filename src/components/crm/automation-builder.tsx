@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReactFlow, {
   Node,
   Edge,
@@ -24,7 +24,6 @@ import {
   Sparkles,
   FileText,
   UserCheck,
-  ArrowRight,
 } from "lucide-react"
 import type { CrmAutomationDAG, CrmNodeType } from "@/types/crm-automation"
 
@@ -140,36 +139,45 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  const emit = useCallback(
-    (newNodes: Node[], newEdges: Edge[]) => {
-      const dag: CrmAutomationDAG = {
-        nodes: newNodes.map((n) => ({
-          id: n.id,
-          type: n.data.type as CrmNodeType,
-          position: n.position,
-          config: n.data.config || {},
-        })),
-        edges: newEdges.map((e) => ({
-          id: e.id,
-          from: e.source,
-          to: e.target,
-          condition: typeof e.label === "string" ? e.label : undefined,
-        })),
-      }
-      onChange?.(dag)
-    },
-    [onChange],
-  )
+  // Mantem o callback em ref pra evitar re-runs do useEffect quando o
+  // parent passa um onChange novo a cada render.
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  // Single source of truth: serializa o DAG sempre que nodes/edges mudam.
+  // Substitui o padrao anterior de setTimeout(emit, 0) que sofria de
+  // stale-closure (chamada com nodes/edges do render anterior).
+  // Skipa o primeiro render pra nao sobrescrever o initialDag.
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    const dag: CrmAutomationDAG = {
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        type: n.data.type as CrmNodeType,
+        position: n.position,
+        config: n.data.config || {},
+      })),
+      edges: edges.map((e) => ({
+        id: e.id,
+        from: e.source,
+        to: e.target,
+        condition: typeof e.label === "string" ? e.label : undefined,
+      })),
+    }
+    onChangeRef.current?.(dag)
+  }, [nodes, edges])
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => {
-        const newEdges = addEdge({ ...connection, type: "smoothstep", animated: true }, eds)
-        emit(nodes, newEdges)
-        return newEdges
-      })
+      setEdges((eds) => addEdge({ ...connection, type: "smoothstep", animated: true }, eds))
     },
-    [nodes, setEdges, emit],
+    [setEdges],
   )
 
   const addNode = (type: CrmNodeType) => {
@@ -185,33 +193,29 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
         onSelect: () => setSelectedNodeId(id),
       },
     }
-    setNodes((nds) => {
-      const newNodes = [...nds, newNode]
-      emit(newNodes, edges)
-      return newNodes
-    })
+    setNodes((nds) => [...nds, newNode])
   }
 
   const updateNodeConfig = (nodeId: string, patch: Record<string, unknown>) => {
-    setNodes((nds) => {
-      const updated = nds.map((n) => {
+    setNodes((nds) =>
+      nds.map((n) => {
         if (n.id !== nodeId) return n
         const newConfig = { ...n.data.config, ...patch }
-        return { ...n, data: { ...n.data, config: newConfig, label: nodeLabel(n.data.type, newConfig) } }
-      })
-      emit(updated, edges)
-      return updated
-    })
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            config: newConfig,
+            label: nodeLabel(n.data.type, newConfig),
+          },
+        }
+      }),
+    )
   }
 
   const deleteNode = (nodeId: string) => {
-    setNodes((nds) => {
-      const updated = nds.filter((n) => n.id !== nodeId)
-      const updatedEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId)
-      setEdges(updatedEdges)
-      emit(updated, updatedEdges)
-      return updated
-    })
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     setSelectedNodeId(null)
   }
 
@@ -271,15 +275,8 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          onNodesChange={(changes) => {
-            onNodesChange(changes)
-            // Emit on next tick so state has updated
-            setTimeout(() => emit(nodes, edges), 0)
-          }}
-          onEdgesChange={(changes) => {
-            onEdgesChange(changes)
-            setTimeout(() => emit(nodes, edges), 0)
-          }}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onPaneClick={() => setSelectedNodeId(null)}

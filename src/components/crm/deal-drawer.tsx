@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import useSWR, { mutate as swrMutate } from "swr"
+import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X, MessageSquare, FileText, Phone, Mail, Calendar, Building2, User, Tag, ExternalLink } from "lucide-react"
 
@@ -428,5 +428,3 @@ function MetaField({ icon, label, value }: { icon: React.ReactNode; label: strin
     </div>
   )
 }
-
-export { swrMutate as mutateDeal }

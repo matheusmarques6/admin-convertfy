@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import useSWR, { mutate as globalMutate } from "swr"
-import { Search, Send, MessageSquare, Filter, Phone, ArrowRight } from "lucide-react"
+import useSWR from "swr"
+import { Search, Send, MessageSquare, Filter, Phone } from "lucide-react"
 import { CrmEmptyState } from "./crm-empty-state"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -58,6 +58,10 @@ export function InboxView() {
   const [composer, setComposer] = useState("")
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const wasAtBottomRef = useRef(true)
+  const lastThreadIdRef = useRef<string | null>(null)
+  const lastMessageCountRef = useRef(0)
 
   const params = new URLSearchParams()
   params.set("status", statusFilter)
@@ -79,12 +83,35 @@ export function InboxView() {
   const threads = threadsData?.data?.threads || []
   const detail = detailData?.data
 
-  // Auto-scroll on new messages
+  // Auto-scroll quando novas mensagens chegam — somente se o usuario ja
+  // estava perto do fim. Caso esteja lendo historico, nao interrompe.
+  // Quando muda de thread, sempre rola pro fim.
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const messageCount = detail?.messages?.length || 0
+    const threadChanged = lastThreadIdRef.current !== (detail?.thread?.id || null)
+    const newMessages = messageCount > lastMessageCountRef.current
+
+    lastThreadIdRef.current = detail?.thread?.id || null
+    lastMessageCountRef.current = messageCount
+
+    if (threadChanged || (newMessages && wasAtBottomRef.current)) {
+      // Scroll instantaneo na troca de thread, smooth em mensagens novas
+      messagesEndRef.current?.scrollIntoView({
+        behavior: threadChanged ? "auto" : "smooth",
+      })
     }
-  }, [detail?.messages?.length])
+  }, [detail?.messages?.length, detail?.thread?.id])
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight
+    wasAtBottomRef.current = distanceFromBottom < 80
+  }
 
   // Mark as read when thread opens
   useEffect(() => {
@@ -367,6 +394,8 @@ export function InboxView() {
 
             {/* Messages */}
             <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
               className="flex-1 overflow-auto px-4 py-4 space-y-3"
               style={{ background: "var(--crm-gray-50)" }}
             >

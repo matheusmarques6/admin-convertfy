@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   DragDropContext,
   Droppable,
@@ -41,8 +41,9 @@ export function KanbanBoard({ stages, deals, onMove, onCardClick, onAddDeal }: K
   const [optimisticDeals, setOptimisticDeals] = useState(deals)
   const [isMoving, setIsMoving] = useState(false)
 
-  // Sync when prop deals changes (after revalidation)
-  useMemo(() => {
+  // Sync when prop deals changes (after revalidation). useEffect — nao
+  // useMemo, que e pra valores puros sem side effect.
+  useEffect(() => {
     setOptimisticDeals(deals)
   }, [deals])
 

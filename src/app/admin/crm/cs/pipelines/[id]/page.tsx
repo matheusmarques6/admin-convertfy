@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { PipelineBoardView } from "@/components/crm/pipeline-board-view"
 
 export default async function CsPipelineDetailPage({
@@ -6,5 +7,9 @@ export default async function CsPipelineDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  return <PipelineBoardView pipelineId={id} scope="cs" />
+  return (
+    <Suspense fallback={null}>
+      <PipelineBoardView pipelineId={id} scope="cs" />
+    </Suspense>
+  )
 }
