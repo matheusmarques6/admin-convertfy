@@ -25,6 +25,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/sync-omnisend?periods=1d,7d,30d,90d",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/reports/cleanup",
       "schedule": "0 3 * * *"
     }

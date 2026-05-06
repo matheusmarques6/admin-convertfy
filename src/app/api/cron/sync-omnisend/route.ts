@@ -104,32 +104,62 @@ export async function GET(request: NextRequest) {
 
         log.info(`Syncing Omnisend for ${store.store_name}`, { storeId: store.id })
 
-        // Sync 30-day period (primary period for dashboard)
-        const syncResult = await syncOmnisendForStore({
-          storeId: store.id,
-          orgId: store.org_id,
-          apiKey,
-          periodDays: 30,
-        })
+        // Lista de periods a sincronizar. Padrao: so 30d (cada 30min).
+        // Quando ?periods=1d,7d,30d,90d e passado (cron diario), roda
+        // todos pra dashboard ter "Hoje" e "7D" funcionais. Limite oficial:
+        // 55 calls/dia/brand. Estimativa: 48×30d + 3×{1d,7d,90d} = 51/dia/loja.
+        const periodsParam = request.nextUrl.searchParams.get("periods")
+        const periodsToSync: Array<{ label: string; days: number }> = periodsParam
+          ? periodsParam.split(",").map((p) => p.trim()).filter(Boolean).map((p) => {
+              if (p === "today" || p === "1d") return { label: "1d", days: 1 }
+              if (p === "7d") return { label: "7d", days: 7 }
+              if (p === "30d") return { label: "30d", days: 30 }
+              if (p === "90d") return { label: "90d", days: 90 }
+              return { label: "30d", days: 30 }
+            })
+          : [{ label: "30d", days: 30 }]
 
-        if (!syncResult.ok || !syncResult.data) {
+        let syncedCount = 0
+        let lastSyncResult: Awaited<ReturnType<typeof syncOmnisendForStore>> | null = null
+        for (const period of periodsToSync) {
+          const syncResult = await syncOmnisendForStore({
+            storeId: store.id,
+            orgId: store.org_id,
+            apiKey,
+            periodDays: period.days,
+          })
+
+          if (!syncResult.ok || !syncResult.data) {
+            log.warn(`[CronSyncOmnisend] sync failed for ${store.store_name}/${period.label}`, {
+              error: syncResult.error,
+            })
+            continue
+          }
+
+          await upsertOmnisendSyncResults(
+            adminClient,
+            { id: store.id, org_id: store.org_id },
+            syncResult.data,
+            period.label,
+          )
+          syncedCount++
+          lastSyncResult = syncResult
+
+          // Espaca chamadas entre periods da mesma loja (rate limit Statistics)
+          if (periodsToSync.length > 1) await sleep(8000)
+        }
+
+        if (syncedCount === 0 || !lastSyncResult?.data) {
           results.push({
             storeId: store.id,
             storeName: store.store_name,
             status: "error",
-            error: syncResult.error || "Sync failed",
+            error: lastSyncResult?.error || "All period syncs failed",
           })
           continue
         }
 
-        const data = syncResult.data
-
-        await upsertOmnisendSyncResults(
-          adminClient,
-          { id: store.id, org_id: store.org_id },
-          data,
-          "30d",
-        )
+        const data = lastSyncResult.data
 
         results.push({
           storeId: store.id,
