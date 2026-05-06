@@ -386,16 +386,27 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
 
   const getFormattedDateRange = () => {
     if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
-      const start = new Date(reportData.dateRange.start)
-      const end = new Date(reportData.dateRange.end)
-      return `${start.toLocaleDateString('pt-BR')} - ${end.toLocaleDateString('pt-BR')}`
+      // Parse manual da string YYYY-MM-DD pra evitar shift de timezone.
+      // new Date("2026-04-06").toLocaleDateString('pt-BR') interpreta a
+      // string como UTC 00:00 e formata em SP (UTC-3), retornando o
+      // dia ANTERIOR (05/04 em vez de 06/04). Como o backend ja envia
+      // o range correto em pt-BR, so reformatamos a string.
+      const formatYMD = (s: string): string => {
+        const ymd = s.slice(0, 10).split('-')
+        if (ymd.length !== 3) return s
+        return `${ymd[2]}/${ymd[1]}/${ymd[0]}`
+      }
+      return `${formatYMD(reportData.dateRange.start)} - ${formatYMD(reportData.dateRange.end)}`
     }
     return ''
   }
 
   const getMonthYear = () => {
     if (reportData?.dateRange?.end) {
-      const date = new Date(reportData.dateRange.end)
+      // Mesma armadilha de timezone do getFormattedDateRange — parse
+      // manual da string YYYY-MM-DD pra obter month/year corretos.
+      const [yStr, mStr] = reportData.dateRange.end.slice(0, 10).split('-')
+      const date = new Date(Number(yStr), Number(mStr) - 1, 15)  // dia 15 evita boundary
       return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()
     }
     return new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()

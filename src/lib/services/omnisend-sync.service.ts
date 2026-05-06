@@ -1627,19 +1627,21 @@ async function doSyncOmnisendForStore(params: {
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
     const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
-    // engagedContacts via /api/analytics/reports openedUnique (caminho
-    // recomendado pelo suporte 2026-05-06). Cap em subscribedContacts —
-    // mas se raw EXCEDE muito o subscribed (>110%), e claramente
-    // overcount da agregacao da API; exibimos 0 (UI mostra "—") em vez
-    // de capar em 100% espurio. Limite tolerante (110%) absorve pequena
-    // imprecisao de boundary do periodo, mas pega overcount obvio.
+    // engagedContacts via /api/analytics/reports openedUnique. Threshold
+    // tightened: se engagedRaw >= subscribedContacts, consideramos
+    // overcount da API (improvavel ter 100% real de engagement) e
+    // mostramos 0 → UI exibe "—". Antes usavamos 1.1x mas isso
+    // permitia raw === subscribed cair no Math.min → cap em subscribed
+    // → 100% espurio (caso visto: Blessed Choice 71243/71243).
+    //
+    // Limite legitimo de engagement: openedUnique nunca pode exceder
+    // subscribedContacts (mais contatos abriram do que existem opt-in).
+    // Se chega no limite ou ultrapassa, e overcount agregacional.
     const engagedRaw = reportsTotals.openedUnique || activityBreakdown.engagement.openedUnique || 0
-    const engagedTooHigh = subscribedContacts > 0 && engagedRaw > subscribedContacts * 1.1
+    const engagedTooHigh = subscribedContacts > 0 && engagedRaw >= subscribedContacts
     const engagedContacts = engagedTooHigh
-      ? 0  // mascara overcount obvio — UI mostra "—" via condicional `?: "—"`
-      : subscribedContacts > 0
-        ? Math.min(engagedRaw, subscribedContacts)
-        : engagedRaw
+      ? 0  // mascara overcount — UI mostra "—"
+      : engagedRaw
 
     log.info("[OmnisendSync] Sync summary", {
       storeId,
