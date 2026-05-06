@@ -876,16 +876,20 @@ export async function fetchOmnisendActivityBreakdown(
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
-            // 4a query: engagement TOTAL agregado do periodo (sem
-            // dimensions). Antes usavamos granularity=day e somavamos
-            // openedUnique de cada dia — overcount enorme: contato que
-            // abriu emails em 30 dias contava 30x. Resultado pratico:
-            // Clube Rock tinha 149k "engajados" em base de 50k (300%),
-            // mostrando 100% de engajamento espurio.
+            // 4a query: engagement TOTAL agregado do periodo.
             //
-            // Sem `dimensions: timestamp`, a API retorna 1 row com o
-            // openedUnique consolidado do range (count distinct sobre
-            // o periodo inteiro), proxy direto de "abriu >= 1 email".
+            // Statistics API exige `dimensions: [{timestamp, granularity}]`
+            // sempre — sem dimension a API retorna 400 "timestamp
+            // dimension is required". Usamos granularity=month para ter
+            // o minimo de buckets possivel (1-2 rows pra range de 30d
+            // que cai em 1-2 meses).
+            //
+            // openedUnique somado dos meses ainda pode dar overcount
+            // (contato que abriu em meses diferentes conta 2x), mas o
+            // cap em min(openedUnique, subscribedContacts) na linha
+            // engagedContacts neutraliza casos extremos. Confirmado pelo
+            // suporte (2026-05-06): nao ha endpoint que garanta dedup
+            // global no range — e aproximacao.
             {
               alias: "engagement",
               metrics: [
@@ -900,6 +904,7 @@ export async function fetchOmnisendActivityBreakdown(
                 from: new Date(startDate).toISOString(),
                 to: new Date(endDate).toISOString(),
               },
+              dimensions: [{ name: "timestamp", granularity: "month" }],
             },
           ],
         },
@@ -1296,6 +1301,12 @@ async function doSyncOmnisendForStore(params: {
       log.info(`[DIAG] Campaign sample fields: ${keys.join(", ")}`, {
         storeId,
         hasStats: !!sample.stats,
+        // Suporte Omnisend (2026-05-06) confirmou que marketingActivityID
+        // === campaignID === id. Logamos os 2 candidatos pra confirmar
+        // qual o /v5/campaigns retorna nesta versao.
+        campaignIDField: sample.campaignID,
+        idField: sample.id,
+        resolvedId: getCampaignId(sample),
         sampleKeys: keys.slice(0, 20),
         statsKeys: sample.stats ? Object.keys(sample.stats) : [],
         rawStatsSnippet: sample.stats ? JSON.stringify(sample.stats).slice(0, 300) : "null",
