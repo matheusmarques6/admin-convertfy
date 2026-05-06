@@ -8,6 +8,7 @@ import { ArrowLeft, Plus, ChevronDown } from "lucide-react"
 import { CrmPageShell } from "./crm-page-shell"
 import { CrmEmptyState } from "./crm-empty-state"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
+import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
 import { NewDealDialog } from "./new-deal-dialog"
 import { ROUTES } from "@/lib/routes"
@@ -177,6 +178,15 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
             description="Configure os estagios deste pipeline antes de criar deals."
           />
         </div>
+      ) : pipeline.layout === "state" ? (
+        <StateBoard
+          stages={pipeline.stages}
+          deals={filteredDeals}
+          onMove={async (dealId, toStageId) => {
+            await handleMove(dealId, toStageId, 10)
+          }}
+          onCardClick={(id) => setActiveDealId(id)}
+        />
       ) : (
         <KanbanBoard
           stages={pipeline.stages}
