@@ -84,6 +84,7 @@ function timeAgo(dateStr: string): string {
 const ALERT_TYPE_LABELS: Record<string, string> = {
   low_revenue: "Faturamento Baixo",
   klaviyo_account_error: "Erro Klaviyo",
+  omnisend_account_error: "Erro Omnisend",
   campaign_failure: "Falha Campanha",
   low_recovery_rate: "Recuperação Baixa",
 }
@@ -267,13 +268,25 @@ export function StoresPageTabs() {
     },
     {
       accessorKey: "has_klaviyo",
-      header: "Klaviyo",
+      header: "Email",
       mobilePriority: "badge",
-      cell: (row) => (
-        <StatusBadge
-          status={row.has_klaviyo ? "connected" : "disconnected"}
-        />
-      ),
+      cell: (row) => {
+        // Considera ambas as plataformas — antes a coluna so olhava
+        // has_klaviyo e marcava lojas Omnisend como "Desconectado"
+        // mesmo tendo a integracao funcionando.
+        const hasEmail = row.has_klaviyo || row.has_omnisend
+        const platform = row.has_klaviyo ? "Klaviyo" : row.has_omnisend ? "Omnisend" : null
+        return (
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={hasEmail ? "connected" : "disconnected"} />
+            {platform && (
+              <span className="text-[10px] text-muted-foreground/70 font-medium">
+                {platform}
+              </span>
+            )}
+          </div>
+        )
+      },
     },
     {
       accessorKey: "is_active",

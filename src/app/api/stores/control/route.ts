@@ -411,34 +411,62 @@ export async function GET(request: Request) {
       const storeIds = storesToFetch.map(s => s.id)
       if (storeIds.length === 0) return { revenueMap, shopifyRevenueMap, syncMetaMap }
 
-      const { data: revenueData, error: revError } = await supabase
+      // Inclui colunas Omnisend tambem — antes so puxava klaviyo_*, fazendo
+      // lojas Omnisend (Blessed Choice, Vivazz, etc) mostrarem R$ 0 na lista.
+      // Tenta com colunas Omnisend; se a migration nao foi aplicada (raro),
+      // faz fallback so com klaviyo_*.
+      const colsWithOmnisend = "store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, currency, sync_status, fetched_at"
+      const colsWithoutOmnisend = "store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, sync_status, fetched_at"
+
+      let revData = await supabase
         .from("store_revenue_summary")
-        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, sync_status, fetched_at")
+        .select(colsWithOmnisend)
         .eq("period_label", "30d")
         .eq("org_id", orgId)
         .in("store_id", storeIds)
         .gt("expires_at", new Date().toISOString())
 
-      if (revError) {
-        log.warn("Error fetching revenue summaries:", revError)
+      if (revData.error && /omnisend_/.test(revData.error.message || "")) {
+        // Migration omnisend_* nao aplicada — fallback
+        revData = await supabase
+          .from("store_revenue_summary")
+          .select(colsWithoutOmnisend)
+          .eq("period_label", "30d")
+          .eq("org_id", orgId)
+          .in("store_id", storeIds)
+          .gt("expires_at", new Date().toISOString())
+      }
+
+      if (revData.error) {
+        log.warn("Error fetching revenue summaries:", revData.error)
         return { revenueMap, shopifyRevenueMap, syncMetaMap }
       }
 
-      for (const r of revenueData || []) {
-        revenueMap.set(r.store_id, {
-          storeId: r.store_id,
-          totalRevenue: r.sync_status === "error" ? -1 : Number(r.klaviyo_total_revenue),
-          campaignRevenue: Number(r.klaviyo_campaign_revenue),
-          flowRevenue: Number(r.klaviyo_flow_revenue),
-          currency: r.currency || "BRL",
+      for (const r of (revData.data || []) as Array<Record<string, unknown>>) {
+        const klavTotal = Number(r.klaviyo_total_revenue) || 0
+        const omnTotal = Number(r.omnisend_total_revenue) || 0
+        const klavCamp = Number(r.klaviyo_campaign_revenue) || 0
+        const omnCamp = Number(r.omnisend_campaign_revenue) || 0
+        const klavFlow = Number(r.klaviyo_flow_revenue) || 0
+        const omnFlow = Number(r.omnisend_flow_revenue) || 0
+        // Combina Klaviyo + Omnisend (lojas raramente tem ambos, mas se
+        // tiverem somamos). Ainda chamado "klaviyoRevenue" no row pra
+        // compatibilidade com a UI existente — semantica e
+        // "email-platform-attributed-revenue".
+        revenueMap.set(r.store_id as string, {
+          storeId: r.store_id as string,
+          totalRevenue: r.sync_status === "error" ? -1 : (klavTotal + omnTotal),
+          campaignRevenue: klavCamp + omnCamp,
+          flowRevenue: klavFlow + omnFlow,
+          currency: (r.currency as string) || "BRL",
         })
-        const shopifyRev = Number(r.store_total_revenue)
+        const shopifyRev = Number(r.store_total_revenue) || 0
         if (shopifyRev > 0) {
-          shopifyRevenueMap.set(r.store_id, shopifyRev)
+          shopifyRevenueMap.set(r.store_id as string, shopifyRev)
         }
-        syncMetaMap.set(r.store_id, {
-          fetchedAt: r.fetched_at as string | null,
-          syncStatus: r.sync_status as string,
+        syncMetaMap.set(r.store_id as string, {
+          fetchedAt: (r.fetched_at as string) || null,
+          syncStatus: (r.sync_status as string) || "pending",
         })
       }
 
