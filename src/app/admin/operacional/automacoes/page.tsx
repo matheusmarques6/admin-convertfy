@@ -159,7 +159,7 @@ export default function CrmAutomationsListPage() {
               <div key={a.id} className="crm-card flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <Link
-                    href={ROUTES.ADMIN.CRM.AUTOMATIONS.DETAIL(a.id)}
+                    href={ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.DETAIL(a.id)}
                     style={{
                       fontSize: "var(--crm-text-md)",
                       fontWeight: "var(--crm-weight-medium)",

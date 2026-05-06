@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import useSWR from "swr"
-import { Plus, GitBranch } from "lucide-react"
+import { Plus, HeartHandshake } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { ROUTES } from "@/lib/routes"
@@ -14,16 +14,14 @@ interface PipelineSummary {
   name: string
   description: string | null
   scope: string
-  color: string | null
   layout: string | null
-  is_archived: boolean
   stages: Array<{ id: string; name: string; position: number; stage_type: string | null }>
   deals_count: number
 }
 
-export default function SalesPipelinesPage() {
+export default function CsPipelinesPage() {
   const { data, isLoading } = useSWR<{ pipelines: PipelineSummary[] }>(
-    "/api/crm/pipelines?scope=sales",
+    "/api/crm/pipelines?scope=cs",
     fetcher,
   )
 
@@ -31,37 +29,35 @@ export default function SalesPipelinesPage() {
 
   return (
     <CrmPageShell
-      title="Pipelines comerciais"
-      subtitle="Inbound, Outbound, Indicacoes e demais funis de aquisicao"
+      title="Customer Success"
+      subtitle="Onboarding 30d, Gestao de Carteira, Feedback Mensal e Tickets"
       actions={
         <button
           className="crm-button-primary"
           style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
         >
           <Plus className="h-3.5 w-3.5" />
-          Novo pipeline
+          Novo pipeline CS
         </button>
       }
     >
       <div className="p-6">
         {isLoading ? (
-          <div
-            style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
-          >
+          <div style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
             Carregando...
           </div>
         ) : pipelines.length === 0 ? (
           <CrmEmptyState
-            icon={<GitBranch className="h-5 w-5" />}
-            title="Nenhum pipeline configurado"
-            description="Os pipelines pre-configurados (Inbound, Outbound, Indicacoes) sao criados automaticamente ao executar a migration de seed."
+            icon={<HeartHandshake className="h-5 w-5" />}
+            title="Nenhum pipeline de CS configurado"
+            description="Os pipelines pre-configurados sao criados automaticamente pela migration de seed."
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {pipelines.map((p) => (
               <Link
                 key={p.id}
-                href={ROUTES.ADMIN.CRM.SALES.PIPELINE_DETAIL(p.id)}
+                href={ROUTES.ADMIN.OPERACIONAL.PIPELINE_DETAIL(p.id)}
                 className="crm-card"
                 style={{ display: "flex", flexDirection: "column", gap: "var(--crm-space-2)" }}
               >
@@ -81,7 +77,7 @@ export default function SalesPipelinesPage() {
                       color: "var(--crm-gray-500)",
                     }}
                   >
-                    {p.deals_count} deals
+                    {p.deals_count} cards
                   </span>
                 </div>
                 {p.description && (
@@ -96,31 +92,24 @@ export default function SalesPipelinesPage() {
                   </p>
                 )}
                 <div
-                  className="mt-auto flex flex-wrap gap-1 pt-2"
+                  className="mt-auto flex items-center justify-between pt-2"
                   style={{ borderTop: "1px solid var(--crm-gray-200)" }}
                 >
-                  {p.stages.slice(0, 5).map((s) => (
+                  <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
+                    {p.stages.length} estagios
+                  </span>
+                  {p.layout === "state" && (
                     <span
-                      key={s.id}
                       style={{
                         fontSize: "var(--crm-text-xs)",
-                        color: "var(--crm-gray-600)",
-                        background: "var(--crm-gray-100)",
+                        color: "var(--crm-info-fg)",
+                        background: "var(--crm-info-bg)",
                         padding: "2px 6px",
                         borderRadius: "var(--crm-radius-sm)",
+                        fontWeight: "var(--crm-weight-medium)",
                       }}
                     >
-                      {s.name}
-                    </span>
-                  ))}
-                  {p.stages.length > 5 && (
-                    <span
-                      style={{
-                        fontSize: "var(--crm-text-xs)",
-                        color: "var(--crm-gray-500)",
-                      }}
-                    >
-                      +{p.stages.length - 5}
+                      State board
                     </span>
                   )}
                 </div>

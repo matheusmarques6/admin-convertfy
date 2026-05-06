@@ -66,16 +66,22 @@ const navigationItems: CommandItem[] = [
   { name: "Ferramentas", href: "/admin/tools", icon: Wrench, group: "Navegação" },
   { name: "Configurações", href: "/admin/settings", icon: Settings, group: "Navegação" },
 
-  // CRM
-  { name: "CRM — Pipelines comerciais", href: "/admin/crm/sales/pipelines", icon: Briefcase, group: "CRM" },
-  { name: "CRM — Leads", href: "/admin/crm/sales/leads", icon: UserPlus, group: "CRM" },
-  { name: "CRM — Dashboard comercial", href: "/admin/crm/sales/dashboard", icon: BarChart3, group: "CRM" },
-  { name: "CRM — Customer Success", href: "/admin/crm/cs/pipelines", icon: HeartHandshake, group: "CRM" },
-  { name: "CRM — Dashboard CS", href: "/admin/crm/cs/dashboard", icon: BarChart3, group: "CRM" },
-  { name: "CRM — Inbox", href: "/admin/crm/inbox", icon: Inbox, group: "CRM" },
-  { name: "CRM — Automacoes", href: "/admin/crm/automations", icon: Workflow, group: "CRM" },
-  { name: "CRM — Reports", href: "/admin/crm/reports", icon: BarChart3, group: "CRM" },
-  { name: "CRM — Canais (WhatsApp)", href: "/admin/crm/channels", icon: Phone, group: "CRM" },
+  // Comercial
+  { name: "Comercial — Dashboard", href: "/admin/comercial/dashboard", icon: LayoutDashboard, group: "Comercial" },
+  { name: "Comercial — Pipelines", href: "/admin/comercial/pipelines", icon: Briefcase, group: "Comercial" },
+  { name: "Comercial — Leads", href: "/admin/comercial/leads", icon: UserPlus, group: "Comercial" },
+  { name: "Comercial — Reports", href: "/admin/comercial/reports", icon: BarChart3, group: "Comercial" },
+
+  // Operacional
+  { name: "Operacional — Dashboard", href: "/admin/operacional/dashboard", icon: LayoutDashboard, group: "Operacional" },
+  { name: "Operacional — Pipelines CS", href: "/admin/operacional/pipelines", icon: HeartHandshake, group: "Operacional" },
+  { name: "Operacional — Saude", href: "/admin/health", icon: HeartHandshake, group: "Operacional" },
+  { name: "Operacional — Automacoes", href: "/admin/operacional/automacoes", icon: Workflow, group: "Operacional" },
+  { name: "Operacional — Canais (WhatsApp)", href: "/admin/operacional/canais", icon: Phone, group: "Operacional" },
+  { name: "Operacional — Reports", href: "/admin/operacional/reports", icon: BarChart3, group: "Operacional" },
+
+  // Compartilhado
+  { name: "Inbox (mensagens)", href: "/admin/inbox", icon: Inbox, group: "Atendimento" },
 ]
 
 const actionItems: CommandItem[] = [
@@ -84,7 +90,7 @@ const actionItems: CommandItem[] = [
   { name: "Nova Automação", href: "/admin/automations/new", icon: Zap, group: "Ações Rápidas" },
   { name: "Novo Relatório", href: "/admin/reports/new", icon: FileText, group: "Ações Rápidas" },
   { name: "Agendar Reunião", href: "/admin/meetings", icon: Calendar, group: "Ações Rápidas" },
-  { name: "CRM — Novo lead", href: "/admin/crm/sales/leads", icon: UserPlus, group: "Ações Rápidas" },
+  { name: "Novo lead (Comercial)", href: "/admin/comercial/leads", icon: UserPlus, group: "Ações Rápidas" },
 ]
 
 const allItems: CommandItem[] = [...navigationItems, ...actionItems]

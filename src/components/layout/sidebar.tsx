@@ -7,8 +7,6 @@ import {
   Home,
   Users,
   Store,
-  GitBranch,
-  SquareKanban,
   Calendar,
   Mail,
   DollarSign,
@@ -60,44 +58,47 @@ interface NavItem {
 const NAV_GROUPS = [
   { key: "principal", label: "" },
   { key: "produtividade", label: "Produtividade" },
-  { key: "crm", label: "CRM" },
-  { key: "gestao", label: "Gestao" },
-  { key: "marketing", label: "Marketing" },
+  { key: "comercial", label: "Comercial" },
   { key: "operacional", label: "Operacional" },
+  { key: "compartilhado", label: "Atendimento" },
+  { key: "financeiro", label: "Financeiro" },
 ] as const
 
 const navigation: NavItem[] = [
   // PRINCIPAL
   { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
-  // PRODUTIVIDADE — sidebar enxuta (Opcao A): so 2 itens visiveis.
-  // Metas, Habitos, Foco e Calendario sao acessados de DENTRO do
-  // ProductivityHome (cards do hub) ou via links internos no Board.
-  // Routes /productivity/{goals,habits,focus} continuam existindo
-  // pra deep-linking, so nao polui mais a sidebar.
+  // PRODUTIVIDADE — sidebar enxuta: so 2 itens. Metas/Habitos/Foco/
+  // Calendario sao acessados via cards do ProductivityHome.
   { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
   { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
-  // CRM — comercial + customer success
-  { name: "Comercial", href: ROUTES.ADMIN.CRM.SALES.PIPELINES, icon: Briefcase, group: "crm" },
-  { name: "Leads", href: ROUTES.ADMIN.CRM.SALES.LEADS, icon: UserPlus, group: "crm" },
-  { name: "Customer Success", href: ROUTES.ADMIN.CRM.CS.PIPELINES, icon: HeartHandshake, group: "crm" },
-  { name: "Inbox", href: ROUTES.ADMIN.CRM.INBOX, icon: Inbox, group: "crm" },
-  { name: "Automacoes", href: ROUTES.ADMIN.CRM.AUTOMATIONS.LIST, icon: Workflow, group: "crm" },
-  { name: "Reports CRM", href: ROUTES.ADMIN.CRM.REPORTS, icon: BarChart3, group: "crm" },
-  // GESTÃO
-  { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "gestao", requiredFeatures: ["create_clients", "onboarding_control"] },
-  { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "gestao", requiresStoreAccess: true },
-  { name: "Pipeline", href: ROUTES.ADMIN.PIPELINE, icon: GitBranch, group: "gestao", requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Board", href: ROUTES.ADMIN.BOARD, icon: SquareKanban, group: "gestao", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
-  { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "gestao", requiredFeatures: ["calendar_control"] },
-  // MARKETING
-  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  // OPERACIONAL
-  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
-  { name: "Reports", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
+
+  // COMERCIAL — vendedor / SDR vive aqui
+  { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard, group: "comercial" },
+  { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase, group: "comercial" },
+  { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus, group: "comercial" },
+  { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "comercial", requiredFeatures: ["calendar_control"] },
+  { name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3, group: "comercial" },
+
+  // OPERACIONAL — CSM / especialista vive aqui
+  { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard, group: "operacional" },
+  { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake, group: "operacional" },
+  { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "operacional", requiredFeatures: ["create_clients", "onboarding_control"] },
+  { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "operacional", requiresStoreAccess: true },
   { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "operacional", requiredFeatures: ["onboarding_control", "onboarding_view"] },
   { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart, group: "operacional" },
+  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail, group: "operacional", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
+  { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow, group: "operacional" },
+  { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Inbox, group: "operacional" },
   { name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles, group: "operacional" },
   { name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter, group: "operacional" },
+  { name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3, group: "operacional" },
+
+  // COMPARTILHADO — comercial e operacional acessam
+  { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox, group: "compartilhado" },
+
+  // FINANCEIRO + relatorios genericos
+  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "financeiro", requiredFeatures: ["view_financial"] },
+  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "financeiro", requiredFeatures: ["view_reports"] },
 ]
 
 // ---------------------------------------------------------------------------

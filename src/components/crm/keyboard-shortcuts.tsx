@@ -5,28 +5,40 @@ import { useRouter, usePathname } from "next/navigation"
 import { ROUTES } from "@/lib/routes"
 
 /**
- * CRM keyboard shortcuts (estilo Linear/Superhuman):
- * - g + l → Leads
- * - g + p → Pipelines comerciais
- * - g + c → Customer Success
- * - g + i → Inbox
- * - g + a → Automacoes
- * - g + r → Reports
- * - g + d → Dashboard comercial
+ * Atalhos globais de navegacao (estilo Linear/Superhuman) com prefixo
+ * "g + letra". Janela de 1.5s entre teclas. Ativos em rotas /admin/*.
  *
- * Inputs/textareas/selects sao ignorados (so dispara fora deles).
+ * Comercial:
+ *   g + d  → Dashboard comercial
+ *   g + p  → Pipelines comerciais
+ *   g + l  → Leads
+ *   g + r  → Reports comercial
+ *
+ * Operacional:
+ *   g + o  → Dashboard operacional (CS)
+ *   g + c  → Pipelines CS
+ *   g + s  → Saude
+ *   g + a  → Automacoes
+ *
+ * Compartilhado:
+ *   g + i  → Inbox
  *
  * Cmd+K continua sendo o command palette (gerenciado em outro lugar).
  */
 
 const SHORTCUTS: Record<string, string> = {
-  l: ROUTES.ADMIN.CRM.SALES.LEADS,
-  p: ROUTES.ADMIN.CRM.SALES.PIPELINES,
-  c: ROUTES.ADMIN.CRM.CS.PIPELINES,
-  i: ROUTES.ADMIN.CRM.INBOX,
-  a: ROUTES.ADMIN.CRM.AUTOMATIONS.LIST,
-  r: ROUTES.ADMIN.CRM.REPORTS,
-  d: ROUTES.ADMIN.CRM.SALES.DASHBOARD,
+  // Comercial
+  d: ROUTES.ADMIN.COMERCIAL.DASHBOARD,
+  p: ROUTES.ADMIN.COMERCIAL.PIPELINES,
+  l: ROUTES.ADMIN.COMERCIAL.LEADS,
+  r: ROUTES.ADMIN.COMERCIAL.REPORTS,
+  // Operacional
+  o: ROUTES.ADMIN.OPERACIONAL.DASHBOARD,
+  c: ROUTES.ADMIN.OPERACIONAL.PIPELINES,
+  s: ROUTES.ADMIN.HEALTH,
+  a: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST,
+  // Compartilhado
+  i: ROUTES.ADMIN.INBOX,
 }
 
 export function CrmKeyboardShortcuts() {
@@ -34,8 +46,8 @@ export function CrmKeyboardShortcuts() {
   const pathname = usePathname()
 
   useEffect(() => {
-    // So ativa em rotas /admin/crm/*
-    if (!pathname?.startsWith("/admin/crm")) return
+    // Ativa em qualquer rota /admin/*
+    if (!pathname?.startsWith("/admin")) return
 
     let prefixActive = false
     let prefixTimer: ReturnType<typeof setTimeout> | null = null

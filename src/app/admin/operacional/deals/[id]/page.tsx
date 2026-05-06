@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { ROUTES } from "@/lib/routes"
 
-export default async function SalesDealRedirect({
+export default async function CsDealRedirect({
   params,
 }: {
   params: Promise<{ id: string }>
@@ -16,17 +16,11 @@ export default async function SalesDealRedirect({
   const admin = createAdminClient()
   const { data: deal } = await admin
     .from("deals")
-    .select("pipeline_id, pipeline:pipelines!inner(scope)")
+    .select("pipeline_id")
     .eq("id", id)
     .single()
 
-  if (!deal) redirect(ROUTES.ADMIN.CRM.SALES.PIPELINES)
+  if (!deal) redirect(ROUTES.ADMIN.OPERACIONAL.PIPELINES)
 
-  const scope = (deal as any).pipeline?.scope
-  const path =
-    scope === "cs"
-      ? ROUTES.ADMIN.CRM.CS.PIPELINE_DETAIL(deal.pipeline_id)
-      : ROUTES.ADMIN.CRM.SALES.PIPELINE_DETAIL(deal.pipeline_id)
-
-  redirect(`${path}?deal=${id}`)
+  redirect(`${ROUTES.ADMIN.OPERACIONAL.PIPELINE_DETAIL(deal.pipeline_id)}?deal=${id}`)
 }

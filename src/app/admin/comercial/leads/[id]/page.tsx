@@ -7,5 +7,5 @@ export default async function SalesLeadRedirect({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  redirect(`${ROUTES.ADMIN.CRM.SALES.LEADS}?lead=${id}`)
+  redirect(`${ROUTES.ADMIN.COMERCIAL.LEADS}?lead=${id}`)
 }

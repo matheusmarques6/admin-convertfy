@@ -435,7 +435,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
         mutate()
         onUpdated?.()
         // Navega pra ficha do deal recem-criado
-        router.push(ROUTES.ADMIN.CRM.SALES.DEAL_DETAIL(dealId))
+        router.push(ROUTES.ADMIN.COMERCIAL.DEAL_DETAIL(dealId))
       }}
     />
     </>

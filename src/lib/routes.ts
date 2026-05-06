@@ -74,34 +74,67 @@ export const ROUTES = {
 
     PIPELINE: "/admin/pipeline",
 
+    // ── COMERCIAL (aquisicao / sales) ───────────────────────────────────
+    COMERCIAL: {
+      ROOT: "/admin/comercial",
+      DASHBOARD: "/admin/comercial/dashboard",
+      PIPELINES: "/admin/comercial/pipelines",
+      PIPELINE_DETAIL: (id: string) => `/admin/comercial/pipelines/${id}` as const,
+      LEADS: "/admin/comercial/leads",
+      LEAD_DETAIL: (id: string) => `/admin/comercial/leads/${id}` as const,
+      DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
+      REPORTS: "/admin/comercial/reports",
+    },
+
+    // ── OPERACIONAL (pos-venda / cs / ops) ──────────────────────────────
+    OPERACIONAL: {
+      ROOT: "/admin/operacional",
+      DASHBOARD: "/admin/operacional/dashboard",
+      PIPELINES: "/admin/operacional/pipelines",
+      PIPELINE_DETAIL: (id: string) => `/admin/operacional/pipelines/${id}` as const,
+      DEAL_DETAIL: (id: string) => `/admin/operacional/deals/${id}` as const,
+      AUTOMACOES: {
+        LIST: "/admin/operacional/automacoes",
+        DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,
+      },
+      CANAIS: "/admin/operacional/canais",
+      REPORTS: "/admin/operacional/reports",
+    },
+
+    // ── Compartilhado (comercial e operacional acessam) ─────────────────
+    INBOX: "/admin/inbox",
+    INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
+
+    // ── Deprecated (alias de compat — usar COMERCIAL/OPERACIONAL) ───────
+    /** @deprecated Use ROUTES.ADMIN.COMERCIAL e ROUTES.ADMIN.OPERACIONAL */
     CRM: {
-      ROOT: "/admin/crm",
+      ROOT: "/admin/comercial",
       SALES: {
-        ROOT: "/admin/crm/sales",
-        PIPELINES: "/admin/crm/sales/pipelines",
-        PIPELINE_DETAIL: (id: string) => `/admin/crm/sales/pipelines/${id}` as const,
-        LEADS: "/admin/crm/sales/leads",
-        LEAD_DETAIL: (id: string) => `/admin/crm/sales/leads/${id}` as const,
-        DEAL_DETAIL: (id: string) => `/admin/crm/sales/deals/${id}` as const,
-        DASHBOARD: "/admin/crm/sales/dashboard",
+        ROOT: "/admin/comercial",
+        PIPELINES: "/admin/comercial/pipelines",
+        PIPELINE_DETAIL: (id: string) => `/admin/comercial/pipelines/${id}` as const,
+        LEADS: "/admin/comercial/leads",
+        LEAD_DETAIL: (id: string) => `/admin/comercial/leads/${id}` as const,
+        DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
+        DASHBOARD: "/admin/comercial/dashboard",
       },
       CS: {
-        ROOT: "/admin/crm/cs",
-        PIPELINES: "/admin/crm/cs/pipelines",
-        PIPELINE_DETAIL: (id: string) => `/admin/crm/cs/pipelines/${id}` as const,
-        DEAL_DETAIL: (id: string) => `/admin/crm/cs/deals/${id}` as const,
-        DASHBOARD: "/admin/crm/cs/dashboard",
+        ROOT: "/admin/operacional",
+        PIPELINES: "/admin/operacional/pipelines",
+        PIPELINE_DETAIL: (id: string) => `/admin/operacional/pipelines/${id}` as const,
+        DEAL_DETAIL: (id: string) => `/admin/operacional/deals/${id}` as const,
+        DASHBOARD: "/admin/operacional/dashboard",
       },
-      INBOX: "/admin/crm/inbox",
-      INBOX_THREAD: (id: string) => `/admin/crm/inbox/${id}` as const,
+      INBOX: "/admin/inbox",
+      INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
       AUTOMATIONS: {
-        LIST: "/admin/crm/automations",
-        NEW: "/admin/crm/automations/new",
-        DETAIL: (id: string) => `/admin/crm/automations/${id}` as const,
+        LIST: "/admin/operacional/automacoes",
+        NEW: "/admin/operacional/automacoes/new",
+        DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,
       },
-      REPORTS: "/admin/crm/reports",
-      PARTNERS: "/admin/crm/partners",
-      CHANNELS: "/admin/crm/channels",
+      REPORTS: "/admin/operacional/reports",
+      PARTNERS: "/admin/operacional/partners",
+      CHANNELS: "/admin/operacional/canais",
     },
 
     TEAM: "/admin/team",
@@ -206,6 +239,25 @@ export const LEGACY_REDIRECTS: Array<{ source: string; destination: string; perm
   { source: "/tools", destination: ROUTES.ADMIN.TOOLS, permanent: true },
   { source: "/settings", destination: ROUTES.ADMIN.SETTINGS.ROOT, permanent: true },
   { source: "/settings/:path*", destination: "/admin/settings/:path*", permanent: true },
+
+  // CRM legado → Comercial / Operacional
+  { source: "/admin/crm", destination: "/admin/comercial/pipelines", permanent: true },
+  { source: "/admin/crm/sales/pipelines", destination: "/admin/comercial/pipelines", permanent: true },
+  { source: "/admin/crm/sales/pipelines/:id", destination: "/admin/comercial/pipelines/:id", permanent: true },
+  { source: "/admin/crm/sales/leads", destination: "/admin/comercial/leads", permanent: true },
+  { source: "/admin/crm/sales/leads/:id", destination: "/admin/comercial/leads/:id", permanent: true },
+  { source: "/admin/crm/sales/deals/:id", destination: "/admin/comercial/deals/:id", permanent: true },
+  { source: "/admin/crm/sales/dashboard", destination: "/admin/comercial/dashboard", permanent: true },
+  { source: "/admin/crm/cs/pipelines", destination: "/admin/operacional/pipelines", permanent: true },
+  { source: "/admin/crm/cs/pipelines/:id", destination: "/admin/operacional/pipelines/:id", permanent: true },
+  { source: "/admin/crm/cs/deals/:id", destination: "/admin/operacional/deals/:id", permanent: true },
+  { source: "/admin/crm/cs/dashboard", destination: "/admin/operacional/dashboard", permanent: true },
+  { source: "/admin/crm/inbox", destination: "/admin/inbox", permanent: true },
+  { source: "/admin/crm/inbox/:id", destination: "/admin/inbox/:id", permanent: true },
+  { source: "/admin/crm/automations", destination: "/admin/operacional/automacoes", permanent: true },
+  { source: "/admin/crm/automations/:id", destination: "/admin/operacional/automacoes/:id", permanent: true },
+  { source: "/admin/crm/channels", destination: "/admin/operacional/canais", permanent: true },
+  { source: "/admin/crm/reports", destination: "/admin/operacional/reports", permanent: true },
 
   // Portal → Client routes
   { source: "/portal/login", destination: ROUTES.CLIENT.LOGIN, permanent: true },

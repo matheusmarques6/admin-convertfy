@@ -210,8 +210,8 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
 
   const backHref =
     scope === "cs"
-      ? ROUTES.ADMIN.CRM.CS.PIPELINES
-      : ROUTES.ADMIN.CRM.SALES.PIPELINES
+      ? ROUTES.ADMIN.OPERACIONAL.PIPELINES
+      : ROUTES.ADMIN.COMERCIAL.PIPELINES
 
   return (
     <CrmPageShell
