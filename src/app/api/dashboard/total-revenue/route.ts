@@ -18,14 +18,18 @@ interface StoreRevenue {
   storeId: string
   storeName: string
   clientName: string
-  /** Revenue in the store's original currency */
+  /** Total da loja (Shopify/Statistics totalRevenue) na moeda original */
   totalRevenue: number
+  /** Receita atribuida ao email marketing (campaign + flow) na moeda original */
+  attributedRevenue: number
   campaignRevenue: number
   flowRevenue: number
   /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
   currency: string
-  /** Revenue converted to BRL for aggregation */
+  /** Total da loja convertido pra BRL */
   totalRevenueBRL: number
+  /** Atribuido convertido pra BRL */
+  attributedRevenueBRL: number
   campaignRevenueBRL: number
   flowRevenueBRL: number
 }
@@ -61,6 +65,7 @@ async function buildStoreBreakdown(rows: Array<{
   omnisend_total_revenue?: number | string | null
   omnisend_campaign_revenue?: number | string | null
   omnisend_flow_revenue?: number | string | null
+  store_total_revenue?: number | string | null
   currency?: string | null
   sync_status: string
   fetched_at: string | null
@@ -74,14 +79,21 @@ async function buildStoreBreakdown(rows: Array<{
       clients: { name: string } | null
     }
     const currency = s.currency || "BRL"
-    // Cada loja usa UMA plataforma — soma as duas (a nao-usada e zero).
-    // Isso permite que o dashboard consolide receita independente da fonte.
-    const totalRev = Number(s.klaviyo_total_revenue || 0) + Number(s.omnisend_total_revenue || 0)
+    // klaviyo_total_revenue e omnisend_total_revenue sao o ATRIBUIDO
+    // (revenue de email marketing). store_total_revenue e o total REAL
+    // da loja (vindo de Shopify ou Statistics totalRevenue). Pra calcular
+    // % atribuicao, totalRev precisa ser o total real, nao o atribuido.
+    // Bug anterior: totalRev = attributed, fazendo recovery rate = 100%.
+    const attributedRev = Number(s.klaviyo_total_revenue || 0) + Number(s.omnisend_total_revenue || 0)
     const campaignRev = Number(s.klaviyo_campaign_revenue || 0) + Number(s.omnisend_campaign_revenue || 0)
     const flowRev = Number(s.klaviyo_flow_revenue || 0) + Number(s.omnisend_flow_revenue || 0)
+    // Total da loja: prefere store_total_revenue (real), fallback no
+    // attributed se nao houver Shopify conectado (loja "email-only").
+    const totalRev = Number(s.store_total_revenue || 0) || attributedRev
 
-    const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
+    const [totalBRL, attributedBRL, campaignBRL, flowBRL] = await Promise.all([
       convertToBRL(totalRev, currency),
+      convertToBRL(attributedRev, currency),
       convertToBRL(campaignRev, currency),
       convertToBRL(flowRev, currency),
     ])
@@ -93,10 +105,12 @@ async function buildStoreBreakdown(rows: Array<{
         ? (storeData.clients?.name || "Cliente desconhecido")
         : storeData.store_name || "Loja avulsa",
       totalRevenue: totalRev,
+      attributedRevenue: attributedRev,
       campaignRevenue: campaignRev,
       flowRevenue: flowRev,
       currency,
       totalRevenueBRL: totalBRL,
+      attributedRevenueBRL: attributedBRL,
       campaignRevenueBRL: campaignBRL,
       flowRevenueBRL: flowBRL,
     }

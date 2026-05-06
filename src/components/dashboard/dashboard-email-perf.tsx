@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import useSWR from "swr"
 import {
   AreaChart,
   Area,
@@ -18,6 +19,43 @@ import {
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip"
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+interface EmailPerfApiResponse {
+  data?: {
+    metrics: {
+      openRate: number
+      clickRate: number
+      ctor: number
+      placedOrderRate: number
+      rpe: number
+      deliveryRate: number
+      bounceRate: number
+      unsubRate: number
+    }
+    totals: {
+      recipients: number
+      delivered: number
+      opened: number
+      clicked: number
+      bounced: number
+      unsubscribed: number
+      conversions: number
+      revenue: number
+    }
+    audience: {
+      totalLeads: number
+      engagedLeads: number
+    }
+  }
+}
+
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString("pt-BR")
+}
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -45,6 +83,7 @@ interface ChartPoint {
 
 interface DashboardEmailPerfProps {
   loading?: boolean
+  period?: string
 }
 
 // ─── Empty chart data (zeros — awaiting sync) ───────────
@@ -247,11 +286,53 @@ function EmailPerfSkeleton() {
 
 // ─── Main Component ─────────────────────────────────────
 
-export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps) {
+export function DashboardEmailPerf({ loading = false, period = "30d" }: DashboardEmailPerfProps) {
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>("openRate")
 
+  // Busca metricas reais do endpoint que agrega DB
+  const { data: apiData } = useSWR<EmailPerfApiResponse>(
+    `/api/dashboard/email-performance?period=${period}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const apiMetrics = apiData?.data?.metrics
+  const apiTotals = apiData?.data?.totals
+  const apiAudience = apiData?.data?.audience
+
+  // Substitui METRICS placeholder com valores reais
+  const liveMetrics: MetricDefinition[] = useMemo(() => {
+    if (!apiMetrics) return METRICS
+    return [
+      { key: "openRate", label: "Open Rate", value: `${apiMetrics.openRate.toFixed(1)}%`, delta: 0, format: "percent" },
+      { key: "clickRate", label: "Click Rate", value: `${apiMetrics.clickRate.toFixed(2)}%`, delta: 0, format: "percent" },
+      { key: "ctor", label: "CTOR", value: `${apiMetrics.ctor.toFixed(1)}%`, delta: 0, format: "percent" },
+      { key: "placedOrder", label: "Placed Order", value: `${apiMetrics.placedOrderRate.toFixed(2)}%`, delta: 0, format: "percent" },
+      { key: "rpe", label: "RPE", value: `R$ ${apiMetrics.rpe.toFixed(2)}`, delta: 0, format: "currency" },
+      { key: "deliverability", label: "Deliverability", value: `${apiMetrics.deliveryRate.toFixed(1)}%`, delta: 0, format: "percent" },
+    ]
+  }, [apiMetrics])
+
+  const liveFooterStats = useMemo(() => {
+    if (!apiTotals || !apiAudience) return FOOTER_STATS
+    return [
+      { label: "Volume de Envios", value: fmtCompact(apiTotals.recipients) },
+      { label: "Perfis Ativos", value: fmtCompact(apiAudience.totalLeads) },
+      { label: "Engajados (90d)", value: fmtCompact(apiAudience.engagedLeads) },
+      { label: "Unsub Rate", value: `${apiMetrics?.unsubRate.toFixed(2) ?? "0.00"}%` },
+    ]
+  }, [apiTotals, apiAudience, apiMetrics])
+
+  const headerSubtitle = useMemo(() => {
+    if (!apiTotals) return "198.6K entregues · R$ 847K receita atribuida"
+    const delivered = fmtCompact(apiTotals.delivered)
+    const revenue = apiTotals.revenue > 1_000
+      ? `R$ ${fmtCompact(apiTotals.revenue)}`
+      : `R$ ${apiTotals.revenue.toFixed(2)}`
+    return `${delivered} entregues · ${revenue} receita atribuida`
+  }, [apiTotals])
+
   const chartData = useMemo(() => getChartData(selectedMetric), [selectedMetric])
-  const selectedDef = METRICS.find((m) => m.key === selectedMetric)!
+  const selectedDef = liveMetrics.find((m) => m.key === selectedMetric)!
 
   const domain = useMemo(() => {
     const allValues = chartData.flatMap((d) => [d.current, d.previous])
@@ -294,7 +375,7 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
             </TooltipProvider>
           </div>
           <p className="mt-0.5 text-xs text-gray-400 dark:text-white/50 dark:text-[#5C6378] font-mono tabular-nums">
-            198.6K entregues &middot; R$ 847K receita atribuida
+            {headerSubtitle}
           </p>
         </div>
         <div className="flex items-center gap-4 shrink-0 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
@@ -311,7 +392,7 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
 
       {/* ── Metric Grid ────────────────────────────────── */}
       <div className="mt-5 grid grid-cols-3 gap-3">
-        {METRICS.map((metric) => (
+        {liveMetrics.map((metric) => (
           <MetricTile
             key={metric.key}
             metric={metric}
@@ -397,7 +478,7 @@ export function DashboardEmailPerf({ loading = false }: DashboardEmailPerfProps)
       {/* ── Footer ─────────────────────────────────────── */}
       <div className="mt-5 border-t border-black/[0.08] dark:border-white/[0.08] pt-4">
         <div className="flex items-center justify-between gap-4">
-          {FOOTER_STATS.map((stat) => (
+          {liveFooterStats.map((stat) => (
             <div key={stat.label} className="flex flex-col items-center text-center">
               <span className="text-[11px] text-gray-400 dark:text-white/50 dark:text-[#5C6378]">
                 {stat.label}

@@ -150,24 +150,27 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
   const campaignRevenue = revenueData?.campaignRevenue ?? 0
   const flowRevenue = revenueData?.flowRevenue ?? 0
 
-  // Taxa Convertfy = média da % de receita atribuída de cada loja
+  // Taxa Convertfy = % agregada (atribuido total / total geral) — bate
+  // com a "% Receita atribuida media" do overview de lojas. Usa valores
+  // ja convertidos em BRL do storeBreakdown. Antes calculava media simples
+  // de % por loja, mas o totalRevenueBRL = attributedRevenueBRL (bug
+  // antigo no buildStoreBreakdown), gerando 100% espurio.
   const storeBreakdown = useMemo(
     () => revenueData?.storeBreakdown ?? [],
     [revenueData?.storeBreakdown],
   )
   const convertfyRate = useMemo(() => {
-    const storesWithRevenue = storeBreakdown.filter((s) => {
-      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-      return storeRev > 0
-    })
-    if (storesWithRevenue.length === 0) return 0
-    const sumPercents = storesWithRevenue.reduce((sum, s) => {
-      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-      const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
-        (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
-      return sum + (attributed / storeRev) * 100
+    type SB = typeof storeBreakdown[number] & { attributedRevenueBRL?: number }
+    const totalAll = storeBreakdown.reduce((sum, s) => sum + (Number(s.totalRevenueBRL) || 0), 0)
+    const totalAttributed = storeBreakdown.reduce((sum, s) => {
+      const sb = s as SB
+      // Prefere attributedRevenueBRL (novo); fallback no campaign+flow
+      // se backend ainda nao foi atualizado.
+      const attributed = Number(sb.attributedRevenueBRL)
+        || ((Number(s.campaignRevenueBRL) || 0) + (Number(s.flowRevenueBRL) || 0))
+      return sum + attributed
     }, 0)
-    return sumPercents / storesWithRevenue.length
+    return totalAll > 0 ? Math.min(100, (totalAttributed / totalAll) * 100) : 0
   }, [storeBreakdown])
 
   // Format compact currency
@@ -296,7 +299,7 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
         <AnimatedItem>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
             <Suspense fallback={<CardSkeleton />}>
-              <DashboardEmailPerf loading={isLoading} />
+              <DashboardEmailPerf loading={isLoading} period={revenuePeriod} />
             </Suspense>
             <Suspense fallback={<CardSkeleton />}>
               <DashboardClientHealth

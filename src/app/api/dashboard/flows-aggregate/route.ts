@@ -12,10 +12,17 @@ export const dynamic = "force-dynamic"
 
 type FlowCategory = "cart_recovery" | "browse_abandon" | "winback" | "welcome" | "other"
 
+// Patterns inclusivos pra cobrir nomes tipicos Convertfy:
+//   "Convertfy | Abandoned Cart | Blessed Choice"
+//   "Convertfy | Abandoned Checkout | Blessed Choice"
+//   "Convertfy | Site Abandon | Blessed Choice"
+//   "Convertfy | Viewed Product | Blessed Choice"
+//   "Convertfy | Welcome Flow | Blessed"
+//   "Convertfy | Winback | Blessed Choice"
 const FLOW_PATTERNS: { category: FlowCategory; patterns: RegExp[] }[] = [
-  { category: "cart_recovery", patterns: [/cart/i, /carrin/i, /abandon.*cart/i, /checkout/i] },
-  { category: "browse_abandon", patterns: [/browse/i, /navega/i, /abandon.*brows/i, /product.*view/i] },
-  { category: "winback", patterns: [/win.?back/i, /re.?engag/i, /lapsed/i, /retorn/i, /inativo/i] },
+  { category: "cart_recovery", patterns: [/cart/i, /carrin/i, /abandoned.?cart/i, /abandon.*checkout/i, /checkout.*abandon/i, /checkout/i] },
+  { category: "browse_abandon", patterns: [/browse/i, /navega/i, /site.?abandon/i, /viewed.?product/i, /product.?view/i, /rastreio/i] },
+  { category: "winback", patterns: [/win.?back/i, /re.?engag/i, /lapsed/i, /retorn/i, /inativo/i, /upsell/i] },
   { category: "welcome", patterns: [/welcome/i, /boas.?vindas/i, /onboard/i, /new.*subscri/i] },
 ]
 
