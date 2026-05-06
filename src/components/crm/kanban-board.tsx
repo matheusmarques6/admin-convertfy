@@ -7,7 +7,7 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, AlertCircle } from "lucide-react"
+import { Plus, AlertCircle, MoreHorizontal } from "lucide-react"
 import { DealCard, type DealCardData } from "./deal-card"
 
 export interface KanbanStage {
@@ -17,6 +17,8 @@ export interface KanbanStage {
   stage_type: string | null
   sla_hours: number | null
   exit_criteria: string | null
+  /** Cor opcional vinda do banco — sobrescreve a cor default por stage_type. */
+  color?: string | null
 }
 
 interface KanbanBoardProps {
@@ -25,10 +27,6 @@ interface KanbanBoardProps {
   onMove: (dealId: string, toStageId: string, toPosition: number) => Promise<void> | void
   onCardClick?: (id: string) => void
   onAddDeal?: (stageId: string) => void
-  /**
-   * Quando informados, o card mostra acoes rapidas de ganhar/perder no
-   * hover. O parent decide pra qual stage mover.
-   */
   onWinDeal?: (dealId: string) => void
   onLoseDeal?: (dealId: string) => void
 }
@@ -37,20 +35,21 @@ const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   }).format(v)
 
-const fmtBRLCompact = (v: number) => {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`
-  if (v >= 10_000) return `R$ ${Math.round(v / 1000)}k`
-  return fmtBRL(v)
+// Cor default da barra superior por stage_type — usada quando stage.color e null.
+const STAGE_TYPE_DEFAULT_COLOR: Record<string, string> = {
+  open: "#94A3B8",
+  won: "#10B981",
+  lost: "#EF4444",
+  paused: "#F59E0B",
 }
 
-const STAGE_TYPE_COLORS: Record<string, { fg: string }> = {
-  open: { fg: "var(--crm-gray-500)" },
-  won: { fg: "var(--crm-success-fg)" },
-  lost: { fg: "var(--crm-danger-fg)" },
-  paused: { fg: "var(--crm-warning-fg)" },
+function stageColor(stage: KanbanStage): string {
+  if (stage.color) return stage.color
+  return STAGE_TYPE_DEFAULT_COLOR[stage.stage_type || "open"] || "#94A3B8"
 }
 
 function daysSince(iso: string | null): number {
@@ -83,8 +82,8 @@ export function KanbanBoard({
     }
     for (const list of map.values()) {
       list.sort((a, b) => {
-        const va = (a as any).position ?? 0
-        const vb = (b as any).position ?? 0
+        const va = (a as { position?: number }).position ?? 0
+        const vb = (b as { position?: number }).position ?? 0
         return va - vb
       })
     }
@@ -135,19 +134,19 @@ export function KanbanBoard({
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div
-        className="flex h-full gap-3 overflow-x-auto px-6 py-4"
-        style={{ background: "var(--crm-gray-50)" }}
+        className="flex h-full gap-3 overflow-x-auto px-4 py-4"
+        style={{
+          background: "#F8FAFC",
+        }}
       >
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
-          const colors = STAGE_TYPE_COLORS[stageType] || STAGE_TYPE_COLORS.open
+          const color = stageColor(stage)
           const stageTotal = stageDeals.reduce(
             (sum, d) => sum + (d.value || 0),
             0,
           )
-
-          // SLA breach count na coluna
           const slaDays = stage.sla_hours
             ? Math.ceil(stage.sla_hours / 24)
             : null
@@ -156,40 +155,41 @@ export function KanbanBoard({
                 (d) => daysSince(d.last_stage_changed_at) > slaDays,
               ).length
             : 0
-
           const isTerminal = stageType === "won" || stageType === "lost"
 
           return (
             <div
               key={stage.id}
               style={{
-                width: "var(--crm-column-kanban-width)",
-                minWidth: "var(--crm-column-kanban-width)",
+                width: 296,
+                minWidth: 296,
                 display: "flex",
                 flexDirection: "column",
               }}
             >
-              {/* Column header — card-like, sticky */}
+              {/* Header de coluna — barra colorida no topo + sticky */}
               <div
                 style={{
-                  background: "var(--crm-gray-0)",
-                  border: "1px solid var(--crm-gray-200)",
-                  borderRadius: "var(--crm-radius-md)",
-                  padding: "8px 10px",
-                  marginBottom: 8,
+                  background: "#FFFFFF",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  borderTop: `3px solid ${color}`,
+                  padding: "10px 12px",
+                  marginBottom: 10,
                   position: "sticky",
                   top: 0,
                   zIndex: 1,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span
                       style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "var(--crm-radius-full)",
-                        background: colors.fg,
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: color,
                         flexShrink: 0,
                       }}
                     />
@@ -197,75 +197,89 @@ export function KanbanBoard({
                       title={stage.name}
                       className="truncate"
                       style={{
-                        fontSize: "var(--crm-text-sm)",
-                        fontWeight: "var(--crm-weight-medium)",
-                        color: "var(--crm-gray-900)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#1F2937",
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                       }}
                     >
                       {stage.name}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--crm-gray-500)",
-                        background: "var(--crm-gray-100)",
-                        padding: "1px 6px",
-                        borderRadius: "var(--crm-radius-full)",
-                        fontFamily: "var(--crm-font-mono)",
-                        fontWeight: "var(--crm-weight-medium)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {stageDeals.length}
-                    </span>
                   </div>
-                  {onAddDeal && !isTerminal && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onAddDeal && !isTerminal && (
+                      <button
+                        onClick={() => onAddDeal(stage.id)}
+                        aria-label="Adicionar deal"
+                        title="Adicionar deal aqui"
+                        className="hover:bg-[rgba(0,0,0,0.04)]"
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 4,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#9CA3AF",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button
-                      onClick={() => onAddDeal(stage.id)}
-                      aria-label="Adicionar deal"
-                      title="Adicionar deal aqui"
-                      className="flex h-5 w-5 items-center justify-center hover:bg-[color:var(--crm-gray-100)]"
+                      aria-label="Mais opcoes"
+                      title="Opcoes da coluna"
+                      className="hover:bg-[rgba(0,0,0,0.04)]"
                       style={{
-                        borderRadius: "var(--crm-radius-sm)",
-                        color: "var(--crm-gray-500)",
-                        flexShrink: 0,
+                        width: 22,
+                        height: 22,
+                        borderRadius: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#9CA3AF",
+                        cursor: "pointer",
                       }}
                     >
-                      <Plus className="h-3 w-3" />
+                      <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
-                  )}
+                  </div>
                 </div>
 
-                {/* Linha de meta: valor total + SLA breach */}
-                <div className="mt-1.5 flex items-center justify-between gap-2">
-                  <span
-                    style={{
-                      fontSize: "var(--crm-text-xs)",
-                      color:
-                        stageType === "won"
-                          ? "var(--crm-success-fg)"
-                          : "var(--crm-gray-700)",
-                      fontFamily: "var(--crm-font-mono)",
-                      fontWeight: "var(--crm-weight-medium)",
-                    }}
-                  >
-                    {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "—"}
-                  </span>
+                {/* Total + count + SLA breach */}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-baseline gap-1.5 min-w-0">
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#111827",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                      className="truncate"
+                    >
+                      {fmtBRL(stageTotal)}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#9CA3AF" }}>
+                      · {stageDeals.length} {stageDeals.length === 1 ? "negocio" : "negocios"}
+                    </span>
+                  </div>
                   {breachCount > 0 && (
                     <span
                       title={`${breachCount} deal(s) acima do SLA (${slaDays}d)`}
                       style={{
                         fontSize: 10,
-                        color: "var(--crm-danger-fg)",
-                        background: "var(--crm-danger-bg)",
+                        color: "#991B1B",
+                        background: "#FEE2E2",
                         padding: "1px 5px",
-                        borderRadius: "var(--crm-radius-sm)",
-                        fontWeight: "var(--crm-weight-medium)",
+                        borderRadius: 3,
+                        fontWeight: 600,
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 3,
+                        flexShrink: 0,
                       }}
                     >
                       <AlertCircle className="h-2.5 w-2.5" />
@@ -287,16 +301,15 @@ export function KanbanBoard({
                         ? "rgba(37, 99, 235, 0.04)"
                         : "transparent",
                       border: snapshot.isDraggingOver
-                        ? "1px dashed var(--crm-accent)"
+                        ? "1px dashed #2563EB"
                         : "1px dashed transparent",
-                      borderRadius: "var(--crm-radius-md)",
+                      borderRadius: 8,
                       padding: 4,
-                      transition:
-                        "background var(--crm-duration-fast) var(--crm-ease), border-color var(--crm-duration-fast) var(--crm-ease)",
-                      minHeight: 120,
+                      transition: "background 150ms ease, border-color 150ms ease",
+                      minHeight: 100,
                       display: "flex",
                       flexDirection: "column",
-                      gap: 6,
+                      gap: 8,
                     }}
                   >
                     {stageDeals.map((deal, index) => (
@@ -330,59 +343,32 @@ export function KanbanBoard({
                     ))}
                     {provided.placeholder}
 
-                    {/* Inline add at bottom — HubSpot pattern */}
-                    {onAddDeal && !isTerminal && stageDeals.length > 0 && (
+                    {/* Adicionar deal — botao discreto no final */}
+                    {onAddDeal && !isTerminal && (
                       <button
                         onClick={() => onAddDeal(stage.id)}
-                        className="hover:bg-[color:var(--crm-gray-100)] hover:border-[color:var(--crm-gray-300)]"
+                        className="hover:bg-[rgba(0,0,0,0.03)] hover:border-[rgba(0,0,0,0.12)]"
                         style={{
                           width: "100%",
-                          padding: "8px 10px",
-                          borderRadius: "var(--crm-radius-md)",
-                          border: "1px dashed var(--crm-gray-200)",
+                          padding: stageDeals.length === 0 ? "16px 12px" : "8px 12px",
+                          borderRadius: 6,
+                          border: "1px dashed rgba(0,0,0,0.10)",
                           background: "transparent",
-                          color: "var(--crm-gray-500)",
-                          fontSize: "var(--crm-text-xs)",
+                          color: "#9CA3AF",
+                          fontSize: 11,
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 4,
-                          marginTop: 2,
-                          transition:
-                            "background var(--crm-duration-fast) var(--crm-ease), border-color var(--crm-duration-fast) var(--crm-ease)",
+                          marginTop: stageDeals.length === 0 ? 0 : 2,
+                          transition: "background 150ms ease, border-color 150ms ease",
                         }}
                       >
                         <Plus className="h-3 w-3" />
-                        Adicionar deal
-                      </button>
-                    )}
-
-                    {/* Empty state inline */}
-                    {stageDeals.length === 0 && onAddDeal && !isTerminal && (
-                      <button
-                        onClick={() => onAddDeal(stage.id)}
-                        className="hover:bg-[color:var(--crm-gray-100)] hover:border-[color:var(--crm-gray-300)]"
-                        style={{
-                          width: "100%",
-                          padding: "20px 12px",
-                          borderRadius: "var(--crm-radius-md)",
-                          border: "1px dashed var(--crm-gray-200)",
-                          background: "transparent",
-                          color: "var(--crm-gray-400)",
-                          fontSize: "var(--crm-text-xs)",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          flexDirection: "column",
-                          transition:
-                            "background var(--crm-duration-fast) var(--crm-ease), border-color var(--crm-duration-fast) var(--crm-ease)",
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span>Adicionar deal</span>
+                        {stageDeals.length === 0
+                          ? "Adicionar primeiro deal"
+                          : "Adicionar"}
                       </button>
                     )}
                   </div>

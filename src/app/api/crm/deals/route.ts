@@ -80,7 +80,9 @@ const createDealSchema = z.object({
   source: z.string().nullable().optional(),
   utm: z.record(z.string(), z.unknown()).optional().default({}),
   tags: z.array(z.string()).optional().default([]),
-  owner_id: z.string().uuid(),
+  // owner_id opcional — se nao vier, usa o user autenticado (default).
+  // Frontend pode sobrescrever pra delegar pra outro vendedor.
+  owner_id: z.string().uuid().optional(),
   referrer_partner_id: z.string().uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
 })
@@ -88,11 +90,14 @@ const createDealSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     const body = await request.json()
     const parsed = createDealSchema.parse(body)
+
+    // owner_id default = current user (frontend pode sobrescrever)
+    const ownerId = parsed.owner_id ?? user.id
 
     // Posicao no fim da etapa (maior position + 1)
     const { data: maxPos } = await admin
@@ -109,6 +114,7 @@ export async function POST(request: NextRequest) {
       .from("deals")
       .insert({
         ...parsed,
+        owner_id: ownerId,
         position: nextPos,
         status: "open",
       })
@@ -122,7 +128,7 @@ export async function POST(request: NextRequest) {
       deal_id: deal.id,
       type: "system",
       content: `Deal criado: ${parsed.title}`,
-      created_by: parsed.owner_id,
+      created_by: ownerId,
       is_internal: true,
     })
 
@@ -132,7 +138,7 @@ export async function POST(request: NextRequest) {
     const { data: ownerOrg } = await admin
       .from("org_members")
       .select("org_id")
-      .eq("profile_id", parsed.owner_id)
+      .eq("profile_id", ownerId)
       .eq("is_active", true)
       .limit(1)
       .maybeSingle()
@@ -145,7 +151,7 @@ export async function POST(request: NextRequest) {
         context: {
           trigger_type: "deal_created",
           trigger_data: { deal_id: deal.id },
-          deal: { id: deal.id, ...parsed },
+          deal: { id: deal.id, ...parsed, owner_id: ownerId },
           org_id: ownerOrg.org_id,
         },
         idempotency_key: `deal_created:${deal.id}`,

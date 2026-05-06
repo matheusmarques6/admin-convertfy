@@ -70,10 +70,6 @@ export function NewDealDialog({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user) {
-      setError("Sessao expirada. Recarregue a pagina.")
-      return
-    }
     if (!title.trim() || !stageId) return
 
     setSubmitting(true)
@@ -86,20 +82,25 @@ export function NewDealDialog({
 
       const numericValue = value ? Number(value.replace(/\D/g, "")) / 100 : 0
 
+      // owner_id e opcional — backend resolve pra current user quando ausente.
+      // Mandamos so se o store ja foi populado (caso permissoes futuras
+      // permitam delegar pra outro vendedor).
+      const body: Record<string, unknown> = {
+        pipeline_id: pipelineId,
+        stage_id: stageId,
+        title: title.trim(),
+        value: numericValue,
+        client_id: clientId || null,
+        source: source || null,
+        tags: tagList,
+        notes: notes || null,
+      }
+      if (user?.id) body.owner_id = user.id
+
       const res = await fetch("/api/crm/deals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pipeline_id: pipelineId,
-          stage_id: stageId,
-          title: title.trim(),
-          value: numericValue,
-          owner_id: user.id,
-          client_id: clientId || null,
-          source: source || null,
-          tags: tagList,
-          notes: notes || null,
-        }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok || json.error) {

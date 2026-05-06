@@ -52,8 +52,9 @@ export async function GET(
         status, source, tags, owner_id, position, last_stage_changed_at,
         won_at, lost_at, lost_reason, created_at, updated_at,
         owner:profiles!deals_owner_id_fkey (id, name, avatar_url),
-        client:clients (id, name, company),
-        store:client_stores (id, store_name)
+        client:clients (id, name, company, email, phone),
+        store:client_stores (id, store_name),
+        lead:crm_leads (id, name, email, phone, ai_qualification_score)
       `)
       .eq("pipeline_id", id)
       .neq("status", "archived")
@@ -62,9 +63,40 @@ export async function GET(
 
     if (dErr) throw dErr
 
+    // Conta atividades pendentes (com due_at no futuro e nao completed)
+    const dealIds = (deals || []).map((d) => d.id)
+    let pendingMap = new Map<string, number>()
+    if (dealIds.length > 0) {
+      const { data: pending } = await admin
+        .from("crm_deal_activities")
+        .select("deal_id")
+        .in("deal_id", dealIds)
+        .not("due_at", "is", null)
+        .is("completed_at", null)
+      for (const a of pending || []) {
+        if (a.deal_id) {
+          pendingMap.set(a.deal_id, (pendingMap.get(a.deal_id) || 0) + 1)
+        }
+      }
+    }
+
+    // Enriquece cada deal com contact_phone/email e ai_score do lead
+    type RawDeal = NonNullable<typeof deals>[number]
+    const enrichedDeals = (deals || []).map((d: RawDeal) => {
+      const client = Array.isArray(d.client) ? d.client[0] : d.client
+      const lead = Array.isArray(d.lead) ? d.lead[0] : d.lead
+      return {
+        ...d,
+        contact_phone: client?.phone || lead?.phone || null,
+        contact_email: client?.email || lead?.email || null,
+        ai_score: lead?.ai_qualification_score ?? null,
+        activities_pending: pendingMap.get(d.id) || 0,
+      }
+    })
+
     return successResponse(request, {
       pipeline: { ...pipeline, stages, pipeline_stages: undefined },
-      deals: deals || [],
+      deals: enrichedDeals,
     })
   } catch (error) {
     log.error("Pipeline detail error:", error)

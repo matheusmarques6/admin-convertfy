@@ -1,6 +1,19 @@
 "use client"
 
-import { Building2, AlertCircle, Flame, MessageSquare, Phone, Mail, MoreHorizontal, Check, X as XIcon, Sparkles } from "lucide-react"
+import { useMemo } from "react"
+import {
+  Building2,
+  AlertCircle,
+  Flame,
+  MessageSquare,
+  Phone,
+  Mail,
+  Check,
+  X as XIcon,
+  Calendar as CalendarIcon,
+  Clock,
+  DollarSign,
+} from "lucide-react"
 
 export interface DealCardData {
   id: string
@@ -15,16 +28,15 @@ export interface DealCardData {
   owner?: { id: string; name: string; avatar_url: string | null } | null
   client?: { id: string; name: string } | null
   store?: { id: string; name: string } | null
-  /**
-   * Sinais opcionais que o backend pode preencher pra enriquecer o
-   * card sem exigir nova request:
-   * - ai_score: badge "Hot" quando >= 70
-   * - last_activity_type: icone do canal do ultimo touchpoint
-   * - activities_pending: contador de tasks/atividades em aberto
-   */
   ai_score?: number | null
   last_activity_type?: "wa_message" | "call" | "email" | "meeting" | "note" | null
   activities_pending?: number | null
+  /** Email do contato (mostrado no header se nao tiver client) */
+  contact_email?: string | null
+  /** Phone E.164 — habilita botao WhatsApp */
+  contact_phone?: string | null
+  /** Data de criacao do deal — para "DD/MM" pequeno no card */
+  created_at?: string | null
 }
 
 interface DealCardProps {
@@ -40,41 +52,73 @@ const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   }).format(v)
 
 function daysSince(iso: string | null): number {
   if (!iso) return 0
-  const ms = Date.now() - new Date(iso).getTime()
-  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)))
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
 }
 
-// Cor estavel a partir do nome — avatares do mesmo owner sempre iguais.
+function formatDateBR(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+// Cor estavel a partir do nome — sempre mesma cor pra mesmo nome.
 function avatarColorFromName(name: string): { bg: string; fg: string } {
   let hash = 0
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) | 0
   }
   const palette: Array<{ bg: string; fg: string }> = [
-    { bg: "#DBEAFE", fg: "#1D4ED8" },
-    { bg: "#DCFCE7", fg: "#047857" },
     { bg: "#FEE2E2", fg: "#B91C1C" },
+    { bg: "#FED7AA", fg: "#C2410C" },
     { bg: "#FEF3C7", fg: "#854D0E" },
-    { bg: "#EDE9FE", fg: "#6D28D9" },
-    { bg: "#FCE7F3", fg: "#BE185D" },
-    { bg: "#CFFAFE", fg: "#0E7490" },
-    { bg: "#FFEDD5", fg: "#C2410C" },
+    { bg: "#D1FAE5", fg: "#047857" },
+    { bg: "#A7F3D0", fg: "#065F46" },
+    { bg: "#BFDBFE", fg: "#1D4ED8" },
+    { bg: "#C7D2FE", fg: "#3730A3" },
+    { bg: "#DDD6FE", fg: "#6D28D9" },
+    { bg: "#FBCFE8", fg: "#BE185D" },
+    { bg: "#F5D0FE", fg: "#A21CAF" },
   ]
   return palette[Math.abs(hash) % palette.length]
 }
 
-const ACTIVITY_ICONS = {
-  wa_message: MessageSquare,
-  call: Phone,
-  email: Mail,
-  meeting: Building2,
-  note: MoreHorizontal,
-} as const
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+}
+
+// Paleta de tags coloridas (semelhante ao DataCrazy)
+const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
+  Inbound: { bg: "#DCFCE7", fg: "#166534" },
+  Outbound: { bg: "#E5E7EB", fg: "#374151" },
+  "Ads Facebook": { bg: "#DBEAFE", fg: "#1E40AF" },
+  "Ads Google": { bg: "#FEE2E2", fg: "#B91C1C" },
+  "Ads YouTube": { bg: "#FECACA", fg: "#991B1B" },
+  "Ads TikTok": { bg: "#F3F4F6", fg: "#111827" },
+  "Form site": { bg: "#D1FAE5", fg: "#065F46" },
+  Indicacao: { bg: "#A7F3D0", fg: "#047857" },
+  "Demo solicitada": { bg: "#EDE9FE", fg: "#6D28D9" },
+  "Black Friday": { bg: "#1F2937", fg: "#F9FAFB" },
+  Renovacao: { bg: "#DCFCE7", fg: "#166534" },
+  Upsell: { bg: "#FFEDD5", fg: "#C2410C" },
+  Urgente: { bg: "#FEE2E2", fg: "#B91C1C" },
+}
+
+function tagStyle(tag: string): { bg: string; fg: string } {
+  return TAG_COLORS[tag] || { bg: "#F3F4F6", fg: "#374151" }
+}
 
 export function DealCard({
   deal,
@@ -89,21 +133,22 @@ export function DealCard({
   const slaBreach = slaDays != null && days > slaDays
   const isHot = (deal.ai_score ?? 0) >= 70
   const ownerColors = deal.owner ? avatarColorFromName(deal.owner.name) : null
+  const contactColors = avatarColorFromName(deal.title)
+  const contactInitials = getInitials(deal.title)
 
-  // Cor da barra lateral: vermelho se SLA estourou, laranja se >= 80%, senao
-  // gray. Indicacao visual passiva sem precisar olhar badge.
-  const slaPct = slaDays ? days / slaDays : 0
-  const stripColor = slaBreach
-    ? "var(--crm-danger-fg)"
-    : slaPct >= 0.8
-      ? "var(--crm-warning-fg)"
-      : isHot
-        ? "var(--crm-success-fg)"
-        : "transparent"
+  // WhatsApp link (E.164 sem +, fallback aceita "+55..." ou raw digits)
+  const waLink = useMemo(() => {
+    if (!deal.contact_phone) return null
+    const digits = deal.contact_phone.replace(/\D/g, "")
+    if (digits.length < 10) return null
+    return `https://wa.me/${digits}`
+  }, [deal.contact_phone])
 
-  const ActivityIcon = deal.last_activity_type
-    ? ACTIVITY_ICONS[deal.last_activity_type]
-    : null
+  const createdLabel = formatDateBR(deal.created_at ?? null)
+  const activitiesLabel =
+    deal.activities_pending && deal.activities_pending > 0
+      ? `${deal.activities_pending} atividade${deal.activities_pending > 1 ? "s" : ""}`
+      : "Sem atividades"
 
   return (
     <div
@@ -111,74 +156,71 @@ export function DealCard({
       style={{
         position: "relative",
         width: "100%",
-        background: "var(--crm-gray-0)",
-        border: "1px solid var(--crm-gray-200)",
-        borderRadius: "var(--crm-radius-md)",
-        padding: "10px 12px 10px 14px",
+        background: "#FFFFFF",
+        border: "1px solid rgba(0,0,0,0.06)",
+        borderRadius: 8,
+        padding: 12,
         cursor: "pointer",
-        boxShadow: isDragging ? "var(--crm-shadow-md)" : undefined,
-        transform: isDragging ? "rotate(1deg)" : undefined,
-        transition:
-          "border-color var(--crm-duration-fast) var(--crm-ease), box-shadow var(--crm-duration-fast) var(--crm-ease), transform var(--crm-duration-fast) var(--crm-ease)",
+        boxShadow: isDragging
+          ? "0 8px 24px rgba(0,0,0,0.12)"
+          : "0 1px 2px rgba(0,0,0,0.04)",
+        transform: isDragging ? "rotate(0.5deg)" : undefined,
+        transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
         display: "flex",
         flexDirection: "column",
-        gap: 6,
+        gap: 8,
         overflow: "hidden",
       }}
-      className="group hover:border-[color:var(--crm-gray-300)] hover:shadow-[var(--crm-shadow-sm)]"
+      className="group hover:border-[rgba(0,0,0,0.12)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
     >
-      {/* Barra lateral colorida (SLA / hot) */}
-      {stripColor !== "transparent" && (
+      {/* Header: avatar + nome + acoes */}
+      <div className="flex items-start gap-2.5">
         <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold"
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 3,
-            background: stripColor,
+            background: contactColors.bg,
+            color: contactColors.fg,
+            fontSize: 12,
+            letterSpacing: "0.02em",
           }}
-        />
-      )}
-
-      {/* Linha 1: titulo + badges direita */}
-      <div className="flex items-start justify-between gap-2">
+        >
+          {contactInitials}
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {isHot && (
               <Flame
                 className="h-3 w-3 shrink-0"
-                style={{ color: "var(--crm-success-fg)" }}
+                style={{ color: "#F97316" }}
                 aria-label="Hot deal"
               />
             )}
             <p
-              style={{
-                fontSize: "var(--crm-text-base)",
-                fontWeight: "var(--crm-weight-medium)",
-                color: "var(--crm-gray-900)",
-                lineHeight: "var(--crm-leading-tight)",
-              }}
               className="truncate"
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#111827",
+                lineHeight: 1.3,
+              }}
             >
               {deal.title}
             </p>
           </div>
-          {deal.client && (
-            <p
-              style={{
-                fontSize: "var(--crm-text-xs)",
-                color: "var(--crm-gray-500)",
-              }}
-              className="mt-0.5 flex items-center gap-1 truncate"
-            >
-              <Building2 className="h-3 w-3 shrink-0" />
-              <span className="truncate">{deal.client.name}</span>
-            </p>
-          )}
+          <p
+            className="truncate"
+            style={{
+              fontSize: 11,
+              color: "#9CA3AF",
+              marginTop: 1,
+              fontStyle: deal.client ? "normal" : "italic",
+            }}
+          >
+            {deal.client?.name || deal.contact_email || "Sem cliente"}
+          </p>
         </div>
 
-        {/* Quick actions no hover (won/lost) */}
+        {/* Hover quick actions (won / lost) */}
         {(onWin || onLose) && (
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             {onWin && (
@@ -192,13 +234,13 @@ export function DealCard({
                 style={{
                   width: 22,
                   height: 22,
-                  borderRadius: "var(--crm-radius-sm)",
+                  borderRadius: 4,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "var(--crm-success-bg)",
-                  color: "var(--crm-success-fg)",
-                  border: "1px solid var(--crm-success-border)",
+                  background: "#DCFCE7",
+                  color: "#166534",
+                  border: "1px solid #86EFAC",
                   cursor: "pointer",
                 }}
               >
@@ -216,13 +258,13 @@ export function DealCard({
                 style={{
                   width: 22,
                   height: 22,
-                  borderRadius: "var(--crm-radius-sm)",
+                  borderRadius: 4,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "var(--crm-danger-bg)",
-                  color: "var(--crm-danger-fg)",
-                  border: "1px solid var(--crm-danger-border)",
+                  background: "#FEE2E2",
+                  color: "#991B1B",
+                  border: "1px solid #FCA5A5",
                   cursor: "pointer",
                 }}
               >
@@ -232,176 +274,184 @@ export function DealCard({
           </div>
         )}
 
-        {/* SLA breach badge (sempre visivel quando estoura) */}
-        {slaBreach && !((onWin || onLose) && false) && (
+        {!onWin && !onLose && slaBreach && (
           <span
-            className="group-hover:hidden"
             style={{
-              fontSize: 10,
-              color: "var(--crm-danger-fg)",
-              background: "var(--crm-danger-bg)",
+              fontSize: 9,
+              color: "#991B1B",
+              background: "#FEE2E2",
               padding: "2px 5px",
-              borderRadius: "var(--crm-radius-sm)",
-              fontWeight: "var(--crm-weight-medium)",
+              borderRadius: 3,
+              fontWeight: 600,
               display: "inline-flex",
               alignItems: "center",
-              gap: 3,
+              gap: 2,
               flexShrink: 0,
             }}
             title={`Estagio ha ${days}d (SLA: ${slaDays}d)`}
           >
-            <AlertCircle className="h-3 w-3" />
+            <AlertCircle className="h-2.5 w-2.5" />
             +{days - (slaDays || 0)}d
           </span>
         )}
       </div>
 
-      {/* Linha 2: valor (destaque) */}
-      {deal.value != null && deal.value > 0 && (
-        <div className="flex items-baseline justify-between">
-          <p
-            style={{
-              fontSize: "var(--crm-text-md)",
-              fontWeight: "var(--crm-weight-medium)",
-              color: "var(--crm-gray-900)",
-              fontFamily: "var(--crm-font-mono)",
-              lineHeight: 1.2,
-            }}
-          >
-            {fmtBRL(deal.value)}
-          </p>
-          {deal.ai_score != null && deal.ai_score > 0 && (
+      {/* Owner inline — avatar pequeno + nome */}
+      {deal.owner && ownerColors && (
+        <div className="flex items-center gap-1.5 -mt-1">
+          {deal.owner.avatar_url ? (
+            <img
+              src={deal.owner.avatar_url}
+              alt={deal.owner.name}
+              className="h-4 w-4 shrink-0 rounded-full object-cover"
+            />
+          ) : (
             <span
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full font-semibold"
               style={{
-                fontSize: 10,
-                color: isHot ? "var(--crm-success-fg)" : "var(--crm-gray-500)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 2,
-                fontWeight: "var(--crm-weight-medium)",
+                background: ownerColors.bg,
+                color: ownerColors.fg,
+                fontSize: 8,
               }}
-              title="IA score"
             >
-              <Sparkles className="h-3 w-3" />
-              {deal.ai_score}
+              {getInitials(deal.owner.name)}
             </span>
           )}
+          <span
+            className="truncate"
+            style={{ fontSize: 11, color: "#6B7280" }}
+          >
+            {deal.owner.name}
+          </span>
         </div>
       )}
 
-      {/* Linha 3: tags */}
-      {deal.tags && deal.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {deal.tags.slice(0, 3).map((t) => (
+      {/* Linhas de meta com icones */}
+      <div className="space-y-1">
+        {deal.value != null && deal.value > 0 && (
+          <div className="flex items-center gap-1.5">
+            <DollarSign
+              className="h-3 w-3 shrink-0"
+              style={{ color: "#9CA3AF" }}
+            />
             <span
-              key={t}
               style={{
-                fontSize: 10,
-                color: "var(--crm-gray-600)",
-                background: "var(--crm-gray-100)",
-                padding: "1px 6px",
-                borderRadius: "var(--crm-radius-sm)",
-                lineHeight: 1.4,
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#0F766E",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
-              {t}
+              {fmtBRL(deal.value)}
             </span>
-          ))}
-          {deal.tags.length > 3 && (
+          </div>
+        )}
+
+        {createdLabel && (
+          <div className="flex items-center gap-1.5">
+            <CalendarIcon
+              className="h-3 w-3 shrink-0"
+              style={{ color: "#9CA3AF" }}
+            />
+            <span style={{ fontSize: 11, color: "#6B7280" }}>{createdLabel}</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3 w-3 shrink-0" style={{ color: "#9CA3AF" }} />
+          <span
+            style={{
+              fontSize: 11,
+              color: slaBreach ? "#B91C1C" : "#6B7280",
+              fontWeight: slaBreach ? 600 : 400,
+            }}
+          >
+            {activitiesLabel}
+            {deal.last_stage_changed_at && (
+              <span style={{ color: "#D1D5DB" }}> · {days}d na etapa</span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Tags coloridas */}
+      {deal.tags && deal.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {deal.tags.slice(0, 4).map((t) => {
+            const c = tagStyle(t)
+            return (
+              <span
+                key={t}
+                style={{
+                  fontSize: 10,
+                  color: c.fg,
+                  background: c.bg,
+                  padding: "1px 6px",
+                  borderRadius: 3,
+                  fontWeight: 500,
+                  lineHeight: 1.5,
+                }}
+              >
+                {t}
+              </span>
+            )
+          })}
+          {deal.tags.length > 4 && (
             <span
               style={{
                 fontSize: 10,
-                color: "var(--crm-gray-500)",
+                color: "#9CA3AF",
                 padding: "1px 4px",
               }}
             >
-              +{deal.tags.length - 3}
+              +{deal.tags.length - 4}
             </span>
           )}
         </div>
       )}
 
-      {/* Linha 4 (footer): owner avatar + ultima atividade + days */}
-      <div
-        className="flex items-center justify-between"
-        style={{ marginTop: 2 }}
-      >
-        <div className="flex items-center gap-1.5 min-w-0">
-          {deal.owner ? (
-            deal.owner.avatar_url ? (
-              <img
-                src={deal.owner.avatar_url}
-                alt={deal.owner.name}
-                className="h-5 w-5 shrink-0 rounded-full object-cover"
-                title={deal.owner.name}
-              />
-            ) : (
-              <div
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-medium"
-                style={{
-                  background: ownerColors!.bg,
-                  color: ownerColors!.fg,
-                }}
-                title={deal.owner.name}
-              >
-                {deal.owner.name
-                  .split(" ")
-                  .map((s) => s[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()}
-              </div>
-            )
-          ) : (
-            <span
-              style={{ fontSize: 10, color: "var(--crm-gray-400)" }}
-            >
-              Sem owner
-            </span>
-          )}
-          {/* Activities pending bubble */}
-          {deal.activities_pending != null && deal.activities_pending > 0 && (
-            <span
+      {/* Footer: WhatsApp / activity icon */}
+      {(waLink || deal.last_activity_type) && (
+        <div
+          className="flex items-center justify-between pt-2"
+          style={{ borderTop: "1px dashed rgba(0,0,0,0.06)" }}
+        >
+          <div className="flex items-center gap-1">
+            {deal.last_activity_type === "call" && (
+              <Phone className="h-3 w-3" style={{ color: "#9CA3AF" }} />
+            )}
+            {deal.last_activity_type === "email" && (
+              <Mail className="h-3 w-3" style={{ color: "#9CA3AF" }} />
+            )}
+            {deal.last_activity_type === "wa_message" && (
+              <MessageSquare className="h-3 w-3" style={{ color: "#22C55E" }} />
+            )}
+          </div>
+          {waLink && (
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Abrir no WhatsApp"
               style={{
-                fontSize: 9,
-                color: "var(--crm-warning-fg)",
-                background: "var(--crm-warning-bg)",
-                border: "1px solid var(--crm-warning-border)",
-                padding: "0px 5px",
-                borderRadius: "var(--crm-radius-full)",
-                fontWeight: "var(--crm-weight-medium)",
-                fontFamily: "var(--crm-font-mono)",
+                width: 22,
+                height: 22,
+                borderRadius: 4,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#25D366",
+                color: "#FFFFFF",
+                transition: "transform 150ms",
               }}
-              title={`${deal.activities_pending} atividade(s) pendente(s)`}
+              className="hover:scale-110"
             >
-              {deal.activities_pending}
-            </span>
+              <MessageSquare className="h-3 w-3" />
+            </a>
           )}
         </div>
-
-        <div className="flex items-center gap-2">
-          {ActivityIcon && (
-            <ActivityIcon
-              className="h-3 w-3"
-              style={{ color: "var(--crm-gray-400)" }}
-            />
-          )}
-          {deal.last_stage_changed_at && (
-            <span
-              style={{
-                fontSize: 10,
-                color: slaBreach
-                  ? "var(--crm-danger-fg)"
-                  : "var(--crm-gray-500)",
-                fontFamily: "var(--crm-font-mono)",
-                fontWeight: slaBreach ? "var(--crm-weight-medium)" : "var(--crm-weight-regular)",
-              }}
-            >
-              {days}d
-            </span>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }

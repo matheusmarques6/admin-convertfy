@@ -63,22 +63,23 @@ export function LeadConvertDialog({ leadId, open, onClose, onConverted }: LeadCo
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!leadId || !user || !pipelineId || !stageId) return
+    if (!leadId || !pipelineId || !stageId) return
     setSubmitting(true)
     setError(null)
     try {
       const numericValue = value ? Number(value.replace(/\D/g, "")) / 100 : 0
+      const body: Record<string, unknown> = {
+        pipeline_id: pipelineId,
+        stage_id: stageId,
+        value: numericValue,
+        create_client: createClient,
+        deal_title: dealTitle || undefined,
+      }
+      if (user?.id) body.owner_id = user.id
       const res = await fetch(`/api/crm/leads/${leadId}/convert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pipeline_id: pipelineId,
-          stage_id: stageId,
-          value: numericValue,
-          owner_id: user.id,
-          create_client: createClient,
-          deal_title: dealTitle || undefined,
-        }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
@@ -220,12 +221,12 @@ export function LeadConvertDialog({ leadId, open, onClose, onConverted }: LeadCo
               <button
                 type="submit"
                 className="crm-button-primary"
-                disabled={submitting || !pipelineId || !stageId || !user}
+                disabled={submitting || !pipelineId || !stageId}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "var(--crm-space-2)",
-                  opacity: submitting || !pipelineId || !stageId || !user ? 0.5 : 1,
+                  opacity: submitting || !pipelineId || !stageId ? 0.5 : 1,
                 }}
               >
                 {submitting ? "Convertendo..." : (

@@ -31,7 +31,8 @@ const convertSchema = z.object({
   pipeline_id: z.string().uuid(),
   stage_id: z.string().uuid(),
   value: z.number().min(0).optional().default(0),
-  owner_id: z.string().uuid(),
+  // owner_id opcional — backend usa current user quando ausente.
+  owner_id: z.string().uuid().optional(),
   create_client: z.boolean().optional().default(false),
   deal_title: z.string().min(1).optional(),
 })
@@ -43,11 +44,12 @@ export async function POST(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     const body = await request.json()
     const parsed = convertSchema.parse(body)
+    const ownerId = parsed.owner_id ?? user.id
 
     // Le o lead
     const { data: lead, error: leadErr } = await admin
@@ -116,7 +118,7 @@ export async function POST(
         source: lead.source,
         utm: lead.utm || {},
         tags: lead.tags || [],
-        owner_id: parsed.owner_id,
+        owner_id: ownerId,
         notes: lead.notes,
         position: (maxPos?.position ?? 0) + 10,
         status: "open",
@@ -142,7 +144,7 @@ export async function POST(
       lead_id: lead.id,
       type: "system",
       content: `Lead "${lead.name}" convertido em deal`,
-      created_by: parsed.owner_id,
+      created_by: ownerId,
       is_internal: true,
     })
 

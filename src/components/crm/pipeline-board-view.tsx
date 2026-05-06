@@ -12,6 +12,10 @@ import {
   Target,
   Users,
   AlertCircle,
+  Search,
+  SlidersHorizontal,
+  ArrowUpDown,
+  X,
 } from "lucide-react"
 import { CrmPageShell } from "./crm-page-shell"
 import { CrmEmptyState } from "./crm-empty-state"
@@ -80,6 +84,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
+  const [search, setSearch] = useState("")
   const [pendingLostMove, setPendingLostMove] = useState<{
     dealId: string
     stageId: string
@@ -103,9 +108,19 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   }, [allDeals])
 
   const filteredDeals = useMemo(() => {
-    if (!ownerFilter) return allDeals
-    return allDeals.filter((d) => d.owner?.id === ownerFilter)
-  }, [allDeals, ownerFilter])
+    let list = allDeals
+    if (ownerFilter) list = list.filter((d) => d.owner?.id === ownerFilter)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((d) =>
+        d.title.toLowerCase().includes(q) ||
+        d.client?.name?.toLowerCase().includes(q) ||
+        d.tags?.some((t) => t.toLowerCase().includes(q)) ||
+        d.source?.toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [allDeals, ownerFilter, search])
 
   // Identifica won/lost stage default — usado pelos quick actions do card
   const wonStage = pipeline?.stages.find((s) => s.stage_type === "won")
@@ -347,6 +362,109 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                 }
                 color={kpis.breachCount > 0 ? "danger" : "success"}
               />
+            </div>
+          )}
+
+          {/* Toolbar: busca + filtros + ordenacao */}
+          {pipeline.layout !== "state" && (
+            <div
+              className="flex items-center gap-3 px-4 py-2.5 border-b"
+              style={{
+                background: "#FFFFFF",
+                borderColor: "rgba(0,0,0,0.06)",
+              }}
+            >
+              <div className="relative flex-1 max-w-sm">
+                <Search
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5"
+                  style={{ color: "#9CA3AF" }}
+                />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome, cliente, tag..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full"
+                  style={{
+                    height: 32,
+                    fontSize: 12,
+                    background: "#F9FAFB",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                    borderRadius: 6,
+                    padding: "0 28px 0 30px",
+                    color: "#111827",
+                    outline: "none",
+                  }}
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    aria-label="Limpar busca"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                    style={{ color: "#9CA3AF" }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                title="Filtros"
+                style={{
+                  height: 32,
+                  padding: "0 10px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  background: "#FFFFFF",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  cursor: "pointer",
+                }}
+                className="hover:bg-[rgba(0,0,0,0.02)]"
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                Filtros
+              </button>
+
+              <button
+                title="Ordenacao"
+                style={{
+                  height: 32,
+                  padding: "0 10px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  background: "#FFFFFF",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: 6,
+                  color: "#374151",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  cursor: "pointer",
+                }}
+                className="hover:bg-[rgba(0,0,0,0.02)]"
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                Ordenacao
+              </button>
+
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "#9CA3AF",
+                  marginLeft: "auto",
+                }}
+              >
+                {filteredDeals.length}{" "}
+                {filteredDeals.length === 1 ? "negocio" : "negocios"}
+                {search && (
+                  <span> · filtrando &ldquo;{search}&rdquo;</span>
+                )}
+              </span>
             </div>
           )}
 
