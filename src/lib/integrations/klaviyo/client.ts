@@ -248,7 +248,8 @@ async function _klaviyoRequestInner<T>(
 export function getCurrencySymbol(currency: string): string {
   const symbols: Record<string, string> = {
     "USD": "$", "EUR": "€", "GBP": "£", "BRL": "R$",
-    "AUD": "A$", "CAD": "C$", "JPY": "¥", "MXN": "MX$",
+    "AUD": "A$", "CAD": "C$", "JPY": "¥", "CNY": "¥",
+    "MXN": "MX$", "ARS": "AR$", "CLP": "CL$", "COP": "CO$", "PEN": "S/",
   }
   return symbols[currency] || currency
 }

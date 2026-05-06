@@ -9,6 +9,7 @@ import { BrandIcon } from "@/components/ui/icon"
 import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
+import { StoreForceResyncAction } from "@/components/stores/store-force-resync-action"
 import { ExternalLink } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -174,6 +175,10 @@ export default async function StoreDetailPage({
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <StoreForceResyncAction
+              storeId={store.id}
+              storeName={store.store_name}
+            />
             <StoreDeleteAction
               storeId={store.id}
               storeName={store.store_name}

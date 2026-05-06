@@ -75,6 +75,15 @@ function getCurrencySymbol(currency: string): string {
     case "USD": return "$"
     case "EUR": return "€"
     case "GBP": return "£"
+    case "JPY": return "¥"
+    case "CNY": return "¥"
+    case "AUD": return "A$"
+    case "CAD": return "C$"
+    case "MXN": return "MX$"
+    case "ARS": return "AR$"
+    case "CLP": return "CL$"
+    case "COP": return "CO$"
+    case "PEN": return "S/"
     default: return currency || ""
   }
 }

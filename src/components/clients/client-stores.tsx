@@ -459,6 +459,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 <option value="USD">USD - Dólar Americano</option>
                 <option value="EUR">EUR - Euro</option>
                 <option value="GBP">GBP - Libra Esterlina</option>
+                <option value="JPY">JPY - Iene Japonês</option>
+                <option value="CNY">CNY - Yuan Chinês</option>
                 <option value="ARS">ARS - Peso Argentino</option>
                 <option value="CLP">CLP - Peso Chileno</option>
                 <option value="COP">COP - Peso Colombiano</option>
