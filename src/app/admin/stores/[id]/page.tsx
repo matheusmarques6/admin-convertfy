@@ -3,6 +3,7 @@ import Link from "next/link"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
+import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { PageHeader } from "@/components/ui/page-header"
 import { BrandIcon } from "@/components/ui/icon"
@@ -164,6 +165,20 @@ export default async function StoreDetailPage({
   const clientName = (store.clients as any)?.name || null
   const platformIcon = getPlatformIcon(store.platform)
 
+  // Header sempre em BRL: pra lojas em outras moedas (USD, JPY, CNY, etc)
+  // converte usando exchange rate atual (open.er-api.com via cache 1h).
+  // Sem isso, lojas JPY mostravam valor cru (ex: JP¥ 21M) com simbolo "R$"
+  // dando "R$ 21M" enganoso. Converter padroniza comparacao entre lojas.
+  const rs = store.revenueSummary as Record<string, unknown> | null
+  const storeCurrency = (rs?.currency as string | undefined) || "BRL"
+  const storeRevenue = Number(rs?.store_total_revenue) || 0
+  const klavRevenue = Number(rs?.klaviyo_total_revenue) || 0
+  const omnRevenue = Number(rs?.omnisend_total_revenue) || 0
+  const revenueLocal = storeRevenue || (klavRevenue + omnRevenue)
+  const revenueBRL = revenueLocal > 0 && storeCurrency !== "BRL"
+    ? await convertToBRL(revenueLocal, storeCurrency)
+    : revenueLocal
+
   return (
     <div className="space-y-6">
       {/* Breadcrumbs + Header */}
@@ -228,32 +243,25 @@ export default async function StoreDetailPage({
             </div>
           </div>
 
-          {/* Right: Mini KPIs */}
-          {(() => {
-            // "Receita 30d" reflete a receita TOTAL da loja (store_total_revenue),
-            // nao o revenue atribuido a email. Para lojas Omnisend, preenchido pela
-            // Statistics API (totalRevenue). Fallback para klaviyo_total_revenue +
-            // omnisend_total_revenue quando store_total_revenue ainda nao foi
-            // calculado (lojas em pre-sync).
-            const rs = store.revenueSummary as Record<string, unknown> | null
-            const storeRev = Number(rs?.store_total_revenue) || 0
-            const klavRev = Number(rs?.klaviyo_total_revenue) || 0
-            const omnRev = Number(rs?.omnisend_total_revenue) || 0
-            const revenueValue = storeRev || (klavRev + omnRev)
-            const currency = (rs?.currency as string | undefined) || "BRL"
-            const currencySymbol = currency === "USD" ? "$"
-              : currency === "EUR" ? "€"
-              : currency === "GBP" ? "£"
-              : "R$"
-            return (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                <MiniKpi label="Receita 30d" value={revenueValue > 0 ? `${currencySymbol} ${revenueValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} />
-                <MiniKpi label="Pedidos 30d" value={rs?.store_orders ? String(rs.store_orders) : "—"} />
-                <MiniKpi label="Engajamento" value={rs?.engagement_rate ? `${Number(rs.engagement_rate).toFixed(1)}%` : "—"} />
-                <MiniKpi label="Contatos" value={rs?.total_leads ? Number(rs.total_leads).toLocaleString("pt-BR") : "—"} />
-              </div>
-            )
-          })()}
+          {/* Right: Mini KPIs — Receita sempre em BRL pra padronizar
+              comparacao entre lojas. Lojas em outras moedas tem valor
+              convertido via exchange-rate.service (open.er-api.com,
+              cache 1h). Detalhe na moeda original aparece dentro da
+              loja (cards "Receita Total" etc no Reports tab). */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <MiniKpi
+              label="Receita 30d"
+              value={revenueBRL > 0
+                ? `R$ ${revenueBRL.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+                : "—"}
+              hint={storeCurrency !== "BRL" && revenueLocal > 0
+                ? `${storeCurrency} ${revenueLocal.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+                : undefined}
+            />
+            <MiniKpi label="Pedidos 30d" value={rs?.store_orders ? String(rs.store_orders) : "—"} />
+            <MiniKpi label="Engajamento" value={rs?.engagement_rate ? `${Number(rs.engagement_rate).toFixed(1)}%` : "—"} />
+            <MiniKpi label="Contatos" value={rs?.total_leads ? Number(rs.total_leads).toLocaleString("pt-BR") : "—"} />
+          </div>
         </div>
       </div>
 
@@ -279,11 +287,14 @@ export default async function StoreDetailPage({
   )
 }
 
-function MiniKpi({ label, value }: { label: string; value: string }) {
+function MiniKpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="text-center sm:text-left">
       <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</p>
       <p className="text-lg font-semibold text-foreground font-mono tabular-nums">{value}</p>
+      {hint && (
+        <p className="text-[10px] text-muted-foreground/70 font-mono tabular-nums mt-0.5">{hint}</p>
+      )}
     </div>
   )
 }
