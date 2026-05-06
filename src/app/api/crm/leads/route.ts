@@ -8,6 +8,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 
 const log = logger.child("CrmLeads")
 
@@ -88,6 +89,31 @@ export async function POST(request: NextRequest) {
     if (error) throw error
 
     log.info("[Leads] created", { id: data.id, name: parsed.name })
+
+    // Dispara trigger lead_created
+    const { data: userOrg } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+
+    if (userOrg?.org_id) {
+      dispatchTrigger({
+        trigger_type: "lead_created",
+        org_id: userOrg.org_id,
+        trigger_data: { lead_id: data.id },
+        context: {
+          trigger_type: "lead_created",
+          trigger_data: { lead_id: data.id },
+          lead: { id: data.id, ...parsed },
+          org_id: userOrg.org_id,
+        },
+        idempotency_key: `lead_created:${data.id}`,
+      }).catch((err) => log.error("[Leads] dispatch error", err))
+    }
+
     return successResponse(request, { id: data.id })
   } catch (error) {
     log.error("Leads POST error:", error)

@@ -14,6 +14,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 
 const log = logger.child("CrmDealMove")
 
@@ -99,7 +100,47 @@ export async function POST(
 
     log.info("[Deals] moved", { id, to: targetStage.name, status: deal?.status })
 
-    // TODO Fase 5: disparar automation_on_enter da etapa destino se houver
+    // Dispara trigger de automation (fire-and-forget)
+    if (deal?.owner_id) {
+      const { data: fullDeal } = await admin
+        .from("deals")
+        .select(`
+          id, pipeline_id, stage_id, owner_id, value, status, source, tags,
+          client_id, store_id, lead_id, title,
+          owner:profiles!deals_owner_id_fkey (id, name, email),
+          client:clients (id, name, email, phone),
+          lead:crm_leads (id, name, phone, email)
+        `)
+        .eq("id", id)
+        .single()
+
+      // org_id via membership do owner do deal
+      const { data: ownerOrg } = await admin
+        .from("org_members")
+        .select("org_id")
+        .eq("profile_id", (fullDeal as any)?.owner_id || "")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle()
+
+      const resolvedOrgId = ownerOrg?.org_id || null
+
+      if (resolvedOrgId) {
+        dispatchTrigger({
+          trigger_type: "deal_stage_change",
+          org_id: resolvedOrgId,
+          trigger_data: { from_stage_id: undefined, to_stage_id: parsed.stage_id },
+          context: {
+            trigger_type: "deal_stage_change",
+            trigger_data: { to_stage_id: parsed.stage_id },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            deal: fullDeal as any,
+            org_id: resolvedOrgId,
+          },
+          idempotency_key: `${id}:${parsed.stage_id}`,
+        }).catch((err) => log.error("[Deals] dispatch error", err))
+      }
+    }
 
     return successResponse(request, { deal })
   } catch (error) {

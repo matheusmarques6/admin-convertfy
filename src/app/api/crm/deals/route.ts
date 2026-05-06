@@ -8,6 +8,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 
 const log = logger.child("CrmDeals")
 
@@ -126,6 +127,31 @@ export async function POST(request: NextRequest) {
     })
 
     log.info("[Deals] created", { id: deal.id, title: parsed.title })
+
+    // Dispara trigger deal_created
+    const { data: ownerOrg } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", parsed.owner_id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+
+    if (ownerOrg?.org_id) {
+      dispatchTrigger({
+        trigger_type: "deal_created",
+        org_id: ownerOrg.org_id,
+        trigger_data: { deal_id: deal.id },
+        context: {
+          trigger_type: "deal_created",
+          trigger_data: { deal_id: deal.id },
+          deal: { id: deal.id, ...parsed },
+          org_id: ownerOrg.org_id,
+        },
+        idempotency_key: `deal_created:${deal.id}`,
+      }).catch((err) => log.error("[Deals] dispatch error", err))
+    }
+
     return successResponse(request, { id: deal.id })
   } catch (error) {
     log.error("Deals POST error:", error)
