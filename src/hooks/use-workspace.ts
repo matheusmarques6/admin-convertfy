@@ -74,7 +74,7 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
     colorBg: "rgba(31, 31, 31, 0.06)",
     colorBorder: "rgba(31, 31, 31, 0.18)",
     colorFg: "#FFFFFF",
-    homeHref: "/admin/dashboard",
+    homeHref: "/admin/productivity",
     icon: LayoutGrid,
   },
 }

@@ -52,7 +52,7 @@ interface CommandItem {
 // ---------------------------------------------------------------------------
 
 const navigationItems: CommandItem[] = [
-  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, group: "Navegação" },
+  { name: "Dashboard", href: "/admin/operacional/dashboard", icon: LayoutDashboard, group: "Navegação" },
   { name: "Clientes", href: "/admin/clients", icon: Users, group: "Navegação" },
   { name: "Lojas", href: "/admin/stores", icon: Store, group: "Navegação" },
   { name: "Onboarding", href: "/admin/onboarding", icon: Rocket, group: "Navegação" },

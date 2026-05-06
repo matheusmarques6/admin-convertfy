@@ -175,13 +175,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
 
 const GERAL_NAV: NavGroup[] = [
   {
-    key: "main",
-    label: "",
-    items: [
-      { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard },
-    ],
-  },
-  {
     key: "produtividade",
     label: "Produtividade",
     items: [

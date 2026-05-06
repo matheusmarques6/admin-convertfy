@@ -37,6 +37,9 @@ const DashboardAlerts = lazy(() =>
 const DashboardClientsRevenue = lazy(() =>
   import("./dashboard-clients-revenue").then((m) => ({ default: m.DashboardClientsRevenue }))
 )
+const DashboardOperacionalSection = lazy(() =>
+  import("./dashboard-operacional-section").then((m) => ({ default: m.DashboardOperacionalSection }))
+)
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -71,6 +74,11 @@ export interface DashboardLayoutProps {
   }
   userRole: string
   userName: string
+  /**
+   * Quando true, renderiza a section de Customer Success / carteira logo
+   * apos os KPIs de receita. Usado na dashboard do workspace operacional.
+   */
+  showOperacionalSection?: boolean
 }
 
 // ─── Fallback sparklines (used when historical data is not yet available) ──
@@ -110,7 +118,12 @@ function CardSkeleton() {
 
 // ─── Dashboard Layout (6 ROWs — DS v3.0) ────────────────────
 
-export function DashboardLayout({ data, userRole: _userRole, userName }: DashboardLayoutProps) {
+export function DashboardLayout({
+  data,
+  userRole: _userRole,
+  userName,
+  showOperacionalSection = false,
+}: DashboardLayoutProps) {
   // Period & compare state
   const [revenuePeriod, setRevenuePeriod] = useState<"today" | "7d" | "30d" | "90d" | "custom">("30d")
   const [compareEnabled, setCompareEnabled] = useState(false)
@@ -278,6 +291,20 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
             />
           </KpiCardRow>
         </AnimatedItem>
+
+        {/* ══════════ Operacional / CS section (apenas dashboard operacional) ══════════ */}
+        {showOperacionalSection && (
+          <Suspense
+            fallback={
+              <div className="space-y-5">
+                <CardSkeleton />
+                <ChartSkeleton />
+              </div>
+            }
+          >
+            <DashboardOperacionalSection />
+          </Suspense>
+        )}
 
         {/* ══════════ ROW 2: Charts ══════════ */}
         <AnimatedItem>
