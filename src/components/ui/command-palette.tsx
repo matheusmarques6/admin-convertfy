@@ -29,6 +29,7 @@ import {
   Inbox,
   Workflow,
   Building2,
+  Phone,
   type LucideIcon,
 } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
@@ -74,6 +75,7 @@ const navigationItems: CommandItem[] = [
   { name: "CRM — Inbox", href: "/admin/crm/inbox", icon: Inbox, group: "CRM" },
   { name: "CRM — Automacoes", href: "/admin/crm/automations", icon: Workflow, group: "CRM" },
   { name: "CRM — Reports", href: "/admin/crm/reports", icon: BarChart3, group: "CRM" },
+  { name: "CRM — Canais (WhatsApp)", href: "/admin/crm/channels", icon: Phone, group: "CRM" },
 ]
 
 const actionItems: CommandItem[] = [

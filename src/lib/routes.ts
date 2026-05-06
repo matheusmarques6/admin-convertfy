@@ -101,6 +101,7 @@ export const ROUTES = {
       },
       REPORTS: "/admin/crm/reports",
       PARTNERS: "/admin/crm/partners",
+      CHANNELS: "/admin/crm/channels",
     },
 
     TEAM: "/admin/team",
