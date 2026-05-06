@@ -114,19 +114,16 @@ export async function GET(request: NextRequest) {
       const emailCamps = campaigns.filter((c) => c.channel === "email" || !c.channel)
       const smsCamps = campaigns.filter((c) => c.channel === "sms")
 
-      // E-MAIL no card overview = receita atribuida ao canal email,
-      // somando campanhas email + automacoes/flows. Antes incluia so
-      // campanhas, distorcendo o card quando flows respondem por > 90%
-      // do revenue (Vivazz: campanhas R$ 7K, flows R$ 168K — card
-      // mostrava R$ 7K em "E-MAIL" e usuario via inconsistencia vs
-      // detalhe da loja). Flows nao tem campo `channel` no
-      // UnifiedFlowRow (omnisend_flow_metrics nao popula channel),
-      // entao tratamos todos como email — case dominante.
-      const flowsRevenueAll = flows.reduce((s, f) => s + f.conversion_value, 0)
-
-      const emailRevenueOriginal =
-        emailCamps.reduce((s, c) => s + c.conversion_value, 0) + flowsRevenueAll
+      // E-MAIL no card = totais do summary (campaign_revenue + flow_revenue
+      // do store_revenue_summary) MENOS SMS (que vem das rows). Antes
+      // somavamos rows direto, mas quando o sync nao consegue matchar
+      // marketingActivityID com campaignID/automationID, os rows ficam
+      // com revenue=0 mesmo o summary tendo o total correto. Resultado:
+      // card E-MAIL ficava R$ 0,00 enquanto o detalhe da loja mostrava
+      // R$ 366K. Usar o summary garante consistencia entre as duas
+      // telas (mesma fonte: store_revenue_summary).
       const smsRevenueOriginal = smsCamps.reduce((s, c) => s + c.conversion_value, 0)
+      const emailRevenueOriginal = Math.max(0, campaignRevenue + flowRevenue - smsRevenueOriginal)
       const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
       const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
 
@@ -163,6 +160,27 @@ export async function GET(request: NextRequest) {
 
       const flowOpenRate = flowDelivered > 0 ? (flowOpened / flowDelivered) * 100 : 0
       const flowClickRate = flowDelivered > 0 ? (flowClicked / flowDelivered) * 100 : 0
+
+      // Log de inconsistencia: summary tem revenue mas rows individuais
+      // estao zeradas. Indica que marketingActivityID da Statistics API
+      // nao casou com os IDs do listing /v5 e o sync caiu em fallback=0.
+      // Os totais por canal (CAMPANHAS Receita, AUTOMACOES Receita)
+      // continuam corretos via summary, mas as ultimas campanhas e top
+      // flows mostram R$ 0 individual.
+      if (campaignRevenue > 0 && campaigns.reduce((s, c) => s + c.conversion_value, 0) === 0) {
+        log.warn("[StoresOverview] Campaign revenue mismatch: summary has value but rows are zero", {
+          storeId: store.id,
+          summaryCampaignRevenue: campaignRevenue,
+          campaignRowsCount: campaigns.length,
+        })
+      }
+      if (flowRevenue > 0 && flows.reduce((s, f) => s + f.conversion_value, 0) === 0) {
+        log.warn("[StoresOverview] Flow revenue mismatch: summary has value but rows are zero", {
+          storeId: store.id,
+          summaryFlowRevenue: flowRevenue,
+          flowRowsCount: flows.length,
+        })
+      }
 
       const client = Array.isArray(store.clients) ? store.clients[0] : store.clients
 
