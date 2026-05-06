@@ -1432,27 +1432,28 @@ async function doSyncOmnisendForStore(params: {
       totalAutomationsOrders += entry.totalOrders
     }
 
-    // Statistics API (breakdown por marketingActivityID) tem retornado
-    // valores ~2x maiores que o real em algumas lojas. Provavel causa:
-    // a API entrega valor cumulativo em cada bucket de timestamp em vez
-    // de incremental, ou duplica entries por messageChannel internos.
-    // Mesmo periodo no /api/analytics/reports (sem dimensions) retorna
-    // o valor correto. Visto:
-    //   - /reports attributedRevenue: R$ 366K
-    //   - /statistics breakdown sum: R$ 693K (2x)
+    // Statistics API e Reports API tem semantica de atribuicao temporal
+    // DIFERENTE (confirmado pelo suporte 2026-05-06):
+    //   - /statistics: agrega por DATA DO EVENTO (quando o pedido aconteceu)
+    //   - /reports: agrega por DATA DE ENVIO (quando o email foi disparado)
     //
-    // Estrategia: usar /reports como FONTE DE VERDADE para os totais
-    // (statsCampaign + statsAutomation soma deve bater com o reports),
-    // e calibrar o split campaign/automation pela proporcao do statistics.
-    // Isso preserva o split (que so o statistics da) com totais corretos.
+    // Mesmo pedido pode aparecer em dias diferentes no /statistics se a
+    // atribuicao se estende — pedido em D+5 atribuido a um envio em D+0
+    // pode contar em ambos os dias se a janela de atribuicao se sobrepoe.
+    // Isso gera divergencia (~1.9x visto na Blessed Choice: stats R$ 693K
+    // vs reports R$ 366K).
+    //
+    // O dashboard do Omnisend usa send-date — entao /reports e o que bate
+    // com o que o cliente ve. Estrategia: usar /reports como fonte de
+    // verdade pro total atribuido, e calibrar o split campaign/automation
+    // (so o /statistics consegue separar) pela proporcao do statistics.
     const statsCampSum = totalCampaignsRevenue
     const statsAutoSum = totalAutomationsRevenue
     const statsAttributed = statsCampSum + statsAutoSum
     const reportsAttributed = reportsTotals.attributedRevenue || 0
 
-    // Se /reports retornou valor diferente E divergencia > 5%, recalibra
-    // pela proporcao. Tolerancia 5% absorve atribuicao temporal (event
-    // date vs send date) sem trocar fontes a toa.
+    // Tolerancia 5%: pequenas divergencias entre event-date e send-date
+    // sao aceitaveis. Acima disso, recalibra pra alinhar com o dashboard.
     let totalCampaignRevenueFinal = statsCampSum
     let totalAutomationRevenueFinal = statsAutoSum
     let totalAttributedRevenueFinal = statsAttributed
@@ -1463,7 +1464,7 @@ async function doSyncOmnisendForStore(params: {
         totalCampaignRevenueFinal = statsCampSum * ratio
         totalAutomationRevenueFinal = statsAutoSum * ratio
         totalAttributedRevenueFinal = reportsAttributed
-        log.warn("[OmnisendSync] Statistics breakdown diverges from /reports — calibrating", {
+        log.info("[OmnisendSync] Calibrating split to send-date attribution", {
           storeId,
           statsAttributed,
           reportsAttributed,
