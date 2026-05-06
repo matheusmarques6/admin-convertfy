@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/crm-health-compute",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/crm-snapshot",
+      "schedule": "0 6 * * *"
     }
   ]
 }
