@@ -21,9 +21,6 @@ import {
   X,
   Columns3,
   LayoutDashboard,
-  Target,
-  Flame,
-  Zap,
   Heart,
   Sparkles,
   ListFilter,
@@ -65,12 +62,13 @@ const NAV_GROUPS = [
 const navigation: NavItem[] = [
   // PRINCIPAL
   { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
-  // PRODUTIVIDADE
+  // PRODUTIVIDADE — sidebar enxuta (Opcao A): so 2 itens visiveis.
+  // Metas, Habitos, Foco e Calendario sao acessados de DENTRO do
+  // ProductivityHome (cards do hub) ou via links internos no Board.
+  // Routes /productivity/{goals,habits,focus} continuam existindo
+  // pra deep-linking, so nao polui mais a sidebar.
   { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
   { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
-  { name: "Metas", href: ROUTES.ADMIN.PRODUCTIVITY.GOALS, icon: Target, group: "produtividade" },
-  { name: "Habitos", href: ROUTES.ADMIN.PRODUCTIVITY.HABITS, icon: Flame, group: "produtividade" },
-  { name: "Foco", href: ROUTES.ADMIN.PRODUCTIVITY.FOCUS, icon: Zap, group: "produtividade" },
   // GESTÃO
   { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "gestao", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "gestao", requiresStoreAccess: true },
