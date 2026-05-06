@@ -604,10 +604,14 @@ export function StoreEmailPerformanceReport({ storeId, storeName, savedReportDat
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-primary uppercase tracking-wider mb-1">Leads Engajados 90d</p>
-                    <p className="text-3xl font-bold text-foreground">{formatNumber(engagedLeads)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{formatPercent(engagementRate)} de engajamento</p>
+                    <p className="text-3xl font-bold text-foreground">
+                      {engagedLeads > 0 ? formatNumber(engagedLeads) : <span className="text-muted-foreground">—</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {engagedLeads > 0 ? `${formatPercent(engagementRate)} de engajamento` : "Aguardando proximo sync"}
+                    </p>
                   </div>
-                  <CircularProgress value={engagementRate} size={70} strokeWidth={6} />
+                  {engagedLeads > 0 && <CircularProgress value={engagementRate} size={70} strokeWidth={6} />}
                 </div>
               </div>
             </div>

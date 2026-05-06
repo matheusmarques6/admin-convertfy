@@ -1627,22 +1627,19 @@ async function doSyncOmnisendForStore(params: {
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
     const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
-    // engagedContacts = openedUnique do /api/analytics/reports
-    // (1 row consolidada, sem dimensions de marketingActivityID/channel
-    // que causam overcount). Suporte (2026-05-06): "para puxar leads que
-    // abriram >= 1 email no periodo, o caminho mais direto e via
-    // Reports API usando openedUnique".
-    //
-    // Cap em subscribedContacts mantido como safety net — nao pode haver
-    // mais engajados que a base de leads opt-in. Antes usavamos o
-    // openedUnique do activityBreakdown.engagement (que usa dimensions
-    // de marketingActivityID + messageChannel) — isso somava o mesmo
-    // contato em multiplas activities, gerando 71k engajados em base
-    // de 71k = 100% espurio.
+    // engagedContacts via /api/analytics/reports openedUnique (caminho
+    // recomendado pelo suporte 2026-05-06). Cap em subscribedContacts —
+    // mas se raw EXCEDE muito o subscribed (>110%), e claramente
+    // overcount da agregacao da API; exibimos 0 (UI mostra "—") em vez
+    // de capar em 100% espurio. Limite tolerante (110%) absorve pequena
+    // imprecisao de boundary do periodo, mas pega overcount obvio.
     const engagedRaw = reportsTotals.openedUnique || activityBreakdown.engagement.openedUnique || 0
-    const engagedContacts = subscribedContacts > 0
-      ? Math.min(engagedRaw, subscribedContacts)
-      : engagedRaw
+    const engagedTooHigh = subscribedContacts > 0 && engagedRaw > subscribedContacts * 1.1
+    const engagedContacts = engagedTooHigh
+      ? 0  // mascara overcount obvio — UI mostra "—" via condicional `?: "—"`
+      : subscribedContacts > 0
+        ? Math.min(engagedRaw, subscribedContacts)
+        : engagedRaw
 
     log.info("[OmnisendSync] Sync summary", {
       storeId,
@@ -1655,8 +1652,13 @@ async function doSyncOmnisendForStore(params: {
       engagedRawFromReports: reportsTotals.openedUnique,
       engagedRawFromStats: activityBreakdown.engagement.openedUnique,
       engagedContacts,
-      engagedCapped: engagedRaw > subscribedContacts && subscribedContacts > 0,
-      engagedSource: reportsTotals.openedUnique > 0 ? "reports-openedUnique" : "stats-openedUnique",
+      engagedTooHigh,
+      engagedCapped: !engagedTooHigh && engagedRaw > subscribedContacts && subscribedContacts > 0,
+      engagedSource: engagedTooHigh
+        ? "discarded-overcount"
+        : reportsTotals.openedUnique > 0
+          ? "reports-openedUnique"
+          : "stats-openedUnique",
       campaignsSent: campaignRows.length,
       automationsActive: liveAutomationCount,
     })
