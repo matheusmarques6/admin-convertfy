@@ -1432,12 +1432,55 @@ async function doSyncOmnisendForStore(params: {
       totalAutomationsOrders += entry.totalOrders
     }
 
+    // Statistics API (breakdown por marketingActivityID) tem retornado
+    // valores ~2x maiores que o real em algumas lojas. Provavel causa:
+    // a API entrega valor cumulativo em cada bucket de timestamp em vez
+    // de incremental, ou duplica entries por messageChannel internos.
+    // Mesmo periodo no /api/analytics/reports (sem dimensions) retorna
+    // o valor correto. Visto:
+    //   - /reports attributedRevenue: R$ 366K
+    //   - /statistics breakdown sum: R$ 693K (2x)
+    //
+    // Estrategia: usar /reports como FONTE DE VERDADE para os totais
+    // (statsCampaign + statsAutomation soma deve bater com o reports),
+    // e calibrar o split campaign/automation pela proporcao do statistics.
+    // Isso preserva o split (que so o statistics da) com totais corretos.
+    const statsCampSum = totalCampaignsRevenue
+    const statsAutoSum = totalAutomationsRevenue
+    const statsAttributed = statsCampSum + statsAutoSum
+    const reportsAttributed = reportsTotals.attributedRevenue || 0
+
+    // Se /reports retornou valor diferente E divergencia > 5%, recalibra
+    // pela proporcao. Tolerancia 5% absorve atribuicao temporal (event
+    // date vs send date) sem trocar fontes a toa.
+    let totalCampaignRevenueFinal = statsCampSum
+    let totalAutomationRevenueFinal = statsAutoSum
+    let totalAttributedRevenueFinal = statsAttributed
+    if (reportsAttributed > 0 && statsAttributed > 0) {
+      const divergence = Math.abs(statsAttributed - reportsAttributed) / reportsAttributed
+      if (divergence > 0.05) {
+        const ratio = reportsAttributed / statsAttributed
+        totalCampaignRevenueFinal = statsCampSum * ratio
+        totalAutomationRevenueFinal = statsAutoSum * ratio
+        totalAttributedRevenueFinal = reportsAttributed
+        log.warn("[OmnisendSync] Statistics breakdown diverges from /reports — calibrating", {
+          storeId,
+          statsAttributed,
+          reportsAttributed,
+          divergencePct: (divergence * 100).toFixed(1),
+          ratio: ratio.toFixed(3),
+          statsCampSum,
+          statsAutoSum,
+          calibratedCampaign: totalCampaignRevenueFinal,
+          calibratedAutomation: totalAutomationRevenueFinal,
+        })
+      }
+    }
+
     const revenueStats = {
       totalRevenue: activityBreakdown.total.revenue,
       totalOrders: activityBreakdown.total.orders,
-      // attributedRevenue = soma de campaigns + automations (real, nao mais
-      // 100% jogado em flow). Fallback pra /reports se breakdown falhou.
-      attributedRevenue: totalCampaignsRevenue + totalAutomationsRevenue,
+      attributedRevenue: totalAttributedRevenueFinal,
       attributedOrders: totalCampaignsOrders + totalAutomationsOrders,
     }
 
@@ -1624,8 +1667,8 @@ async function doSyncOmnisendForStore(params: {
     //    individual — somamos pra ter os totais por canal de marketing.
     const totalAttributedRevenue = Math.max(0, revenueStats.attributedRevenue)
     const totalAttributedOrders = Math.max(0, revenueStats.attributedOrders)
-    const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
-    const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
+    const totalCampaignRevenue = Math.max(0, totalCampaignRevenueFinal)
+    const totalAutomationRevenue = Math.max(0, totalAutomationRevenueFinal)
 
     // engagedContacts via /api/analytics/reports openedUnique. Threshold
     // tightened: se engagedRaw >= subscribedContacts, consideramos
