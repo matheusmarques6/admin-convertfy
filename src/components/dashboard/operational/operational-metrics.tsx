@@ -63,7 +63,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       {cards.map((card) => (
         <div
           key={card.title}
-          className="rounded-[8px] border border-border bg-card p-4"
+          className="rounded-[6px] border border-border bg-card p-4"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">

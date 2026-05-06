@@ -5,6 +5,7 @@ import useSWR from "swr"
 import { Plus, HeartHandshake } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -43,14 +44,21 @@ export default function CsPipelinesPage() {
     >
       <div className="p-6">
         {isLoading ? (
-          <div style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
-            Carregando...
-          </div>
+          <PageSkeleton variant="list" showHeader={false} className="px-0 py-0" />
         ) : pipelines.length === 0 ? (
           <CrmEmptyState
             icon={<HeartHandshake className="h-5 w-5" />}
             title="Nenhum pipeline de CS configurado"
-            description="Os pipelines pre-configurados sao criados automaticamente pela migration de seed."
+            description="Crie um pipeline pos-venda (Onboarding, Saude, Renovacao) para acompanhar contas ativas."
+            action={
+              <button
+                className="crm-button-primary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Criar primeiro pipeline CS
+              </button>
+            }
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

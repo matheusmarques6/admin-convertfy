@@ -151,7 +151,7 @@ function EmailPerfTooltip({
   return (
     <div
       className={cn(
-        "rounded-[6px] px-3 py-2 shadow-lg",
+        "rounded-[6px] px-3 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
         "bg-gray-900 dark:bg-[#242836]",
         "text-sm text-white dark:text-[#EAEDF3]",
       )}
@@ -243,7 +243,7 @@ function EmailPerfSkeleton() {
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
+        "rounded-[6px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-white/[0.08] dark:bg-[#1A1D27]",
       )}
     >
@@ -267,7 +267,7 @@ function EmailPerfSkeleton() {
       </div>
 
       {/* Chart skeleton */}
-      <div className="mt-5 h-[200px] rounded-[8px] bg-gray-50 dark:bg-[#242836] animate-pulse" />
+      <div className="mt-5 h-[200px] rounded-[6px] bg-gray-50 dark:bg-[#242836] animate-pulse" />
 
       {/* Footer skeleton */}
       <div className="mt-5 border-t border-black/[0.08] dark:border-white/[0.08] pt-4">
@@ -350,7 +350,7 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
+        "rounded-[6px] border border-black/[0.08] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-white/[0.08] dark:bg-[#1A1D27]",
       )}
     >

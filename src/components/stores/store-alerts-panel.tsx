@@ -334,12 +334,12 @@ export function StoreAlertsPanel() {
             <table className="w-full">
               <thead>
                 <tr className="bg-muted/50 border-b border-border">
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Alerta</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
-                  <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Severidade</th>
-                  <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Status</th>
-                  <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Quando</th>
-                  <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ações</th>
+                  <th scope="col" className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Alerta</th>
+                  <th scope="col" className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
+                  <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Severidade</th>
+                  <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Status</th>
+                  <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Quando</th>
+                  <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ações</th>
                 </tr>
               </thead>
               <tbody>

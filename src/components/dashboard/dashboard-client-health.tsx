@@ -109,7 +109,7 @@ function ClientHealthSkeleton() {
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
+        "flex h-full flex-col rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -280,7 +280,7 @@ export function DashboardClientHealth({
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
+        "flex h-full flex-col rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -344,19 +344,19 @@ export function DashboardClientHealth({
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50">
-              <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
+              <th scope="col" className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Loja
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
+              <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Fat. Loja
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
+              <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Fat. Atrib.
               </th>
-              <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
+              <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 % Receita
               </th>
-              <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
+              <th scope="col" className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">
                 Score
               </th>
             </tr>
@@ -441,7 +441,7 @@ export function DashboardClientHealth({
                     </TooltipTrigger>
                     <TooltipContent
                       side="left"
-                      className="rounded-lg border-gray-700 bg-gray-900 p-3 text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+                      className="rounded-[6px] border-gray-700 bg-gray-900 p-3 text-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] dark:border-gray-600 dark:bg-gray-800"
                     >
                       <ClientTooltipContent client={client} />
                     </TooltipContent>

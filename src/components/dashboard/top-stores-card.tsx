@@ -34,7 +34,7 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
-    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[6px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">

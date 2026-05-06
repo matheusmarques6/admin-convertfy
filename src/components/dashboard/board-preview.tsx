@@ -35,7 +35,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
   const maxCount = Math.max(...counts.map((c) => c.count), 1)
 
   return (
-    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[6px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -53,7 +53,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         {/* Column counters */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {counts.map((col) => (
-            <div key={col.status} className="text-center space-y-1.5 sm:space-y-2 p-2 sm:p-2.5 rounded-[8px] bg-muted/30">
+            <div key={col.status} className="text-center space-y-1.5 sm:space-y-2 p-2 sm:p-2.5 rounded-[6px] bg-muted/30">
               <p className="text-[11px] text-muted-foreground font-medium">{col.label}</p>
               <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums">{col.count}</p>
               <div className="h-1.5 rounded-full bg-muted overflow-hidden">

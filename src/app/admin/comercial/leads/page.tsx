@@ -8,6 +8,8 @@ import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { LeadDrawer } from "@/components/crm/lead-drawer"
 import { NewLeadDialog } from "@/components/crm/new-lead-dialog"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
+import { useDebounce } from "@/hooks/use-debounce"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -43,6 +45,7 @@ export default function SalesLeadsPage() {
 function SalesLeadsPageInner() {
   const searchParams = useSearchParams()
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebounce(search, 250)
   const [statusFilter, setStatusFilter] = useState("")
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
   const [newLeadOpen, setNewLeadOpen] = useState(false)
@@ -54,7 +57,7 @@ function SalesLeadsPageInner() {
   }, [searchParams])
 
   const params = new URLSearchParams()
-  if (search) params.set("search", search)
+  if (debouncedSearch) params.set("search", debouncedSearch)
   if (statusFilter) params.set("status", statusFilter)
   params.set("limit", "100")
 
@@ -93,6 +96,7 @@ function SalesLeadsPageInner() {
               className="crm-input w-full"
               style={{ paddingLeft: "30px" }}
               placeholder="Buscar por nome, email, empresa..."
+              aria-label="Buscar leads por nome, email ou empresa"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -101,6 +105,7 @@ function SalesLeadsPageInner() {
             className="crm-input"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filtrar por status"
           >
             <option value="">Todos status</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -109,12 +114,19 @@ function SalesLeadsPageInner() {
               </option>
             ))}
           </select>
+          {(debouncedSearch || statusFilter) && (
+            <span
+              className="ml-auto"
+              style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}
+              aria-live="polite"
+            >
+              {leads.length} {leads.length === 1 ? "resultado" : "resultados"}
+            </span>
+          )}
         </div>
 
         {isLoading ? (
-          <div style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
-            Carregando...
-          </div>
+          <PageSkeleton variant="list" showHeader={false} className="px-0 py-0" />
         ) : leads.length === 0 ? (
           <CrmEmptyState
             icon={<UserPlus className="h-5 w-5" />}
@@ -137,13 +149,13 @@ function SalesLeadsPageInner() {
             <table className="w-full" style={{ fontSize: "var(--crm-text-base)" }}>
               <thead>
                 <tr style={{ background: "var(--crm-gray-50)", height: "var(--crm-table-header-height)" }}>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>NOME</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>EMPRESA</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>EMAIL</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>FONTE</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>STATUS</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>SCORE</th>
-                  <th className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>OWNER</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>NOME</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>EMPRESA</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>EMAIL</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>FONTE</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>STATUS</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>SCORE</th>
+                  <th scope="col" className="text-left font-medium px-3" style={{ color: "var(--crm-gray-600)", fontSize: "var(--crm-text-xs)" }}>OWNER</th>
                 </tr>
               </thead>
               <tbody>

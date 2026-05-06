@@ -141,7 +141,7 @@ export function DashboardOperacionalSection() {
           {/* Distribuicao de health (2 cols) */}
           <div
             className={
-              "col-span-1 lg:col-span-2 rounded-[8px] border border-[rgba(0,0,0,0.08)] " +
+              "col-span-1 lg:col-span-2 rounded-[6px] border border-[rgba(0,0,0,0.08)] " +
               "dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6"
             }
           >
@@ -248,7 +248,7 @@ export function DashboardOperacionalSection() {
           {/* Lojas em risco (3 cols) */}
           <div
             className={
-              "col-span-1 lg:col-span-3 rounded-[8px] border border-[rgba(0,0,0,0.08)] " +
+              "col-span-1 lg:col-span-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] " +
               "dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6"
             }
           >
@@ -283,16 +283,16 @@ export function DashboardOperacionalSection() {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-[#242836] text-gray-500 dark:text-[#8B92A5]">
-                      <th className="text-left font-medium px-3 py-2">Loja</th>
-                      <th className="text-left font-medium px-3 py-2 hidden md:table-cell">
+                      <th scope="col" className="text-left font-medium px-3 py-2">Loja</th>
+                      <th scope="col" className="text-left font-medium px-3 py-2 hidden md:table-cell">
                         Cliente
                       </th>
-                      <th className="text-right font-medium px-3 py-2">Health</th>
-                      <th className="text-right font-medium px-3 py-2 hidden md:table-cell">
+                      <th scope="col" className="text-right font-medium px-3 py-2">Health</th>
+                      <th scope="col" className="text-right font-medium px-3 py-2 hidden md:table-cell">
                         NPS
                       </th>
-                      <th className="text-right font-medium px-3 py-2">MRR</th>
-                      <th className="w-8 px-3 py-2" />
+                      <th scope="col" className="text-right font-medium px-3 py-2">MRR</th>
+                      <th scope="col" className="w-8 px-3 py-2" />
                     </tr>
                   </thead>
                   <tbody>

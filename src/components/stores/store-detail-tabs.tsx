@@ -378,11 +378,11 @@ function LatestCampaignsTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-gray-50 dark:bg-[#242836]">
-                <th className="text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Nome</th>
-                <th className="text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Status</th>
-                <th className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Enviados</th>
-                <th className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Open Rate</th>
-                <th className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Receita</th>
+                <th scope="col" className="text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Nome</th>
+                <th scope="col" className="text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Status</th>
+                <th scope="col" className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Enviados</th>
+                <th scope="col" className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Open Rate</th>
+                <th scope="col" className="text-right text-[12px] font-semibold uppercase tracking-[0.04em] text-gray-500 dark:text-[#5C6378] px-4 py-2">Receita</th>
               </tr>
             </thead>
             <tbody>

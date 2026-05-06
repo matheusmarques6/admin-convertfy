@@ -612,13 +612,13 @@ export default function PortalTrackingPage() {
                 <table className="w-full min-w-[700px]">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-700/30 bg-slate-50/50 dark:bg-slate-800/30">
-                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-5">Pedido</th>
-                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Cliente</th>
-                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Status</th>
-                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Rastreio</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Valor</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-5">Data</th>
-                      <th className="w-10"></th>
+                      <th scope="col" className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-5">Pedido</th>
+                      <th scope="col" className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Cliente</th>
+                      <th scope="col" className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Status</th>
+                      <th scope="col" className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Rastreio</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Valor</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-5">Data</th>
+                      <th scope="col" className="w-10"></th>
                     </tr>
                   </thead>
                   <tbody>

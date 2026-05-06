@@ -83,7 +83,7 @@ function CustomTooltip({ active, payload, label, coordinate, viewBox }: CustomTo
     <div
       className={cn(
         "pointer-events-none absolute z-50",
-        "rounded-[6px] px-3.5 py-3 shadow-lg",
+        "rounded-[6px] px-3.5 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
         "bg-gray-900 dark:bg-[#242836]",
         "text-[12px] leading-[18px] text-white dark:text-[#EAEDF3]",
         "min-w-[180px]",
@@ -193,7 +193,7 @@ function ChartSkeleton() {
   return (
     <div
       className={cn(
-        "rounded-[8px] p-6",
+        "rounded-[6px] p-6",
         "bg-white dark:bg-[#1A1D27]",
         "border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
       )}
@@ -213,7 +213,7 @@ function ChartSkeleton() {
       {/* Chart area skeleton */}
       <div
         className={cn(
-          "h-[280px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1E2130] rounded-[8px] animate-pulse",
+          "h-[280px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1E2130] rounded-[6px] animate-pulse",
           "flex items-end justify-between px-6 pb-6 gap-3",
         )}
       >
@@ -237,14 +237,19 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleMouseMove = useCallback((state: any) => {
-    if (state?.activeTooltipIndex !== undefined && state?.isTooltipActive) {
-      setActiveIndex(state.activeTooltipIndex as number)
-    } else {
-      setActiveIndex(null)
-    }
-  }, [])
+  // Recharts mouse-event payload tem tipo `MouseHandlerDataParam` mas
+  // ele nao e publico estavel; pegamos apenas as duas chaves que usamos.
+  const handleMouseMove = useCallback(
+    (state: { activeTooltipIndex?: number | string | null; isTooltipActive?: boolean }) => {
+      const idx = state?.activeTooltipIndex
+      if (state?.isTooltipActive && typeof idx === "number") {
+        setActiveIndex(idx)
+      } else {
+        setActiveIndex(null)
+      }
+    },
+    [],
+  )
 
   const handleMouseLeave = useCallback(() => {
     setActiveIndex(null)
@@ -258,7 +263,7 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
     <div
       ref={chartRef}
       className={cn(
-        "rounded-[8px] p-6",
+        "rounded-[6px] p-6",
         "bg-white dark:bg-[#1A1D27]",
         "border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
       )}

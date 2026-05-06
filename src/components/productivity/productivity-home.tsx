@@ -152,8 +152,17 @@ export function ProductivityHome() {
                 right={<span className="text-[11px] text-gray-400 dark:text-white/50">Max 3</span>}
               />
               {dayObjectives.length === 0 ? (
-                <div className="py-4 text-center text-[12px] text-gray-400 dark:text-white/50">
-                  Nenhum objetivo definido. Inicie o planejamento diario.
+                <div className="py-6 text-center">
+                  <p className="text-[12px] text-gray-500 dark:text-white/60 mb-2">
+                    Nenhum objetivo definido para hoje
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowDailyPlanning(true)}
+                    className="text-[12px] font-medium text-brand-400 hover:underline"
+                  >
+                    Iniciar planejamento diario →
+                  </button>
                 </div>
               ) : null}
               {dayObjectives.map((o, i) => (

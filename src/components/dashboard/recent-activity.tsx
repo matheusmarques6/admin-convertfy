@@ -84,7 +84,7 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
   const hasActivities = activities.length > 0
 
   return (
-    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[6px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center gap-2.5">
           <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">

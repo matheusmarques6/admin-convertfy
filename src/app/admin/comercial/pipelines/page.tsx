@@ -5,6 +5,7 @@ import useSWR from "swr"
 import { Plus, GitBranch } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -45,16 +46,21 @@ export default function SalesPipelinesPage() {
     >
       <div className="p-6">
         {isLoading ? (
-          <div
-            style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
-          >
-            Carregando...
-          </div>
+          <PageSkeleton variant="list" showHeader={false} className="px-0 py-0" />
         ) : pipelines.length === 0 ? (
           <CrmEmptyState
             icon={<GitBranch className="h-5 w-5" />}
             title="Nenhum pipeline configurado"
-            description="Os pipelines pre-configurados (Inbound, Outbound, Indicacoes) sao criados automaticamente ao executar a migration de seed."
+            description="Pipelines organizam o fluxo de aquisicao por estagios. Crie o primeiro para comecar a registrar deals."
+            action={
+              <button
+                className="crm-button-primary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Criar primeiro pipeline
+              </button>
+            }
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -25,11 +25,11 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
             <table className="w-full text-sm min-w-[460px]">
               <thead>
                 <tr className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-slate-700/30">
-                  <th className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Fluxo</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Entregas</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Abertura</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Cliques</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Receita</th>
+                  <th scope="col" className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Fluxo</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Entregas</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Abertura</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Cliques</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Receita</th>
                 </tr>
               </thead>
               <tbody>
@@ -78,10 +78,10 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
             <table className="w-full text-sm min-w-[460px]">
               <thead>
                 <tr className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-slate-700/30">
-                  <th className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Campanha</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Abertura</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Cliques</th>
-                  <th className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Receita</th>
+                  <th scope="col" className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Campanha</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Abertura</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Cliques</th>
+                  <th scope="col" className="text-right pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Receita</th>
                 </tr>
               </thead>
               <tbody>

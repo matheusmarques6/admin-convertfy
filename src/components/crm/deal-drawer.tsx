@@ -165,7 +165,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
           style={{ animationDuration: "var(--crm-duration-normal)" }}
         />
         <DialogPrimitive.Content
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[760px] flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[100vw] sm:max-w-[640px] lg:max-w-[760px] flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
           style={{
             background: "var(--crm-gray-0)",
             fontFamily: "var(--crm-font-sans)",
@@ -307,8 +307,8 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             </div>
           )}
 
-          {/* Body 2-col: timeline + sidebar */}
-          <div className="flex flex-1 overflow-hidden">
+          {/* Body 2-col em desktop, stack em mobile */}
+          <div className="flex flex-1 flex-col-reverse md:flex-row overflow-hidden">
             {/* Timeline + composer */}
             <div className="flex flex-1 flex-col overflow-hidden">
               {/* Composer com tabs */}
@@ -545,7 +545,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             {/* Sidebar */}
             {deal && (
               <aside
-                className="w-[260px] shrink-0 overflow-auto border-l"
+                className="w-full md:w-[260px] md:shrink-0 overflow-auto border-b md:border-b-0 md:border-l"
                 style={{
                   borderColor: "var(--crm-gray-200)",
                   background: "var(--crm-gray-50)",

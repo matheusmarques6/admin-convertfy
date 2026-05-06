@@ -225,7 +225,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
+        "rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >

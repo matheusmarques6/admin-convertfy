@@ -749,12 +749,12 @@ export function StoreEmailFullscreenReport({ storeId, storeName, period }: Store
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border/50">
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-left">#</th>
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-left">Nome do Flow</th>
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Entregues</th>
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Abertura</th>
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Cliques</th>
-                      <th className="pb-3 text-xs text-muted-foreground font-medium text-right">Receita</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-left">#</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-left">Nome do Flow</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-right">Entregues</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-right">Abertura</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-right">Cliques</th>
+                      <th scope="col" className="pb-3 text-xs text-muted-foreground font-medium text-right">Receita</th>
                     </tr>
                   </thead>
                   <tbody>

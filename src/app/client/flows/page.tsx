@@ -175,12 +175,12 @@ export default function PortalFlowsPage() {
                 <table className="w-full min-w-[600px]">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-700/30 bg-slate-50/50 dark:bg-slate-800/30">
-                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Nome</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Entregas</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Abertura</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Cliques</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Receita</th>
-                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Rec/dest</th>
+                      <th scope="col" className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Nome</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Entregas</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Abertura</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Cliques</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Receita</th>
+                      <th scope="col" className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Rec/dest</th>
                     </tr>
                   </thead>
                   <tbody>

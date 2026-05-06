@@ -299,11 +299,11 @@ function CampaignsTable({ klaviyo }: { klaviyo?: KlaviyoData }) {
             <table className="w-full text-sm min-w-[520px]">
               <thead>
                 <tr className="text-xs text-gray-400 dark:text-[#5C6378] border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
-                  <th className="text-left pb-2 font-medium">Campanha</th>
-                  <th className="text-right pb-2 font-medium">Data</th>
-                  <th className="text-right pb-2 font-medium">Open%</th>
-                  <th className="text-right pb-2 font-medium">Click%</th>
-                  <th className="text-right pb-2 font-medium">Receita</th>
+                  <th scope="col" className="text-left pb-2 font-medium">Campanha</th>
+                  <th scope="col" className="text-right pb-2 font-medium">Data</th>
+                  <th scope="col" className="text-right pb-2 font-medium">Open%</th>
+                  <th scope="col" className="text-right pb-2 font-medium">Click%</th>
+                  <th scope="col" className="text-right pb-2 font-medium">Receita</th>
                 </tr>
               </thead>
               <tbody>

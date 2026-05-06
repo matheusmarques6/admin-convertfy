@@ -86,7 +86,7 @@ export function NightlyReflection({ open, onClose }: NightlyReflectionProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      <div className="relative bg-white dark:bg-[#1A1D27] rounded-lg w-full max-w-[640px] max-h-[85vh] flex flex-col shadow-lg overflow-hidden">
+      <div className="relative bg-white dark:bg-[#1A1D27] rounded-[6px] w-full max-w-[640px] max-h-[85vh] flex flex-col border border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_12px_rgba(0,0,0,0.08)] overflow-hidden">
         {/* Header — gradiente noturno (azul escuro pra roxo) */}
         <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 px-6 py-4 flex items-center justify-between text-white shrink-0">
           <div className="flex items-center gap-2">

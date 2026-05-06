@@ -672,14 +672,14 @@ export function StoreControlPanel() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 min-w-[240px]">Loja / Cliente</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Recuperacao</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Feedback</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ultima Call</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsavel</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]"></th>
+                    <th scope="col" className="text-left text-xs font-medium text-muted-foreground px-4 py-3 min-w-[240px]">Loja / Cliente</th>
+                    <th scope="col" className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo</th>
+                    <th scope="col" className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
+                    <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Recuperacao</th>
+                    <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Feedback</th>
+                    <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ultima Call</th>
+                    <th scope="col" className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsavel</th>
+                    <th scope="col" className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]"></th>
                   </tr>
                 </thead>
                 <tbody>

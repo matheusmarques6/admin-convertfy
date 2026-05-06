@@ -127,7 +127,7 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
           style={{ animationDuration: "var(--crm-duration-normal)" }}
         />
         <DialogPrimitive.Content
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[560px] flex-col data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[100vw] sm:max-w-[480px] lg:max-w-[560px] flex-col data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
           style={{
             background: "var(--crm-gray-0)",
             fontFamily: "var(--crm-font-sans)",

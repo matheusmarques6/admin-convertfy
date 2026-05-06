@@ -201,7 +201,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
+        "overflow-hidden rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27]",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -266,22 +266,22 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
             <table className="w-full">
               <thead>
                 <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50">
-                  <th className="py-2.5 px-4 text-left text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-left text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Cliente
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Receita
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Open Rate
                   </th>
-                  <th className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-right text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Click Rate
                   </th>
-                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Trend
                   </th>
-                  <th className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
+                  <th scope="col" className="py-2.5 px-4 text-center text-xs font-semibold uppercase tracking-[0.04em] text-gray-400 dark:text-white/50">
                     Status
                   </th>
                 </tr>

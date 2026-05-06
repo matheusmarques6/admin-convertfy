@@ -70,9 +70,12 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
     label: "Geral",
     description: "Produtividade, financeiro, configs",
     initials: "GR",
-    color: "#1F1F1F",
-    colorBg: "rgba(31, 31, 31, 0.06)",
-    colorBorder: "rgba(31, 31, 31, 0.18)",
+    // Cinza grafite — visivel sobre fundo preto da sidebar.
+    // O brand do CRM continua sendo #1F1F1F (em crm-tokens.css); aqui
+    // usamos um cinza neutro pra dar identidade ao workspace sem sumir.
+    color: "#71717A",
+    colorBg: "rgba(113, 113, 122, 0.10)",
+    colorBorder: "rgba(113, 113, 122, 0.30)",
     colorFg: "#FFFFFF",
     homeHref: "/admin/productivity",
     icon: LayoutGrid,

@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import useSWR from "swr"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { TrendingUp, Trophy, Target, Clock, BarChart3 } from "lucide-react"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -56,14 +58,21 @@ export default function SalesDashboardPage() {
     >
       <div className="p-6">
         {isLoading || !d ? (
-          <div style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
-            Carregando metricas...
-          </div>
+          <PageSkeleton variant="metrics" showHeader={false} className="px-0 py-0" />
         ) : d.open_count === 0 && d.won_count === 0 && d.lost_count === 0 ? (
           <CrmEmptyState
             icon={<BarChart3 className="h-5 w-5" />}
             title="Sem deals na janela selecionada"
-            description="Crie deals em qualquer pipeline comercial para comecar a ver KPIs aqui."
+            description="Aumente o intervalo no seletor acima ou crie um novo deal em qualquer pipeline comercial."
+            action={
+              <Link
+                href="/admin/comercial/pipelines"
+                className="crm-button-primary"
+                style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+              >
+                Ver pipelines
+              </Link>
+            }
           />
         ) : (
           <div className="space-y-6">

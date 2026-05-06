@@ -65,7 +65,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = filteredAlerts.length
 
   return (
-    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[6px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -90,7 +90,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                 const AlertIcon = ALERT_ICONS[alert.type] || Clock
                 const content = (
                   <div
-                    className="flex items-start gap-3 p-3 rounded-[8px] bg-muted/30 hover:bg-muted/50 transition-all duration-200"
+                    className="flex items-start gap-3 p-3 rounded-[6px] bg-muted/30 hover:bg-muted/50 transition-all duration-200"
                   >
                     <div className={`rounded-lg p-2 shrink-0 ${
                       alert.severity === "high" ? "bg-destructive/10" :

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
-import { Search, Send, MessageSquare, Filter, Phone } from "lucide-react"
+import { Search, Send, MessageSquare, Filter, Phone, ArrowLeft } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { useDebounce } from "@/hooks/use-debounce"
+import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { CrmEmptyState } from "./crm-empty-state"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -54,6 +57,7 @@ export function InboxView() {
   const [statusFilter, setStatusFilter] = useState<"open" | "pending" | "resolved" | "all">("open")
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebounce(search, 250)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [composer, setComposer] = useState("")
   const [sending, setSending] = useState(false)
@@ -66,7 +70,7 @@ export function InboxView() {
   const params = new URLSearchParams()
   params.set("status", statusFilter)
   if (mineOnly) params.set("mine", "1")
-  if (search) params.set("search", search)
+  if (debouncedSearch) params.set("search", debouncedSearch)
 
   const { data: threadsData, mutate: mutateThreads } = useSWR<{ threads: ThreadSummary[] }>(
     `/api/crm/inbox/threads?${params.toString()}`,
@@ -158,10 +162,13 @@ export function InboxView() {
       className="flex h-full"
       style={{ background: "var(--crm-gray-50)", fontFamily: "var(--crm-font-sans)" }}
     >
-      {/* Threads list */}
+      {/* Threads list — em mobile esconde quando ha thread ativa */}
       <aside
-        className="flex flex-col border-r"
-        style={{ width: 320, borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
+        className={cn(
+          "flex flex-col border-r w-full md:w-[320px] md:shrink-0",
+          activeThreadId && "hidden md:flex",
+        )}
+        style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
       >
         <div
           className="border-b px-3 py-3"
@@ -203,16 +210,18 @@ export function InboxView() {
               className="crm-input w-full"
               style={{ paddingLeft: 30 }}
               placeholder="Buscar contato..."
+              aria-label="Buscar conversas por contato"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" role="group" aria-label="Filtrar por status">
             {(["open", "pending", "resolved", "all"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
+                aria-pressed={statusFilter === s}
                 style={{
                   fontSize: "var(--crm-text-xs)",
                   fontWeight: "var(--crm-weight-medium)",
@@ -231,6 +240,8 @@ export function InboxView() {
             <button
               onClick={() => setMineOnly((v) => !v)}
               title="Apenas meus"
+              aria-pressed={mineOnly}
+              aria-label="Filtrar apenas conversas atribuidas a mim"
               style={{
                 marginLeft: "auto",
                 padding: 4,
@@ -248,11 +259,23 @@ export function InboxView() {
 
         <div className="flex-1 overflow-auto">
           {threads.length === 0 ? (
-            <div
-              className="px-4 py-12 text-center"
-              style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
-            >
-              Nenhuma conversa
+            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-[4px] mb-2"
+                style={{ background: "var(--crm-gray-100)", color: "var(--crm-gray-400)" }}
+              >
+                <MessageSquare className="h-4 w-4" />
+              </div>
+              <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 530, color: "var(--crm-gray-700)" }}>
+                {debouncedSearch || statusFilter !== "open" || mineOnly
+                  ? "Nenhuma conversa encontrada"
+                  : "Inbox vazia"}
+              </p>
+              <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>
+                {debouncedSearch || statusFilter !== "open" || mineOnly
+                  ? "Ajuste os filtros para ver mais resultados."
+                  : "Conversas chegam aqui via WhatsApp Cloud API."}
+              </p>
             </div>
           ) : (
             threads.map((t) => (
@@ -333,8 +356,13 @@ export function InboxView() {
         </div>
       </aside>
 
-      {/* Conversation panel */}
-      <main className="flex flex-1 flex-col">
+      {/* Conversation panel — em mobile so aparece quando ha thread ativa */}
+      <main
+        className={cn(
+          "flex-1 flex-col",
+          activeThreadId ? "flex" : "hidden md:flex",
+        )}
+      >
         {!activeThreadId ? (
           <div className="flex flex-1 items-center justify-center">
             <CrmEmptyState
@@ -344,10 +372,18 @@ export function InboxView() {
             />
           </div>
         ) : !detail ? (
-          <div className="flex flex-1 items-center justify-center">
-            <p style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
-              Carregando...
-            </p>
+          <div className="flex flex-1 flex-col gap-3 p-6" aria-label="Carregando conversa">
+            <SkeletonShimmer className="h-8 w-48 rounded-[4px]" />
+            <SkeletonShimmer className="h-3 w-32 rounded-[4px]" />
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonShimmer
+                  key={i}
+                  className="h-12 rounded-[6px]"
+                  style={{ width: i % 2 === 0 ? "70%" : "55%", marginLeft: i % 2 === 0 ? 0 : "auto" }}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -360,9 +396,21 @@ export function InboxView() {
                 background: "var(--crm-gray-0)",
               }}
             >
-              <div className="flex items-center gap-2">
-                <Phone className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  onClick={() => setActiveThreadId(null)}
+                  className="md:hidden flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px]"
+                  style={{
+                    color: "var(--crm-gray-600)",
+                    background: "var(--crm-gray-100)",
+                  }}
+                  aria-label="Voltar para lista de conversas"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                </button>
+                <Phone className="hidden md:block h-3.5 w-3.5 shrink-0" style={{ color: "var(--crm-gray-500)" }} />
                 <span
+                  className="truncate"
                   style={{
                     fontSize: "var(--crm-text-md)",
                     fontWeight: "var(--crm-weight-medium)",

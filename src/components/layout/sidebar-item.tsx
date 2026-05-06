@@ -43,7 +43,8 @@ export function SidebarItem({
 
   // Quando workspace tem cor, usa ela com bg sutil e texto branco;
   // senao mantem fallback original.
-  const activeBg = accentColor ? `${accentColor}20` : undefined // 12% alpha hex
+  const activeBg = accentColor ? `${accentColor}26` : undefined // ~15% alpha hex
+  const activeBarColor = accentColor
   const activeFg = accentColor ? "#FFFFFF" : undefined
 
   const content = (
@@ -70,7 +71,7 @@ export function SidebarItem({
       }
     >
       {/* Barra colorida lateral quando ativo (so na versao expandida) */}
-      {active && !collapsed && accentColor && (
+      {active && !collapsed && activeBarColor && (
         <span
           aria-hidden
           style={{
@@ -79,7 +80,7 @@ export function SidebarItem({
             top: 6,
             bottom: 6,
             width: 3,
-            background: accentColor,
+            background: activeBarColor,
             borderTopRightRadius: 3,
             borderBottomRightRadius: 3,
           }}

@@ -105,7 +105,7 @@ function FlowCardSkeleton() {
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
+        "rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
@@ -147,7 +147,7 @@ function FlowCard({ data }: { data: FlowCardData }) {
         <TooltipTrigger asChild>
           <div
             className={cn(
-              "cursor-default rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
+              "cursor-default rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-4",
               "transition-shadow hover:shadow-sm",
               "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
             )}

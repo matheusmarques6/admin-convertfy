@@ -193,7 +193,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Skeleton loading
   if (isLoading && !data) {
     return (
-      <div className="rounded-[8px] border border-border bg-card p-6">
+      <div className="rounded-[6px] border border-border bg-card p-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Skeleton className="h-6 w-48" />
@@ -204,8 +204,8 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
           </div>
           <Skeleton className="h-14 w-72" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <Skeleton className="h-20 w-full rounded-[8px]" />
-            <Skeleton className="h-20 w-full rounded-[8px]" />
+            <Skeleton className="h-20 w-full rounded-[6px]" />
+            <Skeleton className="h-20 w-full rounded-[6px]" />
           </div>
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
@@ -220,9 +220,9 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Error state (only show when no stale data available)
   if (error && !data) {
     return (
-      <div className="rounded-[8px] border border-border bg-card p-6">
+      <div className="rounded-[6px] border border-border bg-card p-6">
         <div className="flex flex-col items-center justify-center py-8">
-          <div className="rounded-[8px] bg-muted p-3 mb-4">
+          <div className="rounded-[6px] bg-muted p-3 mb-4">
             <Icon icon={Store} customSize={32} className="text-muted-foreground" />
           </div>
           <h3 className="text-base font-semibold text-foreground">Erro ao carregar receita</h3>
@@ -241,9 +241,9 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Syncing state — cache is empty but stores with Klaviyo exist
   if (data && data.dataStatus === "syncing" && data.storesCount > 0) {
     return (
-      <div className="rounded-[8px] border border-border bg-card p-6">
+      <div className="rounded-[6px] border border-border bg-card p-6">
         <div className="flex flex-col items-center justify-center py-8">
-          <div className="rounded-[8px] bg-muted p-3 mb-4">
+          <div className="rounded-[6px] bg-muted p-3 mb-4">
             <Icon icon={RefreshCw} customSize={32} className="text-muted-foreground animate-spin" />
           </div>
           <h3 className="text-base font-semibold text-foreground">
@@ -261,9 +261,9 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Empty state
   if (data && data.storesCount === 0) {
     return (
-      <div className="rounded-[8px] border border-border bg-card p-6">
+      <div className="rounded-[6px] border border-border bg-card p-6">
         <div className="flex flex-col items-center justify-center py-8">
-          <div className="rounded-[8px] bg-muted p-3 mb-4">
+          <div className="rounded-[6px] bg-muted p-3 mb-4">
             <Icon icon={Store} customSize={32} className="text-muted-foreground" />
           </div>
           <h3 className="text-base font-semibold text-foreground">Resultado Total</h3>
@@ -276,7 +276,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   }
 
   return (
-    <div className="rounded-[8px] border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
+    <div className="rounded-[6px] border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -349,8 +349,8 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
 
         {/* Breakdown: campaigns vs flows */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-[8px] border border-white/10 bg-white/5">
-            <div className="rounded-[8px] p-2 sm:p-2.5 bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 shrink-0">
+          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-[6px] border border-white/10 bg-white/5">
+            <div className="rounded-[6px] p-2 sm:p-2.5 bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 shrink-0">
               <Icon icon={Megaphone} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             </div>
             <div className="min-w-0">
@@ -358,8 +358,8 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
               <p className="text-base sm:text-lg font-semibold tracking-tight text-white truncate">{formatCurrency(animatedCampaign)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-[8px] border border-white/10 bg-white/5">
-            <div className="rounded-[8px] p-2 sm:p-2.5 bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 shrink-0">
+          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-[6px] border border-white/10 bg-white/5">
+            <div className="rounded-[6px] p-2 sm:p-2.5 bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 shrink-0">
               <Icon icon={Workflow} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             </div>
             <div className="min-w-0">
@@ -371,7 +371,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
 
         {/* Custom period — report generation */}
         {hasCustomDates && !activeJob && !isGenerating && (
-          <div className="rounded-[8px] border border-[#4E62D8]/20 dark:border-[#7B8CEA]/20 bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5 p-4 flex items-center gap-4">
+          <div className="rounded-[6px] border border-[#4E62D8]/20 dark:border-[#7B8CEA]/20 bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5 p-4 flex items-center gap-4">
             <div className="rounded-lg bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 p-2.5 shrink-0">
               <Icon icon={BarChart3} size={20} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             </div>
@@ -404,7 +404,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
 
         {/* Generating spinner */}
         {hasCustomDates && isGenerating && !activeJob && (
-          <div className="rounded-[8px] border border-[#4E62D8]/20 dark:border-[#7B8CEA]/20 bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5 p-4 flex items-center gap-4">
+          <div className="rounded-[6px] border border-[#4E62D8]/20 dark:border-[#7B8CEA]/20 bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5 p-4 flex items-center gap-4">
             <div className="rounded-lg bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 p-2.5 shrink-0">
               <Icon icon={Loader2} size={20} className="text-[#4E62D8] dark:text-[#7B8CEA] animate-spin" />
             </div>

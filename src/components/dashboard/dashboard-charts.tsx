@@ -46,7 +46,7 @@ function ChartEmptyState({ title, message }: { title: string; message: string })
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex h-[240px] flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#242836]/50 p-6 text-center dark:border-[#2A2F3D] dark:bg-[#1A1D27]/40">
+        <div className="flex h-[240px] flex-col items-center justify-center gap-2 rounded-[6px] border border-dashed border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#242836]/50 p-6 text-center dark:border-[#2A2F3D] dark:bg-[#1A1D27]/40">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="32"
@@ -77,7 +77,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   return (
     <div
       className={cn(
-        "rounded-[6px] px-3 py-2 shadow-lg",
+        "rounded-[6px] px-3 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
         "bg-gray-900 dark:bg-[#242836]",
         "text-sm text-white dark:text-[#EAEDF3]",
       )}
@@ -103,7 +103,7 @@ function ChartSkeleton() {
         <div className="h-4 w-40 bg-gray-100 dark:bg-[#242836] rounded animate-pulse" />
       </CardHeader>
       <CardContent>
-        <div className="h-[240px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1A1D27] rounded-[8px] animate-pulse flex items-end justify-between px-8 pb-8 gap-2">
+        <div className="h-[240px] bg-gray-50 dark:bg-[#242836] dark:bg-[#1A1D27] rounded-[6px] animate-pulse flex items-end justify-between px-8 pb-8 gap-2">
           {[40, 65, 50, 80, 60, 75, 90, 55].map((h, i) => (
             <div
               key={i}

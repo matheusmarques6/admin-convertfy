@@ -1,11 +1,19 @@
 "use client"
 
-import React from "react"
+import React, { useRef } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { ArrowUp, ArrowDown, ChevronRight, Loader2, Inbox } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { useMediaQuery } from "@/hooks/use-media-query"
+
+// Threshold acima do qual o desktop renderiza com virtualizacao
+// (CSS grid + @tanstack/react-virtual). Abaixo disso usa <table>
+// classico pra preservar comportamento atual em listas pequenas.
+const VIRTUALIZE_THRESHOLD = 100
+const VIRTUAL_ROW_HEIGHT = 44
+const VIRTUAL_VIEWPORT_HEIGHT = 560
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,7 +151,174 @@ export function DataTable<T>(props: DataTableProps<T>) {
     return <EmptyState message={props.emptyMessage} description={props.emptyDescription} />
   }
 
-  return isMobile ? <MobileCardStack {...props} /> : <DesktopTable {...props} />
+  if (isMobile) return <MobileCardStack {...props} />
+  if (props.data.length > VIRTUALIZE_THRESHOLD) return <DesktopTableVirtual {...props} />
+  return <DesktopTable {...props} />
+}
+
+// ---------------------------------------------------------------------------
+// Desktop Table Virtualized (>= 768px e data.length > VIRTUALIZE_THRESHOLD)
+//
+// Em listas grandes a tabela tradicional renderiza tudo de uma vez,
+// causando lag. Aqui usamos @tanstack/react-virtual + CSS grid (em vez
+// de <table>) pra renderizar apenas as linhas visiveis.
+// ---------------------------------------------------------------------------
+
+function DesktopTableVirtual<T>({
+  columns,
+  data,
+  onRowClick,
+  pagination,
+  sorting,
+  onSortChange,
+  rowKey,
+}: DataTableProps<T>) {
+  const parentRef = useRef<HTMLDivElement | null>(null)
+  const visibleColumns = columns
+  const gridTemplate = visibleColumns
+    .map((c) => c.width || "minmax(120px, 1fr)")
+    .join(" ")
+
+  const rowVirtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => VIRTUAL_ROW_HEIGHT,
+    overscan: 8,
+  })
+
+  const start = pagination ? (pagination.page - 1) * pagination.pageSize + 1 : 1
+  const end = pagination
+    ? Math.min(pagination.page * pagination.pageSize, pagination.total)
+    : data.length
+  const total = pagination?.total ?? data.length
+
+  return (
+    <div>
+      <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
+        {/* Header (sticky-style — fica fora do scroll virtual) */}
+        <div
+          className="grid bg-gray-50 dark:bg-[#242836] border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]"
+          style={{ gridTemplateColumns: gridTemplate }}
+          role="row"
+        >
+          {visibleColumns.map((col) => (
+            <div
+              key={col.accessorKey}
+              role="columnheader"
+              className={cn(
+                "px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.04em]",
+                "text-gray-500 dark:text-[#5C6378]",
+                isNumericType(col.type) ? "text-right" : "text-left",
+                col.sortable && "cursor-pointer select-none hover:text-gray-700 dark:hover:text-[#8B92A5]",
+              )}
+              onClick={
+                col.sortable && onSortChange
+                  ? () => onSortChange(col.accessorKey)
+                  : undefined
+              }
+            >
+              {col.headerCell ? col.headerCell() : col.header}
+              {col.sortable && sorting?.column === col.accessorKey && (
+                <Icon
+                  icon={sorting.direction === "asc" ? ArrowUp : ArrowDown}
+                  customSize={14}
+                  className="inline ml-1 -mt-0.5"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Virtual scroll viewport */}
+        <div
+          ref={parentRef}
+          className="overflow-auto"
+          style={{ height: VIRTUAL_VIEWPORT_HEIGHT, contain: "strict" }}
+          role="rowgroup"
+        >
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: "relative",
+              width: "100%",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const row = data[virtualRow.index]
+              const key = rowKey ? String(row[rowKey]) : String(virtualRow.index)
+              return (
+                <div
+                  key={key}
+                  role="row"
+                  className={cn(
+                    "grid border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+                    "hover:bg-[rgba(0,0,0,0.02)] dark:hover:bg-[rgba(255,255,255,0.02)]",
+                    "transition-colors duration-150",
+                    onRowClick && "cursor-pointer",
+                  )}
+                  style={{
+                    gridTemplateColumns: gridTemplate,
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: virtualRow.size,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
+                  {visibleColumns.map((col) => (
+                    <div
+                      key={col.accessorKey}
+                      role="cell"
+                      className={cn(
+                        "px-4 py-3 text-sm flex items-center",
+                        isNumericType(col.type)
+                          ? "justify-end font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]"
+                          : "text-gray-700 dark:text-[#8B92A5]",
+                      )}
+                    >
+                      <span className="truncate">
+                        {col.cell
+                          ? col.cell(row)
+                          : formatCell(row[col.accessorKey], col.type)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {pagination && (
+        <div className="flex items-center justify-between px-1 py-3">
+          <span className="text-sm text-gray-500 dark:text-[#5C6378]">
+            Mostrando {start}–{end} de {total} resultados
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={pagination.page <= 1}
+              onClick={() => pagination.onPageChange(pagination.page - 1)}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={end >= total}
+              onClick={() => pagination.onPageChange(pagination.page + 1)}
+            >
+              Próximo
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -167,13 +342,14 @@ function DesktopTable<T>({
 
   return (
     <div>
-      <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
+      <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gray-50 dark:bg-[#242836]">
               {columns.map((col) => (
                 <th
                   key={col.accessorKey}
+                  scope="col"
                   style={col.width ? { width: col.width } : undefined}
                   className={cn(
                     "px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.04em]",
@@ -295,7 +471,7 @@ function MobileCardStack<T>({
             <div
               key={key}
               className={cn(
-                "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
+                "rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white p-4",
                 "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]",
                 "active:bg-gray-50 dark:active:bg-[#242836]",
                 "transition-colors duration-150",
@@ -418,7 +594,7 @@ function MobileCardStack<T>({
 
 function DesktopSkeleton<T>({ columns }: { columns: ColumnDef<T>[] }) {
   return (
-    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
+    <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] overflow-hidden dark:border-[rgba(255,255,255,0.08)]">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-gray-50 dark:bg-[#242836]">
@@ -471,7 +647,7 @@ function MobileSkeleton() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4 dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27] animate-pulse"
+          className="rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white p-4 dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27] animate-pulse"
         >
           <div className="flex items-center gap-2 mb-3">
             <div className="h-4 w-32 rounded bg-gray-200 dark:bg-[#2E3347]" />

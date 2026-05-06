@@ -29,7 +29,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
   const now = new Date()
 
   return (
-    <div className="rounded-[8px] border border-border bg-card">
+    <div className="rounded-[6px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <CardTitle className="text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">

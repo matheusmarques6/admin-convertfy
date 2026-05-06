@@ -445,11 +445,11 @@ export function CampaignsListView() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="text-left pb-2 font-medium pr-4">Loja</th>
-                    <th className="text-left pb-2 font-medium pr-4">Melhor Campanha</th>
-                    <th className="text-right pb-2 font-medium pr-4">Abertura</th>
-                    <th className="text-right pb-2 font-medium pr-4">Clique</th>
-                    <th className="text-right pb-2 font-medium">Receita</th>
+                    <th scope="col" className="text-left pb-2 font-medium pr-4">Loja</th>
+                    <th scope="col" className="text-left pb-2 font-medium pr-4">Melhor Campanha</th>
+                    <th scope="col" className="text-right pb-2 font-medium pr-4">Abertura</th>
+                    <th scope="col" className="text-right pb-2 font-medium pr-4">Clique</th>
+                    <th scope="col" className="text-right pb-2 font-medium">Receita</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -492,39 +492,39 @@ export function CampaignsListView() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-muted-foreground">
-                      <th className="text-left pb-2 font-medium pr-4">
+                      <th scope="col" className="text-left pb-2 font-medium pr-4">
                         <button onClick={() => toggleSort("name")} className="flex items-center hover:text-foreground">
                           Nome <SortIcon field="name" />
                         </button>
                       </th>
-                      <th className="text-left pb-2 font-medium pr-4">
+                      <th scope="col" className="text-left pb-2 font-medium pr-4">
                         <button onClick={() => toggleSort("store")} className="flex items-center hover:text-foreground">
                           <Store className="h-3 w-3 mr-1" /> Loja <SortIcon field="store" />
                         </button>
                       </th>
-                      <th className="text-left pb-2 font-medium pr-4">Status</th>
-                      <th className="text-left pb-2 font-medium pr-4">Canal</th>
-                      <th className="text-left pb-2 font-medium pr-4">
+                      <th scope="col" className="text-left pb-2 font-medium pr-4">Status</th>
+                      <th scope="col" className="text-left pb-2 font-medium pr-4">Canal</th>
+                      <th scope="col" className="text-left pb-2 font-medium pr-4">
                         <button onClick={() => toggleSort("scheduled_date")} className="flex items-center hover:text-foreground">
                           Data <SortIcon field="scheduled_date" />
                         </button>
                       </th>
-                      <th className="text-right pb-2 font-medium">
+                      <th scope="col" className="text-right pb-2 font-medium">
                         <button onClick={() => toggleSort("recipients")} className="flex items-center justify-end hover:text-foreground ml-auto">
                           Enviados <SortIcon field="recipients" />
                         </button>
                       </th>
-                      <th className="text-right pb-2 font-medium">
+                      <th scope="col" className="text-right pb-2 font-medium">
                         <button onClick={() => toggleSort("opened")} className="flex items-center justify-end hover:text-foreground ml-auto">
                           Abertura <SortIcon field="opened" />
                         </button>
                       </th>
-                      <th className="text-right pb-2 font-medium">
+                      <th scope="col" className="text-right pb-2 font-medium">
                         <button onClick={() => toggleSort("clicked")} className="flex items-center justify-end hover:text-foreground ml-auto">
                           Clique <SortIcon field="clicked" />
                         </button>
                       </th>
-                      <th className="text-right pb-2 font-medium">
+                      <th scope="col" className="text-right pb-2 font-medium">
                         <button onClick={() => toggleSort("revenue")} className="flex items-center justify-end hover:text-foreground ml-auto">
                           Receita <SortIcon field="revenue" />
                         </button>

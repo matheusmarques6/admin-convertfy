@@ -14,15 +14,23 @@ export default async function SalesDealRedirect({
   if (!auth?.user) redirect(ROUTES.LOGIN)
 
   const admin = createAdminClient()
+  // Tipo do supabase trata o join `!inner` como array; aqui sabemos que
+  // existe no maximo um pipeline por deal, mas precisamos refletir o
+  // shape do retorno (pipeline pode vir como array ou objeto).
+  type DealRow = {
+    pipeline_id: string
+    pipeline: { scope: string | null } | { scope: string | null }[] | null
+  }
   const { data: deal } = await admin
     .from("deals")
     .select("pipeline_id, pipeline:pipelines!inner(scope)")
     .eq("id", id)
-    .single()
+    .single<DealRow>()
 
   if (!deal) redirect(ROUTES.ADMIN.COMERCIAL.PIPELINES)
 
-  const scope = (deal as any).pipeline?.scope
+  const pipeline = Array.isArray(deal.pipeline) ? deal.pipeline[0] : deal.pipeline
+  const scope = pipeline?.scope
   const path =
     scope === "cs"
       ? ROUTES.ADMIN.OPERACIONAL.PIPELINE_DETAIL(deal.pipeline_id)

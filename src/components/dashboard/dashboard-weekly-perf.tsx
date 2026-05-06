@@ -63,7 +63,7 @@ function CustomTooltip({
   if (!active || !payload || !payload.length) return null
 
   return (
-    <div className="rounded-[8px] bg-gray-900 px-3 py-2 shadow-lg dark:bg-gray-800">
+    <div className="rounded-[6px] bg-gray-900 px-3 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)] dark:bg-gray-800">
       <p className="mb-1 text-xs font-medium text-white">{label}</p>
       {payload.map((entry) => (
         <div key={entry.dataKey} className="flex items-center gap-2 text-xs text-gray-200">
@@ -124,7 +124,7 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
   return (
     <div
       className={cn(
-        "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
+        "rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white dark:bg-[#1A1D27] p-6",
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >

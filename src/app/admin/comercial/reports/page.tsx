@@ -17,6 +17,7 @@ import {
 import { Download, BarChart3 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -161,9 +162,7 @@ export default function ReportsPage() {
     >
       <div className="p-6 space-y-6">
         {isLoading ? (
-          <div style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}>
-            Carregando snapshots...
-          </div>
+          <PageSkeleton variant="chart" showHeader={false} className="px-0 py-0" />
         ) : !hasData ? (
           <CrmEmptyState
             icon={<BarChart3 className="h-5 w-5" />}
@@ -174,7 +173,7 @@ export default function ReportsPage() {
           <>
             {/* Pipeline value over time */}
             <ChartCard title="Pipeline value vs Ganhos 30d (Sales)">
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={orgSeries}>
                   <defs>
                     <linearGradient id="g-pipeline" x1="0" y1="0" x2="0" y2="1">
@@ -207,7 +206,7 @@ export default function ReportsPage() {
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <ChartCard title="Win rate (%) e ciclo medio (dias)">
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={orgSeries}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
@@ -229,7 +228,7 @@ export default function ReportsPage() {
               </ChartCard>
 
               <ChartCard title="Health score medio e NPS">
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={orgSeries}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
@@ -250,7 +249,7 @@ export default function ReportsPage() {
               </ChartCard>
 
               <ChartCard title="MRR carteira ativa">
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={orgSeries}>
                     <defs>
                       <linearGradient id="g-mrr" x1="0" y1="0" x2="0" y2="1">
@@ -276,7 +275,7 @@ export default function ReportsPage() {
               </ChartCard>
 
               <ChartCard title="Lojas e inbox aberto">
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={orgSeries}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
@@ -301,7 +300,7 @@ export default function ReportsPage() {
             {/* Funnel */}
             {funnelSeries.length > 0 && (
               <ChartCard title="Funil de leads (snapshot diario)">
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={funnelSeries}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
@@ -330,7 +329,22 @@ export default function ReportsPage() {
   )
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({
+  title,
+  children,
+  size = "md",
+}: {
+  title: string
+  children: React.ReactNode
+  /** sm = 180px mobile / 200px desktop. md = 200/240. lg = 220/280. */
+  size?: "sm" | "md" | "lg"
+}) {
+  const heightClass =
+    size === "sm"
+      ? "h-[180px] sm:h-[200px]"
+      : size === "lg"
+        ? "h-[220px] sm:h-[280px]"
+        : "h-[200px] sm:h-[240px]"
   return (
     <div className="crm-card">
       <h3
@@ -345,7 +359,7 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
       >
         {title}
       </h3>
-      {children}
+      <div className={heightClass}>{children}</div>
     </div>
   )
 }

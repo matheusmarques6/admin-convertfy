@@ -29,6 +29,8 @@ import {
   BarChart3,
   UserPlus,
   Phone,
+  Users2,
+  Wrench,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -40,6 +42,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
 import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
+import { useReportNotifications } from "@/hooks/use-report-notifications"
 import { SidebarItem } from "./sidebar-item"
 import { SidebarUser } from "./sidebar-user"
 import { WorkspaceSwitcher } from "./workspace-switcher"
@@ -183,6 +186,25 @@ const GERAL_NAV: NavGroup[] = [
     ],
   },
   {
+    key: "agenda",
+    label: "Agenda",
+    items: [
+      {
+        name: "Reunioes",
+        href: ROUTES.ADMIN.MEETINGS.LIST,
+        icon: Calendar,
+        requiredFeatures: ["calendar_control"],
+      },
+    ],
+  },
+  {
+    key: "time",
+    label: "Time",
+    items: [
+      { name: "Equipe", href: ROUTES.ADMIN.TEAM, icon: Users2 },
+    ],
+  },
+  {
     key: "financeiro",
     label: "Financeiro",
     items: [
@@ -198,6 +220,13 @@ const GERAL_NAV: NavGroup[] = [
         icon: FileBarChart,
         requiredFeatures: ["view_reports"],
       },
+    ],
+  },
+  {
+    key: "ferramentas",
+    label: "Ferramentas",
+    items: [
+      { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
     ],
   },
 ]
@@ -229,6 +258,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
   const workspace = useWorkspace()
   const wsMeta = WORKSPACES[workspace]
+  const { unreadCount: notificationsUnread } = useReportNotifications()
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -291,7 +321,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
               aria-label="Recolher menu"
               className={cn(
                 "hidden md:flex items-center justify-center shrink-0",
-                "w-8 h-8 rounded-[8px]",
+                "w-8 h-8 rounded-[6px]",
                 "text-white/60 hover:text-white",
                 "hover:bg-white/[0.06] active:bg-white/[0.1]",
                 "transition-colors duration-150",
@@ -315,7 +345,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
               aria-label="Expandir menu"
               className={cn(
                 "flex items-center justify-center",
-                "w-9 h-9 rounded-[8px]",
+                "w-9 h-9 rounded-[6px]",
                 "text-white/60 hover:text-white",
                 "hover:bg-white/[0.06] active:bg-white/[0.1]",
                 "transition-colors duration-150",
@@ -375,6 +405,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
               href={ROUTES.ADMIN.NOTIFICATIONS}
               collapsed={collapsed}
               accentColor={wsMeta.color}
+              badge={notificationsUnread}
             />
           </div>
 

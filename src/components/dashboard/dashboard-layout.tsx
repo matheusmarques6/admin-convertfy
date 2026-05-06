@@ -95,7 +95,7 @@ const _FALLBACK_SPARKLINES = {
 
 function ChartSkeleton() {
   return (
-    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
+    <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
       <Skeleton className="h-4 w-40 mb-2" />
       <Skeleton className="h-3 w-56 mb-6" />
       <Skeleton className="h-[240px] w-full rounded-[4px]" />
@@ -105,7 +105,7 @@ function ChartSkeleton() {
 
 function CardSkeleton() {
   return (
-    <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
+    <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-6 animate-pulse">
       <Skeleton className="h-4 w-40 mb-4" />
       <div className="space-y-3">
         <Skeleton className="h-8 w-32" />

@@ -498,26 +498,26 @@ function CampaignsContent() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50 border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
-                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5 w-8" />
-                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5 w-8" />
+                      <th scope="col" className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Campanha
                       </th>
-                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Data
                       </th>
-                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Enviados
                       </th>
-                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Open Rate
                       </th>
-                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Click Rate
                       </th>
-                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Receita
                       </th>
-                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th scope="col" className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Status
                       </th>
                     </tr>
