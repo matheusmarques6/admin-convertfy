@@ -18,6 +18,8 @@ interface SidebarItemProps {
   collapsed?: boolean
   badge?: number
   onClick?: () => void
+  /** Cor de acento do workspace ativo (CSS color string). */
+  accentColor?: string
 }
 
 export function SidebarItem({
@@ -27,35 +29,68 @@ export function SidebarItem({
   collapsed = false,
   badge,
   onClick,
+  accentColor,
 }: SidebarItemProps) {
   const pathname = usePathname()
-  const active = href === "/admin/dashboard"
-    ? pathname === "/admin/dashboard" || pathname === "/admin/dashboard/operational"
-    : pathname.startsWith(href)
+  // Match exato pra dashboards de cada workspace, prefix pro resto
+  const isExactMatch =
+    href === "/admin/dashboard" ||
+    href === "/admin/comercial/dashboard" ||
+    href === "/admin/operacional/dashboard"
+  const active = isExactMatch
+    ? pathname === href
+    : pathname === href || pathname.startsWith(href + "/")
+
+  // Quando workspace tem cor, usa ela com bg sutil e texto branco;
+  // senao mantem fallback original.
+  const activeBg = accentColor ? `${accentColor}20` : undefined // 12% alpha hex
+  const activeFg = accentColor ? "#FFFFFF" : undefined
 
   const content = (
     <Link
       href={href}
       onClick={onClick}
       className={cn(
-        "relative flex items-center rounded-[8px] text-[13px] font-medium",
+        "relative flex items-center rounded-md text-[13px] font-medium",
         "transition-all duration-150",
         collapsed
           ? "w-9 h-9 justify-center mx-auto"
           : "mx-3 gap-3 px-3 h-9",
         active
-          ? "bg-[#EEF0FB] text-[#4E62D8] dark:bg-white/[0.1] dark:text-white"
-          : "text-gray-600 hover:bg-gray-50 dark:text-white/80 dark:hover:bg-white/[0.05] dark:hover:text-white"
+          ? "text-white"
+          : "text-white/70 hover:bg-white/[0.05] hover:text-white",
       )}
+      style={
+        active
+          ? {
+              background: activeBg ?? "rgba(255,255,255,0.08)",
+              color: activeFg ?? "#FFFFFF",
+            }
+          : undefined
+      }
     >
+      {/* Barra colorida lateral quando ativo (so na versao expandida) */}
+      {active && !collapsed && accentColor && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: -12,
+            top: 6,
+            bottom: 6,
+            width: 3,
+            background: accentColor,
+            borderTopRightRadius: 3,
+            borderBottomRightRadius: 3,
+          }}
+        />
+      )}
       <Icon
         icon={icon}
         size={16}
         className={cn(
           "shrink-0",
-          active
-            ? "text-[#4E62D8] dark:text-white"
-            : "text-gray-400 dark:text-white/70"
+          active ? "text-white" : "text-white/60",
         )}
       />
       {!collapsed && <span className="truncate">{label}</span>}
@@ -76,7 +111,11 @@ export function SidebarItem({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{content}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium px-2.5 py-1.5">
+        <TooltipContent
+          side="right"
+          sideOffset={8}
+          className="text-xs font-medium px-2.5 py-1.5"
+        >
           {label}
           {badge != null && badge > 0 && ` (${badge})`}
         </TooltipContent>

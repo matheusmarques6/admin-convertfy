@@ -28,6 +28,7 @@ import {
   Workflow,
   BarChart3,
   UserPlus,
+  Phone,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -38,68 +39,181 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
+import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
 import { SidebarItem } from "./sidebar-item"
 import { SidebarUser } from "./sidebar-user"
+import { WorkspaceSwitcher } from "./workspace-switcher"
 
 // ---------------------------------------------------------------------------
-// Navigation config
+// Navigation config — UM array por workspace.
+//
+// Cada workspace e um "sistema separado": comercial mostra so itens
+// comerciais, operacional so operacionais. Inbox aparece nos dois.
+// Cada item pode ter requiredFeatures pra esconder de quem nao tem
+// permissao.
 // ---------------------------------------------------------------------------
 
 interface NavItem {
   name: string
   href: string
   icon: LucideIcon
-  group: string
+  group?: string
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
   badge?: string
 }
 
-const NAV_GROUPS = [
-  { key: "principal", label: "" },
-  { key: "produtividade", label: "Produtividade" },
-  { key: "comercial", label: "Comercial" },
-  { key: "operacional", label: "Operacional" },
-  { key: "compartilhado", label: "Atendimento" },
-  { key: "financeiro", label: "Financeiro" },
-] as const
+interface NavGroup {
+  key: string
+  label: string
+  items: NavItem[]
+}
 
-const navigation: NavItem[] = [
-  // PRINCIPAL
-  { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
-  // PRODUTIVIDADE — sidebar enxuta: so 2 itens. Metas/Habitos/Foco/
-  // Calendario sao acessados via cards do ProductivityHome.
-  { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home, group: "produtividade" },
-  { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3, group: "produtividade" },
-
-  // COMERCIAL — vendedor / SDR vive aqui
-  { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard, group: "comercial" },
-  { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase, group: "comercial" },
-  { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus, group: "comercial" },
-  { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "comercial", requiredFeatures: ["calendar_control"] },
-  { name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3, group: "comercial" },
-
-  // OPERACIONAL — CSM / especialista vive aqui
-  { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard, group: "operacional" },
-  { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake, group: "operacional" },
-  { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "operacional", requiredFeatures: ["create_clients", "onboarding_control"] },
-  { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "operacional", requiresStoreAccess: true },
-  { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "operacional", requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart, group: "operacional" },
-  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail, group: "operacional", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow, group: "operacional" },
-  { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Inbox, group: "operacional" },
-  { name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles, group: "operacional" },
-  { name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter, group: "operacional" },
-  { name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3, group: "operacional" },
-
-  // COMPARTILHADO — comercial e operacional acessam
-  { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox, group: "compartilhado" },
-
-  // FINANCEIRO + relatorios genericos
-  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "financeiro", requiredFeatures: ["view_financial"] },
-  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "financeiro", requiredFeatures: ["view_reports"] },
+const COMERCIAL_NAV: NavGroup[] = [
+  {
+    key: "main",
+    label: "",
+    items: [
+      { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
+      { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
+      { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
+    ],
+  },
+  {
+    key: "agenda",
+    label: "Agenda",
+    items: [
+      {
+        name: "Reunioes",
+        href: ROUTES.ADMIN.MEETINGS.LIST,
+        icon: Calendar,
+        requiredFeatures: ["calendar_control"],
+      },
+    ],
+  },
+  {
+    key: "atendimento",
+    label: "Atendimento",
+    items: [
+      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+    ],
+  },
+  {
+    key: "analise",
+    label: "Analise",
+    items: [
+      { name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
+    ],
+  },
 ]
+
+const OPERACIONAL_NAV: NavGroup[] = [
+  {
+    key: "main",
+    label: "",
+    items: [
+      { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
+      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+    ],
+  },
+  {
+    key: "carteira",
+    label: "Carteira",
+    items: [
+      {
+        name: "Clientes",
+        href: ROUTES.ADMIN.CLIENTS.LIST,
+        icon: Users,
+        requiredFeatures: ["create_clients", "onboarding_control"],
+      },
+      {
+        name: "Lojas",
+        href: ROUTES.ADMIN.STORES.LIST,
+        icon: Store,
+        requiresStoreAccess: true,
+      },
+      {
+        name: "Onboarding",
+        href: ROUTES.ADMIN.ONBOARDING,
+        icon: Rocket,
+        requiredFeatures: ["onboarding_control", "onboarding_view"],
+      },
+      { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
+    ],
+  },
+  {
+    key: "marketing",
+    label: "Marketing",
+    items: [
+      {
+        name: "Campanhas",
+        href: ROUTES.ADMIN.CAMPAIGNS.LIST,
+        icon: Mail,
+        requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"],
+      },
+      { name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
+      { name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
+    ],
+  },
+  {
+    key: "atendimento",
+    label: "Atendimento",
+    items: [
+      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
+      { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
+    ],
+  },
+  {
+    key: "analise",
+    label: "Analise",
+    items: [
+      { name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3 },
+    ],
+  },
+]
+
+const GERAL_NAV: NavGroup[] = [
+  {
+    key: "main",
+    label: "",
+    items: [
+      { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard },
+    ],
+  },
+  {
+    key: "produtividade",
+    label: "Produtividade",
+    items: [
+      { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
+      { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
+    ],
+  },
+  {
+    key: "financeiro",
+    label: "Financeiro",
+    items: [
+      {
+        name: "Financeiro",
+        href: ROUTES.ADMIN.FINANCIAL,
+        icon: DollarSign,
+        requiredFeatures: ["view_financial"],
+      },
+      {
+        name: "Relatorios",
+        href: ROUTES.ADMIN.REPORTS.LIST,
+        icon: FileBarChart,
+        requiredFeatures: ["view_reports"],
+      },
+    ],
+  },
+]
+
+const NAV_BY_WORKSPACE: Record<WorkspaceKey, NavGroup[]> = {
+  comercial: COMERCIAL_NAV,
+  operacional: OPERACIONAL_NAV,
+  geral: GERAL_NAV,
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -120,6 +234,8 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
   const { isExpanded, isMobileOpen, toggle, closeMobile } = useSidebar()
   const collapsed = forceExpanded ? false : !isExpanded
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
+  const workspace = useWorkspace()
+  const wsMeta = WORKSPACES[workspace]
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -127,26 +243,27 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
-  // Filter navigation by permissions
-  const filteredNavigation = useMemo(() => {
+  // Filter nav by permissions, dentro do workspace ativo
+  const filteredGroups = useMemo<NavGroup[]>(() => {
+    const groups = NAV_BY_WORKSPACE[workspace]
     if (isLoading || !permissions) return []
-    if (permissions.isAdmin || permissions.isOrgOwner) return navigation
-    return navigation.filter((item) => {
+
+    const checkPermission = (item: NavItem): boolean => {
+      if (permissions.isAdmin || permissions.isOrgOwner) return true
       if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
         if (item.requiresStoreAccess) return permissions.storeAccess.length > 0
         return true
       }
       return hasAnyFeature(item.requiredFeatures)
-    })
-  }, [permissions, hasAnyFeature, isLoading])
+    }
 
-  // Group navigation items
-  const groupedNavigation = useMemo(() => {
-    return NAV_GROUPS.map((group) => ({
-      ...group,
-      items: filteredNavigation.filter((item) => item.group === group.key),
-    })).filter((group) => group.items.length > 0)
-  }, [filteredNavigation])
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(checkPermission),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [workspace, permissions, hasAnyFeature, isLoading])
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -157,21 +274,24 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           "bg-black border-white/[0.06]",
           "transition-all duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
           "relative z-30",
-          collapsed ? "w-[68px]" : "w-[248px]"
+          collapsed ? "w-[68px]" : "w-[248px]",
         )}
+        // Borda esquerda colorida no topo dando identidade ao workspace
+        style={{
+          borderTop: `2px solid ${wsMeta.color}`,
+        }}
       >
         {/* Header: logo (+ toggle interno quando expandido) */}
         <div
           className={cn(
-            "flex items-center shrink-0 h-20",
-            collapsed ? "justify-center px-2" : "justify-between pl-5 pr-2"
+            "flex items-center shrink-0 h-14",
+            collapsed ? "justify-center px-2" : "justify-between pl-5 pr-2",
           )}
         >
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
-            {collapsed ? <LogoIcon size={28} /> : <Logo size="xl" />}
+            {collapsed ? <LogoIcon size={24} /> : <Logo size="lg" />}
           </Link>
 
-          {/* Toggle — dentro do sidebar quando expandido */}
           {!collapsed && (
             <button
               onClick={toggle}
@@ -181,7 +301,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
                 "w-8 h-8 rounded-[8px]",
                 "text-white/60 hover:text-white",
                 "hover:bg-white/[0.06] active:bg-white/[0.1]",
-                "transition-colors duration-150"
+                "transition-colors duration-150",
               )}
             >
               <Icon icon={ChevronLeft} customSize={16} />
@@ -189,7 +309,12 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           )}
         </div>
 
-        {/* Toggle — dentro do sidebar quando colapsado (abaixo da logo, centralizado) */}
+        {/* Workspace switcher — separa visualmente os "3 sistemas" */}
+        <div className="pb-2">
+          <WorkspaceSwitcher current={workspace} collapsed={collapsed} />
+        </div>
+
+        {/* Toggle quando colapsado */}
         {collapsed && (
           <div className="hidden md:flex justify-center pb-2">
             <button
@@ -200,7 +325,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
                 "w-9 h-9 rounded-[8px]",
                 "text-white/60 hover:text-white",
                 "hover:bg-white/[0.06] active:bg-white/[0.1]",
-                "transition-colors duration-150"
+                "transition-colors duration-150",
               )}
             >
               <Icon icon={ChevronRight} customSize={16} />
@@ -208,12 +333,14 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           </div>
         )}
 
-        {/* Navigation */}
-        <ScrollArea className="flex-1 pt-2 pb-4">
+        {/* Separator antes do nav */}
+        <div className="h-px bg-white/[0.06] mx-3 mb-2" />
+
+        {/* Navigation — apenas itens do workspace ativo */}
+        <ScrollArea className="flex-1 pt-1 pb-4">
           <nav>
-            {groupedNavigation.map((group, idx) => (
-              <div key={group.key} className={cn(idx > 0 && "mt-5")}>
-                {/* Group label */}
+            {filteredGroups.map((group, idx) => (
+              <div key={group.key} className={cn(idx > 0 && "mt-4")}>
                 {!collapsed && group.label && (
                   <p className="px-6 pb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/45">
                     {group.label}
@@ -225,11 +352,12 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
                 <div className="space-y-[2px]">
                   {group.items.map((item) => (
                     <SidebarItem
-                      key={item.name}
+                      key={item.href}
                       icon={item.icon}
                       label={item.name}
                       href={item.href}
                       collapsed={collapsed}
+                      accentColor={wsMeta.color}
                     />
                   ))}
                 </div>
@@ -246,16 +374,17 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
               label="Configuracoes"
               href={ROUTES.ADMIN.SETTINGS.ROOT}
               collapsed={collapsed}
+              accentColor={wsMeta.color}
             />
             <SidebarItem
               icon={Bell}
               label="Notificacoes"
               href={ROUTES.ADMIN.NOTIFICATIONS}
               collapsed={collapsed}
+              accentColor={wsMeta.color}
             />
           </div>
 
-          {/* User */}
           <div className="border-t border-white/[0.06]">
             <SidebarUser user={user} collapsed={collapsed} />
           </div>
@@ -274,7 +403,6 @@ export function SidebarMobileDrawer({ user }: Pick<SidebarProps, "user">) {
 
   return (
     <>
-      {/* Backdrop */}
       {isMobileOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
@@ -283,15 +411,13 @@ export function SidebarMobileDrawer({ user }: Pick<SidebarProps, "user">) {
         />
       )}
 
-      {/* Drawer */}
       <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-[280px] md:hidden",
           "transition-transform duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
-          isMobileOpen ? "translate-x-0" : "-translate-x-full"
+          isMobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        {/* Close button */}
         {isMobileOpen && (
           <button
             onClick={closeMobile}
