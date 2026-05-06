@@ -758,16 +758,24 @@ interface StatisticsResponse {
 function aggregateActivityRows(rows: StatisticsRow[]): Map<string, OmnisendActivityBreakdownEntry> {
   const map = new Map<string, OmnisendActivityBreakdownEntry>()
   for (const row of rows) {
-    const id = row.marketingActivityID
+    const r = row as Record<string, unknown>
+    // A API pode retornar campos em formato flat (top-level) ou nested
+    // dentro de `dimensions` / `metrics`. Suporta ambos pra robustez.
+    // Suporte (2026-05-06) confirmou marketingActivityID === campaignID
+    // === automationID, entao pegamos esse campo direto.
+    const dims = (r.dimensions as Record<string, unknown> | undefined) ?? {}
+    const mets = (r.metrics as Record<string, unknown> | undefined) ?? {}
+
+    const id = String(r.marketingActivityID ?? dims.marketingActivityID ?? "")
     if (!id) continue
-    const channel = row.messageChannel || "Email"
-    const revenue = Number(row.attributedRevenue) || 0
-    const orders = Number(row.attributedOrders) || 0
-    const sent = Number(row.sent) || 0
-    // Preferimos *Unique pra bater com o que o Omnisend mostra no
-    // dashboard (taxa de abertura por contato unico, nao por evento).
-    const opened = Number(row.openedUnique) || Number(row.opened) || 0
-    const clicked = Number(row.clickedUnique) || Number(row.clicked) || 0
+    const channel = String(r.messageChannel ?? dims.messageChannel ?? "Email")
+
+    const revenue = Number(r.attributedRevenue ?? mets.attributedRevenue) || 0
+    const orders = Number(r.attributedOrders ?? mets.attributedOrders) || 0
+    const sent = Number(r.sent ?? mets.sent) || 0
+    // Preferimos *Unique pra bater com o dashboard (taxa por contato unico).
+    const opened = Number(r.openedUnique ?? mets.openedUnique ?? r.opened ?? mets.opened) || 0
+    const clicked = Number(r.clickedUnique ?? mets.clickedUnique ?? r.clicked ?? mets.clicked) || 0
 
     let entry = map.get(id)
     if (!entry) {
@@ -820,11 +828,10 @@ export async function fetchOmnisendActivityBreakdown(
           queries: [
             {
               alias: "campaigns",
-              // Engagement (sent/opened/clicked) tambem por marketingActivityID
-              // — antes so puxavamos revenue/orders e a UI mostrava "—" em
-              // Entregues/Abertura/Cliques quando o /v5/automations nao trazia
-              // stats inline. Preferencia por *Unique pra bater com o
-              // dashboard (taxa por contato unico).
+              // Estrutura recomendada pelo suporte da Omnisend (2026-05-06):
+              //   metrics: sent, openedUnique, clickedUnique, attributedRevenue
+              //   dimensions: timestamp(day) + marketingActivityID
+              //   filters: marketingActivityType in [Campaign]
               metrics: [
                 { name: "attributedRevenue" },
                 { name: "attributedOrders" },
@@ -837,9 +844,8 @@ export async function fetchOmnisendActivityBreakdown(
                 to: new Date(endDate).toISOString(),
               },
               dimensions: [
-                { name: "timestamp", granularity: "month" },
+                { name: "timestamp", granularity: "day" },
                 { name: "marketingActivityID" },
-                { name: "messageChannel" },
               ],
               filters: [
                 { name: "marketingActivityType", operator: "in", values: ["Campaign"] },
@@ -859,9 +865,8 @@ export async function fetchOmnisendActivityBreakdown(
                 to: new Date(endDate).toISOString(),
               },
               dimensions: [
-                { name: "timestamp", granularity: "month" },
+                { name: "timestamp", granularity: "day" },
                 { name: "marketingActivityID" },
-                { name: "messageChannel" },
               ],
               filters: [
                 { name: "marketingActivityType", operator: "in", values: ["Automation"] },
@@ -928,22 +933,34 @@ export async function fetchOmnisendActivityBreakdown(
     for (const block of resp.statistics) {
       if (block.alias === "campaigns") {
         result.campaigns = aggregateActivityRows(block.rows || [])
-        // Sample row pra diagnostico: confere se sent/openedUnique vem
-        // populado por activity (Stats API recente) ou volta vazio
-        // (caso a API ainda nao expoe metrics de engagement por
-        // marketingActivityID — aguardando resposta do suporte).
-        if ((block.rows || []).length > 0) {
-          log.info("[OmnisendActivityBreakdown] campaigns sample row", {
-            sample: JSON.stringify(block.rows![0]).slice(0, 400),
-          })
-        }
+        log.info("[OmnisendActivityBreakdown] campaigns block", {
+          rowCount: (block.rows || []).length,
+          aggregatedActivities: result.campaigns.size,
+          sampleRow: (block.rows || []).length > 0
+            ? JSON.stringify(block.rows![0]).slice(0, 500)
+            : "no rows",
+          sampleAggregated: result.campaigns.size > 0
+            ? JSON.stringify({
+                id: [...result.campaigns.keys()][0],
+                entry: { ...[...result.campaigns.values()][0], byChannel: undefined },
+              })
+            : "empty map",
+        })
       } else if (block.alias === "automations") {
         result.automations = aggregateActivityRows(block.rows || [])
-        if ((block.rows || []).length > 0) {
-          log.info("[OmnisendActivityBreakdown] automations sample row", {
-            sample: JSON.stringify(block.rows![0]).slice(0, 400),
-          })
-        }
+        log.info("[OmnisendActivityBreakdown] automations block", {
+          rowCount: (block.rows || []).length,
+          aggregatedActivities: result.automations.size,
+          sampleRow: (block.rows || []).length > 0
+            ? JSON.stringify(block.rows![0]).slice(0, 500)
+            : "no rows",
+          sampleAggregated: result.automations.size > 0
+            ? JSON.stringify({
+                id: [...result.automations.keys()][0],
+                entry: { ...[...result.automations.values()][0], byChannel: undefined },
+              })
+            : "empty map",
+        })
       } else if (block.alias === "total") {
         for (const row of block.rows || []) {
           result.total.revenue += Number(row.totalRevenue) || 0
