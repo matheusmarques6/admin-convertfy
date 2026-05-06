@@ -1586,13 +1586,21 @@ async function doSyncOmnisendForStore(params: {
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
     const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
-    // engagedContacts = openedUnique somado dos dias do periodo
-    // (Statistics API com granularity=day). Substitui o caminho antigo
-    // via segmento "Engaged 90d" que ficava preso em fallback=subscribed
-    // quando o segmento nao existia ou estava vazio — gerava 100% de
-    // engajamento espurio. Agora bate com a metrica que o Omnisend usa
-    // internamente.
-    const engagedContacts = activityBreakdown.engagement.openedUnique || 0
+    // engagedContacts = openedUnique do periodo (Statistics API sem
+    // dimensions). IMPORTANTE: o suporte da Omnisend (2026-05-06)
+    // confirmou que a API NAO garante dedup global sobre todo o range —
+    // openedUnique sem dimensions retorna 1 row agregada, mas pode
+    // contar duplicatas entre buckets internos. E uma APROXIMACAO,
+    // nao count distinct verdadeiro.
+    //
+    // Capamos em subscribedContacts: nao pode haver mais "engajados"
+    // que a base inteira de leads opt-in (ex: 149k engajados em base
+    // de 50k era impossivel). Quando openedUnique > subscribed,
+    // assumimos overcount da agregacao e usamos o teto.
+    const engagedRaw = activityBreakdown.engagement.openedUnique || 0
+    const engagedContacts = subscribedContacts > 0
+      ? Math.min(engagedRaw, subscribedContacts)
+      : engagedRaw
 
     log.info("[OmnisendSync] Sync summary", {
       storeId,
@@ -1602,7 +1610,9 @@ async function doSyncOmnisendForStore(params: {
       attributedOrders: totalAttributedOrders,
       totalContacts,
       subscribedContacts,
+      engagedRaw,
       engagedContacts,
+      engagedCapped: engagedRaw > subscribedContacts && subscribedContacts > 0,
       engagedSource: "statistics-openedUnique",
       campaignsSent: campaignRows.length,
       automationsActive: liveAutomationCount,
