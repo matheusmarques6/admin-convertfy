@@ -38,6 +38,7 @@ interface StoreRow {
   platform: string
   is_active: boolean
   has_klaviyo: boolean
+  has_omnisend: boolean
   has_shopify: boolean
   total_revenue_30d: number
   klaviyo_revenue_30d: number
