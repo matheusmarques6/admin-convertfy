@@ -1405,6 +1405,19 @@ async function doSyncOmnisendForStore(params: {
       } as OmnisendActivityBreakdownResult,
     )
 
+    // /api/analytics/reports devolve openedUnique consolidado pra todo
+    // o periodo (1 row), conforme orientacao explicita do suporte
+    // (2026-05-06): "para puxar leads que abriram >= 1 email no periodo,
+    // o caminho mais direto e via Reports API usando openedUnique".
+    //
+    // Cache L1+L2 de 1h ja embutido em fetchOmnisendReports — no pior
+    // caso 24 chamadas/dia/loja, dentro do limite 55/dia/brand.
+    const reportsTotals = await safely(
+      "reportsTotals",
+      () => fetchOmnisendReports(apiKey, startDate, endDate),
+      EMPTY_REPORTS_RESULT,
+    )
+
     // Agrega revenue total das campanhas e automations (somando byChannel)
     let totalCampaignsRevenue = 0
     let totalCampaignsOrders = 0
@@ -1614,18 +1627,19 @@ async function doSyncOmnisendForStore(params: {
     const totalCampaignRevenue = Math.max(0, totalCampaignsRevenue)
     const totalAutomationRevenue = Math.max(0, totalAutomationsRevenue)
 
-    // engagedContacts = openedUnique do periodo (Statistics API sem
-    // dimensions). IMPORTANTE: o suporte da Omnisend (2026-05-06)
-    // confirmou que a API NAO garante dedup global sobre todo o range —
-    // openedUnique sem dimensions retorna 1 row agregada, mas pode
-    // contar duplicatas entre buckets internos. E uma APROXIMACAO,
-    // nao count distinct verdadeiro.
+    // engagedContacts = openedUnique do /api/analytics/reports
+    // (1 row consolidada, sem dimensions de marketingActivityID/channel
+    // que causam overcount). Suporte (2026-05-06): "para puxar leads que
+    // abriram >= 1 email no periodo, o caminho mais direto e via
+    // Reports API usando openedUnique".
     //
-    // Capamos em subscribedContacts: nao pode haver mais "engajados"
-    // que a base inteira de leads opt-in (ex: 149k engajados em base
-    // de 50k era impossivel). Quando openedUnique > subscribed,
-    // assumimos overcount da agregacao e usamos o teto.
-    const engagedRaw = activityBreakdown.engagement.openedUnique || 0
+    // Cap em subscribedContacts mantido como safety net — nao pode haver
+    // mais engajados que a base de leads opt-in. Antes usavamos o
+    // openedUnique do activityBreakdown.engagement (que usa dimensions
+    // de marketingActivityID + messageChannel) — isso somava o mesmo
+    // contato em multiplas activities, gerando 71k engajados em base
+    // de 71k = 100% espurio.
+    const engagedRaw = reportsTotals.openedUnique || activityBreakdown.engagement.openedUnique || 0
     const engagedContacts = subscribedContacts > 0
       ? Math.min(engagedRaw, subscribedContacts)
       : engagedRaw
@@ -1638,10 +1652,11 @@ async function doSyncOmnisendForStore(params: {
       attributedOrders: totalAttributedOrders,
       totalContacts,
       subscribedContacts,
-      engagedRaw,
+      engagedRawFromReports: reportsTotals.openedUnique,
+      engagedRawFromStats: activityBreakdown.engagement.openedUnique,
       engagedContacts,
       engagedCapped: engagedRaw > subscribedContacts && subscribedContacts > 0,
-      engagedSource: "statistics-openedUnique",
+      engagedSource: reportsTotals.openedUnique > 0 ? "reports-openedUnique" : "stats-openedUnique",
       campaignsSent: campaignRows.length,
       automationsActive: liveAutomationCount,
     })
