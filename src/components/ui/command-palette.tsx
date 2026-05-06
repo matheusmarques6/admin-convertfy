@@ -24,6 +24,11 @@ import {
   UserPlus,
   Plus,
   FileText,
+  Briefcase,
+  HeartHandshake,
+  Inbox,
+  Workflow,
+  Building2,
   type LucideIcon,
 } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
@@ -59,6 +64,16 @@ const navigationItems: CommandItem[] = [
   { name: "Relatórios", href: "/admin/reports", icon: BarChart3, group: "Navegação" },
   { name: "Ferramentas", href: "/admin/tools", icon: Wrench, group: "Navegação" },
   { name: "Configurações", href: "/admin/settings", icon: Settings, group: "Navegação" },
+
+  // CRM
+  { name: "CRM — Pipelines comerciais", href: "/admin/crm/sales/pipelines", icon: Briefcase, group: "CRM" },
+  { name: "CRM — Leads", href: "/admin/crm/sales/leads", icon: UserPlus, group: "CRM" },
+  { name: "CRM — Dashboard comercial", href: "/admin/crm/sales/dashboard", icon: BarChart3, group: "CRM" },
+  { name: "CRM — Customer Success", href: "/admin/crm/cs/pipelines", icon: HeartHandshake, group: "CRM" },
+  { name: "CRM — Dashboard CS", href: "/admin/crm/cs/dashboard", icon: BarChart3, group: "CRM" },
+  { name: "CRM — Inbox", href: "/admin/crm/inbox", icon: Inbox, group: "CRM" },
+  { name: "CRM — Automacoes", href: "/admin/crm/automations", icon: Workflow, group: "CRM" },
+  { name: "CRM — Reports", href: "/admin/crm/reports", icon: BarChart3, group: "CRM" },
 ]
 
 const actionItems: CommandItem[] = [
@@ -67,6 +82,7 @@ const actionItems: CommandItem[] = [
   { name: "Nova Automação", href: "/admin/automations/new", icon: Zap, group: "Ações Rápidas" },
   { name: "Novo Relatório", href: "/admin/reports/new", icon: FileText, group: "Ações Rápidas" },
   { name: "Agendar Reunião", href: "/admin/meetings", icon: Calendar, group: "Ações Rápidas" },
+  { name: "CRM — Novo lead", href: "/admin/crm/sales/leads", icon: UserPlus, group: "Ações Rápidas" },
 ]
 
 const allItems: CommandItem[] = [...navigationItems, ...actionItems]

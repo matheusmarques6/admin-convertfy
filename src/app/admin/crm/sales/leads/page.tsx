@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import { Plus, Search, UserPlus } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { LeadDrawer } from "@/components/crm/lead-drawer"
+import { NewLeadDialog } from "@/components/crm/new-lead-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -30,15 +33,24 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 export default function SalesLeadsPage() {
+  const searchParams = useSearchParams()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
+  const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
+  const [newLeadOpen, setNewLeadOpen] = useState(false)
+
+  // Open drawer if ?lead=<id> in URL
+  useEffect(() => {
+    const leadParam = searchParams.get("lead")
+    if (leadParam) setActiveLeadId(leadParam)
+  }, [searchParams])
 
   const params = new URLSearchParams()
   if (search) params.set("search", search)
   if (statusFilter) params.set("status", statusFilter)
   params.set("limit", "100")
 
-  const { data, isLoading } = useSWR<{ data: { leads: LeadRow[]; total: number } }>(
+  const { data, isLoading, mutate } = useSWR<{ data: { leads: LeadRow[]; total: number } }>(
     `/api/crm/leads?${params.toString()}`,
     fetcher,
   )
@@ -54,6 +66,7 @@ export default function SalesLeadsPage() {
         <button
           className="crm-button-primary"
           style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+          onClick={() => setNewLeadOpen(true)}
         >
           <Plus className="h-3.5 w-3.5" />
           Novo lead
@@ -135,6 +148,7 @@ export default function SalesLeadsPage() {
                       cursor: "pointer",
                     }}
                     className="hover:bg-[color:var(--crm-gray-50)]"
+                    onClick={() => setActiveLeadId(l.id)}
                   >
                     <td className="px-3" style={{ color: "var(--crm-gray-900)", fontWeight: "var(--crm-weight-medium)" }}>
                       {l.name}
@@ -166,6 +180,21 @@ export default function SalesLeadsPage() {
           </div>
         )}
       </div>
+
+      <LeadDrawer
+        leadId={activeLeadId}
+        onClose={() => setActiveLeadId(null)}
+        onUpdated={() => mutate()}
+      />
+
+      <NewLeadDialog
+        open={newLeadOpen}
+        onClose={() => setNewLeadOpen(false)}
+        onCreated={(id) => {
+          mutate()
+          setActiveLeadId(id)
+        }}
+      />
     </CrmPageShell>
   )
 }
