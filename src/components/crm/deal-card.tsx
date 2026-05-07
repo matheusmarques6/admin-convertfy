@@ -2,7 +2,6 @@
 
 import { useMemo } from "react"
 import {
-  Building2,
   AlertCircle,
   Flame,
   MessageSquare,
@@ -300,6 +299,10 @@ export function DealCard({
       {deal.owner && ownerColors && (
         <div className="flex items-center gap-1.5 -mt-1">
           {deal.owner.avatar_url ? (
+            // Avatar 16x16 — next/image exigiria configurar remotePatterns
+            // para todos os hosts possiveis de avatar (Supabase, Google,
+            // Gravatar, etc), o que e mais frageil que aceitar o <img>.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={deal.owner.avatar_url}
               alt={deal.owner.name}

@@ -560,6 +560,8 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                       {deal.owner ? (
                         <div className="flex items-center gap-1.5">
                           {deal.owner.avatar_url ? (
+                            // Avatar 16x16 — ver justificativa em deal-card.tsx.
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={deal.owner.avatar_url}
                               alt={deal.owner.name}

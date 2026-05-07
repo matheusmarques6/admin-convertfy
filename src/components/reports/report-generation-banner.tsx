@@ -5,6 +5,13 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { X, CheckCircle2, AlertTriangle } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
+import {
+  buildBannerText,
+  formatTimeRemaining,
+} from "./report-generation-banner-helpers"
+
+// Re-export for callers that imported from the .tsx historically.
+export { formatTimeRemaining }
 
 interface ReportGenerationBannerProps {
   startDate: string
@@ -13,26 +20,6 @@ interface ReportGenerationBannerProps {
   totalCount: number
   failedCount: number
   onDismiss?: () => void
-}
-
-/**
- * Formats an estimated remaining time based on average completion time
- * and remaining stores count.
- */
-export function formatTimeRemaining(
-  completedCount: number,
-  totalCount: number,
-  elapsedMs: number
-): string {
-  if (completedCount === totalCount) return ""
-  if (completedCount === 0) return "calculando..."
-
-  const avgMs = elapsedMs / completedCount
-  const remainingStores = totalCount - completedCount
-  const estimatedSeconds = Math.ceil((avgMs * remainingStores) / 1000)
-
-  if (estimatedSeconds < 60) return "<1 min"
-  return `~${Math.ceil(estimatedSeconds / 60)} min`
 }
 
 export function ReportGenerationBanner({
@@ -97,11 +84,16 @@ export function ReportGenerationBanner({
             <Icon icon={AlertTriangle} size={16} className="text-amber-500" aria-hidden="true" />
           )}
           <span>
-            {isAllDone
-              ? isPartial
-                ? `Relatorio parcial: ${startDate} — ${endDate} | ${completedCount - failedCount} de ${totalCount} lojas`
-                : `Relatorio completo: ${startDate} — ${endDate} | ${totalCount} lojas`
-              : `Gerando relatorio: ${startDate} — ${endDate} | ${completedCount} de ${totalCount} lojas${timeStr ? ` | ${timeStr} restante` : ""}`}
+            {buildBannerText({
+              isAllDone,
+              isPartial,
+              startDate,
+              endDate,
+              completedCount,
+              failedCount,
+              totalCount,
+              timeStr,
+            })}
           </span>
         </div>
         {(isAllDone || onDismiss) && (

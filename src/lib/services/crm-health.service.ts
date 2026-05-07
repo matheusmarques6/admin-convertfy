@@ -80,14 +80,15 @@ function computeRevenueScore(currentMonth: number, previousMonth: number): numbe
   return 10
 }
 
-export async function computeStoreHealth(storeId: string, orgId: string): Promise<StoreHealthResult | null> {
+export async function computeStoreHealth(storeId: string, _orgId: string): Promise<StoreHealthResult | null> {
   const admin = createAdminClient()
 
+  type StoreNps = { id: string; store_name: string; nps_last_score: number | null }
   const { data: store } = await admin
     .from("client_stores")
     .select("id, store_name, nps_last_score")
     .eq("id", storeId)
-    .single()
+    .single<StoreNps>()
 
   if (!store) return null
 
@@ -148,16 +149,22 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
   let openTickets = 0
   let breachingSla = 0
   if (ticketsPipeline) {
+    type TicketRow = {
+      id: string
+      last_stage_changed_at: string | null
+      stage: { sla_hours: number | null } | { sla_hours: number | null }[] | null
+    }
     const { data: storeTickets } = await admin
       .from("deals")
       .select("id, last_stage_changed_at, stage:pipeline_stages(sla_hours)")
       .eq("pipeline_id", ticketsPipeline.id)
       .eq("status", "open")
       .eq("store_id", storeId)
+      .returns<TicketRow[]>()
 
     for (const t of storeTickets || []) {
       openTickets += 1
-      const stage = Array.isArray((t as any).stage) ? (t as any).stage[0] : (t as any).stage
+      const stage = Array.isArray(t.stage) ? t.stage[0] : t.stage
       const sla = stage?.sla_hours
       if (sla && t.last_stage_changed_at) {
         const elapsedHours = (Date.now() - new Date(t.last_stage_changed_at).getTime()) / 3600000
@@ -186,7 +193,7 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
 
   const components: HealthComponents = {
     email: computeEmailScore(emailMetrics),
-    nps: computeNpsScore((store as any).nps_last_score ?? null),
+    nps: computeNpsScore(store.nps_last_score ?? null),
     tickets: computeTicketsScore(openTickets, breachingSla),
     revenue: computeRevenueScore(currentMonth, previousMonth),
   }

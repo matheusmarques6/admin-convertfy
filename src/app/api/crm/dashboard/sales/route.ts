@@ -81,8 +81,8 @@ export async function GET(request: NextRequest) {
       .or(`won_at.gte.${since},lost_at.gte.${since}`)
       .order("won_at", { ascending: false, nullsFirst: false })
 
-    const open: DealRow[] = (openDeals || []) as any
-    const closed: DealRow[] = (closedDeals || []) as any
+    const open: DealRow[] = (openDeals as DealRow[] | null) ?? []
+    const closed: DealRow[] = (closedDeals as DealRow[] | null) ?? []
     const won = closed.filter((d) => d.status === "won")
     const lost = closed.filter((d) => d.status === "lost")
 
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     for (const p of salesPipelines || []) {
       pipelineMap.set(p.id, {
         name: p.name,
-        color: (p as any).color || null,
+        color: p.color || null,
         open_value: 0,
         open_count: 0,
         won_value: 0,

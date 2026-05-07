@@ -25,6 +25,19 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
 
     // Lojas ativas + health/MRR/NPS
+    type StoreRow = {
+      id: string
+      store_name: string
+      mrr_cents: number | null
+      health_score: number | null
+      nps_last_score: number | null
+      nps_last_at: string | null
+      contract_start_date: string | null
+      contract_end_date: string | null
+      is_active: boolean
+      client: { id: string; name: string } | { id: string; name: string }[] | null
+    }
+
     const { data: stores } = await admin
       .from("client_stores")
       .select(`
@@ -33,6 +46,7 @@ export async function GET(request: NextRequest) {
         client:clients (id, name)
       `)
       .eq("is_active", true)
+      .returns<StoreRow[]>()
 
     const allStores = stores || []
     const totalStores = allStores.length
@@ -59,9 +73,9 @@ export async function GET(request: NextRequest) {
     }> = []
 
     for (const s of allStores) {
-      const score = (s as any).health_score
-      const mrr = (s as any).mrr_cents
-      const nps = (s as any).nps_last_score
+      const score = s.health_score
+      const mrr = s.mrr_cents
+      const nps = s.nps_last_score
 
       if (mrr) totalMrrCents += mrr
 
@@ -76,10 +90,10 @@ export async function GET(request: NextRequest) {
       }
 
       if (score != null && score < 50) {
-        const client = Array.isArray((s as any).client) ? (s as any).client[0] : (s as any).client
+        const client = Array.isArray(s.client) ? s.client[0] : s.client
         atRisk.push({
           store_id: s.id,
-          store_name: (s as any).store_name,
+          store_name: s.store_name,
           client_name: client?.name || "—",
           health_score: score,
           mrr_cents: mrr,
@@ -128,8 +142,8 @@ export async function GET(request: NextRequest) {
       for (const p of csPipelines || []) {
         byPipeline.push({
           id: p.id,
-          name: (p as any).name,
-          color: (p as any).color || null,
+          name: p.name,
+          color: p.color || null,
           open_count: counts.get(p.id) || 0,
         })
       }

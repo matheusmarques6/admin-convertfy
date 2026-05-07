@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { fetchStoreReport } from "./use-stores-fan-out"
-import { formatTimeRemaining } from "@/components/reports/report-generation-banner"
+import { formatTimeRemaining } from "@/components/reports/report-generation-banner-helpers"
 import type { DateRange } from "@/types/report"
 
 // ─── Setup ──────────────────────────────────────────────────────────────────

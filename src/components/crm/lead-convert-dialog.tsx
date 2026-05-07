@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import useSWR from "swr"
 import { X, ArrowRight } from "lucide-react"
@@ -29,7 +29,7 @@ export function LeadConvertDialog({ leadId, open, onClose, onConverted }: LeadCo
     open ? "/api/crm/pipelines?scope=sales" : null,
     fetcher,
   )
-  const pipelines = pipelinesData?.pipelines || []
+  const pipelines = useMemo(() => pipelinesData?.pipelines || [], [pipelinesData])
 
   const [pipelineId, setPipelineId] = useState("")
   const [stageId, setStageId] = useState("")

@@ -28,7 +28,6 @@ import {
   HeartHandshake,
   Inbox,
   Workflow,
-  Building2,
   Phone,
   type LucideIcon,
 } from "lucide-react"

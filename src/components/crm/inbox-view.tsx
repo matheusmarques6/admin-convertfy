@@ -84,7 +84,7 @@ export function InboxView() {
     { refreshInterval: 5000 },
   )
 
-  const threads = threadsData?.threads || []
+  const threads = useMemo(() => threadsData?.threads || [], [threadsData])
   const detail = detailData
 
   // Auto-scroll quando novas mensagens chegam — somente se o usuario ja

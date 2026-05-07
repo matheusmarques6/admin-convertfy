@@ -323,19 +323,23 @@ async function executeNode(
         const toResolved = cfg.to.startsWith("$.") ? String(resolvePath(ctx, cfg.to) || "") : cfg.to
         if (!toResolved) throw new Error("Destinatario vazio")
 
+        type ChannelRow = {
+          config: Record<string, string | undefined> | null
+          external_id: string | null
+        }
         const { data: channel } = await admin
           .from("crm_channels")
           .select("config, external_id")
           .eq("id", cfg.channel_id)
-          .single()
+          .single<ChannelRow>()
         if (!channel) throw new Error(`Channel ${cfg.channel_id} nao encontrado`)
 
-        const conf = (channel as any).config || {}
+        const conf = channel.config || {}
         const body = renderTemplate(cfg.body_template, ctx)
         const result = await sendWhatsAppMessage(
           {
-            phone_number_id: (channel as any).external_id || conf.phone_number_id,
-            access_token: conf.access_token,
+            phone_number_id: channel.external_id || conf.phone_number_id || "",
+            access_token: conf.access_token || "",
           },
           { to: toResolved, type: "text", text: { body } },
         )

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import {
-  IconClose, IconCheck, IconChevronRight, IconMoon, IconFlag, IconTarget,
+  IconClose, IconCheck, IconChevronRight, IconMoon,
 } from "./ds-atoms"
 
 // ============================================================================

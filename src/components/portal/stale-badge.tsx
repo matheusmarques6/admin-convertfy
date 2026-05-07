@@ -7,22 +7,11 @@ import {
   STALE_THRESHOLD_MULTIPLIER,
   isCachedPeriod,
 } from "@/lib/shared/data-status"
+import { formatElapsed } from "./stale-badge-helpers"
 
 interface StaleBadgeProps {
   period: string
   lastFetchedAt?: string | null
-}
-
-/**
- * Returns a human-readable "X horas" / "X minutos" label for elapsed time.
- */
-function formatElapsed(ms: number): string {
-  const minutes = Math.round(ms / 60_000)
-  if (minutes < 60) return `${minutes} minutos`
-  const hours = Math.round(ms / 3_600_000)
-  if (hours < 24) return `${hours} horas`
-  const days = Math.round(ms / 86_400_000)
-  return `${days} dias`
 }
 
 /**
@@ -50,4 +39,6 @@ export function StaleBadge({ period, lastFetchedAt }: StaleBadgeProps) {
   )
 }
 
+// Re-export do helper pra compatibilidade com call-sites que importavam
+// formatElapsed daqui.
 export { formatElapsed }

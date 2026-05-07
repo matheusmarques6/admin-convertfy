@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import useSWR from "swr"
-import { Heart, AlertTriangle, TrendingUp, MessageSquare, ExternalLink } from "lucide-react"
+import { Heart, AlertTriangle, ExternalLink } from "lucide-react"
 import { KpiCard } from "@/components/ui/kpi-card"
 import { KpiCardRow } from "@/components/ui/kpi-card-row"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -83,13 +83,6 @@ export function DashboardOperacionalSection() {
       noScore: (data.health_distribution.no_score / t) * 100,
     }
   }, [data])
-
-  const npsColor = (() => {
-    if (!data?.nps.score) return undefined
-    if (data.nps.score >= 50) return "success"
-    if (data.nps.score < 0) return "danger"
-    return undefined
-  })()
 
   const criticalCount = data?.health_distribution.critical ?? 0
 

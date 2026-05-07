@@ -213,7 +213,7 @@ async function snapshotOrg(orgId: string): Promise<number> {
   let critical = 0
   let warning = 0
   let healthy = 0
-  let npsSum = 0
+  let _npsSum = 0
   let npsCount = 0
   let promoters = 0
   let detractors = 0
@@ -228,7 +228,7 @@ async function snapshotOrg(orgId: string): Promise<number> {
       else healthy += 1
     }
     if (s.nps_last_score != null) {
-      npsSum += s.nps_last_score
+      _npsSum += s.nps_last_score
       npsCount += 1
       if (s.nps_last_score >= 9) promoters += 1
       else if (s.nps_last_score < 7) detractors += 1

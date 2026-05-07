@@ -97,7 +97,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   }, [searchParams])
 
   const pipeline = data?.pipeline
-  const allDeals = data?.deals || []
+  const allDeals = useMemo(() => data?.deals || [], [data])
 
   const owners = useMemo(() => {
     const seen = new Map<string, { id: string; name: string }>()

@@ -4,7 +4,7 @@ import {
   PERIOD_FRESHNESS_THRESHOLDS,
   STALE_THRESHOLD_MULTIPLIER,
 } from "@/lib/shared/data-status"
-import { formatElapsed } from "./stale-badge"
+import { formatElapsed } from "./stale-badge-helpers"
 
 describe("StaleBadge logic (AK-14.3)", () => {
   it("STALE_THRESHOLD_MULTIPLIER is 2", () => {

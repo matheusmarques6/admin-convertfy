@@ -48,18 +48,33 @@ export async function POST(
     }
 
     // Le thread + channel
+    type ChannelRow = {
+      id: string
+      type: string
+      config: Record<string, unknown> | null
+      external_id: string | null
+    }
+    type ThreadRow = {
+      id: string
+      org_id: string
+      contact_external_id: string
+      channel: ChannelRow | ChannelRow[] | null
+    }
+
     const { data: thread } = await admin
       .from("crm_threads")
       .select("id, org_id, contact_external_id, channel:crm_channels (id, type, config, external_id)")
       .eq("id", threadId)
-      .single()
+      .single<ThreadRow>()
 
     if (!thread) {
       throw new AppError("Thread nao encontrada", 404, "not-found")
     }
 
-    const channel = Array.isArray(thread.channel) ? thread.channel[0] : thread.channel
-    if (!channel || (channel as any).type !== "whatsapp") {
+    const channel: ChannelRow | null = Array.isArray(thread.channel)
+      ? (thread.channel[0] ?? null)
+      : thread.channel
+    if (!channel || channel.type !== "whatsapp") {
       throw new AppError(
         "Apenas channels WhatsApp sao suportados nesta versao",
         400,
@@ -87,11 +102,11 @@ export async function POST(
     if (createErr || !localMsg) throw createErr || new Error("Falha ao criar mensagem")
 
     // Envia via WhatsApp Cloud API
-    const config = (channel as any).config || {}
+    const config = (channel.config as Record<string, string | undefined>) || {}
     const result = await sendWhatsAppMessage(
       {
-        phone_number_id: (channel as any).external_id || config.phone_number_id,
-        access_token: config.access_token,
+        phone_number_id: channel.external_id || config.phone_number_id || "",
+        access_token: config.access_token || "",
         business_account_id: config.business_account_id,
       },
       parsed.type === "text"
