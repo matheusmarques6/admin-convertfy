@@ -233,7 +233,9 @@ export function DashboardClientHealth({
   const MAX_VISIBLE = 9
 
   // Map real storeBreakdown to ClientHealth format. Empty when no data — UI shows
-  // empty state instead of fictitious clients.
+  // empty state instead of fictitious clients. Lojas sem revenue real ficam
+  // ordenadas no fim (storeRev=0). Score derivado da taxa de atribuicao
+  // (0-40% mapeado linearmente pra 0-100).
   const allClients: ClientHealth[] = useMemo(() => {
     if (!storeBreakdown || storeBreakdown.length === 0) return []
     return storeBreakdown.map((s, i) => {
@@ -251,7 +253,7 @@ export function DashboardClientHealth({
         revenuePercent: Math.round(pct * 10) / 10,
         score,
       }
-    })
+    }).filter((c) => c.storeRevenue > 0 || c.attributedRevenue > 0)
   }, [storeBreakdown])
 
   const totalStores = allClients.length

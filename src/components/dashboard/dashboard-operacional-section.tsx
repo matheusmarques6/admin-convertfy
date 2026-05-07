@@ -116,7 +116,7 @@ export function DashboardOperacionalSection() {
             tooltip={
               data?.nps.count
                 ? `${data.nps.count} respostas · ${data.nps.promoters} promotores, ${data.nps.detractors} detratores`
-                : "Sem respostas de NPS na janela atual."
+                : "Sem respostas de NPS. Registre via POST /api/crm/stores/{id}/nps com {score, comment} ou na ficha da loja em /admin/stores/{id}."
             }
           />
           <KpiCard

@@ -282,6 +282,9 @@ const PLAIN_FIELDS = [
   "klaviyo_list_id",
   "ga4_property_id",
   "is_active",
+  // MRR em centavos — usado no dashboard operacional. Editado via UI
+  // de stores em /admin/clients/[id].
+  "mrr_cents",
 ]
 
 const ALLOWED_FIELDS = [...ENCRYPTED_FIELDS, ...PLAIN_FIELDS]

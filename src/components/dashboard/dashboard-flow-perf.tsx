@@ -239,7 +239,8 @@ interface DashboardFlowPerfProps {
 }
 
 export function DashboardFlowPerf({ loading = false, flows }: DashboardFlowPerfProps) {
-  const cards = flows && flows.length > 0 ? flows : EMPTY_FLOW_CARDS
+  const hasRealData = !!(flows && flows.length > 0)
+  const cards = hasRealData ? flows! : EMPTY_FLOW_CARDS
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-3">
@@ -259,7 +260,7 @@ export function DashboardFlowPerf({ loading = false, flows }: DashboardFlowPerfP
           </Tooltip>
         </TooltipProvider>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 relative">
         {loading
           ? Array.from({ length: 3 }).map((_, i) => (
               <FlowCardSkeleton key={i} />
@@ -267,6 +268,17 @@ export function DashboardFlowPerf({ loading = false, flows }: DashboardFlowPerfP
           : cards.map((card) => (
               <FlowCard key={card.title} data={card} />
             ))}
+        {!loading && !hasRealData && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center rounded-[6px] bg-white/80 dark:bg-[#1A1D27]/80 backdrop-blur-[1px] text-center px-6">
+            <p className="text-sm font-medium text-gray-700 dark:text-white/80">
+              Sem flows ativos no periodo
+            </p>
+            <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-white/60">
+              Esta secao agrega Recuperacao de Carrinho, Abandono de Navegacao e Win-back de todas as lojas.
+              Os flows precisam estar ativos no Klaviyo/Omnisend e com nomes que contenham &ldquo;cart&rdquo;, &ldquo;abandon&rdquo; ou &ldquo;winback&rdquo; para serem categorizados.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useMemo, useRef } from "react"
+import useSWR from "swr"
 import {
   AreaChart,
   Area,
@@ -232,8 +233,42 @@ function ChartSkeleton() {
 // ─── Main Component ───────────────────────────────────────
 
 export function DashboardRevenueChart({ loading, period: _period, data }: DashboardRevenueChartProps) {
-  const chartData = data && data.length > 0 ? data : EMPTY_DATA
-  const hasRealData = !!(data && data.length > 0)
+  // Quando nao recebe `data` por prop, busca diretamente do kpi-series
+  // que ja agrega revenue por bucket de periodo (7d/15d/30d/90d). E o
+  // melhor que conseguimos sem snapshot historico mensal — ainda
+  // permite ver tendencia e nao deixa o card eternamente "Aguardando".
+  const { data: kpi } = useSWR<{
+    success: boolean
+    data: {
+      sparklines: { total: number[]; campaign: number[]; flow: number[] }
+    }
+  }>(
+    !data ? `/api/dashboard/kpi-series?period=${_period}` : null,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  )
+
+  const derivedData: RevenueDataPoint[] | undefined = useMemo(() => {
+    if (data) return data
+    const sp = kpi?.data?.sparklines
+    if (!sp || !sp.total || sp.total.length === 0) return undefined
+    const labels = ["7d", "15d", "30d", "90d"]
+    return sp.total.map((tot: number, i: number) => ({
+      month: labels[i] ?? `${i}`,
+      current: tot,
+      previous: 0,
+      fatAtribuido: (sp.campaign?.[i] ?? 0) + (sp.flow?.[i] ?? 0),
+      campanhas: sp.campaign?.[i] ?? 0,
+      automacoes: sp.flow?.[i] ?? 0,
+      fatTotalLojas: tot,
+      taxaReceita: tot > 0
+        ? (((sp.campaign?.[i] ?? 0) + (sp.flow?.[i] ?? 0)) / tot) * 100
+        : 0,
+    }))
+  }, [data, kpi])
+
+  const chartData = derivedData && derivedData.length > 0 ? derivedData : EMPTY_DATA
+  const hasRealData = !!(derivedData && derivedData.length > 0 && derivedData.some((d) => d.current > 0))
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -317,8 +352,11 @@ export function DashboardRevenueChart({ loading, period: _period, data }: Dashbo
       {/* Chart */}
       <div className="h-[280px] relative">
         {!hasRealData && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
-            <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378]">Aguardando dados do sync</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px] text-center px-4">
+            <p className="text-sm font-medium text-gray-600 dark:text-white/70">Sem receita atribuida no periodo</p>
+            <p className="text-xs text-gray-400 dark:text-white/50 mt-1">
+              As lojas ainda nao tem dados de campanhas/automacoes neste recorte ou o sync nao rodou.
+            </p>
           </div>
         )}
         <ResponsiveContainer width="100%" height="100%">

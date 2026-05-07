@@ -1,5 +1,6 @@
 "use client"
 
+import useSWR from "swr"
 import {
   BarChart,
   Bar,
@@ -119,8 +120,26 @@ function SkeletonState() {
 }
 
 export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPerfProps) {
-  const chartData = data && data.length > 0 ? data : EMPTY_DATA
-  const hasRealData = !!(data && data.length > 0)
+  // Quando nao recebe `data` por prop, busca as ultimas 4 semanas
+  // diretamente via /api/dashboard/weekly-perf — agrega open/click/conv
+  // de klaviyo_campaign_metrics + omnisend_campaign_metrics.
+  const { data: fetched, isLoading: isFetchingWeekly } = useSWR<{
+    success: boolean
+    data: { weeks: WeeklyDataPoint[]; totalsZero: boolean }
+  }>(
+    !data ? "/api/dashboard/weekly-perf?weeks=4" : null,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  )
+
+  const remoteWeeks = fetched?.data?.weeks
+  const remoteHasData = !fetched?.data?.totalsZero
+  const effectiveData = data ?? remoteWeeks
+  const chartData = effectiveData && effectiveData.length > 0 ? effectiveData : EMPTY_DATA
+  const hasRealData = data
+    ? data.length > 0
+    : remoteHasData && (remoteWeeks?.length ?? 0) > 0
+  const showSkeleton = loading || (!data && isFetchingWeekly)
   return (
     <div
       className={cn(
@@ -128,7 +147,7 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
         "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]"
       )}
     >
-      {loading ? (
+      {showSkeleton ? (
         <SkeletonState />
       ) : (
         <>
@@ -165,9 +184,12 @@ export function DashboardWeeklyPerf({ loading = false, data }: DashboardWeeklyPe
             </div>
           </div>
           <div className="h-[220px] w-full relative">
-            {!hasRealData && !loading && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px]">
-                <p className="text-sm text-gray-400 dark:text-white/50 dark:text-[#5C6378]">Aguardando dados do sync</p>
+            {!hasRealData && !showSkeleton && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-white/60 dark:bg-[#1A1D27]/60 rounded-[6px] text-center px-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-white/70">Sem campanhas nas ultimas 4 semanas</p>
+                <p className="text-xs text-gray-400 dark:text-white/50 mt-1">
+                  Quando lojas enviarem campanhas, a evolucao de open/click/conv aparece aqui.
+                </p>
               </div>
             )}
             <ResponsiveContainer width="100%" height="100%">

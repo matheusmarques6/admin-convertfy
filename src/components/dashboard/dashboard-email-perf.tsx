@@ -23,31 +23,33 @@ import {
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface EmailPerfApiResponse {
-  data?: {
-    metrics: {
-      openRate: number
-      clickRate: number
-      ctor: number
-      placedOrderRate: number
-      rpe: number
-      deliveryRate: number
-      bounceRate: number
-      unsubRate: number
-    }
-    totals: {
-      recipients: number
-      delivered: number
-      opened: number
-      clicked: number
-      bounced: number
-      unsubscribed: number
-      conversions: number
-      revenue: number
-    }
-    audience: {
-      totalLeads: number
-      engagedLeads: number
-    }
+  // successResponse() do nosso wrapper espalha as chaves na raiz junto
+  // com `success: true`, NAO encapsula em `data`. Por isso lemos
+  // direto sem o intermediario.
+  success?: boolean
+  metrics?: {
+    openRate: number
+    clickRate: number
+    ctor: number
+    placedOrderRate: number
+    rpe: number
+    deliveryRate: number
+    bounceRate: number
+    unsubRate: number
+  }
+  totals?: {
+    recipients: number
+    delivered: number
+    opened: number
+    clicked: number
+    bounced: number
+    unsubscribed: number
+    conversions: number
+    revenue: number
+  }
+  audience?: {
+    totalLeads: number
+    engagedLeads: number
   }
 }
 
@@ -295,9 +297,9 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
-  const apiMetrics = apiData?.data?.metrics
-  const apiTotals = apiData?.data?.totals
-  const apiAudience = apiData?.data?.audience
+  const apiMetrics = apiData?.metrics
+  const apiTotals = apiData?.totals
+  const apiAudience = apiData?.audience
 
   // Substitui METRICS placeholder com valores reais
   const liveMetrics: MetricDefinition[] = useMemo(() => {
