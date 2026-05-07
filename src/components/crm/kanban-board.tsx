@@ -31,30 +31,46 @@ interface KanbanBoardProps {
   onLoseDeal?: (dealId: string) => void
 }
 
-const fmtBRL = (v: number) =>
-  new Intl.NumberFormat("pt-BR", {
+const fmtBRLCompact = (v: number): string => {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace(".", ",")}M`
+  if (v >= 1_000) return `R$ ${Math.round(v / 1_000)}K`
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(v)
+}
 
-// Cor default da barra superior por stage_type — usada quando stage.color e null.
+// Cor default por stage_type — usada quando stage.color e null.
+// Tons saturados estilo DataCrazy: open=ardosia, won=verde esmeralda,
+// lost=vermelho coral, paused=ambar.
 const STAGE_TYPE_DEFAULT_COLOR: Record<string, string> = {
-  open: "#94A3B8",
-  won: "#10B981",
-  lost: "#EF4444",
-  paused: "#F59E0B",
+  open: "#475569",
+  won: "#059669",
+  lost: "#DC2626",
+  paused: "#D97706",
 }
 
 function stageColor(stage: KanbanStage): string {
   if (stage.color) return stage.color
-  return STAGE_TYPE_DEFAULT_COLOR[stage.stage_type || "open"] || "#94A3B8"
+  return STAGE_TYPE_DEFAULT_COLOR[stage.stage_type || "open"] || "#475569"
 }
 
 function daysSince(iso: string | null): number {
   if (!iso) return 0
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
+}
+
+/**
+ * Converte um hex (#RRGGBB) num rgba com alpha. Usado pra gerar versoes
+ * mais claras da cor da etapa pro background do header sem precisar de
+ * variaveis CSS extras.
+ */
+function hexAlpha(hex: string, alpha: number): string {
+  const m = hex.replace("#", "").match(/.{2}/g)
+  if (!m || m.length !== 3) return hex
+  const [r, g, b] = m.map((x) => parseInt(x, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 export function KanbanBoard({
@@ -134,10 +150,8 @@ export function KanbanBoard({
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div
-        className="flex h-full gap-3 overflow-x-auto px-4 py-4"
-        style={{
-          background: "#F8FAFC",
-        }}
+        className="flex h-full gap-3 overflow-x-auto px-5 py-5"
+        style={{ background: "#F1F5F9" }}
       >
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
@@ -160,60 +174,58 @@ export function KanbanBoard({
           return (
             <div
               key={stage.id}
-              style={{
-                width: 296,
-                minWidth: 296,
-                display: "flex",
-                flexDirection: "column",
-              }}
+              className="flex flex-col"
+              style={{ width: 304, minWidth: 304 }}
             >
-              {/* Header de coluna — barra colorida no topo + sticky */}
+              {/* ── Header da coluna — chip colorido estilo DataCrazy ── */}
               <div
+                className="sticky top-0 z-[1]"
                 style={{
-                  background: "#FFFFFF",
-                  borderRadius: 8,
-                  border: "1px solid rgba(0,0,0,0.06)",
-                  borderTop: `3px solid ${color}`,
-                  padding: "10px 12px",
-                  marginBottom: 10,
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                  background: color,
+                  borderRadius: "6px 6px 0 0",
+                  padding: "8px 12px",
+                  color: "#FFFFFF",
+                  boxShadow: `0 1px 3px ${hexAlpha(color, 0.25)}`,
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: color,
-                        flexShrink: 0,
-                      }}
-                    />
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
                       title={stage.name}
                       className="truncate"
                       style={{
                         fontSize: 12,
                         fontWeight: 600,
-                        color: "#1F2937",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
+                        letterSpacing: "0.02em",
+                        color: "#FFFFFF",
                       }}
                     >
                       {stage.name}
                     </span>
+                    <span
+                      className="shrink-0 inline-flex items-center justify-center"
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        background: hexAlpha("#FFFFFF", 0.22),
+                        color: "#FFFFFF",
+                        padding: "1px 6px",
+                        minWidth: 20,
+                        height: 16,
+                        borderRadius: 999,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {stageDeals.length}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-0.5 shrink-0">
                     {onAddDeal && !isTerminal && (
                       <button
                         onClick={() => onAddDeal(stage.id)}
                         aria-label="Adicionar deal"
                         title="Adicionar deal aqui"
-                        className="hover:bg-[rgba(0,0,0,0.04)]"
+                        className="hover:bg-white/15"
                         style={{
                           width: 22,
                           height: 22,
@@ -221,8 +233,11 @@ export function KanbanBoard({
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          color: "#9CA3AF",
+                          color: "#FFFFFF",
                           cursor: "pointer",
+                          background: "transparent",
+                          border: "none",
+                          transition: "background 150ms ease",
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -231,7 +246,7 @@ export function KanbanBoard({
                     <button
                       aria-label="Mais opcoes"
                       title="Opcoes da coluna"
-                      className="hover:bg-[rgba(0,0,0,0.04)]"
+                      className="hover:bg-white/15"
                       style={{
                         width: 22,
                         height: 22,
@@ -239,79 +254,116 @@ export function KanbanBoard({
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        color: "#9CA3AF",
+                        color: "#FFFFFF",
                         cursor: "pointer",
+                        background: "transparent",
+                        border: "none",
+                        transition: "background 150ms ease",
                       }}
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
-
-                {/* Total + count + SLA breach */}
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="flex items-baseline gap-1.5 min-w-0">
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#111827",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                      className="truncate"
-                    >
-                      {fmtBRL(stageTotal)}
-                    </span>
-                    <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                      · {stageDeals.length} {stageDeals.length === 1 ? "negocio" : "negocios"}
-                    </span>
-                  </div>
-                  {breachCount > 0 && (
-                    <span
-                      title={`${breachCount} deal(s) acima do SLA (${slaDays}d)`}
-                      style={{
-                        fontSize: 10,
-                        color: "#991B1B",
-                        background: "#FEE2E2",
-                        padding: "1px 5px",
-                        borderRadius: 3,
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <AlertCircle className="h-2.5 w-2.5" />
-                      {breachCount}
-                    </span>
-                  )}
-                </div>
               </div>
 
-              {/* Droppable column */}
+              {/* Barra de subtotal + breach — fora do chip colorido pra
+                  manter o header limpo e o numero legivel */}
+              <div
+                className="flex items-center justify-between"
+                style={{
+                  background: "#FFFFFF",
+                  borderLeft: "1px solid rgba(0,0,0,0.05)",
+                  borderRight: "1px solid rgba(0,0,0,0.05)",
+                  padding: "8px 12px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#0F172A",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                  className="truncate"
+                >
+                  {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "—"}
+                </span>
+                {breachCount > 0 ? (
+                  <span
+                    title={`${breachCount} deal(s) acima do SLA (${slaDays}d)`}
+                    style={{
+                      fontSize: 10,
+                      color: "#991B1B",
+                      background: "#FEE2E2",
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                    }}
+                  >
+                    <AlertCircle className="h-2.5 w-2.5" />
+                    {breachCount}
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "#94A3B8",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {slaDays ? `SLA ${slaDays}d` : ""}
+                  </span>
+                )}
+              </div>
+
+              {/* ── Droppable column ── */}
               <Droppable droppableId={stage.id}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
+                    className="flex-1"
                     style={{
-                      flex: 1,
                       background: snapshot.isDraggingOver
-                        ? "rgba(37, 99, 235, 0.04)"
-                        : "transparent",
-                      border: snapshot.isDraggingOver
-                        ? "1px dashed #2563EB"
-                        : "1px dashed transparent",
-                      borderRadius: 8,
-                      padding: 4,
+                        ? hexAlpha(color, 0.06)
+                        : "#FFFFFF",
+                      borderLeft: "1px solid rgba(0,0,0,0.05)",
+                      borderRight: "1px solid rgba(0,0,0,0.05)",
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                      borderRadius: "0 0 6px 6px",
+                      borderTop: snapshot.isDraggingOver
+                        ? `1px dashed ${color}`
+                        : "1px solid transparent",
+                      padding: 8,
                       transition: "background 150ms ease, border-color 150ms ease",
-                      minHeight: 100,
+                      minHeight: 120,
                       display: "flex",
                       flexDirection: "column",
-                      gap: 8,
+                      gap: 6,
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
                     }}
                   >
+                    {stageDeals.length === 0 && !snapshot.isDraggingOver ? (
+                      <div
+                        className="flex flex-col items-center justify-center text-center"
+                        style={{
+                          padding: "24px 12px",
+                          color: "#94A3B8",
+                        }}
+                      >
+                        <p style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
+                          Vazio
+                        </p>
+                        <p style={{ fontSize: 10, color: "#CBD5E1" }}>
+                          Arraste cards ou clique em + para adicionar
+                        </p>
+                      </div>
+                    ) : null}
+
                     {stageDeals.map((deal, index) => (
                       <Draggable
                         key={deal.id}
@@ -332,6 +384,7 @@ export function KanbanBoard({
                             <DealCard
                               deal={deal}
                               slaHours={stage.sla_hours}
+                              stageColor={color}
                               onClick={onCardClick}
                               onWin={!isTerminal ? onWinDeal : undefined}
                               onLose={!isTerminal ? onLoseDeal : undefined}
@@ -343,32 +396,31 @@ export function KanbanBoard({
                     ))}
                     {provided.placeholder}
 
-                    {/* Adicionar deal — botao discreto no final */}
-                    {onAddDeal && !isTerminal && (
+                    {/* Add deal — botao discreto no fim, so se ha deals */}
+                    {onAddDeal && !isTerminal && stageDeals.length > 0 && (
                       <button
                         onClick={() => onAddDeal(stage.id)}
-                        className="hover:bg-[rgba(0,0,0,0.03)] hover:border-[rgba(0,0,0,0.12)]"
+                        className="hover:bg-slate-50 hover:border-slate-300"
                         style={{
                           width: "100%",
-                          padding: stageDeals.length === 0 ? "16px 12px" : "8px 12px",
+                          padding: "8px 12px",
                           borderRadius: 6,
-                          border: "1px dashed rgba(0,0,0,0.10)",
+                          border: "1px dashed #E2E8F0",
                           background: "transparent",
-                          color: "#9CA3AF",
+                          color: "#94A3B8",
                           fontSize: 11,
+                          fontWeight: 500,
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 4,
-                          marginTop: stageDeals.length === 0 ? 0 : 2,
-                          transition: "background 150ms ease, border-color 150ms ease",
+                          marginTop: 2,
+                          transition: "all 150ms ease",
                         }}
                       >
                         <Plus className="h-3 w-3" />
-                        {stageDeals.length === 0
-                          ? "Adicionar primeiro deal"
-                          : "Adicionar"}
+                        Adicionar
                       </button>
                     )}
                   </div>

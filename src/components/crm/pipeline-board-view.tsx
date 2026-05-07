@@ -284,12 +284,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
       }
     >
       {isLoading ? (
-        <div
-          className="p-6"
-          style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
-        >
-          Carregando pipeline...
-        </div>
+        <PipelineSkeleton />
       ) : !pipeline ? (
         <div className="p-6">
           <CrmEmptyState
@@ -305,15 +300,13 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
           />
         </div>
       ) : (
-        <div className="flex h-full flex-col">
-          {/* KPI bar — sticky inline acima do kanban */}
+        <div className="flex h-full flex-col" style={{ background: "#F8FAFC" }}>
+          {/* ── KPI bar — 4 cards compactos com hierarquia clara ── */}
           {pipeline.layout !== "state" && (
             <div
-              className="grid border-b"
+              className="grid gap-2 px-5 pt-4"
               style={{
                 gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                background: "var(--crm-gray-0)",
-                borderColor: "var(--crm-gray-200)",
               }}
             >
               <KpiCell
@@ -325,6 +318,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                     ? fmtBRL(Math.round(kpis.avgDeal))
                     : "—"
                 }`}
+                accent="#2563EB"
               />
               <KpiCell
                 icon={<Target className="h-3.5 w-3.5" />}
@@ -333,12 +327,12 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                   kpis.winRate != null ? `${kpis.winRate.toFixed(0)}%` : "—"
                 }
                 hint={`${kpis.wonCount} ganhos`}
-                color={
+                accent={
                   kpis.winRate == null
-                    ? "default"
+                    ? "#475569"
                     : kpis.winRate >= 30
-                      ? "success"
-                      : "default"
+                      ? "#059669"
+                      : "#D97706"
                 }
               />
               <KpiCell
@@ -350,6 +344,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                     ? `Filtrado: ${owners.find((o) => o.id === ownerFilter)?.name}`
                     : "Sem filtro"
                 }
+                accent="#7C3AED"
               />
               <KpiCell
                 icon={<AlertCircle className="h-3.5 w-3.5" />}
@@ -360,39 +355,36 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                     ? "Deals acima do prazo do estagio"
                     : "Tudo dentro do prazo"
                 }
-                color={kpis.breachCount > 0 ? "danger" : "success"}
+                accent={kpis.breachCount > 0 ? "#DC2626" : "#059669"}
               />
             </div>
           )}
 
-          {/* Toolbar: busca + filtros + ordenacao */}
+          {/* ── Toolbar: search + filtros ── */}
           {pipeline.layout !== "state" && (
             <div
-              className="flex items-center gap-3 px-4 py-2.5 border-b"
-              style={{
-                background: "#FFFFFF",
-                borderColor: "rgba(0,0,0,0.06)",
-              }}
+              className="flex items-center gap-2 px-5 py-3"
             >
-              <div className="relative flex-1 max-w-sm">
+              <div className="relative flex-1 max-w-xs">
                 <Search
                   className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5"
-                  style={{ color: "#9CA3AF" }}
+                  style={{ color: "#94A3B8" }}
                 />
                 <input
                   type="text"
                   placeholder="Buscar por nome, cliente, tag..."
+                  aria-label="Buscar deals"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full"
                   style={{
                     height: 32,
                     fontSize: 12,
-                    background: "#F9FAFB",
-                    border: "1px solid rgba(0,0,0,0.06)",
+                    background: "#FFFFFF",
+                    border: "1px solid rgba(15, 23, 42, 0.08)",
                     borderRadius: 6,
                     padding: "0 28px 0 30px",
-                    color: "#111827",
+                    color: "#0F172A",
                     outline: "none",
                   }}
                 />
@@ -400,8 +392,8 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                   <button
                     onClick={() => setSearch("")}
                     aria-label="Limpar busca"
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: "#9CA3AF" }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 hover:text-slate-600"
+                    style={{ color: "#94A3B8" }}
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -410,21 +402,22 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
 
               <button
                 title="Filtros"
+                aria-label="Filtros"
                 style={{
                   height: 32,
                   padding: "0 10px",
                   fontSize: 12,
                   fontWeight: 500,
                   background: "#FFFFFF",
-                  border: "1px solid rgba(0,0,0,0.08)",
+                  border: "1px solid rgba(15, 23, 42, 0.08)",
                   borderRadius: 6,
-                  color: "#374151",
+                  color: "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
                   cursor: "pointer",
                 }}
-                className="hover:bg-[rgba(0,0,0,0.02)]"
+                className="hover:bg-slate-50 hover:border-slate-300"
               >
                 <SlidersHorizontal className="h-3 w-3" />
                 Filtros
@@ -432,37 +425,40 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
 
               <button
                 title="Ordenacao"
+                aria-label="Ordenacao"
                 style={{
                   height: 32,
                   padding: "0 10px",
                   fontSize: 12,
                   fontWeight: 500,
                   background: "#FFFFFF",
-                  border: "1px solid rgba(0,0,0,0.08)",
+                  border: "1px solid rgba(15, 23, 42, 0.08)",
                   borderRadius: 6,
-                  color: "#374151",
+                  color: "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
                   cursor: "pointer",
                 }}
-                className="hover:bg-[rgba(0,0,0,0.02)]"
+                className="hover:bg-slate-50 hover:border-slate-300"
               >
                 <ArrowUpDown className="h-3 w-3" />
-                Ordenacao
+                Ordenar
               </button>
 
               <span
+                className="ml-auto"
+                aria-live="polite"
                 style={{
                   fontSize: 11,
-                  color: "#9CA3AF",
-                  marginLeft: "auto",
+                  color: "#64748B",
+                  fontWeight: 500,
                 }}
               >
                 {filteredDeals.length}{" "}
                 {filteredDeals.length === 1 ? "negocio" : "negocios"}
                 {search && (
-                  <span> · filtrando &ldquo;{search}&rdquo;</span>
+                  <span style={{ color: "#94A3B8" }}> · &ldquo;{search}&rdquo;</span>
                 )}
               </span>
             </div>
@@ -525,53 +521,147 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   )
 }
 
+function PipelineSkeleton() {
+  return (
+    <div className="flex h-full flex-col" style={{ background: "#F8FAFC" }}>
+      {/* KPI bar skeleton */}
+      <div
+        className="grid gap-2 px-5 pt-4"
+        style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}
+      >
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="animate-pulse"
+            style={{
+              padding: "10px 14px",
+              background: "#FFFFFF",
+              borderRadius: 6,
+              border: "1px solid rgba(15, 23, 42, 0.06)",
+              borderLeft: "3px solid #CBD5E1",
+              height: 76,
+            }}
+          >
+            <div className="h-2.5 w-20 rounded bg-slate-100" />
+            <div className="mt-2 h-5 w-24 rounded bg-slate-200" />
+            <div className="mt-2 h-2 w-32 rounded bg-slate-100" />
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar skeleton */}
+      <div className="flex items-center gap-2 px-5 py-3">
+        <div className="h-8 w-64 rounded bg-white border border-slate-200 animate-pulse" />
+        <div className="h-8 w-24 rounded bg-white border border-slate-200 animate-pulse" />
+        <div className="h-8 w-24 rounded bg-white border border-slate-200 animate-pulse" />
+      </div>
+
+      {/* Columns skeleton */}
+      <div className="flex-1 flex gap-3 overflow-x-auto px-5 pb-5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex flex-col"
+            style={{ width: 304, minWidth: 304 }}
+          >
+            <div
+              className="animate-pulse"
+              style={{
+                background: "#94A3B8",
+                borderRadius: "6px 6px 0 0",
+                padding: "8px 12px",
+                height: 32,
+                opacity: 0.4,
+              }}
+            />
+            <div
+              className="animate-pulse"
+              style={{
+                background: "#FFFFFF",
+                borderLeft: "1px solid rgba(0,0,0,0.05)",
+                borderRight: "1px solid rgba(0,0,0,0.05)",
+                padding: "8px 12px",
+                height: 36,
+              }}
+            />
+            <div
+              className="flex-1 flex flex-col gap-2"
+              style={{
+                background: "#FFFFFF",
+                borderLeft: "1px solid rgba(0,0,0,0.05)",
+                borderRight: "1px solid rgba(0,0,0,0.05)",
+                borderBottom: "1px solid rgba(0,0,0,0.05)",
+                borderRadius: "0 0 6px 6px",
+                padding: 8,
+              }}
+            >
+              {Array.from({ length: 3 }).map((__, j) => (
+                <div
+                  key={j}
+                  className="animate-pulse"
+                  style={{
+                    background: "#F1F5F9",
+                    borderRadius: 6,
+                    height: 110,
+                    border: "1px solid rgba(15,23,42,0.04)",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function KpiCell({
   icon,
   label,
   value,
   hint,
-  color = "default",
+  accent = "#475569",
 }: {
   icon: React.ReactNode
   label: string
   value: string
   hint?: string
-  color?: "default" | "success" | "danger"
+  /** Cor de acento — pinta o icone e a borda lateral. */
+  accent?: string
 }) {
-  const valueColor =
-    color === "success"
-      ? "var(--crm-success-fg)"
-      : color === "danger"
-        ? "var(--crm-danger-fg)"
-        : "var(--crm-gray-900)"
   return (
     <div
       style={{
-        padding: "10px 16px",
-        borderRight: "1px solid var(--crm-gray-200)",
+        padding: "10px 14px",
+        background: "#FFFFFF",
+        borderRadius: 6,
+        border: "1px solid rgba(15, 23, 42, 0.06)",
+        borderLeft: `3px solid ${accent}`,
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
       }}
     >
       <div
         className="flex items-center gap-1.5"
         style={{
           fontSize: 10,
-          color: "var(--crm-gray-500)",
+          color: accent,
           textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          fontWeight: "var(--crm-weight-medium)",
+          letterSpacing: "0.06em",
+          fontWeight: 600,
         }}
       >
         {icon}
         {label}
       </div>
       <div
-        className="mt-0.5"
+        className="mt-1"
         style={{
-          fontSize: "var(--crm-text-lg)",
-          fontWeight: "var(--crm-weight-medium)",
-          color: valueColor,
-          fontFamily: "var(--crm-font-mono)",
-          lineHeight: 1.2,
+          fontSize: 18,
+          fontWeight: 700,
+          color: "#0F172A",
+          fontVariantNumeric: "tabular-nums",
+          lineHeight: 1.15,
+          letterSpacing: "-0.01em",
         }}
       >
         {value}
@@ -580,8 +670,9 @@ function KpiCell({
         <div
           style={{
             fontSize: 10,
-            color: "var(--crm-gray-500)",
-            marginTop: 2,
+            color: "#64748B",
+            marginTop: 3,
+            lineHeight: 1.3,
           }}
         >
           {hint}
