@@ -162,6 +162,11 @@ export function DashboardLayout({
   const totalRevenue = revenueData?.totalRevenue ?? 0
   const campaignRevenue = revenueData?.campaignRevenue ?? 0
   const flowRevenue = revenueData?.flowRevenue ?? 0
+  // Receita atribuida agregada = somatorio (campanhas + automacoes) de
+  // todas as lojas, ja convertida em BRL pelo endpoint. Usado como
+  // primeiro card no workspace OPERACIONAL (CS olha o que a Convertfy
+  // gerou, nao o faturamento bruto da loja).
+  const attributedRevenue = campaignRevenue + flowRevenue
 
   // Taxa Convertfy = % agregada (atribuido total / total geral) — bate
   // com a "% Receita atribuida media" do overview de lojas. Usa valores
@@ -257,12 +262,16 @@ export function DashboardLayout({
         <AnimatedItem>
           <KpiCardRow columns={4}>
             <KpiCard
-              label="Receita Total"
-              value={fmtCompact(totalRevenue)}
+              label={showOperacionalSection ? "Receita Atribuída" : "Receita Total"}
+              value={fmtCompact(showOperacionalSection ? attributedRevenue : totalRevenue)}
               delta={deltas?.total}
               sparkData={sparklines?.total}
               loading={isLoading}
-              tooltip="Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
+              tooltip={
+                showOperacionalSection
+                  ? "Receita atribuída agregada (campanhas + automações) de todas as lojas no período. Já convertida para BRL com taxa de câmbio atual."
+                  : "Faturamento total de todas as lojas no período selecionado, obtido via Klaviyo (Placed Order)."
+              }
             />
             <KpiCard
               label="Receita Campanhas"

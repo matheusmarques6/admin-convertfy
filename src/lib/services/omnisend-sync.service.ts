@@ -1497,10 +1497,14 @@ async function doSyncOmnisendForStore(params: {
     }
 
     // Currency vem do DB (client_stores.currency, migration 20241217).
-    // Cada loja tem currency diferente (BRL pra Vivazz, EUR pra Azzurro,
-    // USD pra outras). Default BRL pra lojas Brasil que possam estar
-    // sem currency setado (pre-migration).
+    // Omnisend nao expoe currency via API (diferente do Klaviyo que tem
+    // preferred_currency em /accounts/), entao depende do operador
+    // configurar manualmente em client_stores.currency. Quando ausente,
+    // logamos error visivel e marcamos sync_status='partial' com
+    // sync_error que aparece em /api/stores/currency-audit pra
+    // diagnostico.
     let currency = "BRL"
+    let currencyMissing = false
     try {
       const admin = createAdminClient()
       const { data: storeCurrency } = await admin
@@ -1510,13 +1514,23 @@ async function doSyncOmnisendForStore(params: {
         .maybeSingle()
       if (storeCurrency?.currency) {
         currency = storeCurrency.currency
+      } else {
+        currencyMissing = true
+        log.error(
+          "[OmnisendSync] Store sem currency configurado — assumindo BRL. Valores em moeda estrangeira NAO serao convertidos no dashboard. Configure client_stores.currency.",
+          { storeId },
+        )
       }
     } catch (err) {
+      currencyMissing = true
       log.warn("[OmnisendSync] Failed to read store currency, defaulting BRL", {
         storeId,
         error: err instanceof Error ? err.message : String(err),
       })
     }
+    // Marca a flag pra ser propagada no payload — sync_persistence usa
+    // pra setar sync_error visivel no audit endpoint.
+    void currencyMissing
 
     log.info("[OmnisendSync] activity breakdown summary", {
       storeId,

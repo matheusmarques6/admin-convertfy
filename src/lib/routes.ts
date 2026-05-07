@@ -144,6 +144,7 @@ export const ROUTES = {
     INSIGHTS: "/admin/insights",
     LIST_HYGIENE: "/admin/list-hygiene",
     TOOLS: "/admin/tools",
+    TOOLS_CURRENCY_AUDIT: "/admin/tools/currency-audit",
 
     SETTINGS: {
       ROOT: "/admin/settings",

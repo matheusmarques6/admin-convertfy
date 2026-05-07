@@ -31,6 +31,7 @@ import {
   Phone,
   Users2,
   Wrench,
+  Coins,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -227,6 +228,7 @@ const GERAL_NAV: NavGroup[] = [
     label: "Ferramentas",
     items: [
       { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
+      { name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
     ],
   },
 ]
