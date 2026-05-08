@@ -83,6 +83,8 @@ export const ROUTES = {
       LEADS: "/admin/comercial/leads",
       LEAD_DETAIL: (id: string) => `/admin/comercial/leads/${id}` as const,
       DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
+      FORMS: "/admin/comercial/forms",
+      FORM_DETAIL: (id: string) => `/admin/comercial/forms/${id}` as const,
       REPORTS: "/admin/comercial/reports",
     },
 

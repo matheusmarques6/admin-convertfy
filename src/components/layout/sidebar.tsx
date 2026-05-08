@@ -32,6 +32,7 @@ import {
   Users2,
   Wrench,
   Coins,
+  FileText,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -81,6 +82,7 @@ const COMERCIAL_NAV: NavGroup[] = [
       { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
       { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
       { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
+      { name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },
   {
