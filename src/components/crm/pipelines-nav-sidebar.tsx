@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { NewPipelineDialog } from "./new-pipeline-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -32,8 +33,6 @@ interface PipelineSummary {
 
 interface PipelinesNavSidebarProps {
   scope: "sales" | "cs"
-  /** Botão "Novo pipeline" — quando clicado, abre dialogo no parent. */
-  onCreatePipeline?: () => void
 }
 
 /**
@@ -52,12 +51,12 @@ interface PipelinesNavSidebarProps {
  */
 export function PipelinesNavSidebar({
   scope,
-  onCreatePipeline,
 }: PipelinesNavSidebarProps) {
   const pathname = usePathname()
   const [search, setSearch] = useState("")
+  const [newDialogOpen, setNewDialogOpen] = useState(false)
 
-  const { data, isLoading } = useSWR<{ pipelines: PipelineSummary[] }>(
+  const { data, isLoading, mutate } = useSWR<{ pipelines: PipelineSummary[] }>(
     `/api/crm/pipelines?scope=${scope}`,
     fetcher,
   )
@@ -105,22 +104,21 @@ export function PipelinesNavSidebar({
           )}
         </div>
 
-        {onCreatePipeline && (
-          <button
-            type="button"
-            onClick={onCreatePipeline}
-            className={cn(
-              "w-full flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px]",
-              "text-[12px] font-semibold text-white",
-              "bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF]",
-              "shadow-[0_1px_2px_rgba(37,99,235,0.25)]",
-              "transition-colors",
-            )}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Novo pipeline
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setNewDialogOpen(true)}
+          className={cn(
+            "w-full flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px]",
+            "text-[12px] font-semibold text-white",
+            scope === "cs"
+              ? "bg-[#059669] hover:bg-[#047857] active:bg-[#065F46] shadow-[0_1px_2px_rgba(5,150,105,0.25)]"
+              : "bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] shadow-[0_1px_2px_rgba(37,99,235,0.25)]",
+            "transition-colors",
+          )}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Novo pipeline
+        </button>
       </div>
 
       {/* ── Busca ── */}
@@ -177,6 +175,18 @@ export function PipelinesNavSidebar({
           </ul>
         )}
       </div>
+
+      <NewPipelineDialog
+        open={newDialogOpen}
+        scope={scope}
+        onClose={() => setNewDialogOpen(false)}
+        onCreated={() => {
+          // Revalida lista pra mostrar o novo pipeline imediatamente.
+          // O proprio dialog ja faz router.push pra abrir o board do
+          // pipeline recem-criado.
+          mutate()
+        }}
+      />
     </aside>
   )
 }

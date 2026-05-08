@@ -3,17 +3,12 @@
 import { PipelinesNavSidebar } from "@/components/crm/pipelines-nav-sidebar"
 
 /**
- * Layout 2-painéis para /admin/comercial/pipelines/**:
+ * Layout 2-paineis para /admin/comercial/pipelines/**.
  *
- *   ┌──────────────┬───────────────────────────────────┐
- *   │              │                                   │
- *   │   Pipelines  │           Board ativo             │
- *   │   (sidebar)  │           (children)              │
- *   │              │                                   │
- *   └──────────────┴───────────────────────────────────┘
- *
- * A sidebar persiste enquanto o usuário troca de pipeline — sem
- * precisar voltar pra lista. Estilo DataCrazy.
+ * Anula o padding do <main> do admin layout (px-4 md:px-6 lg:px-8) com
+ * `-m-*` matching e usa `h-[calc(100vh-3.5rem)]` pra ocupar a viewport
+ * inteira menos a altura do header (h-14 = 3.5rem). Em mobile (sem
+ * header desktop) usa h-screen.
  */
 export default function ComercialPipelinesLayout({
   children,
@@ -21,8 +16,8 @@ export default function ComercialPipelinesLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-full min-h-0 -m-4 md:-m-6 lg:-m-8">
-      <div className="hidden md:block h-full">
+    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem-1rem)] md:h-[calc(100vh-3.5rem-1.5rem)] lg:h-[calc(100vh-3.5rem-2rem)]">
+      <div className="hidden md:block h-full overflow-hidden">
         <PipelinesNavSidebar scope="sales" />
       </div>
       <div className="flex-1 min-w-0 h-full overflow-hidden">{children}</div>
