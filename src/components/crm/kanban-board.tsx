@@ -153,13 +153,6 @@ export function KanbanBoard({
     }
   }
 
-  // Stages "open" — usados pra calcular o mini stepper (posicao do
-  // deal no funil de aquisicao, ignorando won/lost que sao terminais).
-  const openStages = useMemo(
-    () => stages.filter((s) => (s.stage_type || "open") === "open"),
-    [stages],
-  )
-
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full gap-4 overflow-x-auto px-6 py-5 bg-slate-50 dark:bg-[#0B0E15]">
@@ -167,10 +160,6 @@ export function KanbanBoard({
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
           const color = stageColor(stage)
-          // Indice da stage atual dentro do funil "open" — usado pelos
-          // cards pra desenhar o mini stepper. Stages won/lost ficam
-          // sem stepper (-1 -> stagePosition undefined no card).
-          const openIdx = openStages.findIndex((s) => s.id === stage.id)
           const stageTotal = stageDeals.reduce(
             (sum, d) => sum + (d.value || 0),
             0,
@@ -191,29 +180,18 @@ export function KanbanBoard({
               className="flex flex-col"
               style={{ width: 304, minWidth: 304 }}
             >
-              {/* ── Header da coluna — pilula clean estilo Linear ──
-                  Diferente do chip 100% colorido (que fica forte demais
-                  com 5+ colunas seguidas), agora usa bg branco + barra
-                  superior fina colorida + dot da cor do stage. Resultado
-                  mais leve e profissional. */}
+              {/* ── Header da coluna — bloco solido colorido ──
+                  Estilo direto: dot + nome em uppercase + count badge.
+                  Background branco com border. Subtotal embaixo em bg
+                  cinza claro. Mais limpo, menos intrusivo. */}
               <div
                 className="sticky top-0 z-[1] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                 style={{
-                  borderRadius: "8px 8px 0 0",
+                  borderRadius: "10px 10px 0 0",
                 }}
               >
-                {/* Barra superior fina colorida — assinatura visual da
-                    coluna sem invadir o conteudo */}
-                <div
-                  className="h-1"
-                  style={{
-                    background: color,
-                    borderRadius: "8px 8px 0 0",
-                  }}
-                  aria-hidden
-                />
-
-                <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
+                {/* Header chip principal */}
+                <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
@@ -222,48 +200,37 @@ export function KanbanBoard({
                     />
                     <span
                       title={stage.name}
-                      className="truncate text-[12px] font-semibold uppercase tracking-[0.04em] text-slate-700 dark:text-white/85"
+                      className="truncate text-[13px] font-semibold text-slate-900 dark:text-white"
                     >
                       {stage.name}
                     </span>
                     <span
-                      className="shrink-0 inline-flex items-center justify-center text-[10px] font-bold tabular-nums rounded-full px-1.5 min-w-[20px] h-4 bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-white/70"
+                      className="shrink-0 inline-flex items-center justify-center text-[11px] font-semibold tabular-nums rounded-full px-1.5 min-w-[20px] h-[18px] bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-white/70"
                     >
                       {stageDeals.length}
                     </span>
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0">
-                    {onAddDeal && !isTerminal && (
-                      <button
-                        onClick={() => onAddDeal(stage.id)}
-                        aria-label="Adicionar deal"
-                        title="Adicionar deal aqui"
-                        className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    )}
                     <button
                       aria-label="Mais opcoes"
                       title="Opcoes da coluna"
-                      className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
                     >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <MoreHorizontal className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
 
                 {/* Subtotal inline */}
-                <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
+                <div className="flex items-center justify-between gap-2 px-4 pb-3 -mt-0.5">
                 <span
-                  className="truncate text-slate-900 dark:text-white/90"
+                  className="truncate text-slate-500 dark:text-white/55 tabular-nums"
                   style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
+                    fontSize: 12,
+                    fontWeight: 500,
                   }}
                 >
-                  {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "—"}
+                  {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "Nenhum negocio"}
                 </span>
                 {breachCount > 0 ? (
                   <span
@@ -303,13 +270,12 @@ export function KanbanBoard({
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-b border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-black/[0.06] dark:border-white/[0.08]"
                     style={{
                       background: snapshot.isDraggingOver
                         ? hexAlpha(color, 0.08)
                         : undefined,
-                      borderRadius: "0 0 8px 8px",
-                      padding: 8,
+                      padding: 10,
                       transition: "background 150ms ease",
                       minHeight: 200,
                       gap: 8,
@@ -319,7 +285,7 @@ export function KanbanBoard({
                     }}
                   >
                     {stageDeals.length === 0 && !snapshot.isDraggingOver ? (
-                      <div className="flex flex-col items-center justify-center text-center px-4 py-10">
+                      <div className="flex flex-col items-center justify-center text-center px-4 py-8">
                         <div
                           className="flex h-9 w-9 items-center justify-center rounded-full mb-2.5 shrink-0"
                           style={{
@@ -331,10 +297,10 @@ export function KanbanBoard({
                           <Plus className="h-4 w-4" />
                         </div>
                         <p className="text-[12px] font-medium text-slate-700 dark:text-white/70 mb-1">
-                          Nenhum deal
+                          Nenhum negocio
                         </p>
                         <p className="text-[11px] text-slate-400 dark:text-white/40 leading-relaxed max-w-[180px]">
-                          Arraste cards ou clique em <span className="font-semibold">+</span> no header da coluna
+                          Arraste um card ou clique em <span className="font-semibold">+ Novo negocio</span> abaixo
                         </p>
                       </div>
                     ) : null}
@@ -360,11 +326,6 @@ export function KanbanBoard({
                               deal={deal}
                               slaHours={stage.sla_hours}
                               stageColor={color}
-                              stagePosition={
-                                openIdx >= 0 && openStages.length > 1
-                                  ? { current: openIdx, total: openStages.length }
-                                  : undefined
-                              }
                               onClick={onCardClick}
                               onWin={!isTerminal ? onWinDeal : undefined}
                               onLose={!isTerminal ? onLoseDeal : undefined}
@@ -378,33 +339,21 @@ export function KanbanBoard({
                       </Draggable>
                     ))}
                     {provided.placeholder}
-
-                    {/* Add deal — botao discreto no fim, so se ha deals */}
-                    {onAddDeal && !isTerminal && stageDeals.length > 0 && (
-                      <button
-                        onClick={() => onAddDeal(stage.id)}
-                        className="w-full bg-transparent text-slate-400 dark:text-white/40 border border-dashed border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/[0.16] hover:text-slate-600 dark:hover:text-white/70"
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 4,
-                          marginTop: 2,
-                          transition: "all 150ms ease",
-                        }}
-                      >
-                        <Plus className="h-3 w-3" />
-                        Adicionar
-                      </button>
-                    )}
                   </div>
                 )}
               </Droppable>
+
+              {/* ── Footer da coluna: + Novo negocio (sempre visivel) ── */}
+              {onAddDeal && !isTerminal && (
+                <button
+                  onClick={() => onAddDeal(stage.id)}
+                  className="flex items-center justify-center gap-1.5 w-full px-4 py-2.5 text-[12px] font-medium text-slate-600 dark:text-white/70 bg-white dark:bg-[#161922] border-l border-r border-b border-black/[0.06] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.03] hover:text-slate-900 dark:hover:text-white transition-colors"
+                  style={{ borderRadius: "0 0 10px 10px" }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Novo negocio
+                </button>
+              )}
             </div>
           )
         })}

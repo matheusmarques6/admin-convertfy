@@ -6,15 +6,17 @@ import {
   AlertCircle,
   Flame,
   MessageSquare,
-  Phone,
-  Mail,
-  X as XIcon,
-  Calendar as CalendarIcon,
+  User as UserIcon,
+  CalendarDays,
+  Bell,
+  DollarSign,
+  Tag as TagIcon,
   MoreHorizontal,
   ArrowRightLeft,
   Trash2,
   Trophy,
   CalendarPlus,
+  X as XIcon,
 } from "lucide-react"
 
 export interface DealCardData {
@@ -33,39 +35,35 @@ export interface DealCardData {
   ai_score?: number | null
   last_activity_type?: "wa_message" | "call" | "email" | "meeting" | "note" | null
   activities_pending?: number | null
-  /** Email do contato (mostrado no header se nao tiver client) */
   contact_email?: string | null
-  /** Phone E.164 — habilita botao WhatsApp */
   contact_phone?: string | null
-  /** Data de criacao do deal — para "DD/MM" pequeno no card */
   created_at?: string | null
+  /** Numero sequencial do deal (#1, #2 etc) — exibido no canto. */
+  card_number?: number | null
 }
 
 interface DealCardProps {
   deal: DealCardData
   slaHours?: number | null
-  /** Cor do estagio (vinda do header). Usada como acento sutil no card. */
+  /** Cor do estagio (vinda do header). Acento sutil no card. */
   stageColor?: string
-  /** Posicao no funil (0-indexed) e total — usados pra renderizar
-   *  o mini stepper no rodape. Quando undefined, stepper fica oculto. */
-  stagePosition?: { current: number; total: number }
   onClick?: (id: string) => void
   onWin?: (id: string) => void
   onLose?: (id: string) => void
-  /** Acoes extras do menu de contexto (DataCrazy-inspired). Quando
-   *  fornecidas, o botao ⋯ no card abre dropdown rico com as 5+
-   *  acoes principais. */
   onMove?: (id: string) => void
   onAddActivity?: (id: string) => void
   onDelete?: (id: string) => void
   isDragging?: boolean
 }
 
+// ─── Formatters ───────────────────────────────────────────────────
+
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   }).format(v)
 
 function daysSince(iso: string | null): number {
@@ -77,27 +75,30 @@ function formatDateBR(iso: string | null): string | null {
   if (!iso) return null
   const d = new Date(iso)
   if (isNaN(d.getTime())) return null
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+  return d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
 }
 
-// Cor estavel a partir do nome — sempre mesma cor pra mesmo nome.
-// Paleta DataCrazy-inspired: tons saturados mas sem chocar.
 function avatarColorFromName(name: string): { bg: string; fg: string } {
   let hash = 0
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) | 0
   }
+  // Tons pasteis estilo DataCrazy
   const palette: Array<{ bg: string; fg: string }> = [
-    { bg: "#FECACA", fg: "#991B1B" }, // vermelho
-    { bg: "#FED7AA", fg: "#9A3412" }, // laranja
-    { bg: "#FDE68A", fg: "#92400E" }, // amarelo
-    { bg: "#BBF7D0", fg: "#166534" }, // verde claro
-    { bg: "#A7F3D0", fg: "#065F46" }, // verde
-    { bg: "#BFDBFE", fg: "#1E40AF" }, // azul
-    { bg: "#C7D2FE", fg: "#3730A3" }, // indigo
-    { bg: "#DDD6FE", fg: "#5B21B6" }, // violeta
-    { bg: "#FBCFE8", fg: "#9D174D" }, // pink
-    { bg: "#F5D0FE", fg: "#86198F" }, // fucsia
+    { bg: "#FECACA", fg: "#991B1B" },
+    { bg: "#FED7AA", fg: "#9A3412" },
+    { bg: "#FEF3C7", fg: "#92400E" },
+    { bg: "#BBF7D0", fg: "#166534" },
+    { bg: "#A7F3D0", fg: "#065F46" },
+    { bg: "#BFDBFE", fg: "#1E40AF" },
+    { bg: "#C7D2FE", fg: "#3730A3" },
+    { bg: "#DDD6FE", fg: "#5B21B6" },
+    { bg: "#FBCFE8", fg: "#9D174D" },
+    { bg: "#F5D0FE", fg: "#86198F" },
   ]
   return palette[Math.abs(hash) % palette.length]
 }
@@ -112,39 +113,32 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-// Paleta de tags em pílulas estilo DataCrazy.
-const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
-  Inbound: { bg: "#DCFCE7", fg: "#166534" },
-  Outbound: { bg: "#E2E8F0", fg: "#334155" },
-  "Ads Facebook": { bg: "#DBEAFE", fg: "#1E40AF" },
-  "Ads Google": { bg: "#FEE2E2", fg: "#B91C1C" },
-  "Ads YouTube": { bg: "#FECACA", fg: "#991B1B" },
-  "Ads TikTok": { bg: "#F1F5F9", fg: "#0F172A" },
-  "Form site": { bg: "#D1FAE5", fg: "#065F46" },
-  Indicacao: { bg: "#A7F3D0", fg: "#047857" },
-  "Demo solicitada": { bg: "#EDE9FE", fg: "#6D28D9" },
-  "Black Friday": { bg: "#0F172A", fg: "#F8FAFC" },
-  Renovacao: { bg: "#DCFCE7", fg: "#166534" },
-  Upsell: { bg: "#FFEDD5", fg: "#9A3412" },
-  Urgente: { bg: "#FEE2E2", fg: "#991B1B" },
+// Tags customizadas com cores semanticas
+const TAG_PALETTE: Record<string, { bg: string; fg: string }> = {
+  inbound: { bg: "#DCFCE7", fg: "#166534" },
+  outbound: { bg: "#E2E8F0", fg: "#334155" },
+  "projeto em andamento": { bg: "#FFEDD5", fg: "#9A3412" },
+  "ads facebook": { bg: "#DBEAFE", fg: "#1E40AF" },
+  "ads google": { bg: "#FEE2E2", fg: "#B91C1C" },
+  "form site": { bg: "#D1FAE5", fg: "#065F46" },
+  indicacao: { bg: "#A7F3D0", fg: "#047857" },
+  "demo solicitada": { bg: "#EDE9FE", fg: "#6D28D9" },
+  "black friday": { bg: "#0F172A", fg: "#F8FAFC" },
+  renovacao: { bg: "#DCFCE7", fg: "#166534" },
+  upsell: { bg: "#FFEDD5", fg: "#9A3412" },
+  urgente: { bg: "#FEE2E2", fg: "#991B1B" },
 }
 
 function tagStyle(tag: string): { bg: string; fg: string } {
-  return TAG_COLORS[tag] || { bg: "#F1F5F9", fg: "#475569" }
+  return TAG_PALETTE[tag.toLowerCase()] ?? { bg: "#F1F5F9", fg: "#475569" }
 }
 
-function hexAlpha(hex: string, alpha: number): string {
-  const m = hex.replace("#", "").match(/.{2}/g)
-  if (!m || m.length !== 3) return hex
-  const [r, g, b] = m.map((x) => parseInt(x, 16))
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
+// ─── Card principal ──────────────────────────────────────────────
 
 export function DealCard({
   deal,
   slaHours,
   stageColor,
-  stagePosition,
   onClick,
   onWin,
   onLose,
@@ -156,18 +150,12 @@ export function DealCard({
   const days = daysSince(deal.last_stage_changed_at)
   const slaDays = slaHours ? Math.ceil(slaHours / 24) : null
   const slaBreach = slaDays != null && days > slaDays
-  const slaWarning = slaDays != null && !slaBreach && days >= Math.max(1, slaDays - 1)
-  // % de tempo do SLA ja consumido (0-100). Vira a barra de progresso
-  // fina no topo do card. Quando nao ha SLA, vira null e a barra some.
-  const slaProgressPct = slaDays != null
-    ? Math.min(100, Math.max(0, (days / slaDays) * 100))
-    : null
-  const isHot = (deal.ai_score ?? 0) >= 70
-  const ownerColors = deal.owner ? avatarColorFromName(deal.owner.name) : null
-  const contactColors = avatarColorFromName(deal.title)
-  const contactInitials = getInitials(deal.title)
 
-  // WhatsApp link (E.164 sem +, fallback aceita "+55..." ou raw digits)
+  const isHot = (deal.ai_score ?? 0) >= 70
+  const contactName = deal.client?.name || deal.title
+  const avatarColors = avatarColorFromName(contactName)
+  const avatarInitial = getInitials(contactName).slice(0, 1)
+
   const waLink = useMemo(() => {
     if (!deal.contact_phone) return null
     const digits = deal.contact_phone.replace(/\D/g, "")
@@ -176,440 +164,339 @@ export function DealCard({
   }, [deal.contact_phone])
 
   const createdLabel = formatDateBR(deal.created_at ?? null)
+  const accent = stageColor ?? avatarColors.fg
 
-  // Acento lateral esquerdo — usa cor do estagio quando disponivel, senao
-  // a cor estavel do nome do contato (fallback do design original).
-  const accent = stageColor ?? contactColors.fg
+  const ownerLabel = deal.owner?.name ?? null
+  const productLabel = deal.source ?? null
+  const visibleTag =
+    deal.tags && deal.tags.length > 0
+      ? deal.tags[0]
+      : deal.status === "won"
+        ? null
+        : null
+
+  const activitiesLabel =
+    deal.activities_pending && deal.activities_pending > 0
+      ? `${deal.activities_pending} atividade${deal.activities_pending > 1 ? "s" : ""}`
+      : "Sem atividades"
 
   return (
     <div
       onClick={() => onClick?.(deal.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && onClick) {
+          e.preventDefault()
+          onClick(deal.id)
+        }
+      }}
+      className="group relative bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.08] rounded-[8px] cursor-pointer overflow-hidden hover:border-black/[0.16] dark:hover:border-white/[0.16] hover:shadow-[0_4px_12px_rgba(15,23,42,0.06)] hover:-translate-y-px transition-all"
       style={{
-        position: "relative",
-        width: "100%",
-        borderLeft: `3px solid ${accent}`,
-        borderRadius: 8,
-        padding: "12px 14px 14px",
-        cursor: "pointer",
         boxShadow: isDragging
           ? "0 12px 32px rgba(15, 23, 42, 0.18)"
-          : "0 1px 2px rgba(15, 23, 42, 0.04)",
+          : undefined,
         transform: isDragging ? "rotate(0.6deg) scale(1.02)" : undefined,
-        transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease, translate 150ms ease",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        overflow: "hidden",
+        borderLeft: `3px solid ${accent}`,
       }}
-      className="group bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06] hover:border-black/[0.14] dark:hover:border-white/[0.16] hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)] hover:-translate-y-px"
     >
-      {/* ── SLA progress bar — barra fina absoluta no topo ── */}
-      {slaProgressPct != null && (
-        <div
-          className="absolute left-0 right-0 top-0 overflow-hidden"
-          style={{ height: 2, borderRadius: "5px 5px 0 0" }}
-          aria-hidden
-          title={`${days}d / SLA ${slaDays}d`}
-        >
+      {/* Conteudo principal: avatar esquerdo + info direita */}
+      <div className="flex gap-3 p-3">
+        {/* Avatar grande circular */}
+        <div className="shrink-0">
           <div
-            className="h-full transition-all"
+            className="flex h-10 w-10 items-center justify-center rounded-full font-bold"
             style={{
-              width: `${slaProgressPct}%`,
-              background: slaBreach
-                ? "#DC2626"
-                : slaWarning
-                  ? "#D97706"
-                  : "#10B981",
+              background: avatarColors.bg,
+              color: avatarColors.fg,
+              fontSize: 16,
+              letterSpacing: "-0.02em",
             }}
+            aria-hidden
+          >
+            {avatarInitial}
+          </div>
+        </div>
+
+        {/* Info empilhada */}
+        <div className="min-w-0 flex-1 space-y-1">
+          {/* Linha 1: nome + #N + ⋯ */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {isHot && (
+                <Flame
+                  className="h-3 w-3 shrink-0 text-orange-500"
+                  aria-label="Hot deal"
+                />
+              )}
+              <span className="truncate font-semibold text-[14px] leading-tight text-slate-900 dark:text-white">
+                {deal.title}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {deal.card_number != null && (
+                <span className="text-[11px] font-medium text-slate-400 dark:text-white/40 tabular-nums">
+                  #{deal.card_number}
+                </span>
+              )}
+              {slaBreach && (
+                <span
+                  title={`${days}d na etapa · SLA ${slaDays}d`}
+                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 rounded-[3px] bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                >
+                  <AlertCircle className="h-2.5 w-2.5" />
+                  {days}d
+                </span>
+              )}
+              {(onAddActivity || onMove || onWin || onLose || onDelete) && (
+                <DealActionsMenu
+                  dealId={deal.id}
+                  onWin={onWin}
+                  onLose={onLose}
+                  onMove={onMove}
+                  onAddActivity={onAddActivity}
+                  onDelete={onDelete}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Linha 2: produto/fonte (link estilo DataCrazy) */}
+          <div className="text-[12px]">
+            {productLabel ? (
+              <span className="text-slate-700 dark:text-white/75">
+                {productLabel}
+              </span>
+            ) : (
+              <span className="text-blue-600 dark:text-blue-400 underline-offset-2 hover:underline">
+                Sem produto
+              </span>
+            )}
+          </div>
+
+          {/* Linha 3: atendente */}
+          <MetaLine
+            icon={<UserIcon className="h-3 w-3" />}
+            placeholder="Sem atendente"
+            value={ownerLabel}
+          />
+
+          {/* Linha 4: valor */}
+          <MetaLine
+            icon={<DollarSign className="h-3 w-3" />}
+            placeholder="R$ 0,00"
+            value={deal.value != null && deal.value > 0 ? fmtBRL(deal.value) : null}
+            highlight
+          />
+
+          {/* Linha 5: data de criacao */}
+          {createdLabel && (
+            <MetaLine
+              icon={<CalendarDays className="h-3 w-3" />}
+              value={createdLabel}
+            />
+          )}
+
+          {/* Linha 6: atividades */}
+          <MetaLine
+            icon={<Bell className="h-3 w-3" />}
+            value={activitiesLabel}
+            placeholder="Sem atividades"
+            muted={!deal.activities_pending}
           />
         </div>
-      )}
-
-      {/* ── Header: avatar + titulo + acoes ── */}
-      <div className="flex items-start gap-2.5">
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold"
-          style={{
-            background: contactColors.bg,
-            color: contactColors.fg,
-            fontSize: 12,
-            letterSpacing: "-0.01em",
-            boxShadow: `0 1px 2px ${contactColors.fg}1A`,
-          }}
-        >
-          {contactInitials}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            {isHot && (
-              <Flame
-                className="h-3 w-3 shrink-0 text-orange-500"
-                aria-label="Hot deal"
-              />
-            )}
-            <p
-              className="truncate text-slate-900 dark:text-white"
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                lineHeight: 1.3,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              {deal.title}
-            </p>
-          </div>
-          <p
-            className="truncate text-slate-500 dark:text-white/55"
-            style={{
-              fontSize: 11,
-              marginTop: 2,
-              fontStyle: deal.client ? "normal" : "italic",
-            }}
-          >
-            {deal.client?.name || deal.contact_email || "Sem cliente"}
-          </p>
-        </div>
-
-        {/* Menu de acoes (estilo DataCrazy): botao ⋯ que abre dropdown
-            com Ganhar / Perder / Mover / Atividade / Excluir. Aparece
-            sempre (nao so no hover) pra ser descobrivel. */}
-        {(onWin || onLose || onMove || onAddActivity || onDelete) && (
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                aria-label="Acoes do deal"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-white/40 dark:hover:text-white/80 dark:hover:bg-white/[0.06] transition-colors"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                onClick={(e) => e.stopPropagation()}
-                align="end"
-                sideOffset={4}
-                className="z-50 min-w-[220px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-              >
-                {onAddActivity && (
-                  <DealMenuItem
-                    icon={<CalendarPlus className="h-3.5 w-3.5" />}
-                    title="Criar atividade"
-                    description="Adiciona nota, tarefa ou ligacao"
-                    onClick={() => onAddActivity(deal.id)}
-                  />
-                )}
-                {onMove && (
-                  <DealMenuItem
-                    icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
-                    title="Mover negocio"
-                    description="Move para outra etapa"
-                    onClick={() => onMove(deal.id)}
-                  />
-                )}
-                {(onAddActivity || onMove) && (onWin || onLose) && (
-                  <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
-                )}
-                {onWin && (
-                  <DealMenuItem
-                    icon={<Trophy className="h-3.5 w-3.5" />}
-                    title="Ganhar negocio"
-                    description="Move para Ganho e fecha o deal"
-                    tone="success"
-                    onClick={() => onWin(deal.id)}
-                  />
-                )}
-                {onLose && (
-                  <DealMenuItem
-                    icon={<XIcon className="h-3.5 w-3.5" />}
-                    title="Perder negocio"
-                    description="Pede razao da perda e arquiva"
-                    tone="danger"
-                    onClick={() => onLose(deal.id)}
-                  />
-                )}
-                {onDelete && (
-                  <>
-                    <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
-                    <DealMenuItem
-                      icon={<Trash2 className="h-3.5 w-3.5" />}
-                      title="Excluir"
-                      description="Remove o deal definitivamente"
-                      tone="danger"
-                      onClick={() => onDelete(deal.id)}
-                    />
-                  </>
-                )}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        )}
       </div>
 
-      {/* ── Valor em destaque ── pill com bg sutil da cor do estagio.
-            Tipografia hierarquica: label uppercase pequena + valor
-            grande tabular. */}
-      {deal.value != null && deal.value > 0 && (
-        <div
-          className="flex items-baseline justify-between gap-2"
-          style={{
-            background: hexAlpha(accent, 0.08),
-            borderRadius: 6,
-            padding: "8px 12px",
-          }}
-        >
-          <span
-            className="text-[10px] font-semibold uppercase tracking-[0.08em] shrink-0"
-            style={{ color: accent }}
-          >
-            Valor
-          </span>
-          <span
-            className="text-slate-900 dark:text-white tabular-nums truncate"
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {fmtBRL(deal.value)}
-          </span>
-        </div>
-      )}
-
-      {/* ── Tags coloridas ── */}
-      {deal.tags && deal.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {deal.tags.slice(0, 3).map((t) => {
-            const c = tagStyle(t)
-            return (
-              <span
-                key={t}
-                style={{
-                  fontSize: 10,
-                  color: c.fg,
-                  background: c.bg,
-                  padding: "2px 7px",
-                  borderRadius: 999,
-                  fontWeight: 500,
-                  lineHeight: 1.4,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {t}
-              </span>
-            )
-          })}
-          {deal.tags.length > 3 && (
-            <span
-              className="text-slate-400 dark:text-white/40"
-              style={{
-                fontSize: 10,
-                padding: "2px 4px",
-                fontWeight: 500,
-              }}
-            >
-              +{deal.tags.length - 3}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ── Mini stepper: posicao no funil (DataCrazy-inspired) ── */}
-      {stagePosition && stagePosition.total > 1 && (
-        <div
-          className="flex items-center gap-0.5"
-          aria-label={`Etapa ${stagePosition.current + 1} de ${stagePosition.total}`}
-          title={`Etapa ${stagePosition.current + 1} de ${stagePosition.total}`}
-        >
-          {Array.from({ length: stagePosition.total }).map((_, i) => {
-            const isPast = i < stagePosition.current
-            const isCurrent = i === stagePosition.current
-            return (
-              <div
-                key={i}
-                className="flex-1 rounded-full transition-colors"
-                style={{
-                  height: 3,
-                  background:
-                    isCurrent || isPast
-                      ? accent
-                      : "rgba(148, 163, 184, 0.20)",
-                  opacity: isCurrent ? 1 : isPast ? 0.55 : 1,
-                }}
-              />
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── Footer fixo: owner + meta + acoes ── */}
-      <div
-        className="flex items-center justify-between gap-2 border-t border-black/5 dark:border-white/[0.06]"
-        style={{
-          paddingTop: 8,
-          marginTop: deal.tags && deal.tags.length > 0 ? 0 : 2,
-        }}
-      >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {/* Owner avatar */}
-          {deal.owner && ownerColors ? (
-            deal.owner.avatar_url ? (
-              // Avatar 18x18 — next/image exigiria configurar remotePatterns
-              // pra todos os hosts possiveis (Supabase, Google, Gravatar).
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={deal.owner.avatar_url}
-                alt={deal.owner.name}
-                title={deal.owner.name}
-                className="h-[18px] w-[18px] shrink-0 rounded-full object-cover"
-                style={{ border: "1px solid rgba(15,23,42,0.08)" }}
-              />
-            ) : (
-              <span
-                title={deal.owner.name}
-                className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full font-semibold"
-                style={{
-                  background: ownerColors.bg,
-                  color: ownerColors.fg,
-                  fontSize: 8,
-                  letterSpacing: "0.02em",
-                  border: "1px solid rgba(15,23,42,0.04)",
-                }}
-              >
-                {getInitials(deal.owner.name)}
-              </span>
-            )
+      {/* Tag colorida no rodape (estilo DataCrazy) + WhatsApp */}
+      {(visibleTag || waLink) && (
+        <div className="flex items-center justify-between px-3 pb-3 -mt-1 gap-2">
+          {visibleTag ? (
+            <Tag label={visibleTag} />
           ) : (
-            <span
-              title="Sem owner"
-              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.04] text-slate-400 dark:text-white/30 border border-dashed border-slate-300 dark:border-white/[0.12]"
-              style={{
-                fontSize: 9,
-                fontWeight: 600,
-              }}
-            >
-              ?
-            </span>
+            <span aria-hidden />
           )}
 
-          {/* Data + dias na etapa */}
-          <div className="flex items-center gap-1 min-w-0">
-            {createdLabel && (
-              <span
-                className="inline-flex items-center gap-1 truncate text-slate-500 dark:text-white/55"
-                style={{ fontSize: 10 }}
-              >
-                <CalendarIcon className="h-2.5 w-2.5 shrink-0" />
-                {createdLabel}
-              </span>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Indicador de ultima atividade */}
+            {deal.last_activity_type === "wa_message" && (
+              <MessageSquare
+                className="h-3 w-3 text-emerald-500"
+                aria-label="Ultima atividade: WhatsApp"
+              />
             )}
 
-            {deal.last_stage_changed_at != null && (
-              <span
-                title={`${days} dias na etapa atual${slaDays ? ` · SLA ${slaDays}d` : ""}`}
-                className={
-                  slaBreach
-                    ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-                    : slaWarning
-                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                      : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/60"
-                }
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  padding: "1px 5px",
-                  borderRadius: 3,
-                  whiteSpace: "nowrap",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 2,
-                }}
+            {waLink && (
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Abrir no WhatsApp"
+                title="Abrir no WhatsApp"
+                className="flex h-6 w-6 items-center justify-center rounded-[6px] bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
               >
-                {slaBreach && <AlertCircle className="h-2.5 w-2.5" />}
-                {days}d
-              </span>
+                <MessageSquare className="h-3 w-3" />
+              </a>
             )}
           </div>
         </div>
-
-        {/* Atividade + WhatsApp */}
-        <div className="flex items-center gap-1 shrink-0">
-          {deal.activities_pending && deal.activities_pending > 0 ? (
-            <span
-              title={`${deal.activities_pending} atividade(s) pendente(s)`}
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: "#FFFFFF",
-                background: "#DC2626",
-                padding: "1px 5px",
-                borderRadius: 999,
-                lineHeight: 1.5,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {deal.activities_pending}
-            </span>
-          ) : null}
-
-          {deal.last_activity_type === "call" && (
-            <Phone
-              className="h-3 w-3 text-slate-400 dark:text-white/40"
-              aria-label="Ultima atividade: ligacao"
-            />
-          )}
-          {deal.last_activity_type === "email" && (
-            <Mail
-              className="h-3 w-3 text-slate-400 dark:text-white/40"
-              aria-label="Ultima atividade: email"
-            />
-          )}
-          {deal.last_activity_type === "wa_message" && (
-            <MessageSquare
-              className="h-3 w-3 text-emerald-500"
-              aria-label="Ultima atividade: whatsapp"
-            />
-          )}
-
-          {waLink && (
-            <a
-              href={waLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title="Abrir no WhatsApp"
-              aria-label="Abrir no WhatsApp"
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 4,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#25D366",
-                color: "#FFFFFF",
-                transition: "transform 150ms",
-              }}
-              className="hover:scale-110"
-            >
-              <MessageSquare className="h-3 w-3" />
-            </a>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
 
-// ── DealMenuItem ─────────────────────────────────────────────────
-//
-// Item do dropdown de acoes do card. Estilo DataCrazy: icone +
-// titulo + descricao curta. Tons opcionais (success/danger) tingem
-// o icone e o titulo.
+// ─── MetaLine: linha de meta com icone ──────────────────────────
 
-function DealMenuItem({
+function MetaLine({
+  icon,
+  value,
+  placeholder,
+  highlight,
+  muted,
+}: {
+  icon: React.ReactNode
+  value?: string | null
+  placeholder?: string
+  highlight?: boolean
+  muted?: boolean
+}) {
+  if (value) {
+    return (
+      <div className="flex items-center gap-1.5 text-[12px]">
+        <span className="shrink-0 text-slate-400 dark:text-white/40">
+          {icon}
+        </span>
+        <span
+          className={
+            highlight
+              ? "font-semibold text-slate-900 dark:text-white tabular-nums truncate"
+              : muted
+                ? "text-slate-500 dark:text-white/50 truncate"
+                : "text-slate-700 dark:text-white/75 truncate"
+          }
+        >
+          {value}
+        </span>
+      </div>
+    )
+  }
+  if (!placeholder) return null
+  return (
+    <div className="flex items-center gap-1.5 text-[12px]">
+      <span className="shrink-0 text-slate-400 dark:text-white/40">{icon}</span>
+      <span className="text-blue-600 dark:text-blue-400 underline-offset-2 hover:underline truncate">
+        {placeholder}
+      </span>
+    </div>
+  )
+}
+
+// ─── Tag: pill colorida ────────────────────────────────────────
+
+function Tag({ label }: { label: string }) {
+  const c = tagStyle(label)
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium truncate max-w-full"
+      style={{ background: c.bg, color: c.fg }}
+    >
+      <TagIcon className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  )
+}
+
+// ─── Menu de acoes ⋯ ──────────────────────────────────────────
+
+function DealActionsMenu({
+  dealId,
+  onWin,
+  onLose,
+  onMove,
+  onAddActivity,
+  onDelete,
+}: {
+  dealId: string
+  onWin?: (id: string) => void
+  onLose?: (id: string) => void
+  onMove?: (id: string) => void
+  onAddActivity?: (id: string) => void
+  onDelete?: (id: string) => void
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Acoes do deal"
+          className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          onClick={(e) => e.stopPropagation()}
+          align="end"
+          sideOffset={4}
+          className="z-50 min-w-[220px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+        >
+          {onAddActivity && (
+            <Item
+              icon={<CalendarPlus className="h-3.5 w-3.5" />}
+              title="Criar atividade"
+              description="Nota, tarefa ou ligacao"
+              onClick={() => onAddActivity(dealId)}
+            />
+          )}
+          {onMove && (
+            <Item
+              icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+              title="Mover negocio"
+              description="Mover para outra etapa"
+              onClick={() => onMove(dealId)}
+            />
+          )}
+          {(onAddActivity || onMove) && (onWin || onLose) && (
+            <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+          )}
+          {onWin && (
+            <Item
+              icon={<Trophy className="h-3.5 w-3.5" />}
+              title="Ganhar negocio"
+              description="Move para Ganho"
+              tone="success"
+              onClick={() => onWin(dealId)}
+            />
+          )}
+          {onLose && (
+            <Item
+              icon={<XIcon className="h-3.5 w-3.5" />}
+              title="Perder negocio"
+              description="Pede razao da perda"
+              tone="danger"
+              onClick={() => onLose(dealId)}
+            />
+          )}
+          {onDelete && (
+            <>
+              <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+              <Item
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                title="Excluir"
+                description="Remove definitivamente"
+                tone="danger"
+                onClick={() => onDelete(dealId)}
+              />
+            </>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+function Item({
   icon,
   title,
   description,
@@ -628,7 +515,6 @@ function DealMenuItem({
       : tone === "danger"
         ? "text-red-700 dark:text-red-400"
         : "text-slate-700 dark:text-white/80"
-
   return (
     <DropdownMenu.Item
       onSelect={onClick}
