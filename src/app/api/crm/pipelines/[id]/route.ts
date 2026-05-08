@@ -6,6 +6,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -145,7 +146,7 @@ const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.string().nullable().optional(),
   color: z.string().optional(),
-  default_assignee_id: z.string().uuid().nullable().optional(),
+  default_assignee_id: uuid().nullable().optional(),
   is_archived: z.boolean().optional(),
   layout: z.enum(["kanban", "state"]).optional(),
 })

@@ -6,6 +6,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -85,17 +86,17 @@ const patchSchema = z.object({
   currency: z.string().length(3).optional(),
   probability: z.number().int().min(0).max(100).optional(),
   expected_close_date: z.string().nullable().optional(),
-  stage_id: z.string().uuid().optional(),
+  stage_id: uuid().optional(),
   status: z.enum(["open", "won", "lost", "archived"]).optional(),
   lost_reason: z.string().nullable().optional(),
   won_reason: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
-  owner_id: z.string().uuid().optional(),
-  client_id: z.string().uuid().nullable().optional(),
-  store_id: z.string().uuid().nullable().optional(),
-  lead_id: z.string().uuid().nullable().optional(),
-  referrer_partner_id: z.string().uuid().nullable().optional(),
+  owner_id: uuid().optional(),
+  client_id: uuid().nullable().optional(),
+  store_id: uuid().nullable().optional(),
+  lead_id: uuid().nullable().optional(),
+  referrer_partner_id: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   position: z.number().int().optional(),
 })

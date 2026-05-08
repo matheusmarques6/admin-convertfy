@@ -5,6 +5,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -64,7 +65,7 @@ const createLeadSchema = z.object({
   source: z.string().nullable().optional(),
   utm: z.record(z.string(), z.unknown()).optional().default({}),
   notes: z.string().nullable().optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
+  assigned_to: uuid().nullable().optional(),
   tags: z.array(z.string()).optional().default([]),
 })
 

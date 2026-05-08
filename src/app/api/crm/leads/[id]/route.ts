@@ -9,6 +9,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -69,7 +70,7 @@ const patchSchema = z.object({
   source: z.string().nullable().optional(),
   status: z.enum(["new", "qualified", "unqualified", "converted", "lost"]).optional(),
   notes: z.string().nullable().optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
+  assigned_to: uuid().nullable().optional(),
   tags: z.array(z.string()).optional(),
   ai_qualification_score: z.number().int().min(0).max(100).nullable().optional(),
   ai_qualification_reason: z.string().nullable().optional(),

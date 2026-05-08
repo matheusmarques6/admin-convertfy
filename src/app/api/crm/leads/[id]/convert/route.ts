@@ -19,6 +19,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -28,11 +29,11 @@ const log = logger.child("CrmLeadConvert")
 export const dynamic = "force-dynamic"
 
 const convertSchema = z.object({
-  pipeline_id: z.string().uuid(),
-  stage_id: z.string().uuid(),
+  pipeline_id: uuid(),
+  stage_id: uuid(),
   value: z.number().min(0).optional().default(0),
   // owner_id opcional — backend usa current user quando ausente.
-  owner_id: z.string().uuid().optional(),
+  owner_id: uuid().optional(),
   create_client: z.boolean().optional().default(false),
   deal_title: z.string().min(1).optional(),
 })

@@ -11,6 +11,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -21,7 +22,7 @@ const log = logger.child("CrmDealMove")
 export const dynamic = "force-dynamic"
 
 const moveSchema = z.object({
-  stage_id: z.string().uuid(),
+  stage_id: uuid(),
   position: z.number().int().optional(),
   lost_reason: z.string().nullable().optional(),
   won_reason: z.string().nullable().optional(),

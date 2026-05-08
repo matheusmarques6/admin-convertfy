@@ -300,7 +300,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
           />
         </div>
       ) : (
-        <div className="flex h-full flex-col" style={{ background: "#F8FAFC" }}>
+        <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
           {/* ── KPI bar — 4 cards compactos com hierarquia clara ── */}
           {pipeline.layout !== "state" && (
             <div
@@ -376,15 +376,12 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                   aria-label="Buscar deals"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full"
+                  className="w-full bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white/90 border border-black/[0.08] dark:border-white/[0.08] placeholder:text-slate-400 dark:placeholder:text-white/30"
                   style={{
                     height: 32,
                     fontSize: 12,
-                    background: "#FFFFFF",
-                    border: "1px solid rgba(15, 23, 42, 0.08)",
                     borderRadius: 6,
                     padding: "0 28px 0 30px",
-                    color: "#0F172A",
                     outline: "none",
                   }}
                 />
@@ -403,21 +400,18 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
               <button
                 title="Filtros"
                 aria-label="Filtros"
+                className="bg-white dark:bg-[#1A1D27] text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.16]"
                 style={{
                   height: 32,
                   padding: "0 10px",
                   fontSize: 12,
                   fontWeight: 500,
-                  background: "#FFFFFF",
-                  border: "1px solid rgba(15, 23, 42, 0.08)",
                   borderRadius: 6,
-                  color: "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
                   cursor: "pointer",
                 }}
-                className="hover:bg-slate-50 hover:border-slate-300"
               >
                 <SlidersHorizontal className="h-3 w-3" />
                 Filtros
@@ -426,41 +420,69 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
               <button
                 title="Ordenacao"
                 aria-label="Ordenacao"
+                className="bg-white dark:bg-[#1A1D27] text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.16]"
                 style={{
                   height: 32,
                   padding: "0 10px",
                   fontSize: 12,
                   fontWeight: 500,
-                  background: "#FFFFFF",
-                  border: "1px solid rgba(15, 23, 42, 0.08)",
                   borderRadius: 6,
-                  color: "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
                   cursor: "pointer",
                 }}
-                className="hover:bg-slate-50 hover:border-slate-300"
               >
                 <ArrowUpDown className="h-3 w-3" />
                 Ordenar
               </button>
 
               <span
-                className="ml-auto"
+                className="ml-auto text-slate-500 dark:text-white/55"
                 aria-live="polite"
                 style={{
                   fontSize: 11,
-                  color: "#64748B",
                   fontWeight: 500,
                 }}
               >
                 {filteredDeals.length}{" "}
                 {filteredDeals.length === 1 ? "negocio" : "negocios"}
                 {search && (
-                  <span style={{ color: "#94A3B8" }}> · &ldquo;{search}&rdquo;</span>
+                  <span className="text-slate-400 dark:text-white/40"> · &ldquo;{search}&rdquo;</span>
                 )}
               </span>
+            </div>
+          )}
+
+          {/* ── Mini funil de conversao — barra horizontal compacta
+               mostrando como deals se distribuem entre stages. Cada
+               segmento e proporcional ao count e usa a cor do stage. ── */}
+          {pipeline.layout !== "state" && filteredDeals.length > 0 && (
+            <div className="px-5 pb-3">
+              <div
+                className="flex items-center gap-px overflow-hidden h-1.5 rounded-full bg-slate-200/70 dark:bg-white/[0.06]"
+                role="img"
+                aria-label="Distribuicao de deals por estagio"
+              >
+                {pipeline.stages.map((s) => {
+                  const count = filteredDeals.filter((d) => d.stage_id === s.id).length
+                  if (count === 0) return null
+                  const pct = (count / filteredDeals.length) * 100
+                  const c = s.color ?? "#475569"
+                  return (
+                    <div
+                      key={s.id}
+                      title={`${s.name} · ${count} deal${count === 1 ? "" : "s"} (${pct.toFixed(0)}%)`}
+                      style={{
+                        width: `${pct}%`,
+                        background: c,
+                        height: "100%",
+                        minWidth: 4,
+                      }}
+                    />
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -523,7 +545,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
 
 function PipelineSkeleton() {
   return (
-    <div className="flex h-full flex-col" style={{ background: "#F8FAFC" }}>
+    <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
       {/* KPI bar skeleton */}
       <div
         className="grid gap-2 px-5 pt-4"
@@ -532,28 +554,26 @@ function PipelineSkeleton() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="animate-pulse"
+            className="animate-pulse bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06]"
             style={{
               padding: "10px 14px",
-              background: "#FFFFFF",
               borderRadius: 6,
-              border: "1px solid rgba(15, 23, 42, 0.06)",
               borderLeft: "3px solid #CBD5E1",
               height: 76,
             }}
           >
-            <div className="h-2.5 w-20 rounded bg-slate-100" />
-            <div className="mt-2 h-5 w-24 rounded bg-slate-200" />
-            <div className="mt-2 h-2 w-32 rounded bg-slate-100" />
+            <div className="h-2.5 w-20 rounded bg-slate-100 dark:bg-white/[0.06]" />
+            <div className="mt-2 h-5 w-24 rounded bg-slate-200 dark:bg-white/[0.10]" />
+            <div className="mt-2 h-2 w-32 rounded bg-slate-100 dark:bg-white/[0.06]" />
           </div>
         ))}
       </div>
 
       {/* Toolbar skeleton */}
       <div className="flex items-center gap-2 px-5 py-3">
-        <div className="h-8 w-64 rounded bg-white border border-slate-200 animate-pulse" />
-        <div className="h-8 w-24 rounded bg-white border border-slate-200 animate-pulse" />
-        <div className="h-8 w-24 rounded bg-white border border-slate-200 animate-pulse" />
+        <div className="h-8 w-64 rounded bg-white dark:bg-[#1A1D27] border border-slate-200 dark:border-white/[0.08] animate-pulse" />
+        <div className="h-8 w-24 rounded bg-white dark:bg-[#1A1D27] border border-slate-200 dark:border-white/[0.08] animate-pulse" />
+        <div className="h-8 w-24 rounded bg-white dark:bg-[#1A1D27] border border-slate-200 dark:border-white/[0.08] animate-pulse" />
       </div>
 
       {/* Columns skeleton */}
@@ -565,32 +585,23 @@ function PipelineSkeleton() {
             style={{ width: 304, minWidth: 304 }}
           >
             <div
-              className="animate-pulse"
+              className="animate-pulse bg-slate-300 dark:bg-white/[0.08]"
               style={{
-                background: "#94A3B8",
                 borderRadius: "6px 6px 0 0",
                 padding: "8px 12px",
                 height: 32,
-                opacity: 0.4,
               }}
             />
             <div
-              className="animate-pulse"
+              className="animate-pulse bg-white dark:bg-[#161922] border-l border-r border-black/5 dark:border-white/[0.06]"
               style={{
-                background: "#FFFFFF",
-                borderLeft: "1px solid rgba(0,0,0,0.05)",
-                borderRight: "1px solid rgba(0,0,0,0.05)",
                 padding: "8px 12px",
                 height: 36,
               }}
             />
             <div
-              className="flex-1 flex flex-col gap-2"
+              className="flex-1 flex flex-col gap-2 bg-white dark:bg-[#161922] border-l border-r border-b border-black/5 dark:border-white/[0.06]"
               style={{
-                background: "#FFFFFF",
-                borderLeft: "1px solid rgba(0,0,0,0.05)",
-                borderRight: "1px solid rgba(0,0,0,0.05)",
-                borderBottom: "1px solid rgba(0,0,0,0.05)",
                 borderRadius: "0 0 6px 6px",
                 padding: 8,
               }}
@@ -598,12 +609,10 @@ function PipelineSkeleton() {
               {Array.from({ length: 3 }).map((__, j) => (
                 <div
                   key={j}
-                  className="animate-pulse"
+                  className="animate-pulse bg-slate-100 dark:bg-white/[0.04]"
                   style={{
-                    background: "#F1F5F9",
                     borderRadius: 6,
                     height: 110,
-                    border: "1px solid rgba(15,23,42,0.04)",
                   }}
                 />
               ))}
@@ -631,11 +640,10 @@ function KpiCell({
 }) {
   return (
     <div
+      className="bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06]"
       style={{
         padding: "10px 14px",
-        background: "#FFFFFF",
         borderRadius: 6,
-        border: "1px solid rgba(15, 23, 42, 0.06)",
         borderLeft: `3px solid ${accent}`,
         boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
       }}
@@ -654,11 +662,10 @@ function KpiCell({
         {label}
       </div>
       <div
-        className="mt-1"
+        className="mt-1 text-slate-900 dark:text-white"
         style={{
           fontSize: 18,
           fontWeight: 700,
-          color: "#0F172A",
           fontVariantNumeric: "tabular-nums",
           lineHeight: 1.15,
           letterSpacing: "-0.01em",
@@ -668,9 +675,9 @@ function KpiCell({
       </div>
       {hint && (
         <div
+          className="text-slate-500 dark:text-white/55"
           style={{
             fontSize: 10,
-            color: "#64748B",
             marginTop: 3,
             lineHeight: 1.3,
           }}

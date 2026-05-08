@@ -8,6 +8,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -20,10 +21,10 @@ export const maxDuration = 60
 
 const runSchema = z.object({
   trigger_data: z.record(z.string(), z.unknown()).optional().default({}),
-  deal_id: z.string().uuid().optional(),
-  lead_id: z.string().uuid().optional(),
-  thread_id: z.string().uuid().optional(),
-  store_id: z.string().uuid().optional(),
+  deal_id: uuid().optional(),
+  lead_id: uuid().optional(),
+  thread_id: uuid().optional(),
+  store_id: uuid().optional(),
   idempotency_key: z.string().optional(),
 })
 

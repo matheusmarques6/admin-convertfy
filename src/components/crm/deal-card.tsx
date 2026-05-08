@@ -139,6 +139,11 @@ export function DealCard({
   const slaDays = slaHours ? Math.ceil(slaHours / 24) : null
   const slaBreach = slaDays != null && days > slaDays
   const slaWarning = slaDays != null && !slaBreach && days >= Math.max(1, slaDays - 1)
+  // % de tempo do SLA ja consumido (0-100). Vira a barra de progresso
+  // fina no topo do card. Quando nao ha SLA, vira null e a barra some.
+  const slaProgressPct = slaDays != null
+    ? Math.min(100, Math.max(0, (days / slaDays) * 100))
+    : null
   const isHot = (deal.ai_score ?? 0) >= 70
   const ownerColors = deal.owner ? avatarColorFromName(deal.owner.name) : null
   const contactColors = avatarColorFromName(deal.title)
@@ -164,8 +169,6 @@ export function DealCard({
       style={{
         position: "relative",
         width: "100%",
-        background: "#FFFFFF",
-        border: "1px solid rgba(15, 23, 42, 0.06)",
         borderLeft: `3px solid ${accent}`,
         borderRadius: 6,
         padding: "10px 12px 12px",
@@ -180,8 +183,30 @@ export function DealCard({
         gap: 8,
         overflow: "hidden",
       }}
-      className="group hover:border-[rgba(15,23,42,0.12)] hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)]"
+      className="group bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06] hover:border-black/[0.12] dark:hover:border-white/[0.16] hover:shadow-[0_2px_8px_rgba(15,23,42,0.08)]"
     >
+      {/* ── SLA progress bar — barra fina absoluta no topo ── */}
+      {slaProgressPct != null && (
+        <div
+          className="absolute left-0 right-0 top-0 overflow-hidden"
+          style={{ height: 2, borderRadius: "5px 5px 0 0" }}
+          aria-hidden
+          title={`${days}d / SLA ${slaDays}d`}
+        >
+          <div
+            className="h-full transition-all"
+            style={{
+              width: `${slaProgressPct}%`,
+              background: slaBreach
+                ? "#DC2626"
+                : slaWarning
+                  ? "#D97706"
+                  : "#10B981",
+            }}
+          />
+        </div>
+      )}
+
       {/* ── Header: avatar + titulo + acoes hover ── */}
       <div className="flex items-start gap-2.5">
         <div
@@ -199,17 +224,15 @@ export function DealCard({
           <div className="flex items-center gap-1">
             {isHot && (
               <Flame
-                className="h-3 w-3 shrink-0"
-                style={{ color: "#F97316" }}
+                className="h-3 w-3 shrink-0 text-orange-500"
                 aria-label="Hot deal"
               />
             )}
             <p
-              className="truncate"
+              className="truncate text-slate-900 dark:text-white/90"
               style={{
                 fontSize: 13,
                 fontWeight: 600,
-                color: "#0F172A",
                 lineHeight: 1.25,
               }}
             >
@@ -217,10 +240,9 @@ export function DealCard({
             </p>
           </div>
           <p
-            className="truncate"
+            className="truncate text-slate-500 dark:text-white/55"
             style={{
               fontSize: 11,
-              color: "#64748B",
               marginTop: 2,
               fontStyle: deal.client ? "normal" : "italic",
             }}
@@ -289,16 +311,16 @@ export function DealCard({
         <div
           className="flex items-center justify-between"
           style={{
-            background: hexAlpha(accent, 0.06),
+            background: hexAlpha(accent, 0.10),
             borderRadius: 4,
             padding: "6px 10px",
           }}
         >
           <span
+            className="text-slate-500 dark:text-white/55"
             style={{
               fontSize: 10,
               fontWeight: 600,
-              color: "#64748B",
               textTransform: "uppercase",
               letterSpacing: "0.06em",
             }}
@@ -306,10 +328,10 @@ export function DealCard({
             Valor
           </span>
           <span
+            className="text-slate-900 dark:text-white"
             style={{
               fontSize: 14,
               fontWeight: 700,
-              color: "#0F172A",
               fontVariantNumeric: "tabular-nums",
             }}
           >
@@ -343,9 +365,9 @@ export function DealCard({
           })}
           {deal.tags.length > 3 && (
             <span
+              className="text-slate-400 dark:text-white/40"
               style={{
                 fontSize: 10,
-                color: "#94A3B8",
                 padding: "2px 4px",
                 fontWeight: 500,
               }}
@@ -358,10 +380,9 @@ export function DealCard({
 
       {/* ── Footer fixo: owner + meta + acoes ── */}
       <div
-        className="flex items-center justify-between gap-2"
+        className="flex items-center justify-between gap-2 border-t border-black/5 dark:border-white/[0.06]"
         style={{
           paddingTop: 8,
-          borderTop: "1px solid rgba(15, 23, 42, 0.05)",
           marginTop: deal.tags && deal.tags.length > 0 ? 0 : 2,
         }}
       >
@@ -397,13 +418,10 @@ export function DealCard({
           ) : (
             <span
               title="Sem owner"
-              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full"
+              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.04] text-slate-400 dark:text-white/30 border border-dashed border-slate-300 dark:border-white/[0.12]"
               style={{
-                background: "#F1F5F9",
-                color: "#94A3B8",
                 fontSize: 9,
                 fontWeight: 600,
-                border: "1px dashed #CBD5E1",
               }}
             >
               ?
@@ -414,8 +432,8 @@ export function DealCard({
           <div className="flex items-center gap-1 min-w-0">
             {createdLabel && (
               <span
-                className="inline-flex items-center gap-1 truncate"
-                style={{ fontSize: 10, color: "#64748B" }}
+                className="inline-flex items-center gap-1 truncate text-slate-500 dark:text-white/55"
+                style={{ fontSize: 10 }}
               >
                 <CalendarIcon className="h-2.5 w-2.5 shrink-0" />
                 {createdLabel}
@@ -425,22 +443,19 @@ export function DealCard({
             {deal.last_stage_changed_at != null && (
               <span
                 title={`${days} dias na etapa atual${slaDays ? ` · SLA ${slaDays}d` : ""}`}
+                className={
+                  slaBreach
+                    ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                    : slaWarning
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                      : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/60"
+                }
                 style={{
                   fontSize: 10,
                   fontWeight: 600,
                   padding: "1px 5px",
                   borderRadius: 3,
                   whiteSpace: "nowrap",
-                  background: slaBreach
-                    ? "#FEE2E2"
-                    : slaWarning
-                      ? "#FEF3C7"
-                      : "#F1F5F9",
-                  color: slaBreach
-                    ? "#991B1B"
-                    : slaWarning
-                      ? "#92400E"
-                      : "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 2,
@@ -475,22 +490,19 @@ export function DealCard({
 
           {deal.last_activity_type === "call" && (
             <Phone
-              className="h-3 w-3"
-              style={{ color: "#94A3B8" }}
+              className="h-3 w-3 text-slate-400 dark:text-white/40"
               aria-label="Ultima atividade: ligacao"
             />
           )}
           {deal.last_activity_type === "email" && (
             <Mail
-              className="h-3 w-3"
-              style={{ color: "#94A3B8" }}
+              className="h-3 w-3 text-slate-400 dark:text-white/40"
               aria-label="Ultima atividade: email"
             />
           )}
           {deal.last_activity_type === "wa_message" && (
             <MessageSquare
-              className="h-3 w-3"
-              style={{ color: "#22C55E" }}
+              className="h-3 w-3 text-emerald-500"
               aria-label="Ultima atividade: whatsapp"
             />
           )}

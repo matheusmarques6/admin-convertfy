@@ -6,6 +6,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -77,11 +78,11 @@ export async function GET(
 
 const patchSchema = z.object({
   status: z.enum(["open", "pending", "resolved", "archived"]).optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
-  lead_id: z.string().uuid().nullable().optional(),
-  deal_id: z.string().uuid().nullable().optional(),
-  client_id: z.string().uuid().nullable().optional(),
-  contact_id: z.string().uuid().nullable().optional(),
+  assigned_to: uuid().nullable().optional(),
+  lead_id: uuid().nullable().optional(),
+  deal_id: uuid().nullable().optional(),
+  client_id: uuid().nullable().optional(),
+  contact_id: uuid().nullable().optional(),
 })
 
 export async function PATCH(

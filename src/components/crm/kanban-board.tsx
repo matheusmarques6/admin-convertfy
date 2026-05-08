@@ -149,10 +149,7 @@ export function KanbanBoard({
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div
-        className="flex h-full gap-3 overflow-x-auto px-5 py-5"
-        style={{ background: "#F1F5F9" }}
-      >
+      <div className="flex h-full gap-3 overflow-x-auto px-5 py-5 bg-slate-100 dark:bg-[#0B0E15]">
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
@@ -270,32 +267,25 @@ export function KanbanBoard({
               {/* Barra de subtotal + breach — fora do chip colorido pra
                   manter o header limpo e o numero legivel */}
               <div
-                className="flex items-center justify-between"
-                style={{
-                  background: "#FFFFFF",
-                  borderLeft: "1px solid rgba(0,0,0,0.05)",
-                  borderRight: "1px solid rgba(0,0,0,0.05)",
-                  padding: "8px 12px",
-                }}
+                className="flex items-center justify-between bg-white dark:bg-[#161922] border-l border-r border-black/5 dark:border-white/[0.06]"
+                style={{ padding: "8px 12px" }}
               >
                 <span
+                  className="truncate text-slate-900 dark:text-white/90"
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "#0F172A",
                     fontVariantNumeric: "tabular-nums",
                   }}
-                  className="truncate"
                 >
                   {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "—"}
                 </span>
                 {breachCount > 0 ? (
                   <span
                     title={`${breachCount} deal(s) acima do SLA (${slaDays}d)`}
+                    className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
                     style={{
                       fontSize: 10,
-                      color: "#991B1B",
-                      background: "#FEE2E2",
                       padding: "1px 6px",
                       borderRadius: 999,
                       fontWeight: 600,
@@ -309,11 +299,8 @@ export function KanbanBoard({
                   </span>
                 ) : (
                   <span
-                    style={{
-                      fontSize: 10,
-                      color: "#94A3B8",
-                      fontWeight: 500,
-                    }}
+                    className="text-slate-400 dark:text-white/40"
+                    style={{ fontSize: 10, fontWeight: 500 }}
                   >
                     {slaDays ? `SLA ${slaDays}d` : ""}
                   </span>
@@ -326,14 +313,11 @@ export function KanbanBoard({
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className="flex-1"
+                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-b border-black/5 dark:border-white/[0.06]"
                     style={{
                       background: snapshot.isDraggingOver
-                        ? hexAlpha(color, 0.06)
-                        : "#FFFFFF",
-                      borderLeft: "1px solid rgba(0,0,0,0.05)",
-                      borderRight: "1px solid rgba(0,0,0,0.05)",
-                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                        ? hexAlpha(color, 0.08)
+                        : undefined,
                       borderRadius: "0 0 6px 6px",
                       borderTop: snapshot.isDraggingOver
                         ? `1px dashed ${color}`
@@ -341,24 +325,19 @@ export function KanbanBoard({
                       padding: 8,
                       transition: "background 150ms ease, border-color 150ms ease",
                       minHeight: 120,
-                      display: "flex",
-                      flexDirection: "column",
                       gap: 6,
                       boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
                     }}
                   >
                     {stageDeals.length === 0 && !snapshot.isDraggingOver ? (
                       <div
-                        className="flex flex-col items-center justify-center text-center"
-                        style={{
-                          padding: "24px 12px",
-                          color: "#94A3B8",
-                        }}
+                        className="flex flex-col items-center justify-center text-center text-slate-400 dark:text-white/30"
+                        style={{ padding: "24px 12px" }}
                       >
                         <p style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
                           Vazio
                         </p>
-                        <p style={{ fontSize: 10, color: "#CBD5E1" }}>
+                        <p className="text-slate-300 dark:text-white/20" style={{ fontSize: 10 }}>
                           Arraste cards ou clique em + para adicionar
                         </p>
                       </div>
@@ -400,14 +379,10 @@ export function KanbanBoard({
                     {onAddDeal && !isTerminal && stageDeals.length > 0 && (
                       <button
                         onClick={() => onAddDeal(stage.id)}
-                        className="hover:bg-slate-50 hover:border-slate-300"
+                        className="w-full bg-transparent text-slate-400 dark:text-white/40 border border-dashed border-slate-200 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/[0.16] hover:text-slate-600 dark:hover:text-white/70"
                         style={{
-                          width: "100%",
                           padding: "8px 12px",
                           borderRadius: 6,
-                          border: "1px dashed #E2E8F0",
-                          background: "transparent",
-                          color: "#94A3B8",
                           fontSize: 11,
                           fontWeight: 500,
                           cursor: "pointer",

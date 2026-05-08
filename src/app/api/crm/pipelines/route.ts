@@ -8,6 +8,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -84,7 +85,7 @@ const createPipelineSchema = z.object({
   scope: z.enum(["sales", "cs", "internal"]).default("sales"),
   color: z.string().optional().default("#1F1F1F"),
   layout: z.enum(["kanban", "state"]).default("kanban"),
-  default_assignee_id: z.string().uuid().optional().nullable(),
+  default_assignee_id: uuid().optional().nullable(),
   stages: z
     .array(
       z.object({

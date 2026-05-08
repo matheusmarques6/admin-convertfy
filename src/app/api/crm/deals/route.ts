@@ -7,6 +7,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { uuid } from "@/lib/validations/uuid"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 
@@ -67,23 +68,23 @@ export async function GET(request: NextRequest) {
 }
 
 const createDealSchema = z.object({
-  pipeline_id: z.string().uuid(),
-  stage_id: z.string().uuid(),
+  pipeline_id: uuid(),
+  stage_id: uuid(),
   title: z.string().min(1).max(240),
   value: z.number().min(0).optional().default(0),
   currency: z.string().length(3).optional().default("BRL"),
   probability: z.number().int().min(0).max(100).optional().default(50),
   expected_close_date: z.string().nullable().optional(),
-  client_id: z.string().uuid().nullable().optional(),
-  store_id: z.string().uuid().nullable().optional(),
-  lead_id: z.string().uuid().nullable().optional(),
+  client_id: uuid().nullable().optional(),
+  store_id: uuid().nullable().optional(),
+  lead_id: uuid().nullable().optional(),
   source: z.string().nullable().optional(),
   utm: z.record(z.string(), z.unknown()).optional().default({}),
   tags: z.array(z.string()).optional().default([]),
   // owner_id opcional — se nao vier, usa o user autenticado (default).
   // Frontend pode sobrescrever pra delegar pra outro vendedor.
-  owner_id: z.string().uuid().optional(),
-  referrer_partner_id: z.string().uuid().nullable().optional(),
+  owner_id: uuid().optional(),
+  referrer_partner_id: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
 })
 

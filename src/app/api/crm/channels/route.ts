@@ -9,6 +9,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 const createSchema = z.object({
   type: z.enum(["whatsapp"]),
   display_name: z.string().min(1).max(120),
-  store_id: z.string().uuid().nullable().optional(),
+  store_id: uuid().nullable().optional(),
   whatsapp: z
     .object({
       phone_number_id: z.string().min(1),

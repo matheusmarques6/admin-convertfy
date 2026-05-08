@@ -1054,12 +1054,22 @@ export async function fetchOmnisendReports(
         body: {
           queries: [{
             alias: "agg",
+            // Metrics suportados pela Statistics API 2026-preview (validado
+            // pelo erro 400 do retorno: "Allowed: sent, sentCost, opened,
+            // openedUnique, openRate, clicked, clickedUnique, clickRate,
+            // failed, failRate, markedAsSpamUnique, markedAsSpamRate,
+            // unsubscribedUnique, unsubscribeRate, attributedOrders,
+            // attributedOrdersUnique, attributedOrderRate, attributedRevenue").
+            //
+            // Removidos (causavam 400):
+            //   - bounced / bounceRate (nao existem no Omnisend; bounce
+            //     vai pro failed/failRate)
+            //   - attributedRevenuePerOrder / attributedRevenuePerSent
+            //     (nao expostos via metrics; calcula no client se precisar)
             metrics: [
               { name: "attributedRevenue" },
               { name: "attributedOrders" },
               { name: "attributedOrdersUnique" },
-              { name: "attributedRevenuePerOrder" },
-              { name: "attributedRevenuePerSent" },
               { name: "sent" },
               { name: "opened" },
               { name: "openedUnique" },
@@ -1069,11 +1079,6 @@ export async function fetchOmnisendReports(
               { name: "clickRate" },
               { name: "failed" },
               { name: "failRate" },
-              // Metrics extras necessarios pro Monitor de Saude
-              // (entregabilidade + reputacao). Mesma query, sem custo
-              // de rate limit adicional.
-              { name: "bounced" },
-              { name: "bounceRate" },
               { name: "unsubscribedUnique" },
               { name: "unsubscribeRate" },
               { name: "markedAsSpamUnique" },
@@ -1106,8 +1111,12 @@ export async function fetchOmnisendReports(
       result.clickRate = Number(row.clickRate) || 0
       result.failed = Number(row.failed) || 0
       result.failRate = Number(row.failRate) || 0
-      result.bounced = Number(row.bounced) || 0
-      result.bounceRate = Number(row.bounceRate) || 0
+      // Omnisend nao expoe `bounced` separado — bounce vai pro `failed`.
+      // Mantemos os campos populados pra compat dos consumidores que
+      // referenciam result.bounced/bounceRate, mas usando failed/failRate
+      // como aproximacao (mesma semantica de "envio que nao chegou").
+      result.bounced = Number(row.failed) || 0
+      result.bounceRate = Number(row.failRate) || 0
       result.unsubscribedUnique = Number(row.unsubscribedUnique) || 0
       result.unsubscribeRate = Number(row.unsubscribeRate) || 0
       result.markedAsSpamUnique = Number(row.markedAsSpamUnique) || 0
