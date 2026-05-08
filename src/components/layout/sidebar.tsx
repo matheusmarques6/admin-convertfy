@@ -175,7 +175,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
     key: "atendimento",
     label: "Atendimento",
     items: [
-      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
       { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
       { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
     ],

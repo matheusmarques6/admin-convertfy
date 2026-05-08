@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 }
 
 const createSchema = z.object({
-  type: z.enum(["whatsapp"]),
+  type: z.enum(["whatsapp", "instagram"]),
   display_name: z.string().min(1).max(120),
   store_id: uuid().nullable().optional(),
   whatsapp: z
@@ -62,6 +62,14 @@ const createSchema = z.object({
       phone_number_id: z.string().min(1),
       access_token: z.string().min(10),
       business_account_id: z.string().optional(),
+    })
+    .optional(),
+  instagram: z
+    .object({
+      /** IG Business Account ID (necessario tanto pra DMs quanto comments). */
+      instagram_business_account_id: z.string().min(1),
+      /** Page Access Token com escopos instagram_manage_messages + comments. */
+      access_token: z.string().min(10),
     })
     .optional(),
 })
@@ -79,24 +87,42 @@ export async function POST(request: NextRequest) {
     if (parsed.type === "whatsapp" && !parsed.whatsapp) {
       throw new AppError("Config whatsapp obrigatoria", 400, "validation")
     }
+    if (parsed.type === "instagram" && !parsed.instagram) {
+      throw new AppError("Config instagram obrigatoria", 400, "validation")
+    }
 
-    const externalId = parsed.whatsapp!.phone_number_id
+    const insertPayload =
+      parsed.type === "whatsapp"
+        ? {
+            org_id: orgId,
+            store_id: parsed.store_id || null,
+            type: "whatsapp" as const,
+            provider: "whatsapp_cloud" as const,
+            display_name: parsed.display_name,
+            external_id: parsed.whatsapp!.phone_number_id,
+            config: {
+              phone_number_id: parsed.whatsapp!.phone_number_id,
+              access_token: parsed.whatsapp!.access_token,
+              business_account_id: parsed.whatsapp!.business_account_id || null,
+            },
+          }
+        : {
+            org_id: orgId,
+            store_id: parsed.store_id || null,
+            type: "instagram" as const,
+            provider: "instagram_basic" as const,
+            display_name: parsed.display_name,
+            external_id: parsed.instagram!.instagram_business_account_id,
+            config: {
+              instagram_business_account_id:
+                parsed.instagram!.instagram_business_account_id,
+              access_token: parsed.instagram!.access_token,
+            },
+          }
 
     const { data, error } = await admin
       .from("crm_channels")
-      .insert({
-        org_id: orgId,
-        store_id: parsed.store_id || null,
-        type: "whatsapp",
-        provider: "whatsapp_cloud",
-        display_name: parsed.display_name,
-        external_id: externalId,
-        config: {
-          phone_number_id: externalId,
-          access_token: parsed.whatsapp!.access_token,
-          business_account_id: parsed.whatsapp!.business_account_id || null,
-        },
-      })
+      .insert(insertPayload)
       .select("id")
       .single()
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { Plus, Phone, CheckCircle2 } from "lucide-react"
+import { Plus, Phone, CheckCircle2, Instagram } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 
@@ -19,6 +19,8 @@ interface Channel {
   created_at: string
 }
 
+type ChannelKind = "whatsapp" | "instagram"
+
 export default function ChannelsPage() {
   const { data, mutate } = useSWR<{ channels: Channel[] }>(
     "/api/crm/channels",
@@ -26,7 +28,148 @@ export default function ChannelsPage() {
   )
 
   const channels = data?.channels || []
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState<ChannelKind | null>(null)
+
+  return (
+    <CrmPageShell
+      title="Canais conectados"
+      subtitle="Conecte WhatsApp e Instagram via tokens da Meta"
+      actions={
+        <div className="flex gap-2">
+          <button
+            className="crm-button-ghost"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            onClick={() => setCreating("instagram")}
+          >
+            <Instagram className="h-3.5 w-3.5" />
+            Conectar Instagram
+          </button>
+          <button
+            className="crm-button-primary"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            onClick={() => setCreating("whatsapp")}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Conectar WhatsApp
+          </button>
+        </div>
+      }
+    >
+      <div className="p-6">
+        {channels.length === 0 && !creating ? (
+          <CrmEmptyState
+            icon={<Phone className="h-5 w-5" />}
+            title="Nenhum canal conectado"
+            description="Configure WhatsApp Cloud API e/ou Instagram Direct/Comments com os tokens gerados no Meta Business Suite."
+            action={
+              <button className="crm-button-primary" onClick={() => setCreating("whatsapp")}>
+                Conectar agora
+              </button>
+            }
+          />
+        ) : (
+          <div className="space-y-3">
+            {channels.map((c) => (
+              <ChannelCard key={c.id} channel={c} />
+            ))}
+          </div>
+        )}
+
+        {creating === "whatsapp" && (
+          <WhatsAppForm
+            onCancel={() => setCreating(null)}
+            onCreated={() => {
+              setCreating(null)
+              mutate()
+            }}
+          />
+        )}
+
+        {creating === "instagram" && (
+          <InstagramForm
+            onCancel={() => setCreating(null)}
+            onCreated={() => {
+              setCreating(null)
+              mutate()
+            }}
+          />
+        )}
+      </div>
+    </CrmPageShell>
+  )
+}
+
+// ─── Channel card (lista) ────────────────────────────────────────
+
+function ChannelCard({ channel }: { channel: Channel }) {
+  const isInstagram = channel.type === "instagram"
+  const Icon = isInstagram ? Instagram : Phone
+  const tagLabel = isInstagram ? "Instagram (DM + Comments)" : "WhatsApp"
+  const accentBg = isInstagram ? "rgba(219,39,119,0.10)" : "var(--crm-success-bg)"
+  const accentFg = isInstagram ? "#DB2777" : "var(--crm-success-fg)"
+
+  return (
+    <div className="crm-card flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 items-center justify-center"
+          style={{
+            background: accentBg,
+            color: accentFg,
+            borderRadius: "var(--crm-radius-md)",
+          }}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: "var(--crm-text-md)",
+              fontWeight: "var(--crm-weight-medium)",
+              color: "var(--crm-gray-900)",
+            }}
+          >
+            {channel.display_name}
+          </div>
+          <div
+            style={{
+              fontSize: "var(--crm-text-xs)",
+              color: "var(--crm-gray-500)",
+              fontFamily: "var(--crm-font-mono)",
+            }}
+          >
+            {tagLabel} · {channel.external_id}
+          </div>
+        </div>
+      </div>
+      {channel.is_active && (
+        <span
+          style={{
+            fontSize: "var(--crm-text-xs)",
+            color: "var(--crm-success-fg)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontWeight: "var(--crm-weight-medium)",
+          }}
+        >
+          <CheckCircle2 className="h-3 w-3" />
+          Ativo
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ─── WhatsApp form ───────────────────────────────────────────────
+
+function WhatsAppForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void
+  onCreated: () => void
+}) {
   const [name, setName] = useState("")
   const [phoneNumberId, setPhoneNumberId] = useState("")
   const [accessToken, setAccessToken] = useState("")
@@ -57,12 +200,7 @@ export default function ChannelsPage() {
         setError(json.error?.message || "Erro ao criar channel")
         return
       }
-      setCreating(false)
-      setName("")
-      setPhoneNumberId("")
-      setAccessToken("")
-      setBusinessAccountId("")
-      mutate()
+      onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro")
     } finally {
@@ -71,169 +209,238 @@ export default function ChannelsPage() {
   }
 
   return (
-    <CrmPageShell
-      title="Canais conectados"
-      subtitle="WhatsApp Cloud API oficial — adicione um phone_number_id por loja"
-      actions={
-        <button
-          className="crm-button-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-          onClick={() => setCreating(true)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Conectar WhatsApp
-        </button>
-      }
-    >
-      <div className="p-6">
-        {channels.length === 0 && !creating ? (
-          <CrmEmptyState
-            icon={<Phone className="h-5 w-5" />}
-            title="Nenhum canal conectado"
-            description="Configure a WhatsApp Cloud API com o phone_number_id e access_token gerados no Meta Business Suite."
-            action={
-              <button className="crm-button-primary" onClick={() => setCreating(true)}>
-                Conectar agora
-              </button>
-            }
+    <form onSubmit={submit} className="mt-6 crm-card" style={{ maxWidth: 560 }}>
+      <h3
+        style={{
+          fontSize: "var(--crm-text-md)",
+          fontWeight: "var(--crm-weight-medium)",
+          color: "var(--crm-gray-900)",
+          marginBottom: "var(--crm-space-3)",
+        }}
+      >
+        Conectar WhatsApp Cloud API
+      </h3>
+      <div className="space-y-3">
+        <Field label="Nome do canal *">
+          <input
+            className="crm-input w-full"
+            placeholder="Ex: WhatsApp Loja Principal"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
           />
-        ) : (
-          <div className="space-y-3">
-            {channels.map((c) => (
-              <div key={c.id} className="crm-card flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-9 w-9 items-center justify-center"
-                    style={{
-                      background: "var(--crm-success-bg)",
-                      color: "var(--crm-success-fg)",
-                      borderRadius: "var(--crm-radius-md)",
-                    }}
-                  >
-                    <Phone className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "var(--crm-text-md)",
-                        fontWeight: "var(--crm-weight-medium)",
-                        color: "var(--crm-gray-900)",
-                      }}
-                    >
-                      {c.display_name}
-                    </div>
-                    <div style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", fontFamily: "var(--crm-font-mono)" }}>
-                      WhatsApp · {c.external_id}
-                    </div>
-                  </div>
-                </div>
-                {c.is_active && (
-                  <span
-                    style={{
-                      fontSize: "var(--crm-text-xs)",
-                      color: "var(--crm-success-fg)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      fontWeight: "var(--crm-weight-medium)",
-                    }}
-                  >
-                    <CheckCircle2 className="h-3 w-3" />
-                    Ativo
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+        </Field>
+        <Field label="Phone Number ID *">
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="123456789012345"
+            value={phoneNumberId}
+            onChange={(e) => setPhoneNumberId(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Access Token *">
+          <input
+            className="crm-input w-full"
+            type="password"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="EAAxxxxxxxxx..."
+            value={accessToken}
+            onChange={(e) => setAccessToken(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Business Account ID">
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="Opcional"
+            value={businessAccountId}
+            onChange={(e) => setBusinessAccountId(e.target.value)}
+          />
+        </Field>
+        {error && (
+          <p style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-danger-fg)" }}>
+            {error}
+          </p>
         )}
-
-        {creating && (
-          <form
-            onSubmit={submit}
-            className="mt-6 crm-card"
-            style={{ maxWidth: 560 }}
+        <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
+          Webhook URL pra registrar no Meta Business Suite:{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)" }}>
+            /api/webhooks/whatsapp
+          </code>
+          . Verify token: variavel de ambiente{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)" }}>
+            WHATSAPP_WEBHOOK_VERIFY_TOKEN
+          </code>
+          .
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className="crm-button-ghost" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="crm-button-primary"
+            disabled={submitting}
+            style={{ opacity: submitting ? 0.5 : 1 }}
           >
-            <h3
-              style={{
-                fontSize: "var(--crm-text-md)",
-                fontWeight: "var(--crm-weight-medium)",
-                color: "var(--crm-gray-900)",
-                marginBottom: "var(--crm-space-3)",
-              }}
-            >
-              Conectar WhatsApp Cloud API
-            </h3>
-            <div className="space-y-3">
-              <Field label="Nome do canal *">
-                <input
-                  className="crm-input w-full"
-                  placeholder="Ex: WhatsApp Loja Principal"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Phone Number ID *">
-                <input
-                  className="crm-input w-full"
-                  style={{ fontFamily: "var(--crm-font-mono)" }}
-                  placeholder="123456789012345"
-                  value={phoneNumberId}
-                  onChange={(e) => setPhoneNumberId(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Access Token *">
-                <input
-                  className="crm-input w-full"
-                  type="password"
-                  style={{ fontFamily: "var(--crm-font-mono)" }}
-                  placeholder="EAAxxxxxxxxx..."
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Business Account ID">
-                <input
-                  className="crm-input w-full"
-                  style={{ fontFamily: "var(--crm-font-mono)" }}
-                  placeholder="Opcional"
-                  value={businessAccountId}
-                  onChange={(e) => setBusinessAccountId(e.target.value)}
-                />
-              </Field>
-              {error && (
-                <p style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-danger-fg)" }}>{error}</p>
-              )}
-              <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-                Webhook URL pra registrar no Meta Business Suite:{" "}
-                <code style={{ fontFamily: "var(--crm-font-mono)" }}>
-                  /api/webhooks/whatsapp
-                </code>
-                . Verify token: variavel de ambiente{" "}
-                <code style={{ fontFamily: "var(--crm-font-mono)" }}>WHATSAPP_WEBHOOK_VERIFY_TOKEN</code>.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" className="crm-button-ghost" onClick={() => setCreating(false)}>
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="crm-button-primary"
-                  disabled={submitting}
-                  style={{ opacity: submitting ? 0.5 : 1 }}
-                >
-                  {submitting ? "Conectando..." : "Conectar"}
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
+            {submitting ? "Conectando..." : "Conectar"}
+          </button>
+        </div>
       </div>
-    </CrmPageShell>
+    </form>
   )
 }
+
+// ─── Instagram form ──────────────────────────────────────────────
+
+function InstagramForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void
+  onCreated: () => void
+}) {
+  const [name, setName] = useState("")
+  const [igAccountId, setIgAccountId] = useState("")
+  const [accessToken, setAccessToken] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/crm/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "instagram",
+          display_name: name,
+          instagram: {
+            instagram_business_account_id: igAccountId,
+            access_token: accessToken,
+          },
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setError(json.error?.message || "Erro ao criar channel")
+        return
+      }
+      onCreated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-6 crm-card" style={{ maxWidth: 560 }}>
+      <h3
+        style={{
+          fontSize: "var(--crm-text-md)",
+          fontWeight: "var(--crm-weight-medium)",
+          color: "var(--crm-gray-900)",
+          marginBottom: "var(--crm-space-3)",
+        }}
+      >
+        Conectar Instagram (DM + Comments)
+      </h3>
+      <div className="space-y-3">
+        <Field label="Nome do canal *">
+          <input
+            className="crm-input w-full"
+            placeholder="Ex: @minhaloja"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Instagram Business Account ID *">
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="17841405822304914"
+            value={igAccountId}
+            onChange={(e) => setIgAccountId(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Page Access Token *">
+          <input
+            className="crm-input w-full"
+            type="password"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="EAAxxxxxxxxx..."
+            value={accessToken}
+            onChange={(e) => setAccessToken(e.target.value)}
+            required
+          />
+        </Field>
+        {error && (
+          <p style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-danger-fg)" }}>
+            {error}
+          </p>
+        )}
+        <div
+          style={{
+            fontSize: "var(--crm-text-xs)",
+            color: "var(--crm-gray-500)",
+            lineHeight: 1.6,
+          }}
+        >
+          <strong>Pre-requisitos no Meta Business Suite:</strong>
+          <ul style={{ marginTop: 4, paddingLeft: 16, listStyle: "disc" }}>
+            <li>
+              Token gerado com escopos:{" "}
+              <code>instagram_basic</code>, <code>instagram_manage_messages</code>,{" "}
+              <code>instagram_manage_comments</code>, <code>pages_show_list</code>,{" "}
+              <code>pages_read_engagement</code>
+            </li>
+            <li>
+              Webhook URL:{" "}
+              <code style={{ fontFamily: "var(--crm-font-mono)" }}>
+                /api/webhooks/instagram
+              </code>
+            </li>
+            <li>
+              Verify token:{" "}
+              <code style={{ fontFamily: "var(--crm-font-mono)" }}>
+                META_WEBHOOK_VERIFY_TOKEN
+              </code>{" "}
+              (cai no <code>WHATSAPP_WEBHOOK_VERIFY_TOKEN</code> se nao definida)
+            </li>
+            <li>
+              Subscribe nos campos: <code>messages</code>, <code>messaging_postbacks</code>,{" "}
+              <code>comments</code>
+            </li>
+            <li>App secret em <code>META_APP_SECRET</code> pra validar HMAC</li>
+          </ul>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className="crm-button-ghost" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="crm-button-primary"
+            disabled={submitting}
+            style={{ opacity: submitting ? 0.5 : 1 }}
+          >
+            {submitting ? "Conectando..." : "Conectar"}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
+// ─── Field helper ────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

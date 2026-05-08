@@ -15,6 +15,10 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { sendWhatsAppMessage } from "@/lib/services/whatsapp-cloud.service"
+import {
+  sendInstagramMessage,
+  replyToInstagramComment,
+} from "@/lib/services/instagram-graph.service"
 
 const log = logger.child("CrmInboxSend")
 
@@ -74,9 +78,12 @@ export async function POST(
     const channel: ChannelRow | null = Array.isArray(thread.channel)
       ? (thread.channel[0] ?? null)
       : thread.channel
-    if (!channel || channel.type !== "whatsapp") {
+    if (!channel) {
+      throw new AppError("Channel da thread nao encontrado", 404, "not-found")
+    }
+    if (channel.type !== "whatsapp" && channel.type !== "instagram") {
       throw new AppError(
-        "Apenas channels WhatsApp sao suportados nesta versao",
+        `Channel ${channel.type} nao suportado pra envio. Use whatsapp ou instagram.`,
         400,
         "channel-unsupported",
       )
@@ -101,29 +108,96 @@ export async function POST(
 
     if (createErr || !localMsg) throw createErr || new Error("Falha ao criar mensagem")
 
-    // Envia via WhatsApp Cloud API
     const config = (channel.config as Record<string, string | undefined>) || {}
-    const result = await sendWhatsAppMessage(
-      {
-        phone_number_id: channel.external_id || config.phone_number_id || "",
-        access_token: config.access_token || "",
-        business_account_id: config.business_account_id,
-      },
-      parsed.type === "text"
-        ? { to: thread.contact_external_id, type: "text", text: { body: parsed.body! } }
-        : parsed.type === "image"
-          ? { to: thread.contact_external_id, type: "image", image: { link: parsed.image_url!, caption: parsed.body } }
-          : parsed.type === "document"
-            ? { to: thread.contact_external_id, type: "document", document: { link: parsed.document_url!, filename: parsed.document_filename, caption: parsed.body } }
-            : {
-                to: thread.contact_external_id,
-                type: "template",
-                template: {
-                  name: parsed.template_name!,
-                  language: { code: parsed.template_language || "pt_BR" },
+
+    type SendResult = { success: boolean; message_id?: string; error?: { code: string; message: string } }
+    let result: SendResult
+
+    if (channel.type === "whatsapp") {
+      result = await sendWhatsAppMessage(
+        {
+          phone_number_id: channel.external_id || config.phone_number_id || "",
+          access_token: config.access_token || "",
+          business_account_id: config.business_account_id,
+        },
+        parsed.type === "text"
+          ? { to: thread.contact_external_id, type: "text", text: { body: parsed.body! } }
+          : parsed.type === "image"
+            ? { to: thread.contact_external_id, type: "image", image: { link: parsed.image_url!, caption: parsed.body } }
+            : parsed.type === "document"
+              ? { to: thread.contact_external_id, type: "document", document: { link: parsed.document_url!, filename: parsed.document_filename, caption: parsed.body } }
+              : {
+                  to: thread.contact_external_id,
+                  type: "template",
+                  template: {
+                    name: parsed.template_name!,
+                    language: { code: parsed.template_language || "pt_BR" },
+                  },
                 },
-              },
-    )
+      )
+    } else {
+      // Instagram. Diferenciamos DM vs Comment via prefixo do contact_external_id:
+      // "comment:{media_id}" para threads de comentarios; user_id puro pra DMs.
+      const igConfig = {
+        instagram_business_account_id:
+          channel.external_id || config.instagram_business_account_id || "",
+        access_token: config.access_token || "",
+      }
+      const isCommentThread = thread.contact_external_id.startsWith("comment:")
+      if (isCommentThread) {
+        // Reply de comment: precisa do comment_id do parent. Buscamos
+        // o ultimo comment inbound da thread e respondemos a ele.
+        const { data: lastInbound } = await admin
+          .from("crm_messages")
+          .select("metadata")
+          .eq("thread_id", threadId)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const commentId =
+          (lastInbound?.metadata as { comment_id?: string } | null)?.comment_id
+        if (!commentId) {
+          result = {
+            success: false,
+            error: {
+              code: "no_parent_comment",
+              message: "Nao encontrei comentario pai pra responder",
+            },
+          }
+        } else if (parsed.type !== "text" || !parsed.body) {
+          result = {
+            success: false,
+            error: {
+              code: "invalid_payload",
+              message: "Replies de comment so suportam texto",
+            },
+          }
+        } else {
+          result = await replyToInstagramComment(igConfig, commentId, parsed.body)
+        }
+      } else if (parsed.type === "text" && parsed.body) {
+        result = await sendInstagramMessage(igConfig, {
+          to: thread.contact_external_id,
+          type: "text",
+          text: { body: parsed.body },
+        })
+      } else if (parsed.type === "image" && parsed.image_url) {
+        result = await sendInstagramMessage(igConfig, {
+          to: thread.contact_external_id,
+          type: "image",
+          image: { url: parsed.image_url },
+        })
+      } else {
+        result = {
+          success: false,
+          error: {
+            code: "invalid_payload",
+            message: "Instagram suporta text e image apenas",
+          },
+        }
+      }
+    }
 
     if (result.success) {
       await admin
@@ -143,7 +217,7 @@ export async function POST(
           error_message: result.error?.message,
         })
         .eq("id", localMsg.id)
-      log.error("[Inbox] WhatsApp send failed", result.error)
+      log.error(`[Inbox] ${channel.type} send failed`, result.error)
     }
 
     // Reseta unread (agente respondeu)
