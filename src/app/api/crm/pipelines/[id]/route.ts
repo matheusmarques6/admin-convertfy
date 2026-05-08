@@ -148,6 +148,7 @@ const patchSchema = z.object({
   color: z.string().optional(),
   default_assignee_id: uuid().nullable().optional(),
   is_archived: z.boolean().optional(),
+  is_default: z.boolean().optional(),
   layout: z.enum(["kanban", "state"]).optional(),
 })
 
@@ -163,6 +164,22 @@ export async function PATCH(
 
     const body = await request.json()
     const parsed = patchSchema.parse(body)
+
+    // Quando marca como default, desmarca os outros do mesmo scope.
+    if (parsed.is_default === true) {
+      const { data: current } = await admin
+        .from("pipelines")
+        .select("scope")
+        .eq("id", id)
+        .single()
+      if (current?.scope) {
+        await admin
+          .from("pipelines")
+          .update({ is_default: false })
+          .eq("scope", current.scope)
+          .neq("id", id)
+      }
+    }
 
     const { error } = await admin
       .from("pipelines")

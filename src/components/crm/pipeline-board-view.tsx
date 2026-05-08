@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
   X,
   Upload,
+  Settings,
 } from "lucide-react"
 import { CrmEmptyState } from "./crm-empty-state"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
@@ -19,6 +20,7 @@ import { DealDrawer } from "./deal-drawer"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { ImportCsvDialog } from "./import-csv-dialog"
+import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -30,7 +32,11 @@ interface PipelineDetailResponse {
     scope: string
     color: string | null
     layout: string | null
-    stages: KanbanStage[]
+    is_default?: boolean
+    stages: Array<KanbanStage & {
+      order?: number
+      description?: string | null
+    }>
   }
   deals: Array<{
     id: string
@@ -67,6 +73,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
   const [importCsvOpen, setImportCsvOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [search, setSearch] = useState("")
   // Filtro temporal estilo DataCrazy: pills inline acima do board.
@@ -335,6 +342,17 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               </div>
             )}
 
+            {/* Botao Configuracoes */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              disabled={!pipeline}
+              className="inline-flex items-center justify-center h-8 w-8 rounded-[6px] bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-white/80 border border-black/[0.08] dark:border-white/[0.10] transition-colors disabled:opacity-50"
+              title="Configurar pipeline (etapas, nome, exclusao)"
+              aria-label="Configurar pipeline"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+
             {/* Botao Importar CSV */}
             <button
               onClick={() => setImportCsvOpen(true)}
@@ -583,6 +601,38 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
             // Apos import, revalida o pipeline pra ver os novos cards
             mutate()
           }}
+        />
+      )}
+
+      {pipeline && (
+        <PipelineSettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          pipeline={{
+            id: pipeline.id,
+            name: pipeline.name,
+            description: pipeline.description,
+            scope: pipeline.scope,
+            color: pipeline.color,
+            is_default: pipeline.is_default,
+            stages: pipeline.stages.map((s) => ({
+              id: s.id,
+              name: s.name,
+              color: s.color ?? null,
+              order: s.order ?? s.position ?? 0,
+              stage_type:
+                s.stage_type === "open" ||
+                s.stage_type === "won" ||
+                s.stage_type === "lost" ||
+                s.stage_type === "archived"
+                  ? s.stage_type
+                  : null,
+              sla_hours: s.sla_hours ?? null,
+              description: s.description ?? null,
+            })),
+          }}
+          onChanged={() => mutate()}
+          onDeleted={() => mutate()}
         />
       )}
 
