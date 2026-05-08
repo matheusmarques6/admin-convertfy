@@ -1,12 +1,9 @@
 "use client"
 
-import Link from "next/link"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import useSWR from "swr"
-import { Plus, HeartHandshake } from "lucide-react"
-import { CrmPageShell } from "@/components/crm/crm-page-shell"
-import { CrmEmptyState } from "@/components/crm/crm-empty-state"
-import { PageSkeleton } from "@/components/ui/page-skeleton"
-import { ROUTES } from "@/lib/routes"
+import { HeartHandshake, Plus, ArrowRight } from "lucide-react"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -15,117 +12,73 @@ interface PipelineSummary {
   name: string
   description: string | null
   scope: string
-  layout: string | null
-  stages: Array<{ id: string; name: string; position: number; stage_type: string | null }>
+  color: string | null
   deals_count: number
+  is_default?: boolean
 }
 
-export default function CsPipelinesPage() {
+/**
+ * Pagina raiz de /admin/operacional/pipelines.
+ * Mesma logica da contraparte comercial: redireciona pro primeiro
+ * pipeline ou mostra hero de criacao quando nao ha nenhum.
+ */
+export default function OperacionalPipelinesIndexPage() {
+  const router = useRouter()
   const { data, isLoading } = useSWR<{ pipelines: PipelineSummary[] }>(
     "/api/crm/pipelines?scope=cs",
     fetcher,
   )
 
-  const pipelines = data?.pipelines || []
+  const pipelines = data?.pipelines ?? []
+  const firstId =
+    pipelines.find((p) => p.is_default)?.id ?? pipelines[0]?.id ?? null
+
+  useEffect(() => {
+    if (!isLoading && firstId) {
+      router.replace(`/admin/operacional/pipelines/${firstId}`)
+    }
+  }, [isLoading, firstId, router])
 
   return (
-    <CrmPageShell
-      title="Customer Success"
-      subtitle="Onboarding 30d, Gestao de Carteira, Feedback Mensal e Tickets"
-      actions={
-        <button
-          className="crm-button-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Novo pipeline CS
-        </button>
-      }
-    >
-      <div className="p-6">
-        {isLoading ? (
-          <PageSkeleton variant="list" showHeader={false} className="px-0 py-0" />
-        ) : pipelines.length === 0 ? (
-          <CrmEmptyState
-            icon={<HeartHandshake className="h-5 w-5" />}
-            title="Nenhum pipeline de CS configurado"
-            description="Crie um pipeline pos-venda (Onboarding, Saude, Renovacao) para acompanhar contas ativas."
-            action={
-              <button
-                className="crm-button-primary"
-                style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Criar primeiro pipeline CS
-              </button>
-            }
-          />
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {pipelines.map((p) => (
-              <Link
-                key={p.id}
-                href={ROUTES.ADMIN.OPERACIONAL.PIPELINE_DETAIL(p.id)}
-                className="crm-card"
-                style={{ display: "flex", flexDirection: "column", gap: "var(--crm-space-2)" }}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    style={{
-                      fontSize: "var(--crm-text-md)",
-                      fontWeight: "var(--crm-weight-medium)",
-                      color: "var(--crm-gray-900)",
-                    }}
-                  >
-                    {p.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "var(--crm-text-xs)",
-                      color: "var(--crm-gray-500)",
-                    }}
-                  >
-                    {p.deals_count} cards
-                  </span>
-                </div>
-                {p.description && (
-                  <p
-                    style={{
-                      fontSize: "var(--crm-text-sm)",
-                      color: "var(--crm-gray-500)",
-                      lineHeight: "var(--crm-leading-normal)",
-                    }}
-                  >
-                    {p.description}
-                  </p>
-                )}
-                <div
-                  className="mt-auto flex items-center justify-between pt-2"
-                  style={{ borderTop: "1px solid var(--crm-gray-200)" }}
-                >
-                  <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-                    {p.stages.length} estagios
-                  </span>
-                  {p.layout === "state" && (
-                    <span
-                      style={{
-                        fontSize: "var(--crm-text-xs)",
-                        color: "var(--crm-info-fg)",
-                        background: "var(--crm-info-bg)",
-                        padding: "2px 6px",
-                        borderRadius: "var(--crm-radius-sm)",
-                        fontWeight: "var(--crm-weight-medium)",
-                      }}
-                    >
-                      State board
-                    </span>
-                  )}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+    <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-[#0B0E15] p-6">
+      {isLoading ? (
+        <div className="text-[13px] text-slate-500 dark:text-white/55">
+          Carregando pipelines...
+        </div>
+      ) : pipelines.length === 0 ? (
+        <CsPipelinesEmptyHero />
+      ) : firstId ? (
+        <div className="text-[13px] text-slate-500 dark:text-white/55">
+          Abrindo {pipelines[0].name}...
+        </div>
+      ) : (
+        <CsPipelinesEmptyHero />
+      )}
+    </div>
+  )
+}
+
+function CsPipelinesEmptyHero() {
+  return (
+    <div className="max-w-md text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-300 mb-4">
+        <HeartHandshake className="h-5 w-5" />
       </div>
-    </CrmPageShell>
+      <h2 className="text-[18px] font-semibold text-slate-900 dark:text-white mb-2 tracking-tight">
+        Crie seu primeiro pipeline de Customer Success
+      </h2>
+      <p className="text-[13px] text-slate-600 dark:text-white/65 leading-relaxed mb-5">
+        Acompanhe onboardings, gestão de carteira, tickets e renovações
+        em estagios claros. Pipelines podem ser kanban ou state-board.
+      </p>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[6px] bg-[#059669] hover:bg-[#047857] text-white text-[13px] font-semibold shadow-[0_1px_2px_rgba(5,150,105,0.25)] transition-colors"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Novo pipeline CS
+        <ArrowRight className="h-3.5 w-3.5 ml-0.5" />
+      </button>
+    </div>
   )
 }

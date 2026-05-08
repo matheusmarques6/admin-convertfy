@@ -3,9 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
-import Link from "next/link"
 import {
-  ArrowLeft,
   Plus,
   ChevronDown,
   TrendingUp,
@@ -24,7 +22,6 @@ import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
-import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -75,7 +72,7 @@ function daysSince(iso: string | null): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
 }
 
-export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps) {
+export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardViewProps) {
   const { data, isLoading, mutate } = useSWR<PipelineDetailResponse>(
     `/api/crm/pipelines/${pipelineId}`,
     fetcher,
@@ -262,29 +259,12 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
     }
   }
 
-  const backHref =
-    scope === "cs"
-      ? ROUTES.ADMIN.OPERACIONAL.PIPELINES
-      : ROUTES.ADMIN.COMERCIAL.PIPELINES
-
   return (
     <CrmPageShell
       title={pipeline?.name || "Carregando..."}
       subtitle={pipeline?.description || undefined}
       actions={
         <>
-          <Link
-            href={backHref}
-            className="crm-button-ghost"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "var(--crm-space-2)",
-            }}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar
-          </Link>
           {owners.length > 1 && (
             <div className="relative">
               <select
