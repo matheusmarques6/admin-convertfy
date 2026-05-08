@@ -86,6 +86,10 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [search, setSearch] = useState("")
+  // Filtro temporal estilo DataCrazy: pills inline acima do board.
+  // "all" = sem filtro · "today" = criados hoje · "7d/30d/90d" =
+  // criados nos ultimos N dias.
+  const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "7d" | "30d" | "90d">("all")
   const [pendingLostMove, setPendingLostMove] = useState<{
     dealId: string
     stageId: string
@@ -111,6 +115,25 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
   const filteredDeals = useMemo(() => {
     let list = allDeals
     if (ownerFilter) list = list.filter((d) => d.owner?.id === ownerFilter)
+
+    // Filtro temporal por created_at (quando disponivel). Usa cutoff
+    // em dias relativo a agora.
+    if (periodFilter !== "all") {
+      const days =
+        periodFilter === "today"
+          ? 1
+          : periodFilter === "7d"
+            ? 7
+            : periodFilter === "30d"
+              ? 30
+              : 90
+      const cutoff = Date.now() - days * 86400000
+      list = list.filter((d) => {
+        const ts = d.created_at ? new Date(d.created_at).getTime() : NaN
+        return Number.isFinite(ts) ? ts >= cutoff : true
+      })
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((d) =>
@@ -121,7 +144,7 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
       )
     }
     return list
-  }, [allDeals, ownerFilter, search])
+  }, [allDeals, ownerFilter, periodFilter, search])
 
   // Identifica won/lost stage default — usado pelos quick actions do card
   const wonStage = pipeline?.stages.find((s) => s.stage_type === "won")
@@ -222,6 +245,21 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
       stageId: defaultLostStage.id,
       position: 10,
     })
+  }
+
+  const handleDelete = async (dealId: string) => {
+    const ok = window.confirm(
+      "Excluir este deal? Esta acao nao pode ser desfeita.",
+    )
+    if (!ok) return
+    const res = await fetch(`/api/crm/deals/${dealId}`, { method: "DELETE" })
+    if (res.ok) {
+      // Se o drawer estava aberto pra esse deal, fecha
+      if (activeDealId === dealId) setActiveDealId(null)
+      await mutate()
+    } else {
+      window.alert("Falha ao excluir o deal.")
+    }
   }
 
   const backHref =
@@ -361,11 +399,46 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
             </div>
           )}
 
-          {/* ── Toolbar: search + filtros ── */}
+          {/* ── Toolbar: pills de periodo + search + filtros ── */}
           {pipeline.layout !== "state" && (
             <div
-              className="flex items-center gap-2 px-5 py-3"
+              className="flex flex-wrap items-center gap-2 px-5 py-3"
             >
+              {/* Pills de periodo (DataCrazy-style) */}
+              <div
+                className="inline-flex items-center gap-0.5 rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] p-0.5"
+                role="tablist"
+                aria-label="Filtrar por periodo de criacao"
+              >
+                {(
+                  [
+                    { id: "all", label: "Tudo" },
+                    { id: "today", label: "Hoje" },
+                    { id: "7d", label: "7d" },
+                    { id: "30d", label: "30d" },
+                    { id: "90d", label: "90d" },
+                  ] as const
+                ).map((p) => {
+                  const active = periodFilter === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setPeriodFilter(p.id)}
+                      className={
+                        active
+                          ? "text-[11px] font-semibold px-2.5 py-1 rounded-[4px] bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                          : "text-[11px] font-medium px-2.5 py-1 rounded-[4px] text-slate-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                      }
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+
               <div className="relative flex-1 max-w-xs">
                 <Search
                   className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5"
@@ -506,6 +579,9 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
                 onAddDeal={(stageId) => setNewDealStageId(stageId)}
                 onWinDeal={wonStage ? handleQuickWin : undefined}
                 onLoseDeal={defaultLostStage ? handleQuickLose : undefined}
+                onMoveDeal={(id) => setActiveDealId(id)}
+                onAddActivity={(id) => setActiveDealId(id)}
+                onDeleteDeal={handleDelete}
               />
             )}
           </div>
@@ -516,6 +592,13 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
         dealId={activeDealId}
         onClose={() => setActiveDealId(null)}
         onUpdated={() => mutate()}
+        pipelineStages={pipeline?.stages.map((s) => ({
+          id: s.id,
+          name: s.name,
+          stage_type: s.stage_type,
+          color: s.color ?? null,
+          order: s.position,
+        }))}
         fallbackDeal={(() => {
           if (!activeDealId) return null
           const d = allDeals.find((x) => x.id === activeDealId)

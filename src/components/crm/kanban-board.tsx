@@ -29,6 +29,9 @@ interface KanbanBoardProps {
   onAddDeal?: (stageId: string) => void
   onWinDeal?: (dealId: string) => void
   onLoseDeal?: (dealId: string) => void
+  onMoveDeal?: (dealId: string) => void
+  onAddActivity?: (dealId: string) => void
+  onDeleteDeal?: (dealId: string) => void
 }
 
 const fmtBRLCompact = (v: number): string => {
@@ -81,6 +84,9 @@ export function KanbanBoard({
   onAddDeal,
   onWinDeal,
   onLoseDeal,
+  onMoveDeal,
+  onAddActivity,
+  onDeleteDeal,
 }: KanbanBoardProps) {
   const [optimisticDeals, setOptimisticDeals] = useState(deals)
   const [isMoving, setIsMoving] = useState(false)
@@ -147,6 +153,13 @@ export function KanbanBoard({
     }
   }
 
+  // Stages "open" — usados pra calcular o mini stepper (posicao do
+  // deal no funil de aquisicao, ignorando won/lost que sao terminais).
+  const openStages = useMemo(
+    () => stages.filter((s) => (s.stage_type || "open") === "open"),
+    [stages],
+  )
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full gap-3 overflow-x-auto px-5 py-5 bg-slate-100 dark:bg-[#0B0E15]">
@@ -154,6 +167,10 @@ export function KanbanBoard({
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
           const color = stageColor(stage)
+          // Indice da stage atual dentro do funil "open" — usado pelos
+          // cards pra desenhar o mini stepper. Stages won/lost ficam
+          // sem stepper (-1 -> stagePosition undefined no card).
+          const openIdx = openStages.findIndex((s) => s.id === stage.id)
           const stageTotal = stageDeals.reduce(
             (sum, d) => sum + (d.value || 0),
             0,
@@ -364,9 +381,17 @@ export function KanbanBoard({
                               deal={deal}
                               slaHours={stage.sla_hours}
                               stageColor={color}
+                              stagePosition={
+                                openIdx >= 0 && openStages.length > 1
+                                  ? { current: openIdx, total: openStages.length }
+                                  : undefined
+                              }
                               onClick={onCardClick}
                               onWin={!isTerminal ? onWinDeal : undefined}
                               onLose={!isTerminal ? onLoseDeal : undefined}
+                              onMove={onMoveDeal}
+                              onAddActivity={onAddActivity}
+                              onDelete={onDeleteDeal}
                               isDragging={dragSnapshot.isDragging}
                             />
                           </div>

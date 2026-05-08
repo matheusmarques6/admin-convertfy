@@ -1,15 +1,20 @@
 "use client"
 
 import { useMemo } from "react"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
   AlertCircle,
   Flame,
   MessageSquare,
   Phone,
   Mail,
-  Check,
   X as XIcon,
   Calendar as CalendarIcon,
+  MoreHorizontal,
+  ArrowRightLeft,
+  Trash2,
+  Trophy,
+  CalendarPlus,
 } from "lucide-react"
 
 export interface DealCardData {
@@ -41,9 +46,18 @@ interface DealCardProps {
   slaHours?: number | null
   /** Cor do estagio (vinda do header). Usada como acento sutil no card. */
   stageColor?: string
+  /** Posicao no funil (0-indexed) e total — usados pra renderizar
+   *  o mini stepper no rodape. Quando undefined, stepper fica oculto. */
+  stagePosition?: { current: number; total: number }
   onClick?: (id: string) => void
   onWin?: (id: string) => void
   onLose?: (id: string) => void
+  /** Acoes extras do menu de contexto (DataCrazy-inspired). Quando
+   *  fornecidas, o botao ⋯ no card abre dropdown rico com as 5+
+   *  acoes principais. */
+  onMove?: (id: string) => void
+  onAddActivity?: (id: string) => void
+  onDelete?: (id: string) => void
   isDragging?: boolean
 }
 
@@ -130,9 +144,13 @@ export function DealCard({
   deal,
   slaHours,
   stageColor,
+  stagePosition,
   onClick,
   onWin,
   onLose,
+  onMove,
+  onAddActivity,
+  onDelete,
   isDragging,
 }: DealCardProps) {
   const days = daysSince(deal.last_stage_changed_at)
@@ -251,58 +269,79 @@ export function DealCard({
           </p>
         </div>
 
-        {/* Hover quick actions (won / lost) */}
-        {(onWin || onLose) && (
-          <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            {onWin && (
+        {/* Menu de acoes (estilo DataCrazy): botao ⋯ que abre dropdown
+            com Ganhar / Perder / Mover / Atividade / Excluir. Aparece
+            sempre (nao so no hover) pra ser descobrivel. */}
+        {(onWin || onLose || onMove || onAddActivity || onDelete) && (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onWin(deal.id)
-                }}
-                title="Marcar como ganho"
-                aria-label="Marcar como ganho"
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 4,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "#DCFCE7",
-                  color: "#166534",
-                  border: "1px solid #86EFAC",
-                  cursor: "pointer",
-                }}
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Acoes do deal"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-white/40 dark:hover:text-white/80 dark:hover:bg-white/[0.06] transition-colors"
               >
-                <Check className="h-3 w-3" />
+                <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
-            )}
-            {onLose && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onLose(deal.id)
-                }}
-                title="Marcar como perdido"
-                aria-label="Marcar como perdido"
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 4,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: "#FEE2E2",
-                  color: "#991B1B",
-                  border: "1px solid #FCA5A5",
-                  cursor: "pointer",
-                }}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                onClick={(e) => e.stopPropagation()}
+                align="end"
+                sideOffset={4}
+                className="z-50 min-w-[220px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
               >
-                <XIcon className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+                {onAddActivity && (
+                  <DealMenuItem
+                    icon={<CalendarPlus className="h-3.5 w-3.5" />}
+                    title="Criar atividade"
+                    description="Adiciona nota, tarefa ou ligacao"
+                    onClick={() => onAddActivity(deal.id)}
+                  />
+                )}
+                {onMove && (
+                  <DealMenuItem
+                    icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+                    title="Mover negocio"
+                    description="Move para outra etapa"
+                    onClick={() => onMove(deal.id)}
+                  />
+                )}
+                {(onAddActivity || onMove) && (onWin || onLose) && (
+                  <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+                )}
+                {onWin && (
+                  <DealMenuItem
+                    icon={<Trophy className="h-3.5 w-3.5" />}
+                    title="Ganhar negocio"
+                    description="Move para Ganho e fecha o deal"
+                    tone="success"
+                    onClick={() => onWin(deal.id)}
+                  />
+                )}
+                {onLose && (
+                  <DealMenuItem
+                    icon={<XIcon className="h-3.5 w-3.5" />}
+                    title="Perder negocio"
+                    description="Pede razao da perda e arquiva"
+                    tone="danger"
+                    onClick={() => onLose(deal.id)}
+                  />
+                )}
+                {onDelete && (
+                  <>
+                    <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+                    <DealMenuItem
+                      icon={<Trash2 className="h-3.5 w-3.5" />}
+                      title="Excluir"
+                      description="Remove o deal definitivamente"
+                      tone="danger"
+                      onClick={() => onDelete(deal.id)}
+                    />
+                  </>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         )}
       </div>
 
@@ -375,6 +414,34 @@ export function DealCard({
               +{deal.tags.length - 3}
             </span>
           )}
+        </div>
+      )}
+
+      {/* ── Mini stepper: posicao no funil (DataCrazy-inspired) ── */}
+      {stagePosition && stagePosition.total > 1 && (
+        <div
+          className="flex items-center gap-0.5"
+          aria-label={`Etapa ${stagePosition.current + 1} de ${stagePosition.total}`}
+          title={`Etapa ${stagePosition.current + 1} de ${stagePosition.total}`}
+        >
+          {Array.from({ length: stagePosition.total }).map((_, i) => {
+            const isPast = i < stagePosition.current
+            const isCurrent = i === stagePosition.current
+            return (
+              <div
+                key={i}
+                className="flex-1 rounded-full transition-colors"
+                style={{
+                  height: 3,
+                  background:
+                    isCurrent || isPast
+                      ? accent
+                      : "rgba(148, 163, 184, 0.20)",
+                  opacity: isCurrent ? 1 : isPast ? 0.55 : 1,
+                }}
+              />
+            )
+          })}
         </div>
       )}
 
@@ -534,5 +601,49 @@ export function DealCard({
         </div>
       </div>
     </div>
+  )
+}
+
+// ── DealMenuItem ─────────────────────────────────────────────────
+//
+// Item do dropdown de acoes do card. Estilo DataCrazy: icone +
+// titulo + descricao curta. Tons opcionais (success/danger) tingem
+// o icone e o titulo.
+
+function DealMenuItem({
+  icon,
+  title,
+  description,
+  tone,
+  onClick,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+  tone?: "success" | "danger"
+  onClick: () => void
+}) {
+  const toneClass =
+    tone === "success"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : tone === "danger"
+        ? "text-red-700 dark:text-red-400"
+        : "text-slate-700 dark:text-white/80"
+
+  return (
+    <DropdownMenu.Item
+      onSelect={onClick}
+      className="flex cursor-pointer items-start gap-2.5 rounded-[4px] mx-1 px-2 py-2 outline-none data-[highlighted]:bg-slate-50 dark:data-[highlighted]:bg-white/[0.04]"
+    >
+      <span className={"shrink-0 mt-0.5 " + toneClass}>{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={"text-[12px] font-medium leading-tight " + toneClass}>
+          {title}
+        </div>
+        <div className="text-[10px] text-slate-500 dark:text-white/50 mt-0.5 leading-tight">
+          {description}
+        </div>
+      </div>
+    </DropdownMenu.Item>
   )
 }

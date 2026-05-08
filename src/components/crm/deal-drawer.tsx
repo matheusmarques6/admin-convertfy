@@ -57,6 +57,15 @@ interface DealDrawerProps {
   dealId: string | null
   onClose: () => void
   onUpdated?: () => void
+  /** Estagios completos do pipeline atual — usado pra renderizar o
+   *  pipeline progress horizontal (stepper estilo DataCrazy). */
+  pipelineStages?: Array<{
+    id: string
+    name: string
+    stage_type: string | null
+    color?: string | null
+    order?: number
+  }>
   /** Fallback: dados ja conhecidos do deal (vindo da listagem do
    *  pipeline). Usado pra renderizar header/sidebar enquanto a API
    *  individual nao responde, OU se ela retornar 404 por race condition. */
@@ -149,6 +158,7 @@ export function DealDrawer({
   dealId,
   onClose,
   onUpdated,
+  pipelineStages,
   fallbackDeal,
   onMissing,
 }: DealDrawerProps) {
@@ -242,8 +252,8 @@ export function DealDrawer({
             {deal?.title || "Detalhes do deal"}
           </DialogPrimitive.Title>
 
-          {/* ─── HEADER ─── */}
-          <div className="relative flex items-start justify-between border-b border-black/[0.06] dark:border-white/[0.08] px-6 py-4 bg-white dark:bg-[#0F1117]">
+          {/* ─── HEADER (DataCrazy-inspired: avatar grande + meta) ─── */}
+          <div className="relative flex items-start gap-4 border-b border-black/[0.06] dark:border-white/[0.08] px-6 py-5 bg-white dark:bg-[#0F1117]">
             {/* Faixa colorida lateral esquerda — vinculo visual com a coluna */}
             <div
               className="absolute left-0 top-0 bottom-0 w-1"
@@ -251,7 +261,15 @@ export function DealDrawer({
               aria-hidden
             />
 
-            <div className="min-w-0 flex-1 pr-3 pl-2">
+            {/* Avatar do contato/cliente — circulo grande estilo DataCrazy */}
+            {deal && (
+              <DealAvatar
+                name={deal.client?.name || deal.title}
+                accent={accentColor}
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
               {isLoading && !deal ? (
                 <DealHeaderSkeleton />
               ) : error && !deal ? (
@@ -319,6 +337,15 @@ export function DealDrawer({
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {/* ─── PIPELINE PROGRESS — stepper horizontal estilo DataCrazy ─── */}
+          {deal && pipelineStages && pipelineStages.length > 0 && (
+            <PipelineProgress
+              stages={pipelineStages}
+              currentStageId={deal.stage_id}
+              dealStatus={deal.status}
+            />
+          )}
 
           {/* Banner de aviso quando usamos fallback (deal individual
               falhou mas estamos exibindo dados do pipeline data).
@@ -614,6 +641,134 @@ export function DealDrawer({
 }
 
 // ── Sub-componentes ──────────────────────────────────────────────
+
+/**
+ * Avatar circular grande do header — gera cor estavel a partir do
+ * nome (paleta de pasteis) + iniciais. Inspirado no DataCrazy onde
+ * o avatar e o ponto focal do drawer.
+ */
+function DealAvatar({ name, accent }: { name: string; accent: string }) {
+  const initials = name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+
+  return (
+    <div
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-lg font-semibold text-white shadow-sm"
+      style={{
+        background: accent,
+        boxShadow: `0 4px 12px ${accent}33`,
+      }}
+      aria-hidden
+    >
+      {initials || "—"}
+    </div>
+  )
+}
+
+/**
+ * Stepper horizontal mostrando todos os estagios do pipeline em uma
+ * linha, com o estagio atual destacado. Inspirado no DataCrazy.
+ *
+ * Cada estagio e um circulo com numero, conectado por linha. Estagios
+ * passados ficam preenchidos com a cor do proprio estagio. Estagio
+ * atual ganha ring + escala maior. Estagios futuros ficam em cinza.
+ */
+function PipelineProgress({
+  stages,
+  currentStageId,
+  dealStatus,
+}: {
+  stages: Array<{ id: string; name: string; stage_type: string | null; color?: string | null; order?: number }>
+  currentStageId: string
+  dealStatus: string
+}) {
+  // Ordena por order quando disponivel pra refletir a sequencia real
+  // do pipeline (banco pode retornar fora de ordem).
+  const sorted = [...stages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const currentIdx = sorted.findIndex((s) => s.id === currentStageId)
+  const isWonOrLost = dealStatus === "won" || dealStatus === "lost"
+
+  return (
+    <div className="border-b border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-[#161922] px-6 py-4">
+      <div className="flex items-center justify-between gap-1">
+        {sorted.map((stage, i) => {
+          const isPast = currentIdx >= 0 && i < currentIdx
+          const isCurrent = stage.id === currentStageId
+          const isLast = i === sorted.length - 1
+          const stageColor = stage.color ?? "#475569"
+          const fill =
+            isCurrent || isPast
+              ? stage.stage_type === "lost" && isCurrent
+                ? "#DC2626"
+                : stage.stage_type === "won" && isCurrent
+                  ? "#059669"
+                  : stageColor
+              : null
+
+          return (
+            <div key={stage.id} className="flex flex-1 items-center min-w-0">
+              <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
+                <span
+                  className={
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-all " +
+                    (isCurrent
+                      ? "ring-2 ring-offset-2 dark:ring-offset-[#161922] scale-110"
+                      : "")
+                  }
+                  style={{
+                    background: fill ?? "transparent",
+                    color: fill ? "#FFFFFF" : "#94A3B8",
+                    border: fill ? "none" : "1.5px solid currentColor",
+                    // O ring usa a propria cor do stage atual
+                    boxShadow: isCurrent ? `0 0 0 2px ${stageColor}` : undefined,
+                  }}
+                  title={stage.name}
+                >
+                  {isPast || (isCurrent && isWonOrLost && stage.stage_type === "won") ? (
+                    "✓"
+                  ) : isCurrent && isWonOrLost && stage.stage_type === "lost" ? (
+                    "✕"
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span
+                  className={
+                    "text-[10px] truncate text-center leading-tight max-w-full " +
+                    (isCurrent
+                      ? "font-semibold text-slate-900 dark:text-white"
+                      : isPast
+                        ? "font-medium text-slate-700 dark:text-white/70"
+                        : "text-slate-400 dark:text-white/40")
+                  }
+                  style={{ width: "100%" }}
+                >
+                  {stage.name}
+                </span>
+              </div>
+              {!isLast && (
+                <div
+                  className="h-px shrink-0 mx-1"
+                  style={{
+                    width: 24,
+                    background: isPast || isCurrent ? stageColor : "#E2E8F0",
+                    opacity: isPast || isCurrent ? 0.5 : 1,
+                  }}
+                  aria-hidden
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function StageBadge({
   stage,
