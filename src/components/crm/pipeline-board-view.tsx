@@ -6,16 +6,11 @@ import useSWR from "swr"
 import {
   Plus,
   ChevronDown,
-  TrendingUp,
-  Target,
-  Users,
-  AlertCircle,
   Search,
   SlidersHorizontal,
   ArrowUpDown,
   X,
 } from "lucide-react"
-import { CrmPageShell } from "./crm-page-shell"
 import { CrmEmptyState } from "./crm-empty-state"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
@@ -260,92 +255,87 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   }
 
   return (
-    <CrmPageShell
-      title={pipeline?.name || "Carregando..."}
-      subtitle={pipeline?.description || undefined}
-      actions={
-        <>
-          {owners.length > 1 && (
-            <div className="relative">
-              <select
-                value={ownerFilter}
-                onChange={(e) => setOwnerFilter(e.target.value)}
-                className="crm-input"
-                style={{ paddingRight: 28, appearance: "none" }}
-              >
-                <option value="">Todos owners ({owners.length})</option>
-                {owners.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none"
-                style={{ color: "var(--crm-gray-500)" }}
-              />
-            </div>
-          )}
-          <button
-            className="crm-button-primary"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "var(--crm-space-2)",
-            }}
-            onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
-            disabled={!pipeline}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Novo deal
-          </button>
-        </>
-      }
-    >
+    <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15] overflow-hidden">
       {isLoading ? (
         <PipelineSkeleton />
       ) : !pipeline ? (
-        <div className="p-6">
+        <div className="flex-1 flex items-center justify-center p-6">
           <CrmEmptyState
             title="Pipeline nao encontrado"
             description="O pipeline pode ter sido arquivado ou voce nao tem acesso."
           />
         </div>
       ) : pipeline.stages.length === 0 ? (
-        <div className="p-6">
+        <div className="flex-1 flex items-center justify-center p-6">
           <CrmEmptyState
             title="Pipeline sem estagios"
             description="Configure os estagios deste pipeline antes de criar deals."
           />
         </div>
       ) : (
-        <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
-          {/* ── KPI bar — 4 cards compactos com hierarquia clara ── */}
+        <>
+          {/* ═══════════ HEADER PROPRIO (substitui CrmPageShell) ═══════════
+              Hierarquia clara estilo Linear/Vercel:
+                · Linha 1: nome + descricao (esq) + actions (dir)
+                · Linha 2: stats inline + mini-funnel
+                · Linha 3: filtros (search + pills + owner)
+              Tudo em uma area coesa com bg branco, sem cards grandes
+              poluindo o topo. */}
+
+          {/* Linha 1: titulo + actions */}
+          <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-3 bg-white dark:bg-[#0F1117] border-b border-black/[0.04] dark:border-white/[0.06]">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{
+                    background: pipeline.color ?? "#2563EB",
+                  }}
+                  aria-hidden
+                />
+                <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white truncate">
+                  {pipeline.name}
+                </h1>
+              </div>
+              {pipeline.description && (
+                <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55 truncate ml-4">
+                  {pipeline.description}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
+                disabled={!pipeline}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[12px] font-semibold shadow-[0_1px_2px_rgba(37,99,235,0.25)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Novo deal
+              </button>
+            </div>
+          </div>
+
+          {/* Linha 2: stats inline + mini funnel */}
           {pipeline.layout !== "state" && (
-            <div
-              className="grid gap-2 px-5 pt-4"
-              style={{
-                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              }}
-            >
-              <KpiCell
-                icon={<TrendingUp className="h-3.5 w-3.5" />}
+            <div className="flex items-center gap-5 px-6 py-3 bg-white dark:bg-[#0F1117] border-b border-black/[0.04] dark:border-white/[0.06]">
+              <StatInline
                 label="Pipeline aberto"
                 value={fmtBRL(kpis.totalOpenValue)}
-                hint={`${kpis.openCount} deals · ticket medio ${
-                  kpis.avgDeal > 0
-                    ? fmtBRL(Math.round(kpis.avgDeal))
-                    : "—"
-                }`}
+                hint={`${kpis.openCount} ${kpis.openCount === 1 ? "deal" : "deals"}`}
                 accent="#2563EB"
               />
-              <KpiCell
-                icon={<Target className="h-3.5 w-3.5" />}
+              <Divider />
+              <StatInline
+                label="Ticket medio"
+                value={kpis.avgDeal > 0 ? fmtBRL(Math.round(kpis.avgDeal)) : "—"}
+                accent="#475569"
+              />
+              <Divider />
+              <StatInline
                 label="Win rate"
-                value={
-                  kpis.winRate != null ? `${kpis.winRate.toFixed(0)}%` : "—"
-                }
-                hint={`${kpis.wonCount} ganhos`}
+                value={kpis.winRate != null ? `${kpis.winRate.toFixed(0)}%` : "—"}
+                hint={`${kpis.wonCount} ${kpis.wonCount === 1 ? "ganho" : "ganhos"}`}
                 accent={
                   kpis.winRate == null
                     ? "#475569"
@@ -354,41 +344,82 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                       : "#D97706"
                 }
               />
-              <KpiCell
-                icon={<Users className="h-3.5 w-3.5" />}
-                label="Owners ativos"
-                value={`${owners.length}`}
-                hint={
-                  ownerFilter
-                    ? `Filtrado: ${owners.find((o) => o.id === ownerFilter)?.name}`
-                    : "Sem filtro"
-                }
-                accent="#7C3AED"
-              />
-              <KpiCell
-                icon={<AlertCircle className="h-3.5 w-3.5" />}
+              <Divider />
+              <StatInline
                 label="SLA estourado"
                 value={`${kpis.breachCount}`}
-                hint={
-                  kpis.breachCount > 0
-                    ? "Deals acima do prazo do estagio"
-                    : "Tudo dentro do prazo"
-                }
+                hint={kpis.breachCount > 0 ? "Acao necessaria" : "Tudo no prazo"}
                 accent={kpis.breachCount > 0 ? "#DC2626" : "#059669"}
               />
+
+              {/* Mini funil — distribuicao por estagio */}
+              {filteredDeals.length > 0 && (
+                <div className="ml-auto flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400 dark:text-white/40 shrink-0">
+                    Funil
+                  </span>
+                  <div
+                    className="flex items-center gap-px overflow-hidden h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06]"
+                    role="img"
+                    aria-label="Distribuicao de deals por estagio"
+                    style={{ width: 180 }}
+                  >
+                    {pipeline.stages.map((s) => {
+                      const count = filteredDeals.filter((d) => d.stage_id === s.id).length
+                      if (count === 0) return null
+                      const pct = (count / filteredDeals.length) * 100
+                      const c = s.color ?? "#475569"
+                      return (
+                        <div
+                          key={s.id}
+                          title={`${s.name} · ${count} (${pct.toFixed(0)}%)`}
+                          style={{
+                            width: `${pct}%`,
+                            background: c,
+                            height: "100%",
+                            minWidth: 3,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── Toolbar: pills de periodo + search + filtros ── */}
+          {/* Linha 3: filtros (search + pills + owner + count) */}
           {pipeline.layout !== "state" && (
-            <div
-              className="flex flex-wrap items-center gap-2 px-5 py-3"
-            >
-              {/* Pills de periodo (DataCrazy-style) */}
+            <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.04] dark:border-white/[0.06]">
+              {/* Search */}
+              <div className="relative flex-1 max-w-[280px]">
+                <Search
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/40"
+                />
+                <input
+                  type="text"
+                  placeholder="Buscar deals..."
+                  aria-label="Buscar deals"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full h-8 rounded-[6px] pl-8 pr-7 text-[12px] bg-slate-50 dark:bg-white/[0.04] text-slate-900 dark:text-white/90 border border-black/[0.06] dark:border-white/[0.06] placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-300 dark:focus:border-white/20 focus:bg-white dark:focus:bg-[#1A1D27]"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    aria-label="Limpar busca"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white/70"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Pills de periodo */}
               <div
-                className="inline-flex items-center gap-0.5 rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] p-0.5"
+                className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-50 dark:bg-white/[0.04] p-0.5 border border-black/[0.04] dark:border-white/[0.04]"
                 role="tablist"
-                aria-label="Filtrar por periodo de criacao"
+                aria-label="Filtrar por periodo"
               >
                 {(
                   [
@@ -409,8 +440,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                       onClick={() => setPeriodFilter(p.id)}
                       className={
                         active
-                          ? "text-[11px] font-semibold px-2.5 py-1 rounded-[4px] bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                          : "text-[11px] font-medium px-2.5 py-1 rounded-[4px] text-slate-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                          ? "text-[11px] font-semibold px-2.5 py-1 rounded-[4px] bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                          : "text-[11px] font-medium px-2.5 py-1 rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white/90"
                       }
                     >
                       {p.label}
@@ -419,127 +450,69 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                 })}
               </div>
 
-              <div className="relative flex-1 max-w-xs">
-                <Search
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5"
-                  style={{ color: "#94A3B8" }}
-                />
-                <input
-                  type="text"
-                  placeholder="Buscar por nome, cliente, tag..."
-                  aria-label="Buscar deals"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white/90 border border-black/[0.08] dark:border-white/[0.08] placeholder:text-slate-400 dark:placeholder:text-white/30"
-                  style={{
-                    height: 32,
-                    fontSize: 12,
-                    borderRadius: 6,
-                    padding: "0 28px 0 30px",
-                    outline: "none",
-                  }}
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch("")}
-                    aria-label="Limpar busca"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 hover:text-slate-600"
-                    style={{ color: "#94A3B8" }}
+              {/* Owner filter */}
+              {owners.length > 1 && (
+                <div className="relative">
+                  <select
+                    value={ownerFilter}
+                    onChange={(e) => setOwnerFilter(e.target.value)}
+                    className="appearance-none h-8 pl-3 pr-7 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27] cursor-pointer focus:outline-none"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+                    <option value="">Todos owners ({owners.length})</option>
+                    {owners.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40"
+                  />
+                </div>
+              )}
 
               <button
-                title="Filtros"
-                aria-label="Filtros"
-                className="bg-white dark:bg-[#1A1D27] text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.16]"
-                style={{
-                  height: 32,
-                  padding: "0 10px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  borderRadius: 6,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  cursor: "pointer",
-                }}
+                aria-label="Mais filtros"
+                title="Mais filtros (em breve)"
+                className="h-8 px-2.5 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27]"
               >
                 <SlidersHorizontal className="h-3 w-3" />
                 Filtros
               </button>
 
               <button
-                title="Ordenacao"
-                aria-label="Ordenacao"
-                className="bg-white dark:bg-[#1A1D27] text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.16]"
-                style={{
-                  height: 32,
-                  padding: "0 10px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  borderRadius: 6,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  cursor: "pointer",
-                }}
+                aria-label="Ordenar"
+                title="Ordenar"
+                className="h-8 px-2.5 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27]"
               >
                 <ArrowUpDown className="h-3 w-3" />
                 Ordenar
               </button>
 
+              {/* Contador alinhado a direita */}
               <span
-                className="ml-auto text-slate-500 dark:text-white/55"
+                className="ml-auto text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums"
                 aria-live="polite"
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                }}
               >
                 {filteredDeals.length}{" "}
                 {filteredDeals.length === 1 ? "negocio" : "negocios"}
-                {search && (
-                  <span className="text-slate-400 dark:text-white/40"> · &ldquo;{search}&rdquo;</span>
+                {(search || ownerFilter || periodFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearch("")
+                      setOwnerFilter("")
+                      setPeriodFilter("all")
+                    }}
+                    className="ml-2 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Limpar filtros
+                  </button>
                 )}
               </span>
             </div>
           )}
 
-          {/* ── Mini funil de conversao — barra horizontal compacta
-               mostrando como deals se distribuem entre stages. Cada
-               segmento e proporcional ao count e usa a cor do stage. ── */}
-          {pipeline.layout !== "state" && filteredDeals.length > 0 && (
-            <div className="px-5 pb-3">
-              <div
-                className="flex items-center gap-px overflow-hidden h-1.5 rounded-full bg-slate-200/70 dark:bg-white/[0.06]"
-                role="img"
-                aria-label="Distribuicao de deals por estagio"
-              >
-                {pipeline.stages.map((s) => {
-                  const count = filteredDeals.filter((d) => d.stage_id === s.id).length
-                  if (count === 0) return null
-                  const pct = (count / filteredDeals.length) * 100
-                  const c = s.color ?? "#475569"
-                  return (
-                    <div
-                      key={s.id}
-                      title={`${s.name} · ${count} deal${count === 1 ? "" : "s"} (${pct.toFixed(0)}%)`}
-                      style={{
-                        width: `${pct}%`,
-                        background: c,
-                        height: "100%",
-                        minWidth: 4,
-                      }}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
+          {/* ═══════════ BOARD ═══════════ */}
           <div className="flex-1 min-h-0">
             {pipeline.layout === "state" ? (
               <StateBoard
@@ -565,7 +538,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               />
             )}
           </div>
-        </div>
+        </>
       )}
 
       <DealDrawer
@@ -630,7 +603,54 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
           mutate()
         }}
       />
-    </CrmPageShell>
+
+    </div>
+  )
+}
+
+
+/**
+ * Stat inline — versao compacta do KpiCard pra header. Sem cards
+ * grandes, sem icones. Apenas label + value + hint em coluna,
+ * separados por Divider. Estilo Linear/Vercel.
+ */
+function StatInline({
+  label,
+  value,
+  hint,
+  accent = "#475569",
+}: {
+  label: string
+  value: string
+  hint?: string
+  accent?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <div
+        className="text-[10px] font-semibold uppercase tracking-[0.06em]"
+        style={{ color: accent }}
+      >
+        {label}
+      </div>
+      <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white leading-tight">
+        {value}
+      </div>
+      {hint && (
+        <div className="text-[10px] text-slate-500 dark:text-white/50 mt-0.5 truncate">
+          {hint}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Divider() {
+  return (
+    <div
+      className="h-9 w-px bg-black/[0.06] dark:bg-white/[0.08] shrink-0"
+      aria-hidden
+    />
   )
 }
 
@@ -711,71 +731,6 @@ function PipelineSkeleton() {
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-function KpiCell({
-  icon,
-  label,
-  value,
-  hint,
-  accent = "#475569",
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  hint?: string
-  /** Cor de acento — pinta o icone e a borda lateral. */
-  accent?: string
-}) {
-  return (
-    <div
-      className="bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06]"
-      style={{
-        padding: "10px 14px",
-        borderRadius: 6,
-        borderLeft: `3px solid ${accent}`,
-        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
-      }}
-    >
-      <div
-        className="flex items-center gap-1.5"
-        style={{
-          fontSize: 10,
-          color: accent,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          fontWeight: 600,
-        }}
-      >
-        {icon}
-        {label}
-      </div>
-      <div
-        className="mt-1 text-slate-900 dark:text-white"
-        style={{
-          fontSize: 18,
-          fontWeight: 700,
-          fontVariantNumeric: "tabular-nums",
-          lineHeight: 1.15,
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {value}
-      </div>
-      {hint && (
-        <div
-          className="text-slate-500 dark:text-white/55"
-          style={{
-            fontSize: 10,
-            marginTop: 3,
-            lineHeight: 1.3,
-          }}
-        >
-          {hint}
-        </div>
-      )}
     </div>
   )
 }

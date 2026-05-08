@@ -188,20 +188,20 @@ export function DealCard({
         position: "relative",
         width: "100%",
         borderLeft: `3px solid ${accent}`,
-        borderRadius: 6,
-        padding: "10px 12px 12px",
+        borderRadius: 8,
+        padding: "12px 14px 14px",
         cursor: "pointer",
         boxShadow: isDragging
-          ? "0 8px 24px rgba(15, 23, 42, 0.16)"
+          ? "0 12px 32px rgba(15, 23, 42, 0.18)"
           : "0 1px 2px rgba(15, 23, 42, 0.04)",
-        transform: isDragging ? "rotate(0.5deg) scale(1.02)" : undefined,
-        transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+        transform: isDragging ? "rotate(0.6deg) scale(1.02)" : undefined,
+        transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease, translate 150ms ease",
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 10,
         overflow: "hidden",
       }}
-      className="group bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06] hover:border-black/[0.12] dark:hover:border-white/[0.16] hover:shadow-[0_2px_8px_rgba(15,23,42,0.08)]"
+      className="group bg-white dark:bg-[#1A1D27] border border-black/[0.06] dark:border-white/[0.06] hover:border-black/[0.14] dark:hover:border-white/[0.16] hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)] hover:-translate-y-px"
     >
       {/* ── SLA progress bar — barra fina absoluta no topo ── */}
       {slaProgressPct != null && (
@@ -225,21 +225,22 @@ export function DealCard({
         </div>
       )}
 
-      {/* ── Header: avatar + titulo + acoes hover ── */}
+      {/* ── Header: avatar + titulo + acoes ── */}
       <div className="flex items-start gap-2.5">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-semibold"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold"
           style={{
             background: contactColors.bg,
             color: contactColors.fg,
-            fontSize: 11,
-            letterSpacing: "0.02em",
+            fontSize: 12,
+            letterSpacing: "-0.01em",
+            boxShadow: `0 1px 2px ${contactColors.fg}1A`,
           }}
         >
           {contactInitials}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {isHot && (
               <Flame
                 className="h-3 w-3 shrink-0 text-orange-500"
@@ -247,11 +248,12 @@ export function DealCard({
               />
             )}
             <p
-              className="truncate text-slate-900 dark:text-white/90"
+              className="truncate text-slate-900 dark:text-white"
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: 600,
-                lineHeight: 1.25,
+                lineHeight: 1.3,
+                letterSpacing: "-0.01em",
               }}
             >
               {deal.title}
@@ -345,33 +347,30 @@ export function DealCard({
         )}
       </div>
 
-      {/* ── Valor em destaque (estilo DataCrazy) ── */}
+      {/* ── Valor em destaque ── pill com bg sutil da cor do estagio.
+            Tipografia hierarquica: label uppercase pequena + valor
+            grande tabular. */}
       {deal.value != null && deal.value > 0 && (
         <div
-          className="flex items-center justify-between"
+          className="flex items-baseline justify-between gap-2"
           style={{
-            background: hexAlpha(accent, 0.10),
-            borderRadius: 4,
-            padding: "6px 10px",
+            background: hexAlpha(accent, 0.08),
+            borderRadius: 6,
+            padding: "8px 12px",
           }}
         >
           <span
-            className="text-slate-500 dark:text-white/55"
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
+            className="text-[10px] font-semibold uppercase tracking-[0.08em] shrink-0"
+            style={{ color: accent }}
           >
             Valor
           </span>
           <span
-            className="text-slate-900 dark:text-white"
+            className="text-slate-900 dark:text-white tabular-nums truncate"
             style={{
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
+              letterSpacing: "-0.01em",
             }}
           >
             {fmtBRL(deal.value)}

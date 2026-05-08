@@ -162,7 +162,7 @@ export function KanbanBoard({
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full gap-3 overflow-x-auto px-5 py-5 bg-slate-100 dark:bg-[#0B0E15]">
+      <div className="flex h-full gap-4 overflow-x-auto px-6 py-5 bg-slate-50 dark:bg-[#0B0E15]">
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
@@ -191,44 +191,43 @@ export function KanbanBoard({
               className="flex flex-col"
               style={{ width: 304, minWidth: 304 }}
             >
-              {/* ── Header da coluna — chip colorido estilo DataCrazy ── */}
+              {/* ── Header da coluna — pilula clean estilo Linear ──
+                  Diferente do chip 100% colorido (que fica forte demais
+                  com 5+ colunas seguidas), agora usa bg branco + barra
+                  superior fina colorida + dot da cor do stage. Resultado
+                  mais leve e profissional. */}
               <div
-                className="sticky top-0 z-[1]"
+                className="sticky top-0 z-[1] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                 style={{
-                  background: color,
-                  borderRadius: "6px 6px 0 0",
-                  padding: "8px 12px",
-                  color: "#FFFFFF",
-                  boxShadow: `0 1px 3px ${hexAlpha(color, 0.25)}`,
+                  borderRadius: "8px 8px 0 0",
                 }}
               >
-                <div className="flex items-center justify-between gap-2">
+                {/* Barra superior fina colorida — assinatura visual da
+                    coluna sem invadir o conteudo */}
+                <div
+                  className="h-1"
+                  style={{
+                    background: color,
+                    borderRadius: "8px 8px 0 0",
+                  }}
+                  aria-hidden
+                />
+
+                <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ background: color }}
+                      aria-hidden
+                    />
+                    <span
                       title={stage.name}
-                      className="truncate"
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                        color: "#FFFFFF",
-                      }}
+                      className="truncate text-[12px] font-semibold uppercase tracking-[0.04em] text-slate-700 dark:text-white/85"
                     >
                       {stage.name}
                     </span>
                     <span
-                      className="shrink-0 inline-flex items-center justify-center"
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        background: hexAlpha("#FFFFFF", 0.22),
-                        color: "#FFFFFF",
-                        padding: "1px 6px",
-                        minWidth: 20,
-                        height: 16,
-                        borderRadius: 999,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
+                      className="shrink-0 inline-flex items-center justify-center text-[10px] font-bold tabular-nums rounded-full px-1.5 min-w-[20px] h-4 bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-white/70"
                     >
                       {stageDeals.length}
                     </span>
@@ -239,20 +238,7 @@ export function KanbanBoard({
                         onClick={() => onAddDeal(stage.id)}
                         aria-label="Adicionar deal"
                         title="Adicionar deal aqui"
-                        className="hover:bg-white/15"
-                        style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 4,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#FFFFFF",
-                          cursor: "pointer",
-                          background: "transparent",
-                          border: "none",
-                          transition: "background 150ms ease",
-                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
@@ -260,33 +246,15 @@ export function KanbanBoard({
                     <button
                       aria-label="Mais opcoes"
                       title="Opcoes da coluna"
-                      className="hover:bg-white/15"
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 4,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#FFFFFF",
-                        cursor: "pointer",
-                        background: "transparent",
-                        border: "none",
-                        transition: "background 150ms ease",
-                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Barra de subtotal + breach — fora do chip colorido pra
-                  manter o header limpo e o numero legivel */}
-              <div
-                className="flex items-center justify-between bg-white dark:bg-[#161922] border-l border-r border-black/5 dark:border-white/[0.06]"
-                style={{ padding: "8px 12px" }}
-              >
+                {/* Subtotal inline */}
+                <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
                 <span
                   className="truncate text-slate-900 dark:text-white/90"
                   style={{
@@ -322,40 +290,51 @@ export function KanbanBoard({
                     {slaDays ? `SLA ${slaDays}d` : ""}
                   </span>
                 )}
+                </div>
               </div>
 
-              {/* ── Droppable column ── */}
+              {/* ── Droppable column ──
+                  Container que recebe os cards. Continuacao visual do
+                  header (mesmo bg, bordas laterais, fechamento bottom).
+                  Quando dragging-over, ganha tinta da cor do stage e
+                  borda dashed pra indicar drop target. */}
               <Droppable droppableId={stage.id}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-b border-black/5 dark:border-white/[0.06]"
+                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-b border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                     style={{
                       background: snapshot.isDraggingOver
                         ? hexAlpha(color, 0.08)
                         : undefined,
-                      borderRadius: "0 0 6px 6px",
-                      borderTop: snapshot.isDraggingOver
-                        ? `1px dashed ${color}`
-                        : "1px solid transparent",
+                      borderRadius: "0 0 8px 8px",
                       padding: 8,
-                      transition: "background 150ms ease, border-color 150ms ease",
-                      minHeight: 120,
-                      gap: 6,
-                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+                      transition: "background 150ms ease",
+                      minHeight: 200,
+                      gap: 8,
+                      borderTop: snapshot.isDraggingOver
+                        ? `1.5px dashed ${color}`
+                        : "1px solid transparent",
                     }}
                   >
                     {stageDeals.length === 0 && !snapshot.isDraggingOver ? (
-                      <div
-                        className="flex flex-col items-center justify-center text-center text-slate-400 dark:text-white/30"
-                        style={{ padding: "24px 12px" }}
-                      >
-                        <p style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
-                          Vazio
+                      <div className="flex flex-col items-center justify-center text-center px-4 py-10">
+                        <div
+                          className="flex h-9 w-9 items-center justify-center rounded-full mb-2.5 shrink-0"
+                          style={{
+                            background: hexAlpha(color, 0.10),
+                            color: color,
+                          }}
+                          aria-hidden
+                        >
+                          <Plus className="h-4 w-4" />
+                        </div>
+                        <p className="text-[12px] font-medium text-slate-700 dark:text-white/70 mb-1">
+                          Nenhum deal
                         </p>
-                        <p className="text-slate-300 dark:text-white/20" style={{ fontSize: 10 }}>
-                          Arraste cards ou clique em + para adicionar
+                        <p className="text-[11px] text-slate-400 dark:text-white/40 leading-relaxed max-w-[180px]">
+                          Arraste cards ou clique em <span className="font-semibold">+</span> no header da coluna
                         </p>
                       </div>
                     ) : null}
