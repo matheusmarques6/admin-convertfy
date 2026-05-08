@@ -51,6 +51,7 @@ interface PipelineDetailResponse {
     tags: string[] | null
     position: number
     last_stage_changed_at: string | null
+    created_at?: string | null
     owner?: { id: string; name: string; avatar_url: string | null } | null
     client?: { id: string; name: string } | null
     store?: { id: string; name: string } | null
@@ -515,6 +516,30 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
         dealId={activeDealId}
         onClose={() => setActiveDealId(null)}
         onUpdated={() => mutate()}
+        fallbackDeal={(() => {
+          if (!activeDealId) return null
+          const d = allDeals.find((x) => x.id === activeDealId)
+          if (!d) return null
+          return {
+            id: d.id,
+            title: d.title,
+            value: d.value,
+            status: d.status,
+            pipeline_id: d.pipeline_id,
+            stage_id: d.stage_id,
+            tags: d.tags,
+            source: d.source,
+            created_at: d.created_at ?? null,
+            owner: d.owner,
+            client: d.client,
+            store: d.store,
+          }
+        })()}
+        onMissing={() => {
+          // 404 confirmado — refaz fetch do pipeline pra remover card
+          // fantasma do kanban se ele realmente nao existe mais.
+          mutate()
+        }}
       />
 
       {pipeline && (
@@ -524,8 +549,11 @@ export function PipelineBoardView({ pipelineId, scope }: PipelineBoardViewProps)
           pipelineId={pipeline.id}
           defaultStageId={newDealStageId || undefined}
           stages={pipeline.stages.map((s) => ({ id: s.id, name: s.name }))}
-          onCreated={(dealId) => {
-            mutate()
+          onCreated={async (dealId) => {
+            // Aguarda revalidate do pipeline antes de abrir o drawer.
+            // Sem isso, o drawer pode tentar buscar o deal direto antes
+            // do servidor terminar de comitar (race), retornando 404.
+            await mutate()
             setActiveDealId(dealId)
           }}
         />

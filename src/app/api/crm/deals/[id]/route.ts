@@ -44,6 +44,17 @@ export async function GET(
       .single()
 
     if (error || !deal) {
+      // Log detalhado pra distinguir 3 cenarios:
+      //   1. ID nao existe no DB (PGRST116 / no rows)
+      //   2. UUID malformado (22P02 / invalid syntax)
+      //   3. Erro real de query
+      log.warn("[Deals] GET 404 ou erro", {
+        id,
+        idLength: id?.length,
+        idPattern: typeof id === "string" ? id.replace(/[a-fA-F0-9]/g, "x") : "n/a",
+        errorCode: error?.code,
+        errorMessage: error?.message,
+      })
       throw new AppError("Deal nao encontrado", 404, "not-found")
     }
 

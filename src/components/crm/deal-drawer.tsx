@@ -57,6 +57,27 @@ interface DealDrawerProps {
   dealId: string | null
   onClose: () => void
   onUpdated?: () => void
+  /** Fallback: dados ja conhecidos do deal (vindo da listagem do
+   *  pipeline). Usado pra renderizar header/sidebar enquanto a API
+   *  individual nao responde, OU se ela retornar 404 por race condition. */
+  fallbackDeal?: {
+    id: string
+    title: string
+    value: number | null
+    status: string
+    pipeline_id: string
+    stage_id: string
+    tags?: string[] | null
+    source?: string | null
+    created_at?: string | null
+    owner?: { id: string; name: string; avatar_url: string | null } | null
+    client?: { id: string; name: string } | null
+    store?: { id: string; name: string } | null
+  } | null
+  /** Quando a API individual retorna 404, chama isso pra disparar
+   *  revalidacao do pipeline (que sumir com o card fantasma se
+   *  ele realmente nao existe mais no DB). */
+  onMissing?: () => void
 }
 
 interface DealDetailResponse {
@@ -124,11 +145,24 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
+export function DealDrawer({
+  dealId,
+  onClose,
+  onUpdated,
+  fallbackDeal,
+  onMissing,
+}: DealDrawerProps) {
   const open = !!dealId
   const { data, isLoading, error, mutate } = useSWR<DealDetailResponse>(
     dealId ? `/api/crm/deals/${dealId}` : null,
     fetcher,
+    {
+      // Backoff curto + retry 1x: cobre race com POST que ainda nao
+      // committou no DB primary read. Apos isso considera 404 real.
+      shouldRetryOnError: true,
+      errorRetryCount: 1,
+      errorRetryInterval: 600,
+    },
   )
 
   const [composerTab, setComposerTab] = useState<ComposerTab>("note")
@@ -143,7 +177,20 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
     }
   }, [open])
 
-  const deal = data?.deal
+  // Se a API individual falhou mas temos fallback do pipeline, usa
+  // ele. Garante que o drawer nunca fica em branco — pelo menos os
+  // dados basicos do card aparecem.
+  const errorIs404 =
+    error instanceof Error && /not.?found|nao encontrad|404/i.test(error.message)
+
+  // Quando confirmamos 404, avisa o pai pra revalidar o pipeline (e
+  // potencialmente sumir com o card fantasma).
+  useEffect(() => {
+    if (errorIs404 && onMissing) onMissing()
+  }, [errorIs404, onMissing])
+
+  const apiDeal = data?.deal
+  const deal = apiDeal ?? (fallbackDeal as DealDetailResponse["deal"] | undefined)
   const activities = data?.activities || []
 
   const postActivity = async () => {
@@ -205,9 +252,9 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             />
 
             <div className="min-w-0 flex-1 pr-3 pl-2">
-              {isLoading ? (
+              {isLoading && !deal ? (
                 <DealHeaderSkeleton />
-              ) : error ? (
+              ) : error && !deal ? (
                 <DealError message={error.message} onRetry={() => mutate()} />
               ) : deal ? (
                 <>
@@ -242,13 +289,13 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                         {fmtBRL(deal.value)}
                       </span>
                     )}
-                    {deal.probability != null && deal.probability > 0 && (
+                    {apiDeal?.probability != null && apiDeal.probability > 0 && (
                       <span
                         className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-white/55"
                         title="Probabilidade de fechar"
                       >
                         <TrendingUp className="h-3 w-3" />
-                        {deal.probability}% prob.
+                        {apiDeal.probability}% prob.
                       </span>
                     )}
                     {deal.client && (
@@ -273,20 +320,40 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             </button>
           </div>
 
-          {/* ─── REASON BANNERS ─── */}
-          {deal && isWon && deal.won_reason && (
+          {/* Banner de aviso quando usamos fallback (deal individual
+              falhou mas estamos exibindo dados do pipeline data).
+              Visivel mas nao alarmante — o drawer continua funcional. */}
+          {error && deal && (
+            <div className="px-6 py-2 flex items-center gap-2 border-b border-amber-200/70 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/15 text-xs text-amber-700 dark:text-amber-300">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">
+                Mostrando dados em cache. {errorIs404
+                  ? "Este deal pode ter sido movido ou removido."
+                  : "Erro ao carregar detalhes completos."}
+              </span>
+              <button
+                onClick={() => mutate()}
+                className="font-medium underline hover:text-amber-900 dark:hover:text-amber-200"
+              >
+                Recarregar
+              </button>
+            </div>
+          )}
+
+          {/* ─── REASON BANNERS — so disponiveis no api deal full ─── */}
+          {apiDeal && isWon && apiDeal.won_reason && (
             <div className="px-6 py-2.5 flex items-center gap-2 border-b border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/15 text-sm text-emerald-700 dark:text-emerald-300">
               <Trophy className="h-3.5 w-3.5 shrink-0" />
               <span>
-                <strong>Ganho:</strong> {deal.won_reason}
+                <strong>Ganho:</strong> {apiDeal.won_reason}
               </span>
             </div>
           )}
-          {deal && isLost && deal.lost_reason && (
+          {apiDeal && isLost && apiDeal.lost_reason && (
             <div className="px-6 py-2.5 flex items-center gap-2 border-b border-red-200/70 dark:border-red-900/40 bg-red-50 dark:bg-red-900/15 text-sm text-red-700 dark:text-red-300">
               <XCircle className="h-3.5 w-3.5 shrink-0" />
               <span>
-                <strong>Perdido:</strong> {deal.lost_reason}
+                <strong>Perdido:</strong> {apiDeal.lost_reason}
               </span>
             </div>
           )}
@@ -295,8 +362,10 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
           <div className="flex flex-1 flex-col-reverse md:flex-row overflow-hidden">
             {/* TIMELINE + COMPOSER (esquerda) */}
             <div className="flex flex-1 flex-col overflow-hidden">
-              {/* Composer */}
-              {deal && isDealOpen && (
+              {/* Composer — so quando temos o deal real do servidor.
+                  Em modo fallback (api falhou) nao deixa criar atividade
+                  pra evitar confusao de estado. */}
+              {apiDeal && isDealOpen && (
                 <div className="border-b border-black/[0.06] dark:border-white/[0.08] px-6 py-3 bg-slate-50 dark:bg-[#161922]">
                   <div className="flex items-center gap-1 mb-2">
                     {COMPOSER_TABS.map((t) => {
@@ -484,24 +553,28 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                         <span className="text-slate-400 dark:text-white/40">—</span>
                       )}
                     </SidebarRow>
-                    <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Criado em">
-                      {new Date(deal.created_at).toLocaleDateString("pt-BR")}
-                    </SidebarRow>
-                    <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Atualizado">
-                      {new Date(deal.updated_at).toLocaleDateString("pt-BR")}
-                    </SidebarRow>
+                    {deal.created_at && (
+                      <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Criado em">
+                        {new Date(deal.created_at).toLocaleDateString("pt-BR")}
+                      </SidebarRow>
+                    )}
+                    {apiDeal?.updated_at && (
+                      <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Atualizado">
+                        {new Date(apiDeal.updated_at).toLocaleDateString("pt-BR")}
+                      </SidebarRow>
+                    )}
                   </SidebarSection>
 
-                  {deal.lead && (
+                  {apiDeal?.lead && (
                     <SidebarSection title="Lead origem">
                       <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] p-3">
                         <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900 dark:text-white">
                           <ExternalLink className="h-3 w-3" />
-                          {deal.lead.name}
+                          {apiDeal.lead.name}
                         </div>
-                        {deal.lead.email && (
+                        {apiDeal.lead.email && (
                           <div className="mt-1 text-[11px] text-slate-500 dark:text-white/55">
-                            {deal.lead.email}
+                            {apiDeal.lead.email}
                           </div>
                         )}
                       </div>
@@ -523,10 +596,10 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                     </SidebarSection>
                   )}
 
-                  {deal.notes && (
+                  {apiDeal?.notes && (
                     <SidebarSection title="Notas">
                       <p className="text-sm text-slate-700 dark:text-white/75 whitespace-pre-wrap leading-relaxed">
-                        {deal.notes}
+                        {apiDeal.notes}
                       </p>
                     </SidebarSection>
                   )}
