@@ -20,9 +20,19 @@ import {
   Sparkles,
   StickyNote,
   CheckSquare,
+  AlertCircle,
+  DollarSign,
+  TrendingUp,
 } from "lucide-react"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const fetcher = async (url: string) => {
+  const r = await fetch(url)
+  const json = await r.json()
+  if (!r.ok || json?.success === false) {
+    throw new Error(json?.error || `HTTP ${r.status}`)
+  }
+  return json
+}
 
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat("pt-BR", {
@@ -50,6 +60,7 @@ interface DealDrawerProps {
 }
 
 interface DealDetailResponse {
+  success?: boolean
   deal: {
     id: string
     title: string
@@ -67,7 +78,7 @@ interface DealDetailResponse {
     pipeline_id: string
     stage_id: string
     pipeline?: { id: string; name: string }
-    stage?: { id: string; name: string; stage_type: string | null }
+    stage?: { id: string; name: string; stage_type: string | null; color?: string | null }
     owner?: { id: string; name: string; avatar_url: string | null } | null
     client?: { id: string; name: string } | null
     store?: { id: string; name: string } | null
@@ -103,9 +114,19 @@ const COMPOSER_TABS: Array<{ id: ComposerTab; label: string; icon: typeof Sticky
   { id: "email", label: "Email", icon: Mail },
 ]
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+}
+
 export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
   const open = !!dealId
-  const { data, isLoading, mutate } = useSWR<DealDetailResponse>(
+  const { data, isLoading, error, mutate } = useSWR<DealDetailResponse>(
     dealId ? `/api/crm/deals/${dealId}` : null,
     fetcher,
   )
@@ -155,135 +176,106 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
 
   const isWon = deal?.status === "won"
   const isLost = deal?.status === "lost"
-  const isOpen = deal?.status === "open"
+  const isDealOpen = deal?.status === "open"
+
+  // Cor de acento do estagio (fallback cinza ardosia se nao tiver cor)
+  const accentColor = deal?.stage?.color ?? "#475569"
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0"
-          style={{ animationDuration: "var(--crm-duration-normal)" }}
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0"
         />
         <DialogPrimitive.Content
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[100vw] sm:max-w-[640px] lg:max-w-[760px] flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
-          style={{
-            background: "var(--crm-gray-0)",
-            fontFamily: "var(--crm-font-sans)",
-            animationDuration: "var(--crm-duration-normal)",
-          }}
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[100vw] sm:max-w-[640px] lg:max-w-[820px] flex-col bg-white dark:bg-[#0F1117] text-slate-900 dark:text-white/90 shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
+          style={{ animationDuration: "200ms" }}
         >
           <DialogPrimitive.Title className="sr-only">
             {deal?.title || "Detalhes do deal"}
           </DialogPrimitive.Title>
 
-          {/* Header sticky */}
-          <div
-            className="flex items-start justify-between border-b px-6 py-4"
-            style={{
-              borderColor: "var(--crm-gray-200)",
-              background: "var(--crm-gray-0)",
-            }}
-          >
-            <div className="min-w-0 flex-1 pr-3">
+          {/* ─── HEADER ─── */}
+          <div className="relative flex items-start justify-between border-b border-black/[0.06] dark:border-white/[0.08] px-6 py-4 bg-white dark:bg-[#0F1117]">
+            {/* Faixa colorida lateral esquerda — vinculo visual com a coluna */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-1"
+              style={{ background: accentColor }}
+              aria-hidden
+            />
+
+            <div className="min-w-0 flex-1 pr-3 pl-2">
               {isLoading ? (
-                <div
-                  style={{
-                    fontSize: "var(--crm-text-sm)",
-                    color: "var(--crm-gray-500)",
-                  }}
-                >
-                  Carregando...
-                </div>
+                <DealHeaderSkeleton />
+              ) : error ? (
+                <DealError message={error.message} onRetry={() => mutate()} />
               ) : deal ? (
                 <>
+                  {/* Breadcrumb pipeline > stage + status pill */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {deal.pipeline && (
                       <span
-                        style={{
-                          fontSize: 10,
-                          color: "var(--crm-gray-500)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                          fontWeight: "var(--crm-weight-medium)",
-                        }}
+                        className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-white/55"
                       >
                         {deal.pipeline.name}
                       </span>
                     )}
                     {deal.stage && (
                       <>
-                        <ChevronRight
-                          className="h-3 w-3"
-                          style={{ color: "var(--crm-gray-300)" }}
-                        />
+                        <ChevronRight className="h-3 w-3 text-slate-300 dark:text-white/30 shrink-0" />
                         <StageBadge stage={deal.stage} />
                       </>
                     )}
                     <StatusPill status={deal.status} />
                   </div>
-                  <h2
-                    className="mt-1 truncate"
-                    style={{
-                      fontSize: "var(--crm-text-xl)",
-                      fontWeight: "var(--crm-weight-medium)",
-                      color: "var(--crm-gray-900)",
-                      lineHeight: 1.25,
-                    }}
-                  >
+
+                  {/* Titulo do deal */}
+                  <h2 className="mt-1.5 truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
                     {deal.title}
                   </h2>
-                  {deal.value != null && deal.value > 0 && (
-                    <p
-                      className="mt-1"
-                      style={{
-                        fontSize: "var(--crm-text-md)",
-                        color: "var(--crm-gray-700)",
-                        fontFamily: "var(--crm-font-mono)",
-                        fontWeight: "var(--crm-weight-medium)",
-                      }}
-                    >
-                      {fmtBRL(deal.value)}
-                      {deal.probability != null && (
-                        <span
-                          style={{
-                            marginLeft: 8,
-                            fontSize: "var(--crm-text-xs)",
-                            color: "var(--crm-gray-500)",
-                            fontFamily: "var(--crm-font-sans)",
-                          }}
-                        >
-                          · {deal.probability}% prob.
-                        </span>
-                      )}
-                    </p>
-                  )}
+
+                  {/* Valor + probabilidade + cliente */}
+                  <div className="mt-1.5 flex items-center gap-4 flex-wrap">
+                    {deal.value != null && deal.value > 0 && (
+                      <span className="inline-flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white">
+                        <DollarSign className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        {fmtBRL(deal.value)}
+                      </span>
+                    )}
+                    {deal.probability != null && deal.probability > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-white/55"
+                        title="Probabilidade de fechar"
+                      >
+                        <TrendingUp className="h-3 w-3" />
+                        {deal.probability}% prob.
+                      </span>
+                    )}
+                    {deal.client && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-white/55">
+                        <Building2 className="h-3 w-3" />
+                        {deal.client.name}
+                      </span>
+                    )}
+                  </div>
                 </>
-              ) : null}
+              ) : (
+                <DealError message="Deal nao encontrado" />
+              )}
             </div>
+
             <button
               onClick={onClose}
               aria-label="Fechar"
-              className="flex h-7 w-7 items-center justify-center hover:bg-[color:var(--crm-gray-100)]"
-              style={{
-                borderRadius: "var(--crm-radius-md)",
-                color: "var(--crm-gray-500)",
-              }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:text-slate-900 dark:text-white/60 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06]"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Reason banners (won/lost) */}
+          {/* ─── REASON BANNERS ─── */}
           {deal && isWon && deal.won_reason && (
-            <div
-              className="px-6 py-2.5 flex items-center gap-2"
-              style={{
-                background: "var(--crm-success-bg)",
-                borderBottom: "1px solid var(--crm-success-border)",
-                fontSize: "var(--crm-text-sm)",
-                color: "var(--crm-success-fg)",
-              }}
-            >
+            <div className="px-6 py-2.5 flex items-center gap-2 border-b border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/15 text-sm text-emerald-700 dark:text-emerald-300">
               <Trophy className="h-3.5 w-3.5 shrink-0" />
               <span>
                 <strong>Ganho:</strong> {deal.won_reason}
@@ -291,15 +283,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             </div>
           )}
           {deal && isLost && deal.lost_reason && (
-            <div
-              className="px-6 py-2.5 flex items-center gap-2"
-              style={{
-                background: "var(--crm-danger-bg)",
-                borderBottom: "1px solid var(--crm-danger-border)",
-                fontSize: "var(--crm-text-sm)",
-                color: "var(--crm-danger-fg)",
-              }}
-            >
+            <div className="px-6 py-2.5 flex items-center gap-2 border-b border-red-200/70 dark:border-red-900/40 bg-red-50 dark:bg-red-900/15 text-sm text-red-700 dark:text-red-300">
               <XCircle className="h-3.5 w-3.5 shrink-0" />
               <span>
                 <strong>Perdido:</strong> {deal.lost_reason}
@@ -307,19 +291,13 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
             </div>
           )}
 
-          {/* Body 2-col em desktop, stack em mobile */}
+          {/* ─── BODY 2-col em desktop, stack em mobile ─── */}
           <div className="flex flex-1 flex-col-reverse md:flex-row overflow-hidden">
-            {/* Timeline + composer */}
+            {/* TIMELINE + COMPOSER (esquerda) */}
             <div className="flex flex-1 flex-col overflow-hidden">
-              {/* Composer com tabs */}
-              {deal && isOpen && (
-                <div
-                  className="border-b px-6 py-3"
-                  style={{
-                    borderColor: "var(--crm-gray-200)",
-                    background: "var(--crm-gray-50)",
-                  }}
-                >
+              {/* Composer */}
+              {deal && isDealOpen && (
+                <div className="border-b border-black/[0.06] dark:border-white/[0.08] px-6 py-3 bg-slate-50 dark:bg-[#161922]">
                   <div className="flex items-center gap-1 mb-2">
                     {COMPOSER_TABS.map((t) => {
                       const Icon = t.icon
@@ -328,23 +306,11 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                         <button
                           key={t.id}
                           onClick={() => setComposerTab(t.id)}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            padding: "5px 10px",
-                            fontSize: "var(--crm-text-xs)",
-                            fontWeight: "var(--crm-weight-medium)",
-                            border: `1px solid ${active ? "var(--crm-gray-900)" : "var(--crm-gray-200)"}`,
-                            background: active
-                              ? "var(--crm-gray-900)"
-                              : "var(--crm-gray-0)",
-                            color: active
-                              ? "var(--crm-gray-0)"
-                              : "var(--crm-gray-700)",
-                            borderRadius: "var(--crm-radius-sm)",
-                            cursor: "pointer",
-                          }}
+                          className={
+                            active
+                              ? "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-[4px] bg-slate-900 text-white border border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white"
+                              : "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-[4px] bg-white dark:bg-[#1A1D27] text-slate-700 dark:text-white/70 border border-slate-200 dark:border-white/[0.10] hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                          }
                         >
                           <Icon className="h-3 w-3" />
                           {t.label}
@@ -353,13 +319,8 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                     })}
                   </div>
                   <textarea
-                    className="crm-input w-full"
-                    style={{
-                      height: "auto",
-                      minHeight: 60,
-                      padding: 10,
-                      resize: "vertical",
-                    }}
+                    className="w-full px-3 py-2 text-sm rounded-[6px] bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white/90 border border-slate-200 dark:border-white/[0.08] placeholder:text-slate-400 dark:placeholder:text-white/30 focus:border-slate-400 dark:focus:border-white/30 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:focus:ring-white/10 resize-y"
+                    style={{ minHeight: 64 }}
                     placeholder={
                       composerTab === "note"
                         ? "Anote uma observacao interna..."
@@ -381,8 +342,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                   <div className="mt-2 flex items-center justify-between gap-2">
                     {composerTab === "task" ? (
                       <select
-                        className="crm-input"
-                        style={{ height: "var(--crm-button-height-sm)" }}
+                        className="h-8 px-2 text-xs rounded-[4px] bg-white dark:bg-[#1A1D27] text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/[0.10]"
                         value={composerDueIn}
                         onChange={(e) => setComposerDueIn(e.target.value)}
                       >
@@ -393,21 +353,12 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                         <option value="">Sem prazo</option>
                       </select>
                     ) : (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: "var(--crm-gray-500)",
-                        }}
-                      >
+                      <span className="text-[10px] text-slate-400 dark:text-white/40">
                         ⌘/Ctrl+Enter pra enviar
                       </span>
                     )}
                     <button
-                      className="crm-button-primary"
-                      style={{
-                        height: "var(--crm-button-height-sm)",
-                        padding: "0 12px",
-                      }}
+                      className="h-8 px-3 text-xs font-medium rounded-[4px] bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={postActivity}
                       disabled={!composerContent.trim() || posting}
                     >
@@ -424,39 +375,16 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
 
               {/* Timeline */}
               <div className="flex-1 overflow-auto px-6 py-4">
-                <h3
-                  style={{
-                    fontSize: 10,
-                    color: "var(--crm-gray-500)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontWeight: "var(--crm-weight-medium)",
-                    marginBottom: "var(--crm-space-3)",
-                  }}
-                >
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-white/55 mb-3">
                   Atividades ({activities.length})
                 </h3>
-                {activities.length === 0 ? (
-                  <p
-                    style={{
-                      fontSize: "var(--crm-text-sm)",
-                      color: "var(--crm-gray-500)",
-                    }}
-                  >
-                    Nenhuma atividade registrada ainda.
-                  </p>
+                {isLoading && !data ? (
+                  <ActivitiesSkeleton />
+                ) : activities.length === 0 ? (
+                  <EmptyActivities />
                 ) : (
                   <ol className="space-y-4 relative">
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 13,
-                        top: 0,
-                        bottom: 0,
-                        width: 1,
-                        background: "var(--crm-gray-200)",
-                      }}
-                    />
+                    <div className="absolute top-0 bottom-0 w-px bg-slate-200 dark:bg-white/[0.08]" style={{ left: 13 }} />
                     {activities.map((a) => {
                       const Icon = ACTIVITY_ICONS[a.type] || FileText
                       const isOverdue =
@@ -470,64 +398,37 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                           style={{ zIndex: 1 }}
                         >
                           <div
-                            className="flex h-7 w-7 shrink-0 items-center justify-center"
-                            style={{
-                              background:
-                                a.type === "stage_change"
-                                  ? "var(--crm-info-bg)"
-                                  : isOverdue
-                                    ? "var(--crm-danger-bg)"
-                                    : "var(--crm-gray-100)",
-                              borderRadius: "var(--crm-radius-full)",
-                              color: isOverdue
-                                ? "var(--crm-danger-fg)"
-                                : "var(--crm-gray-600)",
-                              border: "2px solid var(--crm-gray-0)",
-                            }}
+                            className={
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 " +
+                              (a.type === "stage_change"
+                                ? "bg-blue-50 text-blue-700 border-white dark:bg-blue-900/30 dark:text-blue-300 dark:border-[#0F1117]"
+                                : isOverdue
+                                  ? "bg-red-50 text-red-700 border-white dark:bg-red-900/30 dark:text-red-300 dark:border-[#0F1117]"
+                                  : "bg-slate-100 text-slate-700 border-white dark:bg-white/[0.06] dark:text-white/70 dark:border-[#0F1117]")
+                            }
                           >
                             <Icon className="h-3 w-3" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline justify-between gap-2">
-                              <span
-                                style={{
-                                  fontSize: "var(--crm-text-xs)",
-                                  fontWeight: "var(--crm-weight-medium)",
-                                  color: "var(--crm-gray-700)",
-                                }}
-                              >
+                              <span className="text-xs font-medium text-slate-700 dark:text-white/80">
                                 {a.creator?.name || "Sistema"}
                               </span>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  color: "var(--crm-gray-500)",
-                                }}
-                              >
+                              <span className="text-[10px] text-slate-500 dark:text-white/50">
                                 {new Date(a.created_at).toLocaleString("pt-BR")}
                               </span>
                             </div>
-                            <p
-                              className="mt-0.5"
-                              style={{
-                                fontSize: "var(--crm-text-base)",
-                                color: "var(--crm-gray-800)",
-                                lineHeight: "var(--crm-leading-normal)",
-                                whiteSpace: "pre-wrap",
-                              }}
-                            >
+                            <p className="mt-0.5 text-[13px] text-slate-700 dark:text-white/80 leading-relaxed whitespace-pre-wrap">
                               {a.content}
                             </p>
                             {a.due_at && (
                               <p
-                                className="mt-1"
-                                style={{
-                                  fontSize: 10,
-                                  color: isOverdue
-                                    ? "var(--crm-danger-fg)"
-                                    : "var(--crm-warning-fg)",
-                                  fontWeight: "var(--crm-weight-medium)",
-                                }}
+                                className={
+                                  "mt-1 text-[10px] font-medium " +
+                                  (isOverdue
+                                    ? "text-red-600 dark:text-red-400"
+                                    : "text-amber-700 dark:text-amber-400")
+                                }
                               >
                                 {isOverdue ? "⚠ Atrasada" : "⏰ Vence"}{" "}
                                 {new Date(a.due_at).toLocaleString("pt-BR")}
@@ -542,101 +443,64 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
               </div>
             </div>
 
-            {/* Sidebar */}
+            {/* SIDEBAR (direita / topo no mobile) */}
             {deal && (
-              <aside
-                className="w-full md:w-[260px] md:shrink-0 overflow-auto border-b md:border-b-0 md:border-l"
-                style={{
-                  borderColor: "var(--crm-gray-200)",
-                  background: "var(--crm-gray-50)",
-                }}
-              >
-                <div className="px-4 py-4 space-y-4">
+              <aside className="w-full md:w-[280px] md:shrink-0 overflow-auto border-b md:border-b-0 md:border-l border-black/[0.06] dark:border-white/[0.08] bg-slate-50 dark:bg-[#161922]">
+                <div className="px-5 py-4 space-y-5">
                   <SidebarSection title="Sobre">
-                    <SidebarRow
-                      icon={<User className="h-3 w-3" />}
-                      label="Owner"
-                    >
+                    <SidebarRow icon={<User className="h-3 w-3" />} label="Owner">
                       {deal.owner ? (
                         <div className="flex items-center gap-1.5">
                           {deal.owner.avatar_url ? (
-                            // Avatar 16x16 — ver justificativa em deal-card.tsx.
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={deal.owner.avatar_url}
                               alt={deal.owner.name}
                               className="h-4 w-4 rounded-full object-cover"
                             />
-                          ) : null}
+                          ) : (
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 dark:bg-white/[0.10] text-[8px] font-semibold text-slate-600 dark:text-white/70">
+                              {getInitials(deal.owner.name)}
+                            </span>
+                          )}
                           <span>{deal.owner.name}</span>
                         </div>
                       ) : (
-                        "—"
+                        <span className="text-slate-400 dark:text-white/40">—</span>
                       )}
                     </SidebarRow>
-                    <SidebarRow
-                      icon={<Building2 className="h-3 w-3" />}
-                      label="Cliente"
-                    >
-                      {deal.client?.name || "—"}
+                    <SidebarRow icon={<Building2 className="h-3 w-3" />} label="Cliente">
+                      {deal.client?.name || (
+                        <span className="text-slate-400 dark:text-white/40">Sem cliente</span>
+                      )}
                     </SidebarRow>
                     {deal.store && (
-                      <SidebarRow
-                        icon={<Building2 className="h-3 w-3" />}
-                        label="Loja"
-                      >
+                      <SidebarRow icon={<Building2 className="h-3 w-3" />} label="Loja">
                         {deal.store.name}
                       </SidebarRow>
                     )}
-                    <SidebarRow
-                      icon={<Tag className="h-3 w-3" />}
-                      label="Fonte"
-                    >
-                      {deal.source || "—"}
+                    <SidebarRow icon={<Tag className="h-3 w-3" />} label="Fonte">
+                      {deal.source || (
+                        <span className="text-slate-400 dark:text-white/40">—</span>
+                      )}
                     </SidebarRow>
-                    <SidebarRow
-                      icon={<Calendar className="h-3 w-3" />}
-                      label="Criado em"
-                    >
+                    <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Criado em">
                       {new Date(deal.created_at).toLocaleDateString("pt-BR")}
                     </SidebarRow>
-                    <SidebarRow
-                      icon={<Calendar className="h-3 w-3" />}
-                      label="Atualizado"
-                    >
+                    <SidebarRow icon={<Calendar className="h-3 w-3" />} label="Atualizado">
                       {new Date(deal.updated_at).toLocaleDateString("pt-BR")}
                     </SidebarRow>
                   </SidebarSection>
 
                   {deal.lead && (
                     <SidebarSection title="Lead origem">
-                      <div
-                        style={{
-                          padding: 8,
-                          background: "var(--crm-gray-0)",
-                          border: "1px solid var(--crm-gray-200)",
-                          borderRadius: "var(--crm-radius-md)",
-                        }}
-                      >
-                        <div
-                          className="flex items-center gap-1.5"
-                          style={{
-                            fontSize: "var(--crm-text-sm)",
-                            fontWeight: "var(--crm-weight-medium)",
-                            color: "var(--crm-gray-900)",
-                          }}
-                        >
+                      <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] p-3">
+                        <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900 dark:text-white">
                           <ExternalLink className="h-3 w-3" />
                           {deal.lead.name}
                         </div>
                         {deal.lead.email && (
-                          <div
-                            className="mt-0.5"
-                            style={{
-                              fontSize: 10,
-                              color: "var(--crm-gray-500)",
-                            }}
-                          >
+                          <div className="mt-1 text-[11px] text-slate-500 dark:text-white/55">
                             {deal.lead.email}
                           </div>
                         )}
@@ -650,14 +514,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
                         {deal.tags.map((t) => (
                           <span
                             key={t}
-                            style={{
-                              fontSize: 10,
-                              color: "var(--crm-gray-700)",
-                              background: "var(--crm-gray-100)",
-                              padding: "2px 8px",
-                              borderRadius: "var(--crm-radius-sm)",
-                              border: "1px solid var(--crm-gray-200)",
-                            }}
+                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-700 dark:text-white/75 border border-slate-200 dark:border-white/[0.08]"
                           >
                             {t}
                           </span>
@@ -668,14 +525,7 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
 
                   {deal.notes && (
                     <SidebarSection title="Notas">
-                      <p
-                        style={{
-                          fontSize: "var(--crm-text-sm)",
-                          color: "var(--crm-gray-700)",
-                          whiteSpace: "pre-wrap",
-                          lineHeight: "var(--crm-leading-normal)",
-                        }}
-                      >
+                      <p className="text-sm text-slate-700 dark:text-white/75 whitespace-pre-wrap leading-relaxed">
                         {deal.notes}
                       </p>
                     </SidebarSection>
@@ -690,42 +540,22 @@ export function DealDrawer({ dealId, onClose, onUpdated }: DealDrawerProps) {
   )
 }
 
+// ── Sub-componentes ──────────────────────────────────────────────
+
 function StageBadge({
   stage,
 }: {
-  stage: { name: string; stage_type: string | null }
+  stage: { name: string; stage_type: string | null; color?: string | null }
 }) {
-  const colors =
+  const tone =
     stage.stage_type === "won"
-      ? {
-          bg: "var(--crm-success-bg)",
-          fg: "var(--crm-success-fg)",
-          border: "var(--crm-success-border)",
-        }
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-900/40"
       : stage.stage_type === "lost"
-        ? {
-            bg: "var(--crm-danger-bg)",
-            fg: "var(--crm-danger-fg)",
-            border: "var(--crm-danger-border)",
-          }
-        : {
-            bg: "var(--crm-gray-100)",
-            fg: "var(--crm-gray-700)",
-            border: "var(--crm-gray-200)",
-          }
+        ? "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-900/40"
+        : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/[0.06] dark:text-white/75 dark:border-white/[0.08]"
   return (
     <span
-      style={{
-        fontSize: 10,
-        color: colors.fg,
-        background: colors.bg,
-        border: `1px solid ${colors.border}`,
-        padding: "2px 8px",
-        borderRadius: "var(--crm-radius-sm)",
-        fontWeight: "var(--crm-weight-medium)",
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-      }}
+      className={`text-[10px] font-medium uppercase tracking-[0.04em] px-2 py-0.5 rounded-[3px] border ${tone}`}
     >
       {stage.name}
     </span>
@@ -735,19 +565,7 @@ function StageBadge({
 function StatusPill({ status }: { status: string }) {
   if (status === "won") {
     return (
-      <span
-        style={{
-          fontSize: 10,
-          color: "var(--crm-success-fg)",
-          background: "var(--crm-success-bg)",
-          padding: "2px 8px",
-          borderRadius: "var(--crm-radius-full)",
-          fontWeight: "var(--crm-weight-medium)",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 3,
-        }}
-      >
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
         <Trophy className="h-2.5 w-2.5" />
         GANHO
       </span>
@@ -755,21 +573,16 @@ function StatusPill({ status }: { status: string }) {
   }
   if (status === "lost") {
     return (
-      <span
-        style={{
-          fontSize: 10,
-          color: "var(--crm-danger-fg)",
-          background: "var(--crm-danger-bg)",
-          padding: "2px 8px",
-          borderRadius: "var(--crm-radius-full)",
-          fontWeight: "var(--crm-weight-medium)",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 3,
-        }}
-      >
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
         <XCircle className="h-2.5 w-2.5" />
         PERDIDO
+      </span>
+    )
+  }
+  if (status === "open") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+        ABERTO
       </span>
     )
   }
@@ -785,19 +598,10 @@ function SidebarSection({
 }) {
   return (
     <section>
-      <h4
-        style={{
-          fontSize: 10,
-          color: "var(--crm-gray-500)",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          fontWeight: "var(--crm-weight-medium)",
-          marginBottom: "var(--crm-space-2)",
-        }}
-      >
+      <h4 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-white/55 mb-2">
         {title}
       </h4>
-      <div className="space-y-1.5">{children}</div>
+      <div className="space-y-2">{children}</div>
     </section>
   )
 }
@@ -814,26 +618,96 @@ function SidebarRow({
   return (
     <div className="flex items-start gap-2">
       <div
-        className="flex items-center gap-1.5 shrink-0"
-        style={{
-          fontSize: 10,
-          color: "var(--crm-gray-500)",
-          width: 70,
-          paddingTop: 1,
-        }}
+        className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-500 dark:text-white/55"
+        style={{ width: 80, paddingTop: 1 }}
       >
         {icon}
         <span>{label}</span>
       </div>
-      <div
-        className="flex-1 min-w-0"
-        style={{
-          fontSize: "var(--crm-text-sm)",
-          color: "var(--crm-gray-800)",
-        }}
-      >
+      <div className="flex-1 min-w-0 text-[13px] text-slate-800 dark:text-white/85">
         {children}
       </div>
+    </div>
+  )
+}
+
+function DealHeaderSkeleton() {
+  return (
+    <div className="space-y-2 animate-pulse">
+      <div className="flex items-center gap-2">
+        <div className="h-3 w-24 rounded bg-slate-200 dark:bg-white/[0.08]" />
+        <div className="h-3 w-3 rounded bg-slate-100 dark:bg-white/[0.04]" />
+        <div className="h-4 w-20 rounded bg-slate-200 dark:bg-white/[0.08]" />
+      </div>
+      <div className="h-6 w-3/4 rounded bg-slate-300 dark:bg-white/[0.10]" />
+      <div className="flex items-center gap-3">
+        <div className="h-4 w-28 rounded bg-slate-200 dark:bg-white/[0.08]" />
+        <div className="h-4 w-20 rounded bg-slate-100 dark:bg-white/[0.06]" />
+      </div>
+    </div>
+  )
+}
+
+function ActivitiesSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="flex gap-3 animate-pulse">
+          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-white/[0.08] shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-24 rounded bg-slate-200 dark:bg-white/[0.08]" />
+              <div className="h-2.5 w-20 rounded bg-slate-100 dark:bg-white/[0.06]" />
+            </div>
+            <div className="h-3 w-full rounded bg-slate-100 dark:bg-white/[0.06]" />
+            <div className="h-3 w-2/3 rounded bg-slate-100 dark:bg-white/[0.06]" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EmptyActivities() {
+  return (
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-400 dark:text-white/40 mb-3">
+        <FileText className="h-4 w-4" />
+      </div>
+      <p className="text-sm font-medium text-slate-700 dark:text-white/80">
+        Nenhuma atividade ainda
+      </p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-white/55 max-w-xs">
+        Use o composer acima pra adicionar uma nota, criar uma tarefa ou registrar uma ligacao/email.
+      </p>
+    </div>
+  )
+}
+
+function DealError({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry?: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span className="text-sm font-medium">Erro ao carregar deal</span>
+      </div>
+      <p className="text-xs text-slate-600 dark:text-white/60 break-words">
+        {message}
+      </p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="self-start text-xs font-medium text-slate-700 dark:text-white/80 hover:text-slate-900 dark:hover:text-white underline"
+        >
+          Tentar novamente
+        </button>
+      )}
     </div>
   )
 }
