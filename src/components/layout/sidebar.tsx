@@ -33,13 +33,23 @@ import {
   Wrench,
   Coins,
   FileText,
+  Search,
+  Sun,
+  Moon,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { Logo, LogoIcon } from "@/components/ui/logo"
 import { Icon } from "@/components/ui/icon"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { useCommandPaletteSafe } from "@/components/ui/command-palette"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
@@ -263,6 +273,8 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
   const workspace = useWorkspace()
   const wsMeta = WORKSPACES[workspace]
   const { unreadCount: notificationsUnread } = useReportNotifications()
+  const { theme, setTheme } = useTheme()
+  const commandPalette = useCommandPaletteSafe()
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -395,7 +407,26 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
 
         {/* Footer */}
         <div className="mt-auto shrink-0 border-t border-white/[0.06]">
+          {/* Acoes globais — busca + tema */}
           <div className="py-2 space-y-[2px]">
+            {commandPalette && (
+              <SidebarActionButton
+                icon={Search}
+                label="Buscar"
+                shortcut="⌘K"
+                collapsed={collapsed}
+                onClick={commandPalette.open}
+              />
+            )}
+            <SidebarActionButton
+              icon={theme === "dark" ? Sun : Moon}
+              label={theme === "dark" ? "Tema claro" : "Tema escuro"}
+              collapsed={collapsed}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            />
+          </div>
+
+          <div className="border-t border-white/[0.06] py-2 space-y-[2px]">
             <SidebarItem
               icon={Settings}
               label="Configuracoes"
@@ -420,6 +451,69 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
       </aside>
     </TooltipProvider>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Action button (busca, tema) — visual igual ao SidebarItem mas como <button>
+// porque sao acoes globais, nao rotas.
+// ---------------------------------------------------------------------------
+
+interface SidebarActionButtonProps {
+  icon: LucideIcon
+  label: string
+  collapsed: boolean
+  onClick: () => void
+  shortcut?: string
+}
+
+function SidebarActionButton({
+  icon,
+  label,
+  collapsed,
+  onClick,
+  shortcut,
+}: SidebarActionButtonProps) {
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        "relative flex items-center rounded-md text-[13px] font-medium",
+        "transition-all duration-150",
+        "text-white/70 hover:bg-white/[0.05] hover:text-white",
+        collapsed
+          ? "w-9 h-9 justify-center mx-auto"
+          : "mx-3 gap-3 px-3 h-9 w-[calc(100%-1.5rem)]",
+      )}
+    >
+      <Icon icon={icon} size={16} className="shrink-0 text-white/60" />
+      {!collapsed && <span className="truncate flex-1 text-left">{label}</span>}
+      {!collapsed && shortcut && (
+        <kbd className="text-[10px] font-medium text-white/40 border border-white/[0.08] rounded px-1.5 py-0.5 bg-white/[0.03]">
+          {shortcut}
+        </kbd>
+      )}
+    </button>
+  )
+
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent
+          side="right"
+          sideOffset={8}
+          className="text-xs font-medium px-2.5 py-1.5"
+        >
+          {label}
+          {shortcut && ` (${shortcut})`}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return button
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ export default function OperacionalPipelinesLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem-1rem)] md:h-[calc(100vh-3.5rem-1.5rem)] lg:h-[calc(100vh-3.5rem-2rem)]">
+    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-1rem)] md:h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-2rem)]">
       <div className="hidden md:block h-full overflow-hidden">
         <PipelinesNavSidebar scope="cs" />
       </div>

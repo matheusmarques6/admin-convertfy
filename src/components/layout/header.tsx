@@ -5,8 +5,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Bell,
-  Moon,
-  Sun,
   Check,
   Loader2,
   PartyPopper,
@@ -14,11 +12,8 @@ import {
   XCircle,
   Megaphone,
   ChevronRight,
-  Search,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { useCommandPaletteSafe } from "@/components/ui/command-palette"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,9 +90,7 @@ interface HeaderProps {
 
 export function Header({ user: _userProp }: HeaderProps) {
   const pathname = usePathname()
-  const { theme, setTheme } = useTheme()
   const { user } = useAuthStore()
-  const commandPalette = useCommandPaletteSafe()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -185,6 +178,12 @@ export function Header({ user: _userProp }: HeaderProps) {
     }
   }
 
+  // Esconde header em rotas de pipeline (board fullscreen estilo DataCrazy).
+  const hidden = useMemo(
+    () => /^\/admin\/(comercial|operacional)\/pipelines/.test(pathname),
+    [pathname],
+  )
+
   const pageInfo = useMemo(() => {
     const sortedPaths = Object.keys(pageTitles).sort((a, b) => b.length - a.length)
     let title = "Convertfy Admin"
@@ -223,6 +222,8 @@ export function Header({ user: _userProp }: HeaderProps) {
     return { title, breadcrumbs }
   }, [pathname])
 
+  if (hidden) return null
+
   return (
     <header className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
       {/* Page Title with Breadcrumbs */}
@@ -252,44 +253,6 @@ export function Header({ user: _userProp }: HeaderProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-1 sm:gap-1.5">
-        {/* Search / Command Palette */}
-        {commandPalette && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden sm:flex items-center gap-2 h-9 px-3 text-muted-foreground hover:text-foreground rounded-[8px] border border-border bg-muted/50"
-            onClick={commandPalette.open}
-          >
-            <Search className="h-3.5 w-3.5" />
-            <span className="text-xs">Buscar...</span>
-            <kbd className="ml-1 text-[10px] font-medium text-muted-foreground/70 border border-border rounded px-1 py-0.5 bg-background">
-              Ctrl K
-            </kbd>
-          </Button>
-        )}
-        {commandPalette && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="sm:hidden h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
-            onClick={commandPalette.open}
-          >
-            <Search className="h-4 w-4" />
-          </Button>
-        )}
-
-        {/* Theme Toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Alternar tema</span>
-        </Button>
-
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

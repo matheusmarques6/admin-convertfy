@@ -5,10 +5,10 @@ import { PipelinesNavSidebar } from "@/components/crm/pipelines-nav-sidebar"
 /**
  * Layout 2-paineis para /admin/comercial/pipelines/**.
  *
- * Anula o padding do <main> do admin layout (px-4 md:px-6 lg:px-8) com
- * `-m-*` matching e usa `h-[calc(100vh-3.5rem)]` pra ocupar a viewport
- * inteira menos a altura do header (h-14 = 3.5rem). Em mobile (sem
- * header desktop) usa h-screen.
+ * Como o Header global e ocultado nessas rotas (ver
+ * `components/layout/header.tsx`), a viewport util e a tela toda menos o
+ * padding do <main>. `-m-*` cancela o padding do main e `h-[calc(100vh-...)]`
+ * compensa apenas o padding (sem -3.5rem do header).
  */
 export default function ComercialPipelinesLayout({
   children,
@@ -16,7 +16,7 @@ export default function ComercialPipelinesLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem-1rem)] md:h-[calc(100vh-3.5rem-1.5rem)] lg:h-[calc(100vh-3.5rem-2rem)]">
+    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-1rem)] md:h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-2rem)]">
       <div className="hidden md:block h-full overflow-hidden">
         <PipelinesNavSidebar scope="sales" />
       </div>
