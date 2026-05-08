@@ -46,14 +46,7 @@ interface FormDetail {
     slug: string
     description: string | null
     status: "draft" | "published" | "archived"
-    theme: {
-      primaryColor?: string
-      backgroundColor?: string
-      textColor?: string
-      headline?: string
-      subheadline?: string
-      buttonText?: string
-    }
+    theme: FormTheme
     pipeline_id: string | null
     stage_id: string | null
     success_message: string | null
@@ -68,6 +61,101 @@ interface FormDetail {
     deal_id: string | null
   }>
 }
+
+interface FormTheme {
+  mode?: "light" | "dark"
+  primaryColor?: string
+  backgroundColor?: string
+  textColor?: string
+  bgGradient?: { from: string; to: string; angle?: number } | null
+  cardBgColor?: string
+  cardBorderColor?: string
+  cardShadow?: "none" | "sm" | "md" | "lg"
+  containerWidth?: number
+  inputBgColor?: string
+  inputBorderColor?: string
+  inputTextColor?: string
+  buttonText?: string
+  buttonTextColor?: string
+  buttonGradient?: { from: string; to: string; angle?: number } | null
+  fontFamily?: string
+  fontSize?: number
+  headingSize?: number
+  subheadingSize?: number
+  borderRadius?: number
+  hideTitle?: boolean
+  hideLabels?: boolean
+  hidePoweredBy?: boolean
+  headline?: string
+  subheadline?: string
+  badge?: string
+  badgeColor?: string
+}
+
+/**
+ * Templates pre-configurados — 1 clique aplica todo o tema. Pode estender
+ * com mais templates no futuro (corporate, festa, e-commerce, etc).
+ */
+const THEME_PRESETS: Array<{ key: string; label: string; theme: FormTheme }> = [
+  {
+    key: "convertfy-aceleradora",
+    label: "Aceleradora (dark gradient)",
+    theme: {
+      mode: "dark",
+      primaryColor: "#7C3AED",
+      textColor: "#F1F5F9",
+      bgGradient: { from: "#0B0B14", to: "#1E1B4B", angle: 135 },
+      buttonGradient: { from: "#6366F1", to: "#A78BFA", angle: 90 },
+      cardBgColor: "rgba(20,22,40,0.55)",
+      cardBorderColor: "rgba(255,255,255,0.08)",
+      cardShadow: "lg",
+      containerWidth: 460,
+      inputBgColor: "rgba(255,255,255,0.04)",
+      inputBorderColor: "rgba(255,255,255,0.10)",
+      inputTextColor: "#F1F5F9",
+      borderRadius: 10,
+      fontFamily: "Inter, system-ui, sans-serif",
+      fontSize: 14,
+      headingSize: 30,
+      subheadingSize: 14,
+      buttonText: "Solicitar diagnostico gratuito",
+      buttonTextColor: "#FFFFFF",
+      hidePoweredBy: false,
+      badge: "Aceleradora #1 de E-mail Marketing",
+      badgeColor: "#A78BFA",
+    },
+  },
+  {
+    key: "minimal-light",
+    label: "Minimal claro",
+    theme: {
+      mode: "light",
+      primaryColor: "#2563EB",
+      backgroundColor: "#F8FAFC",
+      textColor: "#0F172A",
+      cardBgColor: "#FFFFFF",
+      cardShadow: "sm",
+      borderRadius: 8,
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 14,
+    },
+  },
+  {
+    key: "soft-pastel",
+    label: "Soft pastel",
+    theme: {
+      mode: "light",
+      primaryColor: "#DB2777",
+      bgGradient: { from: "#FCE7F3", to: "#E0E7FF", angle: 135 },
+      cardBgColor: "#FFFFFF",
+      cardShadow: "sm",
+      borderRadius: 14,
+      headingSize: 26,
+      buttonGradient: { from: "#EC4899", to: "#8B5CF6", angle: 90 },
+    },
+  },
+]
 
 const FIELD_TYPES: Array<{ value: string; label: string }> = [
   { value: "text", label: "Texto curto" },
@@ -428,26 +516,251 @@ export default function FormEditorPage({
 
         {/* COLUNA DIREITA — preview + theme + embed */}
         <div className="space-y-5">
-          <Section title="Aparência">
-            <Row label="Cor primária">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={theme.primaryColor ?? "#2563EB"}
-                  onChange={(e) =>
-                    setTheme((t) => ({ ...t, primaryColor: e.target.value }))
-                  }
-                  className="h-8 w-12 rounded-[4px] border border-slate-200 dark:border-white/[0.10] cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={theme.primaryColor ?? "#2563EB"}
-                  onChange={(e) =>
-                    setTheme((t) => ({ ...t, primaryColor: e.target.value }))
-                  }
-                  className="crm-input flex-1 font-mono text-[12px]"
-                />
+          <Section
+            title="Aparência"
+            action={
+              <button
+                type="button"
+                onClick={() => setTheme({})}
+                className="crm-button-ghost text-[10px]"
+                style={{ height: 24, padding: "0 8px" }}
+                title="Restaurar tema padrao"
+              >
+                Resetar
+              </button>
+            }
+          >
+            {/* ── Templates ── */}
+            <Row label="Template (1 clique)" hint="Aplica um conjunto pronto. Voce pode editar tudo depois.">
+              <div className="flex flex-wrap gap-1.5">
+                {THEME_PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setTheme(p.theme)}
+                    className="crm-button-ghost text-[11px]"
+                    style={{ height: 26, padding: "0 10px" }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
+            </Row>
+
+            {/* ── Modo claro/escuro ── */}
+            <Row label="Modo">
+              <div className="flex gap-1">
+                {([
+                  { v: "light", label: "Claro" },
+                  { v: "dark", label: "Escuro" },
+                ] as const).map((o) => {
+                  const active = (theme.mode ?? "light") === o.v
+                  return (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => setTheme((t) => ({ ...t, mode: o.v }))}
+                      className={
+                        active
+                          ? "crm-button-primary text-[11px]"
+                          : "crm-button-ghost text-[11px]"
+                      }
+                      style={{ height: 26, padding: "0 12px" }}
+                    >
+                      {o.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </Row>
+
+            <Row label="Cor primária">
+              <ColorRow
+                value={theme.primaryColor ?? "#2563EB"}
+                onChange={(v) => setTheme((t) => ({ ...t, primaryColor: v }))}
+              />
+            </Row>
+
+            {/* ── Fundo: solido ou gradiente ── */}
+            <Row label="Fundo">
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  {([
+                    { v: "solid", label: "Cor sólida" },
+                    { v: "gradient", label: "Gradiente" },
+                  ] as const).map((o) => {
+                    const isGrad = !!theme.bgGradient
+                    const active = o.v === (isGrad ? "gradient" : "solid")
+                    return (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() =>
+                          setTheme((t) =>
+                            o.v === "gradient"
+                              ? {
+                                  ...t,
+                                  bgGradient: t.bgGradient ?? {
+                                    from: t.backgroundColor ?? "#0B0B14",
+                                    to: "#1E1B4B",
+                                    angle: 135,
+                                  },
+                                }
+                              : { ...t, bgGradient: null },
+                          )
+                        }
+                        className={
+                          active
+                            ? "crm-button-primary text-[11px]"
+                            : "crm-button-ghost text-[11px]"
+                        }
+                        style={{ height: 26, padding: "0 12px" }}
+                      >
+                        {o.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {theme.bgGradient ? (
+                  <div className="space-y-1.5">
+                    <ColorRow
+                      label="De"
+                      value={theme.bgGradient.from}
+                      onChange={(v) =>
+                        setTheme((t) => ({
+                          ...t,
+                          bgGradient: {
+                            ...(t.bgGradient ?? { from: v, to: v, angle: 135 }),
+                            from: v,
+                          },
+                        }))
+                      }
+                    />
+                    <ColorRow
+                      label="Para"
+                      value={theme.bgGradient.to}
+                      onChange={(v) =>
+                        setTheme((t) => ({
+                          ...t,
+                          bgGradient: {
+                            ...(t.bgGradient ?? { from: v, to: v, angle: 135 }),
+                            to: v,
+                          },
+                        }))
+                      }
+                    />
+                    <NumberRow
+                      label="Ângulo"
+                      value={theme.bgGradient.angle ?? 135}
+                      onChange={(v) =>
+                        setTheme((t) => ({
+                          ...t,
+                          bgGradient: {
+                            ...(t.bgGradient ?? { from: "#000", to: "#000" }),
+                            angle: v,
+                          },
+                        }))
+                      }
+                      min={0}
+                      max={360}
+                      suffix="°"
+                    />
+                  </div>
+                ) : (
+                  <ColorRow
+                    value={theme.backgroundColor ?? "#FFFFFF"}
+                    onChange={(v) =>
+                      setTheme((t) => ({ ...t, backgroundColor: v }))
+                    }
+                  />
+                )}
+              </div>
+            </Row>
+
+            {/* ── Botao: cor solida ou gradiente ── */}
+            <Row label="Botão">
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  {([
+                    { v: "solid", label: "Sólido" },
+                    { v: "gradient", label: "Gradiente" },
+                  ] as const).map((o) => {
+                    const isGrad = !!theme.buttonGradient
+                    const active = o.v === (isGrad ? "gradient" : "solid")
+                    return (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() =>
+                          setTheme((t) =>
+                            o.v === "gradient"
+                              ? {
+                                  ...t,
+                                  buttonGradient: t.buttonGradient ?? {
+                                    from: t.primaryColor ?? "#6366F1",
+                                    to: "#A78BFA",
+                                    angle: 90,
+                                  },
+                                }
+                              : { ...t, buttonGradient: null },
+                          )
+                        }
+                        className={
+                          active
+                            ? "crm-button-primary text-[11px]"
+                            : "crm-button-ghost text-[11px]"
+                        }
+                        style={{ height: 26, padding: "0 12px" }}
+                      >
+                        {o.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {theme.buttonGradient && (
+                  <div className="space-y-1.5">
+                    <ColorRow
+                      label="De"
+                      value={theme.buttonGradient.from}
+                      onChange={(v) =>
+                        setTheme((t) => ({
+                          ...t,
+                          buttonGradient: {
+                            ...(t.buttonGradient ?? { from: v, to: v }),
+                            from: v,
+                          },
+                        }))
+                      }
+                    />
+                    <ColorRow
+                      label="Para"
+                      value={theme.buttonGradient.to}
+                      onChange={(v) =>
+                        setTheme((t) => ({
+                          ...t,
+                          buttonGradient: {
+                            ...(t.buttonGradient ?? { from: v, to: v }),
+                            to: v,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            </Row>
+
+            {/* ── Conteudo ── */}
+            <Row label="Badge (chip acima do título)" hint="Opcional. Ex: 'Aceleradora #1'">
+              <input
+                type="text"
+                className="crm-input w-full"
+                value={theme.badge ?? ""}
+                onChange={(e) =>
+                  setTheme((t) => ({ ...t, badge: e.target.value || undefined }))
+                }
+                placeholder="Aceleradora #1 de E-mail Marketing"
+              />
             </Row>
             <Row label="Headline (título grande)">
               <input
@@ -468,7 +781,7 @@ export default function FormEditorPage({
                 onChange={(e) =>
                   setTheme((t) => ({ ...t, subheadline: e.target.value }))
                 }
-                placeholder="Descreva em uma linha por que preencher o form."
+                placeholder="Descreva em uma linha."
               />
             </Row>
             <Row label="Texto do botão">
@@ -480,6 +793,85 @@ export default function FormEditorPage({
                   setTheme((t) => ({ ...t, buttonText: e.target.value }))
                 }
               />
+            </Row>
+
+            {/* ── Tipografia / layout ── */}
+            <Row label="Tipografia">
+              <div className="grid grid-cols-3 gap-2">
+                <NumberRow
+                  label="Título"
+                  value={theme.headingSize ?? 28}
+                  onChange={(v) => setTheme((t) => ({ ...t, headingSize: v }))}
+                  min={16}
+                  max={56}
+                  suffix="px"
+                />
+                <NumberRow
+                  label="Sub"
+                  value={theme.subheadingSize ?? 14}
+                  onChange={(v) =>
+                    setTheme((t) => ({ ...t, subheadingSize: v }))
+                  }
+                  min={10}
+                  max={20}
+                  suffix="px"
+                />
+                <NumberRow
+                  label="Base"
+                  value={theme.fontSize ?? 14}
+                  onChange={(v) => setTheme((t) => ({ ...t, fontSize: v }))}
+                  min={11}
+                  max={18}
+                  suffix="px"
+                />
+              </div>
+            </Row>
+            <Row label="Layout">
+              <div className="grid grid-cols-2 gap-2">
+                <NumberRow
+                  label="Largura"
+                  value={theme.containerWidth ?? 480}
+                  onChange={(v) =>
+                    setTheme((t) => ({ ...t, containerWidth: v }))
+                  }
+                  min={320}
+                  max={720}
+                  suffix="px"
+                />
+                <NumberRow
+                  label="Cantos"
+                  value={theme.borderRadius ?? 8}
+                  onChange={(v) =>
+                    setTheme((t) => ({ ...t, borderRadius: v }))
+                  }
+                  min={0}
+                  max={24}
+                  suffix="px"
+                />
+              </div>
+            </Row>
+
+            {/* ── Toggles ── */}
+            <Row label="Opções">
+              <div className="space-y-1.5">
+                <CheckRow
+                  label="Esconder título"
+                  checked={!!theme.hideTitle}
+                  onChange={(v) => setTheme((t) => ({ ...t, hideTitle: v }))}
+                />
+                <CheckRow
+                  label="Esconder labels dos campos"
+                  checked={!!theme.hideLabels}
+                  onChange={(v) => setTheme((t) => ({ ...t, hideLabels: v }))}
+                />
+                <CheckRow
+                  label='Esconder "Powered by Convertfy"'
+                  checked={!!theme.hidePoweredBy}
+                  onChange={(v) =>
+                    setTheme((t) => ({ ...t, hidePoweredBy: v }))
+                  }
+                />
+              </div>
             </Row>
           </Section>
 
@@ -585,6 +977,108 @@ function Row({
         <p className="text-[10px] text-slate-500 dark:text-white/45">{hint}</p>
       )}
     </div>
+  )
+}
+
+function ColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label?: string
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {label && (
+        <span className="text-[10px] text-slate-500 dark:text-white/45 w-10 shrink-0">
+          {label}
+        </span>
+      )}
+      <input
+        type="color"
+        // O input nativo de cor nao suporta rgba/strings nao-hex.
+        // Mostra um fallback hex se o valor atual nao for hex.
+        value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-10 rounded-[4px] border border-slate-200 dark:border-white/[0.10] cursor-pointer p-0"
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="crm-input flex-1 font-mono text-[11px]"
+        style={{ height: 28 }}
+      />
+    </div>
+  )
+}
+
+function NumberRow({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  suffix,
+}: {
+  label?: string
+  value: number
+  onChange: (v: number) => void
+  min?: number
+  max?: number
+  suffix?: string
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {label && (
+        <span className="text-[10px] text-slate-500 dark:text-white/45 shrink-0">
+          {label}
+        </span>
+      )}
+      <div className="relative flex-1">
+        <input
+          type="number"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10)
+            if (Number.isFinite(n)) onChange(n)
+          }}
+          className="crm-input w-full font-mono text-[11px]"
+          style={{ height: 28, paddingRight: suffix ? 22 : undefined }}
+        />
+        {suffix && (
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-white/40">
+            {suffix}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CheckRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[11px] cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 cursor-pointer"
+      />
+      <span className="text-slate-700 dark:text-white/70">{label}</span>
+    </label>
   )
 }
 
@@ -707,14 +1201,35 @@ function FieldEditor({
         />
       )}
 
-      <label className="flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-white/75">
-        <input
-          type="checkbox"
-          checked={field.required}
-          onChange={(e) => onChange({ required: e.target.checked })}
-        />
-        Obrigatório
-      </label>
+      <div className="flex items-center gap-4 flex-wrap">
+        <label className="flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-white/75">
+          <input
+            type="checkbox"
+            checked={field.required}
+            onChange={(e) => onChange({ required: e.target.checked })}
+          />
+          Obrigatório
+        </label>
+
+        {/* Phone com seletor de DDI (so aparece pra phone) */}
+        {field.field_type === "phone" && (
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-white/75">
+            <input
+              type="checkbox"
+              checked={(field.validation as { countryCode?: boolean } | undefined)?.countryCode === true}
+              onChange={(e) =>
+                onChange({
+                  validation: {
+                    ...(field.validation ?? {}),
+                    countryCode: e.target.checked,
+                  },
+                })
+              }
+            />
+            Com seletor de país (+55, +1...)
+          </label>
+        )}
+      </div>
     </div>
   )
 }
