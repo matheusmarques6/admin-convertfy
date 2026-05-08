@@ -1,25 +1,30 @@
 -- ============================================================
 -- CRM Convertfy — Forms (lead capture forms)
 --
--- Implementa formularios publicos que capturam leads e criam deals
--- automaticamente no pipeline configurado. Inspirado no worder1.
+-- Auditado contra o banco de produção em 08/05/2026:
+--   ✓ Tabelas dependentes existem: organizations, profiles,
+--     org_members, pipelines, pipeline_stages, deals, crm_leads,
+--     crm_deal_activities
+--   ✓ Tipos das FKs casam (todas as PKs sao UUID)
+--   ✓ Extensions uuid-ossp + pgcrypto ativas
+--   ✓ Convencao do projeto: uuid_generate_v4() (uuid-ossp) ao
+--     inves de gen_random_uuid() (pgcrypto)
 --
--- Tabelas:
+-- Implementa formularios publicos que capturam leads e criam deals
+-- automaticamente no pipeline configurado.
+--
+-- Tabelas criadas:
 --   - crm_forms             form definicao + tema + pipeline target
 --   - crm_form_fields       campos configuraveis (text, email, etc)
 --   - crm_form_submissions  respostas + lead_id + deal_id criados
 --
--- Quando uma submissao chega via POST /api/public/forms/[slug]/submit:
---   1. cria crm_form_submissions
---   2. cria/encontra crm_leads (match por email)
---   3. se form.pipeline_id setado, cria deals no stage configurado
---   4. retorna mensagem de sucesso ou redirect_url
+-- Idempotente: pode ser rodada multiplas vezes sem erro.
 -- ============================================================
 
 -- ── 1. crm_forms ─────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS crm_forms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 
   -- Quando preenchidos, o submission cria deal nesse pipeline+stage.
@@ -33,8 +38,7 @@ CREATE TABLE IF NOT EXISTS crm_forms (
   description TEXT,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
 
-  -- Tema visual do form. JSON com cores, fontes, copy etc. Evita
-  -- ter dezenas de colunas opcionais.
+  -- Tema visual do form. JSON com cores, fontes, copy etc.
   theme JSONB NOT NULL DEFAULT '{
     "primaryColor": "#2563EB",
     "backgroundColor": "#FFFFFF",
@@ -53,12 +57,12 @@ CREATE TABLE IF NOT EXISTS crm_forms (
   success_message TEXT DEFAULT 'Obrigado! Sua resposta foi registrada.',
   redirect_url TEXT,
 
-  -- Tracking de envios pra Ads (futura entrega).
+  -- Tracking pra Ads (futura entrega — colunas ja prontas).
   facebook_pixel_id TEXT,
   google_ads_id TEXT,
   google_analytics_id TEXT,
 
-  -- Cache de contadores (incrementados via trigger).
+  -- Cache de contadores (incrementados via trigger / RPC).
   submissions_count INTEGER NOT NULL DEFAULT 0,
   views_count INTEGER NOT NULL DEFAULT 0,
 
@@ -76,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_forms_status ON crm_forms(status);
 -- ── 2. crm_form_fields ──────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS crm_form_fields (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   form_id UUID NOT NULL REFERENCES crm_forms(id) ON DELETE CASCADE,
 
   field_type TEXT NOT NULL CHECK (field_type IN (
@@ -92,14 +96,11 @@ CREATE TABLE IF NOT EXISTS crm_form_fields (
 
   -- Para select/radio/checkbox: array de strings ou {label, value}.
   options JSONB NOT NULL DEFAULT '[]'::jsonb,
-  -- Validation regras (min, max, regex, etc).
+  -- Validation: { min, max, regex, ... }.
   validation JSONB NOT NULL DEFAULT '{}'::jsonb,
-  -- Mapeia campo do form pra coluna de crm_leads/contacts. Ex:
-  --   "name" -> crm_leads.name
-  --   "email" -> crm_leads.email
-  --   "phone" -> crm_leads.phone
-  --   "company" -> crm_leads.company
-  -- Quando NULL, valor vai pro JSONB de answers da submission.
+  -- Mapeia campo do form pra coluna de crm_leads. Quando NULL, valor
+  -- vai pro JSONB de answers da submission.
+  -- Valores aceitos: name, email, phone, company, source.
   map_to_lead_field TEXT,
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -112,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_form_fields_position ON crm_form_fields(form_
 -- ── 3. crm_form_submissions ────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS crm_form_submissions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   form_id UUID NOT NULL REFERENCES crm_forms(id) ON DELETE CASCADE,
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
 
@@ -149,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_form_submissions_created ON crm_form_submissi
 
 -- ── 4. RLS — leitura/escrita restrita ao org_id do user ────────
 -- Endpoints publicos /api/public/forms usam service_role e bypassam RLS.
+-- Todas policies tem DROP IF EXISTS pra serem reaplicaveis sem erro.
 
 ALTER TABLE crm_forms ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "crm_forms_org" ON crm_forms;
@@ -258,7 +260,7 @@ CREATE TRIGGER trg_crm_forms_updated_at
 GRANT ALL ON crm_forms TO service_role;
 GRANT ALL ON crm_form_fields TO service_role;
 GRANT ALL ON crm_form_submissions TO service_role;
-GRANT EXECUTE ON FUNCTION increment_form_views(UUID) TO service_role, authenticated;
+GRANT EXECUTE ON FUNCTION increment_form_views(UUID) TO service_role, authenticated, anon;
 
 
 -- ── 8. Comentarios ───────────────────────────────────────────────
@@ -266,3 +268,13 @@ GRANT EXECUTE ON FUNCTION increment_form_views(UUID) TO service_role, authentica
 COMMENT ON TABLE crm_forms IS 'Formularios de captacao de leads. Cada form pode estar vinculado a um pipeline+stage e cria deal automaticamente quando submitado.';
 COMMENT ON TABLE crm_form_fields IS 'Campos do form (text, email, phone, etc). map_to_lead_field permite popular crm_leads.{name,email,phone,company,source} automaticamente.';
 COMMENT ON TABLE crm_form_submissions IS 'Submissoes recebidas. Sempre cria/linka um lead, opcionalmente um deal se o form tem pipeline_id.';
+
+-- ============================================================
+-- Verificacao final — descomente pra confirmar apos rodar:
+-- ============================================================
+-- SELECT
+--   table_name,
+--   (SELECT COUNT(*) FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name=t.table_name) AS cols
+-- FROM (VALUES ('crm_forms'),('crm_form_fields'),('crm_form_submissions')) t(table_name);
+-- Esperado: 3 linhas com cols > 0.

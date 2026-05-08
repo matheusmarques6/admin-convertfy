@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx next:*)",
-      "mcp__supabase__execute_sql"
+      "mcp__supabase__execute_sql",
+      "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__list_projects",
+      "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__execute_sql"
     ]
   },
   "hooks": {
