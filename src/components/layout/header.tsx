@@ -178,9 +178,12 @@ export function Header({ user: _userProp }: HeaderProps) {
     }
   }
 
-  // Esconde header em rotas de pipeline (board fullscreen estilo DataCrazy).
+  // Esconde header em rotas de pipeline (board fullscreen estilo DataCrazy)
+  // e no editor de forms (split screen com preview live).
   const hidden = useMemo(
-    () => /^\/admin\/(comercial|operacional)\/pipelines/.test(pathname),
+    () =>
+      /^\/admin\/(comercial|operacional)\/pipelines/.test(pathname) ||
+      /^\/admin\/comercial\/forms\/[^/]+/.test(pathname),
     [pathname],
   )
 

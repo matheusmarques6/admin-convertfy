@@ -90,6 +90,11 @@ interface Props {
     utm_term: string | null
     utm_content: string | null
   }
+  /**
+   * Quando true, intercepta o submit e mostra success state fake. Usado
+   * pelo editor pra preview live sem persistir no banco.
+   */
+  preview?: boolean
 }
 
 // ── Países suportados no seletor de DDI ──
@@ -160,7 +165,7 @@ function shadowCss(level: "none" | "sm" | "md" | "lg"): string {
 
 // ── Component ──
 
-export function PublicFormView({ slug, payload, utm }: Props) {
+export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
   const { form, fields } = payload
   const theme = form.theme ?? {}
   const t = defaults(theme)
@@ -211,6 +216,15 @@ export function PublicFormView({ slug, payload, utm }: Props) {
     }
 
     setSubmitting(true)
+    // Preview mode: nao chama a API, mostra success state fake apos delay.
+    if (preview) {
+      await new Promise((r) => setTimeout(r, 600))
+      setSubmitting(false)
+      setDone({
+        message: form.success_message ?? "Pré-visualização: a submissão real será enviada quando o form for publicado.",
+      })
+      return
+    }
     try {
       const res = await fetch(`/api/public/forms/${slug}/submit`, {
         method: "POST",
