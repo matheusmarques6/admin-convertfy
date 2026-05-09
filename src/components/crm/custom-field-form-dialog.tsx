@@ -15,7 +15,8 @@
  * "Geral" quando o usuario gerencia campos no fluxo da pipeline).
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   Plus,
   Trash2,
@@ -197,6 +198,27 @@ export function CustomFieldFormDialog({
 
   const showOptions = fieldType === "select" || fieldType === "multi_select"
 
+  // Portal so monta no client. SSR retorna null pra evitar hidration
+  // mismatch e pra escapar do scope do Radix Dialog pai (que adiciona
+  // pointer-events:none/inert no body, bloqueando interacao do nosso
+  // modal quando renderizado dentro da arvore do Dialog Root).
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Esc fecha o dialog (Radix nao escapa pra dialogs aninhados em portal manual).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
+  }, [onClose])
+
   const onLabelChange = (v: string) => {
     setLabel(v)
     if (!keyTouched) setKey(toSlug(v))
@@ -264,14 +286,25 @@ export function CustomFieldFormDialog({
     }
   }
 
-  return (
+  if (!mounted) return null
+
+  // Portal direto em document.body com pointer-events:auto explicito
+  // — escapa do focus trap / inert do Radix Dialog pai que bloqueia
+  // interacao quando o modal aparece sobreposto.
+  return createPortal(
     <div
-      className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4"
+      style={{ pointerEvents: "auto" }}
+      onPointerDownCapture={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
     >
       <form
         onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
         className="w-full max-w-[520px] bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] max-h-[90vh] overflow-hidden flex flex-col"
+        style={{ pointerEvents: "auto" }}
       >
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div>
@@ -407,7 +440,8 @@ export function CustomFieldFormDialog({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
