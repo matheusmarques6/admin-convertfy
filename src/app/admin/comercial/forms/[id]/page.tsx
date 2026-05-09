@@ -61,17 +61,25 @@ interface FormTheme {
   cardBgColor?: string
   cardBorderColor?: string
   cardShadow?: "none" | "sm" | "md" | "lg"
+  cardPadding?: number
   containerWidth?: number
+  fieldGap?: number
   inputBgColor?: string
   inputBorderColor?: string
   inputTextColor?: string
+  inputPlaceholderColor?: string
+  inputRadius?: number
   buttonText?: string
   buttonTextColor?: string
   buttonGradient?: { from: string; to: string; angle?: number } | null
+  buttonRadius?: number
   fontFamily?: string
   fontSize?: number
   headingSize?: number
   subheadingSize?: number
+  labelColor?: string
+  labelSize?: number
+  subtitleColor?: string
   borderRadius?: number
   hideTitle?: boolean
   hideLabels?: boolean
@@ -826,7 +834,10 @@ export default function FormEditorPage({
                   : "w-full max-w-[680px] rounded-[8px] overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
               }
             >
-              {/* Renderiza o form publico com state local + preview=true (nao submete) */}
+              {/* Renderiza o form publico em modo EMBED (mesma forma que
+                  ficara em qualquer landing). Mostrar embed por default
+                  garante que o que o usuario ve aqui e o que o visitante
+                  vera quando o form for embedado na pagina de vendas. */}
               <PublicFormView
                 slug={slug || "preview"}
                 payload={previewPayload}
@@ -838,6 +849,7 @@ export default function FormEditorPage({
                   utm_content: null,
                 }}
                 preview
+                embed
               />
             </div>
           </div>
@@ -972,6 +984,8 @@ function StyleTab({
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
 }) {
+  const dark = theme.mode === "dark"
+  const defaultText = dark ? "#F1F5F9" : "#0F172A"
   return (
     <Stack>
       {/* ── Templates ── */}
@@ -1020,21 +1034,21 @@ function StyleTab({
 
       <Divider />
 
-      {/* ── Modo ── */}
-      <SectionTitle title="Modo" hint="Define defaults para fundo, texto e inputs." />
-      <ToggleGroup
-        value={theme.mode ?? "light"}
-        onChange={(v) => setTheme((t) => ({ ...t, mode: v }))}
-        options={[
-          { value: "light", label: "Claro" },
-          { value: "dark", label: "Escuro" },
-        ]}
+      {/* ── Modo + Cor primaria ── */}
+      <SectionTitle
+        title="Base"
+        hint="Modo claro ou escuro. A cor primária controla botão, foco e detalhes."
       />
-
-      <Divider />
-
-      {/* ── Cores ── */}
-      <SectionTitle title="Cores" hint="Cor primária controla labels, links, focus." />
+      <Field label="Modo">
+        <ToggleGroup
+          value={theme.mode ?? "light"}
+          onChange={(v) => setTheme((t) => ({ ...t, mode: v }))}
+          options={[
+            { value: "light", label: "Claro" },
+            { value: "dark", label: "Escuro" },
+          ]}
+        />
+      </Field>
       <Field label="Cor primária">
         <ColorRow
           value={theme.primaryColor ?? "#2563EB"}
@@ -1042,145 +1056,12 @@ function StyleTab({
         />
       </Field>
 
-      {/* ── Fundo ── */}
-      <Field label="Fundo da página">
-        <ToggleGroup
-          value={theme.bgGradient ? "gradient" : "solid"}
-          onChange={(v) =>
-            setTheme((t) =>
-              v === "gradient"
-                ? {
-                    ...t,
-                    bgGradient: t.bgGradient ?? {
-                      from: t.backgroundColor ?? "#0B0B14",
-                      to: "#1E1B4B",
-                      angle: 135,
-                    },
-                  }
-                : { ...t, bgGradient: null },
-            )
-          }
-          options={[
-            { value: "solid", label: "Cor sólida" },
-            { value: "gradient", label: "Gradiente" },
-          ]}
-        />
-        <div className="mt-2 space-y-1.5">
-          {theme.bgGradient ? (
-            <>
-              <ColorRow
-                label="De"
-                value={theme.bgGradient.from}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: v, to: v }),
-                      from: v,
-                    },
-                  }))
-                }
-              />
-              <ColorRow
-                label="Para"
-                value={theme.bgGradient.to}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: v, to: v }),
-                      to: v,
-                    },
-                  }))
-                }
-              />
-              <NumberRow
-                label="Ângulo"
-                value={theme.bgGradient.angle ?? 135}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: "#000", to: "#000" }),
-                      angle: v,
-                    },
-                  }))
-                }
-                min={0}
-                max={360}
-                suffix="°"
-              />
-            </>
-          ) : (
-            <ColorRow
-              value={theme.backgroundColor ?? "#FFFFFF"}
-              onChange={(v) => setTheme((t) => ({ ...t, backgroundColor: v }))}
-            />
-          )}
-        </div>
-      </Field>
-
-      {/* ── Botão ── */}
-      <Field label="Botão de envio">
-        <ToggleGroup
-          value={theme.buttonGradient ? "gradient" : "solid"}
-          onChange={(v) =>
-            setTheme((t) =>
-              v === "gradient"
-                ? {
-                    ...t,
-                    buttonGradient: t.buttonGradient ?? {
-                      from: t.primaryColor ?? "#6366F1",
-                      to: "#A78BFA",
-                      angle: 90,
-                    },
-                  }
-                : { ...t, buttonGradient: null },
-            )
-          }
-          options={[
-            { value: "solid", label: "Sólido (cor primária)" },
-            { value: "gradient", label: "Gradiente" },
-          ]}
-        />
-        {theme.buttonGradient && (
-          <div className="mt-2 space-y-1.5">
-            <ColorRow
-              label="De"
-              value={theme.buttonGradient.from}
-              onChange={(v) =>
-                setTheme((t) => ({
-                  ...t,
-                  buttonGradient: {
-                    ...(t.buttonGradient ?? { from: v, to: v }),
-                    from: v,
-                  },
-                }))
-              }
-            />
-            <ColorRow
-              label="Para"
-              value={theme.buttonGradient.to}
-              onChange={(v) =>
-                setTheme((t) => ({
-                  ...t,
-                  buttonGradient: {
-                    ...(t.buttonGradient ?? { from: v, to: v }),
-                    to: v,
-                  },
-                }))
-              }
-            />
-          </div>
-        )}
-      </Field>
-
       <Divider />
 
       {/* ── Card do formulario ── */}
       <SectionTitle
         title="Card do formulário"
-        hint="Controle separado do fundo da página: o card é a caixa do form em si."
+        hint="A caixa do form é o que aparece embedado. Tudo é configurável."
       />
       <Field label="Fundo do card">
         <ToggleGroup
@@ -1265,11 +1146,68 @@ function StyleTab({
           ]}
         />
       </Field>
+      <Field label="Padding interno (px)">
+        <NumberRow
+          value={theme.cardPadding ?? 28}
+          onChange={(v) => setTheme((t) => ({ ...t, cardPadding: v }))}
+          min={0}
+          max={64}
+          suffix="px"
+        />
+      </Field>
+      <Field label="Largura máxima do card (px)">
+        <NumberRow
+          value={theme.containerWidth ?? 480}
+          onChange={(v) => setTheme((t) => ({ ...t, containerWidth: v }))}
+          min={320}
+          max={720}
+          suffix="px"
+        />
+      </Field>
+      <Field label="Cantos arredondados">
+        <NumberRow
+          value={theme.borderRadius ?? 8}
+          onChange={(v) => setTheme((t) => ({ ...t, borderRadius: v }))}
+          min={0}
+          max={24}
+          suffix="px"
+        />
+      </Field>
+      <Field label="Espaço entre campos (px)">
+        <NumberRow
+          value={theme.fieldGap ?? 14}
+          onChange={(v) => setTheme((t) => ({ ...t, fieldGap: v }))}
+          min={4}
+          max={32}
+          suffix="px"
+        />
+      </Field>
 
       <Divider />
 
-      {/* ── Tipografia ── */}
-      <SectionTitle title="Tipografia" />
+      {/* ── Texto e cores ── */}
+      <SectionTitle
+        title="Texto e cores"
+        hint="Controle individual de cada peça de texto do form."
+      />
+      <Field label="Cor do texto (geral)">
+        <ColorRow
+          value={theme.textColor ?? defaultText}
+          onChange={(v) => setTheme((t) => ({ ...t, textColor: v }))}
+        />
+      </Field>
+      <Field label="Cor do subtítulo">
+        <ColorRow
+          value={theme.subtitleColor ?? theme.textColor ?? defaultText}
+          onChange={(v) => setTheme((t) => ({ ...t, subtitleColor: v }))}
+        />
+      </Field>
+      <Field label="Cor das labels">
+        <ColorRow
+          value={theme.labelColor ?? theme.textColor ?? defaultText}
+          onChange={(v) => setTheme((t) => ({ ...t, labelColor: v }))}
+        />
+      </Field>
       <Field label="Tamanho do título grande">
         <NumberRow
           value={theme.headingSize ?? 28}
@@ -1288,7 +1226,16 @@ function StyleTab({
           suffix="px"
         />
       </Field>
-      <Field label="Tamanho de texto base (labels e inputs)">
+      <Field label="Tamanho da label">
+        <NumberRow
+          value={theme.labelSize ?? 12}
+          onChange={(v) => setTheme((t) => ({ ...t, labelSize: v }))}
+          min={10}
+          max={18}
+          suffix="px"
+        />
+      </Field>
+      <Field label="Tamanho de texto base (inputs)">
         <NumberRow
           value={theme.fontSize ?? 14}
           onChange={(v) => setTheme((t) => ({ ...t, fontSize: v }))}
@@ -1300,23 +1247,128 @@ function StyleTab({
 
       <Divider />
 
-      {/* ── Layout ── */}
-      <SectionTitle title="Layout" />
-      <Field label="Largura do card (px)">
+      {/* ── Inputs ── */}
+      <SectionTitle
+        title="Inputs"
+        hint="Aparência dos campos preenchíveis."
+      />
+      <Field label="Fundo do input">
+        <ColorRow
+          value={
+            theme.inputBgColor ??
+            (dark ? "rgba(255,255,255,0.04)" : "#F8FAFC")
+          }
+          onChange={(v) => setTheme((t) => ({ ...t, inputBgColor: v }))}
+        />
+      </Field>
+      <Field label="Borda do input">
+        <ColorRow
+          value={
+            theme.inputBorderColor ??
+            (dark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.10)")
+          }
+          onChange={(v) => setTheme((t) => ({ ...t, inputBorderColor: v }))}
+        />
+      </Field>
+      <Field label="Cor do texto digitado">
+        <ColorRow
+          value={theme.inputTextColor ?? defaultText}
+          onChange={(v) => setTheme((t) => ({ ...t, inputTextColor: v }))}
+        />
+      </Field>
+      <Field label="Cor do placeholder">
+        <ColorRow
+          value={
+            theme.inputPlaceholderColor ??
+            (dark ? "rgba(241,245,249,0.40)" : "rgba(15,23,42,0.40)")
+          }
+          onChange={(v) =>
+            setTheme((t) => ({ ...t, inputPlaceholderColor: v }))
+          }
+        />
+      </Field>
+      <Field label="Cantos do input">
         <NumberRow
-          value={theme.containerWidth ?? 480}
-          onChange={(v) => setTheme((t) => ({ ...t, containerWidth: v }))}
-          min={320}
-          max={720}
+          value={
+            theme.inputRadius ??
+            Math.max(4, Math.round((theme.borderRadius ?? 8) * 0.75))
+          }
+          onChange={(v) => setTheme((t) => ({ ...t, inputRadius: v }))}
+          min={0}
+          max={20}
           suffix="px"
         />
       </Field>
-      <Field label="Cantos arredondados">
+
+      <Divider />
+
+      {/* ── Botão ── */}
+      <SectionTitle title="Botão" />
+      <Field label="Estilo">
+        <ToggleGroup
+          value={theme.buttonGradient ? "gradient" : "solid"}
+          onChange={(v) =>
+            setTheme((t) =>
+              v === "gradient"
+                ? {
+                    ...t,
+                    buttonGradient: t.buttonGradient ?? {
+                      from: t.primaryColor ?? "#6366F1",
+                      to: "#A78BFA",
+                      angle: 90,
+                    },
+                  }
+                : { ...t, buttonGradient: null },
+            )
+          }
+          options={[
+            { value: "solid", label: "Sólido (cor primária)" },
+            { value: "gradient", label: "Gradiente" },
+          ]}
+        />
+        {theme.buttonGradient && (
+          <div className="mt-2 space-y-1.5">
+            <ColorRow
+              label="De"
+              value={theme.buttonGradient.from}
+              onChange={(v) =>
+                setTheme((t) => ({
+                  ...t,
+                  buttonGradient: {
+                    ...(t.buttonGradient ?? { from: v, to: v }),
+                    from: v,
+                  },
+                }))
+              }
+            />
+            <ColorRow
+              label="Para"
+              value={theme.buttonGradient.to}
+              onChange={(v) =>
+                setTheme((t) => ({
+                  ...t,
+                  buttonGradient: {
+                    ...(t.buttonGradient ?? { from: v, to: v }),
+                    to: v,
+                  },
+                }))
+              }
+            />
+          </div>
+        )}
+      </Field>
+      <Field label="Cor do texto do botão">
+        <ColorRow
+          value={theme.buttonTextColor ?? "#FFFFFF"}
+          onChange={(v) => setTheme((t) => ({ ...t, buttonTextColor: v }))}
+        />
+      </Field>
+      <Field label="Cantos do botão">
         <NumberRow
-          value={theme.borderRadius ?? 8}
-          onChange={(v) => setTheme((t) => ({ ...t, borderRadius: v }))}
+          value={theme.buttonRadius ?? theme.borderRadius ?? 8}
+          onChange={(v) => setTheme((t) => ({ ...t, buttonRadius: v }))}
           min={0}
-          max={24}
+          max={32}
           suffix="px"
         />
       </Field>
@@ -1340,6 +1392,90 @@ function StyleTab({
         checked={!!theme.hidePoweredBy}
         onChange={(v) => setTheme((t) => ({ ...t, hidePoweredBy: v }))}
       />
+
+      <Divider />
+
+      {/* ── Página standalone (avancado) ── */}
+      <SectionTitle
+        title="Página standalone (avançado)"
+        hint="Só afeta a URL pública direta /forms/[slug]. Quando o form é embedado em outra página, o fundo é da página host."
+      />
+      <Field label="Fundo da página standalone">
+        <ToggleGroup
+          value={theme.bgGradient ? "gradient" : "solid"}
+          onChange={(v) =>
+            setTheme((t) =>
+              v === "gradient"
+                ? {
+                    ...t,
+                    bgGradient: t.bgGradient ?? {
+                      from: t.backgroundColor ?? "#0B0B14",
+                      to: "#1E1B4B",
+                      angle: 135,
+                    },
+                  }
+                : { ...t, bgGradient: null },
+            )
+          }
+          options={[
+            { value: "solid", label: "Cor sólida" },
+            { value: "gradient", label: "Gradiente" },
+          ]}
+        />
+        <div className="mt-2 space-y-1.5">
+          {theme.bgGradient ? (
+            <>
+              <ColorRow
+                label="De"
+                value={theme.bgGradient.from}
+                onChange={(v) =>
+                  setTheme((t) => ({
+                    ...t,
+                    bgGradient: {
+                      ...(t.bgGradient ?? { from: v, to: v }),
+                      from: v,
+                    },
+                  }))
+                }
+              />
+              <ColorRow
+                label="Para"
+                value={theme.bgGradient.to}
+                onChange={(v) =>
+                  setTheme((t) => ({
+                    ...t,
+                    bgGradient: {
+                      ...(t.bgGradient ?? { from: v, to: v }),
+                      to: v,
+                    },
+                  }))
+                }
+              />
+              <NumberRow
+                label="Ângulo"
+                value={theme.bgGradient.angle ?? 135}
+                onChange={(v) =>
+                  setTheme((t) => ({
+                    ...t,
+                    bgGradient: {
+                      ...(t.bgGradient ?? { from: "#000", to: "#000" }),
+                      angle: v,
+                    },
+                  }))
+                }
+                min={0}
+                max={360}
+                suffix="°"
+              />
+            </>
+          ) : (
+            <ColorRow
+              value={theme.backgroundColor ?? (dark ? "#0B0F19" : "#FFFFFF")}
+              onChange={(v) => setTheme((t) => ({ ...t, backgroundColor: v }))}
+            />
+          )}
+        </div>
+      </Field>
 
       <Divider />
 

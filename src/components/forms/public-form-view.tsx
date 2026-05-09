@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useId } from "react"
 import { CheckCircle2, AlertCircle, Loader2, ChevronDown } from "lucide-react"
 
 interface FormField {
@@ -44,20 +44,27 @@ interface FormTheme {
   inputBorderColor?: string
   inputTextColor?: string
   inputPlaceholderColor?: string
+  inputRadius?: number // override do borderRadius para inputs
 
   // ── Botao ──
   buttonText?: string
   buttonTextColor?: string
   buttonGradient?: { from: string; to: string; angle?: number } | null
+  buttonRadius?: number // override do borderRadius para botao
 
   // ── Tipografia ──
   fontFamily?: string
   fontSize?: number // base
   headingSize?: number // tamanho do <h1> em px
   subheadingSize?: number // tamanho do subtitulo em px
+  labelColor?: string // cor das labels dos campos (default: textColor com opacity)
+  labelSize?: number // tamanho das labels em px
+  subtitleColor?: string // cor do subtitulo (default: textColor com opacity)
 
   // ── Layout / labels ──
   borderRadius?: number
+  cardPadding?: number // padding interno do card em px (default: 28)
+  fieldGap?: number // espacamento entre campos em px (default: 14)
   hideTitle?: boolean
   hideLabels?: boolean
   hidePoweredBy?: boolean
@@ -129,22 +136,30 @@ function gradientCss(g: { from: string; to: string; angle?: number } | null | un
 
 function defaults(theme: FormTheme) {
   const dark = theme.mode === "dark"
+  const text = theme.textColor ?? (dark ? "#F1F5F9" : "#0F172A")
+  const radius = theme.borderRadius ?? (dark ? 12 : 8)
   return {
     mode: theme.mode ?? "light",
     primary: theme.primaryColor ?? "#2563EB",
     bg: theme.backgroundColor ?? (dark ? "#0B0B14" : "#FFFFFF"),
-    text: theme.textColor ?? (dark ? "#F1F5F9" : "#0F172A"),
-    radius: theme.borderRadius ?? (dark ? 12 : 8),
+    text,
+    radius,
     fontFamily: theme.fontFamily ?? "Inter, system-ui, sans-serif",
     fontSize: theme.fontSize ?? 14,
     headingSize: theme.headingSize ?? 28,
     subheadingSize: theme.subheadingSize ?? 14,
+    labelColor: theme.labelColor ?? text,
+    labelSize: theme.labelSize ?? 12,
+    subtitleColor: theme.subtitleColor ?? text,
     buttonText: theme.buttonText ?? "Enviar",
     buttonTextColor: theme.buttonTextColor ?? "#FFFFFF",
+    buttonRadius: theme.buttonRadius ?? radius,
     cardBg: theme.cardBgColor ?? (dark ? "rgba(20,22,40,0.6)" : "#FFFFFF"),
     cardBorder:
       theme.cardBorderColor ?? (dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)"),
     cardShadow: theme.cardShadow ?? (dark ? "lg" : "sm"),
+    cardPadding: theme.cardPadding ?? 28,
+    fieldGap: theme.fieldGap ?? 14,
     containerWidth: theme.containerWidth ?? 480,
     inputBg:
       theme.inputBgColor ?? (dark ? "rgba(255,255,255,0.04)" : "#F8FAFC"),
@@ -153,6 +168,7 @@ function defaults(theme: FormTheme) {
     inputText: theme.inputTextColor ?? (dark ? "#F1F5F9" : "#0F172A"),
     inputPlaceholder:
       theme.inputPlaceholderColor ?? (dark ? "rgba(241,245,249,0.40)" : "rgba(15,23,42,0.40)"),
+    inputRadius: theme.inputRadius ?? Math.max(4, Math.round(radius * 0.75)),
   }
 }
 
@@ -176,6 +192,12 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
   const theme = form.theme ?? {}
   const t = defaults(theme)
   const dark = t.mode === "dark"
+
+  // ID unico por instancia, usado pra escopar o CSS reset (isola estilos
+  // do form de qualquer CSS herdado — Tailwind preflight do iframe ou
+  // CSS da landing host quando renderizado fora de iframe).
+  const reactId = useId()
+  const scopeId = `cf-form-${reactId.replace(/:/g, "")}`
 
   const bgFill = gradientCss(theme.bgGradient) ?? t.bg
   const buttonFill = gradientCss(theme.buttonGradient) ?? t.primary
@@ -259,19 +281,56 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
   }
 
   const cardStyle: React.CSSProperties = {
-    borderRadius: t.radius * 1.5,
+    borderRadius: t.radius,
     background: t.cardBg,
     border: `1px solid ${t.cardBorder}`,
     boxShadow: shadowCss(t.cardShadow),
     color: t.text,
-    backdropFilter: dark ? "blur(20px)" : undefined,
+    backdropFilter: dark && t.cardBg.includes("rgba") ? "blur(20px)" : undefined,
   }
+
+  // Reset CSS isolado: garante que tudo dentro do form tem aparencia
+  // controlada pelo tema, independente do contexto (iframe com globals.css
+  // ou pagina host com CSS proprio). Sem isso, o body do iframe (Next.js)
+  // aplica `bg-background text-foreground` do Tailwind preflight,
+  // pintando o body de branco e fazendo cards transparentes virarem
+  // brancos visiveis e labels claras desaparecerem.
+  const resetCss = `
+    /* Reset escopado: nao vaza pra fora do form. */
+    .${scopeId}, .${scopeId} * {
+      box-sizing: border-box;
+    }
+    .${scopeId} input,
+    .${scopeId} textarea,
+    .${scopeId} select,
+    .${scopeId} button {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.4;
+    }
+    .${scopeId} input::placeholder,
+    .${scopeId} textarea::placeholder {
+      color: ${t.inputPlaceholder};
+      opacity: 1;
+    }
+    /* Standalone (nao embed): zera bg do html/body do iframe pra
+       deixar o background da pagina controlado SO pelo Wrapper. */
+    ${
+      embed
+        ? `html, body { background: transparent !important; margin: 0 !important; padding: 0 !important; }`
+        : `html, body { margin: 0; padding: 0; background: ${bgFill}; }`
+    }
+  `
 
   if (done) {
     const successCard = (
       <div
-        className="w-full text-center px-8 py-10"
-        style={{ ...cardStyle, maxWidth: t.containerWidth }}
+        className="w-full text-center"
+        style={{
+          ...cardStyle,
+          maxWidth: embed ? "100%" : t.containerWidth,
+          padding: `${t.cardPadding + 12}px ${t.cardPadding}px`,
+        }}
       >
         <div
           className="mx-auto h-12 w-12 rounded-full flex items-center justify-center mb-4"
@@ -279,31 +338,35 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
         >
           <CheckCircle2 className="h-5 w-5" />
         </div>
-        <h2 className="text-[18px] font-semibold mb-2">Recebido com sucesso!</h2>
-        <p className="text-[13px] opacity-80 leading-relaxed">
+        <h2 style={{ color: t.text, fontSize: 18, fontWeight: 600, margin: "0 0 8px 0" }}>
+          Recebido com sucesso!
+        </h2>
+        <p style={{ color: t.subtitleColor, opacity: 0.8, fontSize: 13, lineHeight: 1.5, margin: 0 }}>
           {done.message ?? "Obrigado! Sua resposta foi registrada e nossa equipe entrara em contato."}
         </p>
       </div>
     )
-    if (embed) {
-      // Embed: renderiza apenas o card. Sem fundo de pagina, sem altura
-      // forcada. Pai do iframe controla layout.
-      return (
-        <div
-          className="w-full"
-          style={{ color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }}
-        >
-          {successCard}
-        </div>
-      )
-    }
+    const Wrap = embed ? "div" : "main"
     return (
-      <main
-        className="min-h-screen flex items-center justify-center px-4 py-12"
-        style={{ background: bgFill, color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }}
+      <Wrap
+        className={
+          (embed ? "w-full" : "min-h-screen flex items-center justify-center px-4 py-12") +
+          ` ${scopeId}`
+        }
+        style={
+          embed
+            ? { color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }
+            : {
+                background: bgFill,
+                color: t.text,
+                fontFamily: t.fontFamily,
+                fontSize: t.fontSize,
+              }
+        }
       >
+        <style>{resetCss}</style>
         {successCard}
-      </main>
+      </Wrap>
     )
   }
 
@@ -311,11 +374,15 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
     background: t.inputBg,
     border: `1px solid ${t.inputBorder}`,
     color: t.inputText,
-    borderRadius: t.radius * 0.75,
+    borderRadius: t.inputRadius,
     padding: "12px 14px",
     fontSize: t.fontSize,
+    fontFamily: t.fontFamily,
     width: "100%",
     outline: "none",
+    boxShadow: "none",
+    appearance: "none",
+    margin: 0,
   }
   const focusRing = `0 0 0 3px ${t.primary}33`
 
@@ -323,11 +390,13 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
   // - embed: apenas o card, sem fundo, sem altura forcada (ideal pra iframe)
   // - normal: pagina completa centralizada com background do tema
   const Wrapper = embed ? "div" : "main"
-  const wrapperClass = embed
-    ? "w-full"
-    : "min-h-screen flex items-start sm:items-center justify-center px-4 py-8 sm:py-12"
+  const wrapperClass =
+    (embed
+      ? "w-full"
+      : "min-h-screen flex items-start sm:items-center justify-center px-4 py-8 sm:py-12") +
+    ` ${scopeId}`
   const wrapperStyle: React.CSSProperties = embed
-    ? { color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }
+    ? { color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize, width: "100%" }
     : {
         background: bgFill,
         color: t.text,
@@ -337,71 +406,110 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
 
   return (
     <Wrapper className={wrapperClass} style={wrapperStyle}>
+      <style>{resetCss}</style>
       <form
         onSubmit={handleSubmit}
         className="w-full"
         style={{
           ...cardStyle,
           maxWidth: embed ? "100%" : t.containerWidth,
+          padding: t.cardPadding,
+          margin: embed ? 0 : "0 auto",
         }}
       >
         {/* Header */}
-        <div className="px-6 sm:px-8 pt-7 pb-4">
-          {form.logo_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={form.logo_url}
-              alt={form.name}
-              className="h-10 w-auto mb-4 object-contain"
-            />
-          )}
-
-          {theme.badge && (
-            <span
-              className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-full text-[11px] font-medium"
-              style={{
-                background: `${theme.badgeColor ?? t.primary}1A`,
-                color: theme.badgeColor ?? t.primary,
-                border: `1px solid ${theme.badgeColor ?? t.primary}33`,
-              }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: theme.badgeColor ?? t.primary }}
-                aria-hidden
+        {(form.logo_url ||
+          theme.badge ||
+          (!theme.hideTitle && (theme.headline || form.name)) ||
+          theme.subheadline ||
+          form.description) && (
+          <div style={{ marginBottom: t.fieldGap + 6 }}>
+            {form.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={form.logo_url}
+                alt={form.name}
+                style={{ height: 40, width: "auto", marginBottom: 12, objectFit: "contain" }}
               />
-              {theme.badge}
-            </span>
-          )}
+            )}
 
-          {!theme.hideTitle && (
-            <h1
-              className="font-semibold leading-tight tracking-tight"
-              style={{ color: t.text, fontSize: t.headingSize }}
-            >
-              {theme.headline || form.name}
-            </h1>
-          )}
-          {theme.subheadline && (
-            <p
-              className="mt-2 opacity-70 leading-relaxed"
-              style={{ fontSize: t.subheadingSize }}
-            >
-              {theme.subheadline}
-            </p>
-          )}
-          {form.description && !theme.subheadline && (
-            <p
-              className="mt-2 opacity-70 leading-relaxed"
-              style={{ fontSize: t.subheadingSize }}
-            >
-              {form.description}
-            </p>
-          )}
-        </div>
+            {theme.badge && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 12,
+                  padding: "4px 10px",
+                  borderRadius: 9999,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  background: `${theme.badgeColor ?? t.primary}1A`,
+                  color: theme.badgeColor ?? t.primary,
+                  border: `1px solid ${theme.badgeColor ?? t.primary}33`,
+                }}
+              >
+                <span
+                  style={{
+                    height: 6,
+                    width: 6,
+                    borderRadius: 9999,
+                    background: theme.badgeColor ?? t.primary,
+                    display: "inline-block",
+                  }}
+                  aria-hidden
+                />
+                {theme.badge}
+              </span>
+            )}
+
+            {!theme.hideTitle && (
+              <h1
+                style={{
+                  color: t.text,
+                  fontSize: t.headingSize,
+                  fontWeight: 600,
+                  lineHeight: 1.15,
+                  letterSpacing: "-0.02em",
+                  margin: 0,
+                }}
+              >
+                {theme.headline || form.name}
+              </h1>
+            )}
+            {theme.subheadline && (
+              <p
+                style={{
+                  marginTop: 8,
+                  marginBottom: 0,
+                  color: t.subtitleColor,
+                  opacity: 0.7,
+                  lineHeight: 1.5,
+                  fontSize: t.subheadingSize,
+                }}
+              >
+                {theme.subheadline}
+              </p>
+            )}
+            {form.description && !theme.subheadline && (
+              <p
+                style={{
+                  marginTop: 8,
+                  marginBottom: 0,
+                  color: t.subtitleColor,
+                  opacity: 0.7,
+                  lineHeight: 1.5,
+                  fontSize: t.subheadingSize,
+                }}
+              >
+                {form.description}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Campos */}
-        <div className="px-6 sm:px-8 pb-2 space-y-3.5">
+        <div style={{ display: "flex", flexDirection: "column", gap: t.fieldGap }}>
           {sortedFields.map((f) => (
             <FieldRenderer
               key={f.id}
@@ -417,23 +525,45 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
         </div>
 
         {error && (
-          <div className="mx-6 sm:mx-8 mt-2 flex items-start gap-2 rounded-md border border-red-300/40 bg-red-500/10 px-3 py-2 text-[12px]"
-               style={{ color: dark ? "#FCA5A5" : "#B91C1C" }}>
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              borderRadius: 6,
+              border: "1px solid rgba(239,68,68,0.4)",
+              background: "rgba(239,68,68,0.1)",
+              padding: "8px 12px",
+              fontSize: 12,
+              color: dark ? "#FCA5A5" : "#B91C1C",
+            }}
+          >
             <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Botao */}
-        <div className="px-6 sm:px-8 pt-4 pb-6">
+        <div style={{ marginTop: t.fieldGap + 4 }}>
           <button
             type="submit"
             disabled={submitting}
-            className="w-full inline-flex items-center justify-center gap-2 font-semibold transition-all disabled:opacity-60"
             style={{
+              width: "100%",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              fontWeight: 600,
+              fontFamily: t.fontFamily,
+              cursor: submitting ? "not-allowed" : "pointer",
+              transition: "transform 120ms ease, opacity 120ms ease",
+              opacity: submitting ? 0.6 : 1,
               background: buttonFill,
               color: t.buttonTextColor,
-              borderRadius: t.radius,
+              borderRadius: t.buttonRadius,
+              border: "none",
               padding: "14px 16px",
               fontSize: t.fontSize + 1,
               boxShadow: theme.buttonGradient
@@ -448,22 +578,21 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
             {submitting ? "Enviando..." : t.buttonText}
           </button>
           {!theme.hidePoweredBy && (
-            <p className="mt-3 text-center text-[10px] opacity-50">
+            <p
+              style={{
+                marginTop: 12,
+                marginBottom: 0,
+                textAlign: "center",
+                fontSize: 10,
+                color: t.text,
+                opacity: 0.5,
+              }}
+            >
               Powered by Convertfy
             </p>
           )}
         </div>
       </form>
-
-      {/* Placeholders dark (Tailwind nao suporta dynamic class via style) */}
-      {dark && !embed && (
-        <style jsx global>{`
-          form input::placeholder,
-          form textarea::placeholder {
-            color: ${t.inputPlaceholder} !important;
-          }
-        `}</style>
-      )}
     </Wrapper>
   )
 }
@@ -488,13 +617,34 @@ function FieldRenderer({
   focusRing: string
 }) {
   const labelEl = !theme.hideLabels && field.field_type !== "checkbox" && (
-    <label className="block text-[12px] font-medium mb-1.5 opacity-80">
+    <label
+      style={{
+        display: "block",
+        fontSize: t.labelSize,
+        fontWeight: 500,
+        marginBottom: 6,
+        color: t.labelColor,
+        opacity: 0.85,
+        fontFamily: t.fontFamily,
+      }}
+    >
       {field.label}
       {field.required && <span style={{ color: t.primary }}> *</span>}
     </label>
   )
   const descEl = field.description && (
-    <p className="mt-1 text-[11px] opacity-60">{field.description}</p>
+    <p
+      style={{
+        marginTop: 4,
+        marginBottom: 0,
+        fontSize: 11,
+        color: t.labelColor,
+        opacity: 0.6,
+        fontFamily: t.fontFamily,
+      }}
+    >
+      {field.description}
+    </p>
   )
 
   const opts = (field.options ?? []).map((o) =>
@@ -569,9 +719,20 @@ function FieldRenderer({
       return (
         <div>
           {labelEl}
-          <div className="space-y-1.5">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {opts.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-[13px] cursor-pointer">
+              <label
+                key={o.value}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  color: t.text,
+                  fontFamily: t.fontFamily,
+                }}
+              >
                 <input
                   type="radio"
                   name={field.id}
@@ -591,7 +752,17 @@ function FieldRenderer({
 
     case "checkbox":
       return (
-        <label className="flex items-start gap-2 text-[13px] cursor-pointer">
+        <label
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            fontSize: 13,
+            cursor: "pointer",
+            color: t.text,
+            fontFamily: t.fontFamily,
+          }}
+        >
           <input
             type="checkbox"
             checked={Boolean(value)}

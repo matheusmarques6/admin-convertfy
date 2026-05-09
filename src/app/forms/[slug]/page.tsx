@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react"
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import { PublicFormView } from "@/components/forms/public-form-view"
@@ -16,19 +17,9 @@ interface FormPayload {
     name: string
     slug: string
     description: string | null
-    theme: {
-      primaryColor?: string
-      backgroundColor?: string
-      textColor?: string
-      borderRadius?: number
-      fontFamily?: string
-      fontSize?: number
-      headline?: string
-      subheadline?: string
-      buttonText?: string
-      hideTitle?: boolean
-      hideLabels?: boolean
-    }
+    // Theme e um JSON column livre — o renderer aplica defaults pra
+    // qualquer campo ausente. Tipagem completa fica no PublicFormView.
+    theme: Record<string, unknown>
     logo_url: string | null
     success_message: string | null
     redirect_url: string | null
@@ -85,7 +76,8 @@ export default async function PublicFormPage({
   return (
     <PublicFormView
       slug={slug}
-      payload={data}
+      // theme e um JSON column livre — cast pro tipo amplo do renderer.
+      payload={data as unknown as ComponentProps<typeof PublicFormView>["payload"]}
       utm={utm}
       embed={sp.embed === "1" || sp.embed === "true"}
     />
