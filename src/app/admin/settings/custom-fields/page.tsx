@@ -114,18 +114,19 @@ export default function CustomFieldsPage() {
         </ul>
       )}
 
-      {editing && (
-        <CustomFieldFormDialog
-          entity={entity}
-          field={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null)
-            mutate()
-          }}
-          existingKeys={fields.map((f) => f.key)}
-        />
-      )}
+      <CustomFieldFormDialog
+        open={editing !== null}
+        entity={entity}
+        field={editing === "new" ? null : editing}
+        onOpenChange={(v) => {
+          if (!v) setEditing(null)
+        }}
+        onSaved={() => {
+          setEditing(null)
+          mutate()
+        }}
+        existingKeys={fields.map((f) => f.key)}
+      />
     </div>
   )
 }

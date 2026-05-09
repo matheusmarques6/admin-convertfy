@@ -3,20 +3,20 @@
 /**
  * Componentes reutilizaveis pra gerenciar custom fields (CRUD).
  *
- * `CustomFieldFormDialog` — modal para criar/editar um campo. Persiste
- * via POST/PATCH em `/api/crm/custom-fields[/id]` e dispara `onSaved`.
+ * `CustomFieldFormDialog` — modal Radix para criar/editar um campo.
+ * Usa DialogPrimitive proprio (com Portal/Overlay/Content) pra que o
+ * Radix gerencie corretamente o aninhamento quando abre por cima de
+ * outro Dialog (ex: PipelineSettingsDialog). Sem isso, o focus trap
+ * + inert do Dialog pai bloqueia interacao no filho.
  *
- * `CustomFieldListItem` — linha individual da lista de campos com
- * acoes de editar/deletar.
+ * `CustomFieldListItem` — linha individual da lista de campos.
  *
- * Reusado pela pagina standalone em `/admin/settings/custom-fields/`
- * e pelo PipelineSettingsDialog (para gerenciamento contextual sem
- * sair do scope comercial — evita o sidebar mudar de "Comercial" pra
- * "Geral" quando o usuario gerencia campos no fluxo da pipeline).
+ * `SystemFieldListItem` — linha read-only para campos nativos do
+ * schema (nome, email, phone, etc) com badge "Sistema".
  */
 
 import { useEffect, useState } from "react"
-import { createPortal } from "react-dom"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
 import {
   Plus,
   Trash2,
@@ -26,6 +26,7 @@ import {
   AlertCircle,
   X,
   ChevronDown,
+  Lock,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 
@@ -69,6 +70,40 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   phone: "Telefone",
 }
 
+// Campos nativos do schema do deal — nao podem ser deletados ou
+// renomeados; existem por design no banco. Listados pra dar
+// visibilidade junto dos custom fields.
+export const SYSTEM_DEAL_FIELDS: Array<{
+  key: string
+  label: string
+  type: FieldType
+  hint?: string
+}> = [
+  { key: "title", label: "Título do deal", type: "text" },
+  { key: "value", label: "Valor", type: "number", hint: "Em centavos" },
+  { key: "currency", label: "Moeda", type: "text" },
+  { key: "probability", label: "Probabilidade", type: "number", hint: "0–100" },
+  { key: "expected_close_date", label: "Data esperada de fechamento", type: "date" },
+  { key: "source", label: "Origem", type: "text" },
+  { key: "tags", label: "Tags", type: "multi_select" },
+  { key: "notes", label: "Notas", type: "textarea" },
+]
+
+// Campos do lead (vinculado ao deal). Sempre que um deal vem de um
+// formulario, esses campos sao preenchidos no lead linkado.
+export const SYSTEM_LEAD_FIELDS: Array<{
+  key: string
+  label: string
+  type: FieldType
+  hint?: string
+}> = [
+  { key: "name", label: "Nome", type: "text" },
+  { key: "email", label: "Email", type: "email" },
+  { key: "phone", label: "Telefone / WhatsApp", type: "phone" },
+  { key: "company", label: "Empresa", type: "text" },
+  { key: "role", label: "Cargo", type: "text" },
+]
+
 export function toSlug(label: string): string {
   return label
     .toLowerCase()
@@ -80,7 +115,7 @@ export function toSlug(label: string): string {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Lista — linha individual
+// Linha — campo personalizado (custom)
 // ────────────────────────────────────────────────────────────────────
 
 export function CustomFieldListItem({
@@ -118,8 +153,7 @@ export function CustomFieldListItem({
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500 dark:text-white/45 font-mono">
-          <span className="text-slate-400 dark:text-white/30">key:</span>
-          <code>{field.key}</code>
+          <code className="text-slate-400 dark:text-white/30">{field.key}</code>
           <span className="text-slate-300 dark:text-white/20">·</span>
           <span>{FIELD_TYPE_LABELS[field.field_type]}</span>
           {(field.field_type === "select" ||
@@ -130,11 +164,6 @@ export function CustomFieldListItem({
             </>
           )}
         </div>
-        {field.description && !compact && (
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/55 truncate">
-            {field.description}
-          </p>
-        )}
       </div>
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
@@ -159,65 +188,114 @@ export function CustomFieldListItem({
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Dialog — criar/editar campo
+// Linha — campo do sistema (read-only)
+// ────────────────────────────────────────────────────────────────────
+
+export function SystemFieldListItem({
+  label,
+  fieldKey,
+  type,
+  hint,
+  compact = false,
+}: {
+  label: string
+  fieldKey: string
+  type: FieldType
+  hint?: string
+  compact?: boolean
+}) {
+  return (
+    <li
+      className={
+        "flex items-center justify-between gap-3 rounded-[6px] border border-dashed border-slate-200 dark:border-white/[0.06] bg-slate-50/40 dark:bg-white/[0.01] " +
+        (compact ? "px-2.5 py-2" : "px-3 py-2.5")
+      }
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              "font-medium text-slate-700 dark:text-white/75 truncate " +
+              (compact ? "text-[12px]" : "text-[13px]")
+            }
+          >
+            {label}
+          </span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-white/45 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/[0.05]">
+            <Lock className="h-2.5 w-2.5" />
+            Sistema
+          </span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500 dark:text-white/45 font-mono">
+          <code className="text-slate-400 dark:text-white/30">{fieldKey}</code>
+          <span className="text-slate-300 dark:text-white/20">·</span>
+          <span>{FIELD_TYPE_LABELS[type]}</span>
+          {hint && (
+            <>
+              <span className="text-slate-300 dark:text-white/20">·</span>
+              <span className="font-sans text-slate-400 dark:text-white/35">
+                {hint}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Dialog — criar/editar campo (Radix Dialog Primitive)
 // ────────────────────────────────────────────────────────────────────
 
 export function CustomFieldFormDialog({
+  open,
   entity,
   field,
-  onClose,
+  onOpenChange,
   onSaved,
   existingKeys,
 }: {
+  open: boolean
   entity: EntityType
   field: CustomField | null
-  onClose: () => void
+  onOpenChange: (open: boolean) => void
   onSaved: () => void
   existingKeys: string[]
 }) {
   const isEdit = field !== null
   const toast = useToast()
 
-  const [label, setLabel] = useState(field?.label ?? "")
-  const [key, setKey] = useState(field?.key ?? "")
-  const [keyTouched, setKeyTouched] = useState(isEdit)
-  const [fieldType, setFieldType] = useState<FieldType>(
-    field?.field_type ?? "text",
-  )
-  const [optionsText, setOptionsText] = useState(
-    field
-      ? (field.options ?? [])
-          .map((o) => (typeof o === "string" ? o : o.label))
-          .join("\n")
-      : "",
-  )
-  const [description, setDescription] = useState(field?.description ?? "")
-  const [required, setRequired] = useState(field?.required ?? false)
+  const [label, setLabel] = useState("")
+  const [key, setKey] = useState("")
+  const [keyTouched, setKeyTouched] = useState(false)
+  const [fieldType, setFieldType] = useState<FieldType>("text")
+  const [optionsText, setOptionsText] = useState("")
+  const [description, setDescription] = useState("")
+  const [required, setRequired] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Re-sincroniza form com prop quando abrir/trocar de campo.
+  useEffect(() => {
+    if (!open) return
+    setLabel(field?.label ?? "")
+    setKey(field?.key ?? "")
+    setKeyTouched(field !== null)
+    setFieldType(field?.field_type ?? "text")
+    setOptionsText(
+      field
+        ? (field.options ?? [])
+            .map((o) => (typeof o === "string" ? o : o.label))
+            .join("\n")
+        : "",
+    )
+    setDescription(field?.description ?? "")
+    setRequired(field?.required ?? false)
+    setError(null)
+  }, [open, field])
+
   const showOptions = fieldType === "select" || fieldType === "multi_select"
-
-  // Portal so monta no client. SSR retorna null pra evitar hidration
-  // mismatch e pra escapar do scope do Radix Dialog pai (que adiciona
-  // pointer-events:none/inert no body, bloqueando interacao do nosso
-  // modal quando renderizado dentro da arvore do Dialog Root).
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  // Esc fecha o dialog (Radix nao escapa pra dialogs aninhados em portal manual).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation()
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", onKey, true)
-    return () => window.removeEventListener("keydown", onKey, true)
-  }, [onClose])
 
   const onLabelChange = (v: string) => {
     setLabel(v)
@@ -229,17 +307,17 @@ export function CustomFieldFormDialog({
     setError(null)
 
     if (!label.trim()) {
-      setError("Label e obrigatorio")
+      setError("O nome do campo é obrigatório.")
       return
     }
     if (!/^[a-z][a-z0-9_]*$/.test(key)) {
       setError(
-        "Key deve usar apenas letras minúsculas, números e _, começando com letra (ex: url_da_loja)",
+        'Identificador deve usar apenas letras minúsculas, números e _, começando com letra (ex: "url_da_loja").',
       )
       return
     }
     if (!isEdit && existingKeys.includes(key)) {
-      setError(`Já existe um campo com a key "${key}"`)
+      setError(`Já existe um campo com o identificador "${key}".`)
       return
     }
 
@@ -286,162 +364,175 @@ export function CustomFieldFormDialog({
     }
   }
 
-  if (!mounted) return null
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
+        />
+        <DialogPrimitive.Content
+          className="fixed left-1/2 top-1/2 z-[60] w-full max-w-[540px] -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] max-h-[90vh] overflow-hidden flex flex-col data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95"
+          onOpenAutoFocus={(e) => {
+            // Permite default behavior — focus no primeiro input.
+            void e
+          }}
+        >
+          <DialogPrimitive.Title className="sr-only">
+            {isEdit ? "Editar campo" : "Novo campo personalizado"}
+          </DialogPrimitive.Title>
 
-  // Portal direto em document.body com pointer-events:auto explicito
-  // — escapa do focus trap / inert do Radix Dialog pai que bloqueia
-  // interacao quando o modal aparece sobreposto.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4"
-      style={{ pointerEvents: "auto" }}
-      onPointerDownCapture={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[520px] bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] max-h-[90vh] overflow-hidden flex flex-col"
-        style={{ pointerEvents: "auto" }}
-      >
-        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-          <div>
-            <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
-              {isEdit ? "Editar campo" : "Novo campo personalizado"}
-            </h2>
-            <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55">
-              Pra {entity === "lead" ? "leads" : "deals"}.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-slate-500 dark:text-white/55 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5">
-          <FormField label="Nome do campo (label)" required>
-            <input
-              autoFocus
-              type="text"
-              value={label}
-              onChange={(e) => onLabelChange(e.target.value)}
-              placeholder="Ex: URL da loja"
-              className="crm-input w-full"
-            />
-          </FormField>
-
-          <FormField
-            label="Identificador interno (key)"
-            hint="Usado no JSON. Snake_case automático a partir do label."
-          >
-            <input
-              type="text"
-              value={key}
-              onChange={(e) => {
-                setKeyTouched(true)
-                setKey(
-                  e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
-                )
-              }}
-              disabled={isEdit}
-              className="crm-input w-full font-mono text-[12px]"
-              placeholder="url_da_loja"
-            />
-          </FormField>
-
-          <FormField label="Tipo">
-            <div className="relative">
-              <select
-                value={fieldType}
-                onChange={(e) => setFieldType(e.target.value as FieldType)}
-                className="crm-input w-full appearance-none pr-8"
-              >
-                {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white tracking-tight">
+                {isEdit ? "Editar campo" : "Novo campo"}
+              </h2>
+              <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55">
+                {entity === "lead"
+                  ? "Aparece na ficha do lead e nos formulários."
+                  : "Aparece na ficha do deal e nos formulários."}
+              </p>
             </div>
-          </FormField>
+            <DialogPrimitive.Close asChild>
+              <button
+                type="button"
+                aria-label="Fechar"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-slate-500 dark:text-white/55 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogPrimitive.Close>
+          </div>
 
-          {showOptions && (
-            <FormField
-              label="Opções"
-              hint="Uma por linha. Ex: 'Até R$ 50k', 'R$ 50k–200k'."
-            >
-              <textarea
-                rows={4}
-                value={optionsText}
-                onChange={(e) => setOptionsText(e.target.value)}
-                className="crm-input w-full text-[12px]"
-                placeholder="Opção 1&#10;Opção 2&#10;Opção 3"
+          {/* Body */}
+          <form
+            id="custom-field-form"
+            onSubmit={handleSubmit}
+            className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+          >
+            <FormField label="Nome do campo" required>
+              <input
+                autoFocus
+                type="text"
+                value={label}
+                onChange={(e) => onLabelChange(e.target.value)}
+                placeholder="Ex: URL da loja"
+                className="crm-input w-full"
               />
             </FormField>
-          )}
 
-          <FormField label="Descrição (opcional)">
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="crm-input w-full"
-              placeholder="Aparece como hint no formulário"
-            />
-          </FormField>
+            <FormField
+              label="Identificador interno"
+              hint='Snake_case automático a partir do nome. Usado no JSON salvo. Ex: "url_da_loja".'
+            >
+              <input
+                type="text"
+                value={key}
+                onChange={(e) => {
+                  setKeyTouched(true)
+                  setKey(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+                  )
+                }}
+                disabled={isEdit}
+                className="crm-input w-full font-mono text-[12px] disabled:opacity-60"
+                placeholder="url_da_loja"
+              />
+            </FormField>
 
-          <label className="flex items-center gap-2 text-[12px] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={required}
-              onChange={(e) => setRequired(e.target.checked)}
-              className="h-3.5 w-3.5 cursor-pointer"
-            />
-            <span className="text-slate-700 dark:text-white/75">
-              Campo obrigatório
-            </span>
-          </label>
+            <FormField label="Tipo">
+              <div className="relative">
+                <select
+                  value={fieldType}
+                  onChange={(e) => setFieldType(e.target.value as FieldType)}
+                  className="crm-input w-full appearance-none pr-8"
+                >
+                  {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              </div>
+            </FormField>
 
-          {error && (
-            <div className="flex items-start gap-2 rounded-[6px] border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-[11px] text-red-700 dark:text-red-300">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-100 dark:hover:bg-white/[0.06] disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || !label.trim()}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold disabled:opacity-50"
-          >
-            {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-3.5 w-3.5" />
+            {showOptions && (
+              <FormField
+                label="Opções"
+                hint="Uma por linha."
+              >
+                <textarea
+                  rows={4}
+                  value={optionsText}
+                  onChange={(e) => setOptionsText(e.target.value)}
+                  className="crm-input w-full text-[12px]"
+                  placeholder={"Até R$ 50k\nR$ 50k–200k\nR$ 200k–1M\nR$ 1M+"}
+                />
+              </FormField>
             )}
-            {isEdit ? "Salvar" : "Criar campo"}
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body,
+
+            <FormField
+              label="Descrição"
+              hint="Aparece como hint quando o campo é exibido em formulários."
+            >
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="crm-input w-full"
+                placeholder="Opcional"
+              />
+            </FormField>
+
+            <label className="flex items-center gap-2 text-[12px] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={required}
+                onChange={(e) => setRequired(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-slate-300 dark:border-white/20 cursor-pointer"
+              />
+              <span className="text-slate-700 dark:text-white/80">
+                Campo obrigatório
+              </span>
+            </label>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-[6px] border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-[11px] text-red-700 dark:text-red-300">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+          </form>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+            <DialogPrimitive.Close asChild>
+              <button
+                type="button"
+                disabled={submitting}
+                className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-100 dark:hover:bg-white/[0.06] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </DialogPrimitive.Close>
+            <button
+              type="submit"
+              form="custom-field-form"
+              disabled={submitting || !label.trim()}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold disabled:opacity-50"
+            >
+              {submitting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              {isEdit ? "Salvar alterações" : "Criar campo"}
+            </button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 
@@ -457,9 +548,10 @@ function FormField({
   children: React.ReactNode
 }) {
   return (
-    <div className="space-y-1">
-      <label className="block text-[12px] font-medium text-slate-700 dark:text-white/75">
-        {label} {required && <span className="text-red-500">*</span>}
+    <div className="space-y-1.5">
+      <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
       {hint && (
@@ -472,7 +564,7 @@ function FormField({
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Botao "Novo campo" — atalho consistente
+// Botao "Novo campo"
 // ────────────────────────────────────────────────────────────────────
 
 export function NewCustomFieldButton({

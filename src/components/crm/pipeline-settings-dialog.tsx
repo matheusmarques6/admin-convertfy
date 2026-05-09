@@ -27,6 +27,9 @@ import {
   CustomFieldFormDialog,
   CustomFieldListItem,
   NewCustomFieldButton,
+  SystemFieldListItem,
+  SYSTEM_DEAL_FIELDS,
+  SYSTEM_LEAD_FIELDS,
   type CustomField,
 } from "./custom-field-form-dialog"
 
@@ -560,20 +563,12 @@ export function PipelineSettingsDialog({
 
             <Divider />
 
-            {/* ── Section: Campos personalizados ── */}
+            {/* ── Section: Campos do deal ── */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <SectionHeading
                   title="Campos do deal"
-                  hint={
-                    customFields.length === 0
-                      ? "Adicione campos extras que aparecem na ficha do deal e podem ser mapeados de formularios"
-                      : `${customFields.length} ${
-                          customFields.length === 1
-                            ? "campo definido"
-                            : "campos definidos"
-                        } · aparecem na ficha do deal e no mapeamento de formularios`
-                  }
+                  hint="Inclui os campos do sistema (sempre presentes) e os campos personalizados que voce define."
                 />
                 <NewCustomFieldButton
                   onClick={() => setEditingCustomField("new")}
@@ -581,50 +576,93 @@ export function PipelineSettingsDialog({
                 />
               </div>
 
-              {customFields.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setEditingCustomField("new")}
-                  className="w-full rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] bg-slate-50/50 dark:bg-white/[0.02] hover:bg-slate-100 dark:hover:bg-white/[0.04] p-4 text-left transition-colors"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <Sparkles className="h-4 w-4 text-slate-400 dark:text-white/40 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-medium text-slate-700 dark:text-white/80">
-                        Nenhum campo personalizado ainda
-                      </p>
-                      <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed mt-0.5">
-                        Crie campos como &quot;URL da loja&quot;, &quot;Faturamento mensal&quot; ou
-                        &quot;Segmento&quot;. Eles aparecem na ficha do deal e
-                        podem ser mapeados a partir de formularios.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              ) : (
+              {/* Campos do sistema do deal */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400 dark:text-white/40 mb-1.5">
+                  Sistema · {SYSTEM_DEAL_FIELDS.length}
+                </p>
                 <ul className="space-y-1.5">
-                  {customFields.map((f) => (
-                    <CustomFieldListItem
-                      key={f.id}
-                      field={f}
+                  {SYSTEM_DEAL_FIELDS.map((f) => (
+                    <SystemFieldListItem
+                      key={f.key}
+                      label={f.label}
+                      fieldKey={f.key}
+                      type={f.type}
+                      hint={f.hint}
                       compact
-                      onEdit={() => setEditingCustomField(f)}
-                      onDelete={async () => {
-                        if (
-                          !confirm(
-                            `Excluir o campo "${f.label}"? Os dados ja gravados serao preservados.`,
-                          )
-                        )
-                          return
-                        await fetch(`/api/crm/custom-fields/${f.id}`, {
-                          method: "DELETE",
-                        })
-                        mutateCustomFields()
-                      }}
                     />
                   ))}
                 </ul>
-              )}
+              </div>
+
+              {/* Campos do sistema do lead vinculado */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400 dark:text-white/40 mb-1.5">
+                  Lead vinculado · {SYSTEM_LEAD_FIELDS.length}
+                </p>
+                <ul className="space-y-1.5">
+                  {SYSTEM_LEAD_FIELDS.map((f) => (
+                    <SystemFieldListItem
+                      key={f.key}
+                      label={f.label}
+                      fieldKey={f.key}
+                      type={f.type}
+                      compact
+                    />
+                  ))}
+                </ul>
+              </div>
+
+              {/* Custom fields */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400 dark:text-white/40 mb-1.5">
+                  Personalizados · {customFields.length}
+                </p>
+                {customFields.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditingCustomField("new")}
+                    className="w-full rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] bg-slate-50/40 dark:bg-white/[0.02] hover:bg-slate-100 dark:hover:bg-white/[0.04] p-3 text-left transition-colors"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <Sparkles className="h-3.5 w-3.5 text-slate-400 dark:text-white/40 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                          Adicionar primeiro campo
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed mt-0.5">
+                          Ex: &quot;URL da loja&quot;, &quot;Faturamento
+                          mensal&quot;, &quot;Segmento&quot;. Eles aparecem na
+                          ficha do deal e podem ser mapeados de formularios.
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {customFields.map((f) => (
+                      <CustomFieldListItem
+                        key={f.id}
+                        field={f}
+                        compact
+                        onEdit={() => setEditingCustomField(f)}
+                        onDelete={async () => {
+                          if (
+                            !confirm(
+                              `Excluir o campo "${f.label}"? Os dados ja gravados serao preservados.`,
+                            )
+                          )
+                            return
+                          await fetch(`/api/crm/custom-fields/${f.id}`, {
+                            method: "DELETE",
+                          })
+                          mutateCustomFields()
+                        }}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
             </section>
 
             <Divider />
@@ -699,19 +737,21 @@ export function PipelineSettingsDialog({
         />
       )}
 
-      {/* CRUD inline de custom fields — sem sair do contexto comercial */}
-      {editingCustomField && (
-        <CustomFieldFormDialog
-          entity="deal"
-          field={editingCustomField === "new" ? null : editingCustomField}
-          onClose={() => setEditingCustomField(null)}
-          onSaved={() => {
-            setEditingCustomField(null)
-            mutateCustomFields()
-          }}
-          existingKeys={customFields.map((f) => f.key)}
-        />
-      )}
+      {/* CRUD inline de custom fields — Radix Dialog proprio gerencia
+          aninhamento corretamente sobre o PipelineSettingsDialog. */}
+      <CustomFieldFormDialog
+        open={editingCustomField !== null}
+        entity="deal"
+        field={editingCustomField === "new" ? null : editingCustomField}
+        onOpenChange={(v) => {
+          if (!v) setEditingCustomField(null)
+        }}
+        onSaved={() => {
+          setEditingCustomField(null)
+          mutateCustomFields()
+        }}
+        existingKeys={customFields.map((f) => f.key)}
+      />
     </DialogPrimitive.Root>
   )
 }
