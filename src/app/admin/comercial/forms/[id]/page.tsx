@@ -2148,7 +2148,23 @@ function FieldEditor({
           <div className="grid grid-cols-2 gap-1.5">
             <select
               value={field.field_type}
-              onChange={(e) => onChange({ field_type: e.target.value })}
+              onChange={(e) => {
+                const newType = e.target.value
+                const patch: Partial<FormField> = { field_type: newType }
+                // Telefone/WhatsApp: ativa seletor de pais + mascara por
+                // default. Quase todo phone field e BR/WhatsApp e usuario
+                // espera ja vir formatado.
+                if (
+                  newType === "phone" &&
+                  (field.validation as { countryCode?: boolean } | undefined)?.countryCode === undefined
+                ) {
+                  patch.validation = {
+                    ...(field.validation ?? {}),
+                    countryCode: true,
+                  }
+                }
+                onChange(patch)
+              }}
               className="crm-input text-[11px]"
             >
               {FIELD_TYPES.map((t) => (
