@@ -338,6 +338,16 @@ export default function FormEditorPage({
   )
   const pipelines = pipelinesData?.pipelines ?? []
 
+  // Custom fields da org (entity=lead). Aparecem no dropdown de mapeamento
+  // como "Custom: Nome do campo" pra mapear pra crm_leads.custom_fields[key].
+  const { data: customFieldsData } = useSWR<{
+    fields: Array<{ id: string; key: string; label: string; field_type: string }>
+  }>("/api/crm/custom-fields?entity=lead", fetcher)
+  const customFields = useMemo(
+    () => customFieldsData?.fields ?? [],
+    [customFieldsData],
+  )
+
   // Estado dos campos editaveis
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
@@ -582,6 +592,7 @@ export default function FormEditorPage({
           {activeTab === "fields" && (
             <FieldsTab
               fields={fields}
+              customFields={customFields}
               addField={addField}
               updateField={updateField}
               removeField={removeField}
@@ -1154,12 +1165,14 @@ function StyleTab({
 
 function FieldsTab({
   fields,
+  customFields,
   addField,
   updateField,
   removeField,
   moveField,
 }: {
   fields: FormField[]
+  customFields: Array<{ id: string; key: string; label: string; field_type: string }>
   addField: () => void
   updateField: (idx: number, patch: Partial<FormField>) => void
   removeField: (idx: number) => void
@@ -1198,6 +1211,7 @@ function FieldsTab({
           <FieldEditor
             key={field.id ?? `new-${idx}`}
             field={field}
+            customFields={customFields}
             onChange={(patch) => updateField(idx, patch)}
             onRemove={() => removeField(idx)}
             onMoveUp={idx > 0 ? () => moveField(idx, "up") : undefined}
@@ -1744,12 +1758,14 @@ function PlatformGuide({
 
 function FieldEditor({
   field,
+  customFields,
   onChange,
   onRemove,
   onMoveUp,
   onMoveDown,
 }: {
   field: FormField
+  customFields: Array<{ id: string; key: string; label: string; field_type: string }>
   onChange: (patch: Partial<FormField>) => void
   onRemove: () => void
   onMoveUp?: () => void
@@ -1819,13 +1835,49 @@ function FieldEditor({
               onChange={(e) => onChange({ map_to_lead_field: e.target.value || null })}
               className="crm-input text-[11px]"
             >
-              {LEAD_FIELD_MAP.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
+              <optgroup label="Padrão">
+                {LEAD_FIELD_MAP.map((m) => (
+                  <option key={m.value || "_none"} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </optgroup>
+              {customFields.length > 0 && (
+                <optgroup label="Personalizados">
+                  {customFields.map((c) => (
+                    <option key={c.id} value={`custom:${c.key}`}>
+                      {c.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
+          {customFields.length === 0 ? (
+            <p className="text-[10px] text-slate-500 dark:text-white/45 leading-relaxed">
+              Pra adicionar mais campos (ex: URL da loja, faturamento),{" "}
+              <a
+                href="/admin/settings/custom-fields"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                crie campos personalizados
+              </a>
+              .
+            </p>
+          ) : (
+            <p className="text-[10px] text-slate-500 dark:text-white/45 leading-relaxed">
+              <a
+                href="/admin/settings/custom-fields"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Gerenciar campos personalizados ↗
+              </a>
+            </p>
+          )}
           <input
             type="text"
             placeholder="Placeholder (opcional)"

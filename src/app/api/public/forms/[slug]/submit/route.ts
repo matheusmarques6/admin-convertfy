@@ -100,6 +100,8 @@ export async function POST(
     }
 
     // 4. Mapeia map_to_lead_field -> dados de lead.
+    // Suporta tanto colunas padrao (name, email, phone, company, source)
+    // quanto custom fields no formato "custom:<key>" -> custom_fields[key].
     const leadData: {
       name?: string
       email?: string
@@ -107,10 +109,20 @@ export async function POST(
       company?: string
       source?: string
     } = {}
+    const customFieldsData: Record<string, unknown> = {}
+
     for (const f of fields || []) {
       if (!f.map_to_lead_field) continue
       const val = parsed.answers[f.id]
       if (val == null || val === "") continue
+
+      // Custom field: formato "custom:<key>" -> grava em custom_fields[key]
+      if (f.map_to_lead_field.startsWith("custom:")) {
+        const key = f.map_to_lead_field.slice("custom:".length)
+        if (key) customFieldsData[key] = val
+        continue
+      }
+
       const v = String(val).trim()
       switch (f.map_to_lead_field) {
         case "name": leadData.name = v; break
@@ -166,11 +178,28 @@ export async function POST(
             content: parsed.utm_content ?? null,
             referrer: parsed.referrer ?? null,
           },
+          custom_fields: Object.keys(customFieldsData).length > 0 ? customFieldsData : {},
         })
         .select("id")
         .single()
       if (lErr) throw lErr
       leadId = lead.id
+    } else if (Object.keys(customFieldsData).length > 0) {
+      // Lead deduplicado por email — faz merge dos custom fields existentes
+      // com os novos (novos sobrescrevem em caso de conflito).
+      const { data: existing } = await admin
+        .from("crm_leads")
+        .select("custom_fields")
+        .eq("id", leadId)
+        .single()
+      const merged = {
+        ...((existing?.custom_fields as Record<string, unknown> | null) ?? {}),
+        ...customFieldsData,
+      }
+      await admin
+        .from("crm_leads")
+        .update({ custom_fields: merged })
+        .eq("id", leadId)
     }
 
     // 6. Se form tem pipeline_id, cria deal.
