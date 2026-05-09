@@ -139,9 +139,66 @@ const THEME_PRESETS: Array<{
   theme: FormTheme
 }> = [
   {
-    key: "convertfy-aceleradora",
-    label: "Aceleradora",
-    description: "Dark com gradiente roxo, igual landing page",
+    key: "aplicar-diagnostico",
+    label: "Aplicar diagnóstico",
+    description: "Idêntico ao form da landing Convertfy",
+    preview: { bg: "#0B0F19", primary: "#2563EB", text: "#fff" },
+    theme: {
+      mode: "dark",
+      primaryColor: "#2563EB",
+      backgroundColor: "#0B0F19",
+      textColor: "#FFFFFF",
+      cardBgColor: "rgba(255,255,255,0.02)",
+      cardBorderColor: "rgba(255,255,255,0.08)",
+      cardShadow: "lg",
+      containerWidth: 460,
+      inputBgColor: "rgba(255,255,255,0.03)",
+      inputBorderColor: "rgba(255,255,255,0.08)",
+      inputTextColor: "#FFFFFF",
+      borderRadius: 8,
+      fontFamily: "Inter, system-ui, sans-serif",
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 13,
+      buttonText: "Solicitar diagnóstico gratuito",
+      buttonTextColor: "#FFFFFF",
+      headline: "Aplicar para diagnóstico",
+      subheadline:
+        "Analisamos seu e-commerce — no Brasil ou no exterior — e mostramos quanta receita você está deixando na mesa. Sem compromisso.",
+      hidePoweredBy: false,
+    },
+  },
+  {
+    key: "embed-transparente",
+    label: "Embed transparente",
+    description: "Sem fundo — herda a cor da sua página de vendas",
+    preview: {
+      bg: "repeating-conic-gradient(#E5E7EB 0% 25%, transparent 0% 50%) 0 0/14px 14px",
+      primary: "#2563EB",
+      text: "#0F172A",
+    },
+    theme: {
+      mode: "light",
+      primaryColor: "#2563EB",
+      backgroundColor: "transparent",
+      textColor: "inherit",
+      cardBgColor: "transparent",
+      cardBorderColor: "transparent",
+      cardShadow: "none",
+      containerWidth: 480,
+      inputBgColor: "rgba(0,0,0,0.04)",
+      inputBorderColor: "rgba(0,0,0,0.12)",
+      borderRadius: 8,
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 14,
+      hidePoweredBy: true,
+    },
+  },
+  {
+    key: "aceleradora-gradient",
+    label: "Aceleradora gradient",
+    description: "Variação com gradiente roxo + badge",
     preview: { bg: "linear-gradient(135deg, #0B0B14, #1E1B4B)", primary: "#A78BFA", text: "#fff" },
     theme: {
       mode: "dark",
@@ -1233,7 +1290,7 @@ function InstallTab({
   setCopied: (v: string | null) => void
   name: string
 }) {
-  const iframe = `<iframe src="${publicUrl}" style="border:0;width:100%;min-height:600px" title="${name}"></iframe>`
+  const iframe = `<iframe src="${publicUrl}" style="border:0;background:transparent;width:100%;min-height:600px" title="${name}" allowtransparency="true"></iframe>`
   const buttonLink = `<a href="${publicUrl}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>`
 
   const copy = (label: string, text: string) => {
