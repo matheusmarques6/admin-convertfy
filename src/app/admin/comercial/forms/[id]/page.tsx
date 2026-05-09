@@ -170,8 +170,8 @@ const THEME_PRESETS: Array<{
   },
   {
     key: "embed-transparente",
-    label: "Embed transparente",
-    description: "Sem fundo — herda a cor da sua página de vendas",
+    label: "Embed transparente (claro)",
+    description: "Sem fundo, texto escuro. Pra páginas claras.",
     preview: {
       bg: "repeating-conic-gradient(#E5E7EB 0% 25%, transparent 0% 50%) 0 0/14px 14px",
       primary: "#2563EB",
@@ -181,13 +181,42 @@ const THEME_PRESETS: Array<{
       mode: "light",
       primaryColor: "#2563EB",
       backgroundColor: "transparent",
-      textColor: "inherit",
+      textColor: "#0F172A",
       cardBgColor: "transparent",
       cardBorderColor: "transparent",
       cardShadow: "none",
       containerWidth: 480,
       inputBgColor: "rgba(0,0,0,0.04)",
       inputBorderColor: "rgba(0,0,0,0.12)",
+      inputTextColor: "#0F172A",
+      borderRadius: 8,
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 14,
+      hidePoweredBy: true,
+    },
+  },
+  {
+    key: "embed-transparente-dark",
+    label: "Embed transparente (escuro)",
+    description: "Sem fundo, texto branco. Pra páginas escuras.",
+    preview: {
+      bg: "repeating-conic-gradient(#1F2937 0% 25%, transparent 0% 50%) 0 0/14px 14px",
+      primary: "#60A5FA",
+      text: "#FFFFFF",
+    },
+    theme: {
+      mode: "dark",
+      primaryColor: "#60A5FA",
+      backgroundColor: "transparent",
+      textColor: "#FFFFFF",
+      cardBgColor: "transparent",
+      cardBorderColor: "transparent",
+      cardShadow: "none",
+      containerWidth: 480,
+      inputBgColor: "rgba(255,255,255,0.06)",
+      inputBorderColor: "rgba(255,255,255,0.14)",
+      inputTextColor: "#FFFFFF",
       borderRadius: 8,
       fontSize: 14,
       headingSize: 24,
@@ -1290,7 +1319,11 @@ function InstallTab({
   setCopied: (v: string | null) => void
   name: string
 }) {
-  const iframe = `<iframe src="${publicUrl}" style="border:0;background:transparent;width:100%;min-height:600px" title="${name}" allowtransparency="true"></iframe>`
+  // ?embed=1 faz o /forms/[slug] renderizar SO o card (sem min-h-screen,
+  // sem padding de pagina). Ideal pra iframe — herda altura/largura natural
+  // do conteudo e o background do iframe pai.
+  const embedUrl = `${publicUrl}?embed=1`
+  const iframe = `<iframe src="${embedUrl}" style="border:0;background:transparent;width:100%;min-height:600px" title="${name}" allowtransparency="true"></iframe>`
   const buttonLink = `<a href="${publicUrl}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>`
 
   const copy = (label: string, text: string) => {

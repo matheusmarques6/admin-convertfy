@@ -82,5 +82,12 @@ export default async function PublicFormPage({
     utm_content: typeof sp.utm_content === "string" ? sp.utm_content : null,
   }
 
-  return <PublicFormView slug={slug} payload={data} utm={utm} />
+  return (
+    <PublicFormView
+      slug={slug}
+      payload={data}
+      utm={utm}
+      embed={sp.embed === "1" || sp.embed === "true"}
+    />
+  )
 }

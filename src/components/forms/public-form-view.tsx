@@ -95,6 +95,12 @@ interface Props {
    * pelo editor pra preview live sem persistir no banco.
    */
   preview?: boolean
+  /**
+   * Quando true, renderiza apenas o card do form (sem min-h-screen, sem
+   * centralizar verticalmente). Usado em iframes/embeds — o form ocupa
+   * apenas o espaco que precisa, herdando o background da pagina pai.
+   */
+  embed?: boolean
 }
 
 // ── Países suportados no seletor de DDI ──
@@ -165,7 +171,7 @@ function shadowCss(level: "none" | "sm" | "md" | "lg"): string {
 
 // ── Component ──
 
-export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
+export function PublicFormView({ slug, payload, utm, preview = false, embed = false }: Props) {
   const { form, fields } = payload
   const theme = form.theme ?? {}
   const t = defaults(theme)
@@ -262,26 +268,41 @@ export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
   }
 
   if (done) {
+    const successCard = (
+      <div
+        className="w-full text-center px-8 py-10"
+        style={{ ...cardStyle, maxWidth: t.containerWidth }}
+      >
+        <div
+          className="mx-auto h-12 w-12 rounded-full flex items-center justify-center mb-4"
+          style={{ background: `${t.primary}1A`, color: t.primary }}
+        >
+          <CheckCircle2 className="h-5 w-5" />
+        </div>
+        <h2 className="text-[18px] font-semibold mb-2">Recebido com sucesso!</h2>
+        <p className="text-[13px] opacity-80 leading-relaxed">
+          {done.message ?? "Obrigado! Sua resposta foi registrada e nossa equipe entrara em contato."}
+        </p>
+      </div>
+    )
+    if (embed) {
+      // Embed: renderiza apenas o card. Sem fundo de pagina, sem altura
+      // forcada. Pai do iframe controla layout.
+      return (
+        <div
+          className="w-full"
+          style={{ color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }}
+        >
+          {successCard}
+        </div>
+      )
+    }
     return (
       <main
         className="min-h-screen flex items-center justify-center px-4 py-12"
         style={{ background: bgFill, color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }}
       >
-        <div
-          className="w-full text-center px-8 py-10"
-          style={{ ...cardStyle, maxWidth: t.containerWidth }}
-        >
-          <div
-            className="mx-auto h-12 w-12 rounded-full flex items-center justify-center mb-4"
-            style={{ background: `${t.primary}1A`, color: t.primary }}
-          >
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-          <h2 className="text-[18px] font-semibold mb-2">Recebido com sucesso!</h2>
-          <p className="text-[13px] opacity-80 leading-relaxed">
-            {done.message ?? "Obrigado! Sua resposta foi registrada e nossa equipe entrara em contato."}
-          </p>
-        </div>
+        {successCard}
       </main>
     )
   }
@@ -298,20 +319,31 @@ export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
   }
   const focusRing = `0 0 0 3px ${t.primary}33`
 
-  return (
-    <main
-      className="min-h-screen flex items-start sm:items-center justify-center px-4 py-8 sm:py-12"
-      style={{
+  // Wrapper varia por modo:
+  // - embed: apenas o card, sem fundo, sem altura forcada (ideal pra iframe)
+  // - normal: pagina completa centralizada com background do tema
+  const Wrapper = embed ? "div" : "main"
+  const wrapperClass = embed
+    ? "w-full"
+    : "min-h-screen flex items-start sm:items-center justify-center px-4 py-8 sm:py-12"
+  const wrapperStyle: React.CSSProperties = embed
+    ? { color: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize }
+    : {
         background: bgFill,
         color: t.text,
         fontFamily: t.fontFamily,
         fontSize: t.fontSize,
-      }}
-    >
+      }
+
+  return (
+    <Wrapper className={wrapperClass} style={wrapperStyle}>
       <form
         onSubmit={handleSubmit}
         className="w-full"
-        style={{ ...cardStyle, maxWidth: t.containerWidth }}
+        style={{
+          ...cardStyle,
+          maxWidth: embed ? "100%" : t.containerWidth,
+        }}
       >
         {/* Header */}
         <div className="px-6 sm:px-8 pt-7 pb-4">
@@ -424,7 +456,7 @@ export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
       </form>
 
       {/* Placeholders dark (Tailwind nao suporta dynamic class via style) */}
-      {dark && (
+      {dark && !embed && (
         <style jsx global>{`
           form input::placeholder,
           form textarea::placeholder {
@@ -432,7 +464,7 @@ export function PublicFormView({ slug, payload, utm, preview = false }: Props) {
           }
         `}</style>
       )}
-    </main>
+    </Wrapper>
   )
 }
 
@@ -633,6 +665,49 @@ function FieldRenderer({
 
 // ── Phone com seletor de pais ──
 
+// Detecta o pais default a partir do navigator.language. Ex: "pt-BR" → BR,
+// "en-US" → US. Se nao reconhecer, fallback BR.
+function guessCountryFromBrowser(): string {
+  if (typeof navigator === "undefined") return "BR"
+  const lang = navigator.language || ""
+  const region = lang.includes("-") ? lang.split("-")[1] : lang
+  const code = region.toUpperCase()
+  return COUNTRIES.find((c) => c.code === code) ? code : "BR"
+}
+
+// Aplica mascara de digitos por pais. So formata BR e US (resto so deixa
+// digitos puros — funciona pra qualquer pais).
+function applyPhoneMask(country: string, raw: string): string {
+  const d = raw.replace(/\D/g, "")
+  if (country === "BR") {
+    const t = d.slice(0, 11)
+    if (t.length <= 2) return t.length ? `(${t}` : ""
+    if (t.length <= 6) return `(${t.slice(0, 2)}) ${t.slice(2)}`
+    if (t.length <= 10)
+      return `(${t.slice(0, 2)}) ${t.slice(2, 6)}-${t.slice(6)}`
+    return `(${t.slice(0, 2)}) ${t.slice(2, 7)}-${t.slice(7)}`
+  }
+  if (country === "US") {
+    const t = d.slice(0, 10)
+    if (t.length <= 3) return t.length ? `(${t}` : ""
+    if (t.length <= 6) return `(${t.slice(0, 3)}) ${t.slice(3)}`
+    return `(${t.slice(0, 3)}) ${t.slice(3, 6)}-${t.slice(6)}`
+  }
+  // Resto: apenas mantem digitos com agrupamento basico.
+  if (d.length <= 4) return d
+  if (d.length <= 8) return `${d.slice(0, 4)} ${d.slice(4)}`
+  return `${d.slice(0, 4)} ${d.slice(4, 8)} ${d.slice(8, 12)}`
+}
+
+const DEFAULT_PLACEHOLDERS: Record<string, string> = {
+  BR: "(11) 99999-9999",
+  US: "(555) 123-4567",
+  PT: "912 345 678",
+  ES: "612 34 56 78",
+  MX: "55 1234 5678",
+  AR: "11 1234 5678",
+}
+
 function PhoneIntlField({
   field,
   value,
@@ -652,22 +727,26 @@ function PhoneIntlField({
   focusRing: string
   t: ReturnType<typeof defaults>
 }) {
-  const [country, setCountry] = useState<string>("BR")
+  // Auto-detecta pais via navigator.language no primeiro render.
+  const [country, setCountry] = useState<string>(() => guessCountryFromBrowser())
   const [phone, setPhone] = useState<string>("")
 
-  // Mantem o valor sincronizado pra o submit
+  // Mantem o valor sincronizado pra o submit (envia formato canonico:
+  // "+DD numero_apenas_digitos").
   useEffect(() => {
     const c = COUNTRIES.find((x) => x.code === country)
-    onChange(`${c?.dial ?? ""} ${phone}`.trim())
+    const digits = phone.replace(/\D/g, "")
+    onChange(digits ? `${c?.dial ?? ""}${digits}` : "")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country, phone])
 
-  // Se o pai resetar o value, reseta tambem
+  // Se o pai resetar o value, reseta tambem.
   useEffect(() => {
     if (typeof value === "string" && value === "") setPhone("")
   }, [value])
 
   const current = COUNTRIES.find((c) => c.code === country) ?? COUNTRIES[0]
+  const placeholder = field.placeholder || DEFAULT_PLACEHOLDERS[country] || "Telefone"
 
   return (
     <div>
@@ -675,9 +754,13 @@ function PhoneIntlField({
       <div className="flex gap-2">
         <div className="relative shrink-0">
           <select
-            aria-label="Pais"
+            aria-label="País"
             value={country}
-            onChange={(e) => setCountry(e.target.value)}
+            onChange={(e) => {
+              setCountry(e.target.value)
+              // Re-formata o telefone com a mascara do pais novo.
+              setPhone((p) => applyPhoneMask(e.target.value, p))
+            }}
             style={{
               ...inputStyle,
               appearance: "none",
@@ -704,11 +787,12 @@ function PhoneIntlField({
         </div>
         <input
           type="tel"
-          placeholder={field.placeholder ?? ""}
+          placeholder={placeholder}
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => setPhone(applyPhoneMask(country, e.target.value))}
           required={field.required}
           inputMode="tel"
+          autoComplete="tel-national"
           style={{ ...inputStyle, flex: 1 }}
           onFocus={(e) => (e.currentTarget.style.boxShadow = focusRing)}
           onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
