@@ -34,7 +34,8 @@ export async function GET(
         id, name, email, phone, company, role, source, utm, status,
         converted_to_client_id, converted_to_deal_id,
         enrichment, ai_qualification_score, ai_qualification_reason,
-        notes, assigned_to, tags, last_contacted_at, created_at, updated_at,
+        notes, assigned_to, tags, custom_fields, last_contacted_at,
+        created_at, updated_at,
         assignee:profiles!crm_leads_assigned_to_fkey (id, name, avatar_url, email)
       `)
       .eq("id", id)
@@ -74,6 +75,7 @@ const patchSchema = z.object({
   tags: z.array(z.string()).optional(),
   ai_qualification_score: z.number().int().min(0).max(100).nullable().optional(),
   ai_qualification_reason: z.string().nullable().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export async function PATCH(

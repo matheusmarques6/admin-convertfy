@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import {
   DragDropContext,
@@ -18,9 +19,13 @@ import {
   Star,
   AlertTriangle,
   Loader2,
+  Sparkles,
+  ExternalLink,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+
+const customFieldsFetcher = (url: string) => fetch(url).then((r) => r.json())
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -130,6 +135,20 @@ export function PipelineSettingsDialog({
   const [savingMeta, setSavingMeta] = useState(false)
   const [deletingPipe, setDeletingPipe] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
+  // Custom fields da entidade deal — exibidos no card e no drawer do
+  // deal. Listados aqui pra dar visibilidade e atalho de gerenciamento
+  // proximo ao contexto do pipeline.
+  const { data: customFieldsData } = useSWR<{
+    fields: Array<{
+      id: string
+      key: string
+      label: string
+      field_type: string
+      required: boolean
+    }>
+  }>(open ? "/api/crm/custom-fields?entity=deal" : null, customFieldsFetcher)
+  const customFields = customFieldsData?.fields ?? []
 
   // Re-sincroniza estado local quando o prop muda (ex: outro modal salvou).
   useEffect(() => {
@@ -527,6 +546,93 @@ export function PipelineSettingsDialog({
                   )}
                 </Droppable>
               </DragDropContext>
+            </section>
+
+            <Divider />
+
+            {/* ── Section: Campos personalizados ── */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <SectionHeading
+                  title="Campos personalizados do deal"
+                  hint={
+                    customFields.length === 0
+                      ? "Adicione campos extras que aparecem no card e na ficha do deal"
+                      : `${customFields.length} ${customFields.length === 1 ? "campo definido" : "campos definidos"} · sincronizam com formularios e ficha do deal`
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push("/admin/settings/custom-fields?entity=deal")
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  <Plus className="h-3 w-3" />
+                  Gerenciar
+                  <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+
+              {customFields.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    router.push("/admin/settings/custom-fields?entity=deal")
+                  }}
+                  className="w-full rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] bg-slate-50/50 dark:bg-white/[0.02] hover:bg-slate-100 dark:hover:bg-white/[0.04] p-4 text-left transition-colors"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <Sparkles className="h-4 w-4 text-slate-400 dark:text-white/40 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-slate-700 dark:text-white/80">
+                        Nenhum campo personalizado ainda
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed mt-0.5">
+                        Crie campos como &quot;URL da loja&quot;, &quot;Faturamento mensal&quot; ou
+                        &quot;Segmento&quot;. Eles aparecem no card do deal e podem ser
+                        mapeados a partir de formularios.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ) : (
+                <div className="rounded-[6px] border border-black/[0.06] dark:border-white/[0.06] divide-y divide-black/[0.04] dark:divide-white/[0.04] overflow-hidden">
+                  {customFields.slice(0, 6).map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-white/[0.02]"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[13px] text-slate-800 dark:text-white/85 truncate">
+                          {f.label}
+                        </span>
+                        {f.required && (
+                          <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide shrink-0">
+                            Obrigatorio
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] uppercase tracking-wide font-mono text-slate-400 dark:text-white/40">
+                          {f.field_type}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 dark:text-white/30 truncate max-w-[120px]">
+                          {f.key}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {customFields.length > 6 && (
+                    <div className="px-3 py-2 bg-slate-50/60 dark:bg-white/[0.02] text-[11px] text-slate-500 dark:text-white/55 text-center">
+                      + {customFields.length - 6}{" "}
+                      {customFields.length - 6 === 1 ? "outro campo" : "outros campos"}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             <Divider />

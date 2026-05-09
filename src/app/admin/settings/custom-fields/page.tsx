@@ -73,7 +73,17 @@ function toSlug(label: string): string {
 }
 
 export default function CustomFieldsPage() {
-  const [entity, setEntity] = useState<EntityType>("lead")
+  const initialEntity =
+    typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("entity") as
+          | EntityType
+          | null)
+      : null
+  const [entity, setEntity] = useState<EntityType>(
+    initialEntity === "deal" || initialEntity === "lead"
+      ? initialEntity
+      : "lead",
+  )
   const { data, mutate, isLoading } = useSWR<{ fields: CustomField[] }>(
     `/api/crm/custom-fields?entity=${entity}`,
     fetcher,

@@ -24,6 +24,7 @@ import {
   DollarSign,
   TrendingUp,
 } from "lucide-react"
+import { CustomFieldsPanel } from "./custom-fields-panel"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -103,6 +104,7 @@ interface DealDetailResponse {
     notes: string | null
     lost_reason: string | null
     won_reason: string | null
+    custom_fields: Record<string, unknown> | null
     created_at: string
     updated_at: string
     pipeline_id: string
@@ -628,6 +630,17 @@ export function DealDrawer({
                       <p className="text-sm text-slate-700 dark:text-white/75 whitespace-pre-wrap leading-relaxed">
                         {apiDeal.notes}
                       </p>
+                    </SidebarSection>
+                  )}
+
+                  {apiDeal && (
+                    <SidebarSection title="Campos personalizados">
+                      <CustomFieldsPanel
+                        entityType="deal"
+                        entityId={apiDeal.id}
+                        values={apiDeal.custom_fields ?? {}}
+                        onSaved={() => mutate()}
+                      />
                     </SidebarSection>
                   )}
                 </div>

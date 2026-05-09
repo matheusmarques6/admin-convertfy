@@ -6,6 +6,7 @@ import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X, Mail, Phone, Building2, Calendar, FileText, Sparkles, ArrowRight } from "lucide-react"
 import { LeadConvertDialog } from "./lead-convert-dialog"
+import { CustomFieldsPanel } from "./custom-fields-panel"
 import { ROUTES } from "@/lib/routes"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -24,6 +25,7 @@ interface LeadDetailResponse {
     ai_qualification_reason: string | null
     notes: string | null
     tags: string[] | null
+    custom_fields: Record<string, unknown> | null
     created_at: string
     updated_at: string
     converted_to_deal_id: string | null
@@ -379,6 +381,30 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
                       >
                         {lead.notes}
                       </p>
+                    </div>
+                  )}
+
+                  {!editing && (
+                    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/[0.06]">
+                      <span
+                        style={{
+                          fontSize: "var(--crm-text-xs)",
+                          color: "var(--crm-gray-500)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                          fontWeight: "var(--crm-weight-medium)",
+                        }}
+                      >
+                        Campos personalizados
+                      </span>
+                      <div className="mt-2">
+                        <CustomFieldsPanel
+                          entityType="lead"
+                          entityId={lead.id}
+                          values={lead.custom_fields ?? {}}
+                          onSaved={() => mutate()}
+                        />
+                      </div>
                     </div>
                   )}
                 </section>

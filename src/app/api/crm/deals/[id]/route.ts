@@ -110,6 +110,7 @@ const patchSchema = z.object({
   referrer_partner_id: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   position: z.number().int().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export async function PATCH(

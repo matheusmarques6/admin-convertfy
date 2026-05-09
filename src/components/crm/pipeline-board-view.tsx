@@ -7,8 +7,6 @@ import {
   Plus,
   ChevronDown,
   Search,
-  SlidersHorizontal,
-  ArrowUpDown,
   X,
   Upload,
   Settings,
@@ -235,13 +233,11 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
         </div>
       ) : (
         <>
-          {/* ═══════════ HEADER COMPACTO — toolbar unica ═══════════
-              Linha unica com:
-                · Esq: dot + nome + descricao truncada
-                · Centro/dir: pills de periodo + search + Novo deal
-              Sem KPIs grandes ou stats inline — toda informacao
-              quantitativa fica nas proprias colunas do kanban. */}
-          <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
+          {/* ═══════════ HEADER UNICO — toolbar consolidada ═══════════
+              Uma unica linha com: titulo · pills periodo · search · owner ·
+              settings · importar · novo deal. Linha 2 opcional aparece
+              SO quando ha filtros ativos (contador + limpar). */}
+          <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
             {/* Titulo */}
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span
@@ -301,7 +297,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
 
             {/* Search */}
             {pipeline.layout !== "state" && (
-              <div className="relative w-[200px]">
+              <div className="relative w-[220px]">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/40" />
                 <input
                   type="text"
@@ -347,7 +343,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               onClick={() => setSettingsOpen(true)}
               disabled={!pipeline}
               className="inline-flex items-center justify-center h-8 w-8 rounded-[6px] bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-white/80 border border-black/[0.08] dark:border-white/[0.10] transition-colors disabled:opacity-50"
-              title="Configurar pipeline (etapas, nome, exclusao)"
+              title="Configurar pipeline (etapas, campos personalizados, exclusao)"
               aria-label="Configurar pipeline"
             >
               <Settings className="h-3.5 w-3.5" />
@@ -375,127 +371,33 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
             </button>
           </div>
 
-          {/* Linha 3: filtros (search + pills + owner + count) */}
-          {pipeline.layout !== "state" && (
-            <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.04] dark:border-white/[0.06]">
-              {/* Search */}
-              <div className="relative flex-1 max-w-[280px]">
-                <Search
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/40"
-                />
-                <input
-                  type="text"
-                  placeholder="Buscar deals..."
-                  aria-label="Buscar deals"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full h-8 rounded-[6px] pl-8 pr-7 text-[12px] bg-slate-50 dark:bg-white/[0.04] text-slate-900 dark:text-white/90 border border-black/[0.06] dark:border-white/[0.06] placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-300 dark:focus:border-white/20 focus:bg-white dark:focus:bg-[#1A1D27]"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch("")}
-                    aria-label="Limpar busca"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white/70"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Pills de periodo */}
-              <div
-                className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-50 dark:bg-white/[0.04] p-0.5 border border-black/[0.04] dark:border-white/[0.04]"
-                role="tablist"
-                aria-label="Filtrar por periodo"
-              >
-                {(
-                  [
-                    { id: "all", label: "Tudo" },
-                    { id: "today", label: "Hoje" },
-                    { id: "7d", label: "7d" },
-                    { id: "30d", label: "30d" },
-                    { id: "90d", label: "90d" },
-                  ] as const
-                ).map((p) => {
-                  const active = periodFilter === p.id
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setPeriodFilter(p.id)}
-                      className={
-                        active
-                          ? "text-[11px] font-semibold px-2.5 py-1 rounded-[4px] bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-                          : "text-[11px] font-medium px-2.5 py-1 rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white/90"
-                      }
-                    >
-                      {p.label}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Owner filter */}
-              {owners.length > 1 && (
-                <div className="relative">
-                  <select
-                    value={ownerFilter}
-                    onChange={(e) => setOwnerFilter(e.target.value)}
-                    className="appearance-none h-8 pl-3 pr-7 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27] cursor-pointer focus:outline-none"
-                  >
-                    <option value="">Todos owners ({owners.length})</option>
-                    {owners.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40"
-                  />
-                </div>
-              )}
-
-              <button
-                aria-label="Mais filtros"
-                title="Mais filtros (em breve)"
-                className="h-8 px-2.5 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27]"
-              >
-                <SlidersHorizontal className="h-3 w-3" />
-                Filtros
-              </button>
-
-              <button
-                aria-label="Ordenar"
-                title="Ordenar"
-                className="h-8 px-2.5 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27]"
-              >
-                <ArrowUpDown className="h-3 w-3" />
-                Ordenar
-              </button>
-
-              {/* Contador alinhado a direita */}
+          {/* Linha 2: barra de filtros ativos — so aparece quando ha filtro */}
+          {pipeline.layout !== "state" && (search || ownerFilter || periodFilter !== "all") && (
+            <div className="flex items-center justify-between gap-3 px-5 py-1.5 bg-slate-50/60 dark:bg-white/[0.02] border-b border-black/[0.04] dark:border-white/[0.04]">
               <span
-                className="ml-auto text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums"
+                className="text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums"
                 aria-live="polite"
               >
                 {filteredDeals.length}{" "}
-                {filteredDeals.length === 1 ? "negocio" : "negocios"}
-                {(search || ownerFilter || periodFilter !== "all") && (
-                  <button
-                    onClick={() => {
-                      setSearch("")
-                      setOwnerFilter("")
-                      setPeriodFilter("all")
-                    }}
-                    className="ml-2 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    Limpar filtros
-                  </button>
-                )}
+                {filteredDeals.length === 1 ? "negocio" : "negocios"} ·{" "}
+                {[
+                  search && `busca: "${search}"`,
+                  ownerFilter && "owner",
+                  periodFilter !== "all" && `periodo: ${periodFilter}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
+              <button
+                onClick={() => {
+                  setSearch("")
+                  setOwnerFilter("")
+                  setPeriodFilter("all")
+                }}
+                className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Limpar filtros
+              </button>
             </div>
           )}
 
