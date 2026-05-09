@@ -361,6 +361,9 @@ export default function FormEditorPage({
 
   const [activeTab, setActiveTab] = useState<TabKey>("style")
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
+  // Fundo simulado do preview (pra testar como o form ficara em diferentes
+  // P.V.s antes de embedar). 'auto' adapta ao mode do tema.
+  const [previewBg, setPreviewBg] = useState<"auto" | "white" | "gray" | "dark" | "checker">("auto")
 
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
@@ -669,12 +672,65 @@ export default function FormEditorPage({
       {/* ─── PAINEL DIREITO: preview live ─── */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#0A0B12]">
         {/* Toolbar */}
-        <div className="shrink-0 h-12 px-4 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0F1117]">
-          <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/55">
-            <Eye className="h-3.5 w-3.5" />
-            Preview ao vivo · interaja com o form pra ver como ficará
+        <div className="shrink-0 h-12 px-4 flex items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0F1117]">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/55 min-w-0">
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Preview ao vivo</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Toggle de fundo simulado */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-medium text-slate-400 dark:text-white/45 uppercase tracking-wide">
+                Fundo
+              </span>
+              <div className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-100 dark:bg-white/[0.04] p-0.5">
+                {(
+                  [
+                    { key: "auto", label: "Auto", swatch: null },
+                    { key: "white", label: "Claro", swatch: "#FFFFFF" },
+                    { key: "gray", label: "Cinza", swatch: "#E5E7EB" },
+                    { key: "dark", label: "Escuro", swatch: "#0B0F19" },
+                    { key: "checker", label: "Transparente", swatch: "checker" },
+                  ] as const
+                ).map((b) => {
+                  const active = previewBg === b.key
+                  return (
+                    <button
+                      key={b.key}
+                      type="button"
+                      onClick={() => setPreviewBg(b.key)}
+                      title={b.label}
+                      className={
+                        "inline-flex items-center justify-center h-6 px-1.5 rounded-[4px] gap-1 " +
+                        (active
+                          ? "bg-white dark:bg-[#1A1D27] shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-900 dark:text-white"
+                          : "text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white")
+                      }
+                      aria-label={`Fundo ${b.label}`}
+                    >
+                      {b.swatch === "checker" ? (
+                        <span
+                          className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
+                          style={{
+                            background:
+                              "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/6px 6px",
+                          }}
+                          aria-hidden
+                        />
+                      ) : b.swatch ? (
+                        <span
+                          className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
+                          style={{ background: b.swatch }}
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="text-[10px] font-medium">{b.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             {status === "published" && (
               <a
                 href={publicUrl}
@@ -715,8 +771,24 @@ export default function FormEditorPage({
           </div>
         </div>
 
-        {/* Preview frame */}
-        <div className="flex-1 overflow-auto">
+        {/* Preview frame com fundo simulado pra simular onde o form ficara */}
+        <div
+          className="flex-1 overflow-auto transition-colors"
+          style={{
+            background: (() => {
+              // 'auto': adapta ao mode do tema (dark form -> dark bg, light form -> white bg).
+              // Garante que dark mode + transparent nao fique invisivel no preview.
+              if (previewBg === "auto") {
+                return theme.mode === "dark" ? "#0B0F19" : "#F8FAFC"
+              }
+              if (previewBg === "white") return "#FFFFFF"
+              if (previewBg === "gray") return "#E5E7EB"
+              if (previewBg === "dark") return "#0B0F19"
+              // checker: padrao xadrez universal pra "transparente"
+              return "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/16px 16px"
+            })(),
+          }}
+        >
           <div className="min-h-full flex items-start justify-center p-6 md:p-10">
             <div
               className={
