@@ -169,11 +169,67 @@ const THEME_PRESETS: Array<{
     },
   },
   {
-    key: "embed-transparente",
-    label: "Embed transparente (claro)",
-    description: "Sem fundo, texto escuro. Pra páginas claras.",
+    key: "card-claro-page-transparente",
+    label: "Card claro · página transparente",
+    description: "Card branco visível, página transparente — pra embedar em P.V.",
     preview: {
       bg: "repeating-conic-gradient(#E5E7EB 0% 25%, transparent 0% 50%) 0 0/14px 14px",
+      primary: "#2563EB",
+      text: "#0F172A",
+    },
+    theme: {
+      mode: "light",
+      primaryColor: "#2563EB",
+      backgroundColor: "transparent",
+      textColor: "#0F172A",
+      cardBgColor: "#FFFFFF",
+      cardBorderColor: "rgba(15,23,42,0.08)",
+      cardShadow: "md",
+      containerWidth: 480,
+      inputBgColor: "#F8FAFC",
+      inputBorderColor: "rgba(15,23,42,0.10)",
+      inputTextColor: "#0F172A",
+      borderRadius: 10,
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 14,
+      hidePoweredBy: true,
+    },
+  },
+  {
+    key: "card-escuro-page-transparente",
+    label: "Card escuro · página transparente",
+    description: "Card escuro visível, página transparente — pra embedar em P.V.",
+    preview: {
+      bg: "repeating-conic-gradient(#1F2937 0% 25%, transparent 0% 50%) 0 0/14px 14px",
+      primary: "#60A5FA",
+      text: "#FFFFFF",
+    },
+    theme: {
+      mode: "dark",
+      primaryColor: "#60A5FA",
+      backgroundColor: "transparent",
+      textColor: "#FFFFFF",
+      cardBgColor: "#0F172A",
+      cardBorderColor: "rgba(255,255,255,0.08)",
+      cardShadow: "lg",
+      containerWidth: 480,
+      inputBgColor: "rgba(255,255,255,0.06)",
+      inputBorderColor: "rgba(255,255,255,0.12)",
+      inputTextColor: "#FFFFFF",
+      borderRadius: 10,
+      fontSize: 14,
+      headingSize: 24,
+      subheadingSize: 14,
+      hidePoweredBy: true,
+    },
+  },
+  {
+    key: "tudo-transparente",
+    label: "Tudo transparente (avançado)",
+    description: "Card e página transparentes — só inputs e botão visíveis.",
+    preview: {
+      bg: "repeating-conic-gradient(#9CA3AF 0% 25%, transparent 0% 50%) 0 0/14px 14px",
       primary: "#2563EB",
       text: "#0F172A",
     },
@@ -189,34 +245,6 @@ const THEME_PRESETS: Array<{
       inputBgColor: "rgba(0,0,0,0.04)",
       inputBorderColor: "rgba(0,0,0,0.12)",
       inputTextColor: "#0F172A",
-      borderRadius: 8,
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 14,
-      hidePoweredBy: true,
-    },
-  },
-  {
-    key: "embed-transparente-dark",
-    label: "Embed transparente (escuro)",
-    description: "Sem fundo, texto branco. Pra páginas escuras.",
-    preview: {
-      bg: "repeating-conic-gradient(#1F2937 0% 25%, transparent 0% 50%) 0 0/14px 14px",
-      primary: "#60A5FA",
-      text: "#FFFFFF",
-    },
-    theme: {
-      mode: "dark",
-      primaryColor: "#60A5FA",
-      backgroundColor: "transparent",
-      textColor: "#FFFFFF",
-      cardBgColor: "transparent",
-      cardBorderColor: "transparent",
-      cardShadow: "none",
-      containerWidth: 480,
-      inputBgColor: "rgba(255,255,255,0.06)",
-      inputBorderColor: "rgba(255,255,255,0.14)",
-      inputTextColor: "#FFFFFF",
       borderRadius: 8,
       fontSize: 14,
       headingSize: 24,
@@ -1145,6 +1173,97 @@ function StyleTab({
             />
           </div>
         )}
+      </Field>
+
+      <Divider />
+
+      {/* ── Card do formulario ── */}
+      <SectionTitle
+        title="Card do formulário"
+        hint="Controle separado do fundo da página: o card é a caixa do form em si."
+      />
+      <Field label="Fundo do card">
+        <ToggleGroup
+          value={
+            theme.cardBgColor === "transparent" ? "transparent" : "solid"
+          }
+          onChange={(v) =>
+            setTheme((t) => ({
+              ...t,
+              cardBgColor:
+                v === "transparent"
+                  ? "transparent"
+                  : t.cardBgColor && t.cardBgColor !== "transparent"
+                    ? t.cardBgColor
+                    : t.mode === "dark"
+                      ? "#0F172A"
+                      : "#FFFFFF",
+            }))
+          }
+          options={[
+            { value: "solid", label: "Sólido (visível)" },
+            { value: "transparent", label: "Sem fundo" },
+          ]}
+        />
+        {theme.cardBgColor !== "transparent" && (
+          <div className="mt-2">
+            <ColorRow
+              value={
+                theme.cardBgColor ?? (theme.mode === "dark" ? "#0F172A" : "#FFFFFF")
+              }
+              onChange={(v) => setTheme((t) => ({ ...t, cardBgColor: v }))}
+            />
+          </div>
+        )}
+      </Field>
+      <Field label="Borda do card">
+        <ToggleGroup
+          value={
+            theme.cardBorderColor === "transparent" ? "none" : "visible"
+          }
+          onChange={(v) =>
+            setTheme((t) => ({
+              ...t,
+              cardBorderColor:
+                v === "none"
+                  ? "transparent"
+                  : t.cardBorderColor && t.cardBorderColor !== "transparent"
+                    ? t.cardBorderColor
+                    : t.mode === "dark"
+                      ? "rgba(255,255,255,0.10)"
+                      : "rgba(15,23,42,0.10)",
+            }))
+          }
+          options={[
+            { value: "visible", label: "Visível" },
+            { value: "none", label: "Sem borda" },
+          ]}
+        />
+        {theme.cardBorderColor !== "transparent" && (
+          <div className="mt-2">
+            <ColorRow
+              value={
+                theme.cardBorderColor ??
+                (theme.mode === "dark"
+                  ? "rgba(255,255,255,0.10)"
+                  : "rgba(15,23,42,0.10)")
+              }
+              onChange={(v) => setTheme((t) => ({ ...t, cardBorderColor: v }))}
+            />
+          </div>
+        )}
+      </Field>
+      <Field label="Sombra do card">
+        <ToggleGroup
+          value={theme.cardShadow ?? "sm"}
+          onChange={(v) => setTheme((t) => ({ ...t, cardShadow: v }))}
+          options={[
+            { value: "none", label: "Nenhuma" },
+            { value: "sm", label: "Leve" },
+            { value: "md", label: "Média" },
+            { value: "lg", label: "Forte" },
+          ]}
+        />
       </Field>
 
       <Divider />
