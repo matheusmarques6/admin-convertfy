@@ -374,14 +374,34 @@ export default function FormEditorPage({
   )
   const pipelines = pipelinesData?.pipelines ?? []
 
-  // Custom fields da org (entity=lead). Aparecem no dropdown de mapeamento
-  // como "Custom: Nome do campo" pra mapear pra crm_leads.custom_fields[key].
-  const { data: customFieldsData } = useSWR<{
-    fields: Array<{ id: string; key: string; label: string; field_type: string }>
+  // Custom fields da org — busca AMBOS lead e deal pra que o usuario
+  // possa mapear formularios pra qualquer um. Forms criam leads
+  // automaticamente, e se tiverem pipeline_id, criam deals tambem.
+  // Mapear pra custom de lead grava em crm_leads.custom_fields[key];
+  // mapear pra custom de deal grava em deals.custom_fields[key].
+  const { data: leadCustomData } = useSWR<{
+    fields: Array<{
+      id: string
+      key: string
+      label: string
+      field_type: string
+    }>
   }>("/api/crm/custom-fields?entity=lead", fetcher)
-  const customFields = useMemo(
-    () => customFieldsData?.fields ?? [],
-    [customFieldsData],
+  const { data: dealCustomData } = useSWR<{
+    fields: Array<{
+      id: string
+      key: string
+      label: string
+      field_type: string
+    }>
+  }>("/api/crm/custom-fields?entity=deal", fetcher)
+  const leadCustomFields = useMemo(
+    () => leadCustomData?.fields ?? [],
+    [leadCustomData],
+  )
+  const dealCustomFields = useMemo(
+    () => dealCustomData?.fields ?? [],
+    [dealCustomData],
   )
 
   // Estado dos campos editaveis
@@ -631,7 +651,8 @@ export default function FormEditorPage({
           {activeTab === "fields" && (
             <FieldsTab
               fields={fields}
-              customFields={customFields}
+              leadCustomFields={leadCustomFields}
+              dealCustomFields={dealCustomFields}
               addField={addField}
               updateField={updateField}
               removeField={removeField}
@@ -1492,14 +1513,16 @@ function StyleTab({
 
 function FieldsTab({
   fields,
-  customFields,
+  leadCustomFields,
+  dealCustomFields,
   addField,
   updateField,
   removeField,
   moveField,
 }: {
   fields: FormField[]
-  customFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   addField: () => void
   updateField: (idx: number, patch: Partial<FormField>) => void
   removeField: (idx: number) => void
@@ -1538,7 +1561,8 @@ function FieldsTab({
           <FieldEditor
             key={field.id ?? `new-${idx}`}
             field={field}
-            customFields={customFields}
+            leadCustomFields={leadCustomFields}
+            dealCustomFields={dealCustomFields}
             onChange={(patch) => updateField(idx, patch)}
             onRemove={() => removeField(idx)}
             onMoveUp={idx > 0 ? () => moveField(idx, "up") : undefined}
@@ -2085,19 +2109,22 @@ function PlatformGuide({
 
 function FieldEditor({
   field,
-  customFields,
+  leadCustomFields,
+  dealCustomFields,
   onChange,
   onRemove,
   onMoveUp,
   onMoveDown,
 }: {
   field: FormField
-  customFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   onChange: (patch: Partial<FormField>) => void
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
 }) {
+  const totalCustomFields = leadCustomFields.length + dealCustomFields.length
   const [open, setOpen] = useState(false)
 
   const showOptions =
@@ -2185,10 +2212,21 @@ function FieldEditor({
                   </option>
                 ))}
               </optgroup>
-              {customFields.length > 0 && (
-                <optgroup label="Personalizados">
-                  {customFields.map((c) => (
+              {leadCustomFields.length > 0 && (
+                <optgroup label="Personalizados (Lead)">
+                  {leadCustomFields.map((c) => (
+                    /* Mantem prefixo "custom:" sem entity pra retro-
+                       compatibilidade com forms antigos. */
                     <option key={c.id} value={`custom:${c.key}`}>
+                      {c.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {dealCustomFields.length > 0 && (
+                <optgroup label="Personalizados (Deal)">
+                  {dealCustomFields.map((c) => (
+                    <option key={c.id} value={`custom_deal:${c.key}`}>
                       {c.label}
                     </option>
                   ))}
@@ -2196,7 +2234,7 @@ function FieldEditor({
               )}
             </select>
           </div>
-          {customFields.length === 0 ? (
+          {totalCustomFields === 0 ? (
             <p className="text-[10px] text-slate-500 dark:text-white/45 leading-relaxed">
               Pra adicionar mais campos (ex: URL da loja, faturamento),{" "}
               <a

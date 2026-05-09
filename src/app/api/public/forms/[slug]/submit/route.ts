@@ -99,9 +99,12 @@ export async function POST(
       )
     }
 
-    // 4. Mapeia map_to_lead_field -> dados de lead.
-    // Suporta tanto colunas padrao (name, email, phone, company, source)
-    // quanto custom fields no formato "custom:<key>" -> custom_fields[key].
+    // 4. Mapeia map_to_lead_field -> dados de lead/deal.
+    // Suporta:
+    //   - colunas padrao do lead (name, email, phone, company, source)
+    //   - "custom:<key>"      -> crm_leads.custom_fields[key]
+    //   - "custom_lead:<key>" -> crm_leads.custom_fields[key] (alias)
+    //   - "custom_deal:<key>" -> deals.custom_fields[key]
     const leadData: {
       name?: string
       email?: string
@@ -110,15 +113,29 @@ export async function POST(
       source?: string
     } = {}
     const customFieldsData: Record<string, unknown> = {}
+    const dealCustomFieldsData: Record<string, unknown> = {}
 
     for (const f of fields || []) {
       if (!f.map_to_lead_field) continue
       const val = parsed.answers[f.id]
       if (val == null || val === "") continue
 
-      // Custom field: formato "custom:<key>" -> grava em custom_fields[key]
-      if (f.map_to_lead_field.startsWith("custom:")) {
-        const key = f.map_to_lead_field.slice("custom:".length)
+      // Custom de DEAL: grava em deals.custom_fields ao criar o deal.
+      if (f.map_to_lead_field.startsWith("custom_deal:")) {
+        const key = f.map_to_lead_field.slice("custom_deal:".length)
+        if (key) dealCustomFieldsData[key] = val
+        continue
+      }
+
+      // Custom de LEAD: aceita "custom:" (legado) e "custom_lead:".
+      if (
+        f.map_to_lead_field.startsWith("custom_lead:") ||
+        f.map_to_lead_field.startsWith("custom:")
+      ) {
+        const prefix = f.map_to_lead_field.startsWith("custom_lead:")
+          ? "custom_lead:"
+          : "custom:"
+        const key = f.map_to_lead_field.slice(prefix.length)
         if (key) customFieldsData[key] = val
         continue
       }
@@ -230,6 +247,10 @@ export async function POST(
           lead_id: leadId,
           owner_id: form.created_by, // fallback assignee
           position: nextPos,
+          custom_fields:
+            Object.keys(dealCustomFieldsData).length > 0
+              ? dealCustomFieldsData
+              : {},
         })
         .select("id")
         .single()
