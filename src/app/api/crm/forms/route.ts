@@ -66,7 +66,14 @@ const fieldSchema = z.object({
   position: z.number().int().min(0).optional().default(0),
   options: z.array(z.union([z.string(), z.object({ label: z.string(), value: z.string() })])).optional().default([]),
   validation: z.record(z.string(), z.unknown()).optional().default({}),
-  map_to_lead_field: z.enum(["name", "email", "phone", "company", "source"]).nullable().optional(),
+  map_to_lead_field: z
+    .string()
+    .regex(
+      /^(name|email|phone|company|source|custom:[a-z][a-z0-9_]*|custom_lead:[a-z][a-z0-9_]*|custom_deal:[a-z][a-z0-9_]*)$/,
+      'map_to_lead_field deve ser um campo padrao (name|email|phone|company|source) ou ter prefixo "custom:", "custom_lead:" ou "custom_deal:" seguido de uma key snake_case',
+    )
+    .nullable()
+    .optional(),
 })
 
 const createFormSchema = z.object({
