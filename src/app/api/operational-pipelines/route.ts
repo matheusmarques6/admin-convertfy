@@ -55,14 +55,15 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
 
-    let { data, error } = await admin
+    const initial = await admin
       .from("operational_pipelines")
       .select("*")
       .eq("org_id", orgId)
       .eq("is_active", true)
       .order("created_at", { ascending: true })
 
-    if (error) throw error
+    if (initial.error) throw initial.error
+    let data = initial.data
 
     // Bootstrap: se vazio, cria os 4 padrao e refaz select
     if (!data || data.length === 0) {

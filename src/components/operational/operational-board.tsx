@@ -371,8 +371,8 @@ function Avatar({
   avatarUrl: string | null
 }) {
   if (avatarUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={avatarUrl}
         alt={name}

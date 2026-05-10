@@ -10,6 +10,8 @@ import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
 import { WelcomeTour } from "@/components/ui/welcome-tour"
 import { CrmKeyboardShortcuts } from "@/components/crm/keyboard-shortcuts"
+import { AiChatDrawer } from "@/components/ai/ai-chat-drawer"
+import { AiChatTrigger } from "@/components/ai/ai-chat-trigger"
 
 async function getPermissions(userId: string): Promise<Permissions | null> {
   try {
@@ -242,6 +244,8 @@ export default async function DashboardLayout({
       </CommandPalette>
       <WelcomeTour />
       <CrmKeyboardShortcuts />
+      <AiChatDrawer />
+      <AiChatTrigger />
     </DashboardClientWrapper>
   )
 }
