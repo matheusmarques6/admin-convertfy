@@ -14,6 +14,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireOrgAdmin } from "@/lib/api/require-org-admin"
 import { logger } from "@/lib/logger"
 import { DEFAULT_OPERATIONAL_PIPELINES } from "@/types/operational-pipeline"
 
@@ -89,11 +90,18 @@ export async function POST(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
 
     const body = await request.json()
     if (!body.name || !body.slug) {
       throw new AppError("name e slug sao obrigatorios", 400)
+    }
+    if (!/^[a-z][a-z0-9-]*$/.test(body.slug)) {
+      throw new AppError(
+        "slug deve usar apenas letras minusculas, numeros e hifen",
+        400,
+      )
     }
 
     const { data, error } = await admin
@@ -112,7 +120,16 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single()
 
-    if (error) throw error
+    if (error) {
+      if (error.code === "23505") {
+        throw new AppError(
+          `Ja existe uma pipeline com o slug "${body.slug}" nesta org.`,
+          409,
+          "duplicate-slug",
+        )
+      }
+      throw error
+    }
     return successResponse(request, { pipeline: data }, { status: 201 })
   } catch (error) {
     log.error("Create error", error)

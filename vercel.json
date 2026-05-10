@@ -43,6 +43,10 @@
     {
       "path": "/api/cron/weekly-feedback",
       "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/operational-overdue",
+      "schedule": "0 9 * * *"
     }
   ]
 }

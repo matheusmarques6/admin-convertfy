@@ -63,6 +63,7 @@
     "react-phone-number-input": "^3.4.16",
     "reactflow": "^11.11.4",
     "recharts": "^3.5.1",
+    "remark-gfm": "^4.0.1",
     "resend": "^6.9.3",
     "swr": "^2.4.0",
     "tailwind-merge": "^3.4.0",

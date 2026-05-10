@@ -15,6 +15,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireOrgAdmin } from "@/lib/api/require-org-admin"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OperationalPipeline")
@@ -66,6 +67,7 @@ export async function PATCH(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
     const pipeline = await resolvePipeline(id, orgId)
 
@@ -101,6 +103,7 @@ export async function DELETE(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
     const pipeline = await resolvePipeline(id, orgId)
 

@@ -7,6 +7,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireOrgAdmin } from "@/lib/api/require-org-admin"
 
 export const dynamic = "force-dynamic"
 
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
     const body = await request.json()
     if (!body.name || !body.category || !body.template) {

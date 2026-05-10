@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { Sparkles, Send, RotateCcw, Loader2, X } from "lucide-react"
+import { Sparkles, Send, RotateCcw, Loader2, X, Square } from "lucide-react"
 import { useAiChatStore } from "./ai-chat-store"
 import { AiChatMessage } from "./ai-chat-message"
 import type { AiChatMessage as Message } from "@/types/ai"
@@ -107,6 +107,13 @@ export function AiChatDrawer() {
   const [streaming, setStreaming] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stopStreaming = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setStreaming(false)
+  }
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -117,6 +124,11 @@ export function AiChatDrawer() {
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 100)
+    } else {
+      // Aborta streaming em curso pra nao gastar tokens com response
+      // que o user nao vai ver mais.
+      abortRef.current?.abort()
+      abortRef.current = null
     }
   }, [open])
 
@@ -139,10 +151,14 @@ export function AiChatDrawer() {
     setInput("")
     setStreaming(true)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: nextMessages.map((m) => ({
             role: m.role,
@@ -198,7 +214,27 @@ export function AiChatDrawer() {
           }
         }
       }
+    } catch (err) {
+      // Abort silencioso — o user clicou em "Parar"
+      const isAbort =
+        (err as Error)?.name === "AbortError" ||
+        String(err).includes("aborted")
+      if (!isAbort) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? {
+                  ...m,
+                  content:
+                    m.content +
+                    `\n\n_Erro de rede: ${(err as Error)?.message ?? "desconhecido"}_`,
+                }
+              : m,
+          ),
+        )
+      }
     } finally {
+      abortRef.current = null
       setStreaming(false)
     }
   }
@@ -342,14 +378,26 @@ export function AiChatDrawer() {
               rows={1}
               className="flex-1 resize-none max-h-[120px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] px-3 py-2 text-[13px] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 disabled:opacity-50"
             />
-            <button
-              type="submit"
-              disabled={streaming || !input.trim()}
-              aria-label="Enviar"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            {streaming ? (
+              <button
+                type="button"
+                onClick={stopStreaming}
+                aria-label="Parar resposta"
+                title="Parar resposta"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-700 hover:bg-slate-800 text-white"
+              >
+                <Square className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                aria-label="Enviar"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </form>
       </SheetContent>

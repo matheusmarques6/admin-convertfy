@@ -27,30 +27,52 @@ const ICON_MAP = {
 interface Props {
   pipeline: OperationalPipeline
   taskCount: number
+  totalTasks: number
   search: string
   onSearchChange: (v: string) => void
   priorityFilter: string
   onPriorityChange: (v: string) => void
   assigneeFilter: string
   onAssigneeChange: (v: string) => void
+  clientFilter: string
+  onClientChange: (v: string) => void
+  storeFilter: string
+  onStoreChange: (v: string) => void
   owners: Array<{ id: string; name: string; avatar_url: string | null }>
+  clients: Array<{ id: string; name: string }>
+  stores: Array<{ id: string; store_name: string }>
   onNewTask: () => void
   onPipelineUpdated: () => void
+  onClearFilters: () => void
 }
 
 export function OperationalHeader({
   pipeline,
   taskCount,
+  totalTasks,
   search,
   onSearchChange,
   priorityFilter,
   onPriorityChange,
   assigneeFilter,
   onAssigneeChange,
+  clientFilter,
+  onClientChange,
+  storeFilter,
+  onStoreChange,
   owners,
+  clients,
+  stores,
   onNewTask,
   onPipelineUpdated,
+  onClearFilters,
 }: Props) {
+  const hasActiveFilters =
+    !!search ||
+    !!priorityFilter ||
+    !!assigneeFilter ||
+    !!clientFilter ||
+    !!storeFilter
   const [settingsOpen, setSettingsOpen] = useState(false)
   const Icon =
     ICON_MAP[pipeline.icon as keyof typeof ICON_MAP] ?? LayoutDashboard
@@ -132,6 +154,42 @@ export function OperationalHeader({
           </div>
         )}
 
+        {clients.length > 0 && (
+          <div className="relative">
+            <select
+              value={clientFilter}
+              onChange={(e) => onClientChange(e.target.value)}
+              className="appearance-none h-8 pl-3 pr-7 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27] cursor-pointer focus:outline-none"
+            >
+              <option value="">Todos clientes</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40" />
+          </div>
+        )}
+
+        {stores.length > 0 && (
+          <div className="relative">
+            <select
+              value={storeFilter}
+              onChange={(e) => onStoreChange(e.target.value)}
+              className="appearance-none h-8 pl-3 pr-7 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27] cursor-pointer focus:outline-none"
+            >
+              <option value="">Todas lojas</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.store_name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40" />
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
@@ -151,6 +209,34 @@ export function OperationalHeader({
           Nova task
         </button>
       </div>
+
+      {hasActiveFilters && (
+        <div className="flex items-center justify-between gap-3 px-5 py-1.5 bg-slate-50/60 dark:bg-white/[0.02] border-b border-black/[0.04] dark:border-white/[0.04]">
+          <span
+            className="text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums"
+            aria-live="polite"
+          >
+            {taskCount} de {totalTasks}{" "}
+            {totalTasks === 1 ? "task" : "tasks"} ·{" "}
+            {[
+              search && `busca: "${search}"`,
+              priorityFilter && `prio: ${priorityFilter}`,
+              assigneeFilter && "responsável",
+              clientFilter && "cliente",
+              storeFilter && "loja",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
 
       <OperationalSettingsDialog
         open={settingsOpen}

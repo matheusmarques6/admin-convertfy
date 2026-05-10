@@ -6,6 +6,7 @@ import {
   requireAuth,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireOrgAdmin } from "@/lib/api/require-org-admin"
 
 export const dynamic = "force-dynamic"
 
@@ -18,6 +19,7 @@ export async function PATCH(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
     const body = await request.json()
     const patch: Record<string, unknown> = {}
@@ -47,6 +49,7 @@ export async function DELETE(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
     const { error } = await admin
       .from("ai_prompt_templates")

@@ -93,6 +93,15 @@ export function OperationalSettingsDialog({
   }
 
   const removeColumn = (id: string) => {
+    // Aviso: tasks que estavam nessa coluna ficam orfas (operational_
+    // column_id apontando pra id deletada). O board nao mostra elas.
+    // Confirma com o user antes.
+    if (
+      !confirm(
+        "Tasks que estavam nessa coluna podem ficar invisiveis no board. Mover essas tasks pra outra coluna antes de deletar e recomendado. Continuar mesmo assim?",
+      )
+    )
+      return
     setColumns((c) => c.filter((x) => x.id !== id).map((x, i) => ({ ...x, position: i })))
   }
 

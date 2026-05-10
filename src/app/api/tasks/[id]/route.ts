@@ -121,10 +121,13 @@ export async function PUT(
     const body = await request.json()
     const adminClient = createAdminClient()
 
-    // Verify task belongs to user's org
+    // Verify task belongs to user's org + captura estado pre-update
+    // pra disparar triggers de automacao quando relevante.
     const { data: existingTask, error: fetchError } = await adminClient
       .from("tasks")
-      .select("id")
+      .select(
+        "id, assignee_id, status, operational_pipeline_id, operational_column_id",
+      )
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
@@ -208,6 +211,45 @@ export async function PUT(
         await OnboardingSyncService.onTaskStatusChanged(id, body.status)
       } catch (syncErr) {
         log.error("Onboarding sync failed (non-blocking):", syncErr)
+      }
+    }
+
+    // --- Operational pipeline triggers (non-blocking) ---
+    // Dispara automacoes baseadas em diff entre estado anterior e novo:
+    // - assignee mudou -> task_assigned
+    // - status mudou pra completed -> task_completed
+    // - column mudou -> task_moved_to (cobre uso fora do move-task endpoint)
+    if (task?.operational_pipeline_id) {
+      try {
+        const { executeAutomations } = await import(
+          "@/lib/services/operational-automation.service"
+        )
+        const pipelineId = task.operational_pipeline_id as string
+        const ctxBase = {
+          taskId: task.id as string,
+          assigneeId: (task.assignee_id ?? null) as string | null,
+          columnId: (task.operational_column_id ?? null) as string | null,
+        }
+        if (
+          body.assignee_id !== undefined &&
+          body.assignee_id !== existingTask.assignee_id
+        ) {
+          void executeAutomations(pipelineId, "task_assigned", ctxBase)
+        }
+        if (
+          body.status === "completed" &&
+          existingTask.status !== "completed"
+        ) {
+          void executeAutomations(pipelineId, "task_completed", ctxBase)
+        }
+        if (
+          body.operational_column_id !== undefined &&
+          body.operational_column_id !== existingTask.operational_column_id
+        ) {
+          void executeAutomations(pipelineId, "task_moved_to", ctxBase)
+        }
+      } catch (autoErr) {
+        log.error("Operational automation trigger failed:", autoErr)
       }
     }
 

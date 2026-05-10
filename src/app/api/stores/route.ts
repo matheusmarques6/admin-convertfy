@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
       const has_shopify_credentials = !!store.shopify_access_token
       const has_klaviyo_credentials = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const has_ga4_credentials = !!store.ga4_credentials
+      const has_omnisend_credentials = !!store.omnisend_api_key
 
       // Remove encrypted credential values — never expose enc:v1:... to browser
       const {
@@ -93,6 +94,7 @@ export async function GET(request: NextRequest) {
         klaviyo_private_key: _kp,
         klaviyo_api_key: _ka,
         klaviyo_public_key: _kpub,
+        omnisend_api_key: _o,
         ga4_credentials: _g,
         meta_access_token: _m,
         google_ads_credentials: _ga,
@@ -116,6 +118,7 @@ export async function GET(request: NextRequest) {
         has_shopify_credentials,
         has_klaviyo_credentials,
         has_ga4_credentials,
+        has_omnisend_credentials,
       }
     })
 

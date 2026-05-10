@@ -108,11 +108,15 @@ export function CampaignFactoryModal({
   const [deployComplete, setDeployComplete] = useState(false)
 
   const { data: storesData } = useSWR<{
-    data?: Array<{ id: string; store_name: string; platform: string | null; omnisend_api_key: string | null }>
-    stores?: Array<{ id: string; store_name: string; platform: string | null; omnisend_api_key: string | null }>
-  }>(open ? "/api/stores" : null, fetcher)
+    stores?: Array<{
+      id: string
+      store_name: string
+      platform: string | null
+      has_omnisend_credentials?: boolean
+    }>
+  }>(open ? "/api/stores?active=true" : null, fetcher)
 
-  const stores = storesData?.data ?? storesData?.stores ?? []
+  const stores = storesData?.stores ?? []
 
   useEffect(() => {
     if (!open) return
@@ -151,6 +155,7 @@ export function CampaignFactoryModal({
   const canProceedFromConfig = subject.trim().length > 0 && segment.length > 0
 
   const startDeploy = async () => {
+    if (deploying || deployComplete) return
     setDeploying(true)
     setDeployStatuses(
       selectedStoreIds.map((sid) => {
@@ -348,7 +353,7 @@ export function CampaignFactoryModal({
                 <ul className="space-y-1.5 max-h-[400px] overflow-y-auto">
                   {filteredStores.map((s) => {
                     const checked = selectedStoreIds.includes(s.id)
-                    const hasOmnisend = !!s.omnisend_api_key
+                    const hasOmnisend = !!s.has_omnisend_credentials
                     return (
                       <li key={s.id}>
                         <label

@@ -56,6 +56,8 @@ export function OperationalBoard({ pipelineSlug }: Props) {
   const [search, setSearch] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<string>("")
   const [assigneeFilter, setAssigneeFilter] = useState<string>("")
+  const [clientFilter, setClientFilter] = useState<string>("")
+  const [storeFilter, setStoreFilter] = useState<string>("")
   const [newTaskColumnId, setNewTaskColumnId] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
 
@@ -104,8 +106,37 @@ export function OperationalBoard({ pipelineSlug }: Props) {
     }
     if (priorityFilter) t = t.filter((x) => x.priority === priorityFilter)
     if (assigneeFilter) t = t.filter((x) => x.assignee?.id === assigneeFilter)
+    if (clientFilter) t = t.filter((x) => x.client?.id === clientFilter)
+    if (storeFilter) t = t.filter((x) => x.store?.id === storeFilter)
     return t
-  }, [tasks, search, priorityFilter, assigneeFilter])
+  }, [tasks, search, priorityFilter, assigneeFilter, clientFilter, storeFilter])
+
+  // Listas distintas pra preencher dropdowns. Aparecem so quando ha
+  // tasks com client/store associado.
+  const distinctClients = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>()
+    for (const t of tasks) {
+      if (t.client?.id && !seen.has(t.client.id)) {
+        seen.set(t.client.id, { id: t.client.id, name: t.client.name })
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [tasks])
+
+  const distinctStores = useMemo(() => {
+    const seen = new Map<string, { id: string; store_name: string }>()
+    for (const t of tasks) {
+      if (t.store?.id && !seen.has(t.store.id)) {
+        seen.set(t.store.id, {
+          id: t.store.id,
+          store_name: t.store.store_name,
+        })
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) =>
+      a.store_name.localeCompare(b.store_name),
+    )
+  }, [tasks])
 
   const tasksByCol = useMemo(() => {
     const map = new Map<string, OperationalTask[]>()
@@ -125,16 +156,27 @@ export function OperationalBoard({ pipelineSlug }: Props) {
       destination.index === source.index
     )
       return
-    // Optimistic
-    await fetch(`/api/operational-pipelines/${pipeline.id}/move-task`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        task_id: draggableId,
-        column_id: destination.droppableId,
-        position: destination.index * 10,
-      }),
-    })
+
+    // Reordenacao dentro da mesma coluna -> PATCH em /api/tasks/[id]
+    // (aceita position). Cross-coluna usa /move-task que tambem dispara
+    // automacoes de task_moved_to.
+    if (destination.droppableId === source.droppableId) {
+      await fetch(`/api/tasks/${draggableId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: destination.index * 10 }),
+      })
+    } else {
+      await fetch(`/api/operational-pipelines/${pipeline.id}/move-task`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: draggableId,
+          column_id: destination.droppableId,
+          position: destination.index * 10,
+        }),
+      })
+    }
     mutate()
   }
 
@@ -165,15 +207,29 @@ export function OperationalBoard({ pipelineSlug }: Props) {
       <OperationalHeader
         pipeline={pipeline}
         taskCount={filteredTasks.length}
+        totalTasks={tasks.length}
         search={search}
         onSearchChange={setSearch}
         priorityFilter={priorityFilter}
         onPriorityChange={setPriorityFilter}
         assigneeFilter={assigneeFilter}
         onAssigneeChange={setAssigneeFilter}
+        clientFilter={clientFilter}
+        onClientChange={setClientFilter}
+        storeFilter={storeFilter}
+        onStoreChange={setStoreFilter}
         owners={owners}
+        clients={distinctClients}
+        stores={distinctStores}
         onNewTask={() => setNewTaskColumnId(sortedColumns[0]?.id ?? null)}
         onPipelineUpdated={() => mutate()}
+        onClearFilters={() => {
+          setSearch("")
+          setPriorityFilter("")
+          setAssigneeFilter("")
+          setClientFilter("")
+          setStoreFilter("")
+        }}
       />
 
       <div className="flex-1 min-h-0 overflow-x-auto">
