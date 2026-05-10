@@ -12,6 +12,7 @@ import { WelcomeTour } from "@/components/ui/welcome-tour"
 import { CrmKeyboardShortcuts } from "@/components/crm/keyboard-shortcuts"
 import { AiChatDrawer } from "@/components/ai/ai-chat-drawer"
 import { AiChatTrigger } from "@/components/ai/ai-chat-trigger"
+import { AiContextWatcher } from "@/components/ai/ai-context-watcher"
 
 async function getPermissions(userId: string): Promise<Permissions | null> {
   try {
@@ -246,6 +247,7 @@ export default async function DashboardLayout({
       <CrmKeyboardShortcuts />
       <AiChatDrawer />
       <AiChatTrigger />
+      <AiContextWatcher />
     </DashboardClientWrapper>
   )
 }

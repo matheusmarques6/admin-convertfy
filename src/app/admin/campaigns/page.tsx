@@ -1,11 +1,13 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import Link from "next/link"
 import {
   CalendarDays,
   Plus,
   RefreshCw,
   Zap,
+  Layers,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
@@ -52,6 +54,12 @@ export default function CampaignsPage() {
         badge={counts.total}
         actions={
           <>
+            <Button variant="secondary" size="sm" asChild>
+              <Link href="/admin/campaigns/pipeline">
+                <Layers className="h-4 w-4 mr-2" />
+                Pipeline
+              </Link>
+            </Button>
             <Button
               variant="secondary"
               size="sm"

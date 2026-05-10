@@ -240,6 +240,13 @@ export default async function StoreDetailPage({
                   Cliente: {clientName}
                 </Link>
               )}
+              <Link
+                href={`/admin/stores/${store.id}/weekly-report`}
+                className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:text-violet-700"
+              >
+                📊 Feedback semanal
+                <ExternalLink className="w-3 h-3" />
+              </Link>
             </div>
           </div>
 
