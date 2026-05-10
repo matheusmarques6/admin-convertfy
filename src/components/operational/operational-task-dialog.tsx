@@ -1,9 +1,28 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
+import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X, Loader2 } from "lucide-react"
+import { useToast } from "@/lib/hooks/use-toast"
 import type { OperationalColumn } from "@/types/operational-pipeline"
+
+interface Lookups {
+  members: Array<{
+    id: string
+    role: string
+    profile?: { id: string; name: string; email: string } | null
+  }>
+  clients: Array<{ id: string; name: string; company: string | null }>
+  stores: Array<{
+    id: string
+    store_name: string
+    platform: string | null
+    client_id: string | null
+  }>
+}
+
+const lookupsFetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface Props {
   open: boolean
@@ -37,8 +56,35 @@ export function OperationalTaskDialog({
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState("pending")
+  const [assigneeId, setAssigneeId] = useState<string>("")
+  const [clientId, setClientId] = useState<string>("")
+  const [storeId, setStoreId] = useState<string>("")
 
   const isEdit = editingTaskId !== null
+  const toast = useToast()
+
+  const { data: lookupsData } = useSWR<{ data?: Lookups } & Lookups>(
+    open ? "/api/operational-pipelines/lookups" : null,
+    lookupsFetcher,
+  )
+  const lookups: Lookups = useMemo(
+    () =>
+      lookupsData?.data ?? {
+        members: lookupsData?.members ?? [],
+        clients: lookupsData?.clients ?? [],
+        stores: lookupsData?.stores ?? [],
+      },
+    [lookupsData],
+  )
+
+  // Filtra lojas pelo cliente selecionado (se houver)
+  const visibleStores = useMemo(
+    () =>
+      clientId
+        ? lookups.stores.filter((s) => s.client_id === clientId)
+        : lookups.stores,
+    [lookups.stores, clientId],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -50,6 +96,9 @@ export function OperationalTaskDialog({
       setDueDate("")
       setTags("")
       setStatus("pending")
+      setAssigneeId("")
+      setClientId("")
+      setStoreId("")
       return
     }
     // Edit: load
@@ -66,6 +115,9 @@ export function OperationalTaskDialog({
         setDueDate(t.due_date ? String(t.due_date).slice(0, 10) : "")
         setTags((t.tags ?? []).join(", "))
         setStatus(t.status ?? "pending")
+        setAssigneeId(t.assignee_id ?? "")
+        setClientId(t.client_id ?? "")
+        setStoreId(t.store_id ?? "")
       })
       .finally(() => setLoading(false))
   }, [open, isEdit, editingTaskId, defaultColumnId, columns])
@@ -86,6 +138,9 @@ export function OperationalTaskDialog({
           .map((t) => t.trim())
           .filter(Boolean),
         status,
+        assignee_id: assigneeId || null,
+        client_id: clientId || null,
+        store_id: storeId || null,
       }
       const url = isEdit
         ? `/api/tasks/${editingTaskId}`
@@ -98,9 +153,17 @@ export function OperationalTaskDialog({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        alert(j.error?.message ?? "Erro ao salvar task")
+        toast.toast({
+          variant: "destructive",
+          title: "Erro ao salvar task",
+          description: j.error?.message ?? "Tente novamente.",
+        })
         return
       }
+      toast.toast({
+        title: isEdit ? "Task atualizada" : "Task criada",
+        description: title.trim(),
+      })
       onSaved()
     } finally {
       setSubmitting(false)
@@ -212,6 +275,64 @@ export function OperationalTaskDialog({
                       </select>
                     </Field>
                   )}
+                </div>
+                <Field label="Responsável">
+                  <select
+                    value={assigneeId}
+                    onChange={(e) => setAssigneeId(e.target.value)}
+                    className="crm-input w-full"
+                  >
+                    <option value="">— Sem responsável</option>
+                    {lookups.members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.profile?.name ?? m.profile?.email ?? "—"} ·{" "}
+                        {m.role}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Cliente">
+                    <select
+                      value={clientId}
+                      onChange={(e) => {
+                        setClientId(e.target.value)
+                        // Reset store se nao pertence ao novo cliente
+                        if (e.target.value && storeId) {
+                          const stores = lookups.stores.filter(
+                            (s) => s.client_id === e.target.value,
+                          )
+                          if (!stores.some((s) => s.id === storeId)) {
+                            setStoreId("")
+                          }
+                        }
+                      }}
+                      className="crm-input w-full"
+                    >
+                      <option value="">— Nenhum</option>
+                      {lookups.clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Loja">
+                    <select
+                      value={storeId}
+                      onChange={(e) => setStoreId(e.target.value)}
+                      className="crm-input w-full"
+                      disabled={visibleStores.length === 0}
+                    >
+                      <option value="">— Nenhuma</option>
+                      {visibleStores.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.store_name}
+                          {s.platform ? ` (${s.platform})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 </div>
                 <Field label="Tags (separadas por vírgula)">
                   <input

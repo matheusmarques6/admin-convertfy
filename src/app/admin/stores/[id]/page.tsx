@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { BrandIcon } from "@/components/ui/icon"
 import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
+import { WeeklyReportLink } from "@/components/stores/weekly-report-link"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
 import { StoreForceResyncAction } from "@/components/stores/store-force-resync-action"
 import { ExternalLink } from "lucide-react"
@@ -240,13 +241,7 @@ export default async function StoreDetailPage({
                   Cliente: {clientName}
                 </Link>
               )}
-              <Link
-                href={`/admin/stores/${store.id}/weekly-report`}
-                className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:text-violet-700"
-              >
-                📊 Feedback semanal
-                <ExternalLink className="w-3 h-3" />
-              </Link>
+              <WeeklyReportLink storeId={store.id} />
             </div>
           </div>
 

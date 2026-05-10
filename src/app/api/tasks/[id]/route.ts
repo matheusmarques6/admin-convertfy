@@ -168,6 +168,10 @@ export async function PUT(
     if (body.position !== undefined) updateData.position = body.position
     if (body.tags !== undefined) updateData.tags = body.tags
     if (body.metadata !== undefined) updateData.metadata = body.metadata
+    if (body.operational_column_id !== undefined)
+      updateData.operational_column_id = body.operational_column_id
+    if (body.operational_pipeline_id !== undefined)
+      updateData.operational_pipeline_id = body.operational_pipeline_id
 
     const { data: task, error: updateError } = await adminClient
       .from("tasks")

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   X,
   Plus,
@@ -63,6 +64,7 @@ export function OperationalSettingsDialog({
     OperationalAutomation | "new" | null
   >(null)
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     if (!open) return
@@ -118,9 +120,14 @@ export function OperationalSettingsDialog({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        alert(j.error?.message ?? "Erro ao salvar")
+        toast.toast({
+          variant: "destructive",
+          title: "Erro ao salvar pipeline",
+          description: j.error?.message ?? "Tente novamente.",
+        })
         return
       }
+      toast.toast({ title: "Pipeline atualizado" })
       onSaved()
       onClose()
     } finally {

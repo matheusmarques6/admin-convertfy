@@ -7,36 +7,96 @@ import { useAiChatStore } from "./ai-chat-store"
 import { AiChatMessage } from "./ai-chat-message"
 import type { AiChatMessage as Message } from "@/types/ai"
 
-const QUICK_PROMPTS: Array<{ emoji: string; label: string; prompt: string }> = [
+interface QuickPrompt {
+  emoji: string
+  label: string
+  prompt: string
+}
+
+const STORE_PROMPTS: QuickPrompt[] = [
   {
     emoji: "📊",
-    label: "Relatório semanal",
+    label: "Relatório semanal desta loja",
     prompt:
-      "Gere um relatório semanal da loja em contexto, com receita, top flows, taxa de abertura e principais ações sugeridas.",
+      "Gere um relatório semanal da loja em contexto: receita, top flows, taxa de abertura, comparativo com a semana anterior e 3 ações sugeridas.",
   },
   {
     emoji: "✍️",
     label: "Copy de campanha",
     prompt:
-      "Gere uma copy de email para uma campanha promocional. Inclua 3 opções de assunto e o body em HTML simples.",
+      "Gere uma copy de email promocional para a loja em contexto. Inclua 3 opções de assunto (max 50 chars), preview text e body em HTML simples com CTA claro.",
   },
   {
     emoji: "📈",
-    label: "Insights do mês",
+    label: "Insights do mês desta loja",
     prompt:
-      "Quais foram os principais insights de performance dos últimos 30 dias? O que melhorou, o que piorou e por que?",
+      "Quais foram os principais insights de performance da loja em contexto nos últimos 30 dias? Cite números reais. O que melhorou, o que piorou e por que.",
   },
   {
     emoji: "🔄",
     label: "Próximas automações",
     prompt:
-      "Sugira 3 automações novas que essa loja pode implementar, em ordem de prioridade, com justificativa.",
+      "Sugira 3 automações novas que essa loja pode implementar, em ordem de prioridade, com justificativa baseada nos números atuais.",
   },
   {
     emoji: "📋",
     label: "Briefing de call",
     prompt:
-      "Gere um briefing de 5 minutos pra uma call de acompanhamento com o cliente: status, números, sucessos e pontos de atenção.",
+      "Gere um briefing de 5 minutos pra uma call de acompanhamento desta loja: contexto rápido, sucessos, pontos de atenção e próximos passos.",
+  },
+]
+
+const CLIENT_PROMPTS: QuickPrompt[] = [
+  {
+    emoji: "📋",
+    label: "Resumo do cliente",
+    prompt:
+      "Faça um resumo executivo do cliente em contexto: lojas, MRR, status, health score. Aponte 2 oportunidades e 2 riscos.",
+  },
+  {
+    emoji: "📞",
+    label: "Briefing pra call",
+    prompt:
+      "Gere um briefing de 5 minutos pra call mensal do cliente em contexto. Tom direto, foco em resultados.",
+  },
+  {
+    emoji: "📈",
+    label: "Performance consolidada",
+    prompt:
+      "Performance consolidada das lojas deste cliente nos últimos 30 dias. Qual loja está bombando, qual precisa de atenção?",
+  },
+]
+
+const GENERAL_PROMPTS: QuickPrompt[] = [
+  {
+    emoji: "💡",
+    label: "Ideias de campanha",
+    prompt:
+      "Liste 5 ideias de campanha que faz sentido testar agora pra e-commerces, considerando sazonalidade brasileira atual.",
+  },
+  {
+    emoji: "✍️",
+    label: "Copy genérica de promoção",
+    prompt:
+      "Gere 3 templates de assunto + preview text pra campanhas promocionais que funcionam em qualquer nicho de e-commerce.",
+  },
+  {
+    emoji: "🔧",
+    label: "Best practices Omnisend",
+    prompt:
+      "Quais são as 5 best practices mais subestimadas no Omnisend que poucas lojas aplicam? Seja específico, com exemplos.",
+  },
+  {
+    emoji: "📊",
+    label: "Como interpretar métricas",
+    prompt:
+      "Quais são os benchmarks atuais de open rate, click rate e conversion rate pra campanhas de e-commerce no Brasil em 2026?",
+  },
+  {
+    emoji: "🎯",
+    label: "Sugestão de segmentação",
+    prompt:
+      "Liste 8 segmentos avançados que toda loja de e-commerce deveria ter no Omnisend, com a definição de cada um.",
   },
 ]
 
@@ -177,7 +237,12 @@ export function AiChatDrawer() {
                 Assistente IA
               </h2>
               <p className="text-[10px] text-slate-500 dark:text-white/55">
-                Claude Sonnet · Convertfy
+                Claude Sonnet ·{" "}
+                {context.store_id
+                  ? "Loja em foco"
+                  : context.client_id
+                    ? "Cliente em foco"
+                    : "Convertfy"}
               </p>
             </div>
           </div>
@@ -223,7 +288,12 @@ export function AiChatDrawer() {
                 </p>
               </div>
               <div className="space-y-1.5">
-                {QUICK_PROMPTS.map((qp) => (
+                {(context.store_id
+                  ? STORE_PROMPTS
+                  : context.client_id
+                    ? CLIENT_PROMPTS
+                    : GENERAL_PROMPTS
+                ).map((qp) => (
                   <button
                     key={qp.label}
                     type="button"

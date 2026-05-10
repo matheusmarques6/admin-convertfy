@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X, Loader2, Trash2 } from "lucide-react"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   CAMPAIGN_TYPE_LABELS,
   STAGE_CONFIG,
@@ -25,6 +26,7 @@ export function CampaignPipelineItemDialog({
   onSaved,
 }: Props) {
   const isEdit = item !== null
+  const toast = useToast()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [campaignType, setCampaignType] = useState<CampaignPipelineType | "">("")
@@ -85,9 +87,17 @@ export function CampaignPipelineItemDialog({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        alert(j.error?.message ?? "Erro ao salvar")
+        toast.toast({
+          variant: "destructive",
+          title: "Erro ao salvar campanha",
+          description: j.error?.message ?? "Tente novamente.",
+        })
         return
       }
+      toast.toast({
+        title: isEdit ? "Campanha atualizada" : "Campanha criada",
+        description: title.trim(),
+      })
       onSaved()
     } finally {
       setSubmitting(false)

@@ -29,6 +29,10 @@ import {
   Inbox,
   Workflow,
   Phone,
+  Sparkles,
+  MessageSquare,
+  LifeBuoy,
+  Layers,
   type LucideIcon,
 } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
@@ -81,6 +85,18 @@ const navigationItems: CommandItem[] = [
 
   // Compartilhado
   { name: "Inbox (mensagens)", href: "/admin/inbox", icon: Inbox, group: "Atendimento" },
+
+  // Operational Pipelines (Monday-style)
+  { name: "Onboarding Ops", href: "/admin/operational/onboarding", icon: Rocket, group: "Operacional Ops" },
+  { name: "Acompanhamento", href: "/admin/operational/acompanhamento", icon: Users, group: "Operacional Ops" },
+  { name: "Feedback (Tasks)", href: "/admin/operational/feedback", icon: MessageSquare, group: "Operacional Ops" },
+  { name: "Suporte", href: "/admin/operational/suporte", icon: LifeBuoy, group: "Operacional Ops" },
+
+  // Marketing extras
+  { name: "Pipeline de Campanhas", href: "/admin/campaigns/pipeline", icon: Layers, group: "Marketing" },
+
+  // Settings
+  { name: "Templates IA", href: "/admin/settings/ai-templates", icon: Sparkles, group: "Configurações" },
 ]
 
 const actionItems: CommandItem[] = [

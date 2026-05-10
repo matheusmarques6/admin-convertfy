@@ -6,8 +6,9 @@
  * via @hello-pangea/dnd, automacoes disparadas no backend ao mover.
  */
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import useSWR from "swr"
+import { createClient } from "@/lib/supabase/client"
 import {
   DragDropContext,
   Droppable,
@@ -60,6 +61,31 @@ export function OperationalBoard({ pipelineSlug }: Props) {
 
   const pipeline = data?.pipeline
   const tasks = useMemo(() => data?.tasks ?? [], [data])
+
+  // Realtime: escuta mudanças na tabela tasks desta pipeline e revalida.
+  // Outros usuarios movendo cards/criando tasks aparecem ao vivo.
+  useEffect(() => {
+    if (!pipeline?.id) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`op-board-${pipeline.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `operational_pipeline_id=eq.${pipeline.id}`,
+        },
+        () => {
+          mutate()
+        },
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [pipeline?.id, mutate])
 
   const sortedColumns = useMemo<OperationalColumn[]>(() => {
     if (!pipeline) return []
