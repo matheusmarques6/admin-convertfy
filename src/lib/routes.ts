@@ -33,6 +33,7 @@ export const ROUTES = {
 
     CAMPAIGNS: {
       LIST: "/admin/campaigns",
+      PIPELINE: "/admin/campaigns/pipeline",
     },
 
     AUTOMATIONS: {
@@ -106,6 +107,22 @@ export const ROUTES = {
     // ── Compartilhado (comercial e operacional acessam) ─────────────────
     INBOX: "/admin/inbox",
     INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
+
+    // ── Operational Pipelines (Monday-style) ─────────────────────────────
+    OPERATIONAL: {
+      PIPELINE: (slug: string) => `/admin/operational/${slug}` as const,
+      ONBOARDING_OPS: "/admin/operational/onboarding",
+      ACOMPANHAMENTO: "/admin/operational/acompanhamento",
+      FEEDBACK: "/admin/operational/feedback",
+      SUPORTE: "/admin/operational/suporte",
+    },
+
+    // ── Settings adicionais ──────────────────────────────────────────────
+    AI_TEMPLATES: "/admin/settings/ai-templates",
+
+    // ── Weekly reports ───────────────────────────────────────────────────
+    WEEKLY_REPORT: (storeId: string) =>
+      `/admin/stores/${storeId}/weekly-report` as const,
 
     // ── Deprecated (alias de compat — usar COMERCIAL/OPERACIONAL) ───────
     /** @deprecated Use ROUTES.ADMIN.COMERCIAL e ROUTES.ADMIN.OPERACIONAL */

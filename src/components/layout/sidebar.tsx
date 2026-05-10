@@ -36,6 +36,8 @@ import {
   Search,
   Sun,
   Moon,
+  LifeBuoy,
+  MessageSquare,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -130,6 +132,10 @@ const OPERACIONAL_NAV: NavGroup[] = [
     items: [
       { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
       { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      { name: "Onboarding Ops", href: ROUTES.ADMIN.OPERATIONAL.ONBOARDING_OPS, icon: Rocket },
+      { name: "Acompanhamento", href: ROUTES.ADMIN.OPERATIONAL.ACOMPANHAMENTO, icon: Users },
+      { name: "Feedback", href: ROUTES.ADMIN.OPERATIONAL.FEEDBACK, icon: MessageSquare },
+      { name: "Suporte", href: ROUTES.ADMIN.OPERATIONAL.SUPORTE, icon: LifeBuoy },
     ],
   },
   {

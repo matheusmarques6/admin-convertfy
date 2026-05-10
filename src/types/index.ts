@@ -1218,3 +1218,46 @@ export interface PortalStoreReport {
   lastSyncedAt?: string
 }
 
+
+
+// ── Operational Pipelines (Monday-style) ───────────────────────────
+export type {
+  OperationalPipeline,
+  OperationalColumn,
+  OperationalAutomation,
+  OperationalAutomationConfig,
+  OperationalAutomationTrigger,
+  OperationalAutomationAction,
+} from "./operational-pipeline"
+export {
+  DEFAULT_OPERATIONAL_PIPELINES,
+  TRIGGER_LABELS,
+  ACTION_LABELS,
+} from "./operational-pipeline"
+
+// ── Campaign Pipeline ──────────────────────────────────────────────
+export type {
+  CampaignPipelineItem,
+  CampaignStage,
+  CampaignPipelineType,
+  CampaignPriority,
+  CampaignStoreDeployStatus,
+  CampaignTargetStore,
+  CampaignCopyData,
+  CampaignDesignData,
+  CampaignDeployConfig,
+} from "./campaign-pipeline"
+export { STAGE_CONFIG, CAMPAIGN_TYPE_LABELS } from "./campaign-pipeline"
+
+// ── Weekly Reports ─────────────────────────────────────────────────
+export type { WeeklyReport, WeeklyReportMetrics } from "./weekly-report"
+
+// ── AI Chat & Templates ────────────────────────────────────────────
+export type {
+  AiChatMessage,
+  AiChatContext,
+  AiTemplateCategory,
+  AiPromptTemplate,
+} from "./ai"
+export { TEMPLATE_CATEGORY_LABELS, TEMPLATE_CATEGORY_COLORS } from "./ai"
+
