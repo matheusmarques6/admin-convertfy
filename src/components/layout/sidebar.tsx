@@ -86,27 +86,33 @@ interface NavGroup {
   items: NavItem[]
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Estrutura padrao de cada workspace (consistencia visual):
+//
+//   1. Visao geral   — Dashboard, métricas top
+//   2. Operacoes     — fluxos principais do workspace
+//   3. Relacionados  — coisas auxiliares (agenda, inbox, etc)
+//   4. Analise       — reports, BI
+//
+// Os 3 workspaces seguem essa hierarquia. Item "Dashboard" sempre
+// primeiro, "Reports" sempre ultimo.
+// ─────────────────────────────────────────────────────────────────────
+
 const COMERCIAL_NAV: NavGroup[] = [
   {
-    key: "main",
+    key: "overview",
     label: "",
     items: [
       { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
-      { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
-      { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
-      { name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },
   {
-    key: "agenda",
-    label: "Agenda",
+    key: "vendas",
+    label: "Vendas",
     items: [
-      {
-        name: "Reunioes",
-        href: ROUTES.ADMIN.MEETINGS.LIST,
-        icon: Calendar,
-        requiredFeatures: ["calendar_control"],
-      },
+      { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
+      { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
+      { name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },
   {
@@ -114,6 +120,12 @@ const COMERCIAL_NAV: NavGroup[] = [
     label: "Atendimento",
     items: [
       { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      {
+        name: "Reunioes",
+        href: ROUTES.ADMIN.MEETINGS.LIST,
+        icon: Calendar,
+        requiredFeatures: ["calendar_control"],
+      },
     ],
   },
   {
@@ -127,20 +139,15 @@ const COMERCIAL_NAV: NavGroup[] = [
 
 const OPERACIONAL_NAV: NavGroup[] = [
   {
-    key: "main",
+    key: "overview",
     label: "",
     items: [
       { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
-      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
-      { name: "Onboarding Ops", href: ROUTES.ADMIN.OPERATIONAL.ONBOARDING_OPS, icon: Rocket },
-      { name: "Acompanhamento", href: ROUTES.ADMIN.OPERATIONAL.ACOMPANHAMENTO, icon: Users },
-      { name: "Feedback", href: ROUTES.ADMIN.OPERATIONAL.FEEDBACK, icon: MessageSquare },
-      { name: "Suporte", href: ROUTES.ADMIN.OPERATIONAL.SUPORTE, icon: LifeBuoy },
     ],
   },
   {
-    key: "carteira",
-    label: "Carteira",
+    key: "clientes",
+    label: "Clientes",
     items: [
       {
         name: "Clientes",
@@ -154,13 +161,34 @@ const OPERACIONAL_NAV: NavGroup[] = [
         icon: Store,
         requiresStoreAccess: true,
       },
+      { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
+    ],
+  },
+  {
+    key: "workflows",
+    label: "Workflows",
+    items: [
+      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
       {
         name: "Onboarding",
-        href: ROUTES.ADMIN.ONBOARDING,
+        href: ROUTES.ADMIN.OPERATIONAL.ONBOARDING_OPS,
         icon: Rocket,
-        requiredFeatures: ["onboarding_control", "onboarding_view"],
       },
-      { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
+      {
+        name: "Acompanhamento",
+        href: ROUTES.ADMIN.OPERATIONAL.ACOMPANHAMENTO,
+        icon: Users,
+      },
+      {
+        name: "Feedback",
+        href: ROUTES.ADMIN.OPERATIONAL.FEEDBACK,
+        icon: MessageSquare,
+      },
+      {
+        name: "Suporte",
+        href: ROUTES.ADMIN.OPERATIONAL.SUPORTE,
+        icon: LifeBuoy,
+      },
     ],
   },
   {
@@ -181,6 +209,7 @@ const OPERACIONAL_NAV: NavGroup[] = [
     key: "atendimento",
     label: "Atendimento",
     items: [
+      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
       { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
       { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
     ],
@@ -196,8 +225,8 @@ const OPERACIONAL_NAV: NavGroup[] = [
 
 const GERAL_NAV: NavGroup[] = [
   {
-    key: "produtividade",
-    label: "Produtividade",
+    key: "overview",
+    label: "",
     items: [
       { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
       { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },

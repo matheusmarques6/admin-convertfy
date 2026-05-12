@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { Sidebar, SidebarMobileDrawer } from "@/components/layout/sidebar"
-import { Header } from "@/components/layout/header"
 import { MobileTopBar } from "@/components/layout/mobile-top-bar"
 import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wrapper"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -231,8 +230,9 @@ export default async function DashboardLayout({
             {/* Mobile top bar — only < 768px */}
             <MobileTopBar user={userData} />
 
-            {/* Desktop header — breadcrumbs + notifications (hidden on mobile) */}
-            <Header user={userData} />
+            {/* Header desktop removido: titulo + notificacoes + busca + tema
+                ja moram na sidebar. Pages individuais usam PageHeader quando
+                precisam de breadcrumbs/contexto extra. */}
 
             {/* Page content with responsive padding */}
             <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
