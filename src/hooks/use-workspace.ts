@@ -86,6 +86,10 @@ const COMERCIAL_PREFIXES = ["/admin/comercial"]
 
 const OPERACIONAL_PREFIXES = [
   "/admin/operacional",
+  // Pipelines operacionais Monday-style (Onboarding Ops, Acompanhamento,
+  // Feedback, Suporte) ficam em /admin/operational/[slug] — em INGLES,
+  // distinto de /admin/operacional/* (português, CRM CS existente).
+  "/admin/operational",
   "/admin/clients",
   "/admin/stores",
   "/admin/onboarding",

@@ -15,70 +15,30 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { requireOrgAdmin } from "@/lib/api/require-org-admin"
+import { ensureOperationalPipelinesBootstrap } from "@/lib/services/operational-pipelines-bootstrap"
 import { logger } from "@/lib/logger"
-import { DEFAULT_OPERATIONAL_PIPELINES } from "@/types/operational-pipeline"
 
 const log = logger.child("OperationalPipelines")
 
 export const dynamic = "force-dynamic"
-
-function genId(): string {
-  return crypto.randomUUID()
-}
-
-async function bootstrapDefaults(orgId: string, userId: string) {
-  const admin = createAdminClient()
-  const rows = DEFAULT_OPERATIONAL_PIPELINES.map((p) => ({
-    org_id: orgId,
-    name: p.name,
-    slug: p.slug,
-    description: p.description,
-    icon: p.icon,
-    color: p.color,
-    columns: p.columns.map((c, i) => ({
-      id: genId(),
-      name: c.name,
-      color: c.color,
-      position: i,
-      wip_limit: null,
-    })),
-    automations: [],
-    created_by: userId,
-  }))
-  const { error } = await admin.from("operational_pipelines").insert(rows)
-  if (error) log.warn("Bootstrap defaults failed", { code: error.code, msg: error.message })
-}
 
 export async function GET(request: NextRequest) {
   try {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await ensureOperationalPipelinesBootstrap(orgId, user.id)
     const admin = createAdminClient()
 
-    const initial = await admin
+    const { data, error } = await admin
       .from("operational_pipelines")
       .select("*")
       .eq("org_id", orgId)
       .eq("is_active", true)
       .order("created_at", { ascending: true })
+    if (error) throw error
 
-    if (initial.error) throw initial.error
-    let data = initial.data
-
-    // Bootstrap: se vazio, cria os 4 padrao e refaz select
-    if (!data || data.length === 0) {
-      await bootstrapDefaults(orgId, user.id)
-      const refresh = await admin
-        .from("operational_pipelines")
-        .select("*")
-        .eq("org_id", orgId)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-      data = refresh.data ?? []
-    }
-
-    return successResponse(request, { pipelines: data })
+    return successResponse(request, { pipelines: data ?? [] })
   } catch (error) {
     log.error("List error", error)
     return errorResponse(request, error, "operational-pipelines-list")

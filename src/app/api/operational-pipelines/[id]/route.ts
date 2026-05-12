@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { requireOrgAdmin } from "@/lib/api/require-org-admin"
+import { ensureOperationalPipelinesBootstrap } from "@/lib/services/operational-pipelines-bootstrap"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OperationalPipeline")
@@ -23,20 +24,34 @@ const log = logger.child("OperationalPipeline")
 export const dynamic = "force-dynamic"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DEFAULT_SLUGS = new Set(["onboarding", "acompanhamento", "feedback", "suporte"])
 
-async function resolvePipeline(idOrSlug: string, orgId: string) {
+async function resolvePipeline(
+  idOrSlug: string,
+  orgId: string,
+  userId: string,
+) {
   const admin = createAdminClient()
   const isUuid = UUID_RE.test(idOrSlug)
-  const query = admin
-    .from("operational_pipelines")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-  const { data, error } = isUuid
-    ? await query.eq("id", idOrSlug).maybeSingle()
-    : await query.eq("slug", idOrSlug).maybeSingle()
 
-  if (error) throw error
+  async function lookup() {
+    const query = admin
+      .from("operational_pipelines")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+    const { data, error } = isUuid
+      ? await query.eq("id", idOrSlug).maybeSingle()
+      : await query.eq("slug", idOrSlug).maybeSingle()
+    if (error) throw error
+    return data
+  }
+
+  let data = await lookup()
+  if (!data && !isUuid && DEFAULT_SLUGS.has(idOrSlug)) {
+    await ensureOperationalPipelinesBootstrap(orgId, userId)
+    data = await lookup()
+  }
   if (!data) throw new AppError("Pipeline nao encontrada", 404, "not-found")
   return data
 }
@@ -50,7 +65,7 @@ export async function GET(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
-    const pipeline = await resolvePipeline(id, orgId)
+    const pipeline = await resolvePipeline(id, orgId, user.id)
     return successResponse(request, { pipeline })
   } catch (error) {
     log.error("Get error", error)
@@ -69,7 +84,7 @@ export async function PATCH(
     const orgId = await resolveOrgId(user.id)
     await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
-    const pipeline = await resolvePipeline(id, orgId)
+    const pipeline = await resolvePipeline(id, orgId, user.id)
 
     const body = await request.json()
     const patch: Record<string, unknown> = {}
@@ -105,7 +120,7 @@ export async function DELETE(
     const orgId = await resolveOrgId(user.id)
     await requireOrgAdmin(user.id, orgId)
     const admin = createAdminClient()
-    const pipeline = await resolvePipeline(id, orgId)
+    const pipeline = await resolvePipeline(id, orgId, user.id)
 
     const { error } = await admin
       .from("operational_pipelines")

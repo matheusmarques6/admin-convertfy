@@ -13,24 +13,41 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { ensureOperationalPipelinesBootstrap } from "@/lib/services/operational-pipelines-bootstrap"
 import { logger } from "@/lib/logger"
 import { executeAutomations } from "@/lib/services/operational-automation.service"
 import type { OperationalColumn } from "@/types/operational-pipeline"
 
 const log = logger.child("OperationalPipelineTasks")
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DEFAULT_SLUGS = new Set(["onboarding", "acompanhamento", "feedback", "suporte"])
 
-async function resolvePipeline(idOrSlug: string, orgId: string) {
+async function resolvePipeline(idOrSlug: string, orgId: string, userId: string) {
   const admin = createAdminClient()
   const isUuid = UUID_RE.test(idOrSlug)
-  const query = admin
-    .from("operational_pipelines")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-  const { data } = isUuid
-    ? await query.eq("id", idOrSlug).maybeSingle()
-    : await query.eq("slug", idOrSlug).maybeSingle()
+
+  async function lookup() {
+    const query = admin
+      .from("operational_pipelines")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+    const { data } = isUuid
+      ? await query.eq("id", idOrSlug).maybeSingle()
+      : await query.eq("slug", idOrSlug).maybeSingle()
+    return data
+  }
+
+  let data = await lookup()
+
+  // Se nao achou e e um dos slugs default, dispara bootstrap e
+  // tenta de novo. Cobre caso do user acessar direto /admin/
+  // operational/onboarding sem antes carregar a lista.
+  if (!data && !isUuid && DEFAULT_SLUGS.has(idOrSlug)) {
+    await ensureOperationalPipelinesBootstrap(orgId, userId)
+    data = await lookup()
+  }
+
   if (!data) throw new AppError("Pipeline nao encontrada", 404, "not-found")
   return data
 }
@@ -44,7 +61,7 @@ export async function GET(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
-    const pipeline = await resolvePipeline(id, orgId)
+    const pipeline = await resolvePipeline(id, orgId, user.id)
     const admin = createAdminClient()
 
     const { data, error } = await admin
@@ -81,7 +98,7 @@ export async function POST(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
-    const pipeline = await resolvePipeline(id, orgId)
+    const pipeline = await resolvePipeline(id, orgId, user.id)
     const admin = createAdminClient()
 
     const body = await request.json()

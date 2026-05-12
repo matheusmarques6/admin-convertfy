@@ -17,12 +17,14 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { ensureOperationalPipelinesBootstrap } from "@/lib/services/operational-pipelines-bootstrap"
 import { logger } from "@/lib/logger"
 import { executeAutomations } from "@/lib/services/operational-automation.service"
 import type { OperationalColumn } from "@/types/operational-pipeline"
 
 const log = logger.child("OperationalMoveTask")
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DEFAULT_SLUGS = new Set(["onboarding", "acompanhamento", "feedback", "suporte"])
 
 export async function PATCH(
   request: NextRequest,
@@ -36,14 +38,22 @@ export async function PATCH(
     const admin = createAdminClient()
 
     const isUuid = UUID_RE.test(id)
-    const pq = admin
-      .from("operational_pipelines")
-      .select("id, columns, automations")
-      .eq("org_id", orgId)
-      .eq("is_active", true)
-    const { data: pipeline } = isUuid
-      ? await pq.eq("id", id).maybeSingle()
-      : await pq.eq("slug", id).maybeSingle()
+    async function lookup() {
+      const pq = admin
+        .from("operational_pipelines")
+        .select("id, columns, automations")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+      const { data } = isUuid
+        ? await pq.eq("id", id).maybeSingle()
+        : await pq.eq("slug", id).maybeSingle()
+      return data
+    }
+    let pipeline = await lookup()
+    if (!pipeline && !isUuid && DEFAULT_SLUGS.has(id)) {
+      await ensureOperationalPipelinesBootstrap(orgId, user.id)
+      pipeline = await lookup()
+    }
     if (!pipeline) throw new AppError("Pipeline nao encontrada", 404)
 
     const body = await request.json()

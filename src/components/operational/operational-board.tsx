@@ -42,17 +42,33 @@ interface OperationalTask {
   store?: { id: string; store_name: string; platform: string | null } | null
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const fetcher = async (url: string) => {
+  const r = await fetch(url)
+  const json = await r.json().catch(() => ({}))
+  if (!r.ok) {
+    const msg =
+      json?.error?.message ??
+      (typeof json?.error === "string" ? json.error : null) ??
+      `HTTP ${r.status}`
+    throw new Error(msg)
+  }
+  return json
+}
 
 interface Props {
   pipelineSlug: string
 }
 
 export function OperationalBoard({ pipelineSlug }: Props) {
-  const { data, mutate, isLoading } = useSWR<{
+  const { data, mutate, isLoading, error } = useSWR<{
     pipeline: OperationalPipeline
     tasks: OperationalTask[]
-  }>(`/api/operational-pipelines/${pipelineSlug}/tasks`, fetcher)
+    success?: boolean
+    error?: { message?: string } | string
+  }>(`/api/operational-pipelines/${pipelineSlug}/tasks`, fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
 
   const [search, setSearch] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<string>("")
@@ -216,7 +232,45 @@ export function OperationalBoard({ pipelineSlug }: Props) {
     return Array.from(seen.values())
   }, [tasks])
 
-  if (isLoading || !pipeline) {
+  if (isLoading) {
+    return <BoardSkeleton />
+  }
+
+  // Erro de rede OU API retornou success:false OU pipeline nao veio
+  const errMsg =
+    error?.message ??
+    (typeof data?.error === "string"
+      ? data.error
+      : data?.error?.message) ??
+    (data && data.success === false ? "Erro ao carregar pipeline" : null) ??
+    (!pipeline ? "Pipeline nao encontrada" : null)
+
+  if (errMsg) {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-[#0B0E15]">
+        <div className="max-w-md text-center px-6">
+          <div className="mx-auto h-12 w-12 rounded-full bg-red-100 dark:bg-red-500/15 flex items-center justify-center mb-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+          <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white">
+            Nao foi possivel carregar
+          </h2>
+          <p className="text-[12px] text-slate-500 dark:text-white/55 mt-1.5">
+            {errMsg}
+          </p>
+          <button
+            type="button"
+            onClick={() => mutate()}
+            className="mt-4 inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!pipeline) {
     return <BoardSkeleton />
   }
 
