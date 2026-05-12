@@ -52,8 +52,29 @@ export async function PATCH(
     }
 
     const cols = (pipeline.columns ?? []) as OperationalColumn[]
-    if (!cols.some((c) => c.id === body.column_id)) {
+    const targetCol = cols.find((c) => c.id === body.column_id)
+    if (!targetCol) {
       throw new AppError("Coluna nao pertence a esta pipeline", 400)
+    }
+
+    // WIP limit: bloqueia drop em coluna cheia (a menos que body.force=true).
+    // Conta tasks ativas que ja estao na coluna destino (excluindo a propria
+    // task se ja estiver la — caso de reordenacao).
+    if (targetCol.wip_limit != null && targetCol.wip_limit > 0) {
+      const { count } = await admin
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("operational_pipeline_id", pipeline.id)
+        .eq("operational_column_id", body.column_id)
+        .neq("id", body.task_id)
+        .not("status", "in", "(completed,cancelled)")
+      if ((count ?? 0) >= targetCol.wip_limit && !body.force) {
+        throw new AppError(
+          `Coluna "${targetCol.name}" atingiu o WIP limit (${targetCol.wip_limit}). Conclua tasks antes de adicionar novas.`,
+          409,
+          "wip-limit-exceeded",
+        )
+      }
     }
 
     const updatePatch: Record<string, unknown> = {
@@ -78,13 +99,10 @@ export async function PATCH(
       columnId: body.column_id,
     })
 
-    // Se a task foi movida pra coluna 'won' ou 'completed' tipo (mas
-    // no nosso schema nao temos stage_type), checar via nome heuristico.
-    const targetCol = cols.find((c) => c.id === body.column_id)
-    if (
-      targetCol &&
-      /(conclu|fech|deploy|resolv|tomada|live)/i.test(targetCol.name)
-    ) {
+    // Se a task foi movida pra coluna que tem nome de etapa de conclusao
+    // (heuristica, ja que nao temos stage_type), dispara task_completed
+    // tambem.
+    if (/(conclu|fech|deploy|resolv|tomada|live)/i.test(targetCol.name)) {
       void executeAutomations(pipeline.id, "task_completed", {
         taskId: task.id,
         assigneeId: task.assignee_id,

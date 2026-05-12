@@ -124,15 +124,19 @@ export async function POST(
       ...(item.omnisend_campaign_ids ?? {}),
     }
 
-    for (const s of stores ?? []) {
+    // Concorrencia limitada — dispara em batches paralelos de CONCURRENCY
+    // pra acelerar deploy sem estourar rate limit do Omnisend.
+    const CONCURRENCY = 5
+    const queue = [...(stores ?? [])]
+
+    async function processOne(s: (typeof queue)[number]) {
       if (!s.omnisend_api_key) {
-        results.push({
+        return {
           store_id: s.id,
           store_name: s.store_name,
-          status: "failed",
+          status: "failed" as const,
           error: "Loja sem API key Omnisend",
-        })
-        continue
+        }
       }
       const r = await createOmnisendDraft(s.omnisend_api_key, {
         name: item.title,
@@ -146,20 +150,25 @@ export async function POST(
       })
       if (r.ok) {
         omnisendIds[s.id] = r.id
-        results.push({
+        return {
           store_id: s.id,
           store_name: s.store_name,
-          status: "deployed",
+          status: "deployed" as const,
           omnisend_campaign_id: r.id,
-        })
-      } else {
-        results.push({
-          store_id: s.id,
-          store_name: s.store_name,
-          status: "failed",
-          error: r.error,
-        })
+        }
       }
+      return {
+        store_id: s.id,
+        store_name: s.store_name,
+        status: "failed" as const,
+        error: r.error,
+      }
+    }
+
+    while (queue.length > 0) {
+      const batch = queue.splice(0, CONCURRENCY)
+      const batchResults = await Promise.all(batch.map((s) => processOne(s)))
+      results.push(...batchResults)
     }
 
     // Atualiza target_stores com novos status

@@ -1,8 +1,19 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import useSWR from "swr"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { Sparkles, Send, RotateCcw, Loader2, X, Square } from "lucide-react"
+import {
+  Sparkles,
+  Send,
+  Plus,
+  Loader2,
+  X,
+  Square,
+  History,
+  Trash2,
+  ChevronLeft,
+} from "lucide-react"
 import { useAiChatStore } from "./ai-chat-store"
 import { AiChatMessage } from "./ai-chat-message"
 import type { AiChatMessage as Message } from "@/types/ai"
@@ -100,14 +111,35 @@ const GENERAL_PROMPTS: QuickPrompt[] = [
   },
 ]
 
+interface ConversationListItem {
+  id: string
+  title: string
+  last_message_at: string
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
 export function AiChatDrawer() {
-  const { open, setOpen, context } = useAiChatStore()
+  const {
+    open,
+    setOpen,
+    context,
+    activeConversationId,
+    setActiveConversationId,
+  } = useAiChatStore()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [loadingConv, setLoadingConv] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  const { data: convData, mutate: mutateConversations } = useSWR<{
+    conversations?: ConversationListItem[]
+  }>(open ? "/api/ai/conversations" : null, fetcher)
+  const conversations = convData?.conversations ?? []
 
   const stopStreaming = () => {
     abortRef.current?.abort()
@@ -125,12 +157,63 @@ export function AiChatDrawer() {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 100)
     } else {
-      // Aborta streaming em curso pra nao gastar tokens com response
-      // que o user nao vai ver mais.
       abortRef.current?.abort()
       abortRef.current = null
     }
   }, [open])
+
+  // Quando o user seleciona uma conversa, carrega as mensagens dela.
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([])
+      return
+    }
+    setLoadingConv(true)
+    fetch(`/api/ai/conversations/${activeConversationId}`)
+      .then((r) => r.json())
+      .then(
+        (j: {
+          messages?: Array<{
+            id: string
+            role: "user" | "assistant"
+            content: string
+            created_at: string
+          }>
+        }) => {
+          const list = j.messages ?? []
+          setMessages(
+            list.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              timestamp: new Date(m.created_at).getTime(),
+            })),
+          )
+        },
+      )
+      .finally(() => setLoadingConv(false))
+  }, [activeConversationId])
+
+  const ensureConversation = async (
+    firstUserMessage: string,
+  ): Promise<string | null> => {
+    if (activeConversationId) return activeConversationId
+    // Cria conversa com title derivado do 1o input (max 60 chars)
+    const title = firstUserMessage.slice(0, 60).trim() || "Nova conversa"
+    const res = await fetch("/api/ai/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, context }),
+    })
+    if (!res.ok) return null
+    const j = await res.json()
+    const id = j.conversation?.id ?? j.data?.conversation?.id ?? null
+    if (id) {
+      setActiveConversationId(id)
+      mutateConversations()
+    }
+    return id
+  }
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || streaming) return
@@ -151,6 +234,8 @@ export function AiChatDrawer() {
     setInput("")
     setStreaming(true)
 
+    const conversationId = await ensureConversation(text)
+
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -165,18 +250,15 @@ export function AiChatDrawer() {
             content: m.content,
           })),
           context,
+          conversation_id: conversationId,
         }),
       })
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}))
+        const errText = j.error ?? "falha no servidor"
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMsg.id
-              ? {
-                  ...m,
-                  content: `Erro: ${j.error ?? "falha no servidor"}`,
-                }
-              : m,
+            m.id === assistantMsg.id ? { ...m, content: `Erro: ${errText}` } : m,
           ),
         )
         return
@@ -214,8 +296,9 @@ export function AiChatDrawer() {
           }
         }
       }
+      // Refresca lista de conversas (last_message_at mudou)
+      mutateConversations()
     } catch (err) {
-      // Abort silencioso — o user clicou em "Parar"
       const isAbort =
         (err as Error)?.name === "AbortError" ||
         String(err).includes("aborted")
@@ -252,27 +335,49 @@ export function AiChatDrawer() {
   }
 
   const newConversation = () => {
+    stopStreaming()
+    setActiveConversationId(null)
     setMessages([])
     setInput("")
+    setShowHistory(false)
+  }
+
+  const deleteConversation = async (id: string) => {
+    if (!confirm("Apagar essa conversa permanentemente?")) return
+    await fetch(`/api/ai/conversations/${id}`, { method: "DELETE" })
+    if (id === activeConversationId) {
+      newConversation()
+    }
+    mutateConversations()
   }
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent
         side="right"
-        className="w-[480px] sm:max-w-[480px] p-0 flex flex-col gap-0"
+        className="w-[500px] sm:max-w-[500px] p-0 flex flex-col gap-0"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08]">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {showHistory && (
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                title="Voltar"
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+            )}
             <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400">
               <Sparkles className="h-3.5 w-3.5" />
             </span>
-            <div>
-              <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white">
-                Assistente IA
+            <div className="min-w-0">
+              <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">
+                {showHistory ? "Histórico" : "Assistente IA"}
               </h2>
-              <p className="text-[10px] text-slate-500 dark:text-white/55">
+              <p className="text-[10px] text-slate-500 dark:text-white/55 truncate">
                 Claude Sonnet ·{" "}
                 {context.store_id
                   ? "Loja em foco"
@@ -283,15 +388,25 @@ export function AiChatDrawer() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={newConversation}
-                title="Nova conversa"
-                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
+            {!showHistory && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(true)}
+                  title="Histórico de conversas"
+                  className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                >
+                  <History className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={newConversation}
+                  title="Nova conversa"
+                  className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -304,102 +419,163 @@ export function AiChatDrawer() {
           </div>
         </div>
 
-        {/* Messages */}
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
-        >
-          {messages.length === 0 ? (
-            <div className="space-y-3">
-              <div className="text-center py-4">
-                <div className="mx-auto h-12 w-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white mb-3">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
-                  Como posso ajudar?
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-white/55 mt-1 max-w-[280px] mx-auto leading-relaxed">
-                  Sou treinado nos dados da Convertfy. Pode me pedir para gerar
-                  copies, analisar métricas ou preparar briefings.
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                {(context.store_id
-                  ? STORE_PROMPTS
-                  : context.client_id
-                    ? CLIENT_PROMPTS
-                    : GENERAL_PROMPTS
-                ).map((qp) => (
-                  <button
-                    key={qp.label}
-                    type="button"
-                    onClick={() => sendMessage(qp.prompt)}
-                    className="w-full text-left rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04] px-3 py-2 transition-colors"
-                  >
-                    <p className="text-[12.5px] font-medium text-slate-800 dark:text-white/85">
-                      <span className="mr-1.5">{qp.emoji}</span>
-                      {qp.label}
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-white/55 mt-0.5 line-clamp-2">
-                      {qp.prompt}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              {messages.map((m) => (
-                <AiChatMessage key={m.id} message={m} />
-              ))}
-              {streaming && (
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-white/55 px-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Gerando resposta...
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Input */}
-        <form
-          onSubmit={handleSubmit}
-          className="border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/40 dark:bg-white/[0.02] px-3 py-3"
-        >
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={streaming}
-              placeholder="Pergunte qualquer coisa..."
-              rows={1}
-              className="flex-1 resize-none max-h-[120px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] px-3 py-2 text-[13px] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 disabled:opacity-50"
-            />
-            {streaming ? (
-              <button
-                type="button"
-                onClick={stopStreaming}
-                aria-label="Parar resposta"
-                title="Parar resposta"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-700 hover:bg-slate-800 text-white"
-              >
-                <Square className="h-3.5 w-3.5" />
-              </button>
+        {/* History view */}
+        {showHistory ? (
+          <div className="flex-1 overflow-y-auto p-3">
+            {conversations.length === 0 ? (
+              <p className="text-[12px] text-slate-500 dark:text-white/55 text-center py-8">
+                Nenhuma conversa salva ainda.
+              </p>
             ) : (
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                aria-label="Enviar"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              <ul className="space-y-1">
+                {conversations.map((c) => (
+                  <li key={c.id}>
+                    <div
+                      className={
+                        "group flex items-center justify-between gap-2 rounded-[6px] border px-3 py-2 transition-colors " +
+                        (c.id === activeConversationId
+                          ? "bg-orange-50 dark:bg-orange-500/10 border-orange-300 dark:border-orange-500/40"
+                          : "bg-white dark:bg-white/[0.02] border-slate-200 dark:border-white/[0.08] hover:border-slate-300")
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveConversationId(c.id)
+                          setShowHistory(false)
+                        }}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="text-[12.5px] font-medium text-slate-900 dark:text-white truncate">
+                          {c.title}
+                        </p>
+                        <p className="text-[10px] text-slate-500 dark:text-white/55 mt-0.5">
+                          {new Date(c.last_message_at).toLocaleString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteConversation(c.id)}
+                        title="Apagar"
+                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 transition-opacity"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-        </form>
+        ) : (
+          <>
+            {/* Messages */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
+            >
+              {loadingConv ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="space-y-3">
+                  <div className="text-center py-4">
+                    <div className="mx-auto h-12 w-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-white mb-3">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                      Como posso ajudar?
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-white/55 mt-1 max-w-[280px] mx-auto leading-relaxed">
+                      Sou treinado nos dados da Convertfy. Pode me pedir para
+                      gerar copies, analisar métricas ou preparar briefings.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {(context.store_id
+                      ? STORE_PROMPTS
+                      : context.client_id
+                        ? CLIENT_PROMPTS
+                        : GENERAL_PROMPTS
+                    ).map((qp) => (
+                      <button
+                        key={qp.label}
+                        type="button"
+                        onClick={() => sendMessage(qp.prompt)}
+                        className="w-full text-left rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04] px-3 py-2 transition-colors"
+                      >
+                        <p className="text-[12.5px] font-medium text-slate-800 dark:text-white/85">
+                          <span className="mr-1.5">{qp.emoji}</span>
+                          {qp.label}
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-white/55 mt-0.5 line-clamp-2">
+                          {qp.prompt}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {messages.map((m) => (
+                    <AiChatMessage key={m.id} message={m} />
+                  ))}
+                  {streaming && (
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-white/55 px-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Gerando resposta...
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Input */}
+            <form
+              onSubmit={handleSubmit}
+              className="border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/40 dark:bg-white/[0.02] px-3 py-3"
+            >
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={streaming}
+                  placeholder="Pergunte qualquer coisa..."
+                  rows={1}
+                  className="flex-1 resize-none max-h-[120px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] px-3 py-2 text-[13px] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 disabled:opacity-50"
+                />
+                {streaming ? (
+                  <button
+                    type="button"
+                    onClick={stopStreaming}
+                    aria-label="Parar resposta"
+                    title="Parar resposta"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-700 hover:bg-slate-800 text-white"
+                  >
+                    <Square className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!input.trim()}
+                    aria-label="Enviar"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </form>
+          </>
+        )}
       </SheetContent>
     </Sheet>
   )

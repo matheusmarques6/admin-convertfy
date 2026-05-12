@@ -55,7 +55,7 @@ CREATE POLICY "operational_pipelines_manage" ON operational_pipelines
   );
 
 CREATE OR REPLACE FUNCTION op_pipelines_set_updated_at()
-RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$ LANGUAGE plpgsql;
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$;
 
 DROP TRIGGER IF EXISTS trg_op_pipelines_updated ON operational_pipelines;
 CREATE TRIGGER trg_op_pipelines_updated

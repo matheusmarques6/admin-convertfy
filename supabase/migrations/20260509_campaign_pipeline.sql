@@ -51,7 +51,7 @@ CREATE POLICY "campaign_pipeline_manage" ON campaign_pipeline_items
   );
 
 CREATE OR REPLACE FUNCTION campaign_pipeline_set_updated_at()
-RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$ LANGUAGE plpgsql;
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$;
 
 DROP TRIGGER IF EXISTS trg_campaign_pipeline_updated ON campaign_pipeline_items;
 CREATE TRIGGER trg_campaign_pipeline_updated

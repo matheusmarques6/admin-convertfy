@@ -41,7 +41,7 @@ CREATE POLICY "ai_templates_manage" ON ai_prompt_templates
   );
 
 CREATE OR REPLACE FUNCTION ai_templates_set_updated_at()
-RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$ LANGUAGE plpgsql;
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$;
 
 DROP TRIGGER IF EXISTS trg_ai_templates_updated ON ai_prompt_templates;
 CREATE TRIGGER trg_ai_templates_updated

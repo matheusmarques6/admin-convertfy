@@ -1,22 +1,26 @@
 /**
  * POST /api/ai/chat
  *
- * Chat streaming com Claude Sonnet via @anthropic-ai/sdk. Aceita
- * contexto opcional (store_id, client_id) que sera injetado no
- * system prompt com dados reais.
+ * Chat streaming com Claude Sonnet via @anthropic-ai/sdk com:
+ * - Persistencia: aceita conversation_id e salva user msg + assistant
+ *   completo na tabela ai_chat_messages. Atualiza last_message_at.
+ * - Rate limit por user (15 msgs/min, in-memory).
+ * - Contexto: store_id/client_id sao injetados no system prompt
+ *   com dados reais (metricas Omnisend, MRR, health, lojas, etc).
  *
  * Body: {
  *   messages: Array<{ role: 'user'|'assistant', content: string }>,
- *   context?: { store_id?: string, client_id?: string }
+ *   context?: { store_id?: string, client_id?: string },
+ *   conversation_id?: string  // se omitido, nao persiste
  * }
  *
  * Response: text/event-stream — eventos `data: {"text":"..."}` por
- * delta, finalizado por `data: [DONE]`.
+ * delta, finalizado por `data: [DONE]`. Em rate limit retorna 429.
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import {
@@ -24,6 +28,7 @@ import {
   buildOrgContext,
   buildStoreContext,
 } from "@/lib/services/ai-context.service"
+import { checkAiRateLimit } from "@/lib/services/ai-rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AiChat")
@@ -46,10 +51,39 @@ const BASE_SYSTEM = `Você é o assistente IA da Convertfy, uma agência brasile
 
 Diretrizes:
 - Responda sempre em português brasileiro, direto e prático
-- Use markdown quando ajudar leitura (bullets, headers, code)
+- Use markdown quando ajudar leitura (bullets, headers, tabelas, code)
 - Quando dados estiverem no contexto, cite os números reais
 - Não invente métricas que você não tem; pergunte se precisar
 - Foque em ações executáveis, não respostas vagas`
+
+async function persistMessages(
+  conversationId: string,
+  userMessage: string,
+  assistantMessage: string,
+) {
+  try {
+    const admin = createAdminClient()
+    const now = new Date().toISOString()
+    await admin.from("ai_chat_messages").insert([
+      {
+        conversation_id: conversationId,
+        role: "user",
+        content: userMessage,
+      },
+      {
+        conversation_id: conversationId,
+        role: "assistant",
+        content: assistantMessage,
+      },
+    ])
+    await admin
+      .from("ai_chat_conversations")
+      .update({ last_message_at: now })
+      .eq("id", conversationId)
+  } catch (e) {
+    log.warn("persistMessages failed", e)
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,9 +91,25 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
 
+    // Rate limit
+    const rl = checkAiRateLimit(user.id)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          error: `Voce esta enviando muitas mensagens. Tente de novo em ${rl.retryAfterSec}s.`,
+          retry_after_sec: rl.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSec) },
+        },
+      )
+    }
+
     const body = (await request.json()) as {
       messages: ChatMessage[]
       context?: { store_id?: string | null; client_id?: string | null }
+      conversation_id?: string | null
     }
     const messages = body.messages ?? []
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -80,7 +130,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Constroi contexto extra
+    // Verifica ownership da conversa (se fornecida)
+    if (body.conversation_id) {
+      const admin = createAdminClient()
+      const { data: conv } = await admin
+        .from("ai_chat_conversations")
+        .select("id")
+        .eq("id", body.conversation_id)
+        .eq("user_id", user.id)
+        .maybeSingle()
+      if (!conv) {
+        return NextResponse.json(
+          { error: "Conversa nao encontrada" },
+          { status: 404 },
+        )
+      }
+    }
+
+    // Contexto extra
     const ctx = body.context ?? {}
     const contextChunks: string[] = []
     if (ctx.store_id) {
@@ -102,6 +169,8 @@ export async function POST(request: NextRequest) {
         : "")
 
     const client = new Anthropic({ apiKey })
+    const userMessage = messages[messages.length - 1]?.content ?? ""
+    let assistantAcc = ""
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -121,10 +190,10 @@ export async function POST(request: NextRequest) {
               event.type === "content_block_delta" &&
               event.delta.type === "text_delta"
             ) {
+              const text = event.delta.text
+              assistantAcc += text
               controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ text: event.delta.text })}\n\n`,
-                ),
+                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`),
               )
             }
           }
@@ -138,6 +207,11 @@ export async function POST(request: NextRequest) {
           )
         } finally {
           controller.close()
+          // Persiste depois que o stream fechou. Fire-and-forget; nao
+          // bloqueia o response.
+          if (body.conversation_id && assistantAcc && userMessage) {
+            void persistMessages(body.conversation_id, userMessage, assistantAcc)
+          }
         }
       },
     })
@@ -148,6 +222,7 @@ export async function POST(request: NextRequest) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        "X-RateLimit-Remaining": String(rl.remaining),
       },
     })
   } catch (error) {

@@ -9,6 +9,7 @@
 import { useState, useMemo, useEffect } from "react"
 import useSWR from "swr"
 import { createClient } from "@/lib/supabase/client"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   DragDropContext,
   Droppable,
@@ -60,6 +61,7 @@ export function OperationalBoard({ pipelineSlug }: Props) {
   const [storeFilter, setStoreFilter] = useState<string>("")
   const [newTaskColumnId, setNewTaskColumnId] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const toast = useToast()
 
   const pipeline = data?.pipeline
   const tasks = useMemo(() => data?.tasks ?? [], [data])
@@ -167,15 +169,31 @@ export function OperationalBoard({ pipelineSlug }: Props) {
         body: JSON.stringify({ position: destination.index * 10 }),
       })
     } else {
-      await fetch(`/api/operational-pipelines/${pipeline.id}/move-task`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task_id: draggableId,
-          column_id: destination.droppableId,
-          position: destination.index * 10,
-        }),
-      })
+      const res = await fetch(
+        `/api/operational-pipelines/${pipeline.id}/move-task`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: draggableId,
+            column_id: destination.droppableId,
+            position: destination.index * 10,
+          }),
+        },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        // 409 = WIP limit exceeded
+        toast.toast({
+          variant: "destructive",
+          title:
+            res.status === 409
+              ? "WIP limit atingido"
+              : "Erro ao mover task",
+          description:
+            j.error?.message ?? j.error ?? "Tente novamente.",
+        })
+      }
     }
     mutate()
   }
