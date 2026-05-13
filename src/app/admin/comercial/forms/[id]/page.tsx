@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import useSWR from "swr"
 import {
@@ -364,13 +364,23 @@ export default function FormEditorPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  // revalidateOnFocus: false evita que SWR sobrescreva edicoes do user
+  // quando ele troca de aba e volta. Idem dedupe alto pra nao refazer
+  // requests enquanto digita.
   const { data, isLoading, mutate } = useSWR<FormDetail>(
     `/api/crm/forms/${id}`,
     fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+      revalidateOnReconnect: false,
+      shouldRetryOnError: false,
+    },
   )
   const { data: pipelinesData } = useSWR<{ pipelines: PipelineLite[] }>(
     "/api/crm/pipelines?scope=sales",
     fetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   )
   const pipelines = pipelinesData?.pipelines ?? []
 
@@ -426,8 +436,13 @@ export default function FormEditorPage({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
+  // Hidrata o estado local SO UMA VEZ quando o data chega. Sem essa guard,
+  // qualquer re-fetch SWR (foco, mutate, etc) sobrescreveria as edicoes do
+  // user e ele perderia tudo que estava digitando.
+  const hydratedRef = useRef(false)
   useEffect(() => {
-    if (!data) return
+    if (!data || hydratedRef.current) return
+    hydratedRef.current = true
     setName(data.form.name)
     setSlug(data.form.slug)
     setDescription(data.form.description ?? "")

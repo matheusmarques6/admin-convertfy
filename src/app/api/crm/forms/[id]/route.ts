@@ -164,15 +164,20 @@ export async function PATCH(
 
       if (fields.length > 0) {
         const payload = fields.map((f, idx) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: _ignored, ...rest } = f
+          // Whitelist explicita (evita campos extras que nao existem no schema)
+          const row = f as Record<string, unknown>
           return {
-            ...rest,
             form_id: id,
-            position: f.position ?? idx,
-            // options eh NOT NULL no banco; defaulta pra [] quando o tipo
-            // do campo nao usa opcoes (text/url/email/phone/etc)
-            options: (rest as { options?: unknown }).options ?? [],
+            field_type: row.field_type,
+            label: row.label,
+            placeholder: row.placeholder ?? null,
+            description: row.description ?? null,
+            required: row.required ?? false,
+            position: (row.position as number | undefined) ?? idx,
+            // options/validation sao NOT NULL no banco; defaulta com [] / {}
+            options: row.options ?? [],
+            validation: row.validation ?? {},
+            map_to_lead_field: row.map_to_lead_field ?? null,
           }
         })
         const { error: fErr } = await admin

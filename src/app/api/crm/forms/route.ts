@@ -134,12 +134,21 @@ export async function POST(request: NextRequest) {
 
     // Insert dos fields em batch.
     if (fields.length > 0) {
-      const fieldsPayload = fields.map((f, idx) => ({
-        ...f,
-        form_id: form.id,
-        position: f.position ?? idx,
-        options: (f as { options?: unknown }).options ?? [],
-      }))
+      const fieldsPayload = fields.map((f, idx) => {
+        const row = f as Record<string, unknown>
+        return {
+          form_id: form.id,
+          field_type: row.field_type,
+          label: row.label,
+          placeholder: row.placeholder ?? null,
+          description: row.description ?? null,
+          required: row.required ?? false,
+          position: (row.position as number | undefined) ?? idx,
+          options: row.options ?? [],
+          validation: row.validation ?? {},
+          map_to_lead_field: row.map_to_lead_field ?? null,
+        }
+      })
       const { error: fErr } = await admin
         .from("crm_form_fields")
         .insert(fieldsPayload)
