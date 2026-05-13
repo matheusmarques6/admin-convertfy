@@ -12,19 +12,14 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
+import { OnboardingCard } from "./onboarding-card"
 import {
   DragDropContext,
   Droppable,
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import {
-  Plus,
-  AlertTriangle,
-  Clock,
-  Sparkles,
-  Loader2,
-} from "lucide-react"
+import { Plus, Sparkles, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
@@ -204,14 +199,13 @@ export function OnboardingKanban() {
                                 ref={dp.innerRef}
                                 {...dp.draggableProps}
                                 {...dp.dragHandleProps}
-                                className={
-                                  "block rounded-[6px] border bg-white dark:bg-[#1A1D27] p-2.5 " +
-                                  (ds.isDragging
-                                    ? "border-violet-500 shadow-lg rotate-1"
-                                    : "border-black/[0.06] dark:border-white/[0.08] hover:border-black/[0.12] hover:shadow-sm")
-                                }
+                                className="block focus:outline-none"
                               >
-                                <OnboardingCard onb={onb} />
+                                <OnboardingCard
+                                  onb={onb}
+                                  stageColor={col.color}
+                                  isDragging={ds.isDragging}
+                                />
                               </Link>
                             )}
                           </Draggable>
@@ -386,68 +380,6 @@ function KanbanGoBackDialog({
   )
 }
 
-function OnboardingCard({ onb }: { onb: OnboardingPipelineItem }) {
-  const hoursIn =
-    (Date.now() - new Date(onb.last_column_change_at).getTime()) /
-    (3600 * 1000)
-  const daysIn = Math.floor(hoursIn / 24)
-  const slaHours = onb.current_column?.sla_hours ?? 0
-  const isStuck = slaHours > 0 && hoursIn >= slaHours
-  const slaPct = slaHours > 0 ? Math.min(100, (hoursIn / slaHours) * 100) : 0
-
-  return (
-    <>
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <h3 className="text-[12.5px] font-semibold text-slate-900 dark:text-white leading-snug min-w-0 flex-1">
-          {onb.store?.store_name ?? "Loja"}
-        </h3>
-        {onb.current_version > 1 && (
-          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/30 shrink-0">
-            v{onb.current_version}
-          </span>
-        )}
-      </div>
-      {onb.client && (
-        <p className="text-[11px] text-slate-500 dark:text-white/55 truncate mb-1.5">
-          {onb.client.name}
-        </p>
-      )}
-      <div className="flex items-center justify-between gap-2 mt-1.5 text-[10px]">
-        <div className="flex items-center gap-1.5 text-slate-500 dark:text-white/55">
-          <Clock className="h-3 w-3" />
-          {daysIn === 0 ? "hoje" : `${daysIn}d`}
-        </div>
-        {isStuck ? (
-          <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-semibold">
-            <AlertTriangle className="h-3 w-3" />
-            SLA estourou
-          </span>
-        ) : (
-          onb.briefing_status === "approved" && (
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-              Briefing OK
-            </span>
-          )
-        )}
-      </div>
-      {slaHours > 0 && (
-        <div className="mt-1.5 h-0.5 w-full rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
-          <div
-            className={
-              "h-full " +
-              (slaPct >= 100
-                ? "bg-red-500"
-                : slaPct >= 80
-                  ? "bg-amber-500"
-                  : "bg-emerald-500")
-            }
-            style={{ width: `${slaPct}%` }}
-          />
-        </div>
-      )}
-    </>
-  )
-}
 
 function NewOnboardingDialog({
   onClose,
