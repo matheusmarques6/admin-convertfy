@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
         ...f,
         form_id: form.id,
         position: f.position ?? idx,
+        options: (f as { options?: unknown }).options ?? [],
       }))
       const { error: fErr } = await admin
         .from("crm_form_fields")

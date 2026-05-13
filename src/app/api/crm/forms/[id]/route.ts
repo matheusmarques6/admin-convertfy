@@ -170,6 +170,9 @@ export async function PATCH(
             ...rest,
             form_id: id,
             position: f.position ?? idx,
+            // options eh NOT NULL no banco; defaulta pra [] quando o tipo
+            // do campo nao usa opcoes (text/url/email/phone/etc)
+            options: (rest as { options?: unknown }).options ?? [],
           }
         })
         const { error: fErr } = await admin

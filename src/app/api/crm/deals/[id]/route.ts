@@ -38,7 +38,7 @@ export async function GET(
         store:client_stores (id, store_name, store_url, platform, currency, mrr_cents, health_score),
         pipeline:pipelines (id, name, scope, color, layout),
         stage:pipeline_stages!deals_stage_id_fkey (id, name, color, stage_type),
-        lead:crm_leads (id, name, email, phone, company, source, status)
+        lead:crm_leads!deals_lead_id_fkey (id, name, email, phone, company, source, status)
       `)
       .eq("id", id)
       .single()

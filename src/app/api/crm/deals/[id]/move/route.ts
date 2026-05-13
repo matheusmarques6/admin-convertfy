@@ -112,7 +112,7 @@ export async function POST(
           client_id, store_id, lead_id, title,
           owner:profiles!deals_owner_id_fkey (id, name, email),
           client:clients (id, name, email, phone),
-          lead:crm_leads (id, name, phone, email)
+          lead:crm_leads!deals_lead_id_fkey (id, name, phone, email)
         `)
         .eq("id", id)
         .single()

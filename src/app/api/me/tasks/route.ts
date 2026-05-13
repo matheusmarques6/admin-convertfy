@@ -117,14 +117,16 @@ export async function GET(request: NextRequest) {
     const role = (orgMember.role as string) ?? "support"
     const isElevated = ELEVATED_ROLES.includes(role)
 
+    // Nao usamos embed Supabase porque tasks.assignee_id eh FK pra org_members
+    // mas historicamente alguns rows armazenam profile_id direto. Enrich manual
+    // (abaixo) cobre os dois casos.
     let query = admin
       .from("tasks")
       .select(
         `id, title, description, status, priority, due_date, sla_hours, type,
          assignee_role, assignee_id, source_type, source_id, source_metadata,
          onboarding_id, operational_column_id, metadata,
-         created_at, updated_at, completed_at,
-         assignee:profiles!tasks_assignee_id_fkey(id, name, email, avatar_url)`,
+         created_at, updated_at, completed_at`,
       )
       .eq("org_id", orgMember.org_id)
       .limit(500)
@@ -165,7 +167,59 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
     if (error) throw error
 
-    const tasks = data ?? []
+    const rawTasks = data ?? []
+
+    // Enrichment manual do assignee:
+    // tasks.assignee_id pode apontar pra org_members.id ou profiles.id (legado).
+    // Carrega ambos os mapeamentos e attacha.
+    const assigneeIds = Array.from(
+      new Set(
+        rawTasks
+          .map((t) => t.assignee_id as string | null)
+          .filter((x): x is string => !!x),
+      ),
+    )
+
+    type AssigneeInfo = {
+      id: string
+      name: string
+      email: string | null
+      avatar_url: string | null
+    }
+    const assigneeMap = new Map<string, AssigneeInfo>()
+
+    if (assigneeIds.length > 0) {
+      // Caminho 1: ids como profile_id direto
+      const { data: directProfiles } = await admin
+        .from("profiles")
+        .select("id, name, email, avatar_url")
+        .in("id", assigneeIds)
+      for (const p of directProfiles ?? []) {
+        assigneeMap.set(p.id as string, p as AssigneeInfo)
+      }
+
+      // Caminho 2: ids como org_member.id -> resolve via profile
+      const stillMissing = assigneeIds.filter((id) => !assigneeMap.has(id))
+      if (stillMissing.length > 0) {
+        const { data: memberRows } = await admin
+          .from("org_members")
+          .select(
+            "id, profile_id, profile:profiles(id, name, email, avatar_url)",
+          )
+          .in("id", stillMissing)
+        for (const m of memberRows ?? []) {
+          const p = (Array.isArray(m.profile) ? m.profile[0] : m.profile) as
+            | AssigneeInfo
+            | null
+          if (p) assigneeMap.set(m.id as string, p)
+        }
+      }
+    }
+
+    const tasks = rawTasks.map((t) => ({
+      ...t,
+      assignee: t.assignee_id ? (assigneeMap.get(t.assignee_id as string) ?? null) : null,
+    }))
     const grouped: Record<string, typeof tasks> = {}
     const counts: Record<string, number> = {}
     for (const t of tasks) {
