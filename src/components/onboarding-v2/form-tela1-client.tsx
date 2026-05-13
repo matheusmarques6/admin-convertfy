@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import {
   Loader2,
   ArrowRight,
@@ -34,6 +35,14 @@ import {
   ShieldCheck,
   Mail,
   Clock,
+  Check,
+  Building2,
+  Store as StoreIcon,
+  Palette,
+  Users,
+  Target,
+  FolderUp,
+  FileCheck2,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -68,6 +77,7 @@ interface Section {
   id: string
   title: string
   subtitle: string
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   questions: Question[]
 }
 
@@ -76,6 +86,7 @@ const SECTIONS: Section[] = [
     id: "empresa",
     title: "Sua empresa",
     subtitle: "Dados fiscais e localização.",
+    icon: Building2,
     questions: [
       {
         key: "cnpj",
@@ -97,6 +108,7 @@ const SECTIONS: Section[] = [
     id: "loja",
     title: "Sua loja",
     subtitle: "Confira o que a gente já sabe e complete o resto.",
+    icon: StoreIcon,
     questions: [
       {
         key: "store_name",
@@ -173,6 +185,7 @@ const SECTIONS: Section[] = [
     id: "marca",
     title: "Sua marca",
     subtitle: "Personalidade e identidade que vamos seguir.",
+    icon: Palette,
     questions: [
       {
         key: "positioning",
@@ -205,6 +218,7 @@ const SECTIONS: Section[] = [
     id: "cliente",
     title: "Seu cliente",
     subtitle: "Quem é a pessoa que compra de você.",
+    icon: Users,
     questions: [
       {
         key: "primary_persona",
@@ -236,6 +250,7 @@ const SECTIONS: Section[] = [
     id: "objetivos",
     title: "Histórico & objetivos",
     subtitle: "Pra calibrarmos a estratégia certa.",
+    icon: Target,
     questions: [
       {
         key: "did_email_marketing",
@@ -270,6 +285,7 @@ const SECTIONS: Section[] = [
     id: "materiais",
     title: "Materiais & observações",
     subtitle: "Quanto mais materiais, melhor a primeira entrega.",
+    icon: FolderUp,
     questions: [
       {
         key: "logo_url",
@@ -480,152 +496,348 @@ export function FormTela1Client({ token }: { token: string }) {
     )
   }
 
+  const sectionsForSidebar = [
+    ...SECTIONS.map((s, i) => ({
+      idx: i,
+      title: s.title,
+      icon: s.icon,
+      done: i < stepIdx,
+      active: i === stepIdx,
+    })),
+    {
+      idx: SECTIONS.length,
+      title: "Confirmar briefing",
+      icon: FileCheck2,
+      done: false,
+      active: stepIdx === SECTIONS.length,
+    },
+  ]
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Top: brand band */}
-      <div className="bg-[#0F1117]">
-        <div className="max-w-2xl mx-auto px-5 py-5 flex items-center gap-3">
-          <div
-            className="h-7 w-7 rounded flex items-center justify-center"
-            style={{
-              background:
-                "linear-gradient(90deg, #4E62D8, #2137B6, #041366)",
-            }}
-          >
-            <span className="text-white font-bold text-[13px]">C</span>
-          </div>
-          <span className="text-white font-semibold text-[15px]">Convertfy</span>
-        </div>
-      </div>
-
-      {/* Progress bar fixa */}
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
-        <div className="h-1 bg-slate-100">
-          <div
-            className="h-full transition-all"
-            style={{
-              width: `${progress}%`,
-              background: "linear-gradient(90deg, #4E62D8, #2137B6)",
-            }}
-          />
-        </div>
-        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">
-              Etapa {stepIdx + 1} de {totalSteps}
-            </p>
-            <h1 className="text-[15px] font-semibold text-slate-900 truncate">
-              {currentSection.title}
-            </h1>
-          </div>
-          <span
-            className="text-[11px] font-mono text-slate-500 shrink-0"
-            style={{
-              fontVariantNumeric: "tabular-nums lining-nums",
-              fontFeatureSettings: '"tnum" 1, "lnum" 1',
-            }}
-          >
-            {progress}%
-          </span>
-        </div>
-      </div>
-
-      {/* Header de boas-vindas (so na primeira etapa) */}
-      {stepIdx === 0 && (
-        <div className="max-w-2xl mx-auto px-5 pt-6 pb-2">
-          <div className="rounded-md border border-brand-200 bg-brand-50 p-4 flex items-start gap-3">
-            <Sparkles className="h-5 w-5 text-brand-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13.5px] font-semibold text-slate-900 mb-0.5">
-                Bem-vindo {ctx.client?.name ? `, ${ctx.client.name.split(" ")[0]}` : ""}!
-              </p>
-              <p className="text-[12.5px] text-slate-700 leading-relaxed">
-                Em <strong>menos de 5 minutos</strong> a gente coleta tudo que
-                precisa pra montar sua estratégia. As respostas vão direto pra
-                IA que monta um briefing personalizado pra você revisar no fim.
-                <br />
-                <span className="text-slate-500">
-                  Implementação completa em 3-7 dias úteis depois.
-                </span>
+    <div className="min-h-screen bg-white">
+      <FormShell
+        progress={progress}
+        stepIdx={stepIdx}
+        totalSteps={totalSteps}
+        sections={sectionsForSidebar}
+        onSelectStep={(i) => {
+          if (i <= stepIdx) {
+            setStepIdx(i)
+            setError(null)
+          }
+        }}
+      >
+        {/* Welcome banner (so primeira etapa) */}
+        {stepIdx === 0 && (
+          <div className="mb-8 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-brand-50/70 via-white to-white p-5 sm:p-6 flex items-start gap-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0"
+              style={{
+                background: "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+              }}
+            >
+              <Sparkles className="h-5 w-5 text-white" strokeWidth={2.2} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-[15px] sm:text-[16px] font-semibold text-slate-900 leading-tight">
+                Bem-vindo
+                {ctx.client?.name
+                  ? `, ${ctx.client.name.split(" ")[0]}`
+                  : ""}
+                .
+              </h3>
+              <p className="text-[13px] sm:text-[13.5px] text-slate-600 mt-1.5 leading-relaxed">
+                Em <strong className="text-slate-900">menos de 5 minutos</strong>{" "}
+                coletamos tudo que precisamos. Sua IA monta um briefing
+                personalizado pra você revisar no fim — implementação completa em{" "}
+                <strong className="text-slate-900">3-7 dias úteis</strong>.
               </p>
             </div>
           </div>
+        )}
+
+        {/* Header da secao */}
+        <div className="mb-7 sm:mb-9">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-brand-500">
+              Etapa {stepIdx + 1} de {totalSteps}
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="text-[10.5px] font-medium text-slate-500">
+              {visibleQuestions.length} pergunta
+              {visibleQuestions.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <h1 className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 leading-[1.15]">
+            {currentSection.title}
+          </h1>
+          <p className="text-[14px] sm:text-[15px] text-slate-500 mt-2 max-w-[58ch]">
+            {currentSection.subtitle}
+          </p>
         </div>
-      )}
 
-      {/* Header da seção */}
-      <div className="max-w-2xl mx-auto px-5 pt-6 pb-3">
-        <h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
-          {currentSection.title}
-        </h2>
-        <p className="text-[13px] text-slate-600 mt-1">
-          {currentSection.subtitle}
-        </p>
-      </div>
-
-      {/* Questions */}
-      <div className="max-w-2xl mx-auto px-5 pb-6 space-y-3">
-        {visibleQuestions.map((q, idx) => (
-          <QuestionCard
-            key={q.key}
-            q={q}
-            idx={idx}
-            value={values[q.key] ?? ""}
-            uploading={uploadingKey === q.key}
-            onChange={(v) => setValues((s) => ({ ...s, [q.key]: v }))}
-            onUpload={(file) => uploadFile(q.key, file, !!q.multiple)}
-          />
-        ))}
+        {/* Questions */}
+        <div className="space-y-4">
+          {visibleQuestions.map((q, idx) => (
+            <QuestionCard
+              key={q.key}
+              q={q}
+              idx={idx}
+              value={values[q.key] ?? ""}
+              uploading={uploadingKey === q.key}
+              onChange={(v) => setValues((s) => ({ ...s, [q.key]: v }))}
+              onUpload={(file) => uploadFile(q.key, file, !!q.multiple)}
+            />
+          ))}
+        </div>
 
         {error && (
-          <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-[12px] text-rose-700">
-            {error}
+          <div className="mt-5 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-[13px] text-rose-700 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 pt-2">
+        {/* Bottom actions (desktop inline + mobile sticky) */}
+        <div className="mt-8 hidden sm:flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={prev}
             disabled={stepIdx === 0 || submitting}
-            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-md text-[13px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 h-11 px-4 rounded-xl text-[13px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </button>
-          <button
-            type="button"
+          <PrimaryButton
+            submitting={submitting}
+            isLastStep={stepIdx === SECTIONS.length - 1}
             onClick={next}
-            disabled={submitting}
-            className="inline-flex items-center gap-2 h-10 px-5 rounded-md text-white text-[13.5px] font-semibold disabled:opacity-50"
-            style={{ background: "#4E62D8" }}
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {stepIdx === SECTIONS.length - 1
-              ? submitting
-                ? "Gerando briefing..."
-                : "Gerar briefing"
-              : "Próxima etapa"}
-            {!submitting && <ArrowRight className="h-4 w-4" />}
-          </button>
+          />
         </div>
 
-        {/* Trust strip */}
-        <div className="flex items-center justify-center gap-4 pt-6 text-[11px] text-slate-400">
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3" />
-            Dados privados
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <CheckCircle2 className="h-3 w-3" />
-            Salvo automaticamente
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Clock className="h-3 w-3" />
-            ~5 min
-          </span>
+        {/* Sticky bottom bar mobile */}
+        <div className="sm:hidden h-20" aria-hidden />
+        <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={prev}
+              disabled={stepIdx === 0 || submitting}
+              aria-label="Voltar"
+              className="inline-flex items-center justify-center h-11 w-11 rounded-xl text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div className="flex-1">
+              <PrimaryButton
+                submitting={submitting}
+                isLastStep={stepIdx === SECTIONS.length - 1}
+                onClick={next}
+                fullWidth
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </FormShell>
+    </div>
+  )
+}
+
+// ─── PrimaryButton ───────────────────────────────────────────────────────
+
+function PrimaryButton({
+  submitting,
+  isLastStep,
+  onClick,
+  fullWidth,
+}: {
+  submitting: boolean
+  isLastStep: boolean
+  onClick: () => void
+  fullWidth?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={submitting}
+      className={
+        "inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl text-white text-[14px] font-semibold disabled:opacity-50 shadow-[0_2px_8px_rgba(78,98,216,0.25)] hover:shadow-[0_4px_14px_rgba(78,98,216,0.35)] transition-shadow " +
+        (fullWidth ? "w-full" : "")
+      }
+      style={{
+        background: "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+      }}
+    >
+      {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+      {isLastStep
+        ? submitting
+          ? "Gerando briefing…"
+          : "Gerar briefing"
+        : "Próxima etapa"}
+      {!submitting && <ArrowRight className="h-4 w-4" />}
+    </button>
+  )
+}
+
+// ─── FormShell: layout split com sidebar steps ──────────────────────────
+
+interface SidebarSection {
+  idx: number
+  title: string
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  done: boolean
+  active: boolean
+}
+
+function FormShell({
+  progress,
+  stepIdx,
+  totalSteps,
+  sections,
+  onSelectStep,
+  children,
+}: {
+  progress: number
+  stepIdx: number
+  totalSteps: number
+  sections: SidebarSection[]
+  onSelectStep: (i: number) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-h-screen">
+      {/* Sidebar (desktop only) */}
+      <aside className="hidden lg:flex w-[300px] xl:w-[320px] shrink-0 flex-col border-r border-slate-200 bg-slate-50/60">
+        {/* Logo */}
+        <div className="px-7 pt-8 pb-10">
+          <Image
+            src="/images/logo da convertfy com escrito preto.png"
+            alt="Convertfy"
+            width={160}
+            height={32}
+            priority
+            className="object-contain"
+            style={{ height: 28, width: "auto" }}
+          />
+        </div>
+
+        {/* Steps list */}
+        <nav className="flex-1 px-4">
+          <p className="px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">
+            Onboarding
+          </p>
+          <ol className="space-y-0.5">
+            {sections.map((s) => {
+              const clickable = s.idx <= stepIdx
+              const Icon = s.icon
+              return (
+                <li key={s.idx}>
+                  <button
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => onSelectStep(s.idx)}
+                    className={
+                      "w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] transition-colors " +
+                      (s.active
+                        ? "bg-white text-slate-900 font-semibold shadow-[0_1px_3px_rgba(15,23,42,0.06)] border border-slate-200/70"
+                        : s.done
+                          ? "text-slate-600 hover:bg-white/80 hover:text-slate-900"
+                          : "text-slate-400 cursor-not-allowed")
+                    }
+                  >
+                    <span
+                      className={
+                        "shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-lg " +
+                        (s.done
+                          ? "bg-emerald-50 text-emerald-600"
+                          : s.active
+                            ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-[0_2px_6px_rgba(78,98,216,0.35)]"
+                            : "bg-slate-100 text-slate-400")
+                      }
+                    >
+                      {s.done ? (
+                        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                      ) : (
+                        <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      )}
+                    </span>
+                    <span className="flex-1 truncate">{s.title}</span>
+                    <span className="text-[10px] font-mono text-slate-400 tabular-nums shrink-0">
+                      {String(s.idx + 1).padStart(2, "0")}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        </nav>
+
+        {/* Trust strip */}
+        <div className="px-7 py-6 border-t border-slate-200/80 mt-4 space-y-2">
+          <div className="flex items-center gap-2 text-[11.5px] text-slate-500">
+            <ShieldCheck className="h-3.5 w-3.5 text-slate-400" strokeWidth={2} />
+            Dados privados e criptografados
+          </div>
+          <div className="flex items-center gap-2 text-[11.5px] text-slate-500">
+            <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" strokeWidth={2} />
+            Salvo automaticamente
+          </div>
+          <div className="flex items-center gap-2 text-[11.5px] text-slate-500">
+            <Clock className="h-3.5 w-3.5 text-slate-400" strokeWidth={2} />
+            Você termina em ~5 min
+          </div>
+        </div>
+      </aside>
+
+      {/* Main column */}
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile/tablet topbar */}
+        <header className="lg:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
+          <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+            <Image
+              src="/images/logo da convertfy com escrito preto.png"
+              alt="Convertfy"
+              width={140}
+              height={26}
+              priority
+              className="object-contain"
+              style={{ height: 24, width: "auto" }}
+            />
+            <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+              {stepIdx + 1}/{totalSteps}
+            </span>
+          </div>
+          <div className="h-1 bg-slate-100">
+            <div
+              className="h-full transition-all duration-300"
+              style={{
+                width: `${progress}%`,
+                background: "linear-gradient(90deg, #4E62D8 0%, #2137B6 100%)",
+              }}
+            />
+          </div>
+        </header>
+
+        {/* Desktop progress bar fina no topo */}
+        <div className="hidden lg:block h-[3px] bg-slate-100">
+          <div
+            className="h-full transition-all duration-300"
+            style={{
+              width: `${progress}%`,
+              background: "linear-gradient(90deg, #4E62D8 0%, #2137B6 100%)",
+            }}
+          />
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 flex justify-center">
+          <div className="w-full max-w-[680px] px-5 sm:px-8 py-8 sm:py-12 lg:py-14">
+            {children}
+          </div>
+        </div>
+      </main>
     </div>
   )
 }
@@ -647,22 +859,46 @@ function QuestionCard({
   onChange: (v: string) => void
   onUpload: (file: File) => void
 }) {
+  const hasValue = !!(value || "").trim()
+
+  const inputClass =
+    "w-full px-4 text-[14px] text-slate-900 placeholder:text-slate-400 rounded-xl border bg-white transition-all duration-150 " +
+    "border-slate-200 hover:border-slate-300 " +
+    "focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 " +
+    "[appearance:none]"
+
   return (
-    <div className="bg-white rounded-md border border-slate-200 p-4">
+    <div
+      className={
+        "group bg-white rounded-2xl border p-5 sm:p-6 transition-all duration-150 " +
+        (hasValue
+          ? "border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          : "border-slate-200 hover:border-slate-300 hover:shadow-[0_2px_8px_rgba(15,23,42,0.04)]")
+      }
+    >
       <label className="block">
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-start gap-3 mb-3">
           <span
-            className="text-[10px] font-bold text-brand-500"
-            style={{
-              fontVariantNumeric: "tabular-nums lining-nums",
-              fontFeatureSettings: '"tnum" 1, "lnum" 1',
-            }}
+            className={
+              "shrink-0 inline-flex items-center justify-center h-6 min-w-[26px] px-1.5 rounded-md text-[10.5px] font-bold tabular-nums tracking-wide " +
+              (hasValue
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-slate-100 text-slate-500 group-hover:bg-brand-50 group-hover:text-brand-500")
+            }
           >
-            {String(idx + 1).padStart(2, "0")}
+            {hasValue ? (
+              <Check className="h-3 w-3" strokeWidth={3} />
+            ) : (
+              String(idx + 1).padStart(2, "0")
+            )}
           </span>
-          <span className="text-[13px] font-semibold text-slate-900">
+          <span className="text-[14px] sm:text-[15px] font-semibold text-slate-900 leading-snug">
             {q.label}
-            {q.required && <span className="text-rose-500 ml-1">*</span>}
+            {q.required && (
+              <span className="text-brand-500 ml-1" aria-label="obrigatório">
+                *
+              </span>
+            )}
           </span>
         </div>
 
@@ -672,21 +908,14 @@ function QuestionCard({
             onChange={(e) => onChange(e.target.value)}
             placeholder={q.placeholder}
             rows={q.rows ?? 3}
-            className="w-full px-3 py-2 text-[13px] rounded-md border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-50"
+            className={inputClass + " py-3 resize-none"}
           />
         ) : q.type === "select" ? (
-          <select
+          <CustomSelect
             value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full h-10 px-3 text-[13px] rounded-md border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-50"
-          >
-            <option value="">— selecione —</option>
-            {(q.options ?? []).map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
+            options={q.options ?? []}
+            onChange={onChange}
+          />
         ) : q.type === "file" ? (
           <FileField
             value={value}
@@ -709,14 +938,91 @@ function QuestionCard({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={q.placeholder}
-            className="w-full h-10 px-3 text-[13px] rounded-md border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-50"
+            className={inputClass + " h-11"}
           />
         )}
 
         {q.helpText && (
-          <p className="mt-1.5 text-[11.5px] text-slate-500">{q.helpText}</p>
+          <p className="mt-2 text-[12px] text-slate-500 leading-relaxed">
+            {q.helpText}
+          </p>
         )}
       </label>
+    </div>
+  )
+}
+
+// ─── CustomSelect: pill cards (radio-like) pra <=5 opcoes, native select acima ─
+
+function CustomSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: string[]
+  onChange: (v: string) => void
+}) {
+  // Se for poucas opcoes curtas, mostra como pill cards (melhor UX Typeform-like).
+  // Se for muitas ou textos longos, fallback pra select nativo estilizado.
+  const useGrid =
+    options.length <= 5 && options.every((o) => o.length <= 40)
+  if (useGrid) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {options.map((opt) => {
+          const selected = value === opt
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt)}
+              className={
+                "text-left text-[13.5px] font-medium px-4 py-3 rounded-xl border transition-all duration-150 flex items-center gap-2.5 " +
+                (selected
+                  ? "border-brand-500 bg-brand-50/60 text-slate-900 shadow-[0_0_0_3px_rgba(78,98,216,0.08)]"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50")
+              }
+              aria-pressed={selected}
+            >
+              <span
+                className={
+                  "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded-full border-2 " +
+                  (selected
+                    ? "border-brand-500 bg-brand-500"
+                    : "border-slate-300 bg-white")
+                }
+                aria-hidden
+              >
+                {selected && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                )}
+              </span>
+              <span className="flex-1">{opt}</span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-11 px-4 pr-10 text-[14px] text-slate-900 rounded-xl border border-slate-200 bg-white hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all appearance-none"
+      >
+        <option value="">Selecione uma opção</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <ArrowRight
+        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 rotate-90"
+        strokeWidth={2}
+      />
     </div>
   )
 }
@@ -736,23 +1042,25 @@ function FileField({
 }) {
   const urls = value ? value.split("\n").filter(Boolean) : []
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {urls.length > 0 && (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {urls.map((u, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 px-3 py-2 rounded-md border border-emerald-200 bg-emerald-50/60"
+              className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/50"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="text-[12px] text-emerald-800 truncate flex-1">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 shrink-0">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />
+              </div>
+              <span className="text-[13px] font-medium text-emerald-900 truncate flex-1">
                 Arquivo enviado {urls.length > 1 ? `· ${i + 1}` : ""}
               </span>
               {!multiple && (
                 <button
                   type="button"
                   onClick={onClear}
-                  className="text-slate-400 hover:text-rose-600"
+                  className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white transition-colors"
                   aria-label="Remover"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -763,17 +1071,36 @@ function FileField({
         </div>
       )}
       {(multiple || urls.length === 0) && (
-        <label className="flex items-center justify-center gap-2 h-12 rounded-md border-2 border-dashed border-slate-300 bg-white cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-colors">
+        <label
+          className={
+            "flex flex-col sm:flex-row items-center justify-center gap-2 px-4 py-5 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-150 " +
+            (uploading
+              ? "border-brand-300 bg-brand-50/40"
+              : "border-slate-300 bg-slate-50/40 hover:border-brand-400 hover:bg-brand-50/40")
+          }
+        >
           {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+            <>
+              <Loader2 className="h-4 w-4 animate-spin text-brand-500" />
+              <span className="text-[13px] font-medium text-brand-600">
+                Enviando…
+              </span>
+            </>
           ) : (
             <>
-              <Upload className="h-4 w-4 text-slate-400" />
-              <span className="text-[12.5px] text-slate-600">
-                {urls.length > 0
-                  ? "Adicionar mais um arquivo"
-                  : "Clique pra fazer upload"}
-              </span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-slate-200">
+                <Upload className="h-4 w-4 text-slate-500" strokeWidth={2} />
+              </div>
+              <div className="text-center sm:text-left">
+                <p className="text-[13px] font-semibold text-slate-700">
+                  {urls.length > 0
+                    ? "Adicionar mais um arquivo"
+                    : "Clique pra fazer upload"}
+                </p>
+                <p className="text-[11.5px] text-slate-500 mt-0.5">
+                  PNG, JPG, SVG, PDF — até 25 MB
+                </p>
+              </div>
             </>
           )}
           <input
@@ -881,48 +1208,45 @@ function BriefingReviewInline({
     ["generating", "form_partially_filled", "not_started"].includes(status)
   ) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="bg-white border-b border-slate-200">
-          <div className="max-w-2xl mx-auto px-5 py-4 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-[12px] text-slate-500 hover:text-slate-700 inline-flex items-center gap-1"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Voltar
-            </button>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-500">
-              Etapa final · gerando briefing
-            </span>
-          </div>
-        </div>
-        <div className="max-w-2xl mx-auto px-5 py-12">
-          <div className="bg-white rounded-md border border-slate-200 p-8 text-center">
-            <div className="relative mx-auto w-14 h-14 mb-4">
-              <div className="absolute inset-0 rounded-full bg-brand-100 animate-ping" />
-              <div className="relative flex items-center justify-center h-14 w-14 rounded-full text-white" style={{ background: "#4E62D8" }}>
-                <Sparkles className="h-6 w-6" />
+      <div className="min-h-screen bg-white">
+        <SimpleHeader onBack={onBack} eyebrow="Etapa final · gerando briefing" />
+        <div className="max-w-[680px] mx-auto px-5 sm:px-8 py-10 sm:py-16">
+          <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-brand-50/40 to-white p-8 sm:p-10 text-center">
+            <div className="relative mx-auto w-16 h-16 mb-5">
+              <div
+                className="absolute inset-0 rounded-2xl animate-ping opacity-70"
+                style={{ background: "#4E62D8" }}
+              />
+              <div
+                className="relative flex items-center justify-center h-16 w-16 rounded-2xl text-white shadow-lg"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+                }}
+              >
+                <Sparkles className="h-7 w-7" strokeWidth={2} />
               </div>
             </div>
-            <h1 className="text-[18px] font-bold text-slate-900 mb-2">
+            <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 mb-2">
               Estamos montando seu briefing
             </h1>
-            <p className="text-[13px] text-slate-600 leading-relaxed max-w-md mx-auto">
+            <p className="text-[14px] text-slate-600 leading-relaxed max-w-md mx-auto">
               A IA está estruturando suas respostas. Costuma levar entre 30
               segundos e 2 minutos. Esta página atualiza sozinha.
             </p>
-            {error && <p className="mt-4 text-[12px] text-rose-600">{error}</p>}
+            {error && (
+              <p className="mt-5 text-[12.5px] text-rose-600">{error}</p>
+            )}
           </div>
-          <div className="mt-4 space-y-3">
+          <div className="mt-5 space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="bg-white rounded-md border border-slate-200 p-4 animate-pulse"
+                className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse"
               >
-                <div className="h-3 w-32 bg-slate-100 rounded mb-2" />
+                <div className="h-3 w-32 bg-slate-100 rounded mb-2.5" />
                 <div className="h-3 w-full bg-slate-100 rounded" />
-                <div className="h-3 w-3/4 bg-slate-100 rounded mt-1" />
+                <div className="h-3 w-3/4 bg-slate-100 rounded mt-1.5" />
               </div>
             ))}
           </div>
@@ -934,30 +1258,22 @@ function BriefingReviewInline({
   const b = editable ?? briefing
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-2xl mx-auto px-5 py-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-[12px] text-slate-500 hover:text-slate-700 inline-flex items-center gap-1"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar
-          </button>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-500">
-            Etapa final · revise e confirme
-          </span>
-        </div>
-      </div>
-      <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-slate-900">
-            Briefing gerado
+    <div className="min-h-screen bg-white">
+      <SimpleHeader onBack={onBack} eyebrow="Etapa final · revise e confirme" />
+      <div className="max-w-[680px] mx-auto px-5 sm:px-8 py-8 sm:py-12 space-y-4">
+        <div className="mb-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-brand-500">
+              Briefing gerado por IA
+            </span>
+          </div>
+          <h1 className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 leading-[1.15]">
+            Revise e confirme
           </h1>
-          <p className="text-[13px] text-slate-600 mt-1">
-            Dá uma olhada no que a IA montou. Edite qualquer campo se quiser
-            ajustar. Quando confirmar, sua loja avança pra fase de design.
+          <p className="text-[14px] sm:text-[15px] text-slate-500 mt-2 max-w-[58ch]">
+            Dá uma olhada no que a IA montou a partir das suas respostas. Edite
+            qualquer campo se quiser ajustar. Quando confirmar, sua loja avança
+            pra fase de design.
           </p>
         </div>
 
@@ -1069,14 +1385,59 @@ function BriefingReviewInline({
           type="button"
           onClick={confirm}
           disabled={submitting}
-          className="w-full inline-flex items-center justify-center gap-2 h-11 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[14px] font-semibold disabled:opacity-50"
+          className="w-full inline-flex items-center justify-center gap-2 h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[14.5px] font-semibold disabled:opacity-50 shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:shadow-[0_4px_14px_rgba(16,185,129,0.35)] transition-all"
         >
           {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {submitting ? "Confirmando..." : "Confirmar e finalizar onboarding"}
+          {submitting
+            ? "Confirmando..."
+            : "Confirmar e finalizar onboarding"}
           {!submitting && <CheckCircle2 className="h-4 w-4" />}
         </button>
       </div>
     </div>
+  )
+}
+
+// ─── SimpleHeader: header minimalista pra briefing/next-steps ─────────────
+
+function SimpleHeader({
+  onBack,
+  eyebrow,
+}: {
+  onBack?: () => void
+  eyebrow?: string
+}) {
+  return (
+    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
+      <div className="max-w-[1024px] mx-auto px-5 sm:px-8 py-4 flex items-center justify-between gap-3">
+        <Image
+          src="/images/logo da convertfy com escrito preto.png"
+          alt="Convertfy"
+          width={150}
+          height={28}
+          priority
+          className="object-contain"
+          style={{ height: 26, width: "auto" }}
+        />
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-[12.5px] text-slate-500 hover:text-slate-900 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Voltar
+          </button>
+        )}
+      </div>
+      {eyebrow && (
+        <div className="max-w-[1024px] mx-auto px-5 sm:px-8 pb-3">
+          <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-brand-500">
+            {eyebrow}
+          </span>
+        </div>
+      )}
+    </header>
   )
 }
 
@@ -1092,16 +1453,14 @@ function BriefingEditField({
   rows?: number
 }) {
   return (
-    <div className="bg-white rounded-md border border-slate-200 p-4">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-slate-300 transition-colors">
       <label className="block">
-        <p className="text-[12px] font-semibold text-slate-900 mb-1.5">
-          {label}
-        </p>
+        <p className="text-[13px] font-semibold text-slate-900 mb-2">{label}</p>
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={rows ?? 3}
-          className="w-full px-3 py-2 text-[13px] rounded-md border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-50"
+          className="w-full px-4 py-3 text-[14px] text-slate-900 rounded-xl border border-slate-200 bg-white hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all resize-none"
         />
       </label>
     </div>
@@ -1119,14 +1478,14 @@ function BriefingEditSubField({
 }) {
   return (
     <label className="block">
-      <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 mb-1.5">
         {label}
       </p>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full h-9 px-3 text-[12.5px] rounded-md border border-slate-200 bg-white"
+        className="w-full h-10 px-3.5 text-[13.5px] text-slate-900 rounded-lg border border-slate-200 bg-white hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
       />
     </label>
   )
@@ -1145,90 +1504,102 @@ const NEXT_STEPS = [
 
 function NextStepsScreen({ storeName }: { storeName: string }) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-[#0F1117]">
-        <div className="max-w-2xl mx-auto px-5 py-5 flex items-center gap-3">
-          <div
-            className="h-7 w-7 rounded flex items-center justify-center"
-            style={{
-              background:
-                "linear-gradient(90deg, #4E62D8, #2137B6, #041366)",
-            }}
-          >
-            <span className="text-white font-bold text-[13px]">C</span>
-          </div>
-          <span className="text-white font-semibold text-[15px]">Convertfy</span>
-        </div>
-      </div>
+    <div className="min-h-screen bg-white">
+      <SimpleHeader />
 
-      <div className="max-w-2xl mx-auto px-5 py-10">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200 mb-3">
-            <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+      <div className="max-w-[680px] mx-auto px-5 sm:px-8 py-10 sm:py-16">
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <div className="relative inline-flex mb-5">
+            <div
+              className="absolute inset-0 rounded-3xl opacity-30 blur-xl"
+              style={{ background: "#10B981" }}
+            />
+            <div className="relative inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg">
+              <CheckCircle2 className="h-8 w-8 text-white" strokeWidth={2.4} />
+            </div>
           </div>
-          <h1 className="text-[24px] font-semibold text-slate-900 tracking-tight">
+          <h1 className="text-[28px] sm:text-[36px] font-semibold tracking-tight text-slate-900 leading-[1.1]">
             Recebido!
           </h1>
-          <p className="text-[14px] text-slate-600 mt-2 max-w-md mx-auto leading-relaxed">
-            Suas respostas e o briefing da <strong>{storeName}</strong> chegaram
-            pra equipe. Em 3-7 dias úteis sua estrutura tá no ar.
+          <p className="text-[15px] sm:text-[16px] text-slate-600 mt-3 max-w-md mx-auto leading-relaxed">
+            Suas respostas e o briefing da{" "}
+            <strong className="text-slate-900">{storeName}</strong> chegaram pra
+            equipe. Em <strong className="text-slate-900">3-7 dias úteis</strong>{" "}
+            sua estrutura tá no ar.
           </p>
         </div>
 
-        <div className="bg-white rounded-md border border-slate-200 p-5">
-          <p
-            className="text-[11px] font-bold uppercase tracking-wider text-brand-500 mb-4"
-          >
+        {/* Timeline */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-brand-500 mb-5">
             O que acontece agora
           </p>
-          <ol className="space-y-4">
+          <ol className="space-y-4 relative">
+            {/* Vertical connecting line */}
+            <div
+              className="absolute left-[13px] top-3 bottom-3 w-px bg-slate-200"
+              aria-hidden
+            />
             {NEXT_STEPS.map((s) => (
-              <li key={s.n} className="flex items-start gap-3">
+              <li key={s.n} className="flex items-start gap-3.5 relative">
                 <div
                   className={
-                    "flex h-7 w-7 items-center justify-center rounded-full shrink-0 text-[12px] font-semibold " +
+                    "relative z-10 flex h-7 w-7 items-center justify-center rounded-full shrink-0 text-[12px] font-semibold tabular-nums shadow-sm " +
                     (s.done
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-slate-100 text-slate-500")
+                      ? "bg-gradient-to-br from-emerald-400 to-emerald-600 text-white"
+                      : "bg-white border-2 border-slate-200 text-slate-500")
                   }
-                  style={{
-                    fontVariantNumeric: "tabular-nums lining-nums",
-                  }}
                 >
-                  {s.done ? <CheckCircle2 className="h-4 w-4" /> : s.n}
+                  {s.done ? (
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                  ) : (
+                    s.n
+                  )}
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 pt-0.5">
                   <p
                     className={
-                      "text-[13.5px] font-medium leading-snug " +
-                      (s.done ? "text-slate-500 line-through" : "text-slate-900")
+                      "text-[14px] font-semibold leading-snug " +
+                      (s.done
+                        ? "text-emerald-700"
+                        : "text-slate-900")
                     }
                   >
                     {s.name}
                   </p>
-                  <p className="text-[12px] text-slate-500 mt-0.5">{s.desc}</p>
+                  <p className="text-[12.5px] text-slate-500 mt-0.5 leading-relaxed">
+                    {s.desc}
+                  </p>
                 </div>
               </li>
             ))}
           </ol>
         </div>
 
-        <div className="mt-5 rounded-md border border-brand-200 bg-brand-50 p-4">
-          <div className="flex items-start gap-3">
-            <Mail className="h-5 w-5 text-brand-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13px] font-semibold text-slate-900">
-                Acompanhe pelo WhatsApp
-              </p>
-              <p className="text-[12px] text-slate-700 mt-1 leading-relaxed">
-                Vamos te adicionar num grupo com o time pra você acompanhar
-                tudo em tempo real. Qualquer dúvida, é só falar lá.
-              </p>
-            </div>
+        {/* WhatsApp banner */}
+        <div className="mt-5 rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50/60 via-white to-white p-5 flex items-start gap-3.5">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0"
+            style={{
+              background:
+                "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+            }}
+          >
+            <Mail className="h-5 w-5 text-white" strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-slate-900">
+              Acompanhe pelo WhatsApp
+            </p>
+            <p className="text-[13px] text-slate-600 mt-1 leading-relaxed">
+              Vamos te adicionar num grupo com o time pra você acompanhar tudo
+              em tempo real. Qualquer dúvida, é só falar lá.
+            </p>
           </div>
         </div>
 
-        <p className="text-[11.5px] text-center text-slate-400 mt-8">
+        <p className="text-[12px] text-center text-slate-400 mt-10">
           Convertfy · Agência especialista em e-mail marketing pra e-commerce
         </p>
       </div>
