@@ -32,8 +32,14 @@ const LABELS: Record<DateFilter, string> = {
   overdue: "Atrasadas",
 }
 
-export function UnifiedTasksWidget() {
-  const [filter, setFilter] = useState<DateFilter>("today")
+export function UnifiedTasksWidget({
+  mineByDefault = false,
+}: { mineByDefault?: boolean } = {}) {
+  // Modo "mine" expande pra lista completa (substitui o /admin/me).
+  // Default (em /admin/productivity/board) e top-6 com filtro hoje/semana/atrasadas.
+  const [filter, setFilter] = useState<DateFilter>(
+    mineByDefault ? "week" : "today",
+  )
   const url = useMemo(
     () => `/api/me/tasks?status=pending&date_filter=${filter}`,
     [filter],
@@ -43,7 +49,8 @@ export function UnifiedTasksWidget() {
     counts: { total: number }
   }>(url, fetcher, { refreshInterval: 30000 })
 
-  const tasks = (data?.tasks ?? []).slice(0, 6) // top 6
+  const allTasks = data?.tasks ?? []
+  const tasks = mineByDefault ? allTasks : allTasks.slice(0, 6)
   const total = data?.counts?.total ?? 0
 
   async function completeTask(taskId: string) {
@@ -72,19 +79,21 @@ export function UnifiedTasksWidget() {
             <ListTodo className="h-3 w-3" />
           </span>
           <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
-            Tarefas do time
+            {mineByDefault ? "Suas tarefas" : "Tarefas do time"}
           </h3>
           <span className="text-[11px] font-mono tabular-nums text-slate-400 dark:text-white/40">
             {total}
           </span>
         </div>
-        <Link
-          href="/admin/me"
-          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-400 dark:text-brand-300 hover:text-brand-500"
-        >
-          Ver todas
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        {!mineByDefault && (
+          <Link
+            href="/admin/productivity/board?view=mine"
+            className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-400 dark:text-brand-300 hover:text-brand-500"
+          >
+            Ver todas
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
       </div>
 
       <div className="px-4 py-2 border-b border-slate-100 dark:border-white/[0.06] flex items-center gap-1">

@@ -1,17 +1,15 @@
-import type { Metadata } from "next"
-import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
-import { MyTasksClient } from "@/components/onboarding-v2/my-tasks-client"
-
-export const metadata: Metadata = {
-  title: "Minhas tarefas | Convertfy Admin",
-}
+import { redirect } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
-export default function MyTasksPage() {
-  return (
-    <PagePermissionWrapper>
-      <MyTasksClient />
-    </PagePermissionWrapper>
-  )
+/**
+ * /admin/me — unificado em /admin/productivity/board com view=mine.
+ * Esta rota redireciona pra preservar links antigos.
+ *
+ * Por que: o board ja serve tasks unificadas (productivity_tasks via
+ * trigger sync + tasks de onboarding/CRM). Manter 2 telas com mesma
+ * logica criava confusao no time.
+ */
+export default function MyTasksRedirect() {
+  redirect("/admin/productivity/board?view=mine")
 }

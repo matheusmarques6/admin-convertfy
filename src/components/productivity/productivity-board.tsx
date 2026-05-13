@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { TASK_STATUSES, PRIORITY_LABELS } from "@/types/productivity"
@@ -11,6 +12,7 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
+import { UnifiedTasksWidget } from "./unified-tasks-widget"
 import {
   PriorityDot, StatusDot, Avatar, Checkbox,
   IconPlus, IconClose, IconChevronRight,
@@ -27,6 +29,8 @@ export function ProductivityBoard() {
     hoveredTaskId, setHoveredTask, toggleSubtask,
     isLoaded, fetchData, apiAction,
   } = useProductivityStore()
+  const searchParams = useSearchParams()
+  const viewMode = searchParams.get("view") === "mine" ? "mine" : "all"
 
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTaskName, setNewTaskName] = useState("")
@@ -106,7 +110,9 @@ export function ProductivityBoard() {
       <header className="bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)]">
         <div className="flex justify-between items-center px-6 py-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-page-title text-gray-900 dark:text-white m-0">Projetos</h1>
+            <h1 className="text-page-title text-gray-900 dark:text-white m-0">
+              {viewMode === "mine" ? "Minhas tarefas" : "Projetos"}
+            </h1>
             <span className="bg-gray-100 dark:bg-[#242836] text-gray-600 dark:text-white/70 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">
               {allTasks.length}
             </span>
@@ -195,17 +201,24 @@ export function ProductivityBoard() {
         </div>
       </header>
 
-      {/* Filter bar */}
-      <FilterBar
-        priorityFilter={priorityFilter}
-        setPriorityFilter={setPriorityFilter}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        assigneeFilter={assigneeFilter}
-        setAssigneeFilter={setAssigneeFilter}
-        availableAssignees={availableAssignees}
-        hasFilters={hasFilters}
-      />
+      {/* Bloco "Minhas tarefas (hoje)" - tasks unificadas de TODAS as origens */}
+      <div className="px-6 pt-4 pb-2 bg-white dark:bg-[#1A1D27]">
+        <UnifiedTasksWidget mineByDefault={viewMode === "mine"} />
+      </div>
+
+      {/* Filter bar - so em modo "todos os projetos" */}
+      {viewMode !== "mine" && (
+        <FilterBar
+          priorityFilter={priorityFilter}
+          setPriorityFilter={setPriorityFilter}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          assigneeFilter={assigneeFilter}
+          setAssigneeFilter={setAssigneeFilter}
+          availableAssignees={availableAssignees}
+          hasFilters={hasFilters}
+        />
+      )}
 
       {/* Bulk actions bar */}
       {selectedTaskIds.size > 0 && (
@@ -217,7 +230,8 @@ export function ProductivityBoard() {
         />
       )}
 
-      {/* Content */}
+      {/* Content - kanban so em modo "todos os projetos" */}
+      {viewMode !== "mine" && (
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-auto">
           {boardView === "table" && (
@@ -255,6 +269,7 @@ export function ProductivityBoard() {
           />
         )}
       </div>
+      )}
     </div>
   )
 }
