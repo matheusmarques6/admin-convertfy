@@ -31,6 +31,10 @@ interface Vars {
   form_url: string
   tutorial_url: string
   briefing_url: string
+  /** URL do Figma do preview (deliverable figma_link da coluna preview_producao) */
+  figma_link: string
+  /** URL do Figma completo (deliverable figma_full_link da coluna emails_finais) */
+  figma_full_link: string
 }
 
 function render(tpl: string, v: Vars): string {
@@ -48,7 +52,16 @@ function buildVars(
   client: { name: string | null; phone: string | null } | null,
   store: { store_name: string | null; platform: string | null } | null,
   baseUrl: string,
+  deliverables: Array<{ field_slug: string; value: string | null; file_url: string | null }> = [],
 ): Vars {
+  const figmaLink =
+    deliverables.find((d) => d.field_slug === "figma_link")?.value ??
+    deliverables.find((d) => d.field_slug === "figma_link")?.file_url ??
+    ""
+  const figmaFullLink =
+    deliverables.find((d) => d.field_slug === "figma_full_link")?.value ??
+    deliverables.find((d) => d.field_slug === "figma_full_link")?.file_url ??
+    ""
   return {
     client_name: client?.name ?? "cliente",
     store_name: store?.store_name ?? "sua loja",
@@ -60,6 +73,8 @@ function buildVars(
       ? `${baseUrl}/onboarding-help/${onb.tutorial_token}`
       : "",
     briefing_url: `${baseUrl}/form/${onb.form_token}/briefing`,
+    figma_link: figmaLink,
+    figma_full_link: figmaFullLink,
   }
 }
 
@@ -106,8 +121,25 @@ export async function sendColumnWhatsApp(params: {
     const phone = sanitizePhone(client?.phone)
     if (!phone) return { ok: false, reason: "no_phone" }
 
+    // Pega deliverables ja preenchidos do onboarding pra substituir vars
+    // como {{figma_link}} e {{figma_full_link}}
+    const { data: tasks } = await admin
+      .from("tasks")
+      .select("id")
+      .eq("onboarding_id", params.onboardingId)
+    const taskIds = (tasks ?? []).map((t) => t.id as string)
+    const { data: deliverables } = taskIds.length
+      ? await admin
+          .from("task_deliverables")
+          .select("field_slug, value, file_url")
+          .in("task_id", taskIds)
+      : { data: [] }
+
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.convertfy.com"
-    const body = render(col.whatsapp_template, buildVars(onb, client, store, baseUrl))
+    const body = render(
+      col.whatsapp_template,
+      buildVars(onb, client, store, baseUrl, deliverables ?? []),
+    )
 
     // Canal WhatsApp default da org (primeiro ativo)
     const { data: channel } = await admin

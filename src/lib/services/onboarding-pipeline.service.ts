@@ -520,6 +520,41 @@ export async function advanceColumn(
     }
   })()
 
+  // Sync stage do deal CRM (custom_fields + history + activity)
+  void (async () => {
+    try {
+      const { syncOnboardingStageToDeal } = await import(
+        "@/lib/services/onboarding-deal-sync.service"
+      )
+      await syncOnboardingStageToDeal({
+        onboardingId: opts.onboardingId,
+        sourceDealId: onb.source_deal_id ?? null,
+        fromCol: currentCol,
+        toCol: nextCol,
+        actorId: opts.actorId,
+      })
+    } catch (e) {
+      log.error("syncOnboardingStageToDeal failed", e)
+    }
+  })()
+
+  // Schedule follow-up task se a nova coluna depende de resposta do cliente
+  void (async () => {
+    try {
+      const { scheduleColumnFollowup } = await import(
+        "@/lib/services/onboarding-followup.service"
+      )
+      await scheduleColumnFollowup({
+        onboardingId: opts.onboardingId,
+        orgId: onb.org_id,
+        column: nextCol,
+        actorId: opts.actorId,
+      })
+    } catch (e) {
+      log.error("scheduleColumnFollowup failed", e)
+    }
+  })()
+
   return { ok: true }
 }
 
