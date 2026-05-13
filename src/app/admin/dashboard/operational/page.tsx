@@ -121,24 +121,24 @@ async function getOperationalData() {
       .select(`
         id, store_name, store_url, platform, is_active, created_at,
         client:clients(id, name, status),
-        onboardings:client_onboardings(id, status, progress_percent, target_completion_date)
+        onboardings:onboardings(id, status, briefing_status, last_column_change_at)
       `)
       .in("id", storeIds.length > 0 ? storeIds : ["__none__"])
       .order("created_at", { ascending: false })
       .limit(10),
 
-    // Onboardings ativos
+    // Onboardings ativos (pipeline v2)
     supabase
-      .from("client_onboardings")
+      .from("onboardings")
       .select(`
-        id, status, progress_percent, target_completion_date, started_at,
+        id, status, briefing_status, last_column_change_at, entered_at,
         client:clients(id, name),
         store:client_stores(id, store_name, platform),
-        steps:client_onboarding_steps(id, status, name)
+        current_column:operational_pipeline_columns(id, name, slug, position)
       `)
       .in("store_id", storeIds.length > 0 ? storeIds : ["__none__"])
-      .in("status", ["not_started", "in_progress", "paused"])
-      .order("created_at", { ascending: false })
+      .eq("status", "in_progress")
+      .order("last_column_change_at", { ascending: false })
       .limit(10),
 
     // Tasks pendentes do agente
@@ -314,10 +314,33 @@ async function getOperationalData() {
       activeOnboardings,
     },
     newClients: newClientsData || [],
-    newStores: newStoresData || [],
+    newStores: (newStoresData ?? []).map((s) => ({
+      ...s,
+      onboardings: ((s as unknown as { onboardings?: unknown[] }).onboardings ??
+        []).map((o) => ({
+        id: (o as { id: string }).id,
+        status: (o as { status: string }).status,
+        progress_percent: 0,
+        target_completion_date: null,
+      })),
+    })),
     alerts,
     recentActivities: activitiesData || [],
-    onboardings: onboardingsData || [],
+    onboardings: (onboardingsData ?? []).map((o) => {
+      const col = Array.isArray(
+        (o as unknown as { current_column?: unknown }).current_column,
+      )
+        ? ((o as unknown as { current_column?: Array<{ name?: string }> })
+            .current_column ?? [])[0]
+        : ((o as unknown as { current_column?: { name?: string } | null })
+            .current_column ?? null)
+      return {
+        ...o,
+        progress_percent: 0,
+        target_completion_date: null,
+        steps: col?.name ? [{ id: "_", status: "in_progress", name: col.name }] : null,
+      }
+    }),
   }
 }
 

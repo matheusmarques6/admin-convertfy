@@ -23,6 +23,8 @@ import {
   Clock,
   FileText,
   Layers,
+  Upload,
+  ShieldAlert,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
@@ -59,6 +61,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   )
   const [tab, setTab] = useState<Tab>("checklist")
   const [goBackOpen, setGoBackOpen] = useState(false)
+  const [overrideOpen, setOverrideOpen] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const toast = useToast()
 
@@ -87,13 +90,19 @@ export function OnboardingDetailClient({ id }: { id: string }) {
     (t) => t.operational_column_id === onb.current_column_id,
   )
 
-  async function advance() {
+  async function advance(override?: {
+    justification: string
+    items_skipped: Array<
+      | { type: "checklist"; id: string; label: string }
+      | { type: "deliverable"; slug: string; label: string }
+    >
+  }) {
     setAdvancing(true)
     try {
       const res = await fetch(`/api/onboardings/${id}/advance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(override ? { override } : {}),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -108,6 +117,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
       }
     } finally {
       setAdvancing(false)
+      setOverrideOpen(false)
     }
   }
 
@@ -160,16 +170,26 @@ export function OnboardingDetailClient({ id }: { id: string }) {
             Pedir ajustes
           </button>
           {nextCol && (
-            <button
-              type="button"
-              onClick={advance}
-              disabled={advancing}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50"
-            >
-              {advancing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Avancar coluna
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setOverrideOpen(true)}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold text-amber-700 dark:text-amber-300 bg-white dark:bg-white/[0.04] border border-amber-300 dark:border-amber-500/30 hover:border-amber-400"
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                Forçar avanço
+              </button>
+              <button
+                type="button"
+                onClick={() => advance()}
+                disabled={advancing}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50"
+              >
+                {advancing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Avancar coluna
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -271,6 +291,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
               tasks={tasksInCurrent}
               deliverables={deliverables}
               onMutate={mutate}
+              onboardingId={id}
             />
           )}
           {tab === "briefing" && (
@@ -293,6 +314,149 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           }}
         />
       )}
+
+      {overrideOpen && currentCol && (
+        <OverrideDialog
+          column={currentCol}
+          tasksInCurrent={tasksInCurrent}
+          deliverables={deliverables}
+          onClose={() => setOverrideOpen(false)}
+          onConfirm={(justification, itemsSkipped) =>
+            advance({ justification, items_skipped: itemsSkipped })
+          }
+          submitting={advancing}
+        />
+      )}
+    </div>
+  )
+}
+
+function OverrideDialog({
+  column,
+  tasksInCurrent,
+  deliverables,
+  onClose,
+  onConfirm,
+  submitting,
+}: {
+  column: OperationalPipelineColumn
+  tasksInCurrent: (OnboardingTaskLite & { metadata?: Record<string, unknown> })[]
+  deliverables: TaskDeliverable[]
+  onClose: () => void
+  onConfirm: (
+    j: string,
+    skipped: Array<
+      | { type: "checklist"; id: string; label: string }
+      | { type: "deliverable"; slug: string; label: string }
+    >,
+  ) => void
+  submitting: boolean
+}) {
+  const [justification, setJustification] = useState("")
+  const task = tasksInCurrent[0] ?? null
+  const checklistDone = ((task?.metadata as Record<string, unknown> | undefined)
+    ?.checklist_done ?? []) as string[]
+  const missingChecklist = column.checklist_template.filter(
+    (c) => !checklistDone.includes(c.id),
+  )
+  const taskDels = deliverables.filter((d) => task && d.task_id === task.id)
+  const missingDeliverables = column.deliverables_template.filter((d) => {
+    if (!d.required) return false
+    const v = taskDels.find((x) => x.field_slug === d.slug)
+    if (!v) return true
+    return !v.value && !v.file_url
+  })
+
+  const skipped = [
+    ...missingChecklist.map((c) => ({
+      type: "checklist" as const,
+      id: c.id,
+      label: c.label,
+    })),
+    ...missingDeliverables.map((d) => ({
+      type: "deliverable" as const,
+      slug: d.slug,
+      label: d.label,
+    })),
+  ]
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-[500px] bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden">
+        <div className="px-5 py-4 border-b border-amber-200 dark:border-amber-900/30 bg-amber-50/40 dark:bg-amber-500/[0.05]">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert className="h-4 w-4 text-amber-600" />
+            <h2 className="text-[15px] font-semibold text-amber-900 dark:text-amber-200">
+              Forçar avanço (override)
+            </h2>
+          </div>
+          <p className="text-[12px] text-amber-700 dark:text-amber-300">
+            Pula itens pendentes com justificativa. Fica registrado em
+            task_overrides com seu user_id.
+          </p>
+        </div>
+        <div className="p-5 space-y-3">
+          {skipped.length === 0 ? (
+            <p className="text-[12.5px] text-emerald-700 dark:text-emerald-300">
+              Tudo concluído. Não há itens pra pular.
+            </p>
+          ) : (
+            <>
+              <p className="text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                Itens que serão pulados ({skipped.length}):
+              </p>
+              <div className="max-h-[180px] overflow-y-auto space-y-1 rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-2 bg-slate-50/40 dark:bg-white/[0.02]">
+                {skipped.map((s) => (
+                  <div
+                    key={s.type + ("id" in s ? s.id : s.slug)}
+                    className="flex items-center gap-2 text-[12px] text-slate-700 dark:text-white/70"
+                  >
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-slate-200 dark:bg-white/[0.08] text-slate-600 dark:text-white/55 font-mono">
+                      {s.type === "checklist" ? "ck" : "del"}
+                    </span>
+                    {s.label}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80 mb-1">
+                  Justificativa (obrigatória)
+                </label>
+                <textarea
+                  value={justification}
+                  onChange={(e) => setJustification(e.target.value)}
+                  rows={3}
+                  placeholder="Ex: deliverable X sera entregue na proxima etapa..."
+                  className="w-full px-3 py-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+                />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 px-3 text-[12px] font-medium text-slate-700 hover:bg-slate-100 rounded-[6px]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(justification, skipped)}
+            disabled={
+              submitting || (skipped.length > 0 && justification.trim().length < 10)
+            }
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-[6px] disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Forçar avanço
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -468,11 +632,13 @@ function DeliverablesTab({
   tasks,
   deliverables,
   onMutate,
+  onboardingId,
 }: {
   column: OperationalPipelineColumn | null
   tasks: OnboardingTaskLite[]
   deliverables: TaskDeliverable[]
   onMutate: () => void
+  onboardingId: string
 }) {
   const toast = useToast()
   const task = tasks[0] ?? null
@@ -491,7 +657,15 @@ function DeliverablesTab({
     return <p className="text-[12px] text-slate-500 italic">Task pendente.</p>
   }
 
-  async function saveValue(slug: string, value: string) {
+  async function savePatch(
+    slug: string,
+    patch: {
+      value?: string | null
+      file_url?: string | null
+      file_name?: string | null
+      file_size_bytes?: number | null
+    },
+  ) {
     if (!task) return
     const f = fields.find((x) => x.slug === slug)
     if (!f) return
@@ -508,7 +682,7 @@ function DeliverablesTab({
         field_label: f.label,
         field_type: f.type,
         required: f.required,
-        value,
+        ...patch,
       }),
     })
     if (!res.ok) {
@@ -527,7 +701,10 @@ function DeliverablesTab({
             key={f.slug}
             field={f}
             value={existing?.value ?? ""}
-            onSave={(v) => saveValue(f.slug, v)}
+            existing={existing ?? null}
+            onboardingId={onboardingId}
+            onSave={(v) => savePatch(f.slug, { value: v })}
+            onSaveFull={(p) => savePatch(f.slug, p)}
           />
         )
       })}
@@ -535,17 +712,41 @@ function DeliverablesTab({
   )
 }
 
+interface DeliverableFieldExtras {
+  onSaveFull?: (patch: {
+    value?: string | null
+    file_url?: string | null
+    file_name?: string | null
+    file_size_bytes?: number | null
+  }) => void
+  existing?: { file_url: string | null; file_name: string | null } | null
+  onboardingId?: string
+}
+
 function DeliverableField({
   field,
   value,
   onSave,
+  existing,
+  onSaveFull,
+  onboardingId,
 }: {
-  field: { slug: string; label: string; type: string; required: boolean; options?: string[]; placeholder?: string; helpText?: string }
+  field: {
+    slug: string
+    label: string
+    type: string
+    required: boolean
+    options?: string[]
+    placeholder?: string
+    helpText?: string
+  }
   value: string
   onSave: (v: string) => void
-}) {
+} & DeliverableFieldExtras) {
   const [local, setLocal] = useState(value)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const toast = useToast()
 
   async function commit() {
     if (local === value) return
@@ -557,20 +758,55 @@ function DeliverableField({
     }
   }
 
+  async function uploadFile(file: File) {
+    if (!onboardingId || !onSaveFull) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("scope", "deliverable")
+      fd.append("ref_id", onboardingId)
+      const res = await fetch("/api/upload/onboarding", {
+        method: "POST",
+        body: fd,
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.toast({
+          variant: "destructive",
+          title: "Falha no upload",
+          description: j.error?.message ?? "Tente novamente.",
+        })
+        return
+      }
+      const result = j.data ?? j
+      onSaveFull({
+        file_url: result.path,
+        file_name: result.file_name,
+        file_size_bytes: result.file_size ?? null,
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const labelEl = (
     <label className="flex items-center justify-between text-[12px] font-semibold text-slate-700 dark:text-white/80">
       <span>
         {field.label}
         {field.required && <span className="text-red-500 ml-1">*</span>}
       </span>
-      {saving && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
+      {(saving || uploading) && (
+        <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
+      )}
     </label>
   )
 
-  return (
-    <div className="space-y-1.5">
-      {labelEl}
-      {field.type === "textarea" ? (
+  let control: React.ReactNode
+
+  switch (field.type) {
+    case "textarea":
+      control = (
         <textarea
           value={local}
           onChange={(e) => setLocal(e.target.value)}
@@ -579,12 +815,15 @@ function DeliverableField({
           rows={3}
           className="w-full px-3 py-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
         />
-      ) : field.type === "select" ? (
+      )
+      break
+
+    case "select":
+      control = (
         <select
           value={local}
           onChange={(e) => {
             setLocal(e.target.value)
-            // Salva direto pra select
             onSave(e.target.value)
           }}
           className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
@@ -596,16 +835,172 @@ function DeliverableField({
             </option>
           ))}
         </select>
-      ) : (
+      )
+      break
+
+    case "numeric":
+      control = (
         <input
-          type={field.type === "url" ? "url" : field.type === "date" ? "date" : "text"}
+          type="number"
           value={local}
           onChange={(e) => setLocal(e.target.value)}
           onBlur={commit}
           placeholder={field.placeholder}
           className="w-full h-9 px-3 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
         />
-      )}
+      )
+      break
+
+    case "checkbox":
+      control = (
+        <label className="flex items-center gap-2 cursor-pointer h-9">
+          <input
+            type="checkbox"
+            checked={local === "true"}
+            onChange={(e) => {
+              const v = e.target.checked ? "true" : "false"
+              setLocal(v)
+              onSave(v)
+            }}
+            className="h-4 w-4 rounded border-slate-300 text-violet-600"
+          />
+          <span className="text-[12.5px] text-slate-700 dark:text-white/80">
+            {field.placeholder ?? "Confirmar"}
+          </span>
+        </label>
+      )
+      break
+
+    case "multi_checkbox": {
+      const opts = field.options ?? []
+      const selected = (() => {
+        try {
+          return JSON.parse(local || "[]") as string[]
+        } catch {
+          return []
+        }
+      })()
+      function toggle(o: string) {
+        const next = selected.includes(o)
+          ? selected.filter((x) => x !== o)
+          : [...selected, o]
+        const s = JSON.stringify(next)
+        setLocal(s)
+        onSave(s)
+      }
+      control = (
+        <div className="flex flex-wrap gap-1.5">
+          {opts.map((o) => {
+            const on = selected.includes(o)
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggle(o)}
+                className={
+                  "inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium rounded-[5px] border " +
+                  (on
+                    ? "bg-violet-500 text-white border-violet-500"
+                    : "bg-white dark:bg-white/[0.04] border-slate-200 dark:border-white/[0.08] text-slate-700 dark:text-white/70 hover:border-slate-300")
+                }
+              >
+                {on && <CheckCircle2 className="h-3 w-3" />}
+                {o}
+              </button>
+            )
+          })}
+        </div>
+      )
+      break
+    }
+
+    case "upload":
+      control = existing?.file_url ? (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-[6px] border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/40 dark:bg-emerald-500/[0.05]">
+          <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+          <span className="text-[12px] text-emerald-800 dark:text-emerald-300 truncate flex-1">
+            {existing.file_name ?? "arquivo"}
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await fetch(
+                `/api/upload/onboarding?path=${encodeURIComponent(existing.file_url ?? "")}`,
+              )
+              const j = await res.json().catch(() => ({}))
+              if (j.data?.url ?? j.url) {
+                window.open(j.data?.url ?? j.url, "_blank")
+              }
+            }}
+            className="text-[11px] font-semibold text-violet-700 hover:underline"
+          >
+            Abrir
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onSaveFull?.({
+                file_url: null,
+                file_name: null,
+                file_size_bytes: null,
+              })
+            }
+            className="text-[11px] text-slate-500 hover:text-red-600"
+          >
+            Remover
+          </button>
+        </div>
+      ) : (
+        <label className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-violet-400">
+          <Upload className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-[12px] text-slate-600 dark:text-white/55">
+            {uploading ? "Enviando..." : "Clique pra fazer upload"}
+          </span>
+          <input
+            type="file"
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void uploadFile(f)
+            }}
+          />
+        </label>
+      )
+      break
+
+    case "date":
+      control = (
+        <input
+          type="date"
+          value={local}
+          onChange={(e) => {
+            setLocal(e.target.value)
+            onSave(e.target.value)
+          }}
+          className="w-full h-9 px-3 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+        />
+      )
+      break
+
+    case "url":
+    default:
+      control = (
+        <input
+          type={field.type === "url" ? "url" : "text"}
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          onBlur={commit}
+          placeholder={field.placeholder}
+          className="w-full h-9 px-3 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+        />
+      )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {labelEl}
+      {control}
       {field.helpText && (
         <p className="text-[11px] text-slate-500 dark:text-white/55">
           {field.helpText}

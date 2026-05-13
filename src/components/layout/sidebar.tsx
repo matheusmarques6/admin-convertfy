@@ -37,7 +37,6 @@ import {
   Sun,
   Moon,
   LifeBuoy,
-  MessageSquare,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"

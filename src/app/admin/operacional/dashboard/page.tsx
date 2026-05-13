@@ -75,15 +75,15 @@ async function getDashboardData() {
       .lte("due_date", weekEnd.toISOString())
       .order("due_date"),
     supabase
-      .from("client_onboardings")
+      .from("onboardings")
       .select(`
-        id, status, current_phase, progress_percent,
-        target_completion_date,
+        id, status, last_column_change_at, briefing_status,
         client:clients(id, name),
-        store:client_stores(id, store_name)
+        store:client_stores(id, store_name),
+        current_column:operational_pipeline_columns(id, name, slug, position)
       `)
       .neq("status", "completed")
-      .order("target_completion_date", { ascending: true }),
+      .order("last_column_change_at", { ascending: false }),
     supabase
       .from("client_reports")
       .select("id", { count: "exact", head: true })
@@ -214,7 +214,21 @@ async function getDashboardData() {
     activeTasks: activeTasks || [],
     weekMeetings: weekMeetings || [],
     weekTasks: weekTasks || [],
-    activeOnboardings: activeOnboardings || [],
+    activeOnboardings: (activeOnboardings ?? []).map((o) => {
+      const raw = (o as unknown as { current_column?: unknown }).current_column
+      const col = Array.isArray(raw)
+        ? (raw[0] as { slug?: string } | undefined)
+        : (raw as { slug?: string } | null | undefined)
+      return {
+        ...o,
+        current_phase: col?.slug ?? "entrada",
+        progress_percent: 0,
+        target_completion_date: null,
+        started_at:
+          (o as unknown as { last_column_change_at?: string })
+            .last_column_change_at ?? null,
+      }
+    }),
     pendingItems: {
       draftReports: draftReportsCount || 0,
       draftCampaigns: draftCampaignsCount || 0,

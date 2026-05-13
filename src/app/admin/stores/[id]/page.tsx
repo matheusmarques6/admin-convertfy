@@ -76,11 +76,13 @@ async function getStore(id: string) {
     .single()
 
   const { data: onboarding } = await adminClient
-    .from("client_onboardings")
-    .select("status, progress_percent")
+    .from("onboardings")
+    .select(
+      "status, current_column:operational_pipeline_columns(position, slug, name)",
+    )
     .eq("store_id", id)
-    .in("status", ["not_started", "in_progress", "paused"])
-    .order("created_at", { ascending: false })
+    .eq("status", "in_progress")
+    .order("last_column_change_at", { ascending: false })
     .limit(1)
     .single()
 
@@ -92,14 +94,9 @@ async function getStore(id: string) {
     .limit(1)
     .single()
 
-  const { data: driveData } = await adminClient
-    .from("client_onboardings")
-    .select("drive_folder_url")
-    .eq("store_id", id)
-    .not("drive_folder_url", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // drive_folder_url legado: pipeline v2 nao tem esse campo direto.
+  // Mantemos null pra nao quebrar header da loja.
+  const driveData = null as { drive_folder_url: string | null } | null
 
   // Fetch revenue summary for KPIs (header da loja).
   // Inclui colunas omnisend_* com SELECT resiliente: se a migration 20260417
@@ -126,7 +123,15 @@ async function getStore(id: string) {
     integrationStatus,
     onboarding_form_complete: onboardingData?.is_complete || false,
     onboarding_status: onboarding?.status || null,
-    onboarding_progress: onboarding?.progress_percent || 0,
+    onboarding_progress: (() => {
+      const rawCol = (onboarding as unknown as { current_column?: unknown })
+        ?.current_column
+      const col = Array.isArray(rawCol)
+        ? (rawCol[0] as { position?: number } | undefined)
+        : (rawCol as { position?: number } | null | undefined)
+      if (!col?.position && col?.position !== 0) return 0
+      return Math.round(((col.position + 1) / 7) * 100)
+    })(),
     has_briefing: !!briefing,
     drive_folder_url: driveData?.drive_folder_url || null,
     revenueSummary,

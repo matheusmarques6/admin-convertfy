@@ -7,6 +7,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { goBackToColumn } from "@/lib/services/onboarding-pipeline.service"
+import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -18,6 +19,7 @@ export async function POST(
     const { id } = await context.params
     const sb = await createClient()
     const user = await requireAuth(sb)
+    await requireOnboardingPermission(user.id, "go_back")
     const body = await request.json()
     if (!body.target_column_slug || !body.feedback || !body.severity) {
       throw new AppError(

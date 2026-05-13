@@ -7,6 +7,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -19,6 +20,7 @@ export async function PATCH(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOnboardingPermission(user.id, "work")
     const admin = createAdminClient()
     const body = await request.json()
 
@@ -65,6 +67,7 @@ export async function DELETE(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOnboardingPermission(user.id, "work")
     const admin = createAdminClient()
     const { data: task } = await admin
       .from("tasks")

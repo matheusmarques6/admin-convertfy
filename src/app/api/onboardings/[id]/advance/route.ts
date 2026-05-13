@@ -7,6 +7,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { advanceColumn } from "@/lib/services/onboarding-pipeline.service"
+import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -19,6 +20,10 @@ export async function POST(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const body = await request.json().catch(() => ({}))
+    await requireOnboardingPermission(
+      user.id,
+      body.override ? "override" : "advance",
+    )
 
     const result = await advanceColumn({
       onboardingId: id,

@@ -17,6 +17,10 @@ import {
   Globe,
   Loader2,
   GripVertical,
+  Upload,
+  X,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
@@ -89,6 +93,29 @@ export function TutorialPageEditor({ id }: { id: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     })
+    mutate()
+  }
+
+  async function moveBlock(blockId: string, dir: "up" | "down") {
+    const idx = blocks.findIndex((b) => b.id === blockId)
+    if (idx < 0) return
+    const target = dir === "up" ? idx - 1 : idx + 1
+    if (target < 0 || target >= blocks.length) return
+    const cur = blocks[idx]
+    const swap = blocks[target]
+    // Troca positions
+    await Promise.all([
+      fetch(`/api/tutorial-pages/${id}/blocks/${cur.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: swap.position }),
+      }),
+      fetch(`/api/tutorial-pages/${id}/blocks/${swap.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: cur.position }),
+      }),
+    ])
     mutate()
   }
 
@@ -170,12 +197,17 @@ export function TutorialPageEditor({ id }: { id: string }) {
 
       {/* Blocks */}
       <div className="space-y-3">
-        {blocks.map((b) => (
+        {blocks.map((b, idx) => (
           <BlockEditor
             key={b.id}
             block={b}
+            pageId={id}
+            isFirst={idx === 0}
+            isLast={idx === blocks.length - 1}
             onSave={(c) => saveBlock(b.id, c)}
             onDelete={() => deleteBlock(b.id)}
+            onMoveUp={() => moveBlock(b.id, "up")}
+            onMoveDown={() => moveBlock(b.id, "down")}
           />
         ))}
         {blocks.length === 0 && (
@@ -210,12 +242,22 @@ export function TutorialPageEditor({ id }: { id: string }) {
 
 function BlockEditor({
   block,
+  pageId,
+  isFirst,
+  isLast,
   onSave,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   block: TutorialBlock
+  pageId: string
+  isFirst: boolean
+  isLast: boolean
   onSave: (content: Record<string, unknown>) => Promise<void>
   onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
 }) {
   const [content, setContent] = useState<Record<string, unknown>>(block.content)
   const [saving, setSaving] = useState(false)
@@ -240,6 +282,24 @@ function BlockEditor({
           </span>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={isFirst}
+            className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-[5px] disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Mover pra cima"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={isLast}
+            className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-[5px] disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Mover pra baixo"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </button>
           {dirty && (
             <button
               type="button"
@@ -264,7 +324,12 @@ function BlockEditor({
           </button>
         </div>
       </div>
-      <BlockFields type={block.type} content={content} onChange={setContent} />
+      <BlockFields
+        type={block.type}
+        content={content}
+        onChange={setContent}
+        pageId={pageId}
+      />
     </div>
   )
 }
@@ -273,10 +338,12 @@ function BlockFields({
   type,
   content,
   onChange,
+  pageId,
 }: {
   type: TutorialBlockType
   content: Record<string, unknown>
   onChange: (c: Record<string, unknown>) => void
+  pageId: string
 }) {
   const set = (k: string, v: unknown) => onChange({ ...content, [k]: v })
 
@@ -312,24 +379,7 @@ function BlockFields({
     )
   }
   if (type === "image") {
-    return (
-      <div className="space-y-2">
-        <input
-          type="url"
-          value={String(content.url ?? "")}
-          onChange={(e) => set("url", e.target.value)}
-          placeholder="https://... (URL da imagem)"
-          className="w-full h-9 px-3 text-[12.5px] rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-        />
-        <input
-          type="text"
-          value={String(content.alt ?? "")}
-          onChange={(e) => set("alt", e.target.value)}
-          placeholder="Texto alternativo (acessibilidade)"
-          className="w-full h-9 px-3 text-[12.5px] rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-        />
-      </div>
-    )
+    return <ImageBlockField content={content} onChange={onChange} pageId={pageId} />
   }
   if (type === "video") {
     return (
@@ -402,4 +452,105 @@ function BlockFields({
     )
   }
   return null
+}
+
+function ImageBlockField({
+  content,
+  onChange,
+  pageId,
+}: {
+  content: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  pageId: string
+}) {
+  const [uploading, setUploading] = useState(false)
+  const url = String(content.url ?? "")
+  const alt = String(content.alt ?? "")
+
+  async function upload(file: File) {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("scope", "tutorial")
+      fd.append("ref_id", pageId)
+      const res = await fetch("/api/upload/onboarding", {
+        method: "POST",
+        body: fd,
+      })
+      const j = await res.json().catch(() => ({}))
+      const result = j.data ?? j
+      if (res.ok && (result.url || result.path)) {
+        onChange({
+          ...content,
+          url: result.url ?? `/api/upload/onboarding?path=${result.path}`,
+          storage_path: result.path,
+        })
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {url ? (
+        <div className="relative rounded-[6px] border border-slate-200 dark:border-white/[0.08] overflow-hidden bg-slate-50 dark:bg-white/[0.02]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={alt}
+            className="w-full max-h-[200px] object-contain"
+          />
+          <button
+            type="button"
+            onClick={() =>
+              onChange({ ...content, url: "", storage_path: undefined })
+            }
+            className="absolute top-2 right-2 h-7 w-7 inline-flex items-center justify-center rounded-[5px] bg-white/90 text-slate-700 hover:bg-white shadow-sm"
+            title="Remover imagem"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <label className="flex items-center justify-center gap-1.5 h-20 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-violet-400">
+          {uploading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+          ) : (
+            <>
+              <Upload className="h-4 w-4 text-slate-400" />
+              <span className="text-[12px] text-slate-600 dark:text-white/55">
+                Upload de imagem
+              </span>
+            </>
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void upload(f)
+            }}
+          />
+        </label>
+      )}
+      <input
+        type="url"
+        value={url}
+        onChange={(e) => onChange({ ...content, url: e.target.value })}
+        placeholder="Ou cole uma URL externa"
+        className="w-full h-9 px-3 text-[12.5px] rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+      />
+      <input
+        type="text"
+        value={alt}
+        onChange={(e) => onChange({ ...content, alt: e.target.value })}
+        placeholder="Texto alternativo (acessibilidade)"
+        className="w-full h-9 px-3 text-[12.5px] rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+      />
+    </div>
+  )
 }

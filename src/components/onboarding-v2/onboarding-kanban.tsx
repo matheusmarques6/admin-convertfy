@@ -46,6 +46,10 @@ export function OnboardingKanban() {
     onboardings: OnboardingPipelineItem[]
   }>("/api/onboardings", fetcher, { revalidateOnFocus: false })
   const [newOpen, setNewOpen] = useState(false)
+  const [goBackContext, setGoBackContext] = useState<{
+    onboardingId: string
+    targetSlug: string
+  } | null>(null)
   const toast = useToast()
 
   const columns = useMemo(
@@ -97,11 +101,20 @@ export function OnboardingKanban() {
       return
     }
 
+    // Voltar pra coluna anterior — abre dialog de feedback
+    if (destIdx < srcIdx) {
+      const targetCol = columns[destIdx]
+      setGoBackContext({
+        onboardingId: draggableId,
+        targetSlug: targetCol.slug,
+      })
+      return
+    }
+
     toast.toast({
       variant: "destructive",
-      title: "Movimentacao nao suportada",
-      description:
-        "Drag-and-drop so permite avancar 1 coluna. Pra voltar uma etapa, use o botao 'Pedir ajustes' no card.",
+      title: "Pular colunas não permitido",
+      description: "Arraste 1 coluna por vez (avançar ou voltar).",
     })
   }
 
@@ -228,16 +241,159 @@ export function OnboardingKanban() {
           }}
         />
       )}
+
+      {goBackContext && (
+        <KanbanGoBackDialog
+          onboardingId={goBackContext.onboardingId}
+          targetSlug={goBackContext.targetSlug}
+          onClose={() => setGoBackContext(null)}
+          onDone={() => {
+            setGoBackContext(null)
+            mutate()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function KanbanGoBackDialog({
+  onboardingId,
+  targetSlug,
+  onClose,
+  onDone,
+}: {
+  onboardingId: string
+  targetSlug: string
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [feedback, setFeedback] = useState("")
+  const [severity, setSeverity] = useState<
+    "small" | "medium" | "rework_part" | "rework_all"
+  >("medium")
+  const [submitting, setSubmitting] = useState(false)
+  const toast = useToast()
+
+  async function submit() {
+    if (feedback.trim().length < 10) {
+      toast.toast({
+        variant: "destructive",
+        title: "Feedback obrigatorio",
+        description: "Mínimo 10 caracteres.",
+      })
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/onboardings/${onboardingId}/go-back`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_column_slug: targetSlug,
+          feedback,
+          severity,
+        }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.toast({
+          variant: "destructive",
+          title: "Falha",
+          description: j.error?.message ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({ title: "Onboarding voltou pra coluna anterior" })
+      onDone()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-[460px] bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden">
+        <div className="px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
+          <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
+            Voltar pra coluna anterior
+          </h2>
+          <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55">
+            Uma nova versão será criada com o feedback.
+          </p>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80 mb-1">
+              Severidade
+            </label>
+            <select
+              value={severity}
+              onChange={(e) =>
+                setSeverity(
+                  e.target.value as
+                    | "small"
+                    | "medium"
+                    | "rework_part"
+                    | "rework_all",
+                )
+              }
+              className="w-full h-9 px-2 text-[12px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+            >
+              <option value="small">Ajuste pequeno</option>
+              <option value="medium">Ajuste médio</option>
+              <option value="rework_part">Retrabalho parcial</option>
+              <option value="rework_all">Retrabalho completo</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80 mb-1">
+              Feedback (min 10 chars)
+            </label>
+            <textarea
+              autoFocus
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={4}
+              placeholder="O que precisa ser ajustado..."
+              className="w-full px-3 py-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 px-3 text-[12px] font-medium text-slate-700 hover:bg-slate-100 rounded-[6px]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-[6px] disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Voltar coluna
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
 function OnboardingCard({ onb }: { onb: OnboardingPipelineItem }) {
-  const daysIn = Math.floor(
+  const hoursIn =
     (Date.now() - new Date(onb.last_column_change_at).getTime()) /
-      (24 * 3600 * 1000),
-  )
-  const isStuck = daysIn >= 5
+    (3600 * 1000)
+  const daysIn = Math.floor(hoursIn / 24)
+  const slaHours = onb.current_column?.sla_hours ?? 0
+  const isStuck = slaHours > 0 && hoursIn >= slaHours
+  const slaPct = slaHours > 0 ? Math.min(100, (hoursIn / slaHours) * 100) : 0
 
   return (
     <>
@@ -261,18 +417,34 @@ function OnboardingCard({ onb }: { onb: OnboardingPipelineItem }) {
           <Clock className="h-3 w-3" />
           {daysIn === 0 ? "hoje" : `${daysIn}d`}
         </div>
-        {isStuck && (
+        {isStuck ? (
           <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-semibold">
             <AlertTriangle className="h-3 w-3" />
-            Travado
+            SLA estourou
           </span>
-        )}
-        {onb.briefing_status === "approved" && (
-          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-            Briefing OK
-          </span>
+        ) : (
+          onb.briefing_status === "approved" && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+              Briefing OK
+            </span>
+          )
         )}
       </div>
+      {slaHours > 0 && (
+        <div className="mt-1.5 h-0.5 w-full rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+          <div
+            className={
+              "h-full " +
+              (slaPct >= 100
+                ? "bg-red-500"
+                : slaPct >= 80
+                  ? "bg-amber-500"
+                  : "bg-emerald-500")
+            }
+            style={{ width: `${slaPct}%` }}
+          />
+        </div>
+      )}
     </>
   )
 }

@@ -360,6 +360,40 @@ export async function advanceColumn(
     await generateTutorialTokenIfMissing(opts.onboardingId)
   }
 
+  // WhatsApp automatico da nova coluna (fire-and-forget)
+  if (nextCol.whatsapp_template) {
+    void (async () => {
+      try {
+        const { sendColumnWhatsApp } = await import(
+          "@/lib/services/onboarding-whatsapp.service"
+        )
+        await sendColumnWhatsApp({
+          onboardingId: opts.onboardingId,
+          columnId: nextCol.id,
+        })
+      } catch {
+        // log feito dentro do service
+      }
+    })()
+  }
+
+  // Notificacao inbox interna (fire-and-forget)
+  void (async () => {
+    try {
+      const { notifyColumnChange } = await import(
+        "@/lib/services/onboarding-notifications.service"
+      )
+      await notifyColumnChange({
+        onboardingId: opts.onboardingId,
+        orgId: onb.org_id,
+        fromCol: currentCol,
+        toCol: nextCol,
+      })
+    } catch {
+      /* swallow */
+    }
+  })()
+
   return { ok: true }
 }
 
@@ -554,6 +588,18 @@ export async function confirmBriefing(
       .eq("id", onb.id)
     await instantiateTaskForColumn(onb.id, nextCol.id, null)
   }
+
+  // Notifica time interno (fire-and-forget)
+  void (async () => {
+    try {
+      const { notifyBriefingReady } = await import(
+        "@/lib/services/onboarding-notifications.service"
+      )
+      await notifyBriefingReady({ onboardingId: onb.id, orgId: onb.org_id })
+    } catch {
+      /* swallow */
+    }
+  })()
 
   return { ok: true }
 }
