@@ -104,7 +104,7 @@ interface SourceConfig {
 }
 
 const SOURCE_CONFIG: Record<string, SourceConfig> = {
-  onboarding: { label: "Onboarding", icon: Sparkles, color: "violet" },
+  onboarding: { label: "Onboarding", icon: Sparkles, color: "brand" },
   acompanhamento: { label: "Acompanhamento", icon: RefreshCw, color: "blue" },
   project: { label: "Projeto", icon: Briefcase, color: "slate" },
   crm: { label: "CRM", icon: Mail, color: "emerald" },
@@ -276,7 +276,7 @@ export function TaskRow({
         ) : isDone ? (
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
         ) : (
-          <Circle className="h-4 w-4 text-slate-300 dark:text-white/30 hover:text-violet-400" />
+          <Circle className="h-4 w-4 text-slate-300 dark:text-white/30 hover:text-brand-300" />
         )}
       </button>
 
@@ -324,7 +324,7 @@ export function TaskRow({
                     <span className="font-mono uppercase tracking-wide text-[10px]">
                       {task.assignee_role}
                     </span>
-                    <span className="text-violet-600 dark:text-violet-400 font-medium">
+                    <span className="text-brand-400 dark:text-brand-300 font-medium">
                       · disponivel pra pegar
                     </span>
                   </span>
@@ -363,7 +363,7 @@ export function TaskRow({
               <Link
                 href={href}
                 onClick={(e) => e.stopPropagation()}
-                className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-[5px]"
+                className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-brand-400 dark:hover:text-brand-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-[5px]"
                 aria-label="Abrir origem"
                 title="Abrir origem"
               >
@@ -442,7 +442,7 @@ function SourceBadge({
   color: string
 }) {
   const colorClasses: Record<string, string> = {
-    violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400",
+    brand: "bg-brand-100 text-brand-500 dark:bg-brand-500/15 dark:text-brand-300",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400",
     slate: "bg-slate-100 text-slate-700 dark:bg-white/[0.08] dark:text-white/65",
     emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
@@ -477,8 +477,8 @@ export function TaskGroupHeader({
       <span
         className={
           "flex h-5 w-5 items-center justify-center rounded-[4px] " +
-          (cfg.color === "violet"
-            ? "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400"
+          (cfg.color === "brand"
+            ? "bg-brand-100 text-brand-400 dark:bg-brand-500/15 dark:text-brand-300"
             : cfg.color === "blue"
               ? "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
               : cfg.color === "emerald"

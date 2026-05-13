@@ -72,10 +72,10 @@ export function PublicTutorialRenderer({ token }: { token: string }) {
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-3xl mx-auto px-5 py-6">
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-violet-100 text-violet-600">
+            <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-brand-100 text-brand-400">
               <Sparkles className="h-3 w-3" />
             </span>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-violet-600">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-brand-400">
               Tutorial · {context.store_name}
             </p>
           </div>
@@ -134,7 +134,7 @@ function BlockRenderer({
     return (
       <div className="bg-white rounded-[8px] border border-slate-200 p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-700 text-[13px] font-bold shrink-0">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-500 text-[13px] font-bold shrink-0">
             {stepIdx}
           </span>
           <div className="min-w-0 flex-1">
@@ -183,7 +183,7 @@ function BlockRenderer({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[13px] text-violet-600 hover:underline"
+              className="text-[13px] text-brand-400 hover:underline"
             >
               Ver video: {url}
             </a>
@@ -210,7 +210,7 @@ function BlockRenderer({
     return (
       <details className="bg-white rounded-[8px] border border-slate-200 p-4 group">
         <summary className="text-[13.5px] font-semibold text-slate-900 cursor-pointer flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-violet-500 shrink-0" />
+          <CheckCircle2 className="h-4 w-4 text-brand-400 shrink-0" />
           {String(c.question ?? "")}
         </summary>
         <p className="mt-2 pl-6 text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed">

@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @import "../styles/crm-tokens.css";
+@import "../styles/convertfy-ds-v3.css";
 
 @layer base {
   :root {

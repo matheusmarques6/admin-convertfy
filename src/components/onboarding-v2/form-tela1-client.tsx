@@ -397,13 +397,13 @@ export function FormTela1Client({ token }: { token: string }) {
       <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
         <div className="h-1 bg-slate-100">
           <div
-            className="h-full bg-violet-500 transition-all"
+            className="h-full bg-brand-500 transition-all"
             style={{ width: `${progress}%` }}
           />
         </div>
         <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-400">
               Etapa {stepIdx + 1} de {totalSteps}
             </p>
             <h1 className="text-[15px] font-semibold text-slate-900 truncate">
@@ -419,10 +419,10 @@ export function FormTela1Client({ token }: { token: string }) {
       {/* Header da seção */}
       <div className="max-w-2xl mx-auto px-5 pt-6 pb-3">
         <div className="flex items-center gap-2 mb-1">
-          <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-violet-100 text-violet-600">
+          <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-brand-100 text-brand-400">
             <Sparkles className="h-3 w-3" />
           </span>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-violet-600">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-brand-400">
             Onboarding · {ctx.store?.store_name ?? "sua marca"}
           </p>
         </div>
@@ -443,7 +443,7 @@ export function FormTela1Client({ token }: { token: string }) {
           >
             <label className="block">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-[10px] font-bold text-violet-600 font-mono">
+                <span className="text-[10px] font-bold text-brand-400 font-mono">
                   {String(idx + 1).padStart(2, "0")}
                 </span>
                 <span className="text-[13px] font-semibold text-slate-900">
@@ -459,7 +459,7 @@ export function FormTela1Client({ token }: { token: string }) {
                   }
                   placeholder={q.placeholder}
                   rows={q.rows ?? 3}
-                  className="w-full px-3 py-2 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className="w-full px-3 py-2 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 />
               ) : q.type === "select" ? (
                 <select
@@ -467,7 +467,7 @@ export function FormTela1Client({ token }: { token: string }) {
                   onChange={(e) =>
                     setValues((v) => ({ ...v, [q.key]: e.target.value }))
                   }
-                  className="w-full h-10 px-3 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className="w-full h-10 px-3 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 >
                   <option value="">— selecione —</option>
                   {(q.options ?? []).map((o) => (
@@ -484,7 +484,7 @@ export function FormTela1Client({ token }: { token: string }) {
                     setValues((v) => ({ ...v, [q.key]: e.target.value }))
                   }
                   placeholder={q.placeholder}
-                  className="w-full h-10 px-3 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className="w-full h-10 px-3 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 />
               )}
               {q.helpText && (
@@ -639,7 +639,7 @@ function BriefingReviewInline({
               <ArrowLeft className="h-3.5 w-3.5" />
               Voltar
             </button>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-400">
               Etapa final · gerando briefing
             </span>
           </div>
@@ -647,8 +647,8 @@ function BriefingReviewInline({
         <div className="max-w-2xl mx-auto px-5 py-12">
           <div className="bg-white rounded-[8px] border border-slate-200 p-8 text-center">
             <div className="relative mx-auto w-14 h-14 mb-4">
-              <div className="absolute inset-0 rounded-full bg-violet-100 animate-ping" />
-              <div className="relative flex items-center justify-center h-14 w-14 rounded-full bg-violet-500 text-white">
+              <div className="absolute inset-0 rounded-full bg-brand-100 animate-ping" />
+              <div className="relative flex items-center justify-center h-14 w-14 rounded-full bg-brand-500 text-white">
                 <Sparkles className="h-6 w-6" />
               </div>
             </div>
@@ -696,7 +696,7 @@ function BriefingReviewInline({
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
           </button>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-400">
             Etapa final · revise e confirme
           </span>
         </div>
@@ -852,7 +852,7 @@ function BriefingEditField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={rows ?? 3}
-          className="w-full px-3 py-2 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className="w-full px-3 py-2 text-[13px] rounded-[6px] border border-slate-200 bg-white focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
         />
       </label>
     </div>

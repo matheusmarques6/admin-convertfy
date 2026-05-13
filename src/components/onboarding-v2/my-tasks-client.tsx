@@ -162,7 +162,7 @@ export function MyTasksClient() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-brand-100 dark:bg-brand-500/15 text-brand-400 dark:text-brand-300">
               <ListTodo className="h-3.5 w-3.5" />
             </span>
             <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">
@@ -172,7 +172,7 @@ export function MyTasksClient() {
               {role}
             </span>
             {isElevated && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/15 px-2 py-0.5 rounded">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand-500 dark:text-brand-300 bg-brand-100 dark:bg-brand-500/15 px-2 py-0.5 rounded">
                 Owner
               </span>
             )}
@@ -196,7 +196,7 @@ export function MyTasksClient() {
                 </>
               ) : (
                 <>
-                  <ToggleRight className="h-4 w-4 text-violet-500" />
+                  <ToggleRight className="h-4 w-4 text-brand-400" />
                   Todas do time
                 </>
               )}
@@ -215,7 +215,7 @@ export function MyTasksClient() {
 
       {/* Quick add inline */}
       {quickAddOpen && (
-        <div className="rounded-[6px] bg-violet-50/40 dark:bg-violet-500/[0.05] border border-violet-200 dark:border-violet-500/20 p-3">
+        <div className="rounded-[6px] bg-brand-50/60 dark:bg-brand-500/[0.05] border border-brand-200 dark:border-brand-500/20 p-3">
           <div className="flex items-center gap-2">
             <input
               autoFocus
@@ -227,13 +227,13 @@ export function MyTasksClient() {
                 if (e.key === "Escape") setQuickAddOpen(false)
               }}
               placeholder="O que precisa fazer? (Enter pra criar)"
-              className="flex-1 h-9 px-3 text-[13px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+              className="flex-1 h-9 px-3 text-[13px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
             <button
               type="button"
               onClick={quickAddSubmit}
               disabled={!quickAddTitle.trim() || quickAddSubmitting}
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-[12px] font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-[6px] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-[12px] font-semibold bg-brand-500 hover:bg-brand-700 text-white rounded-[6px] disabled:opacity-50"
             >
               {quickAddSubmitting && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -270,7 +270,7 @@ export function MyTasksClient() {
                 className={
                   "inline-flex items-center gap-1.5 h-9 px-3 text-[12px] font-medium border-b-2 transition-colors " +
                   (status === s
-                    ? "border-violet-500 text-violet-700 dark:text-violet-400"
+                    ? "border-brand-500 text-brand-500 dark:text-brand-300"
                     : "border-transparent text-slate-500 dark:text-white/55 hover:text-slate-700 dark:hover:text-white/80")
                 }
               >
@@ -279,7 +279,7 @@ export function MyTasksClient() {
                   className={
                     "tabular-nums text-[10.5px] " +
                     (status === s
-                      ? "text-violet-500"
+                      ? "text-brand-400"
                       : "text-slate-400 dark:text-white/40")
                   }
                 >
@@ -327,7 +327,7 @@ export function MyTasksClient() {
                 className={
                   "inline-flex items-center gap-1.5 h-7 px-2.5 text-[11.5px] font-medium rounded-[5px] border transition-colors " +
                   (sourceFilter === key
-                    ? "bg-violet-100 text-violet-900 border-violet-300 dark:bg-violet-500/20 dark:text-violet-200 dark:border-violet-500/40"
+                    ? "bg-brand-100 text-brand-700 border-brand-300 dark:bg-brand-500/20 dark:text-brand-200 dark:border-brand-500/40"
                     : "bg-white dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border-slate-200 dark:border-white/[0.10] hover:border-slate-300")
                 }
               >

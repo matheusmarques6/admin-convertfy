@@ -514,7 +514,7 @@ function ImageBlockField({
           </button>
         </div>
       ) : (
-        <label className="flex items-center justify-center gap-1.5 h-20 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-violet-400">
+        <label className="flex items-center justify-center gap-1.5 h-20 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-brand-400">
           {uploading ? (
             <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
           ) : (

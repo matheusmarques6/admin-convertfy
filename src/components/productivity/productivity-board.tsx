@@ -388,7 +388,7 @@ function FilterBar({
                 className={cn(
                   "h-7 w-7 inline-flex items-center justify-center rounded-full text-[10px] font-bold border transition-all",
                   active
-                    ? "ring-2 ring-violet-500 ring-offset-1 border-transparent"
+                    ? "ring-2 ring-brand-500 ring-offset-1 border-transparent"
                     : "border-gray-200 dark:border-white/[0.10] hover:scale-110",
                 )}
                 title={`Filtrar por ${a}`}
@@ -473,11 +473,11 @@ function BulkActionsBar({
   }
 
   return (
-    <div className="px-6 py-2 bg-violet-50 dark:bg-violet-500/10 border-b border-violet-200 dark:border-violet-500/20 flex items-center gap-2 flex-wrap">
-      <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300">
+    <div className="px-6 py-2 bg-brand-50 dark:bg-brand-500/10 border-b border-brand-200 dark:border-brand-500/20 flex items-center gap-2 flex-wrap">
+      <span className="text-[12px] font-semibold text-brand-500 dark:text-brand-300">
         {selectedIds.length} selecionada{selectedIds.length === 1 ? "" : "s"}
       </span>
-      <div className="h-4 w-px bg-violet-300 dark:bg-violet-500/30 mx-1" />
+      <div className="h-4 w-px bg-brand-300 dark:bg-brand-500/30 mx-1" />
       <button
         type="button"
         onClick={bulkComplete}

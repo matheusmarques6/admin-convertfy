@@ -29,7 +29,7 @@ export function TutorialPagesList() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-brand-100 dark:bg-brand-500/15 text-brand-400 dark:text-brand-300">
               <BookOpen className="h-3.5 w-3.5" />
             </span>
             <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">

@@ -68,7 +68,7 @@ export function UnifiedTasksWidget() {
     <div className="rounded-[8px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400">
+          <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-brand-100 dark:bg-brand-500/15 text-brand-400 dark:text-brand-300">
             <ListTodo className="h-3 w-3" />
           </span>
           <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
@@ -80,7 +80,7 @@ export function UnifiedTasksWidget() {
         </div>
         <Link
           href="/admin/me"
-          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700"
+          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-400 dark:text-brand-300 hover:text-brand-500"
         >
           Ver todas
           <ArrowRight className="h-3 w-3" />

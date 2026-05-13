@@ -120,7 +120,7 @@ export function OnboardingKanban() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-brand-100 dark:bg-brand-500/15 text-brand-400 dark:text-brand-300">
             <Sparkles className="h-3.5 w-3.5" />
           </span>
           <h1 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-white">
@@ -183,7 +183,7 @@ export function OnboardingKanban() {
                         className={
                           "flex-1 p-2 space-y-2 overflow-y-auto min-h-[200px] " +
                           (snap.isDraggingOver
-                            ? "bg-violet-50/40 dark:bg-violet-500/[0.05]"
+                            ? "bg-brand-50/60 dark:bg-brand-500/[0.05]"
                             : "")
                         }
                       >

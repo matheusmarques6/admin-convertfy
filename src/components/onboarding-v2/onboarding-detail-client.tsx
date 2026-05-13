@@ -313,7 +313,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
                 className={
                   "inline-flex items-center gap-1.5 h-9 px-3 text-[12px] font-medium border-b-2 transition-colors " +
                   (tab === t.id
-                    ? "border-violet-500 text-violet-700 dark:text-violet-400"
+                    ? "border-brand-500 text-brand-500 dark:text-brand-300"
                     : "border-transparent text-slate-500 dark:text-white/55 hover:text-slate-700")
                 }
               >
@@ -615,7 +615,7 @@ function ChecklistTab({
       </div>
       <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
         <div
-          className="h-full bg-violet-500 transition-all"
+          className="h-full bg-brand-500 transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -871,7 +871,7 @@ function DeliverableField({
               setLocal(v)
               onSave(v)
             }}
-            className="h-4 w-4 rounded border-slate-300 text-violet-600"
+            className="h-4 w-4 rounded border-slate-300 text-brand-400"
           />
           <span className="text-[12.5px] text-slate-700 dark:text-white/80">
             {field.placeholder ?? "Confirmar"}
@@ -909,7 +909,7 @@ function DeliverableField({
                 className={
                   "inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium rounded-[5px] border " +
                   (on
-                    ? "bg-violet-500 text-white border-violet-500"
+                    ? "bg-brand-500 text-white border-brand-500"
                     : "bg-white dark:bg-white/[0.04] border-slate-200 dark:border-white/[0.08] text-slate-700 dark:text-white/70 hover:border-slate-300")
                 }
               >
@@ -941,7 +941,7 @@ function DeliverableField({
                 window.open(j.data?.url ?? j.url, "_blank")
               }
             }}
-            className="text-[11px] font-semibold text-violet-700 hover:underline"
+            className="text-[11px] font-semibold text-brand-500 hover:underline"
           >
             Abrir
           </button>
@@ -960,7 +960,7 @@ function DeliverableField({
           </button>
         </div>
       ) : (
-        <label className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-violet-400">
+        <label className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.12] bg-white dark:bg-white/[0.02] cursor-pointer hover:border-brand-400">
           <Upload className="h-3.5 w-3.5 text-slate-400" />
           <span className="text-[12px] text-slate-600 dark:text-white/55">
             {uploading ? "Enviando..." : "Clique pra fazer upload"}
@@ -1084,10 +1084,10 @@ function BriefingTab({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[6px] bg-violet-50/40 dark:bg-violet-500/[0.05] border border-violet-200/60 dark:border-violet-500/20 p-3">
+      <div className="rounded-[6px] bg-brand-50/60 dark:bg-brand-500/[0.05] border border-brand-200/60 dark:border-brand-500/20 p-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <p className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide mb-1">
+            <p className="text-[11px] font-semibold text-brand-500 dark:text-brand-300 uppercase tracking-wide mb-1">
               Link do formulario
             </p>
             <p className="text-[12px] font-mono text-slate-700 dark:text-white/80 truncate max-w-[400px]">
@@ -1101,7 +1101,7 @@ function BriefingTab({
                 navigator.clipboard.writeText(formUrl)
                 toast.toast({ title: "Link copiado" })
               }}
-              className="h-7 px-2.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300 bg-white dark:bg-violet-500/10 rounded-[5px] border border-violet-300 dark:border-violet-500/30 hover:bg-violet-50"
+              className="h-7 px-2.5 text-[11px] font-semibold text-brand-500 dark:text-brand-300 bg-white dark:bg-brand-500/10 rounded-[5px] border border-brand-300 dark:border-brand-500/30 hover:bg-brand-50"
             >
               Copiar
             </button>
@@ -1109,7 +1109,7 @@ function BriefingTab({
               href={formUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300 hover:underline"
+              className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-semibold text-brand-500 dark:text-brand-300 hover:underline"
             >
               Abrir
               <ExternalLink className="h-3 w-3" />
@@ -1504,11 +1504,11 @@ function FormLinkBanner({
     : null
 
   return (
-    <div className="rounded-[6px] bg-violet-50/40 dark:bg-violet-500/[0.05] border border-violet-200 dark:border-violet-500/20 p-3">
+    <div className="rounded-[6px] bg-brand-50/60 dark:bg-brand-500/[0.05] border border-brand-200 dark:border-brand-500/20 p-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500 dark:text-brand-300">
               Link do formulário do cliente
             </p>
             <span
@@ -1537,7 +1537,7 @@ function FormLinkBanner({
               navigator.clipboard.writeText(url)
               toast.toast({ title: "Link copiado", description: url })
             }}
-            className="h-8 px-3 text-[12px] font-semibold text-violet-700 dark:text-violet-300 bg-white dark:bg-violet-500/10 rounded-[5px] border border-violet-300 dark:border-violet-500/30 hover:bg-violet-50"
+            className="h-8 px-3 text-[12px] font-semibold text-brand-500 dark:text-brand-300 bg-white dark:bg-brand-500/10 rounded-[5px] border border-brand-300 dark:border-brand-500/30 hover:bg-brand-50"
           >
             Copiar link
           </button>
@@ -1545,7 +1545,7 @@ function FormLinkBanner({
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 h-8 px-3 text-[12px] font-semibold text-violet-700 dark:text-violet-300 hover:underline"
+            className="inline-flex items-center gap-1 h-8 px-3 text-[12px] font-semibold text-brand-500 dark:text-brand-300 hover:underline"
           >
             Abrir
             <ExternalLink className="h-3 w-3" />

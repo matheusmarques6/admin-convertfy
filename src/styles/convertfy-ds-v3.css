@@ -1,0 +1,281 @@
+/* =============================================================================
+   Convertfy Design System v3 — utilities + microinteractions
+   Aplicado em: pipelines (CRM, Operacional, Onboarding), tarefas, prototypes.
+   NAO aplicado em: /admin/stores/**, /admin/dashboard/**, overview de lojas.
+
+   Filosofia (do README.md do DS):
+   - Borders fazem o trabalho primario, shadows so para elevation off-page
+   - Inter unica face, numbers via tabular-nums (sem mono separado)
+   - Brand blue = ação (botoes, links, ativo nav)
+   - Triplets semânticos (bg + text + border) sempre juntos
+   - 4 radii: 6/8/12/pill | 3 shadows | 1 transicao 150ms
+   ========================================================================== */
+
+/* ── Globais: tabular numerals em qualquer lugar que renderiza numero ───── */
+[data-numeric],
+time,
+code,
+.metric,
+.metric-lg,
+.cf-tnum,
+.kpi-value,
+.kpi-label,
+.chart-axis,
+.table-cell,
+.tabular-nums,
+.font-mono {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* ── Cards Convertfy ─────────────────────────────────────────────────────── */
+.cf-card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cf-card:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+.dark .cf-card,
+[data-theme="dark"] .cf-card {
+  background: #1a1d27;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.dark .cf-card:hover,
+[data-theme="dark"] .cf-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ── Botoes Convertfy v3 (4 variantes canônicas) ─────────────────────────── */
+.cf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+.cf-btn:focus-visible {
+  box-shadow: 0 0 0 2px #4e62d8;
+}
+.cf-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cf-btn-primary {
+  background: #4e62d8;
+  color: #ffffff;
+}
+.cf-btn-primary:hover:not(:disabled) {
+  background: #2137b6;
+}
+.cf-btn-primary:active {
+  background: #041366;
+}
+
+.cf-btn-secondary {
+  background: #ffffff;
+  color: #374151;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.cf-btn-secondary:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.cf-btn-ghost {
+  background: transparent;
+  color: #374151;
+}
+.cf-btn-ghost:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.cf-btn-danger {
+  background: #ffffff;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.cf-btn-danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+/* Tamanhos */
+.cf-btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.cf-btn-lg {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* Brand gradient — UMA por pagina (CTA + sidebar logo) */
+.cf-btn-gradient {
+  background: linear-gradient(90deg, #4e62d8, #2137b6, #041366);
+  color: #ffffff;
+  border-color: transparent;
+}
+.cf-btn-gradient:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* ── Semantic pills (triplets bg + text + border) ────────────────────────── */
+.cf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.cf-pos {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.cf-neg {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.cf-warn {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.cf-neut {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+.cf-info {
+  background: #eef0fb;
+  color: #2137b6;
+  border-color: #c7cdef;
+}
+
+/* ── Focus ring obrigatorio em interativos ───────────────────────────────── */
+.cf-focusable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #4e62d8;
+}
+
+/* ── Microinterações (pulse no avance, ring no assign, status fade) ──────── */
+
+/* Pulse verde 1s quando card avanca de etapa */
+@keyframes cf-advance {
+  0% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.7);
+  }
+  60% {
+    box-shadow: 0 0 0 8px rgba(110, 231, 183, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0);
+  }
+}
+.cf-anim-advance {
+  animation: cf-advance 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Ring brand-blue ao redor do avatar quando alguem e atribuido */
+@keyframes cf-assign {
+  0% {
+    box-shadow: 0 0 0 0 rgba(78, 98, 216, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 4px rgba(78, 98, 216, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(78, 98, 216, 0);
+  }
+}
+.cf-anim-assign {
+  animation: cf-assign 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Status fade-down quando troca */
+@keyframes cf-statusin {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.cf-anim-statusin {
+  animation: cf-statusin 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Toast slide-up suave (sem confettis) */
+@keyframes cf-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.cf-anim-toast {
+  animation: cf-toast 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Brand text gradient — reservar pra UM hero number por pagina ────────── */
+.cf-gradient-text {
+  background: linear-gradient(90deg, #4e62d8, #2137b6, #041366);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Border-left accent (usado em cards de pipeline pra indicar stage) ───── */
+.cf-accent-left {
+  border-left: 3px solid currentColor;
+}
+
+/* ── Touch targets minimos pra mobile (44px) ─────────────────────────────── */
+@media (max-width: 768px) {
+  .cf-touch {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ── Eyebrow / section label uppercase ───────────────────────────────────── */
+.cf-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+.dark .cf-eyebrow,
+[data-theme="dark"] .cf-eyebrow {
+  color: #8b92a5;
+}
