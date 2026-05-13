@@ -110,6 +110,8 @@ export async function GET(request: NextRequest) {
           items: [],
         })
       }
+      // Placeholder de grupo vazio nao aparece no board mas mantem o grupo
+      if (task.name === "__group_placeholder__") continue
       groupMap.get(groupId)!.items.push(task)
     }
 
@@ -466,8 +468,73 @@ export async function POST(request: NextRequest) {
       }
 
       case "create_group": {
-        // Groups are stored as fields on tasks — create a placeholder task for new groups
-        // Or update all tasks in the group
+        // Cria um grupo "vazio" registrando uma task placeholder oculta.
+        // Como groups sao colunas em productivity_tasks, sem nenhuma task
+        // o grupo nao persiste. Estrategia: cria task fantasma com nome
+        // "__group_placeholder__" e status "archived" que NAO aparece no
+        // board mas mantem o grupo registrado.
+        const { group_id: cgId, group_name: cgName, group_color: cgColor } = data
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .insert({
+            org_id: orgId,
+            created_by: user.id,
+            name: "__group_placeholder__",
+            status: "archived",
+            priority: 3,
+            group_id: cgId,
+            group_name: cgName,
+            group_color: cgColor ?? "#9CA3AF",
+            position: 0,
+          })
+        if (error) throw error
+        break
+      }
+
+      case "delete_group": {
+        // Excluir grupo = excluir todas as tasks do grupo. UI deve
+        // confirmar com aviso explicito antes de chamar.
+        const { group_id: dgId } = data
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .delete()
+          .eq("group_id", dgId)
+          .eq("org_id", orgId)
+        if (error) throw error
+        break
+      }
+
+      case "update_subtask": {
+        const { id: subId, name: subNewName, done: subDone } = data
+        const updates: Record<string, unknown> = {}
+        if (typeof subNewName === "string") updates.name = subNewName
+        if (typeof subDone === "boolean") updates.done = subDone
+        const { error } = await supabase
+          .from("productivity_subtasks")
+          .update(updates)
+          .eq("id", subId)
+        if (error) throw error
+        break
+      }
+
+      case "delete_subtask": {
+        const { id: delSubId } = data
+        const { error } = await supabase
+          .from("productivity_subtasks")
+          .delete()
+          .eq("id", delSubId)
+        if (error) throw error
+        break
+      }
+
+      case "delete_comment": {
+        const { id: delCommentId } = data
+        const { error } = await supabase
+          .from("productivity_comments")
+          .delete()
+          .eq("id", delCommentId)
+          .eq("org_id", orgId)
+        if (error) throw error
         break
       }
 

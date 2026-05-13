@@ -68,12 +68,15 @@ export function ProductivityBoard() {
               {allTasks.length}
             </span>
           </div>
-          <button
-            onClick={() => setShowNewTask(true)}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-sm border-none cursor-pointer text-[13px] font-medium bg-brand-400 text-white hover:bg-brand transition-colors duration-fast ease-out-expo"
-          >
-            <IconPlus size={14} /> Nova tarefa
-          </button>
+          <div className="flex items-center gap-2">
+            <NewGroupButton />
+            <button
+              onClick={() => setShowNewTask(true)}
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-sm border-none cursor-pointer text-[13px] font-medium bg-brand-400 text-white hover:bg-brand transition-colors duration-fast ease-out-expo"
+            >
+              <IconPlus size={14} /> Nova tarefa
+            </button>
+          </div>
         </div>
 
         {/* New task inline form */}
@@ -184,6 +187,328 @@ export function ProductivityBoard() {
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Group Actions Menu (cor, excluir)
+// ============================================================================
+
+const GROUP_COLORS = [
+  { id: "#94A3B8", label: "Cinza" },
+  { id: "#3B82F6", label: "Azul" },
+  { id: "#8B5CF6", label: "Roxo" },
+  { id: "#EC4899", label: "Rosa" },
+  { id: "#EF4444", label: "Vermelho" },
+  { id: "#F59E0B", label: "Amarelo" },
+  { id: "#10B981", label: "Verde" },
+  { id: "#06B6D4", label: "Ciano" },
+] as const
+
+function GroupActionsMenu({
+  groupId,
+  groupName,
+  itemsCount,
+}: {
+  groupId: string
+  groupName: string
+  itemsCount: number
+}) {
+  const { apiAction } = useProductivityStore()
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [open])
+
+  function setColor(color: string) {
+    apiAction("update_group", { group_id: groupId, group_color: color })
+    setOpen(false)
+  }
+
+  function deleteGroup() {
+    const confirmText =
+      itemsCount > 0
+        ? `Excluir o projeto "${groupName}"?\n\nIsso vai REMOVER as ${itemsCount} tarefa(s) deste grupo definitivamente.`
+        : `Excluir o projeto "${groupName}"?`
+    if (window.confirm(confirmText)) {
+      apiAction("delete_group", { group_id: groupId })
+    }
+    setOpen(false)
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        className="h-6 w-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700 dark:hover:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+        aria-label="Ações do projeto"
+        title="Ações do projeto"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-1 z-50 min-w-[200px] rounded-md border border-black/[0.08] dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] shadow-lg py-2"
+        >
+          <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            Cor do projeto
+          </p>
+          <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+            {GROUP_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setColor(c.id)}
+                className="h-5 w-5 rounded-full border border-black/[0.1] hover:scale-110 transition-transform"
+                style={{ background: c.id }}
+                title={c.label}
+                aria-label={c.label}
+              />
+            ))}
+          </div>
+          <div className="border-t border-gray-100 dark:border-white/[0.06] mt-1 pt-1">
+            <button
+              type="button"
+              onClick={deleteGroup}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              Excluir projeto
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// New Group Dialog
+// ============================================================================
+
+function NewGroupButton() {
+  const { apiAction } = useProductivityStore()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
+  const [color, setColor] = useState<string>(GROUP_COLORS[1].id)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function submit() {
+    if (!name.trim()) return
+    setSubmitting(true)
+    try {
+      const groupId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      await apiAction("create_group", {
+        group_id: groupId,
+        group_name: name.trim(),
+        group_color: color,
+      })
+      setName("")
+      setColor(GROUP_COLORS[1].id)
+      setOpen(false)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 h-9 px-3 rounded-sm text-[12px] font-medium text-gray-700 dark:text-white/80 bg-white dark:bg-[#242836] border border-[rgba(0,0,0,0.08)] hover:border-gray-300 dark:hover:border-white/[0.14]"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Novo projeto
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+        >
+          <div className="w-full max-w-md bg-white dark:bg-[#1A1D27] rounded-lg shadow-xl border border-black/[0.08] overflow-hidden">
+            <div className="px-5 py-4 border-b border-black/[0.06]">
+              <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                Novo projeto
+              </h3>
+              <p className="mt-0.5 text-[12px] text-gray-500 dark:text-white/55">
+                Agrupe tarefas relacionadas. Você pode mudar nome e cor depois.
+              </p>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 dark:text-white/80 uppercase tracking-wide mb-1">
+                  Nome do projeto
+                </label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submit()
+                    if (e.key === "Escape") setOpen(false)
+                  }}
+                  placeholder="Ex: Lancamento Black Friday 2026"
+                  className="w-full h-10 px-3 text-[13px] rounded-sm border border-[rgba(0,0,0,0.10)] bg-white dark:bg-[#242836] focus:outline-none focus:border-brand-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 dark:text-white/80 uppercase tracking-wide mb-2">
+                  Cor
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {GROUP_COLORS.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setColor(c.id)}
+                      className={cn(
+                        "h-8 w-8 rounded-full border-2 transition-transform",
+                        color === c.id
+                          ? "border-gray-900 dark:border-white scale-110"
+                          : "border-transparent hover:scale-105",
+                      )}
+                      style={{ background: c.id }}
+                      title={c.label}
+                      aria-label={c.label}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] bg-gray-50/60 dark:bg-white/[0.02]">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="h-9 px-3 text-[12px] font-medium text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting || !name.trim()}
+                className="h-9 px-4 text-[12px] font-semibold bg-brand-400 hover:bg-brand text-white rounded-sm disabled:opacity-50"
+              >
+                {submitting ? "Criando..." : "Criar projeto"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ============================================================================
+// Subtask Row (editavel + deletavel inline)
+// ============================================================================
+
+function SubtaskRow({
+  sub,
+  onToggle,
+}: {
+  sub: { id: string; name: string; done: boolean }
+  taskId: string
+  onToggle: () => void
+}) {
+  const { apiAction } = useProductivityStore()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(sub.name)
+  const [hovered, setHovered] = useState(false)
+
+  function save() {
+    const next = value.trim()
+    if (next && next !== sub.name) {
+      apiAction("update_subtask", { id: sub.id, name: next })
+    } else {
+      setValue(sub.name)
+    }
+    setEditing(false)
+  }
+
+  function deleteSubtask() {
+    if (window.confirm(`Excluir a subtarefa "${sub.name}"?`)) {
+      apiAction("delete_subtask", { id: sub.id })
+    }
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 py-1.5"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Checkbox checked={sub.done} onChange={onToggle} />
+      {editing ? (
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save()
+            if (e.key === "Escape") {
+              setValue(sub.name)
+              setEditing(false)
+            }
+          }}
+          className="flex-1 text-[13px] border-none outline-none bg-transparent text-gray-700 dark:text-white/90"
+        />
+      ) : (
+        <span
+          onDoubleClick={() => setEditing(true)}
+          title="Duplo clique para editar"
+          className={cn(
+            "text-[13px] flex-1 cursor-text",
+            sub.done
+              ? "text-gray-400 dark:text-white/50 line-through"
+              : "text-gray-700 dark:text-white/90",
+          )}
+        >
+          {sub.name}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={cn(
+          "h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-opacity",
+          hovered ? "opacity-100" : "opacity-0",
+        )}
+        aria-label="Editar"
+        title="Editar"
+      >
+        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button
+        type="button"
+        onClick={deleteSubtask}
+        className={cn(
+          "h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-opacity",
+          hovered ? "opacity-100" : "opacity-0",
+        )}
+        aria-label="Excluir subtarefa"
+        title="Excluir subtarefa"
+      >
+        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg>
+      </button>
     </div>
   )
 }
@@ -314,6 +639,7 @@ function TableView({
   setHoveredTask: (id: string | null) => void
   toggleSubtask: (taskId: string, subtaskId: string) => void
 }) {
+  const { apiAction } = useProductivityStore()
   return (
     <div>
       {/* Table header */}
@@ -358,6 +684,13 @@ function TableView({
                   <span className="text-[10px] text-positive-text font-mono">{doneCount}/{g.items.length}</span>
                 </>
               )}
+              <div className="ml-auto">
+                <GroupActionsMenu
+                  groupId={g.id}
+                  groupName={g.name}
+                  itemsCount={g.items.length}
+                />
+              </div>
             </div>
 
             {/* Task rows */}
@@ -423,6 +756,23 @@ function TableView({
                     <div className="w-[40px] text-right text-[11px] text-gray-400 dark:text-white/50 font-mono">
                       {t.estimatedTime || "—"}
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (window.confirm(`Excluir a tarefa "${t.name}"?\n\nEssa acao nao pode ser desfeita.`)) {
+                          apiAction("delete_task", { id: t.id })
+                        }
+                      }}
+                      className={cn(
+                        "ml-2 h-6 w-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-opacity",
+                        isHovered ? "opacity-100" : "opacity-0",
+                      )}
+                      aria-label="Excluir tarefa"
+                      title="Excluir tarefa"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
                   </div>
 
                   {/* Subtask rows */}
@@ -926,18 +1276,12 @@ function TaskDetailPanel({
           )}
         </div>
         {task.subtasks.map((sub) => (
-          <div key={sub.id} className="flex items-center gap-2 py-1.5">
-            <Checkbox
-              checked={sub.done}
-              onChange={() => toggleSubtask(task.id, sub.id)}
-            />
-            <span className={cn(
-              "text-[13px] flex-1",
-              sub.done ? "text-gray-400 dark:text-white/50 line-through" : "text-gray-700 dark:text-white/90"
-            )}>
-              {sub.name}
-            </span>
-          </div>
+          <SubtaskRow
+            key={sub.id}
+            sub={sub}
+            taskId={task.id}
+            onToggle={() => toggleSubtask(task.id, sub.id)}
+          />
         ))}
         {/* Add subtask inline */}
         <div className="flex items-center gap-2 mt-2">
