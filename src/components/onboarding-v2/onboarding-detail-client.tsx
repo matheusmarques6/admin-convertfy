@@ -17,7 +17,6 @@ import {
   RotateCcw,
   Loader2,
   CheckCircle2,
-  Circle,
   Sparkles,
   ChevronLeft,
   ExternalLink,
@@ -28,6 +27,7 @@ import {
   ShieldAlert,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
+import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
 import { ROUTES } from "@/lib/routes"
 import type {
   OnboardingPipelineItem,
@@ -558,18 +558,13 @@ function ChecklistTab({
   onboardingId: string
   onMutate: () => void
 }) {
-  const toast = useToast()
-
-  async function toggleStatus(taskId: string, currentStatus: string) {
-    const newStatus = currentStatus === "completed" ? "pending" : "completed"
-    const res = await fetch(`/api/tasks/${taskId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+  async function completeTask(taskId: string) {
+    const res = await fetch(`/api/tasks/${taskId}/complete`, {
+      method: "POST",
     })
     if (!res.ok) {
-      toast.toast({ variant: "destructive", title: "Falha ao salvar" })
-      return
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Falha")
     }
     onMutate()
   }
@@ -616,75 +611,15 @@ function ChecklistTab({
         />
       </div>
       <div className="space-y-1.5">
-        {sorted.map((t) => {
-          const isDone = t.status === "completed"
-          const overdue =
-            t.due_date && new Date(t.due_date) < new Date() && !isDone
-          const dueLabel = t.due_date
-            ? new Date(t.due_date).toLocaleString("pt-BR", {
-                day: "2-digit",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : null
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => toggleStatus(t.id, t.status)}
-              className={
-                "flex items-start gap-2.5 w-full px-3 py-2.5 rounded-[6px] border text-left transition-colors " +
-                (isDone
-                  ? "bg-emerald-50/40 dark:bg-emerald-500/[0.06] border-emerald-200 dark:border-emerald-900/30"
-                  : overdue
-                    ? "bg-rose-50/40 dark:bg-rose-500/[0.06] border-rose-200 dark:border-rose-900/30"
-                    : "bg-white dark:bg-white/[0.02] border-slate-200 dark:border-white/[0.08] hover:border-slate-300")
-              }
-            >
-              {isDone ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-              ) : (
-                <Circle className="h-4 w-4 text-slate-300 dark:text-white/30 shrink-0 mt-0.5" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p
-                  className={
-                    "text-[13px] leading-snug " +
-                    (isDone
-                      ? "line-through text-slate-500"
-                      : "text-slate-900 dark:text-white font-medium")
-                  }
-                >
-                  {t.title}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-slate-500 dark:text-white/55">
-                  {t.assignee_role && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="font-mono uppercase tracking-wide text-[10px]">
-                        {t.assignee_role}
-                      </span>
-                    </span>
-                  )}
-                  {dueLabel && (
-                    <span
-                      className={
-                        "inline-flex items-center gap-1 " +
-                        (overdue
-                          ? "text-rose-600 dark:text-rose-400 font-semibold"
-                          : "")
-                      }
-                    >
-                      <Clock className="h-3 w-3" />
-                      {overdue ? "Vencida " : "Vence "}
-                      {dueLabel}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          )
-        })}
+        {sorted.map((t) => (
+          <TaskRow
+            key={t.id}
+            task={t as unknown as TaskRowData}
+            onComplete={completeTask}
+            showSource={false}
+            compact={false}
+          />
+        ))}
       </div>
     </div>
   )

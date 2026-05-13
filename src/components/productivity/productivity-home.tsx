@@ -13,6 +13,7 @@ import {
   IconPlay, IconPause, IconRefresh, IconExtLink, IconClock,
   IconChevronLeft, IconChevronRight,
 } from "./ds-atoms"
+import { UnifiedTasksWidget } from "./unified-tasks-widget"
 
 // ============================================================================
 // Início — Dashboard do dia (3 zonas)
@@ -273,6 +274,11 @@ export function ProductivityHome() {
               )
             })}
           </Card>
+
+          {/* Tasks unificadas (onboarding/CRM/projetos) — mesma fonte de /admin/me */}
+          <div className="mt-4">
+            <UnifiedTasksWidget />
+          </div>
         </div>
 
         {/* ══════════ ZONA 2: Produtividade ══════════ */}

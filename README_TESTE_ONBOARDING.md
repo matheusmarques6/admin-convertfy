@@ -203,3 +203,59 @@ npx tsc --noEmit    # 0 erros TS
 ---
 
 *Caso algum passo falhe, abra issue no GitHub mencionando o número do passo + screenshot do console DevTools.*
+
+---
+
+# Sprint UNIFICAÇÃO DE TASKS — 6 cenários extras
+
+> Sprint do final do dia 2026-05-13 — unifica `/admin/me`, `/admin/productivity` e `/admin/onboarding/[id]` em fonte única.
+
+### CENÁRIO U1 — Designer Jean vê suas tarefas
+
+1. Bruno loga como Jean (org_role = `designer`)
+2. Acessa `/admin/me`
+3. Vê chips de filtro: Pendentes / Em andamento / Concluídas / Todas — com contadores reais
+4. Vê chips de origem: Todos / Onboarding (N) / Acompanhamento (0) / Projetos (0) / CRM (0) / Manual (0)
+5. Tasks **agrupadas por origem** com headers (ícone + nome + contador)
+6. Cada TaskRow mostra: checkbox, avatar inicial colorido, badge "ONBOARDING" violeta, título da task, subtitle "[Loja] · [Etapa]", role + tempo restante (cor verde/amber/rose)
+7. Hover na TaskRow mostra botão "Abrir" (link pro onboarding)
+8. Click no checkbox → task marcada concluída, some da lista, contador atualiza
+9. Click em "Abrir" → navega pra `/admin/onboarding/[id]` aba Checklist focada
+
+### CENÁRIO U2 — CS Ryan vê tasks dele
+
+10. Bruno loga como Ryan (org_role = `cs`)
+11. `/admin/me` mostra apenas tasks atribuídas a Ryan OU `assignee_role='cs'`
+12. NÃO vê tasks de designer (mesma org, role diferente)
+
+### CENÁRIO U3 — Owner Bruno vê tudo se quiser
+
+13. Bruno loga como Owner (org_role = `owner`)
+14. `/admin/me` mostra **toggle "Minhas / Todas do time"** no canto superior direito
+15. Default = "Minhas" → vê suas tasks
+16. Clica toggle → vira "Todas do time" → vê tasks de TODOS os roles do org
+17. Badge "Owner" violeta aparece ao lado do nome do role no header
+
+### CENÁRIO U4 — Sincronização entre telas
+
+18. Designer Jean abre `/admin/me` em uma aba
+19. Abre `/admin/productivity` em outra aba
+20. Abre `/admin/onboarding/[id]` em uma terceira aba (mesmo onboarding que tem task atribuída ao Jean)
+21. Marca task X concluída em **qualquer uma das 3 telas**
+22. Em até 30s (SWR refreshInterval), as outras 2 abas atualizam sozinhas — task sumiu de todas
+
+### CENÁRIO U5 — Productivity dashboard com widget unificado
+
+23. Acessa `/admin/productivity`
+24. No final da seção "Tarefas do dia" (mockada do productivity store), aparece um **novo widget "Tarefas do time"** com 3 chips: Hoje / Esta semana / Atrasadas
+25. Widget lista até 6 tasks pendentes vindas de `/api/me/tasks`
+26. Click em "Ver todas" → navega pra `/admin/me`
+27. Marcar concluída no widget → sincroniza com `/admin/me`
+
+### CENÁRIO U6 — TaskRow visual consistente
+
+28. Compare lado-a-lado: TaskRow em `/admin/me`, TaskRow no widget de `/admin/productivity`, TaskRow na aba Checklist de `/admin/onboarding/[id]`
+29. **Devem ser visualmente idênticas** (mesmo componente reutilizado)
+30. Diferença: em /admin/me e widget, mostra badge "ONBOARDING" colorida; em Onboarding Detail aba Checklist, badge é omitida (redundante)
+
+✅ **6 cenários OK se**: filtros funcionam com contadores reais, agrupamento visual claro, sincronização entre 3 telas, owner toggle funcional, TaskRow consistente.

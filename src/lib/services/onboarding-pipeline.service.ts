@@ -229,18 +229,31 @@ async function instantiateTaskForColumn(
   const { data: col } = await admin
     .from("operational_pipeline_columns")
     .select(
-      "name, default_assignee_role, deliverables_template, checklist_template, sla_hours, slug",
+      "name, default_assignee_role, deliverables_template, checklist_template, sla_hours, slug, color",
     )
     .eq("id", columnId)
     .maybeSingle()
   if (!col) return
 
+  // Pega contexto (store/client) pra popular source_metadata
   const { data: onb } = await admin
     .from("onboardings")
-    .select("org_id, current_version")
+    .select(
+      "org_id, current_version, store_id, client_id, client:clients(name), store:client_stores(store_name)",
+    )
     .eq("id", onboardingId)
     .maybeSingle()
   if (!onb) return
+  const clientRow = Array.isArray(onb.client) ? onb.client[0] : onb.client
+  const storeRow = Array.isArray(onb.store) ? onb.store[0] : onb.store
+  const sourceMeta = {
+    store_name: storeRow?.store_name ?? null,
+    client_name: clientRow?.name ?? null,
+    stage_name: col.name,
+    stage_color: col.color,
+    stage_slug: col.slug,
+    onboarding_id: onboardingId,
+  }
 
   type ChecklistRow = {
     id: string
@@ -301,12 +314,15 @@ async function instantiateTaskForColumn(
       status: "pending" as const,
       priority: "medium" as const,
       type: "onboarding" as const,
-      source_type: "auto_onboarding_step",
+      source_type: "onboarding",
+      source_id: onboardingId,
+      source_metadata: sourceMeta,
       onboarding_id: onboardingId,
       operational_column_id: columnId,
       assignee_role: it.assignee_role,
       version: onb.current_version,
       due_date: computeDue(it.sla_hours),
+      sla_hours: it.sla_hours ?? col.sla_hours ?? 24,
       created_by: createdBy,
       metadata: {
         checklist_item_id: it.id,

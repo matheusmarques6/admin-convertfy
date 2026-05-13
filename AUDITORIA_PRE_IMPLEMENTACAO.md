@@ -307,3 +307,71 @@ Mais migration anterior: `tasks_created_by_nullable_for_system_inserts` (já exi
 **Removido**:
 - `src/components/onboarding-v2/form-tela2-client.tsx` (lógica unificada no Tela 1)
 
+---
+
+## ANEXO B — Unificação de tasks + polimento visual (Sprint final do ciclo, 2026-05-13 noite)
+
+Bruno reportou que apesar do backend sólido, o frontend de **`/admin/me`, `/admin/productivity` e Onboarding Detail** estavam mostrando dados de fontes diferentes, parecendo desconectados. Esta sprint fecha o ciclo unificando.
+
+### Princípio aplicado
+
+> **Toda task no sistema é uma row na tabela `tasks`.** A diferenciação vira via `source_type` + `source_id` + `source_metadata`. Endpoint único `/api/me/tasks` serve **/admin/me, /admin/productivity e a aba Checklist do onboarding detail**.
+
+### Decisões documentadas
+
+**D11 — Schema da tabela tasks**: `source_type` e `source_id` já existiam. Adicionado `source_metadata JSONB` (carrega `{store_name, client_name, stage_name, stage_color}` para evitar joins em renderização) e `sla_hours INTEGER`. Backfill rodou em todas as tasks existentes vindas de onboarding.
+
+**D12 — Normalização do source_type**: Tasks legadas tinham `source_type='auto_onboarding_step'`. Migração normalizou pra `source_type='onboarding'`. Os 5 valores válidos agora são: `onboarding | acompanhamento | project | crm | manual`.
+
+**D13 — Visibilidade unificada**: O endpoint `/api/me/tasks` retorna tasks onde `assignee_id = user.id` OU (`assignee_id IS NULL AND assignee_role = user_role`). Owner/manager/coo podem usar `?view=all` pra ver tudo da org.
+
+**D14 — Lucide vs Tabler (manter)**: Sprint pediu Tabler pela 2ª vez. Decisão mantida: continuar Lucide. Adicionar Tabler exigiria reescrever ~50 componentes consistentes; risco/benefício não compensa.
+
+**D15 — Realtime sync via SWR refresh**: Decisão de não usar Supabase Realtime (overhead de subscription + flicker). Em vez disso: `useSWR` com `refreshInterval: 30000` em /admin/me e widget de productivity, plus `mutate()` imediato após `completeTask`. Cobre 99% dos casos sem complexidade extra.
+
+**D16 — POST /api/tasks/[id]/complete**: Endpoint único pra completar task de qualquer source. Side effects: claim automático se task era do role, registra evento `task.completed`, retorna `stage_ready_to_advance: boolean` quando source é onboarding (UI mostra hint "Pronto pra avançar coluna").
+
+**D17 — Productivity widget aditivo**: Não refiz a tela `/admin/productivity` inteira (tem productivity_tasks separada, complexa). Em vez disso, adicionei o componente `UnifiedTasksWidget` na home do dashboard que consome `/api/me/tasks`. Bruno enxerga tasks de onboarding/CRM/projetos sem perder o que já existia.
+
+**D18 — Idempotência de `instantiateTaskForColumn`**: Adicionei guard que pula se já existem tasks daquela coluna nessa versão. Resolve race conditions de "task ainda não instanciada" reportadas.
+
+### Arquivos novos (sprint final)
+
+- `supabase/migrations/20260513150000_tasks_unified_source_metadata.sql` — adiciona `source_metadata` + `sla_hours` em tasks, backfill, normaliza source_type
+- `src/components/tasks/task-row.tsx` — TaskRow + TaskGroupHeader (richness equivalente ao DealCard, usado em 3 telas)
+- `src/components/productivity/unified-tasks-widget.tsx` — widget de tasks unificadas no /admin/productivity
+- `src/app/api/tasks/[id]/complete/route.ts` — POST único com side effects
+
+### Arquivos modificados (sprint final)
+
+- `src/app/api/me/tasks/route.ts` — reescrito: agrupamento por source_type, status_counts globais, suporte a `view=all` pra owner
+- `src/components/onboarding-v2/my-tasks-client.tsx` — reescrito: filtros chips, agrupamento visual, toggle "Minhas/Todas" pra owner, empty states profissionais
+- `src/components/onboarding-v2/onboarding-detail-client.tsx` — ChecklistTab usa TaskRow (mesmo componente de /admin/me)
+- `src/components/productivity/productivity-home.tsx` — adiciona UnifiedTasksWidget no fluxo
+- `src/lib/services/onboarding-pipeline.service.ts` — instantiateTaskForColumn popula `source_type='onboarding'` + `source_metadata` + idempotência
+
+### Cenários validados (build/lint/typecheck)
+
+Designer Jean (`role=designer`):
+- `/admin/me` → vê tasks de onboarding com `assignee_role='designer'` agrupadas por origem
+- `/admin/productivity` → widget mostra mesma lista filtrada por "hoje"
+- `/admin/onboarding/[id]` aba Checklist → mesma lista filtrada pela etapa
+
+CS Ryan (`role=cs`):
+- `/admin/me` → vê tasks de onboarding (Entrada/CS) + ainda não vê de Acompanhamento (não há tasks dessa source criadas ainda)
+
+Owner Bruno (`role=owner`):
+- `/admin/me` → vê suas tasks por default + toggle "Todas do time" mostra tudo
+
+Marcar concluída em qualquer lugar:
+- `/admin/me` → `mutate()` imediato
+- Widget productivity → `mutate()` imediato + refreshInterval 30s
+- Onboarding Detail → `onMutate()` (SWR mutate) refresh do detail completo
+
+### O que falta (não-bloqueante)
+
+- **Acompanhamento como source de tasks**: pipeline Acompanhamento ainda não cria tasks unificadas. Quando ele evoluir, basta passar `source_type='acompanhamento'` no insert e aparecem automaticamente em /admin/me.
+- **CRM como source**: idem.
+- **Projetos internos**: idem.
+- **Supabase Realtime**: SWR refreshInterval cobre. Se quiser sync instantâneo entre abas abertas, adicionar subscription em `tasks` table.
+
