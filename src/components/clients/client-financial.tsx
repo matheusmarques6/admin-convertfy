@@ -219,6 +219,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     value: 0,
     cycle: "MONTHLY" as LocalSubscription["cycle"],
     paymentMethod: "asaas" as LocalSubscription["payment_method"],
+    // billingType "UNDEFINED" = cliente escolhe na hora (PIX / Cartao / Boleto)
+    // outras opcoes: PIX | CREDIT_CARD | BOLETO
+    billingType: "UNDEFINED" as "UNDEFINED" | "PIX" | "CREDIT_CARD" | "BOLETO",
     startDate: new Date().toISOString().split("T")[0],
     notes: "",
   })
@@ -374,7 +377,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             cycle: subscriptionForm.cycle,
             nextDueDate: subscriptionForm.startDate,
             description: subscriptionForm.name,
-            billingType: "PIX", // Default to PIX for subscriptions
+            billingType: subscriptionForm.billingType, // UNDEFINED = cliente escolhe
           }),
         })
 
@@ -664,6 +667,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       value: 0,
       cycle: "MONTHLY",
       paymentMethod: "asaas",
+      billingType: "UNDEFINED",
       startDate: new Date().toISOString().split("T")[0],
       notes: "",
     })
@@ -1368,6 +1372,59 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Forma de cobranca — só aparece quando paymentMethod = "asaas".
+                "Pergunte ao cliente" envia billingType=UNDEFINED pro Asaas, que
+                deixa o cliente escolher PIX/Cartao/Boleto na pagina de pagamento. */}
+            {subscriptionForm.paymentMethod === "asaas" && (
+              <div className="space-y-2">
+                <Label>Forma de cobrança no Asaas *</Label>
+                <Select
+                  value={subscriptionForm.billingType}
+                  onValueChange={(value) =>
+                    setSubscriptionForm({
+                      ...subscriptionForm,
+                      billingType: value as "UNDEFINED" | "PIX" | "CREDIT_CARD" | "BOLETO",
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UNDEFINED">
+                      <div className="flex items-center gap-2">
+                        <QrCode className="h-4 w-4" />
+                        Pergunte ao cliente (PIX, Cartão ou Boleto)
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="PIX">
+                      <div className="flex items-center gap-2">
+                        <QrCode className="h-4 w-4" />
+                        Somente PIX
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="CREDIT_CARD">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        Somente Cartão de Crédito
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="BOLETO">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Somente Boleto
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-500">
+                  &quot;Pergunte ao cliente&quot; é o padrão e deixa o cliente escolher na
+                  página do Asaas. Selecione uma forma específica só se precisar
+                  forçar.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Data de Início *</Label>
