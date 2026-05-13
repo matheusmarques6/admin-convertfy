@@ -78,7 +78,7 @@ async function getDashboardData() {
       .from("onboardings")
       .select(`
         id, status, last_column_change_at, briefing_status,
-        client:clients(id, name),
+        client:clients!onboardings_client_id_fkey(id, name),
         store:client_stores(id, store_name),
         current_column:operational_pipeline_columns(id, name, slug, position)
       `)

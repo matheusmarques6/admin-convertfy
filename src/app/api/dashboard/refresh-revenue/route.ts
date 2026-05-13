@@ -26,10 +26,15 @@ import { upsertSyncResults, upsertOmnisendSyncResults } from "@/lib/services/syn
 
 const log = logger.child("RefreshRevenue")
 
-export const maxDuration = 120
+// Vercel Pro: max 300s. Antes era 120 e estourava com varias stores.
+// Mesmo assim, paramos antes pra retornar parcial gracefully (vide deadline).
+export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
 const LOCK_TTL_MS = 5 * 60 * 1000 // 5 minutes
+// Deadline interno: para o loop ~30s antes do maxDuration pra dar tempo
+// de liberar lock + responder antes do Vercel cortar (504).
+const LOOP_DEADLINE_MS = 270_000
 
 // ── Lock helpers (reuses cron_locks table) ────────────────────────────────
 
@@ -263,11 +268,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, storesRefreshed: 0, durationMs: Date.now() - startTime })
       }
 
-      // Refresh ALL stores sequentially (consistency: same moment, same rates)
+      // Refresh stores sequentially, mas com deadline pra nao estourar
+      // o maxDuration do Vercel (504). Quando atinge deadline, retorna
+      // parcial — proxima request continua dali (idempotente).
       let okCount = 0
       let errorCount = 0
+      let skippedCount = 0
+      let timedOut = false
 
       for (let i = 0; i < stores.length; i++) {
+        if (Date.now() - startTime > LOOP_DEADLINE_MS) {
+          skippedCount = stores.length - i
+          timedOut = true
+          log.warn(
+            `[RefreshRevenue] Deadline reached at store ${i}/${stores.length}, returning partial.`,
+          )
+          break
+        }
         const store = stores[i]
         const result = await refreshStoreForPeriod(adminClient, store as StoreRow, period)
         if (result.status === "ok") {
@@ -285,13 +302,17 @@ export async function POST(request: NextRequest) {
       }
 
       const durationMs = Date.now() - startTime
-      log.info(`[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} duration=${durationMs}ms`)
+      log.info(
+        `[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} skipped=${skippedCount} duration=${durationMs}ms`,
+      )
 
       return NextResponse.json({
         success: true,
         alreadyRunning: false,
         storesRefreshed: okCount,
         storeErrors: errorCount,
+        storesSkipped: skippedCount,
+        timedOut,
         durationMs,
       })
     } finally {

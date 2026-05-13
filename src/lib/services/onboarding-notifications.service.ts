@@ -62,7 +62,7 @@ async function loadOnboardingContext(
   const { data } = await admin
     .from("onboardings")
     .select(
-      "client:clients(name), store:client_stores(store_name)",
+      "client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name)",
     )
     .eq("id", onboardingId)
     .maybeSingle()

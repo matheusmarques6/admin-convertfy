@@ -38,16 +38,23 @@ export function useRealtimeRevenue({ period, onDataUpdate, enabled = true, refre
     }, DEBOUNCE_MS)
   }, [onDataUpdate])
 
-  // Trigger a background refresh via POST endpoint
+  // Trigger a background refresh via POST endpoint.
+  // Timeout absoluto de 60s no client pra UI nao ficar "carregando infinito"
+  // mesmo que o servidor demore mais (vai continuar processando em bg, e o
+  // Realtime/polling captura a atualizacao).
   const triggerRefresh = useCallback(async () => {
     if (isRefreshing) return
     setIsRefreshing(true)
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60_000)
 
     try {
       const res = await fetch(refreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period }),
+        signal: controller.signal,
       })
       const data = await res.json()
 
@@ -60,8 +67,16 @@ export function useRealtimeRevenue({ period, onDataUpdate, enabled = true, refre
       // Realtime event will also fire, but debounce handles dedup
       onDataUpdate()
     } catch (err) {
-      console.error("[useRealtimeRevenue] Refresh failed:", err)
+      const isAbort = err instanceof Error && err.name === "AbortError"
+      if (isAbort) {
+        console.warn(
+          "[useRealtimeRevenue] Refresh client-timeout (60s); processamento continua em background via Realtime/polling",
+        )
+      } else {
+        console.error("[useRealtimeRevenue] Refresh failed:", err)
+      }
     } finally {
+      clearTimeout(timeoutId)
       setIsRefreshing(false)
     }
   }, [period, isRefreshing, onDataUpdate, refreshUrl])

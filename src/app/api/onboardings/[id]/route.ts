@@ -31,7 +31,7 @@ export async function GET(
       .from("onboardings")
       .select(
         `*,
-         client:clients(id, name, company, email, phone),
+         client:clients!onboardings_client_id_fkey(id, name, company, email, phone),
          store:client_stores(id, store_name, store_url, platform),
          source_deal:deals(id, title, value),
          current_column:operational_pipeline_columns(*),
@@ -61,7 +61,7 @@ export async function GET(
         .from("onboardings")
         .select(
           `*,
-           client:clients(id, name, company, email, phone),
+           client:clients!onboardings_client_id_fkey(id, name, company, email, phone),
            store:client_stores(id, store_name, store_url, platform),
            source_deal:deals(id, title, value),
            current_column:operational_pipeline_columns(*),

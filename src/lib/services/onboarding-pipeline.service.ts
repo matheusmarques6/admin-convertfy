@@ -293,7 +293,7 @@ async function instantiateTaskForColumn(
   const { data: onb } = await admin
     .from("onboardings")
     .select(
-      "org_id, current_version, store_id, client_id, client:clients(name), store:client_stores(store_name)",
+      "org_id, current_version, store_id, client_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name)",
     )
     .eq("id", onboardingId)
     .maybeSingle()

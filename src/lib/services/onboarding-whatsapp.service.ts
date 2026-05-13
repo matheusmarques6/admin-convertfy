@@ -104,7 +104,7 @@ export async function sendColumnWhatsApp(params: {
       .from("onboardings")
       .select(
         `id, org_id, form_token, tutorial_token,
-         client:clients(id, name, phone),
+         client:clients!onboardings_client_id_fkey(id, name, phone),
          store:client_stores(id, store_name, platform)`,
       )
       .eq("id", params.onboardingId)

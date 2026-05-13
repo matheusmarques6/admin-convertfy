@@ -132,7 +132,7 @@ async function getOperationalData() {
       .from("onboardings")
       .select(`
         id, status, briefing_status, last_column_change_at, entered_at,
-        client:clients(id, name),
+        client:clients!onboardings_client_id_fkey(id, name),
         store:client_stores(id, store_name, platform),
         current_column:operational_pipeline_columns(id, name, slug, position)
       `)
