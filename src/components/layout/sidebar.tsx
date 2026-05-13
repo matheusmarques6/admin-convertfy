@@ -171,22 +171,12 @@ const OPERACIONAL_NAV: NavGroup[] = [
       { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
       {
         name: "Onboarding",
-        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.ONBOARDING,
+        href: ROUTES.ADMIN.ONBOARDING_V2.LIST,
         icon: Rocket,
       },
       {
-        name: "Acompanhamento",
-        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.ACOMPANHAMENTO,
-        icon: Users,
-      },
-      {
-        name: "Feedback",
-        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.FEEDBACK,
-        icon: MessageSquare,
-      },
-      {
-        name: "Suporte",
-        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.SUPORTE,
+        name: "Tutorial cliente",
+        href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
         icon: LifeBuoy,
       },
     ],
@@ -229,6 +219,7 @@ const GERAL_NAV: NavGroup[] = [
     label: "",
     items: [
       { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
+      { name: "Minhas tarefas", href: ROUTES.ADMIN.ME, icon: ListFilter },
       { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
     ],
   },

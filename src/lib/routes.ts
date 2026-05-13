@@ -119,6 +119,19 @@ export const ROUTES = {
     INBOX: "/admin/inbox",
     INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
 
+    // ── Onboarding (pipeline operacional v2 — PRD) ──────────────────────
+    ONBOARDING_V2: {
+      LIST: "/admin/onboarding",
+      DETAIL: (id: string) => `/admin/onboarding/${id}` as const,
+      NEW: "/admin/onboarding/new",
+    },
+    ONBOARDING_HELP: {
+      LIST: "/admin/onboarding-help",
+      EDIT: "/admin/onboarding-help/edit",
+      EDIT_PAGE: (id: string) => `/admin/onboarding-help/${id}/edit` as const,
+    },
+    ME: "/admin/me",
+
     // ── Settings adicionais ──────────────────────────────────────────────
     AI_TEMPLATES: "/admin/settings/ai-templates",
 

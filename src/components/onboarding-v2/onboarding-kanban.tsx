@@ -1,0 +1,391 @@
+"use client"
+
+/**
+ * Kanban dos onboardings (pipeline 7 colunas). Drag-and-drop entre
+ * colunas chama /api/onboardings/[id]/advance se for proxima coluna,
+ * ou /go-back se voltar (com modal de feedback obrigatorio).
+ *
+ * Card mostra: cliente, loja, briefing_status, current_version, dias
+ * parado, flags de pagamento/contrato.
+ */
+
+import { useMemo, useState } from "react"
+import useSWR from "swr"
+import { SelectClientAndStore } from "./select-client-and-store"
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd"
+import {
+  Plus,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Loader2,
+} from "lucide-react"
+import Link from "next/link"
+import { useToast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
+import type {
+  OnboardingPipelineItem,
+  OperationalPipelineColumn,
+} from "@/types/onboarding-pipeline"
+
+const fetcher = async (url: string) => {
+  const r = await fetch(url)
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error?.message ?? j.error ?? `HTTP ${r.status}`)
+  return j
+}
+
+export function OnboardingKanban() {
+  const { data, mutate, isLoading } = useSWR<{
+    columns: OperationalPipelineColumn[]
+    onboardings: OnboardingPipelineItem[]
+  }>("/api/onboardings", fetcher, { revalidateOnFocus: false })
+  const [newOpen, setNewOpen] = useState(false)
+  const toast = useToast()
+
+  const columns = useMemo(
+    () => [...(data?.columns ?? [])].sort((a, b) => a.position - b.position),
+    [data?.columns],
+  )
+  const onboardings = useMemo(() => data?.onboardings ?? [], [data?.onboardings])
+
+  const byColumn = useMemo(() => {
+    const map = new Map<string, OnboardingPipelineItem[]>()
+    for (const c of columns) map.set(c.id, [])
+    for (const o of onboardings) {
+      if (!o.current_column_id) continue
+      map.get(o.current_column_id)?.push(o)
+    }
+    return map
+  }, [columns, onboardings])
+
+  const handleDrag = async (result: DropResult) => {
+    if (!result.destination) return
+    const { draggableId, destination, source } = result
+    if (destination.droppableId === source.droppableId) return
+
+    const onb = onboardings.find((o) => o.id === draggableId)
+    if (!onb) return
+
+    const srcIdx = columns.findIndex((c) => c.id === source.droppableId)
+    const destIdx = columns.findIndex((c) => c.id === destination.droppableId)
+    if (srcIdx < 0 || destIdx < 0) return
+
+    // Avancar (proximo +1)
+    if (destIdx === srcIdx + 1) {
+      const res = await fetch(`/api/onboardings/${draggableId}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        toast.toast({
+          variant: "destructive",
+          title: "Nao foi possivel avancar",
+          description: j.error?.message ?? j.error ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({ title: "Onboarding avancou de coluna" })
+      mutate()
+      return
+    }
+
+    toast.toast({
+      variant: "destructive",
+      title: "Movimentacao nao suportada",
+      description:
+        "Drag-and-drop so permite avancar 1 coluna. Pra voltar uma etapa, use o botao 'Pedir ajustes' no card.",
+    })
+  }
+
+  if (isLoading) return <KanbanSkeleton />
+
+  return (
+    <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-white">
+            Onboarding
+          </h1>
+          <span className="text-[11px] font-medium text-slate-400 tabular-nums">
+            {onboardings.length}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setNewOpen(true)}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Novo onboarding
+        </button>
+      </div>
+
+      {/* Board */}
+      <div className="flex-1 min-h-0 overflow-x-auto">
+        <DragDropContext onDragEnd={handleDrag}>
+          <div className="flex gap-3 px-5 py-4 h-full">
+            {columns.map((col) => {
+              const cards = byColumn.get(col.id) ?? []
+              return (
+                <div
+                  key={col.id}
+                  className="flex flex-col w-[300px] min-w-[300px] rounded-[8px] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08]"
+                >
+                  <div
+                    className="px-3 py-2.5 rounded-t-[8px] border-b border-black/[0.04] dark:border-white/[0.06]"
+                    style={{ background: `${col.color}15` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ background: col.color }}
+                          aria-hidden
+                        />
+                        <span className="text-[12px] font-semibold text-slate-900 dark:text-white truncate">
+                          {col.name}
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums">
+                          {cards.length}
+                        </span>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-wide font-mono text-slate-400 dark:text-white/35">
+                        {col.default_assignee_role ?? "—"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Droppable droppableId={col.id}>
+                    {(prov, snap) => (
+                      <div
+                        ref={prov.innerRef}
+                        {...prov.droppableProps}
+                        className={
+                          "flex-1 p-2 space-y-2 overflow-y-auto min-h-[200px] " +
+                          (snap.isDraggingOver
+                            ? "bg-violet-50/40 dark:bg-violet-500/[0.05]"
+                            : "")
+                        }
+                      >
+                        {cards.map((onb, idx) => (
+                          <Draggable
+                            key={onb.id}
+                            draggableId={onb.id}
+                            index={idx}
+                          >
+                            {(dp, ds) => (
+                              <Link
+                                href={ROUTES.ADMIN.ONBOARDING_V2.DETAIL(onb.id)}
+                                ref={dp.innerRef}
+                                {...dp.draggableProps}
+                                {...dp.dragHandleProps}
+                                className={
+                                  "block rounded-[6px] border bg-white dark:bg-[#1A1D27] p-2.5 " +
+                                  (ds.isDragging
+                                    ? "border-violet-500 shadow-lg rotate-1"
+                                    : "border-black/[0.06] dark:border-white/[0.08] hover:border-black/[0.12] hover:shadow-sm")
+                                }
+                              >
+                                <OnboardingCard onb={onb} />
+                              </Link>
+                            )}
+                          </Draggable>
+                        ))}
+                        {prov.placeholder}
+                        {cards.length === 0 && !snap.isDraggingOver && (
+                          <p className="text-[11px] text-slate-400 dark:text-white/30 text-center py-3 italic">
+                            Vazio
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              )
+            })}
+          </div>
+        </DragDropContext>
+      </div>
+
+      {newOpen && (
+        <NewOnboardingDialog
+          onClose={() => setNewOpen(false)}
+          onCreated={() => {
+            setNewOpen(false)
+            mutate()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function OnboardingCard({ onb }: { onb: OnboardingPipelineItem }) {
+  const daysIn = Math.floor(
+    (Date.now() - new Date(onb.last_column_change_at).getTime()) /
+      (24 * 3600 * 1000),
+  )
+  const isStuck = daysIn >= 5
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h3 className="text-[12.5px] font-semibold text-slate-900 dark:text-white leading-snug min-w-0 flex-1">
+          {onb.store?.store_name ?? "Loja"}
+        </h3>
+        {onb.current_version > 1 && (
+          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/30 shrink-0">
+            v{onb.current_version}
+          </span>
+        )}
+      </div>
+      {onb.client && (
+        <p className="text-[11px] text-slate-500 dark:text-white/55 truncate mb-1.5">
+          {onb.client.name}
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-2 mt-1.5 text-[10px]">
+        <div className="flex items-center gap-1.5 text-slate-500 dark:text-white/55">
+          <Clock className="h-3 w-3" />
+          {daysIn === 0 ? "hoje" : `${daysIn}d`}
+        </div>
+        {isStuck && (
+          <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-semibold">
+            <AlertTriangle className="h-3 w-3" />
+            Travado
+          </span>
+        )}
+        {onb.briefing_status === "approved" && (
+          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+            Briefing OK
+          </span>
+        )}
+      </div>
+    </>
+  )
+}
+
+function NewOnboardingDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const [clientId, setClientId] = useState<string | null>(null)
+  const [storeId, setStoreId] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const toast = useToast()
+
+  async function submit() {
+    if (!clientId || !storeId) return
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/onboardings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, store_id: storeId }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.toast({
+          variant: "destructive",
+          title: "Falha ao criar",
+          description: j.error?.message ?? "Tente novamente.",
+        })
+        return
+      }
+      if (j.created === false) {
+        toast.toast({
+          title: "Onboarding ja existia",
+          description: "Essa loja ja tem onboarding em progresso.",
+        })
+      } else {
+        toast.toast({ title: "Onboarding criado" })
+      }
+      onCreated()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-[520px] bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
+          <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
+            Novo onboarding
+          </h2>
+          <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55">
+            Selecione cliente existente e loja. Se o cliente nao existe ainda,
+            crie em /admin/clients/new.
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <SelectClientAndStore
+            selectedClientId={clientId}
+            selectedStoreId={storeId}
+            onClientChange={setClientId}
+            onStoreChange={setStoreId}
+          />
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 px-3 text-[12px] font-medium text-slate-700 hover:bg-slate-100 rounded-[6px]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting || !clientId || !storeId}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black rounded-[6px] disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Criar onboarding
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function KanbanSkeleton() {
+  return (
+    <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
+      <div className="h-14 border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0F1117]" />
+      <div className="flex gap-3 p-5 overflow-x-auto">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div
+            key={i}
+            className="w-[300px] min-w-[300px] rounded-[8px] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08] p-3 animate-pulse"
+          >
+            <div className="h-4 w-24 bg-slate-200 dark:bg-white/[0.06] rounded mb-3" />
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((__, j) => (
+                <div key={j} className="h-16 bg-slate-100 dark:bg-white/[0.04] rounded" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
