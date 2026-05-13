@@ -22,6 +22,8 @@ interface DealEventPayload {
   client_id: string
   store_id?: string | null
   title?: string | null
+  value?: number | string | null
+  pipeline_id?: string | null
 }
 
 export async function processDealWonEvents(): Promise<{
@@ -62,6 +64,7 @@ export async function processDealWonEvents(): Promise<{
         client_id: payload.client_id,
         store_id: payload.store_id ?? null,
         title: payload.title ?? null,
+        value: payload.value ?? null,
         owner_id: ev.actor_id,
         created_by: ev.actor_id,
       })

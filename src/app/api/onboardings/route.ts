@@ -94,6 +94,12 @@ export async function POST(request: NextRequest) {
       storeId: body.store_id,
       sourceDealId: body.source_deal_id ?? null,
       createdBy: user.id,
+      plan: body.plan ?? null,
+      mrrValue: body.mrr_value ?? null,
+      clientWhatsapp: body.client_whatsapp ?? null,
+      language: body.language ?? "pt-BR",
+      vertical: body.vertical ?? null,
+      source: body.source ?? "manual",
     })
 
     return successResponse(

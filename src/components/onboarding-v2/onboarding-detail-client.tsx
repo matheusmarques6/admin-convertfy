@@ -7,9 +7,10 @@
  * Acoes: Avancar coluna, Pedir ajustes (com modal feedback), Pedir revisao de briefing.
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   ArrowLeft,
   ArrowRight,
@@ -62,6 +63,21 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("checklist")
   const [goBackOpen, setGoBackOpen] = useState(false)
   const [overrideOpen, setOverrideOpen] = useState(false)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Atalhos via querystring (?action=force-advance / go-back) vindos do kanban
+  useEffect(() => {
+    const action = searchParams.get("action")
+    if (action === "force-advance") {
+      setOverrideOpen(true)
+      router.replace(`/admin/onboarding/${id}`)
+    } else if (action === "go-back") {
+      setGoBackOpen(true)
+      router.replace(`/admin/onboarding/${id}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [advancing, setAdvancing] = useState(false)
   const toast = useToast()
 
@@ -234,7 +250,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Quick info */}
+      {/* Quick info: 2 linhas de KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <InfoCard label="Coluna atual" value={currentCol?.name ?? "—"} />
         <InfoCard
@@ -245,6 +261,38 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         <InfoCard label="Pagamento" value={onb.payment_status} />
         <InfoCard label="Contrato" value={onb.contract_status} />
       </div>
+      {(onb.mrr_value || onb.plan || onb.client_whatsapp || onb.vertical) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {onb.mrr_value != null && (
+            <InfoCard
+              label="MRR"
+              value={new Intl.NumberFormat("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+                maximumFractionDigits: 0,
+              }).format(Number(onb.mrr_value))}
+            />
+          )}
+          {onb.plan && <InfoCard label="Plano" value={onb.plan} />}
+          {onb.vertical && <InfoCard label="Vertical" value={onb.vertical} />}
+          {onb.client_whatsapp && (
+            <InfoCard label="WhatsApp" value={onb.client_whatsapp} />
+          )}
+        </div>
+      )}
+
+      {/* Form link em destaque (copiar 1-click) */}
+      <FormLinkBanner
+        token={onb.form_token}
+        formStatus={
+          onb.briefing_confirmed_by_client
+            ? "concluido"
+            : onb.form_responses
+              ? "em_andamento"
+              : "nao_enviado"
+        }
+        expiresAt={onb.form_token_expires_at ?? null}
+      />
 
       {/* Tabs */}
       <div className="rounded-[8px] bg-white dark:bg-[#0F1117] border border-slate-200 dark:border-white/[0.08]">
@@ -353,13 +401,12 @@ function OverrideDialog({
   submitting: boolean
 }) {
   const [justification, setJustification] = useState("")
-  const task = tasksInCurrent[0] ?? null
-  const checklistDone = ((task?.metadata as Record<string, unknown> | undefined)
-    ?.checklist_done ?? []) as string[]
-  const missingChecklist = column.checklist_template.filter(
-    (c) => !checklistDone.includes(c.id),
+  // Tasks pendentes da coluna atual (cada checklist item é uma task)
+  const pendingTasks = tasksInCurrent.filter((t) => t.status !== "completed")
+  const anchorTask = tasksInCurrent[0] ?? null
+  const taskDels = deliverables.filter(
+    (d) => anchorTask && d.task_id === anchorTask.id,
   )
-  const taskDels = deliverables.filter((d) => task && d.task_id === task.id)
   const missingDeliverables = column.deliverables_template.filter((d) => {
     if (!d.required) return false
     const v = taskDels.find((x) => x.field_slug === d.slug)
@@ -368,10 +415,10 @@ function OverrideDialog({
   })
 
   const skipped = [
-    ...missingChecklist.map((c) => ({
+    ...pendingTasks.map((t) => ({
       type: "checklist" as const,
-      id: c.id,
-      label: c.label,
+      id: t.id,
+      label: t.title,
     })),
     ...missingDeliverables.map((d) => ({
       type: "deliverable" as const,
@@ -504,7 +551,6 @@ function briefingTone(s: string): "ok" | "warn" | "danger" | undefined {
 function ChecklistTab({
   column,
   tasks,
-  onboardingId,
   onMutate,
 }: {
   column: OperationalPipelineColumn | null
@@ -513,21 +559,13 @@ function ChecklistTab({
   onMutate: () => void
 }) {
   const toast = useToast()
-  const task = tasks[0] ?? null
-  const checklist = column?.checklist_template ?? []
-  const done = ((task?.metadata as Record<string, unknown> | undefined)
-    ?.checklist_done ?? []) as string[]
 
-  async function toggle(itemId: string) {
-    if (!task) return
-    const newDone = done.includes(itemId)
-      ? done.filter((d) => d !== itemId)
-      : [...done, itemId]
-    const newMeta = { ...(task.metadata ?? {}), checklist_done: newDone }
-    const res = await fetch(`/api/tasks/${task.id}`, {
+  async function toggleStatus(taskId: string, currentStatus: string) {
+    const newStatus = currentStatus === "completed" ? "pending" : "completed"
+    const res = await fetch(`/api/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata: newMeta }),
+      body: JSON.stringify({ status: newStatus }),
     })
     if (!res.ok) {
       toast.toast({ variant: "destructive", title: "Falha ao salvar" })
@@ -541,40 +579,31 @@ function ChecklistTab({
       <p className="text-[12px] text-slate-500 italic">Nenhuma coluna ativa.</p>
     )
   }
-  if (checklist.length === 0) {
+  if (!tasks || tasks.length === 0) {
     return (
-      <p className="text-[12px] text-slate-500 italic">
-        Esta coluna nao tem checklist.
-      </p>
-    )
-  }
-  if (!task) {
-    return (
-      <div className="text-[12px] text-slate-500 italic space-y-2">
-        <p>Task ainda nao instanciada nessa coluna.</p>
-        <button
-          type="button"
-          onClick={async () => {
-            await fetch(`/api/onboardings/${onboardingId}`, { method: "GET" })
-            onMutate()
-          }}
-          className="text-[11px] text-blue-600 hover:underline"
-        >
-          Recarregar
-        </button>
+      <div className="text-center py-6 rounded-[6px] border border-dashed border-slate-200 dark:border-white/[0.08]">
+        <Loader2 className="h-4 w-4 text-slate-400 mx-auto animate-spin mb-2" />
+        <p className="text-[12px] text-slate-500 dark:text-white/55">
+          Instanciando tarefas dessa etapa...
+        </p>
       </div>
     )
   }
 
-  const total = checklist.length
-  const completed = done.length
+  const sorted = [...tasks].sort((a, b) => {
+    const ao = ((a.metadata as Record<string, unknown> | undefined)?.checklist_item_id as string) ?? ""
+    const bo = ((b.metadata as Record<string, unknown> | undefined)?.checklist_item_id as string) ?? ""
+    return ao.localeCompare(bo)
+  })
+  const total = sorted.length
+  const completed = sorted.filter((t) => t.status === "completed").length
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[12px] text-slate-600 dark:text-white/70">
-          {completed} de {total} concluídos
+          {completed} de {total} concluídas
         </p>
         <span className="text-[11px] font-mono tabular-nums text-slate-500">
           {pct}%
@@ -582,45 +611,80 @@ function ChecklistTab({
       </div>
       <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
         <div
-          className="h-full bg-violet-500"
+          className="h-full bg-violet-500 transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
       <div className="space-y-1.5">
-        {[...checklist]
-          .sort((a, b) => a.order - b.order)
-          .map((it) => {
-            const isDone = done.includes(it.id)
-            return (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => toggle(it.id)}
-                className={
-                  "flex items-start gap-2 w-full px-3 py-2 rounded-[6px] border text-left transition-colors " +
-                  (isDone
-                    ? "bg-emerald-50/40 dark:bg-emerald-500/[0.06] border-emerald-200 dark:border-emerald-900/30"
+        {sorted.map((t) => {
+          const isDone = t.status === "completed"
+          const overdue =
+            t.due_date && new Date(t.due_date) < new Date() && !isDone
+          const dueLabel = t.due_date
+            ? new Date(t.due_date).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : null
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => toggleStatus(t.id, t.status)}
+              className={
+                "flex items-start gap-2.5 w-full px-3 py-2.5 rounded-[6px] border text-left transition-colors " +
+                (isDone
+                  ? "bg-emerald-50/40 dark:bg-emerald-500/[0.06] border-emerald-200 dark:border-emerald-900/30"
+                  : overdue
+                    ? "bg-rose-50/40 dark:bg-rose-500/[0.06] border-rose-200 dark:border-rose-900/30"
                     : "bg-white dark:bg-white/[0.02] border-slate-200 dark:border-white/[0.08] hover:border-slate-300")
-                }
-              >
-                {isDone ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                ) : (
-                  <Circle className="h-4 w-4 text-slate-300 dark:text-white/30 shrink-0 mt-0.5" />
-                )}
-                <span
+              }
+            >
+              {isDone ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+              ) : (
+                <Circle className="h-4 w-4 text-slate-300 dark:text-white/30 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p
                   className={
-                    "text-[12.5px] " +
+                    "text-[13px] leading-snug " +
                     (isDone
                       ? "line-through text-slate-500"
-                      : "text-slate-900 dark:text-white")
+                      : "text-slate-900 dark:text-white font-medium")
                   }
                 >
-                  {it.label}
-                </span>
-              </button>
-            )
-          })}
+                  {t.title}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-slate-500 dark:text-white/55">
+                  {t.assignee_role && (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-mono uppercase tracking-wide text-[10px]">
+                        {t.assignee_role}
+                      </span>
+                    </span>
+                  )}
+                  {dueLabel && (
+                    <span
+                      className={
+                        "inline-flex items-center gap-1 " +
+                        (overdue
+                          ? "text-rose-600 dark:text-rose-400 font-semibold"
+                          : "")
+                      }
+                    >
+                      <Clock className="h-3 w-3" />
+                      {overdue ? "Vencida " : "Vence "}
+                      {dueLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -1448,6 +1512,99 @@ function GoBackDialog({
             <ArrowLeft className="h-3.5 w-3.5" />
             Pedir ajustes
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── FormLinkBanner: link tokenizado em destaque ────────────────────────
+
+function FormLinkBanner({
+  token,
+  formStatus,
+  expiresAt,
+}: {
+  token: string
+  formStatus: "nao_enviado" | "em_andamento" | "concluido"
+  expiresAt: string | null
+}) {
+  const toast = useToast()
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const url = `${origin}/form/${token}`
+
+  const statusInfo = {
+    nao_enviado: {
+      label: "Não enviado",
+      tone: "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/55",
+      icon: <FileText className="h-3 w-3" />,
+    },
+    em_andamento: {
+      label: "Cliente preenchendo",
+      tone: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400",
+      icon: <Loader2 className="h-3 w-3 animate-spin" />,
+    },
+    concluido: {
+      label: "Cliente concluiu",
+      tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+    },
+  }[formStatus]
+
+  const expiresLabel = expiresAt
+    ? new Date(expiresAt).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "short",
+      })
+    : null
+
+  return (
+    <div className="rounded-[6px] bg-violet-50/40 dark:bg-violet-500/[0.05] border border-violet-200 dark:border-violet-500/20 p-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+              Link do formulário do cliente
+            </p>
+            <span
+              className={
+                "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[3px] " +
+                statusInfo.tone
+              }
+            >
+              {statusInfo.icon}
+              {statusInfo.label}
+            </span>
+            {expiresLabel && (
+              <span className="text-[10px] text-slate-500 dark:text-white/55">
+                · expira {expiresLabel}
+              </span>
+            )}
+          </div>
+          <p className="text-[12px] font-mono text-slate-700 dark:text-white/80 truncate">
+            {url}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(url)
+              toast.toast({ title: "Link copiado", description: url })
+            }}
+            className="h-8 px-3 text-[12px] font-semibold text-violet-700 dark:text-violet-300 bg-white dark:bg-violet-500/10 rounded-[5px] border border-violet-300 dark:border-violet-500/30 hover:bg-violet-50"
+          >
+            Copiar link
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 h-8 px-3 text-[12px] font-semibold text-violet-700 dark:text-violet-300 hover:underline"
+          >
+            Abrir
+            <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </div>
     </div>

@@ -1,18 +1,17 @@
-import type { Metadata } from "next"
-import { FormTela2Client } from "@/components/onboarding-v2/form-tela2-client"
-
-export const metadata: Metadata = {
-  title: "Confirmação do Briefing · Convertfy",
-  robots: { index: false, follow: false },
-}
+import { redirect } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
+/**
+ * Pagina /form/[token]/briefing foi unificada com /form/[token] como wizard
+ * multi-step. Esta pagina passou a ser apenas um redirect pra preservar
+ * URLs antigas que ja foram compartilhadas.
+ */
 export default async function FormBriefingPage({
   params,
 }: {
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  return <FormTela2Client token={token} />
+  redirect(`/form/${token}?step=review`)
 }

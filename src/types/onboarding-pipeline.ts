@@ -33,6 +33,12 @@ export interface ChecklistItem {
   id: string
   label: string
   order: number
+  /** Role responsavel default (usado pra criar 1 task por item via instantiateTaskForColumn) */
+  assignee_role?: string | null
+  /** SLA do item em horas (calcula due_date da task) */
+  sla_hours?: number
+  /** Descricao opcional pra task */
+  description?: string
 }
 
 export interface DeliverableField {
@@ -124,6 +130,7 @@ export interface OnboardingPipelineItem {
   payment_status: OnboardingPaymentStatus
   contract_status: OnboardingContractStatus
   form_token: string
+  form_token_expires_at?: string | null
   form_responses: Record<string, unknown> | null
   form_submitted_at: string | null
   briefing_status: BriefingStatus
@@ -138,6 +145,14 @@ export interface OnboardingPipelineItem {
   created_by: string | null
   created_at: string
   updated_at: string
+
+  // Campos comerciais (sprint final)
+  plan?: string | null
+  mrr_value?: number | string | null
+  client_whatsapp?: string | null
+  language?: string | null
+  vertical?: string | null
+  source?: "manual" | "deal_won" | "referral" | "migration" | null
 
   client?: { id: string; name: string; company: string | null }
   store?: {

@@ -232,3 +232,78 @@ Todas as 6 tabelas novas (`operational_pipelines`, `operational_pipeline_columns
 ---
 
 *Documento criado retroativamente em 2026-05-13 após a revisão completa do sprint. Sirva como histórico arqueológico e onboarding pra próximos devs no projeto.*
+
+---
+
+## ANEXO A — Sprint final de produção (2026-05-13 tarde)
+
+Após esta sprint, Bruno solicitou uma **rodada final** com 8 problemas pendentes detalhados. Aqui o que foi entregue e as decisões tomadas.
+
+### Decisões arquiteturais documentadas
+
+**D1 — Lucide vs Tabler Icons**: O documento da sprint pediu Tabler (`@tabler/icons-react`). O projeto inteiro (943 commits, todos componentes) usa Lucide (`lucide-react@^0.561`). Decisão: **manter Lucide** pra não quebrar consistência visual. Tabler exigiria adicionar dependência + reescrever ~50 componentes existentes. Risco vs benefício não compensa.
+
+**D2 — Schema das colunas**: O PRD usa nome `onboarding_v2_stages` em alguns trechos. A tabela real é `operational_pipeline_columns` (criada na migration `20260513015053`). Mantido nome real.
+
+**D3 — Tasks por etapa**: PRD pedia "tasks são auto-instanciadas quando muda de etapa". A implementação inicial criava **1 task por etapa** com title=column.name. Refatorado: **N tasks por etapa, 1 por checklist item** com role + due_date individual via `instantiateTaskForColumn`. Isso resolve o problema 2 (Task ainda não instanciada) e habilita "Minhas tarefas" filtrar por role corretamente.
+
+**D4 — Form unificado**: Tela 1 + Tela 2 viraram **wizard de 6 seções (5 form + 1 review)** num único componente `FormTela1Client`. Rota antiga `/form/[token]/briefing` faz redirect pra preservar URLs já compartilhadas.
+
+**D5 — Modal "Novo onboarding"**: Adicionados campos plan, MRR, WhatsApp, idioma, vertical, origem. Após criar, copia link automaticamente pra clipboard via `navigator.clipboard.writeText` e navega pro detail.
+
+**D6 — 3-dots menu no card**: 6 ações usando Radix Dropdown (mesmo padrão do `DealCard`): Ver / Copiar link / Editar / Forçar avanço / Pedir ajustes / Arquivar. As ações que abrem modal navegam pro detail com `?action=force-advance` ou `?action=go-back` na URL — detail page lê `useSearchParams` e abre o modal automaticamente.
+
+**D7 — SLA visual no card**: Borda esquerda colorida pela cor da coluna. Barra inferior 3px com gradient verde (>20% restante) → amber (20-80% gasto) → rose (>=100% gasto). Badge "SLA" rose quando estourou. Borda do card vira `border-rose-300` quando `payment_status=overdue` ou `briefing.error` (visual de risco).
+
+**D8 — WhatsApp parcial**: Mostrado mascarado no card (`+55 (31) 9****-**88`) por privacidade visual. Função `maskPhone` em `onboarding-card.tsx`.
+
+**D9 — IA: modelo e fallback**: `claude-sonnet-4-6` direto via `@anthropic-ai/sdk`. Fallback usado quando `N8N_BRIEFING_WEBHOOK_URL` não configurado. Custo médio: ~3000 tokens/briefing = ~$0.01 por geração.
+
+**D10 — Templates de checklist com role/SLA por item**: Tipo `ChecklistItem` extendido com `assignee_role?` e `sla_hours?` opcionais. Templates atuais em `onboarding-bootstrap.service.ts` ainda usam `chk(id, label, order)` simples — defaults da coluna são herdados. Pra refinar SLA por item específico, basta adicionar `assignee_role` e `sla_hours` no objeto do template.
+
+### Migration nova adicionada
+
+`20260513120000_onboarding_v2_extended_fields.sql` — adiciona em `onboardings`:
+- `plan TEXT`
+- `mrr_value NUMERIC(10,2)`
+- `client_whatsapp TEXT`
+- `language TEXT DEFAULT 'pt-BR'`
+- `vertical TEXT`
+- `source TEXT DEFAULT 'manual'` (CHECK manual/deal_won/referral/migration)
+- `form_token_expires_at TIMESTAMPTZ DEFAULT NOW() + 30 days`
+
+Mais migration anterior: `tasks_created_by_nullable_for_system_inserts` (já existia).
+
+### Bugs corrigidos nesta sprint
+
+| # | Bug | Fix |
+|---|---|---|
+| F1 | "Task ainda não instanciada" no detail | Refatorado pra criar N tasks (uma por checklist item) |
+| F2 | Card pobre | Reescrito `OnboardingCard` com 17 elementos visuais (avatar, version, SLA, MRR, plan, payment, contract, whatsapp, platform, deadline, briefing pill, indicators, etc.) |
+| F3 | Form e Briefing separados em URLs diferentes | Unificado em wizard único `/form/[token]` com 6 steps + review inline |
+| F4 | Sem botão "Copiar link" em lugar nenhum | 3 lugares: 3-dots menu do card, banner roxo no detail, toast no submit do modal |
+| F5 | Modal "Novo onboarding" só pedia client+store | Enriquecido com 8 campos: client, store, plan, MRR, WhatsApp, idioma, vertical, origem |
+| F6 | Trigger deal.won → onboarding | Confirmado funcionando — trigger SQL + cron handler. Adicionados `value` e `contact_phone` no payload |
+| F7 | Briefing IA não implementado | Implementado: tela final do wizard mostra skeleton, dispara `generateBriefing` async, polling 4s, cliente edita/confirma, onboarding avança |
+| F8 | Migrations não versionadas | 5 migrations originais + 1 nova exportadas pra `supabase/migrations/` |
+
+### Arquivos novos/modificados nesta sprint
+
+**Novos**:
+- `supabase/migrations/20260513120000_onboarding_v2_extended_fields.sql`
+- `README_TESTE_ONBOARDING.md` (raiz)
+
+**Modificados**:
+- `src/types/onboarding-pipeline.ts` (campos novos em `OnboardingPipelineItem`, `assignee_role`/`sla_hours` em `ChecklistItem`)
+- `src/lib/services/onboarding-pipeline.service.ts` (createOnboarding aceita campos novos, instantiateTaskForColumn cria N tasks, validateColumnCompletion usa task.status)
+- `src/lib/services/deal-won-watcher.service.ts` (passa value e contact_phone pro createFromDeal)
+- `src/components/onboarding-v2/onboarding-card.tsx` (reescrito - 17 elementos visuais, 3-dots menu)
+- `src/components/onboarding-v2/onboarding-kanban.tsx` (handlers do 3-dots menu, modal Novo Onboarding enriquecido)
+- `src/components/onboarding-v2/onboarding-detail-client.tsx` (ChecklistTab usa lista de tasks reais, FormLinkBanner novo, KPIs comerciais, atalho via querystring)
+- `src/components/onboarding-v2/form-tela1-client.tsx` (wizard 6 steps + briefing review inline)
+- `src/app/api/onboardings/route.ts` (POST aceita campos novos)
+- `src/app/form/[token]/briefing/page.tsx` (vira redirect pra preservar URL antiga)
+
+**Removido**:
+- `src/components/onboarding-v2/form-tela2-client.tsx` (lógica unificada no Tela 1)
+

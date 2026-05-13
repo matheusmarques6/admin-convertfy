@@ -40,6 +40,13 @@ interface CreateOptions {
   storeId: string
   sourceDealId?: string | null
   createdBy: string | null
+  // Campos comerciais (sprint final)
+  plan?: string | null
+  mrrValue?: number | null
+  clientWhatsapp?: string | null
+  language?: string | null
+  vertical?: string | null
+  source?: "manual" | "deal_won" | "referral" | "migration"
 }
 
 export async function createOnboarding(
@@ -80,10 +87,20 @@ export async function createOnboarding(
       status: "in_progress",
       current_version: 1,
       form_token: formToken,
+      form_token_expires_at: new Date(
+        Date.now() + 30 * 24 * 3600 * 1000,
+      ).toISOString(),
       briefing_status: "not_started",
       entered_at: new Date().toISOString(),
       last_column_change_at: new Date().toISOString(),
       created_by: opts.createdBy,
+      // Campos comerciais
+      plan: opts.plan ?? null,
+      mrr_value: opts.mrrValue ?? null,
+      client_whatsapp: opts.clientWhatsapp ?? null,
+      language: opts.language ?? "pt-BR",
+      vertical: opts.vertical ?? null,
+      source: opts.source ?? "manual",
     })
     .select("*")
     .single()
@@ -129,8 +146,10 @@ export async function createFromDeal(deal: {
   client_id: string
   store_id?: string | null
   title?: string | null
+  value?: number | string | null
   owner_id?: string | null
   created_by?: string | null
+  contact_phone?: string | null
 }): Promise<{ created: boolean; onboarding: OnboardingPipelineItem | null }> {
   const admin = createAdminClient()
 
@@ -177,12 +196,26 @@ export async function createFromDeal(deal: {
     return { created: false, onboarding: null }
   }
 
+  // Buscar telefone do cliente se nao veio no deal
+  let phone: string | null = deal.contact_phone ?? null
+  if (!phone) {
+    const { data: client } = await admin
+      .from("clients")
+      .select("phone")
+      .eq("id", deal.client_id)
+      .maybeSingle()
+    phone = client?.phone ?? null
+  }
+
   return createOnboarding({
     orgId: deal.org_id,
     clientId: deal.client_id,
     storeId,
     sourceDealId: deal.id,
     createdBy: deal.owner_id ?? deal.created_by ?? null,
+    mrrValue: deal.value ? Number(deal.value) : null,
+    clientWhatsapp: phone,
+    source: "deal_won",
   })
 }
 
@@ -195,7 +228,9 @@ async function instantiateTaskForColumn(
 
   const { data: col } = await admin
     .from("operational_pipeline_columns")
-    .select("name, default_assignee_role, deliverables_template, slug")
+    .select(
+      "name, default_assignee_role, deliverables_template, checklist_template, sla_hours, slug",
+    )
     .eq("id", columnId)
     .maybeSingle()
   if (!col) return
@@ -207,37 +242,98 @@ async function instantiateTaskForColumn(
     .maybeSingle()
   if (!onb) return
 
-  // Cria task vinculada
-  const { data: task } = await admin
+  type ChecklistRow = {
+    id: string
+    label: string
+    order?: number
+    assignee_role?: string | null
+    sla_hours?: number
+    description?: string
+  }
+  const checklist = (col.checklist_template ?? []) as ChecklistRow[]
+
+  // Idempotencia: se ja existe pelo menos uma task dessa coluna nessa versao,
+  // significa que ja foi instanciado (re-execucao acidental ou go-back).
+  const { data: existingTasks } = await admin
     .from("tasks")
-    .insert({
+    .select("id")
+    .eq("onboarding_id", onboardingId)
+    .eq("operational_column_id", columnId)
+    .eq("version", onb.current_version)
+    .limit(1)
+  if ((existingTasks ?? []).length > 0) return
+
+  const now = Date.now()
+  // Calcula due_date por item
+  const computeDue = (slaHours: number | undefined): string => {
+    const h = typeof slaHours === "number" && slaHours > 0
+      ? slaHours
+      : col.sla_hours ?? 24
+    return new Date(now + h * 3_600_000).toISOString()
+  }
+
+  // Se a coluna nao tem checklist, cria 1 task fallback (cobre colunas sem template)
+  const items =
+    checklist.length > 0
+      ? checklist.map((c) => ({
+          ...c,
+          assignee_role: c.assignee_role ?? col.default_assignee_role ?? null,
+          sla_hours: c.sla_hours ?? col.sla_hours ?? 24,
+        }))
+      : [
+          {
+            id: "_default",
+            label: col.name,
+            order: 0,
+            assignee_role: col.default_assignee_role ?? null,
+            sla_hours: col.sla_hours ?? 24,
+            description: undefined as string | undefined,
+          },
+        ]
+
+  // Insere todas as tasks de uma vez (1 por checklist item)
+  const taskRows = items
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((it) => ({
       org_id: onb.org_id,
-      title: `${col.name}`,
-      status: "pending",
-      priority: "medium",
-      type: "onboarding",
+      title: it.label,
+      description: it.description ?? null,
+      status: "pending" as const,
+      priority: "medium" as const,
+      type: "onboarding" as const,
       source_type: "auto_onboarding_step",
       onboarding_id: onboardingId,
       operational_column_id: columnId,
-      assignee_role: col.default_assignee_role,
+      assignee_role: it.assignee_role,
       version: onb.current_version,
+      due_date: computeDue(it.sla_hours),
       created_by: createdBy,
-    })
-    .select("id")
-    .single()
+      metadata: {
+        checklist_item_id: it.id,
+        column_slug: col.slug,
+        column_name: col.name,
+      },
+    }))
 
-  if (!task) return
+  const { data: insertedTasks } = await admin
+    .from("tasks")
+    .insert(taskRows)
+    .select("id, metadata")
 
-  // Instancia deliverables a partir do template
+  if (!insertedTasks || insertedTasks.length === 0) return
+
+  // Instancia deliverables uma unica vez, anexados a primeira task da etapa
+  // (a primeira task e o "anchor" que carrega os deliverables do stage)
+  const anchor = insertedTasks[0]
   const deliverables = (col.deliverables_template ?? []) as Array<{
     slug: string
     label: string
     type: string
     required: boolean
   }>
-  if (deliverables.length > 0) {
+  if (anchor && deliverables.length > 0) {
     const rows = deliverables.map((d) => ({
-      task_id: task.id,
+      task_id: anchor.id,
       field_slug: d.slug,
       field_label: d.label,
       field_type: d.type,
@@ -407,24 +503,24 @@ async function validateColumnCompletion(
   // Pega tasks da coluna nessa versao atual
   const { data: tasks } = await admin
     .from("tasks")
-    .select("id, metadata")
+    .select("id, status, metadata")
     .eq("onboarding_id", onboardingId)
     .eq("operational_column_id", col.id)
-  const taskIds = (tasks ?? []).map((t) => t.id)
+  const taskList = tasks ?? []
+  const taskIds = taskList.map((t) => t.id)
 
-  // Valida checklist via metadata.checklist_done (array de ids done)
-  const requiredChecklist = (col.checklist_template ?? []) as Array<{ id: string }>
-  if (requiredChecklist.length > 0 && taskIds.length > 0) {
-    const checklistDone = new Set<string>()
-    for (const t of tasks ?? []) {
-      const meta = (t.metadata ?? {}) as { checklist_done?: string[] }
-      for (const id of meta.checklist_done ?? []) checklistDone.add(id)
-    }
-    const missing = requiredChecklist.filter((c) => !checklistDone.has(c.id))
-    if (missing.length > 0) {
+  // Cada item do checklist agora vira UMA task separada.
+  // Validacao: todas as tasks da etapa precisam estar concluidas.
+  const requiredChecklist = (col.checklist_template ?? []) as Array<{
+    id: string
+    label: string
+  }>
+  if (requiredChecklist.length > 0) {
+    const pendingTasks = taskList.filter((t) => t.status !== "completed")
+    if (pendingTasks.length > 0) {
       return {
         ok: false,
-        error: `Checklist incompleto: ${missing.length} item(ns) pendente(s). Use override pra avancar.`,
+        error: `Checklist incompleto: ${pendingTasks.length} task(s) pendente(s). Conclua todas ou use Forcar avanco.`,
       }
     }
   }
