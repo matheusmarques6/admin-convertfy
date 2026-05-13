@@ -9,6 +9,10 @@ import {
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 import { ensureColumnTasks } from "@/lib/services/onboarding-pipeline.service"
+import {
+  resolveEffectiveStatuses,
+  applyEffectiveStatuses,
+} from "@/lib/services/onboarding-effective-status.service"
 
 export const dynamic = "force-dynamic"
 
@@ -83,8 +87,14 @@ export async function GET(
       ? await admin.from("task_deliverables").select("*").in("task_id", taskIds)
       : { data: [] }
 
+    // Status efetivo (real-time) — sobrescreve os campos armazenados
+    const effective = await resolveEffectiveStatuses(admin, [
+      onb.client_id as string,
+    ])
+    const [enrichedOnb] = applyEffectiveStatuses([onb], effective)
+
     return successResponse(request, {
-      onboarding: onb,
+      onboarding: enrichedOnb,
       columns: columns ?? [],
       deliverables: deliverables ?? [],
     })

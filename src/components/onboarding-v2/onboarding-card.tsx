@@ -252,8 +252,13 @@ export function OnboardingCard({
 
   const mrrLabel = fmtMrr(onb.mrr_value)
   const whatsappMasked = maskWhatsApp(onb.client_whatsapp)
-  const paymentPill = onb.payment_status ? PAYMENT_LABEL[onb.payment_status] : null
-  const contractPill = onb.contract_status ? CONTRACT_LABEL[onb.contract_status] : null
+  // Prefere status efetivo (computado em runtime via unified_invoices + contracts).
+  // Fallback no campo armazenado (legacy / sem cobrança lançada).
+  const effPayment = onb.effective_payment_status ?? onb.payment_status
+  const effContract = onb.effective_contract_status ?? onb.contract_status
+  const paymentPill = effPayment ? PAYMENT_LABEL[effPayment] : null
+  const contractPill = effContract ? CONTRACT_LABEL[effContract] : null
+  const paymentSource = onb.effective_payment_source ?? "fallback"
 
   const status = briefingStatusSentence(onb.briefing_status, !!onb.form_responses)
   const hoursIn = hoursBetween(onb.last_column_change_at)
@@ -411,24 +416,33 @@ export function OnboardingCard({
               label={mrrLabel ? `${mrrLabel}/mês` : "Sem MRR"}
               pill={
                 paymentPill && (
-                  <StatusPill label={paymentPill.label} tone={paymentPill.tone} />
+                  <span
+                    title={
+                      paymentSource === "asaas"
+                        ? "Status sincronizado via Asaas"
+                        : paymentSource === "local"
+                          ? "Status marcado manualmente"
+                          : "Sem cobranças lançadas"
+                    }
+                  >
+                    <StatusPill
+                      label={paymentPill.label}
+                      tone={paymentPill.tone}
+                    />
+                  </span>
                 )
               }
             />
           )}
-          {contractPill && contractPill.label !== "Pendente" ? (
+          {contractPill && (
             <InfoRow
               icon={<FileSignature className="h-3 w-3" strokeWidth={2} />}
               label="Contrato"
-              pill={<StatusPill label={contractPill.label} tone={contractPill.tone} />}
+              pill={
+                <StatusPill label={contractPill.label} tone={contractPill.tone} />
+              }
             />
-          ) : contractPill ? (
-            <InfoRow
-              icon={<FileSignature className="h-3 w-3" strokeWidth={2} />}
-              label="Contrato"
-              pill={<StatusPill label="Pendente" tone="warn" />}
-            />
-          ) : null}
+          )}
           {whatsappMasked && (
             <InfoRow
               icon={<Phone className="h-3 w-3" strokeWidth={2} />}

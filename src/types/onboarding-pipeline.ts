@@ -154,6 +154,14 @@ export interface OnboardingPipelineItem {
   vertical?: string | null
   source?: "manual" | "deal_won" | "referral" | "migration" | null
 
+  /** Status efetivo computado em runtime via unified_invoices.
+   *  Tem prioridade sobre payment_status armazenado (que vira fallback). */
+  effective_payment_status?: OnboardingPaymentStatus
+  /** Status efetivo de contrato via contracts table. */
+  effective_contract_status?: OnboardingContractStatus
+  /** Origem do effective_payment_status: 'asaas' (webhook), 'local' (manual via Cliente>Financeiro) ou 'fallback' (sem cobrança). */
+  effective_payment_source?: "asaas" | "local" | "fallback"
+
   client?: { id: string; name: string; company: string | null }
   store?: {
     id: string

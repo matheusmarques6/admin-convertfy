@@ -16,6 +16,10 @@ import {
   createOnboarding,
 } from "@/lib/services/onboarding-pipeline.service"
 import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+import {
+  resolveEffectiveStatuses,
+  applyEffectiveStatuses,
+} from "@/lib/services/onboarding-effective-status.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingsApi")
@@ -66,10 +70,18 @@ export async function GET(request: NextRequest) {
       .eq("pipeline_id", pipeline?.id ?? "")
       .order("position", { ascending: true })
 
+    // Calcula status efetivo de pagamento/contrato em runtime
+    // (unified_invoices + contracts -> mapeia pro enum do onboarding)
+    const clientIds = (data ?? [])
+      .map((o) => o.client_id as string)
+      .filter(Boolean)
+    const effective = await resolveEffectiveStatuses(admin, clientIds)
+    const enriched = applyEffectiveStatuses(data ?? [], effective)
+
     return successResponse(request, {
       pipeline,
       columns: columns ?? [],
-      onboardings: data ?? [],
+      onboardings: enriched,
     })
   } catch (error) {
     log.error("List error", error)
