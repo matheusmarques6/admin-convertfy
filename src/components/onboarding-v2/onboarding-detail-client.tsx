@@ -137,76 +137,212 @@ export function OnboardingDetailClient({ id }: { id: string }) {
     }
   }
 
+  // Avatar e helpers para header
+  const storeName = onb.store?.store_name ?? "Loja"
+  const avatarBg = (() => {
+    let h = 0
+    for (let i = 0; i < storeName.length; i++)
+      h = (h * 31 + storeName.charCodeAt(i)) | 0
+    const pal = [
+      { bg: "#EEF0FB", fg: "#4E62D8" },
+      { bg: "#ECFDF5", fg: "#065F46" },
+      { bg: "#FFFBEB", fg: "#92400E" },
+      { bg: "#F3E8FF", fg: "#7C3AED" },
+      { bg: "#FEF2F2", fg: "#991B1B" },
+      { bg: "#F3F4F6", fg: "#4B5563" },
+    ]
+    return pal[Math.abs(h) % pal.length]
+  })()
+  const storeInitials = storeName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+
+  // Health score
+  const elapsedHours = currentCol
+    ? (Date.now() - new Date(onb.last_column_change_at).getTime()) / 3_600_000
+    : 0
+  const slaHours = currentCol?.sla_hours ?? 0
+  const healthScore = (() => {
+    if (!currentCol) return 100
+    let s = 100
+    if (slaHours > 0) {
+      if (elapsedHours >= slaHours) s -= 40
+      else if (elapsedHours >= slaHours * 0.7) s -= 15
+    }
+    if (onb.briefing_status === "needs_review") s -= 20
+    return Math.max(0, Math.min(100, s))
+  })()
+  const healthTone =
+    healthScore >= 80
+      ? { color: "#065F46", label: "Saudável" }
+      : healthScore >= 60
+        ? { color: "#92400E", label: "Atenção" }
+        : { color: "#991B1B", label: "Crítico" }
+
+  const daysInStage = Math.floor(elapsedHours / 24)
+  const tasksDone = tasksInCurrent.filter((t) => t.status === "completed").length
+  const tasksTotal = tasksInCurrent.length
+
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <Link
-            href={ROUTES.ADMIN.ONBOARDING_V2.LIST}
-            className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-700 mb-2"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Voltar pra pipeline
-          </Link>
-          <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">
-            {onb.store?.store_name ?? "Loja"}
-          </h1>
-          <div className="flex items-center gap-2 mt-1 text-[13px] text-slate-500 dark:text-white/55">
-            <span>{onb.client?.name}</span>
-            {onb.client?.company && (
+      {/* Voltar */}
+      <Link
+        href={ROUTES.ADMIN.ONBOARDING_V2.LIST}
+        className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white -mt-2"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        Voltar ao pipeline
+      </Link>
+
+      {/* Header card */}
+      <div className="rounded-[12px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0F1117] p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-[12px] font-semibold shrink-0"
+              style={{
+                background: avatarBg.bg,
+                color: avatarBg.fg,
+                fontSize: 18,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {storeInitials || "?"}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11.5px] font-medium text-slate-500 dark:text-white/55 flex items-center gap-1">
+                Workflows
+                <span className="text-slate-300 dark:text-white/20">/</span>
+                Onboarding
+                {currentCol && (
+                  <>
+                    <span className="text-slate-300 dark:text-white/20">/</span>
+                    <span className="text-slate-700 dark:text-white/80">
+                      {currentCol.name}
+                    </span>
+                  </>
+                )}
+              </p>
+              <h1 className="text-[24px] sm:text-[28px] font-semibold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight">
+                {storeName}
+              </h1>
+              <div className="flex items-center gap-1.5 mt-1 text-[13px] text-slate-500 dark:text-white/55">
+                <span>{onb.client?.name}</span>
+                {onb.client?.company && (
+                  <>
+                    <span className="text-slate-300 dark:text-white/20">·</span>
+                    <span>{onb.client.company}</span>
+                  </>
+                )}
+                {onb.current_version > 1 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/30">
+                    v{onb.current_version}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setGoBackOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[8px] text-[12.5px] font-semibold text-slate-700 dark:text-white/85 bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.10] hover:bg-slate-50 dark:hover:bg-white/[0.06] transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Pedir ajustes
+            </button>
+            {nextCol && (
               <>
-                <span>·</span>
-                <span>{onb.client.company}</span>
+                <button
+                  type="button"
+                  onClick={() => setOverrideOpen(true)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[8px] text-[12.5px] font-semibold text-amber-700 dark:text-amber-300 bg-white dark:bg-white/[0.02] border border-amber-300 dark:border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-500/[0.08] transition-colors"
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Forçar avanço
+                </button>
+                <button
+                  type="button"
+                  onClick={() => advance()}
+                  disabled={advancing}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[8px] text-[12.5px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50 hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                >
+                  {advancing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
+                  Avançar etapa
+                </button>
               </>
-            )}
-            {onb.store?.platform && (
-              <>
-                <span>·</span>
-                <span className="font-mono text-[11px] uppercase">
-                  {onb.store.platform}
-                </span>
-              </>
-            )}
-            {onb.current_version > 1 && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/30">
-                v{onb.current_version}
-              </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setGoBackOpen(true)}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold text-slate-700 dark:text-white/70 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Pedir ajustes
-          </button>
-          {nextCol && (
-            <>
-              <button
-                type="button"
-                onClick={() => setOverrideOpen(true)}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold text-amber-700 dark:text-amber-300 bg-white dark:bg-white/[0.04] border border-amber-300 dark:border-amber-500/30 hover:border-amber-400"
+        {/* KPI strip embutida */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-0 mt-5 rounded-[10px] border border-slate-200 dark:border-white/[0.06] bg-slate-50/40 dark:bg-white/[0.02] overflow-hidden">
+          <div className="px-4 py-3 border-r border-slate-200 dark:border-white/[0.06]">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40 mb-1">
+              Health
+            </p>
+            <div className="flex items-baseline gap-1.5">
+              <span
+                className="text-[20px] font-semibold tabular-nums leading-none"
+                style={{ color: healthTone.color }}
               >
-                <ShieldAlert className="h-3.5 w-3.5" />
-                Forçar avanço
-              </button>
-              <button
-                type="button"
-                onClick={() => advance()}
-                disabled={advancing}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] text-[12px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50"
+                {healthScore}
+              </span>
+              <span
+                className="text-[10.5px] font-medium"
+                style={{ color: healthTone.color }}
               >
-                {advancing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Avancar coluna
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
+                {healthTone.label}
+              </span>
+            </div>
+          </div>
+          <div className="px-4 py-3 border-r border-slate-200 dark:border-white/[0.06]">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40 mb-1">
+              Na etapa
+            </p>
+            <p className="text-[20px] font-semibold tabular-nums text-slate-900 dark:text-white leading-none">
+              {daysInStage}d
+            </p>
+          </div>
+          <div className="px-4 py-3 border-r border-slate-200 dark:border-white/[0.06]">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40 mb-1">
+              SLA
+            </p>
+            <p className="text-[20px] font-semibold tabular-nums text-slate-900 dark:text-white leading-none">
+              {slaHours > 0 ? `${Math.ceil(slaHours / 24)}d` : "—"}
+            </p>
+          </div>
+          <div className="px-4 py-3 border-r border-slate-200 dark:border-white/[0.06]">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40 mb-1">
+              Tarefas
+            </p>
+            <p className="text-[20px] font-semibold tabular-nums text-slate-900 dark:text-white leading-none">
+              {tasksDone}/{tasksTotal}
+            </p>
+          </div>
+          <div className="px-4 py-3 col-span-2 sm:col-span-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40 mb-1">
+              MRR
+            </p>
+            <p className="text-[20px] font-semibold tabular-nums text-slate-900 dark:text-white leading-none">
+              {onb.mrr_value
+                ? new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                    maximumFractionDigits: 0,
+                  }).format(Number(onb.mrr_value))
+                : "—"}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -250,36 +386,88 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Quick info: 2 linhas de KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <InfoCard label="Coluna atual" value={currentCol?.name ?? "—"} />
-        <InfoCard
-          label="Briefing"
-          value={briefingLabel(onb.briefing_status)}
-          tone={briefingTone(onb.briefing_status)}
-        />
-        <InfoCard label="Pagamento" value={onb.payment_status} />
-        <InfoCard label="Contrato" value={onb.contract_status} />
-      </div>
-      {(onb.mrr_value || onb.plan || onb.client_whatsapp || onb.vertical) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {onb.mrr_value != null && (
-            <InfoCard
-              label="MRR"
-              value={new Intl.NumberFormat("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-                maximumFractionDigits: 0,
-              }).format(Number(onb.mrr_value))}
-            />
-          )}
-          {onb.plan && <InfoCard label="Plano" value={onb.plan} />}
-          {onb.vertical && <InfoCard label="Vertical" value={onb.vertical} />}
-          {onb.client_whatsapp && (
-            <InfoCard label="WhatsApp" value={onb.client_whatsapp} />
-          )}
+      {/* Status de entregas */}
+      <div className="rounded-[12px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0F1117] p-5">
+        <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-white/45 mb-4">
+          Status de entregas
+        </p>
+        <div className="space-y-2">
+          {[
+            {
+              label: "Pagamento",
+              icon: "$",
+              status:
+                (onb.effective_payment_status ?? onb.payment_status) === "paid"
+                  ? { label: "Pago", tone: "pos" as const }
+                  : (onb.effective_payment_status ?? onb.payment_status) ===
+                      "overdue"
+                    ? { label: "Atrasado", tone: "neg" as const }
+                    : { label: "Pendente", tone: "warn" as const },
+            },
+            {
+              label: "Contrato",
+              icon: "📄",
+              status:
+                (onb.effective_contract_status ?? onb.contract_status) ===
+                "signed"
+                  ? { label: "Assinado", tone: "pos" as const }
+                  : (onb.effective_contract_status ?? onb.contract_status) ===
+                      "sent"
+                    ? { label: "Enviado", tone: "warn" as const }
+                    : { label: "Pendente", tone: "warn" as const },
+            },
+            {
+              label: "Formulário",
+              icon: "📝",
+              status:
+                onb.briefing_status === "approved"
+                  ? { label: "Concluído", tone: "pos" as const }
+                  : onb.form_responses
+                    ? { label: "Em andamento", tone: "warn" as const }
+                    : { label: "Pendente", tone: "warn" as const },
+            },
+          ].map((row) => {
+            const pillMap = {
+              pos: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+              warn: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+              neg: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+            }
+            const dotMap = {
+              pos: "#10B981",
+              warn: "#F59E0B",
+              neg: "#EF4444",
+            }
+            return (
+              <div
+                key={row.label}
+                className="flex items-center justify-between py-1.5"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-slate-100 dark:bg-white/[0.04] text-slate-500 dark:text-white/55 text-[12px]">
+                    {row.icon}
+                  </span>
+                  <span className="text-[13.5px] font-medium text-slate-800 dark:text-white/90">
+                    {row.label}
+                  </span>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11.5px] font-semibold rounded-[5px] ${pillMap[row.status.tone]}`}
+                >
+                  <span
+                    className="rounded-full"
+                    style={{
+                      height: 5,
+                      width: 5,
+                      background: dotMap[row.status.tone],
+                    }}
+                  />
+                  {row.status.label}
+                </span>
+              </div>
+            )
+          })}
         </div>
-      )}
+      </div>
 
       {/* Form link em destaque (copiar 1-click) */}
       <FormLinkBanner
@@ -506,45 +694,6 @@ function OverrideDialog({
       </div>
     </div>
   )
-}
-
-function InfoCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone?: "ok" | "warn" | "danger"
-}) {
-  const toneCls =
-    tone === "ok"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : tone === "warn"
-        ? "text-amber-600 dark:text-amber-400"
-        : tone === "danger"
-          ? "text-red-600 dark:text-red-400"
-          : "text-slate-900 dark:text-white"
-  return (
-    <div className="rounded-[6px] bg-white dark:bg-[#0F1117] border border-slate-200 dark:border-white/[0.08] p-3">
-      <p className="text-[10px] uppercase tracking-wide font-mono text-slate-400 dark:text-white/35 mb-1">
-        {label}
-      </p>
-      <p className={"text-[13px] font-semibold capitalize " + toneCls}>
-        {value.replaceAll("_", " ")}
-      </p>
-    </div>
-  )
-}
-
-function briefingLabel(s: string) {
-  return s.replaceAll("_", " ")
-}
-function briefingTone(s: string): "ok" | "warn" | "danger" | undefined {
-  if (s === "approved") return "ok"
-  if (s === "generated_pending_review") return "warn"
-  if (s === "needs_review") return "danger"
-  return undefined
 }
 
 // ─── Checklist Tab ──────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@
  * parado, flags de pagamento/contrato.
  */
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
@@ -20,7 +20,16 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, Sparkles, Loader2 } from "lucide-react"
+import {
+  Plus,
+  Loader2,
+  Search,
+  Flame,
+  Activity,
+  Clock,
+  TrendingUp,
+  X,
+} from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
 import type {
@@ -35,41 +44,219 @@ const fetcher = async (url: string) => {
   return j
 }
 
+type KanbanTab = "all" | "mine" | "overdue" | "live"
+
+interface OrgMember {
+  id: string
+  role: string
+  profile_id: string
+  profile?: { id: string; name: string; avatar_url: string | null }
+}
+
+function avatarHash(name: string): { bg: string; fg: string } {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  const pal = [
+    { bg: "#EEF0FB", fg: "#4E62D8" },
+    { bg: "#ECFDF5", fg: "#065F46" },
+    { bg: "#FFFBEB", fg: "#92400E" },
+    { bg: "#F3E8FF", fg: "#7C3AED" },
+    { bg: "#FEF2F2", fg: "#991B1B" },
+    { bg: "#F3F4F6", fg: "#4B5563" },
+  ]
+  return pal[Math.abs(h) % pal.length]
+}
+
+function initials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase()
+}
+
 export function OnboardingKanban() {
   const { data, mutate, isLoading } = useSWR<{
     columns: OperationalPipelineColumn[]
     onboardings: OnboardingPipelineItem[]
   }>("/api/onboardings", fetcher, { revalidateOnFocus: false })
+
+  // Members pra filtro de responsavel
+  const { data: membersData } = useSWR<{ members: OrgMember[] }>(
+    "/api/admin/org-members",
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+
+  // ID do user logado (vem do /api/me/tasks que ja é cached)
+  const { data: meData } = useSWR<{
+    member: { id: string; role: string; profile_id: string }
+  }>("/api/me/tasks?status=pending", fetcher, { revalidateOnFocus: false })
+
   const [newOpen, setNewOpen] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [goBackContext, setGoBackContext] = useState<{
     onboardingId: string
     targetSlug: string
   } | null>(null)
+  const [tab, setTab] = useState<KanbanTab>("all")
+  const [search, setSearch] = useState("")
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const toast = useToast()
+
+  // Atalho Cmd+K / Ctrl+K pro search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        document.getElementById("kanban-search")?.focus()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
 
   const columns = useMemo(
     () => [...(data?.columns ?? [])].sort((a, b) => a.position - b.position),
     [data?.columns],
   )
-  const onboardings = useMemo(() => data?.onboardings ?? [], [data?.onboardings])
+  const allOnboardings = useMemo(
+    () => data?.onboardings ?? [],
+    [data?.onboardings],
+  )
+  const members = useMemo(() => membersData?.members ?? [], [membersData])
+  const meProfileId = meData?.member?.profile_id ?? null
+  const meRole = meData?.member?.role ?? null
+
+  // Helper: onboarding pertence ao usuario "me"?
+  function isMine(onb: OnboardingPipelineItem): boolean {
+    if (!meProfileId && !meRole) return false
+    const tasks = onb.tasks ?? []
+    return tasks.some(
+      (t) =>
+        (t as unknown as { assignee_id?: string }).assignee_id ===
+          meProfileId ||
+        (t.assignee_role && t.assignee_role === meRole),
+    )
+  }
+
+  // Helper: onboarding tem alguma task atribuida a um member especifico?
+  function hasMember(
+    onb: OnboardingPipelineItem,
+    member: OrgMember,
+  ): boolean {
+    const tasks = onb.tasks ?? []
+    return tasks.some(
+      (t) =>
+        (t as unknown as { assignee_id?: string }).assignee_id ===
+          member.profile_id ||
+        (t.assignee_role && t.assignee_role === member.role),
+    )
+  }
+
+  // Helper: SLA estourado
+  function isOverdue(
+    onb: OnboardingPipelineItem,
+    cols: OperationalPipelineColumn[],
+  ): boolean {
+    const col =
+      onb.current_column ??
+      cols.find((c) => c.id === onb.current_column_id)
+    if (!col || !col.sla_hours) return false
+    const elapsed =
+      (Date.now() - new Date(onb.last_column_change_at).getTime()) /
+      3_600_000
+    return elapsed >= col.sla_hours
+  }
+
+  // Aplica filtros: search + tab + responsavel
+  const filteredOnboardings = useMemo(() => {
+    return allOnboardings.filter((o) => {
+      // Search
+      if (search.trim()) {
+        const q = search.toLowerCase()
+        const name = (o.store?.store_name ?? "").toLowerCase()
+        const client = (o.client?.name ?? "").toLowerCase()
+        const company = (o.client?.company ?? "").toLowerCase()
+        if (
+          !name.includes(q) &&
+          !client.includes(q) &&
+          !company.includes(q)
+        )
+          return false
+      }
+      // Tab
+      if (tab === "mine" && !isMine(o)) return false
+      if (tab === "overdue" && !isOverdue(o, columns)) return false
+      if (tab === "live") {
+        const lastCol = columns[columns.length - 1]
+        if (lastCol && o.current_column_id !== lastCol.id) return false
+      }
+      // Responsavel
+      if (selectedMemberId) {
+        const m = members.find((x) => x.id === selectedMemberId)
+        if (!m || !hasMember(o, m)) return false
+      }
+      return true
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allOnboardings, search, tab, selectedMemberId, columns, members, meProfileId, meRole])
+
+  // KPIs (baseados em todos os onboardings, nao nos filtrados)
+  const kpis = useMemo(() => {
+    const total = allOnboardings.length
+    const overdue = allOnboardings.filter((o) => isOverdue(o, columns)).length
+    // Health: 100 menos % de atrasados (simples e auditavel)
+    const health = total === 0 ? 100 : Math.round(100 - (overdue / total) * 100)
+    // Tempo medio na etapa atual (dias)
+    const days = allOnboardings.map((o) => {
+      const ms = Date.now() - new Date(o.last_column_change_at).getTime()
+      return ms / 86_400_000
+    })
+    const avgDays =
+      days.length === 0
+        ? 0
+        : Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10
+    return { total, overdue, health, avgDays }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allOnboardings, columns])
+
+  // Counts pra cada tab
+  const tabCounts = useMemo(
+    () => ({
+      all: allOnboardings.length,
+      mine: allOnboardings.filter(isMine).length,
+      overdue: allOnboardings.filter((o) => isOverdue(o, columns)).length,
+      live: (() => {
+        const lastCol = columns[columns.length - 1]
+        if (!lastCol) return 0
+        return allOnboardings.filter(
+          (o) => o.current_column_id === lastCol.id,
+        ).length
+      })(),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allOnboardings, columns, meProfileId, meRole],
+  )
 
   const byColumn = useMemo(() => {
     const map = new Map<string, OnboardingPipelineItem[]>()
     for (const c of columns) map.set(c.id, [])
-    for (const o of onboardings) {
+    for (const o of filteredOnboardings) {
       if (!o.current_column_id) continue
       map.get(o.current_column_id)?.push(o)
     }
     return map
-  }, [columns, onboardings])
+  }, [columns, filteredOnboardings])
 
   const handleDrag = async (result: DropResult) => {
     if (!result.destination) return
     const { draggableId, destination, source } = result
     if (destination.droppableId === source.droppableId) return
 
-    const onb = onboardings.find((o) => o.id === draggableId)
+    const onb = allOnboardings.find((o) => o.id === draggableId)
     if (!onb) return
 
     const srcIdx = columns.findIndex((c) => c.id === source.droppableId)
@@ -118,27 +305,190 @@ export function OnboardingKanban() {
 
   return (
     <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15]">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-brand-100 dark:bg-brand-500/15 text-brand-400 dark:text-brand-300">
-            <Sparkles className="h-3.5 w-3.5" />
-          </span>
-          <h1 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-white">
-            Onboarding
-          </h1>
-          <span className="text-[11px] font-medium text-slate-400 tabular-nums">
-            {onboardings.length}
-          </span>
+      {/* Header com titulo + acao */}
+      <div className="px-5 sm:px-7 pt-5 pb-3 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-slate-500 dark:text-white/55">
+              Workflows
+            </p>
+            <h1 className="text-[22px] sm:text-[24px] font-semibold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              Onboarding
+              <span className="text-[12px] font-medium text-slate-400 dark:text-white/40 tabular-nums">
+                {kpis.total} ativos
+              </span>
+            </h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNewOpen(true)}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[8px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12.5px] font-semibold hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Novo onboarding
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setNewOpen(true)}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Novo onboarding
-        </button>
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiCard
+            label="Ativos"
+            value={String(kpis.total)}
+            caption="no pipeline"
+            icon={<Activity className="h-3.5 w-3.5" />}
+            tone="neutral"
+          />
+          <KpiCard
+            label="Atrasados"
+            value={String(kpis.overdue)}
+            caption="precisa de ação"
+            icon={<Flame className="h-3.5 w-3.5" />}
+            tone={kpis.overdue > 0 ? "danger" : "neutral"}
+          />
+          <KpiCard
+            label="Health score"
+            value={String(kpis.health)}
+            caption={
+              kpis.health >= 80
+                ? "saudável"
+                : kpis.health >= 60
+                  ? "atenção"
+                  : "crítico"
+            }
+            icon={<TrendingUp className="h-3.5 w-3.5" />}
+            tone={
+              kpis.health >= 80
+                ? "success"
+                : kpis.health >= 60
+                  ? "warn"
+                  : "danger"
+            }
+          />
+          <KpiCard
+            label="Tempo médio"
+            value={`${kpis.avgDays}d`}
+            caption="por etapa · meta: 4d"
+            icon={<Clock className="h-3.5 w-3.5" />}
+            tone={kpis.avgDays <= 4 ? "success" : "warn"}
+          />
+        </div>
+      </div>
+
+      {/* Toolbar: tabs + responsavel + search */}
+      <div className="px-5 sm:px-7 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08] flex flex-wrap items-center gap-3">
+        {/* Tabs */}
+        <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-white/[0.04] rounded-[8px] p-0.5">
+          {(
+            [
+              { id: "all", label: "Todos", count: tabCounts.all },
+              { id: "mine", label: "Meus", count: tabCounts.mine },
+              { id: "overdue", label: "Atrasados", count: tabCounts.overdue },
+              { id: "live", label: "Pronto pra live", count: tabCounts.live },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={
+                "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[6px] text-[12px] font-medium transition-colors " +
+                (tab === t.id
+                  ? "bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+                  : "text-slate-600 dark:text-white/65 hover:text-slate-900 dark:hover:text-white")
+              }
+            >
+              {t.label}
+              {t.count > 0 && t.id !== "all" && (
+                <span
+                  className={
+                    "text-[10px] font-semibold tabular-nums px-1 rounded " +
+                    (t.id === "overdue" && tab !== t.id
+                      ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+                      : "text-slate-500 dark:text-white/45")
+                  }
+                >
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Filtro responsavel */}
+        {members.length > 0 && (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-white/55 shrink-0">
+              Responsável:
+            </span>
+            <div className="flex items-center -space-x-1.5">
+              {members.slice(0, 5).map((m) => {
+                const name = m.profile?.name ?? m.role
+                const ini = initials(name)
+                const c = avatarHash(name)
+                const selected = selectedMemberId === m.id
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedMemberId(selected ? null : m.id)
+                    }
+                    title={name}
+                    className={
+                      "h-6 w-6 rounded-full inline-flex items-center justify-center text-[9.5px] font-semibold ring-2 transition-all " +
+                      (selected
+                        ? "ring-brand-500 scale-110 z-10"
+                        : "ring-white dark:ring-[#0F1117] hover:scale-105 hover:z-10")
+                    }
+                    style={{
+                      background: c.bg,
+                      color: c.fg,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {ini || "?"}
+                  </button>
+                )
+              })}
+              {members.length > 5 && (
+                <span className="text-[10px] text-slate-400 dark:text-white/40 pl-2">
+                  +{members.length - 5}
+                </span>
+              )}
+            </div>
+            {selectedMemberId && (
+              <button
+                type="button"
+                onClick={() => setSelectedMemberId(null)}
+                className="text-[11px] text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white inline-flex items-center gap-0.5"
+              >
+                <X className="h-3 w-3" />
+                limpar
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="ml-auto flex items-center gap-2 min-w-[220px] flex-1 sm:flex-initial sm:w-[280px]">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/35"
+              strokeWidth={2}
+            />
+            <input
+              id="kanban-search"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar loja, contato..."
+              className="w-full h-8 pl-8 pr-12 text-[12.5px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/35 focus:outline-none focus:border-brand-400 focus:bg-white dark:focus:bg-[#1A1D27] transition-colors"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9.5px] font-mono font-semibold text-slate-400 dark:text-white/35 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] rounded px-1 py-0.5">
+              ⌘K
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Board */}
@@ -147,14 +497,20 @@ export function OnboardingKanban() {
           <div className="flex gap-3 px-5 py-4 h-full">
             {columns.map((col) => {
               const cards = byColumn.get(col.id) ?? []
+              const overdueInCol = cards.filter((c) =>
+                isOverdue(c, columns),
+              ).length
+              const slaLabel = col.sla_hours
+                ? `SLA ${Math.ceil(col.sla_hours / 24)}d`
+                : null
               return (
                 <div
                   key={col.id}
-                  className="flex flex-col w-[264px] min-w-[264px]"
+                  className="flex flex-col w-[280px] min-w-[280px]"
                 >
-                  {/* Header minimal estilo DS v3 — dot + nome + count, sem bg colorido */}
+                  {/* Header: dot + nome + count, role + SLA, badge atrasados */}
                   <div className="px-1 pb-2.5 pt-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span
                           className="h-[7px] w-[7px] rounded-full shrink-0"
@@ -168,9 +524,28 @@ export function OnboardingKanban() {
                           {cards.length}
                         </span>
                       </div>
-                      <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-white/35">
-                        {col.default_assignee_role ?? "—"}
-                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 gap-2">
+                      <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400 dark:text-white/35 uppercase tracking-wide">
+                        {col.default_assignee_role && (
+                          <span>{col.default_assignee_role}</span>
+                        )}
+                        {col.default_assignee_role && slaLabel && (
+                          <span className="text-slate-300 dark:text-white/20">
+                            ·
+                          </span>
+                        )}
+                        {slaLabel && <span>{slaLabel}</span>}
+                      </div>
+                      {overdueInCol > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-700 dark:text-rose-300 tabular-nums">
+                          <Flame
+                            className="h-2.5 w-2.5"
+                            strokeWidth={2.5}
+                          />
+                          {overdueInCol}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -692,6 +1067,57 @@ function NewOnboardingDialog({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── KpiCard ─────────────────────────────────────────────────────────────
+
+function KpiCard({
+  label,
+  value,
+  caption,
+  icon,
+  tone,
+}: {
+  label: string
+  value: string
+  caption: string
+  icon: React.ReactNode
+  tone: "neutral" | "success" | "warn" | "danger"
+}) {
+  const valueColor =
+    tone === "danger"
+      ? "text-rose-600 dark:text-rose-400"
+      : tone === "warn"
+        ? "text-amber-700 dark:text-amber-300"
+        : tone === "success"
+          ? "text-emerald-700 dark:text-emerald-400"
+          : "text-slate-900 dark:text-white"
+  const iconColor =
+    tone === "danger"
+      ? "text-rose-500"
+      : tone === "warn"
+        ? "text-amber-500"
+        : tone === "success"
+          ? "text-emerald-500"
+          : "text-slate-400 dark:text-white/40"
+  return (
+    <div className="rounded-[10px] border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-[#1A1D27] px-3.5 py-2.5 sm:px-4 sm:py-3 hover:border-slate-300 dark:hover:border-white/[0.10] transition-colors">
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className={iconColor}>{icon}</span>
+        <span className="text-[11px] font-medium text-slate-500 dark:text-white/55">
+          {label}
+        </span>
+      </div>
+      <p
+        className={`text-[22px] sm:text-[26px] font-semibold leading-none tabular-nums tracking-tight ${valueColor}`}
+      >
+        {value}
+      </p>
+      <p className="text-[10.5px] text-slate-400 dark:text-white/40 mt-1">
+        {caption}
+      </p>
     </div>
   )
 }

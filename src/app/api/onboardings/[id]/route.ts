@@ -87,6 +87,31 @@ export async function GET(
       ? await admin.from("task_deliverables").select("*").in("task_id", taskIds)
       : { data: [] }
 
+    // Atividade recente — events entity_id = onboarding.id (top 20 ordenado desc)
+    const { data: activityRaw } = await admin
+      .from("events")
+      .select("id, event_type, actor_id, actor_type, payload, created_at")
+      .eq("entity_type", "onboarding")
+      .eq("entity_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20)
+    const actorIds = (activityRaw ?? [])
+      .map((a) => a.actor_id as string | null)
+      .filter((x): x is string => !!x)
+    const { data: actorProfiles } = actorIds.length
+      ? await admin
+          .from("profiles")
+          .select("id, name, avatar_url")
+          .in("id", actorIds)
+      : { data: [] }
+    const profileMap = new Map(
+      (actorProfiles ?? []).map((p) => [p.id, p]),
+    )
+    const activity = (activityRaw ?? []).map((a) => ({
+      ...a,
+      actor: a.actor_id ? profileMap.get(a.actor_id) ?? null : null,
+    }))
+
     // Status efetivo (real-time) — sobrescreve os campos armazenados
     const effective = await resolveEffectiveStatuses(admin, [
       onb.client_id as string,
@@ -97,6 +122,7 @@ export async function GET(
       onboarding: enrichedOnb,
       columns: columns ?? [],
       deliverables: deliverables ?? [],
+      activity,
     })
   } catch (error) {
     return errorResponse(request, error, "onboarding-get")
