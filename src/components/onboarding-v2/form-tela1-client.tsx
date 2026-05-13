@@ -3,22 +3,22 @@
 /**
  * Formulário publico unificado — Ficha de Onboarding (versão final).
  *
- * Wizard multi-step com 5 secoes enxutas + uploads + briefing IA inline +
- * tela "Proximos passos" com timeline. Total: 19 perguntas + 3 uploads.
+ * Wizard multi-step com 6 secoes enxutas + uploads + briefing IA inline +
+ * tela "Proximos passos" com timeline.
  *
  * Cruzou com a ficha do Notion (Convertfy operacional) e tirou
- * redundancias com o que o admin ja cadastra no modal "Novo onboarding".
+ * redundancias com o que o admin ja cadastra no modal "Novo onboarding"
+ * (cliente, contato, whatsapp ja vem do cadastro).
  *
  * Acessivel por token publico em /form/[token]. Apos completar etapas:
- *   1. Quem e voce (contato)        — nome, whatsapp, email
- *   2. Sua empresa                  — CNPJ, pais
- *   3. Sua loja                     — pre-preenchido editavel
- *   4. Sua marca                    — posicionamento, tom, sensibilidade
- *   5. Seu cliente                  — persona, objecao, motivador
- *   6. Historico & objetivos        — fez email antes, objetivo, sazonais
- *   7. Materiais                    — logo (upload), manual, design refs, OBS
- *   8. Confirme o briefing          — IA gera, cliente revisa
- *   9. Proximos passos              — timeline 6 etapas + CSM avatar
+ *   1. Sua empresa                  — CNPJ, pais
+ *   2. Sua loja                     — pre-preenchido editavel
+ *   3. Sua marca                    — posicionamento, tom, sensibilidade
+ *   4. Seu cliente                  — persona, objecao, motivador
+ *   5. Historico & objetivos        — fez email antes, objetivo, sazonais
+ *   6. Materiais                    — logo (upload), manual, design refs, OBS
+ *   7. Confirme o briefing          — IA gera, cliente revisa
+ *   8. Proximos passos              — timeline 6 etapas + CSM avatar
  */
 
 import { useEffect, useState } from "react"
@@ -72,35 +72,6 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  {
-    id: "contato",
-    title: "Quem é você",
-    subtitle: "Pra gente saber quem fala pela loja.",
-    questions: [
-      {
-        key: "contact_name",
-        label: "Seu nome completo",
-        type: "text",
-        required: true,
-        placeholder: "Ex: Maria Silva",
-      },
-      {
-        key: "contact_whatsapp",
-        label: "WhatsApp com DDD",
-        type: "tel",
-        required: true,
-        placeholder: "(11) 91234-5678",
-        helpText: "Vamos te adicionar no grupo do projeto.",
-      },
-      {
-        key: "contact_email",
-        label: "E-mail principal",
-        type: "email",
-        required: true,
-        placeholder: "voce@empresa.com",
-      },
-    ],
-  },
   {
     id: "empresa",
     title: "Sua empresa",
