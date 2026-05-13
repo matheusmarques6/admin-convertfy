@@ -219,6 +219,19 @@ export async function createFromDeal(deal: {
   })
 }
 
+/**
+ * Auto-instancia (idempotente) as tasks de uma coluna do onboarding.
+ * Wrapper exportado pro endpoint GET /api/onboardings/[id] usar como
+ * self-healing pra onboardings criados antes da refatoracao do bootstrap.
+ */
+export async function ensureColumnTasks(
+  onboardingId: string,
+  columnId: string,
+  createdBy: string | null,
+): Promise<void> {
+  return instantiateTaskForColumn(onboardingId, columnId, createdBy)
+}
+
 async function instantiateTaskForColumn(
   onboardingId: string,
   columnId: string,

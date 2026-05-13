@@ -266,7 +266,7 @@ export function ProductivityHome() {
                           apiAction("delete_task", { id: t.id })
                         }
                       }}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 opacity-0 group-hover/row:opacity-100 transition-opacity"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 opacity-50 hover:opacity-100"
                       aria-label="Excluir tarefa"
                       title="Excluir tarefa"
                     >

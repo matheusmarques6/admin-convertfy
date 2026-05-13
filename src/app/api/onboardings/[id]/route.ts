@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
+import { ensureColumnTasks } from "@/lib/services/onboarding-pipeline.service"
 
 export const dynamic = "force-dynamic"
 
@@ -39,6 +40,35 @@ export async function GET(
 
     if (error) throw error
     if (!onb) throw new AppError("Onboarding nao encontrado", 404)
+
+    // Self-healing: se a coluna atual nao tem tasks instanciadas, instancia agora.
+    // Cobre onboardings criados antes da refatoracao do instantiateTaskForColumn.
+    const tasksInCurrent = ((onb.tasks ?? []) as Array<{
+      operational_column_id?: string
+    }>).filter((t) => t.operational_column_id === onb.current_column_id)
+    if (
+      onb.current_column_id &&
+      tasksInCurrent.length === 0 &&
+      onb.status === "in_progress"
+    ) {
+      await ensureColumnTasks(onb.id, onb.current_column_id, user.id)
+      // refetch tasks apos instanciar
+      const { data: refreshed } = await admin
+        .from("onboardings")
+        .select(
+          `*,
+           client:clients(id, name, company, email, phone),
+           store:client_stores(id, store_name, store_url, platform),
+           source_deal:deals(id, title, value),
+           current_column:operational_pipeline_columns(*),
+           tasks(id, title, status, priority, assignee_role, operational_column_id, due_date, metadata),
+           versions:onboarding_versions(*)`,
+        )
+        .eq("id", id)
+        .eq("org_id", orgId)
+        .maybeSingle()
+      if (refreshed) Object.assign(onb, refreshed)
+    }
 
     // Tambem retorna todas as colunas da pipeline (pra UI saber a sequencia)
     const { data: columns } = await admin

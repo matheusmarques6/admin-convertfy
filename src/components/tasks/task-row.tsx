@@ -357,8 +357,8 @@ export function TaskRow({
             )}
           </div>
 
-          {/* Ações (visíveis sempre, mais opacas off-hover) */}
-          <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+          {/* Ações sempre visíveis */}
+          <div className="flex items-center gap-1 shrink-0">
             {href && (
               <Link
                 href={href}
@@ -370,6 +370,22 @@ export function TaskRow({
                 <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDelete()
+              }}
+              aria-label="Excluir tarefa"
+              title="Excluir tarefa"
+              className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-[5px]"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -378,11 +394,7 @@ export function TaskRow({
                   aria-label="Mais ações"
                   className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-[5px]"
                 >
-                  {deleting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  )}
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
@@ -392,6 +404,17 @@ export function TaskRow({
                   onClick={(e) => e.stopPropagation()}
                   className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
                 >
+                  {href && (
+                    <DropdownMenu.Item
+                      onSelect={() => {
+                        window.location.href = href
+                      }}
+                      className="flex cursor-pointer items-center gap-2 rounded-[4px] mx-1 px-2 py-2 outline-none text-slate-700 dark:text-white/80 data-[highlighted]:bg-slate-50 dark:data-[highlighted]:bg-white/[0.04]"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-[12px] font-medium">Abrir origem</span>
+                    </DropdownMenu.Item>
+                  )}
                   <DropdownMenu.Item
                     onSelect={handleDelete}
                     className="flex cursor-pointer items-center gap-2 rounded-[4px] mx-1 px-2 py-2 outline-none text-rose-600 dark:text-rose-400 data-[highlighted]:bg-rose-50 dark:data-[highlighted]:bg-rose-500/10"
