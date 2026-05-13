@@ -538,6 +538,78 @@ export async function POST(request: NextRequest) {
         break
       }
 
+      case "update_comment": {
+        const { id: updCommentId, text: updCommentText } = data
+        if (typeof updCommentText !== "string" || !updCommentText.trim()) {
+          throw new Error("text obrigatorio")
+        }
+        const { error } = await supabase
+          .from("productivity_comments")
+          .update({ text: updCommentText })
+          .eq("id", updCommentId)
+          .eq("org_id", orgId)
+          .eq("user_id", user.id) // so o autor edita
+        if (error) throw error
+        break
+      }
+
+      case "reorder_groups": {
+        // Espera { positions: [{ group_id, position }] }
+        const positions = (data?.positions ?? []) as Array<{
+          group_id: string
+          position: number
+        }>
+        for (const p of positions) {
+          await supabase
+            .from("productivity_tasks")
+            .update({ group_position: p.position })
+            .eq("group_id", p.group_id)
+            .eq("org_id", orgId)
+        }
+        break
+      }
+
+      case "bulk_delete_tasks": {
+        const ids = (data?.ids ?? []) as string[]
+        if (ids.length === 0) break
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .delete()
+          .in("id", ids)
+          .eq("org_id", orgId)
+        if (error) throw error
+        break
+      }
+
+      case "bulk_update_tasks": {
+        const ids = (data?.ids ?? []) as string[]
+        const updates = (data?.updates ?? {}) as Record<string, unknown>
+        if (ids.length === 0 || Object.keys(updates).length === 0) break
+        // Whitelist de campos editaveis em bulk
+        const allowed: Record<string, unknown> = {}
+        for (const k of [
+          "status",
+          "priority",
+          "group_id",
+          "group_name",
+          "group_color",
+          "assigned_to",
+          "due_date",
+        ]) {
+          if (k in updates) allowed[k] = updates[k]
+        }
+        if (allowed.status === "done") {
+          allowed.completed_at = new Date().toISOString()
+        }
+        const { error } = await supabase
+          .from("productivity_tasks")
+          .update(allowed)
+          .in("id", ids)
+          .eq("org_id", orgId)
+        if (error) throw error
+        break
+      }
+
       case "update_group": {
         const { group_id: gId, group_name: gName, group_color: gColor } = data
         const updates: Record<string, unknown> = {}

@@ -6,6 +6,12 @@ import { useProductivityStore } from "@/stores/productivity-store"
 import { TASK_STATUSES, PRIORITY_LABELS } from "@/types/productivity"
 import type { ProductivityTask, TaskGroup } from "@/types/productivity"
 import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd"
+import {
   PriorityDot, StatusDot, Avatar, Checkbox,
   IconPlus, IconClose, IconChevronRight,
 } from "./ds-atoms"
@@ -28,6 +34,12 @@ export function ProductivityBoard() {
   const [newTaskProject, setNewTaskProject] = useState("")
   const [isCreating, setIsCreating] = useState(false)
 
+  // Filtros e bulk selection (lifted state)
+  const [priorityFilter, setPriorityFilter] = useState<Set<number>>(new Set())
+  const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set())
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+
   // Load data on mount
   useEffect(() => {
     if (!isLoaded) fetchData()
@@ -35,6 +47,37 @@ export function ProductivityBoard() {
 
   const allTasks = groups.flatMap((g) => g.items)
   const selectedTask = allTasks.find((t) => t.id === selectedTaskId) || null
+
+  // Aplicar filtros
+  const filteredGroups = groups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((t) => {
+        if (priorityFilter.size > 0 && !priorityFilter.has(t.priority)) return false
+        if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false
+        if (assigneeFilter.size > 0) {
+          const taskPeople = (t.people ?? []) as string[]
+          if (!taskPeople.some((p) => assigneeFilter.has(p))) return false
+        }
+        return true
+      }),
+    }))
+    // Remove grupos vazios apos filtro (so se algum filtro ativo)
+    .filter((g) =>
+      priorityFilter.size === 0 && assigneeFilter.size === 0 && statusFilter.size === 0
+        ? true
+        : g.items.length > 0,
+    )
+
+  const hasFilters =
+    priorityFilter.size > 0 || assigneeFilter.size > 0 || statusFilter.size > 0
+  const filteredTaskIds = new Set(
+    filteredGroups.flatMap((g) => g.items.map((t) => t.id)),
+  )
+  // Lista unica de responsaveis vistos no board
+  const availableAssignees = Array.from(
+    new Set(allTasks.flatMap((t) => (t.people ?? []) as string[])),
+  ).filter(Boolean)
 
   const handleCreateTask = useCallback(async () => {
     if (!newTaskName.trim()) return
@@ -152,12 +195,34 @@ export function ProductivityBoard() {
         </div>
       </header>
 
+      {/* Filter bar */}
+      <FilterBar
+        priorityFilter={priorityFilter}
+        setPriorityFilter={setPriorityFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        assigneeFilter={assigneeFilter}
+        setAssigneeFilter={setAssigneeFilter}
+        availableAssignees={availableAssignees}
+        hasFilters={hasFilters}
+      />
+
+      {/* Bulk actions bar */}
+      {selectedTaskIds.size > 0 && (
+        <BulkActionsBar
+          selectedIds={Array.from(selectedTaskIds)}
+          allGroups={groups}
+          onClear={() => setSelectedTaskIds(new Set())}
+          apiAction={apiAction}
+        />
+      )}
+
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-auto">
           {boardView === "table" && (
             <TableView
-              groups={groups}
+              groups={filteredGroups}
               collapsedGroups={collapsedGroups}
               toggleGroupCollapse={toggleGroupCollapse}
               expandedTasks={expandedTasks}
@@ -167,6 +232,9 @@ export function ProductivityBoard() {
               hoveredTaskId={hoveredTaskId}
               setHoveredTask={setHoveredTask}
               toggleSubtask={toggleSubtask}
+              selectedTaskIds={selectedTaskIds}
+              setSelectedTaskIds={setSelectedTaskIds}
+              filteredTaskIds={filteredTaskIds}
             />
           )}
           {boardView === "kanban" && (
@@ -187,6 +255,320 @@ export function ProductivityBoard() {
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// FilterBar (prioridade, status, responsavel)
+// ============================================================================
+
+const PRIORITY_OPTS: Array<{ value: number; label: string; color: string }> = [
+  { value: 1, label: "P1", color: "#EF4444" },
+  { value: 2, label: "P2", color: "#F59E0B" },
+  { value: 3, label: "P3", color: "#3B82F6" },
+  { value: 4, label: "P4", color: "#94A3B8" },
+]
+
+const STATUS_OPTS: Array<{ value: string; label: string }> = [
+  { value: "pending", label: "Pendentes" },
+  { value: "in_progress", label: "Em andamento" },
+  { value: "review", label: "Em revisão" },
+  { value: "done", label: "Concluídas" },
+]
+
+function FilterBar({
+  priorityFilter,
+  setPriorityFilter,
+  statusFilter,
+  setStatusFilter,
+  assigneeFilter,
+  setAssigneeFilter,
+  availableAssignees,
+  hasFilters,
+}: {
+  priorityFilter: Set<number>
+  setPriorityFilter: (s: Set<number>) => void
+  statusFilter: Set<string>
+  setStatusFilter: (s: Set<string>) => void
+  assigneeFilter: Set<string>
+  setAssigneeFilter: (s: Set<string>) => void
+  availableAssignees: string[]
+  hasFilters: boolean
+}) {
+  function togglePriority(p: number) {
+    const next = new Set(priorityFilter)
+    if (next.has(p)) next.delete(p)
+    else next.add(p)
+    setPriorityFilter(next)
+  }
+  function toggleStatus(s: string) {
+    const next = new Set(statusFilter)
+    if (next.has(s)) next.delete(s)
+    else next.add(s)
+    setStatusFilter(next)
+  }
+  function toggleAssignee(a: string) {
+    const next = new Set(assigneeFilter)
+    if (next.has(a)) next.delete(a)
+    else next.add(a)
+    setAssigneeFilter(next)
+  }
+  function clearAll() {
+    setPriorityFilter(new Set())
+    setStatusFilter(new Set())
+    setAssigneeFilter(new Set())
+  }
+
+  return (
+    <div className="px-6 py-2 bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)] flex items-center gap-3 flex-wrap">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40">
+        Filtros
+      </span>
+
+      {/* Prioridade */}
+      <div className="flex items-center gap-1">
+        {PRIORITY_OPTS.map((p) => {
+          const active = priorityFilter.has(p.value)
+          return (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => togglePriority(p.value)}
+              className={cn(
+                "inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[11.5px] font-medium border transition-colors",
+                active
+                  ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-gray-900 dark:border-white"
+                  : "bg-white dark:bg-white/[0.04] text-gray-700 dark:text-white/70 border-gray-200 dark:border-white/[0.10] hover:border-gray-300",
+              )}
+              title={`Prioridade ${p.label}`}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+              {p.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Status */}
+      <div className="flex items-center gap-1">
+        {STATUS_OPTS.map((s) => {
+          const active = statusFilter.has(s.value)
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => toggleStatus(s.value)}
+              className={cn(
+                "h-7 px-2 rounded-sm text-[11.5px] font-medium border transition-colors",
+                active
+                  ? "bg-brand-400 text-white border-brand-400"
+                  : "bg-white dark:bg-white/[0.04] text-gray-700 dark:text-white/70 border-gray-200 dark:border-white/[0.10] hover:border-gray-300",
+              )}
+            >
+              {s.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Responsaveis */}
+      {availableAssignees.length > 0 && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-gray-400 mr-1">
+            Resp.
+          </span>
+          {availableAssignees.slice(0, 6).map((a) => {
+            const active = assigneeFilter.has(a)
+            return (
+              <button
+                key={a}
+                type="button"
+                onClick={() => toggleAssignee(a)}
+                className={cn(
+                  "h-7 w-7 inline-flex items-center justify-center rounded-full text-[10px] font-bold border transition-all",
+                  active
+                    ? "ring-2 ring-violet-500 ring-offset-1 border-transparent"
+                    : "border-gray-200 dark:border-white/[0.10] hover:scale-110",
+                )}
+                title={`Filtrar por ${a}`}
+              >
+                <Avatar initials={a} size={20} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {hasFilters && (
+        <button
+          type="button"
+          onClick={clearAll}
+          className="ml-auto h-7 px-2 text-[11.5px] font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-sm"
+        >
+          Limpar filtros
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// BulkActionsBar (selecao multipla)
+// ============================================================================
+
+function BulkActionsBar({
+  selectedIds,
+  allGroups,
+  onClear,
+  apiAction,
+}: {
+  selectedIds: string[]
+  allGroups: TaskGroup[]
+  onClear: () => void
+  apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
+}) {
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false)
+  const [prioMenuOpen, setPrioMenuOpen] = useState(false)
+
+  async function bulkComplete() {
+    await apiAction("bulk_update_tasks", {
+      ids: selectedIds,
+      updates: { status: "done" },
+    })
+    onClear()
+  }
+
+  async function bulkDelete() {
+    if (
+      !window.confirm(
+        `Excluir ${selectedIds.length} tarefa(s)?\n\nEssa acao nao pode ser desfeita.`,
+      )
+    )
+      return
+    await apiAction("bulk_delete_tasks", { ids: selectedIds })
+    onClear()
+  }
+
+  async function bulkMoveTo(g: TaskGroup) {
+    await apiAction("bulk_update_tasks", {
+      ids: selectedIds,
+      updates: {
+        group_id: g.id,
+        group_name: g.name,
+        group_color: g.color,
+      },
+    })
+    setMoveMenuOpen(false)
+    onClear()
+  }
+
+  async function bulkPriority(p: number) {
+    await apiAction("bulk_update_tasks", {
+      ids: selectedIds,
+      updates: { priority: p },
+    })
+    setPrioMenuOpen(false)
+    onClear()
+  }
+
+  return (
+    <div className="px-6 py-2 bg-violet-50 dark:bg-violet-500/10 border-b border-violet-200 dark:border-violet-500/20 flex items-center gap-2 flex-wrap">
+      <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300">
+        {selectedIds.length} selecionada{selectedIds.length === 1 ? "" : "s"}
+      </span>
+      <div className="h-4 w-px bg-violet-300 dark:bg-violet-500/30 mx-1" />
+      <button
+        type="button"
+        onClick={bulkComplete}
+        className="inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10 rounded-sm"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Marcar concluídas
+      </button>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setPrioMenuOpen((v) => !v)}
+          className="inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium text-gray-700 dark:text-white/80 hover:bg-white dark:hover:bg-white/[0.06] rounded-sm"
+        >
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          Prioridade
+        </button>
+        {prioMenuOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.10] rounded-md shadow-lg py-1 min-w-[120px]"
+            onMouseLeave={() => setPrioMenuOpen(false)}
+          >
+            {PRIORITY_OPTS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => bulkPriority(p.value)}
+                className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 dark:hover:bg-white/[0.04] flex items-center gap-2"
+              >
+                <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setMoveMenuOpen((v) => !v)}
+          className="inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium text-gray-700 dark:text-white/80 hover:bg-white dark:hover:bg-white/[0.06] rounded-sm"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Mover para
+        </button>
+        {moveMenuOpen && (
+          <div
+            className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.10] rounded-md shadow-lg py-1 min-w-[200px] max-h-[280px] overflow-y-auto"
+            onMouseLeave={() => setMoveMenuOpen(false)}
+          >
+            {allGroups.length === 0 && (
+              <p className="px-3 py-2 text-[11.5px] text-gray-400">Sem projetos</p>
+            )}
+            {allGroups.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => bulkMoveTo(g)}
+                className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50 dark:hover:bg-white/[0.04] flex items-center gap-2"
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-sm shrink-0"
+                  style={{ background: g.color }}
+                />
+                <span className="truncate">{g.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={bulkDelete}
+        className="inline-flex items-center gap-1 h-7 px-2.5 text-[11.5px] font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-sm"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg>
+        Excluir
+      </button>
+
+      <button
+        type="button"
+        onClick={onClear}
+        className="ml-auto h-7 w-7 inline-flex items-center justify-center text-gray-500 hover:bg-white dark:hover:bg-white/[0.06] rounded-sm"
+        aria-label="Cancelar selecao"
+        title="Cancelar selecao (Esc)"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   )
 }
@@ -420,6 +802,155 @@ function NewGroupButton() {
 // Subtask Row (editavel + deletavel inline)
 // ============================================================================
 
+// ============================================================================
+// CommentItem (edit + delete inline)
+// ============================================================================
+
+function CommentItem({
+  comment,
+}: {
+  comment: {
+    id: string
+    user_id?: string
+    user_initials: string
+    text: string
+    created_at: string
+  }
+}) {
+  const { apiAction, profile } = useProductivityStore()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(comment.text)
+  const [hovered, setHovered] = useState(false)
+
+  // So o autor edita/exclui (backend valida por user_id)
+  const userId =
+    typeof window !== "undefined"
+      ? (profile as { id?: string } | null)?.id
+      : null
+  const isOwn = !userId || comment.user_id === userId
+
+  function save() {
+    const next = value.trim()
+    if (!next) {
+      setValue(comment.text)
+      setEditing(false)
+      return
+    }
+    if (next !== comment.text) {
+      apiAction("update_comment", { id: comment.id, text: next })
+    }
+    setEditing(false)
+  }
+
+  function del() {
+    if (window.confirm("Excluir esse comentário?")) {
+      apiAction("delete_comment", { id: comment.id })
+    }
+  }
+
+  return (
+    <div
+      className="flex gap-2 mb-3 group/comment"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Avatar initials={comment.user_initials} size={24} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[12px] font-semibold text-gray-700 dark:text-white/90">
+            {comment.user_initials}
+          </span>
+          <span className="text-[10px] text-gray-400 dark:text-white/50">
+            {new Date(comment.created_at).toLocaleString("pt-BR", {
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+          {isOwn && (
+            <div
+              className={cn(
+                "ml-auto flex items-center gap-0.5 transition-opacity",
+                hovered ? "opacity-100" : "opacity-0",
+              )}
+            >
+              {!editing && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                  aria-label="Editar comentário"
+                  title="Editar"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={del}
+                className="h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                aria-label="Excluir comentário"
+                title="Excluir"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg>
+              </button>
+            </div>
+          )}
+        </div>
+        {editing ? (
+          <div className="flex items-end gap-2">
+            <textarea
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  save()
+                }
+                if (e.key === "Escape") {
+                  setValue(comment.text)
+                  setEditing(false)
+                }
+              }}
+              rows={2}
+              className="flex-1 px-2 py-1.5 text-[12px] rounded border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] resize-none focus:outline-none focus:border-brand-400"
+            />
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={save}
+                className="h-6 px-2 text-[10.5px] font-semibold bg-brand-400 hover:bg-brand text-white rounded"
+              >
+                Salvar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setValue(comment.text)
+                  setEditing(false)
+                }}
+                className="h-6 px-2 text-[10.5px] text-gray-600 hover:bg-gray-100 rounded"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p
+            onDoubleClick={() => isOwn && setEditing(true)}
+            className="text-[12px] text-gray-600 dark:text-white/70 m-0 whitespace-pre-wrap cursor-text"
+            title={isOwn ? "Duplo clique para editar" : undefined}
+          >
+            {comment.text}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function SubtaskRow({
   sub,
   onToggle,
@@ -627,6 +1158,7 @@ function TableView({
   expandedTasks, toggleTaskExpand,
   selectedTaskId, selectTask,
   hoveredTaskId, setHoveredTask, toggleSubtask,
+  selectedTaskIds, setSelectedTaskIds, filteredTaskIds,
 }: {
   groups: TaskGroup[]
   collapsedGroups: Set<string>
@@ -638,13 +1170,53 @@ function TableView({
   hoveredTaskId: string | null
   setHoveredTask: (id: string | null) => void
   toggleSubtask: (taskId: string, subtaskId: string) => void
+  selectedTaskIds: Set<string>
+  setSelectedTaskIds: (s: Set<string>) => void
+  filteredTaskIds: Set<string>
 }) {
   const { apiAction } = useProductivityStore()
+
+  function toggleSelectAllVisible() {
+    if (selectedTaskIds.size === filteredTaskIds.size && filteredTaskIds.size > 0) {
+      setSelectedTaskIds(new Set())
+    } else {
+      setSelectedTaskIds(new Set(filteredTaskIds))
+    }
+  }
+
+  function toggleSelectTaskId(id: string) {
+    const next = new Set(selectedTaskIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedTaskIds(next)
+  }
+  const allVisibleSelected =
+    filteredTaskIds.size > 0 && selectedTaskIds.size === filteredTaskIds.size
+
+  function handleGroupReorder(result: DropResult) {
+    if (!result.destination) return
+    if (result.source.index === result.destination.index) return
+    const reordered = [...groups]
+    const [moved] = reordered.splice(result.source.index, 1)
+    reordered.splice(result.destination.index, 0, moved)
+    const positions = reordered.map((g, idx) => ({ group_id: g.id, position: idx }))
+    apiAction("reorder_groups", { positions })
+  }
+
   return (
     <div>
       {/* Table header */}
       <div className="flex items-center h-8 px-6 bg-gray-50 dark:bg-[#242836] border-b border-gray-200 dark:border-white/10 sticky top-0 z-[5]">
-        <div className="w-12" />
+        <div className="w-7 flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleSelectAllVisible}
+            className="h-3.5 w-3.5 rounded border-slate-300 cursor-pointer"
+            title={allVisibleSelected ? "Desmarcar todas" : "Selecionar todas visiveis"}
+          />
+        </div>
+        <div className="w-5" />
         <div className="flex-1 text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Tarefa</div>
         <div className="w-[120px] text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Status</div>
         <div className="w-[50px] text-center text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Resp.</div>
@@ -652,18 +1224,37 @@ function TableView({
         <div className="w-[40px] text-right text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Est.</div>
       </div>
 
-      {/* Groups */}
-      {groups.map((g) => {
+      {/* Groups (com drag-and-drop pra reordenar) */}
+      <DragDropContext onDragEnd={handleGroupReorder}>
+        <Droppable droppableId="groups-list" type="GROUP">
+          {(prov) => (
+            <div ref={prov.innerRef} {...prov.droppableProps}>
+      {groups.map((g, gIdx) => {
         const isCollapsed = collapsedGroups.has(g.id)
         const doneCount = g.items.filter((i) => i.status === "done").length
 
         return (
-          <div key={g.id}>
+          <Draggable key={g.id} draggableId={g.id} index={gIdx}>
+            {(dp, ds) => (
+              <div
+                ref={dp.innerRef}
+                {...dp.draggableProps}
+                className={ds.isDragging ? "shadow-xl bg-white dark:bg-[#1A1D27]" : ""}
+              >
             {/* Group header */}
             <div
               onClick={() => toggleGroupCollapse(g.id)}
               className="flex items-center gap-2 h-10 px-6 bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)] cursor-pointer hover:bg-gray-25 transition-colors duration-fast ease-out-expo"
             >
+              <span
+                {...dp.dragHandleProps}
+                onClick={(e) => e.stopPropagation()}
+                className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 dark:text-white/30 dark:hover:text-white/70 -ml-2"
+                title="Arrastar para reordenar"
+                aria-label="Arrastar para reordenar"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+              </span>
               <div className="w-[3px] h-[18px] rounded-[2px]" style={{ background: g.color }} />
               <svg
                 width="10" height="10" viewBox="0 0 10 10"
@@ -714,7 +1305,17 @@ function TableView({
                       isSelected ? "bg-brand-50" : isHovered ? "bg-[rgba(0,0,0,0.015)]" : "bg-transparent"
                     )}
                   >
-                    <div className="w-7 flex justify-center">
+                    <div className="w-7 flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedTaskIds.has(t.id)}
+                        onChange={() => toggleSelectTaskId(t.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3.5 w-3.5 rounded border-slate-300 cursor-pointer"
+                        aria-label="Selecionar tarefa"
+                      />
+                    </div>
+                    <div className="w-5 flex justify-center">
                       <PriorityDot priority={t.priority} />
                     </div>
                     <div className="w-5 flex justify-center">
@@ -803,9 +1404,16 @@ function TableView({
             {!isCollapsed && (
               <InlineNewTask groupId={g.id} groupName={g.name} groupColor={g.color} />
             )}
-          </div>
+              </div>
+            )}
+          </Draggable>
         )
       })}
+              {prov.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
 
       {/* Add new group */}
       <NewGroupInline />
@@ -1306,16 +1914,7 @@ function TaskDetailPanel({
         )}
 
         {taskComments.map((c) => (
-          <div key={c.id} className="flex gap-2 mb-3">
-            <Avatar initials={c.user_initials} size={24} />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[12px] font-semibold text-gray-700 dark:text-white/90">{c.user_initials}</span>
-                <span className="text-[10px] text-gray-400 dark:text-white/50">{new Date(c.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-              </div>
-              <p className="text-[12px] text-gray-600 dark:text-white/70 m-0">{c.text}</p>
-            </div>
-          </div>
+          <CommentItem key={c.id} comment={c} />
         ))}
 
         {/* New comment input */}
