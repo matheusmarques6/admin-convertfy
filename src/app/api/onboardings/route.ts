@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
       subscriptionId: body.subscription_id ?? null,
       sourceChannel: body.source_channel ?? null,
       referredByClientId: body.referred_by_client_id ?? null,
+      referredByName: body.referred_by_name ?? null,
       sourcePipelineId: body.source_pipeline_id ?? null,
       sourceNotes: body.source_notes ?? null,
     })

@@ -105,12 +105,18 @@ export async function resolveEffectiveStatuses(
   const uniqueIds = Array.from(new Set(clientIds))
 
   // 1. Pega TODOS os charges desses clientes, em ordem cronologica decrescente
-  const { data: invoices } = (await admin
-    .from("unified_invoices")
-    .select("client_id, status, due_date, payment_date, source")
-    .in("client_id", uniqueIds)
-    .order("due_date", { ascending: false })) as {
-    data: UnifiedInvoiceRow[] | null
+  // Resiliente: se a view nao existir ou falhar, segue com array vazio em vez
+  // de quebrar o endpoint inteiro de onboardings.
+  let invoices: UnifiedInvoiceRow[] | null = null
+  try {
+    const res = await admin
+      .from("unified_invoices")
+      .select("client_id, status, due_date, payment_date, source")
+      .in("client_id", uniqueIds)
+      .order("due_date", { ascending: false })
+    if (!res.error) invoices = res.data as UnifiedInvoiceRow[]
+  } catch {
+    invoices = null
   }
 
   // Pra cada cliente, pega o "melhor" status:
@@ -168,13 +174,17 @@ export async function resolveEffectiveStatuses(
     result.paymentSource[id] = rows[0].source
   }
 
-  // 2. Contracts
-  const { data: contracts } = (await admin
-    .from("contracts")
-    .select("client_id, status, start_date")
-    .in("client_id", uniqueIds)
-    .order("start_date", { ascending: false })) as {
-    data: ContractRow[] | null
+  // 2. Contracts (resiliente)
+  let contracts: ContractRow[] | null = null
+  try {
+    const res = await admin
+      .from("contracts")
+      .select("client_id, status, start_date")
+      .in("client_id", uniqueIds)
+      .order("start_date", { ascending: false })
+    if (!res.error) contracts = res.data as ContractRow[]
+  } catch {
+    contracts = null
   }
 
   for (const id of uniqueIds) {

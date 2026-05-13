@@ -158,6 +158,7 @@ export interface OnboardingPipelineItem {
   subscription_id?: string | null
   source_channel?: string | null
   referred_by_client_id?: string | null
+  referred_by_name?: string | null
   source_pipeline_id?: string | null
   source_notes?: string | null
 

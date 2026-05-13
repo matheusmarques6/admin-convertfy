@@ -910,6 +910,7 @@ function NewOnboardingDialog({
   const [skipSubscription, setSkipSubscription] = useState(false)
   const [sourceChannel, setSourceChannel] = useState<SourceChannel | null>(null)
   const [referredById, setReferredById] = useState<string | null>(null)
+  const [referredByName, setReferredByName] = useState("")
   const [sourcePipelineId, setSourcePipelineId] = useState<string | null>(null)
   const [sourceNotes, setSourceNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -973,7 +974,12 @@ function NewOnboardingDialog({
     if (step === 2) return !!subscriptionId || skipSubscription
     if (step === 3) {
       if (!sourceChannel) return false
-      if (sourceChannel === "indicacao" && !referredById) return false
+      if (
+        sourceChannel === "indicacao" &&
+        !referredById &&
+        !referredByName.trim()
+      )
+        return false
       if (sourceChannel === "deal_won" && !sourcePipelineId) return false
       return true
     }
@@ -1005,6 +1011,10 @@ function NewOnboardingDialog({
           source_channel: sourceChannel,
           referred_by_client_id:
             sourceChannel === "indicacao" ? referredById : null,
+          referred_by_name:
+            sourceChannel === "indicacao" && !referredById
+              ? referredByName.trim() || null
+              : null,
           source_pipeline_id:
             sourceChannel === "deal_won" ? sourcePipelineId : null,
           source_notes: sourceNotes.trim() || null,
@@ -1164,7 +1174,15 @@ function NewOnboardingDialog({
               channel={sourceChannel}
               onChannelChange={setSourceChannel}
               referredById={referredById}
-              onReferredByChange={setReferredById}
+              onReferredByChange={(id) => {
+                setReferredById(id)
+                if (id) setReferredByName("")
+              }}
+              referredByName={referredByName}
+              onReferredByNameChange={(name) => {
+                setReferredByName(name)
+                if (name.trim()) setReferredById(null)
+              }}
               referrerOptions={referrerOptions}
               sourcePipelineId={sourcePipelineId}
               onSourcePipelineChange={setSourcePipelineId}
@@ -1446,6 +1464,136 @@ function SubscriptionStep({
   )
 }
 
+// ─── ReferrerPicker: cliente existente OU texto livre (influencer/parceiro) ──
+
+function ReferrerPicker({
+  referredById,
+  onReferredByChange,
+  referredByName,
+  onReferredByNameChange,
+  referrerOptions,
+}: {
+  referredById: string | null
+  onReferredByChange: (id: string | null) => void
+  referredByName: string
+  onReferredByNameChange: (s: string) => void
+  referrerOptions: ClientLite[]
+}) {
+  const [search, setSearch] = useState("")
+  const [showList, setShowList] = useState(false)
+
+  // Texto exibido no input: se ja escolheu cliente, mostra o nome; senao,
+  // mostra o texto livre que o user esta digitando.
+  const selectedClient = referrerOptions.find((c) => c.id === referredById)
+  const inputValue =
+    selectedClient?.name ?? (referredByName || search)
+
+  const filtered = useMemo(() => {
+    const term = (selectedClient ? "" : (referredByName || search))
+      .toLowerCase()
+      .trim()
+    if (!term) return referrerOptions.slice(0, 8)
+    return referrerOptions
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(term) ||
+          (c.company ?? "").toLowerCase().includes(term),
+      )
+      .slice(0, 8)
+  }, [referrerOptions, search, referredByName, selectedClient])
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
+        Quem indicou? <span className="text-rose-500">*</span>
+      </label>
+      <div className="rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] overflow-hidden">
+        {/* Input combinado */}
+        <div className="flex items-center gap-2 px-3 h-10">
+          <input
+            type="text"
+            value={inputValue}
+            onFocus={() => setShowList(true)}
+            onChange={(e) => {
+              const v = e.target.value
+              if (referredById) onReferredByChange(null)
+              setSearch(v)
+              onReferredByNameChange(v)
+              setShowList(true)
+            }}
+            placeholder="Buscar cliente OU digitar nome (ex: Carlos Azevedo)"
+            className="flex-1 h-9 text-[13px] bg-transparent border-0 focus:outline-none placeholder:text-slate-400 dark:placeholder:text-white/35"
+          />
+          {(referredById || referredByName) && (
+            <button
+              type="button"
+              onClick={() => {
+                onReferredByChange(null)
+                onReferredByNameChange("")
+                setSearch("")
+              }}
+              aria-label="Limpar"
+              className="h-6 w-6 inline-flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-white/40 dark:hover:text-white/80 dark:hover:bg-white/[0.06]"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Lista de sugestoes (clientes existentes) */}
+        {showList && !referredById && filtered.length > 0 && (
+          <div className="border-t border-slate-100 dark:border-white/[0.06] max-h-[180px] overflow-y-auto">
+            <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
+              Selecionar cliente existente
+            </p>
+            {filtered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  onReferredByChange(c.id)
+                  onReferredByNameChange("")
+                  setSearch("")
+                  setShowList(false)
+                }}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-medium text-slate-900 dark:text-white truncate">
+                    {c.name}
+                  </p>
+                  {c.company && (
+                    <p className="text-[10.5px] text-slate-500 dark:text-white/55 truncate">
+                      {c.company}
+                    </p>
+                  )}
+                </div>
+                <Check className="h-3 w-3 text-emerald-500 opacity-0 group-hover:opacity-100" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Hint quando esta digitando nome livre */}
+        {showList && !referredById && referredByName.trim() && (
+          <div className="border-t border-slate-100 dark:border-white/[0.06] px-3 py-2 bg-amber-50/40 dark:bg-amber-500/[0.06]">
+            <p className="text-[11.5px] text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">{referredByName.trim()}</span>{" "}
+              será registrado como referrer externo (influencer / parceiro
+              que não é cliente).
+            </p>
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-500 dark:text-white/45">
+        Pode selecionar um cliente da lista OU digitar o nome de alguém
+        que não é cliente (influencer, parceiro). Ambos contam nas
+        métricas de indicações.
+      </p>
+    </div>
+  )
+}
+
 // ─── Step 3: Origem ───────────────────────────────────────────────────────
 
 function SourceStep({
@@ -1453,6 +1601,8 @@ function SourceStep({
   onChannelChange,
   referredById,
   onReferredByChange,
+  referredByName,
+  onReferredByNameChange,
   referrerOptions,
   sourcePipelineId,
   onSourcePipelineChange,
@@ -1464,6 +1614,8 @@ function SourceStep({
   onChannelChange: (c: SourceChannel) => void
   referredById: string | null
   onReferredByChange: (id: string | null) => void
+  referredByName: string
+  onReferredByNameChange: (s: string) => void
   referrerOptions: ClientLite[]
   sourcePipelineId: string | null
   onSourcePipelineChange: (id: string | null) => void
@@ -1518,29 +1670,15 @@ function SourceStep({
         </div>
       </div>
 
-      {/* Conditional: Quem indicou */}
+      {/* Conditional: Quem indicou (combobox cliente OU texto livre) */}
       {channel === "indicacao" && (
-        <div className="space-y-1.5">
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
-            Quem indicou? <span className="text-rose-500">*</span>
-          </label>
-          <select
-            value={referredById ?? ""}
-            onChange={(e) => onReferredByChange(e.target.value || null)}
-            className="w-full h-10 px-3 text-[13px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-          >
-            <option value="">— selecione o cliente que indicou —</option>
-            {referrerOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.company ? ` · ${c.company}` : ""}
-              </option>
-            ))}
-          </select>
-          <p className="text-[11px] text-slate-500 dark:text-white/45">
-            Vai contar nas métricas de indicações por cliente.
-          </p>
-        </div>
+        <ReferrerPicker
+          referredById={referredById}
+          onReferredByChange={onReferredByChange}
+          referredByName={referredByName}
+          onReferredByNameChange={onReferredByNameChange}
+          referrerOptions={referrerOptions}
+        />
       )}
 
       {/* Conditional: Pipeline de origem */}

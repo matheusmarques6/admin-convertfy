@@ -51,6 +51,7 @@ interface CreateOptions {
   subscriptionId?: string | null
   sourceChannel?: string | null
   referredByClientId?: string | null
+  referredByName?: string | null
   sourcePipelineId?: string | null
   sourceNotes?: string | null
 }
@@ -138,6 +139,7 @@ export async function createOnboarding(
       subscription_id: opts.subscriptionId ?? null,
       source_channel: opts.sourceChannel ?? null,
       referred_by_client_id: opts.referredByClientId ?? null,
+      referred_by_name: opts.referredByName ?? null,
       source_pipeline_id: opts.sourcePipelineId ?? null,
       source_notes: opts.sourceNotes ?? null,
     })
