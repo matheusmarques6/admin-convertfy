@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireFeature } from "@/lib/api/check-permission"
 import { validateMonetaryValue } from "@/lib/schemas/common"
@@ -8,18 +8,23 @@ import { logger } from "@/lib/logger"
 const log = logger.child("ClientSubscriptions")
 
 // GET - Lista subscriptions filtradas por client_id (?client_id=xxx)
+// Read-only: precisa apenas de auth (qualquer user da org pode listar
+// pra atrelar onboarding/CRM). Sem requireFeature(view_financial) pra
+// nao bloquear users operacionais.
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
-    await requireFeature(supabase, user.id, "view_financial")
+    await requireAuth(supabase)
 
     const clientId = request.nextUrl.searchParams.get("client_id")
     if (!clientId) {
       throw new AppError("client_id query parameter is required", 400)
     }
 
-    const { data, error } = await supabase
+    // Usa admin client pra contornar RLS de financeiro (cliente foi
+    // validado pelo POST de onboarding antes; aqui so listamos pra UI).
+    const admin = createAdminClient()
+    const { data, error } = await admin
       .from("client_subscriptions")
       .select(
         "id, client_id, name, value, cycle, payment_method, status, start_date, next_due_date, notes, asaas_subscription_id",

@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
-import { Search, Check, ChevronDown, Plus, ExternalLink, X, Loader2 } from "lucide-react"
+import { Search, Check, Plus, ExternalLink, X, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -127,86 +127,102 @@ export function SelectClientAndStore({
         <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
           Cliente <span className="text-red-500">*</span>
         </label>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setClientPickerOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 h-9 px-3 rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] text-left"
-          >
-            <span
-              className={
-                selectedClient
-                  ? "text-slate-900 dark:text-white truncate"
-                  : "text-slate-400 dark:text-white/40"
-              }
-            >
-              {selectedClient
-                ? `${selectedClient.name}${selectedClient.company ? ` · ${selectedClient.company}` : ""}`
-                : "Selecionar cliente existente..."}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-          </button>
-          {clientPickerOpen && (
-            <div className="absolute top-full mt-1 left-0 right-0 z-20 rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#0F1117] shadow-lg max-h-[300px] flex flex-col">
-              <div className="relative p-2 border-b border-slate-100 dark:border-white/[0.06]">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  autoFocus
-                  type="text"
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                  placeholder="Buscar..."
-                  className="w-full h-8 pl-8 pr-2 text-[12px] rounded-[6px] bg-slate-50 dark:bg-white/[0.04] border-0 focus:outline-none"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {filteredClients.length === 0 ? (
-                  <p className="text-[12px] text-slate-500 text-center py-4">
-                    Nenhum cliente encontrado.
-                  </p>
-                ) : (
-                  filteredClients.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        onClientChange(c.id)
-                        setClientPickerOpen(false)
-                        setClientSearch("")
-                      }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04] text-left"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-medium text-slate-900 dark:text-white truncate">
-                          {c.name}
-                        </p>
-                        {c.company && (
-                          <p className="text-[11px] text-slate-500 dark:text-white/55 truncate">
-                            {c.company}
-                          </p>
-                        )}
-                      </div>
-                      {c.id === selectedClientId && (
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-              <div className="border-t border-slate-100 dark:border-white/[0.06] p-1.5">
-                <Link
-                  href="/admin/clients/new"
-                  target="_blank"
-                  className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-[4px]"
-                >
-                  <Plus className="h-3 w-3" />
-                  Criar novo cliente
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Link>
-              </div>
+        {/* Quando ja tem cliente selecionado e picker fechado: mostra resumo + trocar */}
+        {selectedClient && !clientPickerOpen ? (
+          <div className="flex items-center justify-between gap-2 h-10 px-3 rounded-[8px] border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-500/[0.06]">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
+                {selectedClient.name}
+              </p>
+              {selectedClient.company && (
+                <p className="text-[11px] text-slate-500 dark:text-white/55 truncate">
+                  {selectedClient.company}
+                </p>
+              )}
             </div>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => setClientPickerOpen(true)}
+              className="text-[11.5px] font-semibold text-brand-500 hover:underline shrink-0"
+            >
+              Trocar
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] overflow-hidden">
+            <div className="relative px-2 py-2 border-b border-slate-100 dark:border-white/[0.06]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+                placeholder="Buscar cliente por nome, empresa, email..."
+                className="w-full h-8 pl-8 pr-2 text-[12.5px] rounded-[6px] bg-slate-50 dark:bg-white/[0.04] border-0 focus:outline-none focus:ring-2 focus:ring-brand-500/20 transition-all"
+              />
+            </div>
+            <div className="max-h-[200px] overflow-y-auto">
+              {filteredClients.length === 0 ? (
+                <p className="text-[12px] text-slate-500 text-center py-4">
+                  {clientSearch
+                    ? "Nenhum cliente encontrado."
+                    : "Carregando clientes..."}
+                </p>
+              ) : (
+                filteredClients.slice(0, 50).map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      onClientChange(c.id)
+                      setClientPickerOpen(false)
+                      setClientSearch("")
+                    }}
+                    className={
+                      "w-full flex items-center justify-between gap-2 px-3 py-2 text-left transition-colors " +
+                      (c.id === selectedClientId
+                        ? "bg-brand-50 dark:bg-brand-500/[0.10]"
+                        : "hover:bg-slate-50 dark:hover:bg-white/[0.04]")
+                    }
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-slate-900 dark:text-white truncate">
+                        {c.name}
+                      </p>
+                      {c.company && (
+                        <p className="text-[11px] text-slate-500 dark:text-white/55 truncate">
+                          {c.company}
+                        </p>
+                      )}
+                    </div>
+                    {c.id === selectedClientId && (
+                      <Check
+                        className="h-3.5 w-3.5 text-emerald-500 shrink-0"
+                        strokeWidth={3}
+                      />
+                    )}
+                  </button>
+                ))
+              )}
+              {filteredClients.length > 50 && (
+                <p className="text-[10.5px] text-slate-400 text-center py-2 italic">
+                  Mostrando 50 primeiros. Refine a busca.
+                </p>
+              )}
+            </div>
+            <div className="border-t border-slate-100 dark:border-white/[0.06] p-1.5">
+              <Link
+                href="/admin/clients/new"
+                target="_blank"
+                className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10 rounded-[5px]"
+              >
+                <Plus className="h-3 w-3" />
+                Criar novo cliente
+                <ExternalLink className="h-3 w-3 ml-auto" />
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Loja */}

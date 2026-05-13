@@ -82,19 +82,25 @@ export function OnboardingKanban() {
   const { data, mutate, isLoading } = useSWR<{
     columns: OperationalPipelineColumn[]
     onboardings: OnboardingPipelineItem[]
-  }>("/api/onboardings", fetcher, { revalidateOnFocus: false })
+  }>("/api/onboardings", fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
 
   // Members pra filtro de responsavel
   const { data: membersData } = useSWR<{ members: OrgMember[] }>(
     "/api/admin/org-members",
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   )
 
   // ID do user logado (vem do /api/me/tasks que ja é cached)
   const { data: meData } = useSWR<{
     member: { id: string; role: string; profile_id: string }
-  }>("/api/me/tasks?status=pending", fetcher, { revalidateOnFocus: false })
+  }>("/api/me/tasks?status=pending", fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
 
   const [newOpen, setNewOpen] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
@@ -494,6 +500,27 @@ export function OnboardingKanban() {
 
       {/* Board */}
       <div className="flex-1 min-h-0 overflow-x-auto">
+        {columns.length === 0 ? (
+          <div className="flex items-center justify-center h-full px-6 py-10">
+            <div className="text-center max-w-md">
+              <p className="text-[14px] font-semibold text-slate-900 dark:text-white mb-1">
+                Pipeline não inicializada
+              </p>
+              <p className="text-[12.5px] text-slate-500 dark:text-white/55 mb-4">
+                As colunas do onboarding ainda não foram criadas pra esta
+                org. Tente recarregar — o sistema cria automaticamente no
+                primeiro acesso.
+              </p>
+              <button
+                type="button"
+                onClick={() => mutate()}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black"
+              >
+                Recarregar
+              </button>
+            </div>
+          </div>
+        ) : (
         <DragDropContext onDragEnd={handleDrag}>
           <div className="flex gap-3 px-5 py-4 h-full">
             {columns.map((col) => {
@@ -641,6 +668,7 @@ export function OnboardingKanban() {
             })}
           </div>
         </DragDropContext>
+        )}
       </div>
 
       {newOpen && (
@@ -891,6 +919,7 @@ function NewOnboardingDialog({
   const { data: subsData } = useSWR<{ subscriptions: ClientSubscription[] }>(
     clientId ? `/api/client-subscriptions?client_id=${clientId}` : null,
     fetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   )
   const subscriptions = useMemo(
     () => subsData?.subscriptions ?? [],
@@ -905,6 +934,7 @@ function NewOnboardingDialog({
   const { data: clientsData } = useSWR<{ clients: ClientLite[] } | ClientLite[]>(
     sourceChannel === "indicacao" ? "/api/clients?limit=200" : null,
     fetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   )
   const referrerOptions = useMemo<ClientLite[]>(() => {
     if (!clientsData) return []
@@ -918,6 +948,7 @@ function NewOnboardingDialog({
   const { data: pipelinesData } = useSWR<{ pipelines: PipelineLite[] }>(
     sourceChannel === "deal_won" ? "/api/crm/pipelines" : null,
     fetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   )
   const pipelines = useMemo(
     () => pipelinesData?.pipelines ?? [],
