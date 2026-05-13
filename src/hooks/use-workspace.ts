@@ -85,11 +85,10 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
 const COMERCIAL_PREFIXES = ["/admin/comercial"]
 
 const OPERACIONAL_PREFIXES = [
+  // Tudo consolidado em /admin/operacional/* (portugues). Os 4
+  // workflows Monday-style (Onboarding, Acompanhamento, Feedback,
+  // Suporte) vivem em /admin/operacional/workflows/[slug].
   "/admin/operacional",
-  // Pipelines operacionais Monday-style (Onboarding Ops, Acompanhamento,
-  // Feedback, Suporte) ficam em /admin/operational/[slug] — em INGLES,
-  // distinto de /admin/operacional/* (português, CRM CS existente).
-  "/admin/operational",
   "/admin/clients",
   "/admin/stores",
   "/admin/onboarding",

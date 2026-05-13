@@ -113,7 +113,7 @@ async function runAction(
         title: `[${pipeline.name}] ${task.title}`,
         body: message || `Tem uma atualizacao na task "${task.title}".`,
         type: "task_update",
-        link: `/admin/operational/${pipeline.slug}`,
+        link: `/admin/operacional/workflows/${pipeline.slug}`,
         metadata: { pipeline_id: pipeline.id, task_id: task.id },
       })
       return
@@ -137,7 +137,7 @@ async function runAction(
           title: `[${pipeline.name}] ${task.title}`,
           body: message || `Movimentacao na pipeline "${pipeline.name}".`,
           type: "channel",
-          link: `/admin/operational/${pipeline.slug}`,
+          link: `/admin/operacional/workflows/${pipeline.slug}`,
           metadata: { pipeline_id: pipeline.id, task_id: task.id },
         }))
       if (rows.length > 0) await admin.from("notifications").insert(rows)

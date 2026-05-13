@@ -171,22 +171,22 @@ const OPERACIONAL_NAV: NavGroup[] = [
       { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
       {
         name: "Onboarding",
-        href: ROUTES.ADMIN.OPERATIONAL.ONBOARDING_OPS,
+        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.ONBOARDING,
         icon: Rocket,
       },
       {
         name: "Acompanhamento",
-        href: ROUTES.ADMIN.OPERATIONAL.ACOMPANHAMENTO,
+        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.ACOMPANHAMENTO,
         icon: Users,
       },
       {
         name: "Feedback",
-        href: ROUTES.ADMIN.OPERATIONAL.FEEDBACK,
+        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.FEEDBACK,
         icon: MessageSquare,
       },
       {
         name: "Suporte",
-        href: ROUTES.ADMIN.OPERATIONAL.SUPORTE,
+        href: ROUTES.ADMIN.OPERACIONAL.WORKFLOWS.SUPORTE,
         icon: LifeBuoy,
       },
     ],

@@ -102,20 +102,22 @@ export const ROUTES = {
       },
       CANAIS: "/admin/operacional/canais",
       REPORTS: "/admin/operacional/reports",
+      // Workflows Monday-style (Onboarding Ops, Acompanhamento, Feedback,
+      // Suporte) — kanbans com automacoes baseadas em triggers/actions.
+      WORKFLOWS: {
+        ROOT: "/admin/operacional/workflows",
+        DETAIL: (slug: string) =>
+          `/admin/operacional/workflows/${slug}` as const,
+        ONBOARDING: "/admin/operacional/workflows/onboarding",
+        ACOMPANHAMENTO: "/admin/operacional/workflows/acompanhamento",
+        FEEDBACK: "/admin/operacional/workflows/feedback",
+        SUPORTE: "/admin/operacional/workflows/suporte",
+      },
     },
 
     // ── Compartilhado (comercial e operacional acessam) ─────────────────
     INBOX: "/admin/inbox",
     INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
-
-    // ── Operational Pipelines (Monday-style) ─────────────────────────────
-    OPERATIONAL: {
-      PIPELINE: (slug: string) => `/admin/operational/${slug}` as const,
-      ONBOARDING_OPS: "/admin/operational/onboarding",
-      ACOMPANHAMENTO: "/admin/operational/acompanhamento",
-      FEEDBACK: "/admin/operational/feedback",
-      SUPORTE: "/admin/operational/suporte",
-    },
 
     // ── Settings adicionais ──────────────────────────────────────────────
     AI_TEMPLATES: "/admin/settings/ai-templates",

@@ -87,10 +87,10 @@ const navigationItems: CommandItem[] = [
   { name: "Inbox (mensagens)", href: "/admin/inbox", icon: Inbox, group: "Atendimento" },
 
   // Operational Pipelines (Monday-style)
-  { name: "Onboarding Ops", href: "/admin/operational/onboarding", icon: Rocket, group: "Operacional Ops" },
-  { name: "Acompanhamento", href: "/admin/operational/acompanhamento", icon: Users, group: "Operacional Ops" },
-  { name: "Feedback (Tasks)", href: "/admin/operational/feedback", icon: MessageSquare, group: "Operacional Ops" },
-  { name: "Suporte", href: "/admin/operational/suporte", icon: LifeBuoy, group: "Operacional Ops" },
+  { name: "Onboarding Ops", href: "/admin/operacional/workflows/onboarding", icon: Rocket, group: "Operacional Workflows" },
+  { name: "Acompanhamento", href: "/admin/operacional/workflows/acompanhamento", icon: Users, group: "Operacional Workflows" },
+  { name: "Feedback (Tasks)", href: "/admin/operacional/workflows/feedback", icon: MessageSquare, group: "Operacional Workflows" },
+  { name: "Suporte", href: "/admin/operacional/workflows/suporte", icon: LifeBuoy, group: "Operacional Workflows" },
 
   // Marketing extras
   { name: "Pipeline de Campanhas", href: "/admin/campaigns/pipeline", icon: Layers, group: "Marketing" },
