@@ -31,8 +31,67 @@ import {
   requireAuth,
   AppError,
 } from "@/lib/api/errors"
+import {
+  createUnifiedTask,
+  type UnifiedTaskSource,
+} from "@/lib/services/tasks-unified.service"
 
 export const dynamic = "force-dynamic"
+
+const VALID_SOURCES: UnifiedTaskSource[] = [
+  "onboarding",
+  "acompanhamento",
+  "project",
+  "crm",
+  "manual",
+]
+
+/** POST /api/me/tasks — quick-add manual task pro user logado. */
+export async function POST(request: NextRequest) {
+  try {
+    const sb = await createClient()
+    const user = await requireAuth(sb)
+    const admin = createAdminClient()
+
+    const { data: orgMember } = await admin
+      .from("org_members")
+      .select("id, role, org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .maybeSingle()
+    if (!orgMember) throw new AppError("Sem org membership", 403)
+
+    const body = await request.json()
+    const title = String(body.title ?? "").trim()
+    if (!title) throw new AppError("Title obrigatorio", 400)
+
+    const sourceType: UnifiedTaskSource = VALID_SOURCES.includes(
+      body.source_type,
+    )
+      ? body.source_type
+      : "manual"
+
+    const created = await createUnifiedTask({
+      orgId: orgMember.org_id,
+      title,
+      description: body.description ?? null,
+      sourceType,
+      sourceMetadata: body.source_metadata ?? {},
+      assigneeId: body.assignee_id ?? user.id,
+      assigneeRole:
+        body.assignee_role ?? ((orgMember.role as string) || null),
+      slaHours: body.sla_hours ?? null,
+      dueDate: body.due_date ?? null,
+      priority: body.priority ?? "medium",
+      createdBy: user.id,
+    })
+
+    if (!created) throw new AppError("Falha ao criar task", 500)
+    return successResponse(request, { task: created }, { status: 201 })
+  } catch (error) {
+    return errorResponse(request, error, "me-tasks-create")
+  }
+}
 
 const ELEVATED_ROLES = ["owner", "manager", "coo"]
 

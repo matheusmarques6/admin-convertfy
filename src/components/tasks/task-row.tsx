@@ -13,11 +13,12 @@
  *  - Title (semibold) + SLA badge dinamico
  *  - Subtitle: store_name · stage_name
  *  - Footer: tempo relativo + role badge
- *  - Acoes inline no hover: marcar concluida, abrir origem
+ *  - Acoes inline no hover: marcar concluida, abrir origem, 3-dots (excluir)
  */
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
   CheckCircle2,
   Circle,
@@ -30,6 +31,8 @@ import {
   Briefcase,
   Mail,
   FileText,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 
@@ -60,6 +63,9 @@ export interface TaskRowData {
 interface TaskRowProps {
   task: TaskRowData
   onComplete?: (taskId: string) => Promise<void> | void
+  /** Custom delete handler. Se omitido, TaskRow chama DELETE automatico
+   *  baseado no source_type (tasks ou productivity_tasks). */
+  onDelete?: (taskId: string) => Promise<void> | void
   /** Mostrar source label (badge antes do title). Default true em /admin/me, false em /admin/onboarding/[id] (redundante) */
   showSource?: boolean
   /** Compacto = sem footer com role (uso em Onboarding detail) */
@@ -159,11 +165,13 @@ function getHref(task: TaskRowData): string | null {
 export function TaskRow({
   task,
   onComplete,
+  onDelete,
   showSource = true,
   compact = false,
 }: TaskRowProps) {
   const toast = useToast()
   const [completing, setCompleting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const isDone = task.status === "completed"
   const meta = (task.source_metadata ?? {}) as {
     store_name?: string
@@ -207,6 +215,40 @@ export function TaskRow({
       })
     } finally {
       setCompleting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (deleting) return
+    if (
+      !window.confirm(
+        `Excluir a tarefa "${task.title}"?\n\nEssa ação não pode ser desfeita.`,
+      )
+    )
+      return
+    setDeleting(true)
+    try {
+      if (onDelete) {
+        await onDelete(task.id)
+      } else {
+        // Auto-delete baseado em source_type
+        const res = await fetch(`/api/tasks/${task.id}`, {
+          method: "DELETE",
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j.error ?? "Falha ao excluir")
+        }
+        toast.toast({ title: "Tarefa excluída" })
+      }
+    } catch (err) {
+      toast.toast({
+        variant: "destructive",
+        title: "Falha ao excluir",
+        description: (err as Error).message,
+      })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -328,6 +370,38 @@ export function TaskRow({
                 <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             )}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Mais ações"
+                  className="h-7 w-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-[5px]"
+                >
+                  {deleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={4}
+                  onClick={(e) => e.stopPropagation()}
+                  className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
+                >
+                  <DropdownMenu.Item
+                    onSelect={handleDelete}
+                    className="flex cursor-pointer items-center gap-2 rounded-[4px] mx-1 px-2 py-2 outline-none text-rose-600 dark:text-rose-400 data-[highlighted]:bg-rose-50 dark:data-[highlighted]:bg-rose-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="text-[12px] font-medium">Excluir</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
       </div>

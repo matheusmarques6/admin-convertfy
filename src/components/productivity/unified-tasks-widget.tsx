@@ -55,6 +55,15 @@ export function UnifiedTasksWidget() {
     mutate()
   }
 
+  async function deleteTask(taskId: string) {
+    const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Falha ao excluir")
+    }
+    mutate()
+  }
+
   return (
     <div className="rounded-[8px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-3">
@@ -122,7 +131,12 @@ export function UnifiedTasksWidget() {
         ) : (
           <div className="space-y-1.5">
             {tasks.map((t) => (
-              <TaskRow key={t.id} task={t} onComplete={completeTask} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                onComplete={completeTask}
+                onDelete={deleteTask}
+              />
             ))}
           </div>
         )}

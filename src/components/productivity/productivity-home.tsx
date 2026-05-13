@@ -233,8 +233,8 @@ export function ProductivityHome() {
             {tasks.map((t) => {
               const isDone = t.status === "done"
               return (
-                <div key={t.id}>
-                  <div className="grid grid-cols-[16px_16px_minmax(0,1fr)_70px_44px_28px_44px] gap-2 py-[6px] border-t border-gray-100 dark:border-white/10 items-center">
+                <div key={t.id} className="group/row">
+                  <div className="grid grid-cols-[16px_16px_minmax(0,1fr)_70px_44px_28px_44px] gap-2 py-[6px] border-t border-gray-100 dark:border-white/10 items-center relative">
                     <PriorityDot priority={t.priority} />
                     <Checkbox checked={isDone} />
                     <span className={cn(
@@ -258,6 +258,20 @@ export function ProductivityHome() {
                     )}>
                       {isDone ? "Feito" : t.time}
                     </span>
+                    {/* Botao excluir (hover only) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Excluir a tarefa "${t.name}"?`)) {
+                          apiAction("delete_task", { id: t.id })
+                        }
+                      }}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 opacity-0 group-hover/row:opacity-100 transition-opacity"
+                      aria-label="Excluir tarefa"
+                      title="Excluir tarefa"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
                   </div>
                   {/* Subtasks */}
                   {t.subtasks.map((sub) => (

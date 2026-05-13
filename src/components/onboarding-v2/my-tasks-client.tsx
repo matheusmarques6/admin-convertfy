@@ -12,8 +12,15 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { ListTodo, Loader2, ToggleLeft, ToggleRight } from "lucide-react"
+import {
+  ListTodo,
+  Loader2,
+  ToggleLeft,
+  ToggleRight,
+  Plus,
+} from "lucide-react"
 import { TaskRow, TaskGroupHeader, type TaskRowData } from "@/components/tasks/task-row"
+import { useToast } from "@/lib/hooks/use-toast"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -50,6 +57,10 @@ export function MyTasksClient() {
   const [status, setStatus] = useState<StatusFilter>("pending")
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const [view, setView] = useState<"mine" | "all">("mine")
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddTitle, setQuickAddTitle] = useState("")
+  const [quickAddSubmitting, setQuickAddSubmitting] = useState(false)
+  const toast = useToast()
 
   const url = useMemo(() => {
     const params = new URLSearchParams()
@@ -104,6 +115,47 @@ export function MyTasksClient() {
     mutate()
   }
 
+  async function deleteTask(taskId: string) {
+    const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Falha ao excluir")
+    }
+    mutate()
+  }
+
+  async function quickAddSubmit() {
+    const title = quickAddTitle.trim()
+    if (!title || quickAddSubmitting) return
+    setQuickAddSubmitting(true)
+    try {
+      const res = await fetch("/api/me/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          source_type: "manual",
+          priority: "medium",
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        toast.toast({
+          variant: "destructive",
+          title: "Falha ao criar",
+          description: j.error ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({ title: "Tarefa criada" })
+      setQuickAddTitle("")
+      setQuickAddOpen(false)
+      mutate()
+    } finally {
+      setQuickAddSubmitting(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -130,26 +182,77 @@ export function MyTasksClient() {
             tudo num lugar só.
           </p>
         </div>
-        {isElevated && (
+        <div className="flex items-center gap-2">
+          {isElevated && (
+            <button
+              type="button"
+              onClick={() => setView((v) => (v === "mine" ? "all" : "mine"))}
+              className="inline-flex items-center gap-2 h-9 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/80 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.14]"
+            >
+              {view === "mine" ? (
+                <>
+                  <ToggleLeft className="h-4 w-4 text-slate-400" />
+                  Minhas
+                </>
+              ) : (
+                <>
+                  <ToggleRight className="h-4 w-4 text-violet-500" />
+                  Todas do time
+                </>
+              )}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setView((v) => (v === "mine" ? "all" : "mine"))}
-            className="inline-flex items-center gap-2 h-9 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/80 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.14]"
+            onClick={() => setQuickAddOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold hover:bg-black dark:hover:bg-slate-100"
           >
-            {view === "mine" ? (
-              <>
-                <ToggleLeft className="h-4 w-4 text-slate-400" />
-                Minhas
-              </>
-            ) : (
-              <>
-                <ToggleRight className="h-4 w-4 text-violet-500" />
-                Todas do time
-              </>
-            )}
+            <Plus className="h-3.5 w-3.5" />
+            Nova tarefa
           </button>
-        )}
+        </div>
       </div>
+
+      {/* Quick add inline */}
+      {quickAddOpen && (
+        <div className="rounded-[6px] bg-violet-50/40 dark:bg-violet-500/[0.05] border border-violet-200 dark:border-violet-500/20 p-3">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={quickAddTitle}
+              onChange={(e) => setQuickAddTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void quickAddSubmit()
+                if (e.key === "Escape") setQuickAddOpen(false)
+              }}
+              placeholder="O que precisa fazer? (Enter pra criar)"
+              className="flex-1 h-9 px-3 text-[13px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+            />
+            <button
+              type="button"
+              onClick={quickAddSubmit}
+              disabled={!quickAddTitle.trim() || quickAddSubmitting}
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-[12px] font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-[6px] disabled:opacity-50"
+            >
+              {quickAddSubmitting && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              )}
+              Criar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuickAddOpen(false)
+                setQuickAddTitle("")
+              }}
+              className="h-9 px-3 text-[12px] font-medium text-slate-600 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-[6px]"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Status filter chips */}
       <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-white/[0.08]">
@@ -255,7 +358,12 @@ export function MyTasksClient() {
                 />
                 <div className="space-y-1.5">
                   {group.items.map((t) => (
-                    <TaskRow key={t.id} task={t} onComplete={completeTask} />
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      onComplete={completeTask}
+                      onDelete={deleteTask}
+                    />
                   ))}
                 </div>
               </div>
@@ -264,7 +372,12 @@ export function MyTasksClient() {
             // Lista plana quando filtro de source ativo
             <div className="space-y-1.5">
               {tasks.map((t) => (
-                <TaskRow key={t.id} task={t} onComplete={completeTask} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  onComplete={completeTask}
+                  onDelete={deleteTask}
+                />
               ))}
             </div>
           )}

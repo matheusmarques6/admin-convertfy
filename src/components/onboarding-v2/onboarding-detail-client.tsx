@@ -569,6 +569,15 @@ function ChecklistTab({
     onMutate()
   }
 
+  async function deleteTask(taskId: string) {
+    const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Falha ao excluir")
+    }
+    onMutate()
+  }
+
   if (!column) {
     return (
       <p className="text-[12px] text-slate-500 italic">Nenhuma coluna ativa.</p>
@@ -616,6 +625,7 @@ function ChecklistTab({
             key={t.id}
             task={t as unknown as TaskRowData}
             onComplete={completeTask}
+            onDelete={deleteTask}
             showSource={false}
             compact={false}
           />
