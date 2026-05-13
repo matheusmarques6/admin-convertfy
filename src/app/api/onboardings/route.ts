@@ -112,6 +112,11 @@ export async function POST(request: NextRequest) {
       language: body.language ?? "pt-BR",
       vertical: body.vertical ?? null,
       source: body.source ?? "manual",
+      subscriptionId: body.subscription_id ?? null,
+      sourceChannel: body.source_channel ?? null,
+      referredByClientId: body.referred_by_client_id ?? null,
+      sourcePipelineId: body.source_pipeline_id ?? null,
+      sourceNotes: body.source_notes ?? null,
     })
 
     return successResponse(

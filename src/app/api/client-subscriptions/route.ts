@@ -7,6 +7,33 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientSubscriptions")
 
+// GET - Lista subscriptions filtradas por client_id (?client_id=xxx)
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_financial")
+
+    const clientId = request.nextUrl.searchParams.get("client_id")
+    if (!clientId) {
+      throw new AppError("client_id query parameter is required", 400)
+    }
+
+    const { data, error } = await supabase
+      .from("client_subscriptions")
+      .select(
+        "id, client_id, name, value, cycle, payment_method, status, start_date, next_due_date, notes, asaas_subscription_id",
+      )
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+
+    if (error) throw error
+    return successResponse(request, { subscriptions: data ?? [] })
+  } catch (error) {
+    return errorResponse(request, error, "ClientSubscriptions")
+  }
+}
+
 // POST - Create a new subscription
 export async function POST(request: NextRequest) {
   try {

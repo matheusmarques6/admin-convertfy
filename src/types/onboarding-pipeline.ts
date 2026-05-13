@@ -154,6 +154,13 @@ export interface OnboardingPipelineItem {
   vertical?: string | null
   source?: "manual" | "deal_won" | "referral" | "migration" | null
 
+  // Tracking de origem (Bruno - dashboard comercial)
+  subscription_id?: string | null
+  source_channel?: string | null
+  referred_by_client_id?: string | null
+  source_pipeline_id?: string | null
+  source_notes?: string | null
+
   /** Status efetivo computado em runtime via unified_invoices.
    *  Tem prioridade sobre payment_status armazenado (que vira fallback). */
   effective_payment_status?: OnboardingPaymentStatus

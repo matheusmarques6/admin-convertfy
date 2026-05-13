@@ -29,6 +29,7 @@ import {
   Clock,
   TrendingUp,
   X,
+  Check,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
@@ -804,6 +805,69 @@ function KanbanGoBackDialog({
 }
 
 
+// ─── NewOnboardingDialog: wizard 3 steps com selecao de assinatura + origem rica ──
+
+interface ClientSubscription {
+  id: string
+  client_id: string
+  name: string
+  value: number | string
+  cycle: string
+  payment_method: string
+  status: string
+  start_date: string
+  next_due_date: string
+  notes: string | null
+  asaas_subscription_id: string | null
+}
+
+interface ClientLite {
+  id: string
+  name: string
+  company: string | null
+}
+
+interface PipelineLite {
+  id: string
+  name: string
+  scope?: string
+}
+
+type SourceChannel =
+  | "indicacao"
+  | "deal_won"
+  | "instagram"
+  | "social_selling"
+  | "paid_ads"
+  | "organic"
+  | "event"
+  | "partner"
+  | "migration"
+  | "manual"
+  | "other"
+
+const SOURCE_CHANNELS: Array<{
+  value: SourceChannel
+  label: string
+  hint: string
+}> = [
+  { value: "indicacao", label: "Indicação", hint: "Quem indicou?" },
+  { value: "deal_won", label: "Pipeline CRM", hint: "Qual pipeline?" },
+  { value: "instagram", label: "Instagram", hint: "Direct / bio / story" },
+  {
+    value: "social_selling",
+    label: "Social selling",
+    hint: "LinkedIn, posts, comunidade",
+  },
+  { value: "paid_ads", label: "Tráfego pago", hint: "Meta / Google / TikTok" },
+  { value: "organic", label: "Orgânico", hint: "SEO, busca direta" },
+  { value: "event", label: "Evento", hint: "Palestra, feira, meetup" },
+  { value: "partner", label: "Parceiro", hint: "Co-marketing / parceria" },
+  { value: "migration", label: "Migração", hint: "Cliente antigo migrando" },
+  { value: "manual", label: "Manual", hint: "Cadastro interno" },
+  { value: "other", label: "Outro", hint: "Detalhe nas notas" },
+]
+
 function NewOnboardingDialog({
   onClose,
   onCreated,
@@ -811,60 +875,108 @@ function NewOnboardingDialog({
   onClose: () => void
   onCreated: () => void
 }) {
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [clientId, setClientId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
-  const [plan, setPlan] = useState<string>("Pro")
-  const [mrr, setMrr] = useState<string>("")
-  const [whatsapp, setWhatsapp] = useState<string>("")
-  const [language, setLanguage] = useState<string>("pt-BR")
-  const [vertical, setVertical] = useState<string>("e-commerce")
-  const [source, setSource] = useState<"manual" | "deal_won" | "referral" | "migration">("manual")
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null)
+  const [skipSubscription, setSkipSubscription] = useState(false)
+  const [sourceChannel, setSourceChannel] = useState<SourceChannel | null>(null)
+  const [referredById, setReferredById] = useState<string | null>(null)
+  const [sourcePipelineId, setSourcePipelineId] = useState<string | null>(null)
+  const [sourceNotes, setSourceNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const toast = useToast()
 
-  function fmtMrrInput(v: string): string {
-    const digits = v.replace(/\D/g, "")
-    if (!digits) return ""
-    const n = Number(digits) / 100
-    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-  }
+  // Carrega subscriptions do cliente quando ele eh selecionado
+  const { data: subsData } = useSWR<{ subscriptions: ClientSubscription[] }>(
+    clientId ? `/api/client-subscriptions?client_id=${clientId}` : null,
+    fetcher,
+  )
+  const subscriptions = useMemo(
+    () => subsData?.subscriptions ?? [],
+    [subsData],
+  )
+  const activeSubscriptions = useMemo(
+    () => subscriptions.filter((s) => s.status === "active"),
+    [subscriptions],
+  )
 
-  function fmtWhatsInput(v: string): string {
-    const d = v.replace(/\D/g, "").slice(0, 13)
-    if (d.length <= 2) return d
-    if (d.length <= 4) return `+${d.slice(0, 2)} ${d.slice(2)}`
-    if (d.length <= 9) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4)}`
-    return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`
-  }
+  // Carrega clients pra "quem indicou"
+  const { data: clientsData } = useSWR<{ clients: ClientLite[] } | ClientLite[]>(
+    sourceChannel === "indicacao" ? "/api/clients?limit=200" : null,
+    fetcher,
+  )
+  const referrerOptions = useMemo<ClientLite[]>(() => {
+    if (!clientsData) return []
+    const list = Array.isArray(clientsData)
+      ? clientsData
+      : clientsData.clients ?? []
+    return list.filter((c) => c.id !== clientId)
+  }, [clientsData, clientId])
 
-  function parseMrrToNumber(s: string): number | null {
-    const digits = s.replace(/\D/g, "")
-    if (!digits) return null
-    return Number(digits) / 100
+  // Carrega pipelines CRM pra "veio de qual pipeline"
+  const { data: pipelinesData } = useSWR<{ pipelines: PipelineLite[] }>(
+    sourceChannel === "deal_won" ? "/api/crm/pipelines" : null,
+    fetcher,
+  )
+  const pipelines = useMemo(
+    () => pipelinesData?.pipelines ?? [],
+    [pipelinesData],
+  )
+
+  // Reset subscription quando muda cliente
+  useEffect(() => {
+    setSubscriptionId(null)
+    setSkipSubscription(false)
+  }, [clientId])
+
+  // Auto-seleciona se cliente so tem 1 subscription ativa
+  useEffect(() => {
+    if (activeSubscriptions.length === 1 && !subscriptionId) {
+      setSubscriptionId(activeSubscriptions[0].id)
+    }
+  }, [activeSubscriptions, subscriptionId])
+
+  function canAdvance(): boolean {
+    if (step === 1) return !!clientId && !!storeId
+    if (step === 2) return !!subscriptionId || skipSubscription
+    if (step === 3) {
+      if (!sourceChannel) return false
+      if (sourceChannel === "indicacao" && !referredById) return false
+      if (sourceChannel === "deal_won" && !sourcePipelineId) return false
+      return true
+    }
+    return false
   }
 
   async function submit() {
-    if (!clientId || !storeId) {
-      toast.toast({
-        variant: "destructive",
-        title: "Cliente e Loja sao obrigatorios",
-      })
-      return
-    }
+    if (!clientId || !storeId || !sourceChannel) return
     setSubmitting(true)
     try {
+      // Map source_channel pra enum legado do campo `source`
+      const legacySource =
+        sourceChannel === "deal_won"
+          ? "deal_won"
+          : sourceChannel === "indicacao"
+            ? "referral"
+            : sourceChannel === "migration"
+              ? "migration"
+              : "manual"
+
       const res = await fetch("/api/onboardings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: clientId,
           store_id: storeId,
-          plan,
-          mrr_value: parseMrrToNumber(mrr),
-          client_whatsapp: whatsapp || null,
-          language,
-          vertical,
-          source,
+          subscription_id: subscriptionId,
+          source: legacySource,
+          source_channel: sourceChannel,
+          referred_by_client_id:
+            sourceChannel === "indicacao" ? referredById : null,
+          source_pipeline_id:
+            sourceChannel === "deal_won" ? sourcePipelineId : null,
+          source_notes: sourceNotes.trim() || null,
         }),
       })
       const j = await res.json().catch(() => ({}))
@@ -872,7 +984,7 @@ function NewOnboardingDialog({
         toast.toast({
           variant: "destructive",
           title: "Falha ao criar",
-          description: j.error ?? "Tente novamente.",
+          description: j.error?.message ?? j.error ?? "Tente novamente.",
         })
         return
       }
@@ -880,8 +992,8 @@ function NewOnboardingDialog({
       const formToken = j.onboarding?.form_token
       if (j.created === false) {
         toast.toast({
-          title: "Onboarding ja existia",
-          description: "Essa loja ja tem onboarding em progresso.",
+          title: "Onboarding já existia",
+          description: "Essa loja já tem onboarding em progresso.",
         })
       } else if (formToken) {
         const url = `${window.location.origin}/form/${formToken}`
@@ -889,20 +1001,16 @@ function NewOnboardingDialog({
           await navigator.clipboard.writeText(url)
           toast.toast({
             title: "Onboarding criado",
-            description: "Link do formulário copiado pra clipboard.",
+            description: "Link do formulário copiado.",
           })
         } catch {
-          toast.toast({
-            title: "Onboarding criado",
-            description: url,
-          })
+          toast.toast({ title: "Onboarding criado", description: url })
         }
       } else {
         toast.toast({ title: "Onboarding criado" })
       }
       onCreated()
       if (onbId) {
-        // navega pro detail
         setTimeout(() => {
           window.location.href = `/admin/onboarding/${onbId}`
         }, 200)
@@ -912,160 +1020,538 @@ function NewOnboardingDialog({
     }
   }
 
+  const stepConfigs = [
+    { n: 1, label: "Cliente e loja" },
+    { n: 2, label: "Assinatura" },
+    { n: 3, label: "Origem" },
+  ]
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-[560px] bg-white dark:bg-[#0F1117] rounded-[8px] shadow-xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-          <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
-            Novo onboarding
-          </h2>
-          <p className="mt-0.5 text-[12px] text-slate-500 dark:text-white/55">
-            Cadastre cliente, loja e dados comerciais. Após criar, o link do
-            formulário do cliente é gerado automaticamente.
+      <div className="w-full max-w-[600px] bg-white dark:bg-[#0F1117] rounded-[12px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-black/[0.06] dark:border-white/[0.08]">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-white">
+                Novo onboarding
+              </h2>
+              <p className="text-[12px] text-slate-500 dark:text-white/55 mt-0.5">
+                {step === 1 && "Selecione o cliente e a loja."}
+                {step === 2 && "Atrele uma assinatura existente do cliente."}
+                {step === 3 && "Como esse lead chegou até nós?"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
+              className="h-7 w-7 inline-flex items-center justify-center rounded-[6px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-white/40 dark:hover:text-white/80 dark:hover:bg-white/[0.06] transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Stepper */}
+          <div className="flex items-center gap-2">
+            {stepConfigs.map((s, idx) => {
+              const isActive = step === s.n
+              const isDone = step > s.n
+              return (
+                <div key={s.n} className="flex items-center gap-2 flex-1">
+                  <div
+                    className={
+                      "inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-semibold tabular-nums shrink-0 " +
+                      (isDone
+                        ? "bg-emerald-500 text-white"
+                        : isActive
+                          ? "bg-[#1F1F1F] text-white dark:bg-white dark:text-black"
+                          : "bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-white/40")
+                    }
+                  >
+                    {isDone ? (
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                    ) : (
+                      s.n
+                    )}
+                  </div>
+                  <span
+                    className={
+                      "text-[11.5px] font-medium " +
+                      (isActive
+                        ? "text-slate-900 dark:text-white"
+                        : isDone
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : "text-slate-400 dark:text-white/40")
+                    }
+                  >
+                    {s.label}
+                  </span>
+                  {idx < stepConfigs.length - 1 && (
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-white/[0.08] ml-1" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {step === 1 && (
+            <SelectClientAndStore
+              selectedClientId={clientId}
+              selectedStoreId={storeId}
+              onClientChange={setClientId}
+              onStoreChange={setStoreId}
+            />
+          )}
+
+          {step === 2 && (
+            <SubscriptionStep
+              clientId={clientId}
+              subscriptions={subscriptions}
+              activeSubscriptions={activeSubscriptions}
+              selectedId={subscriptionId}
+              onSelect={(id) => {
+                setSubscriptionId(id)
+                setSkipSubscription(false)
+              }}
+              skip={skipSubscription}
+              onSkip={() => {
+                setSkipSubscription(true)
+                setSubscriptionId(null)
+              }}
+            />
+          )}
+
+          {step === 3 && (
+            <SourceStep
+              channel={sourceChannel}
+              onChannelChange={setSourceChannel}
+              referredById={referredById}
+              onReferredByChange={setReferredById}
+              referrerOptions={referrerOptions}
+              sourcePipelineId={sourcePipelineId}
+              onSourcePipelineChange={setSourcePipelineId}
+              pipelines={pipelines}
+              notes={sourceNotes}
+              onNotesChange={setSourceNotes}
+            />
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 px-6 py-3.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+          <button
+            type="button"
+            onClick={() => {
+              if (step === 1) onClose()
+              else setStep((s) => (s - 1) as 1 | 2 | 3)
+            }}
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-[12.5px] font-medium text-slate-700 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-white/[0.04] rounded-[7px]"
+          >
+            {step === 1 ? "Cancelar" : "Voltar"}
+          </button>
+          {step < 3 ? (
+            <button
+              type="button"
+              onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}
+              disabled={!canAdvance()}
+              className="inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black rounded-[7px] disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              Próximo
+              <ArrowRightIcon />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || !canAdvance()}
+              className="inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black rounded-[7px] disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Criar onboarding
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+// ─── Step 2: Selecionar assinatura ───────────────────────────────────────
+
+function SubscriptionStep({
+  clientId,
+  subscriptions,
+  activeSubscriptions,
+  selectedId,
+  onSelect,
+  skip,
+  onSkip,
+}: {
+  clientId: string | null
+  subscriptions: ClientSubscription[]
+  activeSubscriptions: ClientSubscription[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  skip: boolean
+  onSkip: () => void
+}) {
+  if (!clientId) {
+    return (
+      <p className="text-[13px] text-slate-500 italic">
+        Volte e selecione o cliente.
+      </p>
+    )
+  }
+
+  const PAYMENT_LABEL: Record<string, string> = {
+    pix_direto: "PIX direto",
+    pix_asaas: "PIX (Asaas)",
+    asaas: "Asaas",
+    boleto: "Boleto",
+    credit_card: "Cartão",
+    wise: "Wise",
+    bank_transfer: "Transferência",
+  }
+  const CYCLE_LABEL: Record<string, string> = {
+    MONTHLY: "/mês",
+    QUARTERLY: "/trimestre",
+    YEARLY: "/ano",
+    WEEKLY: "/semana",
+    BIWEEKLY: "/quinzenal",
+  }
+
+  return (
+    <div className="space-y-3">
+      {activeSubscriptions.length === 0 && subscriptions.length === 0 && (
+        <div className="rounded-[10px] border border-amber-200 bg-amber-50/60 dark:bg-amber-500/[0.06] dark:border-amber-500/30 p-4">
+          <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-300">
+            Cliente sem assinatura cadastrada
+          </p>
+          <p className="text-[12px] text-amber-700 dark:text-amber-400/80 mt-1 leading-relaxed">
+            Você pode criar a assinatura depois em{" "}
+            <span className="font-medium">Cliente › Financeiro</span> ou
+            continuar sem ela agora — o onboarding fica sem MRR/plano atrelados
+            até você adicionar.
+          </p>
+          <button
+            type="button"
+            onClick={onSkip}
+            className={
+              "mt-3 inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-[6px] border transition-colors " +
+              (skip
+                ? "bg-amber-600 text-white border-amber-600"
+                : "bg-white dark:bg-white/[0.04] text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/30 hover:bg-amber-50")
+            }
+          >
+            {skip && <Check className="h-3 w-3" strokeWidth={3} />}
+            Continuar sem assinatura
+          </button>
+        </div>
+      )}
+
+      {activeSubscriptions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
+            Assinaturas ativas
+          </p>
+          {activeSubscriptions.map((s) => {
+            const selected = selectedId === s.id
+            const valueLabel = Number(s.value).toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+              maximumFractionDigits: 0,
+            })
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onSelect(s.id)}
+                className={
+                  "w-full text-left p-3.5 rounded-[10px] border transition-all duration-150 flex items-start gap-3 " +
+                  (selected
+                    ? "border-brand-500 bg-brand-50/40 dark:bg-brand-500/[0.08] ring-4 ring-brand-500/10"
+                    : "border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/[0.12]")
+                }
+              >
+                <span
+                  className={
+                    "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded-full border-2 mt-0.5 " +
+                    (selected
+                      ? "border-brand-500 bg-brand-500"
+                      : "border-slate-300 dark:border-white/[0.20]")
+                  }
+                  aria-hidden
+                >
+                  {selected && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  )}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">
+                      {s.name}
+                    </span>
+                    <span className="text-[14px] font-semibold tabular-nums text-slate-900 dark:text-white shrink-0">
+                      {valueLabel}
+                      <span className="text-[11px] font-normal text-slate-500 dark:text-white/55">
+                        {CYCLE_LABEL[s.cycle] ?? `/${s.cycle.toLowerCase()}`}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11.5px] text-slate-500 dark:text-white/55">
+                    <span>
+                      {PAYMENT_LABEL[s.payment_method] ?? s.payment_method}
+                    </span>
+                    {s.asaas_subscription_id && (
+                      <>
+                        <span className="text-slate-300 dark:text-white/20">
+                          ·
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium">
+                          <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                          Asaas
+                        </span>
+                      </>
+                    )}
+                    <span className="text-slate-300 dark:text-white/20">·</span>
+                    <span>
+                      Próximo vencimento:{" "}
+                      {new Date(s.next_due_date).toLocaleDateString("pt-BR")}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {subscriptions.filter((s) => s.status !== "active").length > 0 && (
+        <details className="text-[12px]">
+          <summary className="cursor-pointer text-slate-500 dark:text-white/55 hover:text-slate-700">
+            Mostrar assinaturas inativas (
+            {subscriptions.filter((s) => s.status !== "active").length})
+          </summary>
+          <div className="mt-2 space-y-1.5 pl-3 border-l-2 border-slate-100 dark:border-white/[0.06]">
+            {subscriptions
+              .filter((s) => s.status !== "active")
+              .map((s) => (
+                <div
+                  key={s.id}
+                  className="text-[12px] text-slate-400 dark:text-white/40 flex items-center justify-between"
+                >
+                  <span className="truncate">
+                    {s.name} ·{" "}
+                    <span className="italic">{s.status}</span>
+                  </span>
+                  <span className="tabular-nums">
+                    {Number(s.value).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </details>
+      )}
+
+      {activeSubscriptions.length > 0 && (
+        <button
+          type="button"
+          onClick={onSkip}
+          className={
+            "w-full text-left p-3.5 rounded-[10px] border transition-colors flex items-center gap-3 " +
+            (skip
+              ? "border-slate-700 dark:border-white/30 bg-slate-50 dark:bg-white/[0.04]"
+              : "border-dashed border-slate-300 dark:border-white/[0.10] bg-transparent hover:bg-slate-50 dark:hover:bg-white/[0.02]")
+          }
+        >
+          <span
+            className={
+              "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded-full border-2 " +
+              (skip
+                ? "border-slate-700 bg-slate-700 dark:border-white dark:bg-white"
+                : "border-slate-300 dark:border-white/[0.20]")
+            }
+          >
+            {skip && (
+              <span className="h-1.5 w-1.5 rounded-full bg-white dark:bg-black" />
+            )}
+          </span>
+          <div className="flex-1">
+            <p className="text-[13px] font-medium text-slate-700 dark:text-white/80">
+              Continuar sem atrelar assinatura
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-white/45 mt-0.5">
+              Você pode atrelar depois em Cliente › Financeiro.
+            </p>
+          </div>
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── Step 3: Origem ───────────────────────────────────────────────────────
+
+function SourceStep({
+  channel,
+  onChannelChange,
+  referredById,
+  onReferredByChange,
+  referrerOptions,
+  sourcePipelineId,
+  onSourcePipelineChange,
+  pipelines,
+  notes,
+  onNotesChange,
+}: {
+  channel: SourceChannel | null
+  onChannelChange: (c: SourceChannel) => void
+  referredById: string | null
+  onReferredByChange: (id: string | null) => void
+  referrerOptions: ClientLite[]
+  sourcePipelineId: string | null
+  onSourcePipelineChange: (id: string | null) => void
+  pipelines: PipelineLite[]
+  notes: string
+  onNotesChange: (s: string) => void
+}) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55 mb-2">
+          Como esse lead chegou?
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {SOURCE_CHANNELS.map((c) => {
+            const selected = channel === c.value
+            return (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => onChannelChange(c.value)}
+                className={
+                  "text-left p-2.5 rounded-[8px] border transition-all duration-150 " +
+                  (selected
+                    ? "border-brand-500 bg-brand-50/40 dark:bg-brand-500/[0.08] ring-2 ring-brand-500/10"
+                    : "border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] hover:border-slate-300")
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={
+                      "shrink-0 inline-flex items-center justify-center h-3.5 w-3.5 rounded-full border-2 " +
+                      (selected
+                        ? "border-brand-500 bg-brand-500"
+                        : "border-slate-300 dark:border-white/[0.20]")
+                    }
+                  >
+                    {selected && (
+                      <span className="h-1 w-1 rounded-full bg-white" />
+                    )}
+                  </span>
+                  <span className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                    {c.label}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-white/50 mt-0.5 ml-[22px]">
+                  {c.hint}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Conditional: Quem indicou */}
+      {channel === "indicacao" && (
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
+            Quem indicou? <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={referredById ?? ""}
+            onChange={(e) => onReferredByChange(e.target.value || null)}
+            className="w-full h-10 px-3 text-[13px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
+          >
+            <option value="">— selecione o cliente que indicou —</option>
+            {referrerOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.company ? ` · ${c.company}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500 dark:text-white/45">
+            Vai contar nas métricas de indicações por cliente.
           </p>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <SelectClientAndStore
-            selectedClientId={clientId}
-            selectedStoreId={storeId}
-            onClientChange={setClientId}
-            onStoreChange={setStoreId}
-          />
+      )}
 
-          {/* Comercial */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-                Plano
-              </label>
-              <select
-                value={plan}
-                onChange={(e) => setPlan(e.target.value)}
-                className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-              >
-                <option value="Essencial">Essencial</option>
-                <option value="Pro">Pro</option>
-                <option value="Premium">Premium</option>
-                <option value="Custom">Custom</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-                MRR (R$)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={mrr}
-                onChange={(e) => setMrr(fmtMrrInput(e.target.value))}
-                placeholder="R$ 0,00"
-                className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] tabular-nums"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-              WhatsApp do cliente
-            </label>
-            <input
-              type="tel"
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(fmtWhatsInput(e.target.value))}
-              placeholder="+55 (31) 99999-9999"
-              className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] font-mono"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-                Idioma
-              </label>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-              >
-                <option value="pt-BR">Português (BR)</option>
-                <option value="en-US">English (US)</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-                Vertical
-              </label>
-              <select
-                value={vertical}
-                onChange={(e) => setVertical(e.target.value)}
-                className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-              >
-                <option value="e-commerce">E-commerce</option>
-                <option value="moda">Moda</option>
-                <option value="suplementos">Suplementos</option>
-                <option value="beleza">Beleza/Cosméticos</option>
-                <option value="alimentos">Alimentos/Bebidas</option>
-                <option value="automotivo">Automotivo</option>
-                <option value="saude">Saúde</option>
-                <option value="pets">Pets</option>
-                <option value="outros">Outros</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-semibold text-slate-700 dark:text-white/80 uppercase tracking-wide">
-              Origem
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  { value: "manual", label: "Manual" },
-                  { value: "deal_won", label: "Deal fechado" },
-                  { value: "referral", label: "Indicação" },
-                  { value: "migration", label: "Migração" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setSource(opt.value)}
-                  className={
-                    "h-8 text-[12px] font-medium rounded-[5px] border transition-colors " +
-                    (source === opt.value
-                      ? "bg-[#1F1F1F] text-white border-[#1F1F1F] dark:bg-white dark:text-black dark:border-white"
-                      : "bg-white dark:bg-white/[0.04] text-slate-700 dark:text-white/70 border-slate-200 dark:border-white/[0.08] hover:border-slate-300")
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 px-3 text-[12px] font-medium text-slate-700 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-white/[0.04] rounded-[6px]"
+      {/* Conditional: Pipeline de origem */}
+      {channel === "deal_won" && (
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
+            Pipeline de origem <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={sourcePipelineId ?? ""}
+            onChange={(e) => onSourcePipelineChange(e.target.value || null)}
+            className="w-full h-10 px-3 text-[13px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
           >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting || !clientId || !storeId}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black rounded-[6px] disabled:opacity-50"
-          >
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Criar e copiar link
-          </button>
+            <option value="">— selecione a pipeline CRM —</option>
+            {pipelines.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.scope ? ` · ${p.scope}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500 dark:text-white/45">
+            Útil pra calcular taxa de conversão de cada pipeline.
+          </p>
         </div>
+      )}
+
+      {/* Notas opcionais */}
+      <div className="space-y-1.5">
+        <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/55">
+          Detalhes adicionais{" "}
+          <span className="text-slate-400 dark:text-white/35 normal-case">
+            (opcional)
+          </span>
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => onNotesChange(e.target.value)}
+          rows={2}
+          placeholder="Nome da campanha, hashtag, evento específico, contexto..."
+          className="w-full px-3 py-2 text-[13px] rounded-[8px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all resize-none"
+        />
       </div>
     </div>
   )

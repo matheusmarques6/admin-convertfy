@@ -47,6 +47,12 @@ interface CreateOptions {
   language?: string | null
   vertical?: string | null
   source?: "manual" | "deal_won" | "referral" | "migration"
+  // Sprint pipeline-final (Bruno): atrela subscription + tracking origem
+  subscriptionId?: string | null
+  sourceChannel?: string | null
+  referredByClientId?: string | null
+  sourcePipelineId?: string | null
+  sourceNotes?: string | null
 }
 
 export async function createOnboarding(
@@ -75,6 +81,33 @@ export async function createOnboarding(
   const formToken = randomToken(24)
   const initialColumnId = columnIds["entrada"]
 
+  // Se subscription_id foi passado, busca dados pra popular plan/mrr_value
+  let resolvedPlan = opts.plan ?? null
+  let resolvedMrr = opts.mrrValue ?? null
+  if (opts.subscriptionId) {
+    const { data: sub } = await admin
+      .from("client_subscriptions")
+      .select("name, value, client_id")
+      .eq("id", opts.subscriptionId)
+      .maybeSingle()
+    if (sub && sub.client_id === opts.clientId) {
+      if (!resolvedPlan) resolvedPlan = sub.name
+      if (resolvedMrr === null || resolvedMrr === undefined)
+        resolvedMrr = Number(sub.value)
+    }
+  }
+
+  // Se clientWhatsapp nao foi passado, puxa do cliente
+  let resolvedWhatsapp = opts.clientWhatsapp ?? null
+  if (!resolvedWhatsapp) {
+    const { data: client } = await admin
+      .from("clients")
+      .select("phone")
+      .eq("id", opts.clientId)
+      .maybeSingle()
+    resolvedWhatsapp = client?.phone ?? null
+  }
+
   const { data: created, error } = await admin
     .from("onboardings")
     .insert({
@@ -94,13 +127,19 @@ export async function createOnboarding(
       entered_at: new Date().toISOString(),
       last_column_change_at: new Date().toISOString(),
       created_by: opts.createdBy,
-      // Campos comerciais
-      plan: opts.plan ?? null,
-      mrr_value: opts.mrrValue ?? null,
-      client_whatsapp: opts.clientWhatsapp ?? null,
+      // Campos comerciais (auto-populated da subscription quando disponivel)
+      plan: resolvedPlan,
+      mrr_value: resolvedMrr,
+      client_whatsapp: resolvedWhatsapp,
       language: opts.language ?? "pt-BR",
       vertical: opts.vertical ?? null,
       source: opts.source ?? "manual",
+      // Tracking de origem (Bruno - dashboard comercial)
+      subscription_id: opts.subscriptionId ?? null,
+      source_channel: opts.sourceChannel ?? null,
+      referred_by_client_id: opts.referredByClientId ?? null,
+      source_pipeline_id: opts.sourcePipelineId ?? null,
+      source_notes: opts.sourceNotes ?? null,
     })
     .select("*")
     .single()
