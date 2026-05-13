@@ -1,29 +1,33 @@
 "use client"
 
 /**
- * OnboardingCard — versao DS v3 (store-cêntrico).
+ * OnboardingCard — versao DS v3 enriquecida.
  *
- * Baseado no design canonical Convertfy DS v3 (h/tnEChylo4M0Fuos_UiRdsg).
- * Estruturalmente DISTINTO do DealCard (que e pessoa-cêntrico):
+ * Cliente Bruno (CEO): "Os cards anteriores eram mais ricos de informacao,
+ * quero a mesma riqueza com design melhor". Versao volta com cliente,
+ * empresa, MRR, status de pagamento, contrato e whatsapp mascarado —
+ * organizados em linhas-de-info compactas (icones cinza + valor + pill).
  *
- *   ┌─[ accent edge se bloqueado/em risco ]─┐
- *   │  [icon store] Nome da Loja      ⋯    │
- *   │  [Plano]  [Plataforma]                │
- *   │  Frase de status humana (ou flag erro)│
- *   │  Tarefas              N/M             │
- *   │  ▓▓▓▓░░░░ (barra fina 3px)            │
- *   │  ─────────────────────────            │
- *   │  [Resp]                  Xd · DD/MM   │
- *   └───────────────────────────────────────┘
- *
- * Sem MRR, sem payment status, sem WhatsApp visual — esses dados ficam
- * no detail panel (LeadDrawer-like). O card e PRIORIZACAO no kanban.
+ *   ┌─[ accent edge se bloqueado/em risco ]─────┐
+ *   │ [logo] Nome Loja                  ⋯       │
+ *   │        Cliente · Empresa                  │
+ *   │ [Plano] [Plataforma]                      │
+ *   │                                           │
+ *   │ $ R$ 1.500/mes              · Pago        │
+ *   │ ☐ Contrato                  · Pendente    │
+ *   │ ☎ +55 (31) 9****-**42                     │
+ *   │ ⚐ Briefing aprovado, indo pra design      │
+ *   │                                           │
+ *   │ Tarefas                       2/4         │
+ *   │ ▓▓▓▓░░░ (barra fina 3px)                  │
+ *   │ ─────────────────────────                 │
+ *   │ [resp]                  2d · 13/05        │
+ *   └───────────────────────────────────────────┘
  */
 
 import { useMemo, useState } from "react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
-  Store,
   MoreHorizontal,
   Flag,
   Clock,
@@ -34,9 +38,16 @@ import {
   RotateCcw,
   Archive,
   Copy,
+  CreditCard,
+  FileSignature,
+  Phone,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
-import type { OnboardingPipelineItem } from "@/types/onboarding-pipeline"
+import type {
+  OnboardingPipelineItem,
+  OnboardingPaymentStatus,
+  OnboardingContractStatus,
+} from "@/types/onboarding-pipeline"
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -73,6 +84,33 @@ function fmtBR(iso: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
 }
 
+function fmtMrr(value: number | string | null | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null
+  const n = typeof value === "string" ? Number(value) : value
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  })
+}
+
+function maskWhatsApp(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const digits = raw.replace(/\D/g, "")
+  if (digits.length < 10) return raw
+  const ddi = digits.length >= 12 ? digits.slice(0, 2) : "55"
+  const offset = digits.length >= 12 ? 2 : 0
+  const ddd = digits.slice(offset, offset + 2)
+  const tail = digits.slice(-2)
+  const numLen = digits.length - offset - 2
+  if (numLen === 9) {
+    // celular com 9 inicial
+    return `+${ddi} (${ddd}) ${digits[offset + 2]}****-**${tail}`
+  }
+  return `+${ddi} (${ddd}) ****-**${tail}`
+}
+
 const PLATFORM_LABEL: Record<string, string> = {
   klaviyo: "Klaviyo",
   omnisend: "Omnisend",
@@ -82,6 +120,20 @@ const PLATFORM_LABEL: Record<string, string> = {
   woocommerce: "WooCommerce",
   vtex: "VTEX",
   other: "Outro",
+}
+
+const PAYMENT_LABEL: Record<OnboardingPaymentStatus, { label: string; tone: "pos" | "warn" | "neg" }> = {
+  paid: { label: "Pago", tone: "pos" },
+  pending: { label: "Pendente", tone: "warn" },
+  overdue: { label: "Atrasado", tone: "neg" },
+  renewal_due: { label: "Renovar", tone: "warn" },
+}
+
+const CONTRACT_LABEL: Record<OnboardingContractStatus, { label: string; tone: "pos" | "warn" | "brand" }> = {
+  pending: { label: "Pendente", tone: "warn" },
+  sent: { label: "Enviado", tone: "brand" },
+  signed: { label: "Assinado", tone: "pos" },
+  expiring: { label: "Vencendo", tone: "warn" },
 }
 
 /** Converte briefing_status em frase humana (PT-BR direto). */
@@ -100,6 +152,66 @@ function briefingStatusSentence(
   if (status === "form_partially_filled" || hasFormResponses)
     return { text: "Cliente preencheu o formulario", blocked: false }
   return { text: "Aguardando preenchimento do formulario", blocked: false }
+}
+
+// ─── Pill component ────────────────────────────────────────────────────
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string
+  tone: "pos" | "warn" | "neg" | "brand"
+}) {
+  const map: Record<typeof tone, string> = {
+    pos: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    warn: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+    neg: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+    brand: "bg-brand-50 text-brand-500 dark:bg-brand-500/15 dark:text-brand-300",
+  }
+  const dotColor: Record<typeof tone, string> = {
+    pos: "#10B981",
+    warn: "#F59E0B",
+    neg: "#EF4444",
+    brand: "#4E62D8",
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10.5px] font-semibold ${map[tone]}`}
+      style={{ borderRadius: 4 }}
+    >
+      <span
+        className="rounded-full"
+        style={{ height: 5, width: 5, background: dotColor[tone] }}
+        aria-hidden
+      />
+      {label}
+    </span>
+  )
+}
+
+// ─── Linha-de-info compacta ────────────────────────────────────────────
+
+function InfoRow({
+  icon,
+  label,
+  pill,
+}: {
+  icon: React.ReactNode
+  label: React.ReactNode
+  pill?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-[11.5px] leading-tight text-slate-700 dark:text-white/80">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-slate-400 dark:text-white/40 shrink-0" aria-hidden>
+          {icon}
+        </span>
+        <span className="truncate tabular-nums">{label}</span>
+      </div>
+      {pill && <span className="shrink-0">{pill}</span>}
+    </div>
+  )
 }
 
 // ─── Props ──────────────────────────────────────────────────────────────
@@ -133,26 +245,25 @@ export function OnboardingCard({
   const [menuOpen, setMenuOpen] = useState(false)
 
   const storeName = onb.store?.store_name ?? "Loja"
+  const clientName = onb.client?.name ?? null
+  const clientCompany = onb.client?.company ?? null
   const platformRaw = (onb.store?.platform ?? "").toLowerCase()
   const platformLabel = PLATFORM_LABEL[platformRaw] ?? platformRaw
 
-  // Frase de status humana
-  const status = briefingStatusSentence(
-    onb.briefing_status,
-    !!onb.form_responses,
-  )
-  // Risco: SLA estourou, pagamento overdue, briefing com erro, ou status='needs_review'
+  const mrrLabel = fmtMrr(onb.mrr_value)
+  const whatsappMasked = maskWhatsApp(onb.client_whatsapp)
+  const paymentPill = onb.payment_status ? PAYMENT_LABEL[onb.payment_status] : null
+  const contractPill = onb.contract_status ? CONTRACT_LABEL[onb.contract_status] : null
+
+  const status = briefingStatusSentence(onb.briefing_status, !!onb.form_responses)
   const hoursIn = hoursBetween(onb.last_column_change_at)
   const slaHours = onb.current_column?.sla_hours ?? 0
   const slaBreached = slaHours > 0 && hoursIn >= slaHours
   const slaPct = slaHours > 0 ? Math.min(100, (hoursIn / slaHours) * 100) : 0
   const briefingError =
-    typeof onb.briefing === "object" &&
-    onb.briefing &&
-    "error" in onb.briefing
+    typeof onb.briefing === "object" && onb.briefing && "error" in onb.briefing
   const blocked = slaBreached || briefingError || status.blocked
 
-  // Progresso: usa tasks da coluna atual (tasksInCurrent/total)
   const tasksInCurrent = (onb.tasks ?? []).filter(
     (t) => t.operational_column_id === onb.current_column_id,
   )
@@ -160,19 +271,17 @@ export function OnboardingCard({
   const tasksDone = tasksInCurrent.filter((t) => t.status === "completed").length
   const pct = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0
 
-  // Responsavel: primeiro assignee_role das tasks da coluna
   const firstTask = tasksInCurrent[0]
   const responsibleRole = firstTask?.assignee_role ?? null
   const avatarColors = useMemo(
-    () => avatarColorFromName(responsibleRole ?? storeName),
-    [responsibleRole, storeName],
+    () => avatarColorFromName(storeName),
+    [storeName],
   )
-  const initials = getInitials(responsibleRole ?? storeName).slice(0, 2)
+  const storeInitials = getInitials(storeName).slice(0, 2)
 
   const daysIn = Math.floor(hoursIn / 24)
   const enteredLabel = fmtBR(onb.entered_at ?? onb.created_at)
 
-  // Plan tag + Platform tag
   const planTag = onb.plan ?? null
   const showPlatform = !!platformLabel && platformLabel !== "Outro"
 
@@ -183,7 +292,6 @@ export function OnboardingCard({
     toast.toast({ title: "Link copiado", description: url })
   }
 
-  // Cor do edge esquerdo
   const accentColor = blocked ? "#991B1B" : slaBreached ? "#92400E" : null
 
   return (
@@ -192,7 +300,7 @@ export function OnboardingCard({
       style={{
         position: "relative",
         borderRadius: 8,
-        padding: accentColor ? "12px 12px 12px 16px" : "12px",
+        padding: accentColor ? "10px 10px 10px 14px" : "10px",
         cursor: "pointer",
         boxShadow: isDragging
           ? "0 12px 24px rgba(15, 23, 42, 0.12)"
@@ -200,7 +308,7 @@ export function OnboardingCard({
         transform: isDragging ? "rotate(0.4deg) scale(1.01)" : undefined,
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 8,
       }}
     >
       {accentColor && (
@@ -218,19 +326,36 @@ export function OnboardingCard({
         />
       )}
 
-      {/* Header: ícone store + nome + 3-dots */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span
-            className="text-slate-500 dark:text-white/55 shrink-0"
-            style={{ display: "inline-flex" }}
+      {/* Header: avatar circulo (iniciais loja) + Nome Loja / Cliente · Empresa + 3-dots */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-full font-semibold shrink-0"
+            style={{
+              background: avatarColors.bg,
+              color: avatarColors.fg,
+              fontSize: 10,
+              letterSpacing: "-0.01em",
+            }}
+            title={storeName}
             aria-hidden
           >
-            <Store className="h-[14px] w-[14px]" strokeWidth={2} />
-          </span>
-          <h3 className="text-[13px] font-semibold leading-tight text-slate-900 dark:text-white truncate">
-            {storeName}
-          </h3>
+            {storeInitials || "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[13px] font-semibold leading-tight text-slate-900 dark:text-white truncate">
+              {storeName}
+            </h3>
+            {(clientName || clientCompany) && (
+              <p className="text-[10.5px] leading-tight text-slate-500 dark:text-white/55 truncate mt-0.5">
+                {clientName}
+                {clientName && clientCompany && (
+                  <span className="text-slate-300 dark:text-white/25"> · </span>
+                )}
+                {clientCompany}
+              </p>
+            )}
+          </div>
         </div>
         {onb.current_version > 1 && (
           <span
@@ -260,7 +385,7 @@ export function OnboardingCard({
         <div className="flex gap-1.5 flex-wrap">
           {planTag && (
             <span
-              className="px-2 py-0.5 rounded text-[11px] font-medium bg-brand-50 text-brand-500 dark:bg-brand-500/15 dark:text-brand-300"
+              className="px-2 py-0.5 rounded text-[10.5px] font-semibold bg-brand-50 text-brand-500 dark:bg-brand-500/15 dark:text-brand-300"
               style={{ borderRadius: 4 }}
             >
               {planTag}
@@ -268,11 +393,51 @@ export function OnboardingCard({
           )}
           {showPlatform && (
             <span
-              className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/65"
+              className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/65"
               style={{ borderRadius: 4 }}
             >
               {platformLabel}
             </span>
+          )}
+        </div>
+      )}
+
+      {/* Linhas-de-info comerciais (compactas) */}
+      {(mrrLabel || paymentPill || contractPill || whatsappMasked) && (
+        <div className="space-y-1.5">
+          {(mrrLabel || paymentPill) && (
+            <InfoRow
+              icon={<CreditCard className="h-3 w-3" strokeWidth={2} />}
+              label={mrrLabel ? `${mrrLabel}/mês` : "Sem MRR"}
+              pill={
+                paymentPill && (
+                  <StatusPill label={paymentPill.label} tone={paymentPill.tone} />
+                )
+              }
+            />
+          )}
+          {contractPill && contractPill.label !== "Pendente" ? (
+            <InfoRow
+              icon={<FileSignature className="h-3 w-3" strokeWidth={2} />}
+              label="Contrato"
+              pill={<StatusPill label={contractPill.label} tone={contractPill.tone} />}
+            />
+          ) : contractPill ? (
+            <InfoRow
+              icon={<FileSignature className="h-3 w-3" strokeWidth={2} />}
+              label="Contrato"
+              pill={<StatusPill label="Pendente" tone="warn" />}
+            />
+          ) : null}
+          {whatsappMasked && (
+            <InfoRow
+              icon={<Phone className="h-3 w-3" strokeWidth={2} />}
+              label={
+                <span className="font-mono tabular-nums text-[11px]">
+                  {whatsappMasked}
+                </span>
+              }
+            />
           )}
         </div>
       )}
@@ -298,15 +463,11 @@ export function OnboardingCard({
       {tasksTotal > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] text-slate-500 dark:text-white/55">
+            <span className="text-[10.5px] text-slate-500 dark:text-white/55">
               Tarefas
             </span>
             <span
-              className="text-[11px] font-medium text-slate-600 dark:text-white/65"
-              style={{
-                fontVariantNumeric: "tabular-nums lining-nums",
-                fontFeatureSettings: '"tnum" 1, "lnum" 1',
-              }}
+              className="text-[10.5px] font-medium text-slate-600 dark:text-white/65 tabular-nums"
             >
               {tasksDone}/{tasksTotal}
             </span>
@@ -347,47 +508,30 @@ export function OnboardingCard({
         </div>
       )}
 
-      {/* Footer: responsavel + tempo + data entrada */}
+      {/* Footer: responsavel role + tempo + data entrada */}
       <div
-        className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/[0.04]"
+        className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-white/[0.04]"
         style={{ marginTop: 2 }}
       >
-        <div
-          className="flex h-[22px] w-[22px] items-center justify-center rounded-full font-semibold"
-          style={{
-            background: avatarColors.bg,
-            color: avatarColors.fg,
-            fontSize: 9,
-            letterSpacing: "-0.01em",
-          }}
+        <span
+          className="text-[10.5px] font-medium text-slate-500 dark:text-white/55 truncate"
           title={responsibleRole ?? "Sem responsável"}
-          aria-label={responsibleRole ?? "Sem responsável"}
         >
-          {initials || "?"}
-        </div>
-        <div className="flex items-center gap-2">
+          {responsibleRole ?? "Sem responsável"}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
           <span
             className={
-              "inline-flex items-center gap-0.5 text-[10px] " +
+              "inline-flex items-center gap-0.5 text-[10px] tabular-nums " +
               (blocked
                 ? "text-rose-600 dark:text-rose-400 font-semibold"
                 : "text-slate-400 dark:text-white/40")
             }
-            style={{
-              fontVariantNumeric: "tabular-nums lining-nums",
-              fontFeatureSettings: '"tnum" 1, "lnum" 1',
-            }}
           >
             <Clock className="h-[11px] w-[11px]" strokeWidth={2} />
             {daysIn === 0 ? "hoje" : `${daysIn}d`}
           </span>
-          <span
-            className="inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-white/40"
-            style={{
-              fontVariantNumeric: "tabular-nums lining-nums",
-              fontFeatureSettings: '"tnum" 1, "lnum" 1',
-            }}
-          >
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-white/40 tabular-nums">
             <Calendar className="h-[11px] w-[11px]" strokeWidth={2} />
             {enteredLabel}
           </span>

@@ -13,6 +13,7 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
+import { OnboardingDrawer } from "./onboarding-drawer"
 import {
   DragDropContext,
   Droppable,
@@ -20,7 +21,6 @@ import {
   type DropResult,
 } from "@hello-pangea/dnd"
 import { Plus, Sparkles, Loader2 } from "lucide-react"
-import Link from "next/link"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
 import type {
@@ -41,6 +41,7 @@ export function OnboardingKanban() {
     onboardings: OnboardingPipelineItem[]
   }>("/api/onboardings", fetcher, { revalidateOnFocus: false })
   const [newOpen, setNewOpen] = useState(false)
+  const [drawerId, setDrawerId] = useState<string | null>(null)
   const [goBackContext, setGoBackContext] = useState<{
     onboardingId: string
     targetSlug: string
@@ -196,55 +197,56 @@ export function OnboardingKanban() {
                                 ref={dp.innerRef}
                                 {...dp.draggableProps}
                                 {...dp.dragHandleProps}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setDrawerId(onb.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault()
+                                    setDrawerId(onb.id)
+                                  }
+                                }}
+                                className="focus:outline-none"
                               >
-                                <Link
-                                  href={ROUTES.ADMIN.ONBOARDING_V2.DETAIL(onb.id)}
-                                  className="block focus:outline-none"
-                                  // Drag handle eh o div pai; clique no link navega
-                                >
-                                  <OnboardingCard
-                                    onb={onb}
-                                    stageColor={col.color}
-                                    isDragging={ds.isDragging}
-                                    onView={(id) => {
-                                      window.location.href =
-                                        ROUTES.ADMIN.ONBOARDING_V2.DETAIL(id)
-                                    }}
-                                    onForceAdvance={(id) => {
-                                      window.location.href =
-                                        ROUTES.ADMIN.ONBOARDING_V2.DETAIL(id) +
-                                        "?action=force-advance"
-                                    }}
-                                    onRequestAdjustments={(id) => {
-                                      window.location.href =
-                                        ROUTES.ADMIN.ONBOARDING_V2.DETAIL(id) +
-                                        "?action=go-back"
-                                    }}
-                                    onArchive={async (id) => {
-                                      if (
-                                        !confirm(
-                                          "Arquivar esse onboarding? (status=cancelled, soft-delete)",
-                                        )
+                                <OnboardingCard
+                                  onb={onb}
+                                  stageColor={col.color}
+                                  isDragging={ds.isDragging}
+                                  onView={(id) => setDrawerId(id)}
+                                  onForceAdvance={(id) => {
+                                    window.location.href =
+                                      ROUTES.ADMIN.ONBOARDING_V2.DETAIL(id) +
+                                      "?action=force-advance"
+                                  }}
+                                  onRequestAdjustments={(id) => {
+                                    window.location.href =
+                                      ROUTES.ADMIN.ONBOARDING_V2.DETAIL(id) +
+                                      "?action=go-back"
+                                  }}
+                                  onArchive={async (id) => {
+                                    if (
+                                      !confirm(
+                                        "Arquivar esse onboarding? (status=cancelled, soft-delete)",
                                       )
-                                        return
-                                      const res = await fetch(
-                                        `/api/onboardings/${id}`,
-                                        { method: "DELETE" },
-                                      )
-                                      if (res.ok) {
-                                        toast.toast({ title: "Onboarding arquivado" })
-                                        mutate()
-                                      } else {
-                                        const j = await res.json().catch(() => ({}))
-                                        toast.toast({
-                                          variant: "destructive",
-                                          title: "Falha",
-                                          description: j.error ?? "Tente novamente.",
-                                        })
-                                      }
-                                    }}
-                                  />
-                                </Link>
+                                    )
+                                      return
+                                    const res = await fetch(
+                                      `/api/onboardings/${id}`,
+                                      { method: "DELETE" },
+                                    )
+                                    if (res.ok) {
+                                      toast.toast({ title: "Onboarding arquivado" })
+                                      mutate()
+                                    } else {
+                                      const j = await res.json().catch(() => ({}))
+                                      toast.toast({
+                                        variant: "destructive",
+                                        title: "Falha",
+                                        description: j.error ?? "Tente novamente.",
+                                      })
+                                    }
+                                  }}
+                                />
                               </div>
                             )}
                           </Draggable>
@@ -286,6 +288,13 @@ export function OnboardingKanban() {
           }}
         />
       )}
+
+      <OnboardingDrawer
+        onboardingId={drawerId}
+        open={drawerId !== null}
+        onClose={() => setDrawerId(null)}
+        onMutate={mutate}
+      />
     </div>
   )
 }
