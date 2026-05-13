@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getTutorialPageWithBlocks } from "@/lib/services/tutorial-page.service"
+import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -37,6 +38,7 @@ export async function PATCH(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOnboardingPermission(user.id, "admin")
     const admin = createAdminClient()
     const body = await request.json()
     const patch: Record<string, unknown> = { updated_by: user.id }
@@ -66,6 +68,7 @@ export async function DELETE(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOnboardingPermission(user.id, "admin")
     const admin = createAdminClient()
     const { error } = await admin
       .from("tutorial_pages")

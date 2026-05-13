@@ -4,9 +4,9 @@
  * Mapeamento:
  *   current_phase -> coluna por slug:
  *     configuracao | pending_approval -> entrada
- *     briefing | generating_copies -> cliente_preenchendo_formulario
+ *     briefing | generating_copies -> cliente_formulario
  *     setup_klaviyo | design -> preview_producao
- *     primeira_campanha | implementation -> emails_finais_em_producao
+ *     primeira_campanha | implementation -> emails_finais
  *     go_live | in_progress -> implementacao
  *     feedback_30d | completed -> cliente_ativo
  *   status -> in_progress | completed | cancelled (com mapping)
@@ -26,13 +26,13 @@ const log = logger.child("LegacyOnboardingMigration")
 const PHASE_TO_SLUG: Record<string, string> = {
   configuracao: "entrada",
   pending_approval: "entrada",
-  briefing: "cliente_preenchendo_formulario",
-  generating_copies: "cliente_preenchendo_formulario",
-  form_partially_filled: "cliente_preenchendo_formulario",
+  briefing: "cliente_formulario",
+  generating_copies: "cliente_formulario",
+  form_partially_filled: "cliente_formulario",
   setup_klaviyo: "preview_producao",
   design: "preview_producao",
-  primeira_campanha: "emails_finais_em_producao",
-  implementation: "emails_finais_em_producao",
+  primeira_campanha: "emails_finais",
+  implementation: "emails_finais",
   go_live: "implementacao",
   in_progress: "implementacao",
   feedback_30d: "cliente_ativo",

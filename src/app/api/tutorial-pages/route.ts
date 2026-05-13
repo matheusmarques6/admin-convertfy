@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
+    await requireOnboardingPermission(user.id, "admin")
     const admin = createAdminClient()
     const body = await request.json()
     if (!body.slug || !body.name) throw new AppError("slug e name obrigatorios", 400)

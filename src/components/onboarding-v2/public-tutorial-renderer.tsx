@@ -94,9 +94,17 @@ export function PublicTutorialRenderer({ token }: { token: string }) {
           return <BlockRenderer key={b.id} block={b} stepIdx={stepIdx} />
         })}
         {blocks.length === 0 && (
-          <p className="text-[13px] text-slate-500 italic text-center py-10">
-            Esse tutorial ainda nao tem conteúdo.
-          </p>
+          <div className="text-center py-16">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 mb-3">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <p className="text-[14px] font-semibold text-slate-700">
+              Conteúdo em preparação
+            </p>
+            <p className="text-[13px] text-slate-500 mt-1">
+              Nossa equipe está finalizando seu tutorial. Volte em breve.
+            </p>
+          </div>
         )}
       </div>
     </div>

@@ -55,6 +55,7 @@ export async function createOnboarding(
   const { data: existing } = await admin
     .from("onboardings")
     .select("*")
+    .eq("org_id", opts.orgId)
     .eq("client_id", opts.clientId)
     .eq("store_id", opts.storeId)
     .eq("status", "in_progress")
@@ -371,8 +372,8 @@ export async function advanceColumn(
           onboardingId: opts.onboardingId,
           columnId: nextCol.id,
         })
-      } catch {
-        // log feito dentro do service
+      } catch (e) {
+        log.error("sendColumnWhatsApp failed", e)
       }
     })()
   }
@@ -389,8 +390,8 @@ export async function advanceColumn(
         fromCol: currentCol,
         toCol: nextCol,
       })
-    } catch {
-      /* swallow */
+    } catch (e) {
+      log.error("notifyColumnChange failed", e)
     }
   })()
 
@@ -472,11 +473,26 @@ export async function goBackToColumn(
 
   const { data: targetCol } = await admin
     .from("operational_pipeline_columns")
-    .select("id")
+    .select("id, position")
     .eq("pipeline_id", onb.pipeline_id)
     .eq("slug", opts.targetColumnSlug)
     .maybeSingle()
   if (!targetCol) return { ok: false, error: "Coluna alvo nao encontrada" }
+
+  // Valida que target eh anterior a coluna atual
+  if (onb.current_column_id) {
+    const { data: curCol } = await admin
+      .from("operational_pipeline_columns")
+      .select("position")
+      .eq("id", onb.current_column_id)
+      .maybeSingle()
+    if (curCol && targetCol.position >= curCol.position) {
+      return {
+        ok: false,
+        error: "Go-back so funciona pra coluna anterior. Use Avancar pra ir adiante.",
+      }
+    }
+  }
 
   const nextVersion = (onb.current_version ?? 1) + 1
 
@@ -544,8 +560,15 @@ export async function confirmBriefing(
     .maybeSingle()
   if (!onb) return { ok: false, error: "Token invalido" }
 
+  // Dedup atomico: se ja confirmado, retorna idempotente sem reprocessar
+  if (onb.briefing_confirmed_by_client) {
+    return { ok: true, onboarding: onb as OnboardingPipelineItem }
+  }
+
   const now = new Date().toISOString()
-  await admin
+  // Update condicional — so atualiza se ainda nao foi confirmado.
+  // Previne race condition quando cliente clica botao 2x.
+  const { data: updated } = await admin
     .from("onboardings")
     .update({
       briefing: { ...finalBriefing, confirmed_at: now },
@@ -554,6 +577,14 @@ export async function confirmBriefing(
       briefing_confirmed_by_client: true,
     })
     .eq("id", onb.id)
+    .eq("briefing_confirmed_by_client", false)
+    .select("id")
+    .maybeSingle()
+
+  // Outra request ja confirmou — para aqui
+  if (!updated) {
+    return { ok: true, onboarding: onb as OnboardingPipelineItem }
+  }
 
   await admin.from("events").insert({
     event_type: "onboarding.briefing_confirmed",
@@ -596,8 +627,8 @@ export async function confirmBriefing(
         "@/lib/services/onboarding-notifications.service"
       )
       await notifyBriefingReady({ onboardingId: onb.id, orgId: onb.org_id })
-    } catch {
-      /* swallow */
+    } catch (e) {
+      log.error("notifyBriefingReady failed", e)
     }
   })()
 

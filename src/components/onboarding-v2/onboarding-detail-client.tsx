@@ -1021,22 +1021,53 @@ function BriefingTab({
   const toast = useToast()
   const [requesting, setRequesting] = useState(false)
   const b = onboarding.briefing
-  const formUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/form/${onboarding.form_token}`
-      : `/form/${onboarding.form_token}`
+  const briefingError =
+    b && typeof b === "object" && "error" in b
+      ? (b as unknown as { error: string }).error
+      : null
+  const briefingHasContent = b && !briefingError && (b.about_brand || b.audience)
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : ""
+  const formUrl = `${origin}/form/${onboarding.form_token}`
+  const tutorialUrl = onboarding.tutorial_token
+    ? `${origin}/onboarding-help/${onboarding.tutorial_token}`
+    : null
 
   async function requestRevision() {
+    const justification = window.prompt(
+      "Por que esse briefing precisa de revisao? (min 10 chars)",
+    )
+    if (!justification || justification.trim().length < 10) {
+      if (justification !== null) {
+        toast.toast({
+          variant: "destructive",
+          title: "Justificativa obrigatoria",
+          description: "Minimo 10 caracteres.",
+        })
+      }
+      return
+    }
     setRequesting(true)
     try {
       const res = await fetch(
         `/api/onboardings/${onboarding.id}/request-briefing-revision`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ justification: justification.trim() }),
+        },
       )
-      if (res.ok) {
-        toast.toast({ title: "Briefing voltou para revisao" })
-        onMutate()
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.toast({
+          variant: "destructive",
+          title: "Falha",
+          description: j.error ?? "Tente novamente.",
+        })
+        return
       }
+      toast.toast({ title: "Briefing voltou para revisao" })
+      onMutate()
     } finally {
       setRequesting(false)
     }
@@ -1078,7 +1109,55 @@ function BriefingTab({
         </div>
       </div>
 
-      {!b ? (
+      {tutorialUrl && (
+        <div className="rounded-[6px] bg-emerald-50/40 dark:bg-emerald-500/[0.05] border border-emerald-200/60 dark:border-emerald-500/20 p-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide mb-1">
+                Link do tutorial
+              </p>
+              <p className="text-[12px] font-mono text-slate-700 dark:text-white/80 truncate max-w-[400px]">
+                {tutorialUrl}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(tutorialUrl)
+                  toast.toast({ title: "Link copiado" })
+                }}
+                className="h-7 px-2.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-white dark:bg-emerald-500/10 rounded-[5px] border border-emerald-300 dark:border-emerald-500/30 hover:bg-emerald-50"
+              >
+                Copiar
+              </button>
+              <a
+                href={tutorialUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
+              >
+                Abrir
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {briefingError ? (
+        <div className="rounded-[6px] bg-red-50/40 dark:bg-red-500/[0.05] border border-red-200 dark:border-red-900/30 p-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-red-700 dark:text-red-400 mb-1">
+            Falha na geracao do briefing
+          </p>
+          <p className="text-[12px] text-red-800 dark:text-red-300">
+            {briefingError}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-white/55 mt-2">
+            Pede pro cliente reenviar o formulario ou contate o time tecnico.
+          </p>
+        </div>
+      ) : !briefingHasContent ? (
         <p className="text-[12.5px] text-slate-500 italic">
           Briefing ainda nao gerado. Aguardando cliente preencher o formulario.
         </p>
@@ -1107,7 +1186,7 @@ function BriefingTab({
         </div>
       )}
 
-      {b && onboarding.briefing_status === "approved" && (
+      {briefingHasContent && onboarding.briefing_status === "approved" && (
         <button
           type="button"
           onClick={requestRevision}
