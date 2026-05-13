@@ -149,27 +149,25 @@ export function OnboardingKanban() {
               return (
                 <div
                   key={col.id}
-                  className="flex flex-col w-[300px] min-w-[300px] rounded-[8px] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08]"
+                  className="flex flex-col w-[264px] min-w-[264px]"
                 >
-                  <div
-                    className="px-3 py-2.5 rounded-t-[8px] border-b border-black/[0.04] dark:border-white/[0.06]"
-                    style={{ background: `${col.color}15` }}
-                  >
+                  {/* Header minimal estilo DS v3 — dot + nome + count, sem bg colorido */}
+                  <div className="px-1 pb-2.5 pt-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <span
-                          className="h-2 w-2 rounded-full shrink-0"
+                          className="h-[7px] w-[7px] rounded-full shrink-0"
                           style={{ background: col.color }}
                           aria-hidden
                         />
-                        <span className="text-[12px] font-semibold text-slate-900 dark:text-white truncate">
+                        <span className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
                           {col.name}
                         </span>
                         <span className="text-[11px] font-medium text-slate-500 dark:text-white/55 tabular-nums">
                           {cards.length}
                         </span>
                       </div>
-                      <span className="text-[10px] uppercase tracking-wide font-mono text-slate-400 dark:text-white/35">
+                      <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-white/35">
                         {col.default_assignee_role ?? "—"}
                       </span>
                     </div>
