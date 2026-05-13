@@ -82,19 +82,79 @@ export async function createOnboarding(
   const formToken = randomToken(24)
   const initialColumnId = columnIds["entrada"]
 
-  // Se subscription_id foi passado, busca dados pra popular plan/mrr_value
+  // Se subscription_id foi passado, busca dados pra popular plan/mrr_value.
+  // Suporta DOIS tipos de ID:
+  //  - UUID local -> client_subscriptions.id (FK direta)
+  //  - Asaas ID (ex: "sub_haqy6wnstji7nb74") -> nao eh UUID; faz upsert
+  //    de um row local em client_subscriptions com asaas_subscription_id
+  //    setado, e usa o id local resultante. Idempotente.
   let resolvedPlan = opts.plan ?? null
   let resolvedMrr = opts.mrrValue ?? null
-  if (opts.subscriptionId) {
-    const { data: sub } = await admin
-      .from("client_subscriptions")
-      .select("name, value, client_id")
-      .eq("id", opts.subscriptionId)
-      .maybeSingle()
-    if (sub && sub.client_id === opts.clientId) {
-      if (!resolvedPlan) resolvedPlan = sub.name
-      if (resolvedMrr === null || resolvedMrr === undefined)
-        resolvedMrr = Number(sub.value)
+  let resolvedSubscriptionId: string | null = opts.subscriptionId ?? null
+
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+  if (resolvedSubscriptionId) {
+    if (UUID_RE.test(resolvedSubscriptionId)) {
+      // Caminho 1: UUID local
+      const { data: sub } = await admin
+        .from("client_subscriptions")
+        .select("name, value, client_id")
+        .eq("id", resolvedSubscriptionId)
+        .maybeSingle()
+      if (sub && sub.client_id === opts.clientId) {
+        if (!resolvedPlan) resolvedPlan = sub.name
+        if (resolvedMrr === null || resolvedMrr === undefined)
+          resolvedMrr = Number(sub.value)
+      } else {
+        // FK invalida -> evita ON DELETE
+        resolvedSubscriptionId = null
+      }
+    } else {
+      // Caminho 2: Asaas ID -> upsert local
+      const asaasId = resolvedSubscriptionId
+      // Procura row local existente
+      const { data: existingLocal } = await admin
+        .from("client_subscriptions")
+        .select("id, name, value")
+        .eq("client_id", opts.clientId)
+        .eq("asaas_subscription_id", asaasId)
+        .maybeSingle()
+      if (existingLocal) {
+        resolvedSubscriptionId = existingLocal.id as string
+        if (!resolvedPlan && existingLocal.name) resolvedPlan = existingLocal.name as string
+        if (resolvedMrr === null || resolvedMrr === undefined)
+          resolvedMrr = Number(existingLocal.value)
+      } else {
+        // Cria stub local linkando Asaas. Plan/MRR podem vir vazios — o
+        // sync de Asaas (cron ou job) preenche depois.
+        const subName = resolvedPlan ?? "Assinatura Asaas"
+        const subValue = resolvedMrr ?? 0
+        const todayDate = new Date().toISOString().split("T")[0]
+        const { data: inserted } = await admin
+          .from("client_subscriptions")
+          .insert({
+            client_id: opts.clientId,
+            name: subName,
+            value: subValue,
+            cycle: "MONTHLY",
+            payment_method: "asaas",
+            status: "active",
+            start_date: todayDate,
+            next_due_date: todayDate,
+            asaas_subscription_id: asaasId,
+            notes: `Auto-criada via onboarding em ${todayDate}`,
+          })
+          .select("id")
+          .single()
+        if (inserted?.id) {
+          resolvedSubscriptionId = inserted.id as string
+        } else {
+          // Se nao conseguiu criar (RLS, constraint), nao quebra o onboarding
+          resolvedSubscriptionId = null
+        }
+      }
     }
   }
 
@@ -136,7 +196,7 @@ export async function createOnboarding(
       vertical: opts.vertical ?? null,
       source: opts.source ?? "manual",
       // Tracking de origem (Bruno - dashboard comercial)
-      subscription_id: opts.subscriptionId ?? null,
+      subscription_id: resolvedSubscriptionId,
       source_channel: opts.sourceChannel ?? null,
       referred_by_client_id: opts.referredByClientId ?? null,
       referred_by_name: opts.referredByName ?? null,
