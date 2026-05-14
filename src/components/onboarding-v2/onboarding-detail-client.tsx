@@ -102,8 +102,12 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   const currentCol = onb.current_column ?? columns.find((c) => c.id === onb.current_column_id)
   const currentIdx = columns.findIndex((c) => c.id === onb.current_column_id)
   const nextCol = currentIdx >= 0 ? columns[currentIdx + 1] : null
+  // Filtra por coluna atual E version atual (apos go-back v2 evita misturar
+  // com tasks v1 da mesma coluna que ficaram no historico)
   const tasksInCurrent = (onb.tasks ?? []).filter(
-    (t) => t.operational_column_id === onb.current_column_id,
+    (t) =>
+      t.operational_column_id === onb.current_column_id &&
+      ((t as unknown as { version?: number }).version ?? 1) === onb.current_version,
   )
 
   async function advance(override?: {

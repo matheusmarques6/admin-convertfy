@@ -716,12 +716,23 @@ async function validateColumnCompletion(
 ): Promise<{ ok: boolean; error?: string }> {
   const admin = createAdminClient()
 
-  // Pega tasks da coluna nessa versao atual
+  // IMPORTANT: pega a versao ATUAL do onboarding pra filtrar tasks.
+  // Sem isso, apos go-back (v2), validacao misturava tasks v1+v2 e
+  // pegava deliverables vazios de v1 como pendentes (Bruno reportou).
+  const { data: onb } = await admin
+    .from("onboardings")
+    .select("current_version")
+    .eq("id", onboardingId)
+    .maybeSingle()
+  const currentVersion = onb?.current_version ?? 1
+
+  // Pega tasks da coluna NA VERSAO ATUAL
   const { data: tasks } = await admin
     .from("tasks")
     .select("id, status, metadata")
     .eq("onboarding_id", onboardingId)
     .eq("operational_column_id", col.id)
+    .eq("version", currentVersion)
   const taskList = tasks ?? []
   const taskIds = taskList.map((t) => t.id)
 

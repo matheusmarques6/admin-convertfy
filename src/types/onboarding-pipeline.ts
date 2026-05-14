@@ -190,6 +190,8 @@ export interface OnboardingTaskLite {
   assignee_role: string | null
   operational_column_id: string | null
   due_date: string | null
+  /** Version do onboarding em que a task foi criada (sobe a cada go-back). */
+  version?: number | null
 }
 
 export interface TaskDeliverable {

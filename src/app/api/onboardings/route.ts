@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
          client:clients!onboardings_client_id_fkey(id, name, company),
          store:client_stores(id, store_name, store_url, platform),
          current_column:operational_pipeline_columns(*),
-         tasks(id, title, status, priority, assignee_role, operational_column_id, due_date)`,
+         tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, version)`,
       )
       .eq("org_id", orgId)
       .order("entered_at", { ascending: false })

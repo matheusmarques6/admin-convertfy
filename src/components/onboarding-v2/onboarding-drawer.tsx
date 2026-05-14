@@ -291,12 +291,17 @@ export function OnboardingDrawer({
     )
   }, [columns, currentColumn])
 
+  // Filtra por coluna atual E version atual (evita misturar v1 historica
+  // com v2 ativa apos go-back).
   const tasksInColumn = useMemo(
     () =>
       (onb?.tasks ?? []).filter(
-        (t) => t.operational_column_id === onb?.current_column_id,
+        (t) =>
+          t.operational_column_id === onb?.current_column_id &&
+          ((t as unknown as { version?: number }).version ?? 1) ===
+            (onb?.current_version ?? 1),
       ),
-    [onb?.tasks, onb?.current_column_id],
+    [onb?.tasks, onb?.current_column_id, onb?.current_version],
   )
   const tasksDone = tasksInColumn.filter(
     (t) => t.status === "completed",
