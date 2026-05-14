@@ -99,6 +99,95 @@ export async function POST() {
       }
     }
 
+    // Sync subscriptions Asaas -> client_subscriptions (stubs locais).
+    // Pra cada cliente da org com asaas_customer_id, busca subscriptions
+    // ativas no Asaas e cria/atualiza stub local linkado por
+    // asaas_subscription_id (idempotente).
+    let subsSynced = 0
+    let subsUpdated = 0
+    let subsErrors = 0
+    try {
+      const { data: clientsWithAsaas } = await supabase
+        .from("clients")
+        .select("id, custom_fields")
+        .eq("org_id", orgId)
+        .not("custom_fields->asaas_customer_id", "is", null)
+      for (const c of clientsWithAsaas ?? []) {
+        const asaasCust = (c.custom_fields as Record<string, string>)
+          ?.asaas_customer_id
+        if (!asaasCust) continue
+        try {
+          const env = (credentials.environment as string) || "sandbox"
+          const baseUrl =
+            env === "production"
+              ? "https://api.asaas.com/v3"
+              : "https://sandbox.asaas.com/api/v3"
+          const resp = await fetch(
+            `${baseUrl}/subscriptions?customer=${asaasCust}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                access_token: credentials.api_key as string,
+              },
+            },
+          )
+          if (!resp.ok) continue
+          const j = (await resp.json()) as {
+            data?: Array<{
+              id: string
+              value: number
+              status: string
+              cycle?: string
+              nextDueDate?: string
+              dateCreated?: string
+              description?: string
+            }>
+          }
+          for (const sub of j.data ?? []) {
+            const { data: existing } = await supabase
+              .from("client_subscriptions")
+              .select("id")
+              .eq("client_id", c.id)
+              .eq("asaas_subscription_id", sub.id)
+              .maybeSingle()
+            const payload = {
+              client_id: c.id,
+              name: sub.description ?? "Assinatura Asaas",
+              value: Number(sub.value) || 0,
+              cycle: sub.cycle ?? "MONTHLY",
+              payment_method: "asaas",
+              status:
+                sub.status === "ACTIVE"
+                  ? "active"
+                  : sub.status.toLowerCase(),
+              start_date:
+                sub.dateCreated?.slice(0, 10) ??
+                new Date().toISOString().slice(0, 10),
+              next_due_date:
+                sub.nextDueDate ??
+                new Date().toISOString().slice(0, 10),
+              asaas_subscription_id: sub.id,
+            }
+            if (existing) {
+              await supabase
+                .from("client_subscriptions")
+                .update(payload)
+                .eq("id", existing.id)
+              subsUpdated++
+            } else {
+              await supabase.from("client_subscriptions").insert(payload)
+              subsSynced++
+            }
+          }
+        } catch (e) {
+          subsErrors++
+          log.warn(`Falha ao sincronizar subs do cliente ${c.id}`, e)
+        }
+      }
+    } catch (e) {
+      log.warn("Sync subscriptions Asaas (best-effort) falhou", e)
+    }
+
     // Update last sync time
     await supabase
       .from("integrations")
@@ -113,6 +202,11 @@ export async function POST() {
         synced,
         updated,
         errors,
+        subscriptions: {
+          synced: subsSynced,
+          updated: subsUpdated,
+          errors: subsErrors,
+        },
       },
     })
   } catch (error) {

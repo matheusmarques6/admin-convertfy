@@ -86,8 +86,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     url: "",
     platform: "Shopify",
     currency: "BRL",
-    /** MRR em reais (string pra suportar campo controlado vazio). */
-    mrrReais: "",
   })
 
   useEffect(() => {
@@ -132,10 +130,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         url: store.store_url || "",
         platform: platformCapitalized,
         currency: store.currency || "BRL",
-        mrrReais:
-          store.mrr_cents != null && store.mrr_cents > 0
-            ? (store.mrr_cents / 100).toFixed(2)
-            : "",
       })
     } else {
       setEditStore(null)
@@ -144,7 +138,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         url: "",
         platform: "Shopify",
         currency: "BRL",
-        mrrReais: "",
       })
     }
     setDialogOpen(true)
@@ -174,18 +167,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       // Platform is an ENUM - convert to lowercase
       if (form.platform) storeData.platform = form.platform.toLowerCase()
       if (form.currency) storeData.currency = form.currency
-      // MRR: vazio = manter zero (NULL nao e suportado pela coluna).
-      // Aceita "1234,56" ou "1234.56".
-      const mrrInput = form.mrrReais.trim().replace(",", ".")
-      if (mrrInput !== "") {
-        const reais = Number(mrrInput)
-        if (!Number.isNaN(reais) && reais >= 0) {
-          storeData.mrr_cents = Math.round(reais * 100)
-        }
-      } else if (editStore) {
-        // Em edit, vazio explicito zera
-        storeData.mrr_cents = 0
-      }
+      // MRR: nao perguntamos mais aqui — vem da assinatura atrelada
+      // (client_subscriptions ou Asaas). Dashboard operacional puxa de la.
 
       // Save via server-side API
       if (editStore) {
@@ -491,21 +474,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
               </select>
               <p className="text-xs text-muted-foreground">
                 Moeda usada para exibir valores nos relatórios
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mrr">MRR (R$/mês)</Label>
-              <Input
-                id="mrr"
-                inputMode="decimal"
-                placeholder="0,00"
-                value={form.mrrReais}
-                onChange={(e) => setForm({ ...form, mrrReais: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Receita recorrente mensal cobrada desta loja. Aparece no
-                card &ldquo;MRR total&rdquo; do dashboard operacional.
               </p>
             </div>
 

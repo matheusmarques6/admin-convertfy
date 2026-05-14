@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     type StoreRow = {
       id: string
       store_name: string
+      client_id: string
       mrr_cents: number | null
       health_score: number | null
       nps_last_score: number | null
@@ -35,21 +36,53 @@ export async function GET(request: NextRequest) {
       contract_start_date: string | null
       contract_end_date: string | null
       is_active: boolean
-      client: { id: string; name: string } | { id: string; name: string }[] | null
+      client: { id: string; name: string; health_score: number | null } | { id: string; name: string; health_score: number | null }[] | null
     }
 
     const { data: stores } = await admin
       .from("client_stores")
       .select(`
-        id, store_name, mrr_cents, health_score, nps_last_score, nps_last_at,
+        id, store_name, client_id, mrr_cents, health_score, nps_last_score, nps_last_at,
         contract_start_date, contract_end_date, is_active,
-        client:clients (id, name)
+        client:clients (id, name, health_score)
       `)
       .eq("is_active", true)
       .returns<StoreRow[]>()
 
     const allStores = stores || []
     const totalStores = allStores.length
+
+    // MRR real via client_subscriptions (PIX direto + manuais + Asaas stub linkados).
+    // Soma value de subs com status='active' agrupadas por client_id.
+    // Normaliza pra "mensal" baseado em cycle (MONTHLY=1x, QUARTERLY=/3, YEARLY=/12).
+    const clientIdsFromStores = Array.from(
+      new Set(allStores.map((s) => s.client_id).filter(Boolean)),
+    )
+    const mrrFromSubs = new Map<string, number>()
+    if (clientIdsFromStores.length > 0) {
+      const { data: activeSubs } = await admin
+        .from("client_subscriptions")
+        .select("client_id, value, cycle")
+        .in("client_id", clientIdsFromStores)
+        .eq("status", "active")
+      for (const sub of activeSubs ?? []) {
+        const cycleDivisor =
+          sub.cycle === "YEARLY"
+            ? 12
+            : sub.cycle === "QUARTERLY"
+              ? 3
+              : sub.cycle === "BIWEEKLY"
+                ? 0.5
+                : sub.cycle === "WEEKLY"
+                  ? 0.25
+                  : 1
+        const monthlyValue = Number(sub.value) / cycleDivisor
+        mrrFromSubs.set(
+          sub.client_id as string,
+          (mrrFromSubs.get(sub.client_id as string) ?? 0) + monthlyValue,
+        )
+      }
+    }
 
     // Distribuicao por faixa de health
     let healthy = 0
@@ -72,12 +105,29 @@ export async function GET(request: NextRequest) {
       nps: number | null
     }> = []
 
+    // Loop por client_id (nao por store) pra evitar dobrar MRR quando cliente
+    // tem multiplas lojas.
+    const clientsSeen = new Set<string>()
     for (const s of allStores) {
-      const score = s.health_score
-      const mrr = s.mrr_cents
+      const client = Array.isArray(s.client) ? s.client[0] : s.client
+
+      // Health: usa store.health_score; se null, fallback pra client.health_score
+      const score =
+        s.health_score != null ? s.health_score : (client?.health_score ?? null)
       const nps = s.nps_last_score
 
-      if (mrr) totalMrrCents += mrr
+      // MRR: soma uma vez por client_id (multi-store consolida)
+      if (!clientsSeen.has(s.client_id)) {
+        clientsSeen.add(s.client_id)
+        const subMrr = mrrFromSubs.get(s.client_id) ?? 0
+        if (subMrr > 0) {
+          // value vem em reais; converte pra cents
+          totalMrrCents += Math.round(subMrr * 100)
+        } else if (s.mrr_cents) {
+          // fallback no MRR cacheado em client_stores
+          totalMrrCents += s.mrr_cents
+        }
+      }
 
       if (score == null) {
         noScore += 1
@@ -90,13 +140,13 @@ export async function GET(request: NextRequest) {
       }
 
       if (score != null && score < 50) {
-        const client = Array.isArray(s.client) ? s.client[0] : s.client
+        const subMrr = mrrFromSubs.get(s.client_id) ?? 0
         atRisk.push({
           store_id: s.id,
           store_name: s.store_name,
           client_name: client?.name || "—",
           health_score: score,
-          mrr_cents: mrr,
+          mrr_cents: subMrr > 0 ? Math.round(subMrr * 100) : s.mrr_cents,
           nps,
         })
       }
