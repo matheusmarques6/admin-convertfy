@@ -1864,37 +1864,29 @@ function TaskDetailPanel({
   }
 
   return (
-    <div className="w-[420px] bg-white dark:bg-[#1A1D27] border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0 flex flex-col">
+    <div className="w-[640px] bg-white dark:bg-[#1A1D27] border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0 flex flex-col">
       {/* Breadcrumb (so pra tasks de onboarding) */}
       <TaskBreadcrumb task={task} onClose={onClose} />
 
-      {/* Header — editable title */}
-      <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
-        <div className="flex justify-between items-start gap-2">
-          {editingName ? (
-            <input
-              value={nameValue}
-              onChange={(e) => setNameValue(e.target.value)}
-              onBlur={saveName}
-              onKeyDown={(e) => e.key === "Enter" && saveName()}
-              className="text-[16px] font-semibold text-gray-900 dark:text-white flex-1 border-none outline-none bg-transparent p-0 m-0"
-              autoFocus
-            />
-          ) : (
-            <h2
-              onClick={() => setEditingName(true)}
-              className="text-[16px] font-semibold text-gray-900 dark:text-white m-0 flex-1 cursor-text hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] rounded px-1 -mx-1 transition-colors"
-            >
-              {task.name}
-            </h2>
-          )}
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-md border-none bg-gray-50 dark:bg-[#242836] cursor-pointer text-gray-400 dark:text-white/50 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/10 dark:bg-[#242836] transition-colors shrink-0"
+      {/* Header — editable title (close ja esta no breadcrumb acima) */}
+      <div className="px-6 pt-4 pb-3 border-b border-[rgba(0,0,0,0.06)]">
+        {editingName ? (
+          <input
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => e.key === "Enter" && saveName()}
+            className="text-[20px] font-semibold text-gray-900 dark:text-white w-full border-none outline-none bg-transparent p-0 m-0"
+            autoFocus
+          />
+        ) : (
+          <h2
+            onClick={() => setEditingName(true)}
+            className="text-[20px] font-semibold text-gray-900 dark:text-white m-0 cursor-text hover:bg-gray-50 dark:hover:bg-white/5 rounded px-1 -mx-1 transition-colors leading-snug"
           >
-            <IconClose size={14} />
-          </button>
-        </div>
+            {task.name}
+          </h2>
+        )}
       </div>
 
       {/* Stepper guiado + botao de avanco — substitui o dropdown manual
@@ -1902,111 +1894,20 @@ function TaskDetailPanel({
           Mantem dropdown como fallback discreto pra edits raros. */}
       <GuidedStatusActions task={task} />
 
-      {/* Properties — clickable to edit */}
-      <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)] flex flex-col gap-2">
-        {/* Status */}
-        <div className="flex items-center relative">
-          <span className="w-[90px] text-[12px] font-medium text-gray-400 dark:text-white/50">Status</span>
-          <button
-            onClick={() => setShowStatusMenu(!showStatusMenu)}
-            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] transition-colors"
-          >
-            <StatusDot color={statusConfig?.color || "#9CA3AF"} />
-            <span className="text-[13px] text-gray-700 dark:text-white/90">{statusConfig?.label}</span>
-          </button>
-          {showStatusMenu && (
-            <div className="absolute top-full left-[90px] z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[140px]">
-              {TASK_STATUSES.map((st) => (
-                <button
-                  key={st.id}
-                  onClick={() => { updateTaskStatus(task.id, st.id); setShowStatusMenu(false) }}
-                  className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] border-none bg-transparent cursor-pointer flex items-center gap-2"
-                >
-                  <StatusDot color={st.color} /> {st.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Priority */}
-        <div className="flex items-center relative">
-          <span className="w-[90px] text-[12px] font-medium text-gray-400 dark:text-white/50">Prioridade</span>
-          <button
-            onClick={() => setShowPrioMenu(!showPrioMenu)}
-            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] transition-colors"
-          >
-            <PriorityDot priority={task.priority} />
-            <span className="text-[13px] text-gray-700 dark:text-white/90">{PRIORITY_LABELS[task.priority]}</span>
-          </button>
-          {showPrioMenu && (
-            <div className="absolute top-full left-[90px] z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[140px]">
-              {([1, 2, 3, 4] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => { apiAction("update_task", { id: task.id, priority: p }); setShowPrioMenu(false) }}
-                  className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] border-none bg-transparent cursor-pointer flex items-center gap-2"
-                >
-                  <PriorityDot priority={p} /> {PRIORITY_LABELS[p]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Responsável — editable */}
-        <div className="flex items-center relative">
-          <span className="w-[90px] text-[12px] font-medium text-gray-400 dark:text-white/50">Responsavel</span>
-          <button
-            onClick={() => setShowAssigneeMenu(!showAssigneeMenu)}
-            className="inline-flex items-center gap-[6px] bg-transparent border-none cursor-pointer p-1 rounded hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] transition-colors"
-          >
-            {task.people[0] ? (
-              <>
-                <Avatar initials={task.people[0]} size={22} />
-                <span className="text-[13px] text-gray-700 dark:text-white/90">{task.people[0]}</span>
-              </>
-            ) : (
-              <span className="text-[13px] text-gray-400 dark:text-white/50">+ Atribuir</span>
-            )}
-          </button>
-          {showAssigneeMenu && (
-            <div className="absolute top-full left-[90px] z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-sm py-1 min-w-[160px] max-h-[200px] overflow-auto">
-              {members.length === 0 ? (
-                <div className="px-3 py-2 text-[11px] text-gray-400 dark:text-white/50">Nenhum membro encontrado</div>
-              ) : (
-                members.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      apiAction("update_assignee", { id: task.id, assigned_to: [m.initials] })
-                      setShowAssigneeMenu(false)
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 dark:bg-[#242836] border-none bg-transparent cursor-pointer flex items-center gap-2"
-                  >
-                    <Avatar initials={m.initials} size={20} /> {m.name}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Data */}
-        <div className="flex items-center">
-          <span className="w-[90px] text-[12px] font-medium text-gray-400 dark:text-white/50">Data</span>
-          <span className="text-[13px] text-gray-700 dark:text-white/90 font-mono">{task.date || "—"}</span>
-        </div>
-
-        {/* Estimativa */}
-        <div className="flex items-center">
-          <span className="w-[90px] text-[12px] font-medium text-gray-400 dark:text-white/50">Estimativa</span>
-          <span className="text-[13px] text-gray-700 dark:text-white/90 font-mono">{task.estimatedTime || "—"}</span>
-        </div>
-      </div>
-
-      {/* Briefing da etapa — automatico, so pra tasks de onboarding */}
-      <StageBriefing task={task} />
+      {/* Properties — clickable to edit (com icones, igual ao mockup) */}
+      <TaskMetaRows
+        task={task}
+        statusConfig={statusConfig}
+        showStatusMenu={showStatusMenu}
+        setShowStatusMenu={setShowStatusMenu}
+        showPrioMenu={showPrioMenu}
+        setShowPrioMenu={setShowPrioMenu}
+        showAssigneeMenu={showAssigneeMenu}
+        setShowAssigneeMenu={setShowAssigneeMenu}
+        members={members}
+        apiAction={apiAction}
+        updateTaskStatus={updateTaskStatus}
+      />
 
       {/* Time tracking */}
       <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
@@ -2066,7 +1967,27 @@ function TaskDetailPanel({
         )}
       </div>
 
-      {/* Subtasks */}
+      {/* Briefing da Etapa — automatico, pra tasks de onboarding */}
+      <StageBriefing task={task} />
+
+      {/* Entregaveis — pra tasks de onboarding com task_deliverables */}
+      <TaskDeliverables task={task} />
+
+      {/* Checklist — task_checklists (substitui subtasks legacy quando onboarding) */}
+      <TaskChecklist
+        task={task}
+        members={members}
+        legacySubtasks={task.subtasks}
+        toggleLegacySubtask={(sid) => toggleSubtask(task.id, sid)}
+        hasLegacySubs={hasSubs}
+        subDone={subDone}
+      />
+
+      {/* Anexos & Links — metadata.attachments + metadata.links */}
+      <TaskAttachmentsLinks task={task} />
+
+      {/* Legacy: adicao manual de subtask (so se nao for onboarding) */}
+      {!(task as unknown as { source_type?: string }).source_type && (
       <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
         <div className="flex justify-between mb-3">
           <span className="text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase">Subtarefas</span>
@@ -2093,6 +2014,7 @@ function TaskDetailPanel({
           />
         </div>
       </div>
+      )}
 
       {/* Comments */}
       <div className="px-6 py-4 flex-1">
@@ -2414,6 +2336,624 @@ function StageBriefing({ task }: { task: ProductivityTask }) {
             outras pra avancar o onboarding.
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// TaskMetaRows — bloco de propriedades com icones (Status, Prioridade,
+// Responsavel, Cliente, Data, Estimativa) — igual ao Print 2.
+// ============================================================================
+
+type StatusConfigType = { id: string; label: string; color: string } | undefined
+
+function MetaIcon({ kind, color }: { kind: string; color?: string }) {
+  const stroke = color ?? "#9CA3AF"
+  const common = {
+    width: 14,
+    height: 14,
+    fill: "none",
+    stroke,
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  }
+  switch (kind) {
+    case "status":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" />
+        </svg>
+      )
+    case "priority":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path d="M4 21V4M4 4l8 4-8 4M4 4l14 6-14 5" />
+        </svg>
+      )
+    case "user":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21c0-4 4-7 8-7s8 3 8 7" />
+        </svg>
+      )
+    case "building":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01" />
+        </svg>
+      )
+    case "calendar":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M3 10h18M8 3v4M16 3v4" />
+        </svg>
+      )
+    case "hourglass":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path d="M6 3h12M6 21h12M7 3l5 9 5-9M7 21l5-9 5 9" />
+        </svg>
+      )
+    default:
+      return null
+  }
+}
+
+function TaskMetaRows({
+  task,
+  statusConfig,
+  showStatusMenu,
+  setShowStatusMenu,
+  showPrioMenu,
+  setShowPrioMenu,
+  showAssigneeMenu,
+  setShowAssigneeMenu,
+  members,
+  apiAction,
+  updateTaskStatus,
+}: {
+  task: ProductivityTask
+  statusConfig: StatusConfigType
+  showStatusMenu: boolean
+  setShowStatusMenu: (v: boolean) => void
+  showPrioMenu: boolean
+  setShowPrioMenu: (v: boolean) => void
+  showAssigneeMenu: boolean
+  setShowAssigneeMenu: (v: boolean) => void
+  members: Array<{ id: string; name: string; avatar_url: string | null; initials: string }>
+  apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
+  updateTaskStatus: (id: string, status: ProductivityTask["status"]) => void
+}) {
+  const taskAny = task as unknown as { metadata?: Record<string, unknown> }
+  const clientName = (taskAny.metadata?.client_name as string) ?? null
+  const storeName = (taskAny.metadata?.store_name as string) ?? null
+  const clientLabel = clientName ?? storeName
+
+  return (
+    <div className="px-6 py-3.5 border-b border-[rgba(0,0,0,0.06)] grid grid-cols-[140px_1fr] gap-y-2.5 items-center">
+      <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+        <MetaIcon kind="status" />
+        <span>Status</span>
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowStatusMenu(!showStatusMenu)}
+          className="inline-flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-1.5 py-0.5 rounded hover:bg-gray-50 dark:hover:bg-white/5"
+        >
+          <StatusDot color={statusConfig?.color || "#9CA3AF"} />
+          <span className="text-[13px] text-gray-700 dark:text-white/90">{statusConfig?.label}</span>
+        </button>
+        {showStatusMenu && (
+          <div className="absolute top-full left-0 z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-lg py-1 min-w-[160px] mt-1">
+            {TASK_STATUSES.map((st) => (
+              <button
+                key={st.id}
+                onClick={() => { updateTaskStatus(task.id, st.id as ProductivityTask["status"]); setShowStatusMenu(false) }}
+                className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 border-none bg-transparent cursor-pointer flex items-center gap-2"
+              >
+                <StatusDot color={st.color} /> {st.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+        <MetaIcon kind="priority" />
+        <span>Prioridade</span>
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowPrioMenu(!showPrioMenu)}
+          className="inline-flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-1.5 py-0.5 rounded hover:bg-gray-50 dark:hover:bg-white/5"
+        >
+          <PriorityDot priority={task.priority} />
+          <span className="text-[13px] text-gray-700 dark:text-white/90">{PRIORITY_LABELS[task.priority]}</span>
+        </button>
+        {showPrioMenu && (
+          <div className="absolute top-full left-0 z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-lg py-1 min-w-[140px] mt-1">
+            {([1, 2, 3, 4] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => { apiAction("update_task", { id: task.id, priority: p }); setShowPrioMenu(false) }}
+                className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 border-none bg-transparent cursor-pointer flex items-center gap-2"
+              >
+                <PriorityDot priority={p} /> {PRIORITY_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+        <MetaIcon kind="user" />
+        <span>Responsavel</span>
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowAssigneeMenu(!showAssigneeMenu)}
+          className="inline-flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-1.5 py-0.5 rounded hover:bg-gray-50 dark:hover:bg-white/5"
+        >
+          {task.people[0] ? (
+            <>
+              <Avatar initials={task.people[0]} size={20} />
+              <span className="text-[13px] text-gray-700 dark:text-white/90">{task.people[0]}</span>
+            </>
+          ) : (
+            <span className="text-[13px] text-gray-400 dark:text-white/50">+ Atribuir</span>
+          )}
+        </button>
+        {showAssigneeMenu && (
+          <div className="absolute top-full left-0 z-20 bg-white dark:bg-[#1A1D27] border border-[rgba(0,0,0,0.08)] rounded-md shadow-lg py-1 min-w-[180px] max-h-[200px] overflow-auto mt-1">
+            {members.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-gray-400 dark:text-white/50">Nenhum membro</div>
+            ) : (
+              members.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => { apiAction("update_assignee", { id: task.id, assigned_to: [m.initials] }); setShowAssigneeMenu(false) }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-white/5 border-none bg-transparent cursor-pointer flex items-center gap-2"
+                >
+                  <Avatar initials={m.initials} size={18} /> {m.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {clientLabel && (
+        <>
+          <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+            <MetaIcon kind="building" />
+            <span>Cliente</span>
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-white/[0.04]">
+              <span className="h-4 w-4 rounded-sm bg-gradient-to-br from-brand-400 to-brand-600 text-white text-[9px] font-bold flex items-center justify-center">
+                {clientLabel.substring(0, 2).toUpperCase()}
+              </span>
+              <span className="text-[13px] text-gray-700 dark:text-white/90">{clientLabel}</span>
+            </span>
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+        <MetaIcon kind="calendar" />
+        <span>Data</span>
+      </div>
+      <span className="text-[13px] text-gray-700 dark:text-white/90 font-mono">{task.date || "—"}</span>
+
+      <div className="flex items-center gap-2 text-[12.5px] text-gray-500 dark:text-white/55">
+        <MetaIcon kind="hourglass" />
+        <span>Estimativa</span>
+      </div>
+      <span className="text-[13px] text-gray-700 dark:text-white/90 font-mono">{task.estimatedTime || "—"}</span>
+    </div>
+  )
+}
+
+// ============================================================================
+// TaskDeliverables — ENTREGAVEIS X/Y (so quando task_deliverables existem).
+// ============================================================================
+
+type Deliverable = {
+  id: string
+  field_label: string
+  field_slug: string
+  field_type: string
+  required: boolean
+  value: string | null
+  file_url: string | null
+  file_name: string | null
+  filled_at: string | null
+  metadata: Record<string, unknown> | null
+}
+
+function deliverableStatus(d: Deliverable): {
+  label: string
+  color: string
+  bg: string
+} {
+  const metaStatus = (d.metadata?.status as string) ?? null
+  const status = metaStatus ?? (d.filled_at ? "done" : "todo")
+  if (status === "done" || status === "ready" || status === "pronto") {
+    return { label: "Pronto", color: "#059669", bg: "#10B98119" }
+  }
+  if (status === "in_progress" || status === "em_producao" || status === "producao") {
+    return { label: "Em produção", color: "#7C3AED", bg: "#7C3AED19" }
+  }
+  return { label: "A fazer", color: "#6B7280", bg: "#9CA3AF14" }
+}
+
+function TaskDeliverables({ task }: { task: ProductivityTask }) {
+  const taskAny = task as unknown as { deliverables?: Deliverable[] }
+  const deliverables = taskAny.deliverables ?? []
+  if (deliverables.length === 0) return null
+  const done = deliverables.filter(
+    (d) => deliverableStatus(d).label === "Pronto",
+  ).length
+
+  const cycleStatus = async (d: Deliverable) => {
+    const cur = deliverableStatus(d).label
+    const next = cur === "A fazer" ? "in_progress" : cur === "Em produção" ? "done" : "todo"
+    try {
+      await fetch(`/api/tasks/${task.id}/deliverables/${d.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metadata: { ...(d.metadata ?? {}), status: next },
+          filled_at: next === "done" ? new Date().toISOString() : null,
+        }),
+      })
+    } catch {
+      /* noop */
+    }
+  }
+
+  return (
+    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.06)]">
+      <div className="flex items-center gap-2 mb-3">
+        <svg className="h-3.5 w-3.5 text-gray-400 dark:text-white/40" viewBox="0 0 10 10" fill="none">
+          <path d="M3 1l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-gray-700 dark:text-white/85">
+          Entregáveis
+        </span>
+        <span className="text-[11px] text-gray-400 dark:text-white/40 font-mono">
+          · {done}/{deliverables.length}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {deliverables.map((d) => {
+          const st = deliverableStatus(d)
+          return (
+            <button
+              key={d.id}
+              onClick={() => cycleStatus(d)}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white dark:bg-white/[0.02] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+              title="Clique pra alternar status"
+            >
+              <span className="inline-flex items-center gap-2 text-[13px] text-gray-800 dark:text-white/90">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: st.color }}
+                />
+                {d.field_label}
+              </span>
+              <span
+                className="text-[11px] font-semibold px-2 py-0.5 rounded"
+                style={{ background: st.bg, color: st.color }}
+              >
+                {st.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// TaskChecklist — substitui Subtarefas pra onboarding. Usa task_checklists.
+// ============================================================================
+
+type ChecklistItem = {
+  id: string
+  title: string
+  is_completed: boolean
+  completed_by: string | null
+  position: number
+}
+
+function TaskChecklist({
+  task,
+  members,
+  legacySubtasks,
+  toggleLegacySubtask,
+  hasLegacySubs,
+  subDone,
+}: {
+  task: ProductivityTask
+  members: Array<{ id: string; name: string; avatar_url: string | null; initials: string }>
+  legacySubtasks: ProductivityTask["subtasks"]
+  toggleLegacySubtask: (subId: string) => void
+  hasLegacySubs: boolean
+  subDone: number
+}) {
+  const taskAny = task as unknown as {
+    source_type?: string
+    checklist?: ChecklistItem[]
+  }
+  const isOnb = taskAny.source_type === "onboarding"
+  const items = taskAny.checklist ?? []
+
+  if (!isOnb) {
+    if (!hasLegacySubs) return null
+    return (
+      <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.06)]">
+        <div className="flex justify-between mb-3">
+          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-gray-700 dark:text-white/85">
+            Subtarefas · {subDone}/{legacySubtasks.length}
+          </span>
+        </div>
+        {legacySubtasks.map((sub) => (
+          <SubtaskRow
+            key={sub.id}
+            sub={sub}
+            taskId={task.id}
+            onToggle={() => toggleLegacySubtask(sub.id)}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  if (items.length === 0) return null
+  const done = items.filter((i) => i.is_completed).length
+
+  const toggle = async (item: ChecklistItem) => {
+    try {
+      await fetch(`/api/tasks/${task.id}/checklists`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          checklist_id: item.id,
+          is_completed: !item.is_completed,
+        }),
+      })
+    } catch {
+      /* noop */
+    }
+  }
+
+  return (
+    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.06)]">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <svg className="h-3.5 w-3.5 text-gray-400 dark:text-white/40" viewBox="0 0 10 10" fill="none">
+            <path d="M3 1l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-gray-700 dark:text-white/85">
+            Checklist
+          </span>
+          <span className="text-[11px] text-gray-400 dark:text-white/40 font-mono">
+            · {done}/{items.length}
+          </span>
+        </div>
+        <button className="text-[11px] text-gray-400 dark:text-white/40 hover:text-gray-700">
+          + Subtarefa
+        </button>
+      </div>
+      {items.length > 0 && (
+        <div className="h-1 bg-gray-100 dark:bg-white/[0.06] rounded-full overflow-hidden mb-3">
+          <div
+            className="h-full bg-brand-500 rounded-full transition-all"
+            style={{ width: `${(done / items.length) * 100}%` }}
+          />
+        </div>
+      )}
+      <div className="space-y-1">
+        {items.map((item) => {
+          const member = item.completed_by
+            ? members.find((m) => m.id === item.completed_by)
+            : null
+          return (
+            <div
+              key={item.id}
+              className="flex items-center gap-3 py-1.5 px-1 rounded hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors group"
+            >
+              <Checkbox
+                checked={item.is_completed}
+                onChange={() => toggle(item)}
+              />
+              <span
+                className={cn(
+                  "flex-1 text-[13px]",
+                  item.is_completed
+                    ? "text-gray-400 dark:text-white/35 line-through"
+                    : "text-gray-700 dark:text-white/85",
+                )}
+              >
+                {item.title}
+              </span>
+              {member && (
+                <Avatar initials={member.initials} size={20} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// TaskAttachmentsLinks — bloco de Anexos & Links.
+// ============================================================================
+
+type Attachment = {
+  url?: string
+  file_url?: string
+  name?: string
+  file_name?: string
+  size?: number
+  file_size_bytes?: number
+  kind?: string
+}
+
+function getFileIcon(name: string): { emoji: string; color: string } {
+  const lower = name.toLowerCase()
+  if (lower.endsWith(".pdf")) return { emoji: "📄", color: "#DC2626" }
+  if (/(\.png|\.jpg|\.jpeg|\.gif|\.webp)$/.test(lower))
+    return { emoji: "🖼️", color: "#7C3AED" }
+  if (lower.includes("figma")) return { emoji: "🎨", color: "#F24E1E" }
+  return { emoji: "📎", color: "#6B7280" }
+}
+
+function formatBytes(b?: number): string {
+  if (!b) return ""
+  if (b < 1024) return `${b} B`
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`
+  return `${(b / 1048576).toFixed(1)} MB`
+}
+
+function TaskAttachmentsLinks({ task }: { task: ProductivityTask }) {
+  const taskAny = task as unknown as {
+    source_type?: string
+    attachments?: Attachment[]
+    links?: Array<{ url: string; label?: string; favicon?: string }>
+  }
+  if (taskAny.source_type !== "onboarding") return null
+  const attachments = taskAny.attachments ?? []
+  const links = taskAny.links ?? []
+  if (attachments.length === 0 && links.length === 0) {
+    return (
+      <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.06)]">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-gray-700 dark:text-white/85">
+            Anexos &amp; Links
+          </span>
+          <button className="text-[11.5px] text-brand-600 hover:underline inline-flex items-center gap-1">
+            📎 Anexar
+          </button>
+        </div>
+        <p className="text-[11.5px] text-gray-400 dark:text-white/40 mt-2 italic">
+          Nenhum anexo ou link adicionado ainda.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.06)]">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-gray-700 dark:text-white/85">
+          Anexos &amp; Links
+        </span>
+        <button className="text-[11.5px] text-brand-600 hover:underline inline-flex items-center gap-1">
+          📎 Anexar
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {attachments.map((a, i) => {
+          const name = a.name ?? a.file_name ?? "arquivo"
+          const url = a.url ?? a.file_url
+          const size = formatBytes(a.size ?? a.file_size_bytes)
+          const ic = getFileIcon(name)
+          return (
+            <a
+              key={`att-${i}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white dark:bg-white/[0.02] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[14px]"
+                  style={{ background: `${ic.color}14` }}
+                >
+                  {ic.emoji}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] text-gray-800 dark:text-white/90 truncate">
+                    {name}
+                  </div>
+                  {size && (
+                    <div className="text-[10.5px] text-gray-400 dark:text-white/40 font-mono">
+                      {size}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <svg
+                className="h-3.5 w-3.5 text-gray-400 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M12 3v12M6 9l6 6 6-6" />
+              </svg>
+            </a>
+          )
+        })}
+        {links.map((l, i) => {
+          const ic = getFileIcon(l.url)
+          const host = (() => {
+            try {
+              return new URL(l.url).hostname.replace("www.", "")
+            } catch {
+              return l.url
+            }
+          })()
+          return (
+            <a
+              key={`link-${i}`}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white dark:bg-white/[0.02] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[14px]"
+                  style={{ background: `${ic.color}14` }}
+                >
+                  {ic.emoji}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] text-gray-800 dark:text-white/90 truncate">
+                    {l.label ?? host}
+                  </div>
+                  <div className="text-[10.5px] text-gray-400 dark:text-white/40 font-mono truncate">
+                    {host}
+                  </div>
+                </div>
+              </div>
+              <svg
+                className="h-3.5 w-3.5 text-gray-400 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M15 3h6v6M21 3l-9 9M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
+              </svg>
+            </a>
+          )
+        })}
       </div>
     </div>
   )

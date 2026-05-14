@@ -367,7 +367,12 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
 // ── Helper to map API task response to ProductivityTask ──
 
 function mapApiTask(t: Record<string, unknown>): ProductivityTask {
+  // Spread primeiro pra preservar campos extras (description, source_type,
+  // onboarding_id, metadata, deliverables, checklist, task_comments,
+  // attachments, links, assignee_role) — depois sobrescreve com os
+  // campos canonicos do tipo ProductivityTask.
   return {
+    ...(t as object),
     id: String(t.id),
     name: String(t.name || t.title || ""),
     status: (t.status as ProductivityTask["status"]) || "pending",
@@ -382,5 +387,5 @@ function mapApiTask(t: Record<string, unknown>): ProductivityTask {
       name: String(s.name || s.title || ""),
       done: Boolean(s.done),
     })),
-  }
+  } as ProductivityTask
 }

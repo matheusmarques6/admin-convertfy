@@ -145,6 +145,52 @@ export async function GET(request: NextRequest) {
           .neq("status", "cancelled")
           .order("created_at", { ascending: true })
 
+        // Carrega deliverables/checklists/comments por task em paralelo
+        const taskIds = (onbTasks ?? []).map((t) => t.id as string)
+        const [delvRes, chkRes, cmtRes] =
+          taskIds.length > 0
+            ? await Promise.all([
+                supabase
+                  .from("task_deliverables")
+                  .select(
+                    "id, task_id, field_slug, field_label, field_type, required, value, file_url, file_name, file_size_bytes, filled_at, metadata",
+                  )
+                  .in("task_id", taskIds),
+                supabase
+                  .from("task_checklists")
+                  .select(
+                    "id, task_id, title, position, is_completed, completed_by",
+                  )
+                  .in("task_id", taskIds)
+                  .order("position", { ascending: true }),
+                supabase
+                  .from("task_comments")
+                  .select(
+                    "id, task_id, author_id, content, attachments, created_at, profiles:author_id(name, avatar_url)",
+                  )
+                  .in("task_id", taskIds)
+                  .order("created_at", { ascending: true }),
+              ])
+            : [{ data: [] }, { data: [] }, { data: [] }]
+        const delvByTask = new Map<string, Array<Record<string, unknown>>>()
+        for (const d of (delvRes.data ?? []) as Array<Record<string, unknown>>) {
+          const tid = d.task_id as string
+          if (!delvByTask.has(tid)) delvByTask.set(tid, [])
+          delvByTask.get(tid)!.push(d)
+        }
+        const chkByTask = new Map<string, Array<Record<string, unknown>>>()
+        for (const c of (chkRes.data ?? []) as Array<Record<string, unknown>>) {
+          const tid = c.task_id as string
+          if (!chkByTask.has(tid)) chkByTask.set(tid, [])
+          chkByTask.get(tid)!.push(c)
+        }
+        const cmtByTask = new Map<string, Array<Record<string, unknown>>>()
+        for (const c of (cmtRes.data ?? []) as Array<Record<string, unknown>>) {
+          const tid = c.task_id as string
+          if (!cmtByTask.has(tid)) cmtByTask.set(tid, [])
+          cmtByTask.get(tid)!.push(c)
+        }
+
         for (const onb of onboardings) {
           const client = (
             Array.isArray(onb.client) ? onb.client[0] : onb.client
@@ -186,28 +232,49 @@ export async function GET(request: NextRequest) {
             cancelled: "done",
           }
 
-          const items = tasksInOnb.map((t) => ({
-            id: t.id,
-            name: t.title,
-            description: t.description,
-            project: client?.name ?? "",
-            status: statusMap[t.status as string] ?? "pending",
-            priority: priorityMap[t.priority as string] ?? 3,
-            due_date: t.due_date,
-            estimated_minutes: t.sla_hours ? t.sla_hours * 60 : null,
-            assigned_to: t.assignee_id ? [t.assignee_id] : [],
-            assignee_role: t.assignee_role,
-            // Marca a origem pro drawer renderizar briefing automatico
-            source_type: "onboarding",
-            source_id: onb.id,
-            onboarding_id: onb.id,
-            operational_column_id: t.operational_column_id,
-            metadata: t.metadata ?? {},
-            subtasks: [],
-            group_id: `onb-${onb.id}`,
-            group_name: `Onboarding · ${client?.name ?? store?.store_name ?? "Cliente"}`,
-            group_color: col?.color ?? "#4E62D8",
-          }))
+          const items = tasksInOnb.map((t) => {
+            const tMeta = (t.metadata ?? {}) as Record<string, unknown>
+            const attachments = Array.isArray(tMeta.attachments)
+              ? (tMeta.attachments as Array<Record<string, unknown>>)
+              : []
+            const links = Array.isArray(tMeta.links)
+              ? (tMeta.links as Array<Record<string, unknown>>)
+              : []
+            return {
+              id: t.id,
+              name: t.title,
+              description: t.description,
+              project: client?.name ?? "",
+              status: statusMap[t.status as string] ?? "pending",
+              priority: priorityMap[t.priority as string] ?? 3,
+              due_date: t.due_date,
+              estimated_minutes: t.sla_hours ? t.sla_hours * 60 : null,
+              assigned_to: t.assignee_id ? [t.assignee_id] : [],
+              assignee_role: t.assignee_role,
+              // Marca a origem pro drawer renderizar briefing automatico
+              source_type: "onboarding",
+              source_id: onb.id,
+              onboarding_id: onb.id,
+              operational_column_id: t.operational_column_id,
+              metadata: {
+                ...tMeta,
+                client_name: client?.name ?? null,
+                store_name: store?.store_name ?? null,
+                column_name: col?.name ?? null,
+                stage_color: col?.color ?? null,
+                stage_role: col?.default_assignee_role ?? null,
+              },
+              deliverables: delvByTask.get(t.id as string) ?? [],
+              checklist: chkByTask.get(t.id as string) ?? [],
+              task_comments: cmtByTask.get(t.id as string) ?? [],
+              attachments,
+              links,
+              subtasks: [],
+              group_id: `onb-${onb.id}`,
+              group_name: `Onboarding · ${client?.name ?? store?.store_name ?? "Cliente"}`,
+              group_color: col?.color ?? "#4E62D8",
+            }
+          })
 
           const onboardingName = client?.name ?? store?.store_name ?? "Cliente"
           groups.push({
