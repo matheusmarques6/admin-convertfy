@@ -117,6 +117,126 @@ export async function GET(request: NextRequest) {
 
     const groups = Array.from(groupMap.values()).sort((a, b) => a.position - b.position)
 
+    // ── Onboardings como projetos virtuais ───────────────────────────────
+    // Cada onboarding ativo vira um grupo no board com items = tasks da
+    // stage atual (filtradas por version atual pra evitar misturar v1+v2).
+    // Sem duplicar dados: as tasks ja existem em `tasks` table (criadas
+    // pelo pipeline operacional). Mapeia pro shape esperado pelo store.
+    try {
+      const { data: onboardings } = await supabase
+        .from("onboardings")
+        .select(
+          `id, current_version, current_column_id, plan, mrr_value,
+           client:clients!onboardings_client_id_fkey(id, name, company),
+           store:client_stores(id, store_name),
+           current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role)`,
+        )
+        .eq("org_id", orgId)
+        .eq("status", "in_progress")
+
+      if (onboardings && onboardings.length > 0) {
+        const onbIds = onboardings.map((o) => o.id as string)
+        const { data: onbTasks } = await supabase
+          .from("tasks")
+          .select(
+            "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, onboarding_id, operational_column_id, version, metadata, created_at",
+          )
+          .in("onboarding_id", onbIds)
+          .neq("status", "cancelled")
+          .order("created_at", { ascending: true })
+
+        for (const onb of onboardings) {
+          const client = (
+            Array.isArray(onb.client) ? onb.client[0] : onb.client
+          ) as { id: string; name: string; company: string | null } | null
+          const store = (
+            Array.isArray(onb.store) ? onb.store[0] : onb.store
+          ) as { id: string; store_name: string } | null
+          const col = (
+            Array.isArray(onb.current_column)
+              ? onb.current_column[0]
+              : onb.current_column
+          ) as {
+            id: string
+            name: string
+            slug: string
+            color: string
+            default_assignee_role: string | null
+          } | null
+
+          const tasksInOnb = (onbTasks ?? []).filter(
+            (t) =>
+              t.onboarding_id === onb.id &&
+              (t.version ?? 1) === (onb.current_version ?? 1) &&
+              t.operational_column_id === onb.current_column_id,
+          )
+
+          // Mapeia tasks pro shape esperado pelo store (productivity_tasks-like)
+          const priorityMap: Record<string, number> = {
+            urgent: 1,
+            high: 2,
+            medium: 3,
+            low: 4,
+          }
+          const statusMap: Record<string, string> = {
+            pending: "pending",
+            in_progress: "progress",
+            in_review: "review",
+            completed: "done",
+            cancelled: "done",
+          }
+
+          const items = tasksInOnb.map((t) => ({
+            id: t.id,
+            name: t.title,
+            description: t.description,
+            project: client?.name ?? "",
+            status: statusMap[t.status as string] ?? "pending",
+            priority: priorityMap[t.priority as string] ?? 3,
+            due_date: t.due_date,
+            estimated_minutes: t.sla_hours ? t.sla_hours * 60 : null,
+            assigned_to: t.assignee_id ? [t.assignee_id] : [],
+            assignee_role: t.assignee_role,
+            // Marca a origem pro drawer renderizar briefing automatico
+            source_type: "onboarding",
+            source_id: onb.id,
+            onboarding_id: onb.id,
+            operational_column_id: t.operational_column_id,
+            metadata: t.metadata ?? {},
+            subtasks: [],
+            group_id: `onb-${onb.id}`,
+            group_name: `Onboarding · ${client?.name ?? store?.store_name ?? "Cliente"}`,
+            group_color: col?.color ?? "#4E62D8",
+          }))
+
+          const onboardingName = client?.name ?? store?.store_name ?? "Cliente"
+          groups.push({
+            id: `onb-${onb.id}`,
+            name: `Onboarding · ${onboardingName}`,
+            color: col?.color ?? "#4E62D8",
+            position: 1000 + groups.length, // depois dos grupos legados
+            items: items as never,
+            // Meta extra pro frontend
+            ...({
+              source_type: "onboarding",
+              onboarding_id: onb.id,
+              stage_id: col?.id,
+              stage_name: col?.name,
+              stage_slug: col?.slug,
+              stage_color: col?.color,
+              stage_role: col?.default_assignee_role,
+              plan: onb.plan,
+              mrr_value: onb.mrr_value,
+              client_id: client?.id,
+              client_name: client?.name,
+            } as Record<string, unknown>),
+          })
+        }
+      }
+    } catch (e) {
+      console.error("[productivity GET] onboardings projection failed", e)
+    }
+
     // Process habits into weekly grid
     const habits = (habitsRes.data || []).map((h) => {
       const completions = (h.completions || []).map((c: { completed_at: string }) => c.completed_at)

@@ -1784,6 +1784,11 @@ function TaskDetailPanel({
         </div>
       </div>
 
+      {/* Stepper guiado + botao de avanco — substitui o dropdown manual
+          de Status. Pendente -> Em andamento -> Em revisao -> Concluido.
+          Mantem dropdown como fallback discreto pra edits raros. */}
+      <GuidedStatusActions task={task} />
+
       {/* Properties — clickable to edit */}
       <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)] flex flex-col gap-2">
         {/* Status */}
@@ -1886,6 +1891,9 @@ function TaskDetailPanel({
           <span className="text-[13px] text-gray-700 dark:text-white/90 font-mono">{task.estimatedTime || "—"}</span>
         </div>
       </div>
+
+      {/* Briefing da etapa — automatico, so pra tasks de onboarding */}
+      <StageBriefing task={task} />
 
       {/* Time tracking */}
       <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
@@ -1998,6 +2006,206 @@ function TaskDetailPanel({
             className="flex-1 h-8 px-3 rounded-md border border-[rgba(0,0,0,0.08)] text-[12px] text-gray-700 dark:text-white/90 focus:outline-none focus:border-brand-400"
           />
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// GuidedStatusActions — stepper + botao de avanco do status (Pendente ->
+// Em andamento -> Em revisao -> Concluido). Substitui o dropdown manual.
+// ============================================================================
+
+const GUIDED_STEPS = [
+  { id: "pending", label: "Pendente" },
+  { id: "progress", label: "Em andamento" },
+  { id: "review", label: "Em revisao" },
+  { id: "done", label: "Concluida" },
+] as const
+
+function GuidedStatusActions({ task }: { task: ProductivityTask }) {
+  const { apiAction, updateTaskStatus } = useProductivityStore()
+  const currentIdx = GUIDED_STEPS.findIndex((s) => s.id === task.status)
+
+  const handleAdvance = async () => {
+    const next = GUIDED_STEPS[currentIdx + 1]
+    if (next) {
+      await updateTaskStatus(task.id, next.id as ProductivityTask["status"])
+      // Se source_type='onboarding', sincroniza via /api/tasks/[id]/complete
+      // quando vai pra 'done' (cria evento + checa stage_ready_to_advance).
+      const meta = (task as unknown as { source_type?: string }).source_type
+      if (next.id === "done" && meta === "onboarding") {
+        try {
+          await fetch(`/api/tasks/${task.id}/complete`, { method: "POST" })
+        } catch {
+          // best-effort; ja foi marcada local
+        }
+      }
+    }
+  }
+
+  const handleReopen = async () => {
+    await updateTaskStatus(task.id, "progress")
+  }
+
+  const actionConfig =
+    currentIdx === 0
+      ? { label: "Iniciar tarefa", color: "#4E62D8", icon: "▶" }
+      : currentIdx === 1
+        ? { label: "Marcar pronta pra revisao", color: "#7C3AED", icon: "👁" }
+        : currentIdx === 2
+          ? { label: "Entregar e concluir", color: "#10B981", icon: "🚀" }
+          : { label: "Reabrir tarefa", color: "#6B7280", icon: "↺" }
+
+  const isLast = currentIdx === GUIDED_STEPS.length - 1
+  const onClick = isLast ? handleReopen : handleAdvance
+
+  return (
+    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
+      {/* Stepper visual de 4 etapas */}
+      <div className="flex items-center justify-between mb-3">
+        {GUIDED_STEPS.map((s, i) => {
+          const done = i < currentIdx
+          const active = i === currentIdx
+          return (
+            <div key={s.id} className="flex items-center flex-1">
+              <div className="flex flex-col items-center gap-1 flex-1">
+                <div
+                  className={cn(
+                    "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-semibold transition-all",
+                    done
+                      ? "bg-emerald-500 text-white"
+                      : active
+                        ? "bg-brand-500 text-white ring-4 ring-brand-500/15"
+                        : "bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-white/40",
+                  )}
+                >
+                  {done ? "✓" : i + 1}
+                </div>
+                <span
+                  className={cn(
+                    "text-[10px] font-medium text-center",
+                    active
+                      ? "text-gray-900 dark:text-white"
+                      : "text-gray-400 dark:text-white/40",
+                  )}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {i < GUIDED_STEPS.length - 1 && (
+                <div
+                  className={cn(
+                    "h-px flex-1 mx-1 -mt-3",
+                    i < currentIdx
+                      ? "bg-emerald-500"
+                      : "bg-gray-200 dark:bg-white/10",
+                  )}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Botao de acao */}
+      <button
+        onClick={onClick}
+        className="w-full h-10 rounded-[8px] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
+        style={{ background: actionConfig.color }}
+      >
+        <span>{actionConfig.icon}</span>
+        {actionConfig.label}
+      </button>
+
+      {/* Dropdown discreto pra edits raros (volta manualmente) */}
+      <details className="mt-2">
+        <summary className="text-[11px] text-gray-400 dark:text-white/40 cursor-pointer hover:text-gray-600">
+          Trocar status manualmente
+        </summary>
+        <div className="mt-2 flex gap-1.5 flex-wrap">
+          {TASK_STATUSES.map((st) => (
+            <button
+              key={st.id}
+              onClick={() => apiAction("update_task", { id: task.id, status: st.id })}
+              className={cn(
+                "px-2 py-1 rounded-md text-[11px] border transition-colors",
+                task.status === st.id
+                  ? "border-brand-500 bg-brand-500/10 text-brand-600"
+                  : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50",
+              )}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+      </details>
+    </div>
+  )
+}
+
+// ============================================================================
+// StageBriefing — bloco "Briefing da etapa" automatico pra tasks de
+// onboarding. Mostra a etapa de origem + descricao da task (que ja vem
+// do checklist_template da coluna) com selo AUTOMATICO.
+// ============================================================================
+
+function StageBriefing({ task }: { task: ProductivityTask }) {
+  const taskAny = task as unknown as {
+    source_type?: string
+    description?: string
+    onboarding_id?: string
+    metadata?: Record<string, unknown>
+  }
+  if (taskAny.source_type !== "onboarding") return null
+
+  const meta = taskAny.metadata ?? {}
+  const stageName = (meta.column_name as string) ?? (meta.stage_name as string) ?? "Etapa"
+  const stageColor = (meta.stage_color as string) ?? "#4E62D8"
+  const storeName = (meta.store_name as string) ?? null
+  const clientName = (meta.client_name as string) ?? null
+
+  return (
+    <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
+      <div
+        className="rounded-[10px] p-3 border-l-[3px]"
+        style={{
+          borderLeftColor: stageColor,
+          background: `${stageColor}10`,
+        }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-gray-700 dark:text-white/85">
+            Briefing da etapa
+          </span>
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded font-mono"
+            style={{ background: stageColor, color: "white" }}
+          >
+            ⚡ Automatico
+          </span>
+        </div>
+        <p className="text-[12px] text-gray-700 dark:text-white/75 mb-2">
+          <span className="font-semibold" style={{ color: stageColor }}>
+            {stageName}
+          </span>
+          {(storeName || clientName) && (
+            <span className="text-gray-500 dark:text-white/55">
+              {" · "}Onboarding de {storeName ?? clientName}
+            </span>
+          )}
+        </p>
+        {taskAny.description && (
+          <div className="text-[12.5px] text-gray-700 dark:text-white/80 leading-relaxed whitespace-pre-line">
+            {taskAny.description}
+          </div>
+        )}
+        {!taskAny.description && (
+          <p className="text-[11.5px] italic text-gray-400 dark:text-white/40">
+            Tarefa do checklist da etapa {stageName}. Conclua junto com as
+            outras pra avancar o onboarding.
+          </p>
+        )}
       </div>
     </div>
   )
