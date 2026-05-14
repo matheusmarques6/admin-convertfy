@@ -88,12 +88,18 @@ function mapContractStatus(s: string): OnboardingContractStatus {
 /**
  * Recebe lista de client_ids unicos e devolve mapa client_id -> status efetivo.
  *
- * Performance: 2 queries (uma pra unified_invoices, uma pra contracts),
- * filtradas pelo IN dos client_ids. O(N) onde N = clientes distintos.
+ * Performance: 3 queries (unified_invoices, contracts, client_subscriptions
+ * pra onboardings com subscription_id atrelada).
+ *
+ * @param subscriptionIds opcional - lista de subscription_id (UUID) dos
+ *   onboardings ativos. Se passado, subscriptions com status='active'
+ *   marcam o client como 'paid' (mesmo sem charges sincronizadas em
+ *   unified_invoices — cobre caso Asaas sem sync de invoices).
  */
 export async function resolveEffectiveStatuses(
   admin: SupabaseClient,
   clientIds: string[],
+  subscriptionIds: string[] = [],
 ): Promise<EffectiveStatusMap> {
   const result: EffectiveStatusMap = {
     payment: {},
@@ -190,6 +196,34 @@ export async function resolveEffectiveStatuses(
   for (const id of uniqueIds) {
     const c = (contracts ?? []).find((r) => r.client_id === id)
     result.contract[id] = c ? mapContractStatus(c.status) : "pending"
+  }
+
+  // 3. Subscriptions atreladas via onboardings.subscription_id
+  // Se a subscription esta active, marca payment como 'paid' (cobre caso
+  // Asaas onde invoices ainda nao foram sincronizadas no banco local).
+  // Apenas faz override se o status atual eh 'pending' (nao sobrescreve
+  // 'paid' real, 'overdue' nem 'renewal_due').
+  const subIds = subscriptionIds.filter(Boolean)
+  if (subIds.length > 0) {
+    try {
+      const { data: subs } = await admin
+        .from("client_subscriptions")
+        .select("id, client_id, status, payment_method")
+        .in("id", subIds)
+      for (const s of subs ?? []) {
+        const cid = s.client_id as string
+        if (
+          (s.status as string) === "active" &&
+          result.payment[cid] === "pending"
+        ) {
+          result.payment[cid] = "paid"
+          result.paymentSource[cid] =
+            (s.payment_method as string) === "asaas" ? "asaas" : "local"
+        }
+      }
+    } catch {
+      // ignora
+    }
   }
 
   return result

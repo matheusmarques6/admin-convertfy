@@ -71,11 +71,18 @@ export async function GET(request: NextRequest) {
       .order("position", { ascending: true })
 
     // Calcula status efetivo de pagamento/contrato em runtime
-    // (unified_invoices + contracts -> mapeia pro enum do onboarding)
+    // (unified_invoices + contracts + subscriptions atreladas)
     const clientIds = (data ?? [])
       .map((o) => o.client_id as string)
       .filter(Boolean)
-    const effective = await resolveEffectiveStatuses(admin, clientIds)
+    const subscriptionIds = (data ?? [])
+      .map((o) => (o as { subscription_id?: string }).subscription_id)
+      .filter((x): x is string => !!x)
+    const effective = await resolveEffectiveStatuses(
+      admin,
+      clientIds,
+      subscriptionIds,
+    )
     const enriched = applyEffectiveStatuses(data ?? [], effective)
 
     return successResponse(request, {

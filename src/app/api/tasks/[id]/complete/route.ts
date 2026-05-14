@@ -50,20 +50,25 @@ export async function POST(
     if (fetchErr || !task) throw new AppError("Task nao encontrada", 404)
 
     // Autorizacao: dono direto, dono do role, ou owner/manager
+    // tasks.assignee_id eh FK pra org_members.id, mas alguns rows legados
+    // armazenam profile_id direto. Aceita os 2 caminhos.
     const role = orgMember.role as string
     const isElevated = ["owner", "manager", "coo"].includes(role)
-    const isOwnTask = task.assignee_id === user.id
+    const isOwnTask =
+      task.assignee_id === orgMember.id || task.assignee_id === user.id
     const isRoleTask = !task.assignee_id && task.assignee_role === role
     if (!isElevated && !isOwnTask && !isRoleTask) {
       throw new AppError("Sem permissao pra concluir essa task", 403)
     }
 
-    // Update: marca completed + claim se era do role
+    // Update: marca completed + claim se era do role.
+    // tasks.assignee_id eh FK pra org_members.id (NAO profiles.id).
+    // Setar user.id (profile_id) violaria FK 23503.
     const updateData: Record<string, unknown> = {
       status: "completed",
       completed_at: new Date().toISOString(),
     }
-    if (!task.assignee_id) updateData.assignee_id = user.id
+    if (!task.assignee_id) updateData.assignee_id = orgMember.id
 
     const { data: updated, error: updateErr } = await admin
       .from("tasks")

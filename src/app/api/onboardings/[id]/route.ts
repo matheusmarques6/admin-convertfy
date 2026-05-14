@@ -113,9 +113,12 @@ export async function GET(
     }))
 
     // Status efetivo (real-time) — sobrescreve os campos armazenados
-    const effective = await resolveEffectiveStatuses(admin, [
-      onb.client_id as string,
-    ])
+    const subId = (onb as { subscription_id?: string }).subscription_id
+    const effective = await resolveEffectiveStatuses(
+      admin,
+      [onb.client_id as string],
+      subId ? [subId] : [],
+    )
     const [enrichedOnb] = applyEffectiveStatuses([onb], effective)
 
     return successResponse(request, {
