@@ -12,7 +12,6 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { UnifiedTasksWidget } from "./unified-tasks-widget"
 import {
   PriorityDot, StatusDot, Avatar, Checkbox,
   IconPlus, IconClose, IconChevronRight,
@@ -200,11 +199,6 @@ export function ProductivityBoard() {
           ))}
         </div>
       </header>
-
-      {/* Bloco "Minhas tarefas (hoje)" - tasks unificadas de TODAS as origens */}
-      <div className="px-6 pt-4 pb-2 bg-white dark:bg-[#1A1D27]">
-        <UnifiedTasksWidget mineByDefault={viewMode === "mine"} />
-      </div>
 
       {/* Filter bar - so em modo "todos os projetos" */}
       {viewMode !== "mine" && (
