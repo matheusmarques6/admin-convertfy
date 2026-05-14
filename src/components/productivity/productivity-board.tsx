@@ -1305,6 +1305,23 @@ function TableView({
       {groups.map((g, gIdx) => {
         const isCollapsed = collapsedGroups.has(g.id)
         const doneCount = g.items.filter((i) => i.status === "done").length
+        // Detecta grupos de onboarding (source_type adicionado no GET).
+        const gAny = g as unknown as {
+          source_type?: string
+          stage_name?: string
+          stage_color?: string
+          stage_role?: string
+          plan?: string
+          mrr_value?: number | string | null
+          client_name?: string
+        }
+        const isOnboardingGroup = gAny.source_type === "onboarding"
+        const plan = gAny.plan
+        const mrr = gAny.mrr_value
+        const mrrLabel =
+          mrr && Number(mrr) > 0
+            ? `R$ ${(Number(mrr) / 1000).toFixed(1).replace(".", ",")}k/mês`
+            : null
 
         return (
           <Draggable key={g.id} draggableId={g.id} index={gIdx}>
@@ -1314,48 +1331,147 @@ function TableView({
                 {...dp.draggableProps}
                 className={ds.isDragging ? "shadow-xl bg-white dark:bg-[#1A1D27]" : ""}
               >
-            {/* Group header */}
-            <div
-              onClick={() => toggleGroupCollapse(g.id)}
-              className="flex items-center gap-2 h-10 px-6 bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)] cursor-pointer hover:bg-gray-25 transition-colors duration-fast ease-out-expo"
-            >
-              <span
-                {...dp.dragHandleProps}
-                onClick={(e) => e.stopPropagation()}
-                className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 dark:text-white/30 dark:hover:text-white/70 -ml-2"
-                title="Arrastar para reordenar"
-                aria-label="Arrastar para reordenar"
-              >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
-              </span>
-              <div className="w-[3px] h-[18px] rounded-[2px]" style={{ background: g.color }} />
-              <svg
-                width="10" height="10" viewBox="0 0 10 10"
-                className={cn("transition-transform duration-fast ease-out-expo", !isCollapsed && "rotate-90")}
-              >
-                <path d="M3 1l4 4-4 4" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              <EditableGroupName groupId={g.id} name={g.name} />
-              <span className="text-[11px] font-semibold text-gray-400 dark:text-white/50 font-mono">{g.items.length}</span>
-              {doneCount > 0 && (
-                <>
-                  <div className="w-9 h-[3px] bg-gray-200 rounded-[2px] overflow-hidden">
+            {/* Group header — projeto (onboarding) ou grupo legado */}
+            {isOnboardingGroup ? (
+              <>
+                {/* Nivel 1: Projeto */}
+                <div
+                  onClick={() => toggleGroupCollapse(g.id)}
+                  className="flex items-center gap-2.5 h-11 px-6 bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)] cursor-pointer hover:bg-gray-25 transition-colors"
+                >
+                  <span
+                    {...dp.dragHandleProps}
+                    onClick={(e) => e.stopPropagation()}
+                    className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 dark:text-white/30 dark:hover:text-white/70 -ml-2"
+                    aria-label="Arrastar"
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                  </span>
+                  <svg
+                    width="10" height="10" viewBox="0 0 10 10"
+                    className={cn("transition-transform shrink-0", !isCollapsed && "rotate-90")}
+                  >
+                    <path d="M3 1l4 4-4 4" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-[13.5px] font-semibold text-gray-900 dark:text-white truncate">
+                    {g.name}
+                  </span>
+                  {/* Chip da stage */}
+                  {gAny.stage_name && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] text-[11px] font-semibold"
+                      style={{
+                        background: `${gAny.stage_color}1a`,
+                        color: gAny.stage_color,
+                      }}
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: gAny.stage_color }}
+                      />
+                      {gAny.stage_name}
+                    </span>
+                  )}
+                  {/* Progress bar + count */}
+                  <div className="w-16 h-[3px] bg-gray-200 dark:bg-white/[0.08] rounded-[2px] overflow-hidden">
                     <div
-                      className="h-full bg-positive-text rounded-[2px]"
-                      style={{ width: `${(doneCount / g.items.length) * 100}%` }}
+                      className="h-full rounded-[2px] transition-all"
+                      style={{
+                        width: `${g.items.length > 0 ? (doneCount / g.items.length) * 100 : 0}%`,
+                        background: doneCount === g.items.length && g.items.length > 0 ? "#10B981" : "#4E62D8",
+                      }}
                     />
                   </div>
-                  <span className="text-[10px] text-positive-text font-mono">{doneCount}/{g.items.length}</span>
-                </>
-              )}
-              <div className="ml-auto">
-                <GroupActionsMenu
-                  groupId={g.id}
-                  groupName={g.name}
-                  itemsCount={g.items.length}
-                />
+                  <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-white/55">
+                    {doneCount}/{g.items.length}
+                  </span>
+                  {/* Meta: plano + MRR */}
+                  <div className="ml-auto flex items-center gap-3">
+                    {plan && (
+                      <span className="text-[11.5px] text-gray-400 dark:text-white/45">
+                        {plan}
+                      </span>
+                    )}
+                    {mrrLabel && (
+                      <span className="text-[11.5px] font-mono tabular-nums text-gray-400 dark:text-white/45">
+                        {mrrLabel}
+                      </span>
+                    )}
+                    <GroupActionsMenu
+                      groupId={g.id}
+                      groupName={g.name}
+                      itemsCount={g.items.length}
+                    />
+                  </div>
+                </div>
+
+                {/* Nivel 2: Stage sub-header (so renderiza quando expandido) */}
+                {!isCollapsed && gAny.stage_name && (
+                  <div
+                    className="flex items-center gap-2 h-9 pl-12 pr-6 border-b border-[rgba(0,0,0,0.05)]"
+                    style={{ background: `${gAny.stage_color}08` }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: gAny.stage_color }}
+                    />
+                    <span className="text-[12.5px] font-medium text-gray-700 dark:text-white/80">
+                      {gAny.stage_name}
+                    </span>
+                    <span className="text-[10.5px] font-mono tabular-nums text-gray-500 dark:text-white/55">
+                      {doneCount}/{g.items.length}
+                    </span>
+                    {gAny.stage_role && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/40 ml-1">
+                        {gAny.stage_role}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div
+                onClick={() => toggleGroupCollapse(g.id)}
+                className="flex items-center gap-2 h-10 px-6 bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)] cursor-pointer hover:bg-gray-25 transition-colors duration-fast ease-out-expo"
+              >
+                <span
+                  {...dp.dragHandleProps}
+                  onClick={(e) => e.stopPropagation()}
+                  className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 dark:text-white/30 dark:hover:text-white/70 -ml-2"
+                  title="Arrastar para reordenar"
+                  aria-label="Arrastar para reordenar"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                </span>
+                <div className="w-[3px] h-[18px] rounded-[2px]" style={{ background: g.color }} />
+                <svg
+                  width="10" height="10" viewBox="0 0 10 10"
+                  className={cn("transition-transform duration-fast ease-out-expo", !isCollapsed && "rotate-90")}
+                >
+                  <path d="M3 1l4 4-4 4" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <EditableGroupName groupId={g.id} name={g.name} />
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-white/50 font-mono">{g.items.length}</span>
+                {doneCount > 0 && (
+                  <>
+                    <div className="w-9 h-[3px] bg-gray-200 rounded-[2px] overflow-hidden">
+                      <div
+                        className="h-full bg-positive-text rounded-[2px]"
+                        style={{ width: `${(doneCount / g.items.length) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-positive-text font-mono">{doneCount}/{g.items.length}</span>
+                  </>
+                )}
+                <div className="ml-auto">
+                  <GroupActionsMenu
+                    groupId={g.id}
+                    groupName={g.name}
+                    itemsCount={g.items.length}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Task rows */}
             {!isCollapsed && g.items.map((t) => {
@@ -1754,9 +1870,12 @@ function TaskDetailPanel({
   }
 
   return (
-    <div className="w-[400px] bg-white dark:bg-[#1A1D27] border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0 flex flex-col">
+    <div className="w-[420px] bg-white dark:bg-[#1A1D27] border-l border-[rgba(0,0,0,0.08)] overflow-auto shrink-0 flex flex-col">
+      {/* Breadcrumb (so pra tasks de onboarding) */}
+      <TaskBreadcrumb task={task} onClose={onClose} />
+
       {/* Header — editable title */}
-      <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.08)]">
+      <div className="px-6 py-3 border-b border-[rgba(0,0,0,0.08)]">
         <div className="flex justify-between items-start gap-2">
           {editingName ? (
             <input
@@ -2012,6 +2131,68 @@ function TaskDetailPanel({
 }
 
 // ============================================================================
+// TaskBreadcrumb — header com path 'Projetos / Onboarding · Cliente / Stage'
+// (so renderiza pra tasks de onboarding). Inclui botao de fechar.
+// ============================================================================
+
+function TaskBreadcrumb({
+  task,
+  onClose,
+}: {
+  task: ProductivityTask
+  onClose: () => void
+}) {
+  const taskAny = task as unknown as {
+    source_type?: string
+    metadata?: Record<string, unknown>
+  }
+  const meta = taskAny.metadata ?? {}
+  const stageName = (meta.column_name as string) ?? (meta.stage_name as string) ?? null
+  const clientName = (meta.client_name as string) ?? null
+  const storeName = (meta.store_name as string) ?? null
+  const projectLabel = clientName ?? storeName
+
+  return (
+    <div className="px-6 py-2.5 border-b border-[rgba(0,0,0,0.06)] bg-gray-50/60 dark:bg-white/[0.02] flex items-center gap-1.5 text-[11.5px]">
+      <svg
+        className="h-3.5 w-3.5 text-gray-400 dark:text-white/40 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M3 7h6l2 2h10v10H3z" />
+      </svg>
+      <span className="text-gray-500 dark:text-white/55 font-medium">Projetos</span>
+      {projectLabel && taskAny.source_type === "onboarding" && (
+        <>
+          <span className="text-gray-300 dark:text-white/20">/</span>
+          <span className="text-gray-500 dark:text-white/55 truncate">
+            Onboarding · {projectLabel}
+          </span>
+        </>
+      )}
+      {stageName && taskAny.source_type === "onboarding" && (
+        <>
+          <span className="text-gray-300 dark:text-white/20">/</span>
+          <span className="text-gray-700 dark:text-white/80 font-semibold truncate">
+            {stageName}
+          </span>
+        </>
+      )}
+      <button
+        onClick={onClose}
+        className="ml-auto h-6 w-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+        aria-label="Fechar"
+      >
+        <IconClose size={14} />
+      </button>
+    </div>
+  )
+}
+
+// ============================================================================
 // GuidedStatusActions — stepper + botao de avanco do status (Pendente ->
 // Em andamento -> Em revisao -> Concluido). Substitui o dropdown manual.
 // ============================================================================
@@ -2026,6 +2207,14 @@ const GUIDED_STEPS = [
 function GuidedStatusActions({ task }: { task: ProductivityTask }) {
   const { apiAction, updateTaskStatus } = useProductivityStore()
   const currentIdx = GUIDED_STEPS.findIndex((s) => s.id === task.status)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+
+  // Auto-dismiss toast em 4s
+  useEffect(() => {
+    if (!toastMsg) return
+    const t = setTimeout(() => setToastMsg(null), 4000)
+    return () => clearTimeout(t)
+  }, [toastMsg])
 
   const handleAdvance = async () => {
     const next = GUIDED_STEPS[currentIdx + 1]
@@ -2040,6 +2229,11 @@ function GuidedStatusActions({ task }: { task: ProductivityTask }) {
         } catch {
           // best-effort; ja foi marcada local
         }
+        setToastMsg(
+          "Tarefa concluida! Proxima tarefa do fluxo foi liberada automaticamente.",
+        )
+      } else if (next.id === "done") {
+        setToastMsg("Tarefa concluida!")
       }
     }
   }
@@ -2050,12 +2244,12 @@ function GuidedStatusActions({ task }: { task: ProductivityTask }) {
 
   const actionConfig =
     currentIdx === 0
-      ? { label: "Iniciar tarefa", color: "#4E62D8", icon: "▶" }
+      ? { label: "Iniciar tarefa", color: "#4E62D8", icon: "▶", hint: "Próximo passo: iniciar tarefa" }
       : currentIdx === 1
-        ? { label: "Marcar pronta pra revisao", color: "#7C3AED", icon: "👁" }
+        ? { label: "Marcar pronta pra revisao", color: "#7C3AED", icon: "👁", hint: "Próximo passo: enviar pra revisão" }
         : currentIdx === 2
-          ? { label: "Entregar e concluir", color: "#10B981", icon: "🚀" }
-          : { label: "Reabrir tarefa", color: "#6B7280", icon: "↺" }
+          ? { label: "Entregar e concluir", color: "#10B981", icon: "🚀", hint: "Próximo passo: entregar a tarefa" }
+          : { label: "Reabrir tarefa", color: "#6B7280", icon: "↺", hint: "Tarefa concluída — pode reabrir se precisar" }
 
   const isLast = currentIdx === GUIDED_STEPS.length - 1
   const onClick = isLast ? handleReopen : handleAdvance
@@ -2108,15 +2302,35 @@ function GuidedStatusActions({ task }: { task: ProductivityTask }) {
         })}
       </div>
 
-      {/* Botao de acao */}
-      <button
-        onClick={onClick}
-        className="w-full h-10 rounded-[8px] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
-        style={{ background: actionConfig.color }}
-      >
-        <span>{actionConfig.icon}</span>
-        {actionConfig.label}
-      </button>
+      {/* Hint card + Botao de acao */}
+      <div className="rounded-[10px] border border-[rgba(0,0,0,0.06)] bg-gray-50/60 dark:bg-white/[0.02] p-3 flex items-center justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-semibold text-gray-900 dark:text-white leading-tight">
+            {actionConfig.hint}
+          </p>
+          {!isLast && (
+            <p className="text-[11px] text-gray-500 dark:text-white/55 mt-0.5">
+              Quando voce comecar a trabalhar, marque pra comecar a contar o tempo.
+            </p>
+          )}
+        </div>
+        <button
+          onClick={onClick}
+          className="shrink-0 inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-[8px] text-white text-[12.5px] font-semibold hover:opacity-90 transition-opacity"
+          style={{ background: actionConfig.color }}
+        >
+          <span>{actionConfig.icon}</span>
+          {actionConfig.label}
+        </button>
+      </div>
+
+      {/* Toast de sucesso ao concluir */}
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 dark:bg-gray-800 text-white px-4 py-2.5 rounded-[10px] shadow-lg flex items-center gap-2 text-[13px] animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <span className="text-emerald-400 text-[16px]">✓</span>
+          {toastMsg}
+        </div>
+      )}
 
       {/* Dropdown discreto pra edits raros (volta manualmente) */}
       <details className="mt-2">
