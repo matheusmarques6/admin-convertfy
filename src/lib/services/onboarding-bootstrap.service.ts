@@ -57,12 +57,10 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
     deliverables_template: [
       { slug: "whatsapp_group_screenshot", label: "Print do grupo WhatsApp", type: "upload", required: false },
-      { slug: "asaas_payment_link", label: "Link de pagamento Asaas", type: "url", required: false },
       { slug: "contract_status", label: "Status do contrato", type: "select", required: true, options: ["pending", "sent", "signed"] },
-      { slug: "form_link", label: "Link do formulario", type: "url", required: true, helpText: "Auto-gerado" },
     ],
     whatsapp_template:
-      "Ola {{client_name}}! Seja muito bem-vindo a Convertfy.\n\nEsse e nosso grupo oficial pra acompanhar todo o processo da {{store_name}}.\n\nPrimeiro passo: responda esse formulario (5 minutos):\n{{form_link}}\n\nA IA gera um briefing direto no proprio formulario pra voce revisar.",
+      "Ola {{client_name}}! Seja muito bem-vindo a Convertfy.\n\nEsse e nosso grupo oficial pra acompanhar todo o processo da {{store_name}}.\n\nPrimeiro passo: responda esse formulario (5 minutos):\n{{form_url}}\n\nA IA gera um briefing direto no proprio formulario pra voce revisar.",
     automation_rules: [
       { trigger: "completed", action: "advance_to_next", params: {} },
     ],

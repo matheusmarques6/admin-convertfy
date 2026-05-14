@@ -23,7 +23,7 @@ export async function GET(
       .select(
         `id, briefing_status, form_responses, briefing,
          briefing_confirmed_by_client, form_submitted_at,
-         client:clients(id, name, company),
+         client:clients!onboardings_client_id_fkey(id, name, company),
          store:client_stores(id, store_name, store_url, platform)`,
       )
       .eq("form_token", token)

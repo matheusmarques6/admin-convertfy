@@ -35,7 +35,7 @@ export async function renderTutorialByToken(
   const { data: onb } = await admin
     .from("onboardings")
     .select(
-      "id, org_id, client:clients(name), store:client_stores(store_name, platform)",
+      "id, org_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name, platform)",
     )
     .eq("tutorial_token", token)
     .maybeSingle()

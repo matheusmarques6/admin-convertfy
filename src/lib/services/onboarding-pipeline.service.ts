@@ -127,10 +127,58 @@ export async function createOnboarding(
         if (resolvedMrr === null || resolvedMrr === undefined)
           resolvedMrr = Number(existingLocal.value)
       } else {
-        // Cria stub local linkando Asaas. Plan/MRR podem vir vazios — o
-        // sync de Asaas (cron ou job) preenche depois.
-        const subName = resolvedPlan ?? "Assinatura Asaas"
-        const subValue = resolvedMrr ?? 0
+        // Busca dados reais da subscription no Asaas (value + cycle + description)
+        // pra criar o stub local ja preenchido.
+        let asaasValue = 0
+        let asaasCycle = "MONTHLY"
+        let asaasName = "Assinatura Asaas"
+        try {
+          const { data: client } = await admin
+            .from("clients")
+            .select("custom_fields")
+            .eq("id", opts.clientId)
+            .maybeSingle()
+          const orgIntegrations = await admin
+            .from("integrations")
+            .select("credentials")
+            .eq("type", "asaas")
+            .eq("is_active", true)
+            .eq("org_id", opts.orgId)
+            .maybeSingle()
+          if (client?.custom_fields && orgIntegrations.data?.credentials) {
+            const { decryptCredentialsJson } = await import("@/lib/crypto")
+            const creds = decryptCredentialsJson(
+              orgIntegrations.data.credentials as Record<string, unknown>,
+            )
+            const env = (creds.environment as string) || "sandbox"
+            const baseUrl =
+              env === "production"
+                ? "https://api.asaas.com/v3"
+                : "https://sandbox.asaas.com/api/v3"
+            const resp = await fetch(`${baseUrl}/subscriptions/${asaasId}`, {
+              headers: {
+                "Content-Type": "application/json",
+                access_token: creds.api_key as string,
+              },
+            })
+            if (resp.ok) {
+              const sub = (await resp.json()) as {
+                value: number
+                cycle?: string
+                description?: string
+              }
+              asaasValue = Number(sub.value) || 0
+              asaasCycle = sub.cycle ?? "MONTHLY"
+              asaasName = sub.description ?? "Assinatura Asaas"
+            }
+          }
+        } catch (e) {
+          log.warn("Falha ao buscar subscription Asaas", e)
+        }
+
+        // Cria stub local com dados puxados do Asaas (ou defaults se falhou)
+        const subName = resolvedPlan ?? asaasName
+        const subValue = resolvedMrr ?? asaasValue
         const todayDate = new Date().toISOString().split("T")[0]
         const { data: inserted } = await admin
           .from("client_subscriptions")
@@ -138,7 +186,7 @@ export async function createOnboarding(
             client_id: opts.clientId,
             name: subName,
             value: subValue,
-            cycle: "MONTHLY",
+            cycle: asaasCycle,
             payment_method: "asaas",
             status: "active",
             start_date: todayDate,
@@ -150,6 +198,9 @@ export async function createOnboarding(
           .single()
         if (inserted?.id) {
           resolvedSubscriptionId = inserted.id as string
+          if (!resolvedPlan) resolvedPlan = subName
+          if (resolvedMrr === null || resolvedMrr === undefined)
+            resolvedMrr = subValue
         } else {
           // Se nao conseguiu criar (RLS, constraint), nao quebra o onboarding
           resolvedSubscriptionId = null

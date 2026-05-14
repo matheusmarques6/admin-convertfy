@@ -36,7 +36,7 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
   const admin = createAdminClient()
   const { data: onb } = await admin
     .from("onboardings")
-    .select("id, org_id, form_responses, client_id, store_id, client:clients(name), store:client_stores(store_name, store_url, platform)")
+    .select("id, org_id, form_responses, client_id, store_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name, store_url, platform)")
     .eq("id", onboardingId)
     .maybeSingle()
   if (!onb) {
