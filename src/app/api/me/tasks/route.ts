@@ -131,16 +131,22 @@ export async function GET(request: NextRequest) {
       .eq("org_id", orgMember.org_id)
       .limit(500)
 
-    // Filtro de atribuicao: minhas tasks OU todas (so owner/manager/coo)
-    if (view !== "all" || !isElevated) {
+    // Filtro de atribuicao:
+    // - Owner/manager/coo: veem TODAS as tasks da org por default (sao
+    //   gestores, precisam visibilidade completa). Pra filtrar so as
+    //   atribuidas a eles, usar ?view=mine_strict.
+    // - Outros roles: veem so as atribuidas a eles ou da sua role.
+    if (!isElevated || view === "mine_strict") {
       // assignee_id pode bater com profile_id (user.id) OU org_member.id (id da row)
       // Historicamente o codigo usa profile_id. Cobrimos os dois com or().
       const orParts = [
         `assignee_id.eq.${user.id}`,
+        `assignee_id.eq.${orgMember.id}`,
         `and(assignee_id.is.null,assignee_role.eq.${role})`,
       ]
       query = query.or(orParts.join(","))
     }
+    // Para isElevated com view default ('mine') ou 'all', mostra tudo.
 
     if (status !== "all") query = query.eq("status", status)
     if (sourceType) query = query.eq("source_type", sourceType)
@@ -229,17 +235,18 @@ export async function GET(request: NextRequest) {
       counts[key] = (counts[key] ?? 0) + 1
     }
 
-    // Conta global de todos status (uteis pros chips em /admin/me)
-    const { data: statusCountsData } = await admin
+    // Conta global de todos status (uteis pros chips em /admin/me).
+    // Mesma logica de visibilidade do select principal.
+    let statusCountsQuery = admin
       .from("tasks")
       .select("status", { count: "exact" })
       .eq("org_id", orgMember.org_id)
-      .or(
-        view !== "all" || !isElevated
-          ? `assignee_id.eq.${user.id},and(assignee_id.is.null,assignee_role.eq.${role})`
-          : "",
+    if (!isElevated || view === "mine_strict") {
+      statusCountsQuery = statusCountsQuery.or(
+        `assignee_id.eq.${user.id},assignee_id.eq.${orgMember.id},and(assignee_id.is.null,assignee_role.eq.${role})`,
       )
-      .limit(1000)
+    }
+    const { data: statusCountsData } = await statusCountsQuery.limit(1000)
 
     const status_counts = (statusCountsData ?? []).reduce(
       (acc: Record<string, number>, row: { status: string }) => {

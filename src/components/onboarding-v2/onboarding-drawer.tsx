@@ -556,9 +556,9 @@ export function OnboardingDrawer({
                 />
               </Section>
 
-              {/* ENTREGAVEIS */}
+              {/* ENTREGAVEIS DA ETAPA ATUAL */}
               {currentColumn.deliverables_template.length > 0 && (
-                <Section title="Entregáveis">
+                <Section title="Entregáveis desta etapa">
                   {currentColumn.deliverables_template.map((field) => {
                     const d = deliverables.find(
                       (x) => x.field_slug === field.slug,
@@ -573,6 +573,13 @@ export function OnboardingDrawer({
                   })}
                 </Section>
               )}
+
+              {/* ENTREGAS DE ETAPAS ANTERIORES (read-only, agrupado por coluna) */}
+              <PreviousStagesDeliveries
+                columns={columns}
+                currentColumn={currentColumn}
+                deliverables={deliverables}
+              />
 
               {/* AUTOMACOES DESTA ETAPA */}
               {currentColumn.automation_rules.length > 0 && (
@@ -1165,6 +1172,74 @@ function AutomationsList({
 }
 
 // ─── ActivityRow ──────────────────────────────────────────────────────────
+
+// ─── PreviousStagesDeliveries ─────────────────────────────────────────────
+// Mostra entregas das etapas ANTERIORES a atual (read-only).
+// Bruno: 'precisa de um lugar para ver os entregaveis anterior tipo o
+// preview em producao é entregue mas nao consigo ver a entrega no
+// aprovacao do preview'.
+function PreviousStagesDeliveries({
+  columns,
+  currentColumn,
+  deliverables,
+}: {
+  columns: OperationalPipelineColumn[]
+  currentColumn: OperationalPipelineColumn
+  deliverables: TaskDeliverable[]
+}) {
+  const previousColumns = columns.filter(
+    (c) => c.position < currentColumn.position,
+  )
+
+  // Para cada coluna anterior, procura deliverables filled
+  const stagesWithFills = previousColumns
+    .map((col) => {
+      const filled = (col.deliverables_template ?? [])
+        .map((field) => {
+          const d = deliverables.find((x) => x.field_slug === field.slug)
+          if (!d || (!d.value && !d.file_url)) return null
+          return { field, deliverable: d }
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x)
+      return { col, filled }
+    })
+    .filter((s) => s.filled.length > 0)
+
+  if (stagesWithFills.length === 0) return null
+
+  return (
+    <Section title="Entregas das etapas anteriores">
+      <div className="space-y-3.5">
+        {stagesWithFills.map(({ col, filled }) => (
+          <div key={col.id}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span
+                className="h-[6px] w-[6px] rounded-full"
+                style={{ background: col.color }}
+                aria-hidden
+              />
+              <span className="text-[11.5px] font-semibold text-slate-700 dark:text-white/80">
+                {col.name}
+              </span>
+              <span className="text-[10px] font-medium text-slate-400 dark:text-white/40 tabular-nums">
+                {filled.length}/{(col.deliverables_template ?? []).length}
+              </span>
+            </div>
+            <div className="pl-3 space-y-1">
+              {filled.map(({ field, deliverable }) => (
+                <DeliverableRow
+                  key={`${col.id}-${field.slug}`}
+                  field={field}
+                  deliverable={deliverable}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
 
 function ActivityRow({ event }: { event: ActivityEvent }) {
   const actorName = event.actor?.name ?? "Sistema"
