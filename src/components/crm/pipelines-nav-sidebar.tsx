@@ -4,11 +4,16 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import useSWR from "swr"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import { useRouter } from "next/navigation"
 import {
   Plus,
   Search,
   GitBranch,
   HeartHandshake,
+  MoreHorizontal,
+  Trash2,
+  Star as StarOff,
   ChevronRight,
   Star,
   X,
@@ -170,6 +175,7 @@ export function PipelinesNavSidebar({
                 pipeline={p}
                 href={pipelineHref(scope, p.id)}
                 active={p.id === activeId}
+                onChanged={() => mutate()}
               />
             ))}
           </ul>
@@ -197,19 +203,60 @@ function PipelineItem({
   pipeline,
   href,
   active,
+  onChanged,
 }: {
   pipeline: PipelineSummary
   href: string
   active: boolean
+  onChanged: () => void
 }) {
   const dotColor = pipeline.color ?? "#475569"
+  const router = useRouter()
+
+  const handleDelete = async (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const dealsCount = pipeline.deals_count ?? 0
+    const aviso = dealsCount > 0
+      ? `O pipeline "${pipeline.name}" tem ${dealsCount} deal(s). Excluir vai mover esses deals pra archived. Continuar?`
+      : `Excluir o pipeline "${pipeline.name}"? Esta ação não pode ser desfeita.`
+    if (!window.confirm(aviso)) return
+    try {
+      const res = await fetch(`/api/crm/pipelines/${pipeline.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        window.alert(`Falha ao excluir: ${body.error?.message ?? body.error ?? res.statusText}`)
+        return
+      }
+      // Se estava ativo, redireciona pra home do scope
+      if (active) router.push(href.replace(/\/[^/]+$/, ""))
+      onChanged()
+    } catch (err) {
+      window.alert(`Erro: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const handleSetDefault = async (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/crm/pipelines/${pipeline.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_default: !pipeline.is_default }),
+      })
+      if (res.ok) onChanged()
+    } catch {
+      /* noop */
+    }
+  }
 
   return (
-    <li>
+    <li className="relative group">
       <Link
         href={href}
         className={cn(
-          "group relative flex items-start gap-2.5 rounded-[6px] px-2.5 py-2 transition-colors",
+          "relative flex items-start gap-2.5 rounded-[6px] px-2.5 py-2 transition-colors",
           active
             ? "bg-slate-100 dark:bg-white/[0.06]"
             : "hover:bg-slate-50 dark:hover:bg-white/[0.03]",
@@ -287,6 +334,48 @@ function PipelineItem({
           aria-hidden
         />
       </Link>
+
+      {/* Menu de ações (... aparece no hover) — posicionado absoluto sobre o Link */}
+      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 data-[open=true]:opacity-100">
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              aria-label="Opções do pipeline"
+              title="Ações do pipeline"
+              className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white transition-colors"
+            >
+              <MoreHorizontal className="h-3 w-3" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={4}
+              className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
+            >
+              <DropdownMenu.Item
+                onSelect={handleSetDefault}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 dark:text-white/85 cursor-pointer outline-none hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+              >
+                <StarOff className={cn("h-3.5 w-3.5", pipeline.is_default ? "text-amber-400 fill-amber-400" : "text-slate-400")} />
+                {pipeline.is_default ? "Remover padrão" : "Definir como padrão"}
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+              <DropdownMenu.Item
+                onSelect={handleDelete}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-red-600 cursor-pointer outline-none hover:bg-red-50 dark:hover:bg-red-500/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir pipeline
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
     </li>
   )
 }

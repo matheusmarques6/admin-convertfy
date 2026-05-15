@@ -105,8 +105,8 @@ export function ProductivityHome() {
   })
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: "#F4F6FB" }}>
-      <div className="p-6 max-w-[1500px] mx-auto flex flex-col gap-6">
+    <>
+    <div className="max-w-[1500px] mx-auto flex flex-col gap-6">
 
         {/* ═══════════ PAGE HEADER: Workspace + Título + Stats + DayFilter ═══════════ */}
         <PageHeader
@@ -232,7 +232,7 @@ export function ProductivityHome() {
           setGoalModalOpen(false)
         }}
       />
-    </div>
+    </>
   )
 }
 
