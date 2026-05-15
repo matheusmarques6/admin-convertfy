@@ -38,6 +38,12 @@ const rowSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
   utm: z.record(z.string(), z.unknown()).optional(),
+  status: z.enum(["new", "qualified", "unqualified", "converted", "lost"]).optional().nullable(),
+  // Timestamps preservaveis do CSV externo (Kommo etc)
+  created_at: z.string().optional().nullable(),
+  created_by_external: z.string().optional().nullable(),
+  updated_at: z.string().optional().nullable(),
+  closed_at: z.string().optional().nullable(),
   // Deal (opcional)
   deal_title: z.string().nullable().optional(),
   deal_value: z.number().nullable().optional(),
@@ -164,7 +170,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Insere leads novos em batch (aplica bulk: tags em massa, source
-      // fallback, owner, DDI no telefone).
+      // fallback, owner, DDI no telefone + timestamps externos preservados).
+      const nowIso = new Date().toISOString()
       const newLeads = chunk
         .filter((r) => !r.email || !existingByEmail.has(r.email.toLowerCase()))
         .map((r) => {
@@ -183,7 +190,14 @@ export async function POST(request: NextRequest) {
             notes: r.notes || null,
             custom_fields: r.custom_fields ?? {},
             utm: r.utm ?? {},
-            status: "new" as const,
+            // Status do CSV se mapeado, senao 'new'
+            status: (r.status as "new" | "qualified" | "unqualified" | "converted" | "lost") ?? "new",
+            // Timestamps externos (Kommo, etc) preservados pra rastreabilidade
+            created_at: r.created_at || undefined,
+            updated_at: r.updated_at || undefined,
+            closed_at: r.closed_at || null,
+            created_by_external: r.created_by_external || null,
+            imported_at: nowIso,
             assigned_to: bulk.assigned_to ?? null,
             created_by: user.id,
           }

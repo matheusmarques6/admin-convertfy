@@ -5,8 +5,27 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 import useSWR from "swr"
 import { useAuthStore } from "@/lib/store"
+import { TagsSelector } from "./tags-selector"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+// Tipos de origem padronizados pra metrificacao. 'indicacao' destrava o
+// campo 'Quem indicou' pra rastrear quem trouxe o lead — base de relatorio
+// 'Top indicadores'.
+const SOURCE_TYPES: Array<{ value: string; label: string; icon: string }> = [
+  { value: "indicacao", label: "Indicação", icon: "🤝" },
+  { value: "meta_ads", label: "Meta Ads", icon: "📘" },
+  { value: "google_ads", label: "Google Ads", icon: "🔎" },
+  { value: "instagram", label: "Instagram", icon: "📸" },
+  { value: "tiktok", label: "TikTok", icon: "🎵" },
+  { value: "youtube", label: "YouTube", icon: "▶️" },
+  { value: "linkedin", label: "LinkedIn", icon: "💼" },
+  { value: "site", label: "Site / Inbound", icon: "🌐" },
+  { value: "evento", label: "Evento", icon: "🎤" },
+  { value: "outbound", label: "Outbound", icon: "📞" },
+  { value: "parceiro", label: "Parceiro", icon: "🤝" },
+  { value: "outro", label: "Outro", icon: "✨" },
+]
 
 interface NewDealDialogProps {
   open: boolean
@@ -40,7 +59,9 @@ export function NewDealDialog({
   const [clientId, setClientId] = useState<string>("")
   const [clientSearch, setClientSearch] = useState("")
   const [source, setSource] = useState("")
-  const [tags, setTags] = useState("")
+  const [sourceType, setSourceType] = useState("")
+  const [sourceReferrer, setSourceReferrer] = useState("")
+  const [tags, setTags] = useState<string[]>([])
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +83,9 @@ export function NewDealDialog({
       setClientId("")
       setClientSearch("")
       setSource("")
-      setTags("")
+      setSourceType("")
+      setSourceReferrer("")
+      setTags([])
       setNotes("")
       setError(null)
     }
@@ -75,10 +98,8 @@ export function NewDealDialog({
     setSubmitting(true)
     setError(null)
     try {
+      // Tags vem do TagsSelector como array de names
       const tagList = tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
 
       const numericValue = value ? Number(value.replace(/\D/g, "")) / 100 : 0
 
@@ -91,7 +112,9 @@ export function NewDealDialog({
         title: title.trim(),
         value: numericValue,
         client_id: clientId || null,
-        source: source || null,
+        source: source || sourceType || null,
+        source_type: sourceType || null,
+        source_referrer: sourceReferrer.trim() || null,
         tags: tagList,
         notes: notes || null,
       }
@@ -246,24 +269,86 @@ export function NewDealDialog({
                 )}
               </Field>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Fonte">
+              {/* Tipo de origem (categoria) + Quem indicou/canal especifico */}
+              <Field label="Tipo de origem">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {SOURCE_TYPES.map((opt) => {
+                    const active = sourceType === opt.value
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setSourceType(opt.value)
+                          if (opt.value !== "indicacao") setSourceReferrer("")
+                        }}
+                        className={
+                          "inline-flex items-center gap-1.5 px-3 py-2 rounded-[6px] text-[12px] font-medium border transition-colors " +
+                          (active
+                            ? "bg-brand-50 text-brand-700 border-brand-300"
+                            : "bg-white text-slate-700 border-black/[0.06] hover:bg-slate-50")
+                        }
+                      >
+                        <span>{opt.icon}</span>
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
+
+              {/* Quem indicou / origem especifica */}
+              {sourceType && (
+                <Field
+                  label={
+                    sourceType === "indicacao"
+                      ? "Quem indicou? (obrigatório)"
+                      : "Origem específica (opcional)"
+                  }
+                >
                   <input
                     className="crm-input w-full"
-                    placeholder="Ex: Inbound, Indicacao..."
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
+                    placeholder={
+                      sourceType === "indicacao"
+                        ? "Ex: João Silva (cliente atual)"
+                        : sourceType === "meta_ads"
+                          ? "Ex: Campanha BF24 - Lookalike"
+                          : sourceType === "google_ads"
+                            ? "Ex: KW Convertfy Email"
+                            : sourceType === "instagram"
+                              ? "Ex: Reels @convertfy 12/05"
+                              : "Ex: detalhe da origem"
+                    }
+                    value={sourceReferrer}
+                    onChange={(e) => setSourceReferrer(e.target.value)}
                   />
+                  {sourceType === "indicacao" && (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Identifica o cliente/parceiro que indicou — permite
+                      ranquear quem mais traz negócios.
+                    </p>
+                  )}
                 </Field>
-                <Field label="Tags (virgulas)">
-                  <input
-                    className="crm-input w-full"
-                    placeholder="Ex: Black Friday, Upsell"
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                  />
-                </Field>
-              </div>
+              )}
+
+              {/* Fonte livre (legacy/free-text quando o tipo nao cobre) */}
+              <Field label="Fonte (legado / texto livre)">
+                <input
+                  className="crm-input w-full"
+                  placeholder="Ex: Inbound, parceiro X..."
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                />
+              </Field>
+
+              <Field label="Tags">
+                <TagsSelector
+                  entity="deal"
+                  selected={tags}
+                  onChange={setTags}
+                  placeholder="Buscar ou criar tag…"
+                />
+              </Field>
 
               <Field label="Notas">
                 <textarea

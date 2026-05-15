@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Upload, Check, ChevronDown, X, Info, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { TagsSelector } from "./tags-selector"
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,11 @@ const SYSTEM_FIELDS = [
   { value: "source", label: "Origem" },
   { value: "notes", label: "Notas / Observações" },
   { value: "tags", label: "Tags (separadas por vírgula)" },
+  { value: "status", label: "Status do lead (new/qualified/unqualified/converted/lost)" },
+  { value: "created_at", label: "Criado em (data)" },
+  { value: "created_by_external", label: "Criado por (nome externo)" },
+  { value: "updated_at", label: "Modificada em (data)" },
+  { value: "closed_at", label: "Fechado às (data)" },
   { value: "deal_value", label: "Valor do negócio (R$)" },
   { value: "deal_stage_name", label: "Nome da etapa (Funil)" },
   { value: "deal_title", label: "Título do negócio" },
@@ -80,6 +86,25 @@ interface LeadsImportWizardProps {
 }
 
 // ── CSV parser inline (sem dep externa) ──────────────────────────────────────
+
+// parseDateMaybeKommo: aceita formato Kommo (13.11.2025 12:00:10) ou ISO
+function parseDateMaybeKommo(s: string): string | null {
+  const trimmed = s.trim()
+  if (!trimmed) return null
+  // Kommo: DD.MM.YYYY [HH:MM:SS]
+  const m = trimmed.match(
+    /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  )
+  if (m) {
+    const [, dd, mm, yyyy, hh = "00", mi = "00", ss = "00"] = m
+    const iso = `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? null : d.toISOString()
+  }
+  // ISO ou outro formato — deixa o Date parsear
+  const d = new Date(trimmed)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -273,6 +298,11 @@ export function LeadsImportWizard({
         if (/origem|source|utm_source/.test(h)) return { systemField: "source" }
         if (/notas?|observa|comenta/.test(h)) return { systemField: "notes" }
         if (/tags?|etiquetas?/.test(h)) return { systemField: "tags" }
+        if (/status\s*do\s*lead|status$/.test(h)) return { systemField: "status" }
+        if (/criado\s*em|created\s*at|criada\s*em|data\s*cria/.test(h)) return { systemField: "created_at" }
+        if (/criado\s*por|usu[aá]rio\s*respons|created\s*by/.test(h)) return { systemField: "created_by_external" }
+        if (/modificad[ao]|atualizado|updated\s*at|modified/.test(h)) return { systemField: "updated_at" }
+        if (/fechado|closed|ganho|perdido|fechad[ao]\s*[aà]s|fechad[ao]\s*em/.test(h)) return { systemField: "closed_at" }
         if (/valor|venda|amount|r\$/.test(h)) return { systemField: "deal_value" }
         if (/etapa.*lead|stage|funil/.test(h)) return { systemField: "deal_stage_name" }
         return { systemField: "ignore" }
@@ -303,6 +333,11 @@ export function LeadsImportWizard({
         source?: string | null
         notes?: string | null
         tags?: string[]
+        status?: string | null
+        created_at?: string | null
+        created_by_external?: string | null
+        updated_at?: string | null
+        closed_at?: string | null
         deal_value?: number | null
         deal_stage_name?: string | null
         deal_title?: string | null
@@ -354,6 +389,36 @@ export function LeadsImportWizard({
           case "external_id":
             lead.external_id = value
             break
+          case "status": {
+            // Aceita varias variacoes; mapeia pra enum lead_status
+            const v = value.toLowerCase()
+            if (/new|novo/.test(v)) lead.status = "new"
+            else if (/qualif/.test(v)) lead.status = "qualified"
+            else if (/desqualif|unqualif/.test(v)) lead.status = "unqualified"
+            else if (/convert/.test(v)) lead.status = "converted"
+            else if (/perdid|lost/.test(v)) lead.status = "lost"
+            break
+          }
+          case "created_at": {
+            const iso = parseDateMaybeKommo(value)
+            if (iso) lead.created_at = iso
+            break
+          }
+          case "created_by_external":
+            lead.created_by_external = value
+            break
+          case "updated_at": {
+            const iso = parseDateMaybeKommo(value)
+            if (iso) lead.updated_at = iso
+            break
+          }
+          case "closed_at": {
+            // Ignora valores 'nao fechado'
+            if (/n[aã]o\s*fechado|n\/a|nao\s*fechado/i.test(value)) break
+            const iso = parseDateMaybeKommo(value)
+            if (iso) lead.closed_at = iso
+            break
+          }
           case "custom":
             if (!lead.custom_fields) lead.custom_fields = {}
             lead.custom_fields[m.customName || `Campo ${i + 1}`] = value
@@ -758,7 +823,6 @@ function Step3Attribute({
   members: Member[]
   pipelines: Pipeline[]
 }) {
-  const [tagInput, setTagInput] = useState("")
   const selectedPipeline = pipelines.find((p) => p.id === bulk.pipeline_id)
   return (
     <div className="max-w-[520px] mx-auto py-4">
@@ -770,46 +834,20 @@ function Step3Attribute({
         className="border rounded-[10px] p-5 bg-white space-y-4"
         style={{ borderColor: "rgba(0,0,0,0.08)" }}
       >
-        {/* Tags em massa */}
+        {/* Tags em massa (com cadastro/persistencia na org) */}
         <div>
           <label className="block text-[12.5px] font-semibold text-slate-800 mb-1.5">
             Tags
           </label>
-          <div
-            className="flex flex-wrap items-center gap-1.5 min-h-[36px] px-2 py-1 rounded-[6px] border bg-white"
-            style={{ borderColor: "rgba(0,0,0,0.10)" }}
-          >
-            {bulk.tags.map((t, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11.5px] font-medium border border-brand-200"
-              >
-                {t}
-                <button
-                  onClick={() => setBulk({ ...bulk, tags: bulk.tags.filter((_, j) => j !== i) })}
-                  className="hover:bg-brand-100 rounded-full"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
-                  e.preventDefault()
-                  setBulk({
-                    ...bulk,
-                    tags: Array.from(new Set([...bulk.tags, tagInput.trim()])),
-                  })
-                  setTagInput("")
-                }
-              }}
-              placeholder={bulk.tags.length === 0 ? "Digite e tecle Enter..." : ""}
-              className="flex-1 min-w-[120px] outline-none border-none bg-transparent text-[12.5px] py-1"
-            />
-          </div>
+          <TagsSelector
+            entity="lead"
+            selected={bulk.tags}
+            onChange={(next) => setBulk({ ...bulk, tags: next })}
+            placeholder="Buscar ou criar tag…"
+          />
+          <p className="text-[11px] text-slate-400 mt-1.5">
+            Tags ficam salvas na org pra reuso em importações futuras.
+          </p>
         </div>
 
         {/* Origem em massa */}
