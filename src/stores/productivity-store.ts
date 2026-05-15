@@ -209,13 +209,16 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
       const json = await res.json()
       const data = json.data || json
 
-      // Map API groups to store format
+      // Map API groups to store format. Spread primeiro pra preservar
+      // campos extras (source_type, stage_name, stage_color, plan,
+      // mrr_value, client_name) que o GET injeta pra grupos de onboarding.
       const groups: TaskGroup[] = (data.groups || []).map((g: Record<string, unknown>) => ({
+        ...(g as object),
         id: String(g.id),
         name: String(g.name),
         color: String(g.color || "#4E62D8"),
         items: ((g.items || []) as Array<Record<string, unknown>>).map(mapApiTask),
-      }))
+      }) as TaskGroup)
 
       const allTasks = groups.flatMap((g) => g.items)
 

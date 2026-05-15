@@ -576,16 +576,25 @@ export async function POST(request: NextRequest) {
       }
 
       case "create_goal": {
-        const { title, area, color, quarter } = data
+        const { title, area, color, quarter, target, current, unit } = data as Record<string, unknown>
         const now = new Date()
-        const q = quarter || `Q${Math.ceil((now.getMonth() + 1) / 3)} ${now.getFullYear()}`
+        const q = (quarter as string) || `Q${Math.ceil((now.getMonth() + 1) / 3)} ${now.getFullYear()}`
+        const targetNum = target != null ? Number(target) : null
+        const currentNum = current != null ? Number(current) : 0
+        const progress = targetNum && targetNum > 0
+          ? Math.min(Math.round((currentNum / targetNum) * 100), 100)
+          : 0
         const { error } = await supabase
           .from("productivity_goals")
           .insert({
-            title,
-            area: area || null,
-            color: color || "#4E62D8",
+            title: title as string,
+            area: (area as string) || null,
+            color: (color as string) || "#4E62D8",
             quarter: q,
+            target_value: targetNum,
+            current_value: currentNum,
+            unit: (unit as string) ?? null,
+            progress,
             org_id: orgId,
           })
         if (error) throw error
@@ -593,12 +602,15 @@ export async function POST(request: NextRequest) {
       }
 
       case "create_habit": {
-        const { name: habitName, color: habitColor } = data
+        const { name: habitName, color: habitColor, frequency, reminder_at, note } = data as Record<string, unknown>
         const { error } = await supabase
           .from("productivity_habits")
           .insert({
-            name: habitName,
-            color: habitColor || "#4E62D8",
+            name: habitName as string,
+            color: (habitColor as string) || "#4E62D8",
+            frequency: (frequency as string) || "daily",
+            reminder_at: (reminder_at as string) || null,
+            note: (note as string) || null,
             user_id: user.id,
             org_id: orgId,
           })
