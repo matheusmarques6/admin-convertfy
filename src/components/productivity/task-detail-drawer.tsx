@@ -686,6 +686,28 @@ export function TaskDetailDrawer({
   const [statusMenu, setStatusMenu] = useState(false)
   const [prioMenu, setPrioMenu] = useState(false)
   const [assigneeMenu, setAssigneeMenu] = useState(false)
+
+  // Click-outside fecha todos os dropdowns de meta (delegacao no document)
+  useEffect(() => {
+    if (!statusMenu && !prioMenu && !assigneeMenu) return
+    const handler = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      // Se nao clicou dentro de .drawer-meta-dropdown, fecha
+      if (!t.closest("[data-meta-dropdown]")) {
+        setStatusMenu(false)
+        setPrioMenu(false)
+        setAssigneeMenu(false)
+      }
+    }
+    // Delay pra nao fechar no mesmo click que abriu
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handler)
+    }, 0)
+    return () => {
+      window.clearTimeout(id)
+      document.removeEventListener("mousedown", handler)
+    }
+  }, [statusMenu, prioMenu, assigneeMenu])
   const [dateEdit, setDateEdit] = useState(false)
   const [dateValue, setDateValue] = useState("")
   const [estEdit, setEstEdit] = useState(false)
@@ -1193,7 +1215,7 @@ export function TaskDetailDrawer({
           <div className="flex flex-col">
             {/* Status (editavel) */}
             <PropertyRow icon={I.bolt({ size: 13 })} label="Status">
-              <div className="relative">
+              <div className="relative" data-meta-dropdown>
                 <button
                   onClick={() => {
                     setStatusMenu(!statusMenu)
@@ -1238,7 +1260,7 @@ export function TaskDetailDrawer({
 
             {/* Prioridade (editavel) */}
             <PropertyRow icon={I.alert({ size: 13 })} label="Prioridade">
-              <div className="relative">
+              <div className="relative" data-meta-dropdown>
                 <button
                   onClick={() => {
                     setPrioMenu(!prioMenu)
@@ -1274,7 +1296,7 @@ export function TaskDetailDrawer({
 
             {/* Responsavel (editavel) */}
             <PropertyRow icon={I.users({ size: 13 })} label="Responsável">
-              <div className="relative">
+              <div className="relative" data-meta-dropdown>
                 <button
                   onClick={() => {
                     setAssigneeMenu(!assigneeMenu)

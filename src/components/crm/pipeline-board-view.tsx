@@ -19,6 +19,7 @@ import { LostReasonDialog } from "./lost-reason-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
 import {
   PipelineFiltersBar,
+  ActiveFiltersChips,
   type PipelineFilters,
   type SortOrder,
   EMPTY_FILTERS,
@@ -79,6 +80,19 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [advancedFilters, setAdvancedFilters] = useState<PipelineFilters>(EMPTY_FILTERS)
   const [sortOrder, setSortOrder] = useState<SortOrder>("moved_desc")
+  const [editingStage, setEditingStage] = useState<{
+    id: string
+    name: string
+    color: string | null
+  } | null>(null)
+  const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null)
+
+  // Auto-dismiss toast em 3s
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
   const [search, setSearch] = useState("")
   // Filtro temporal estilo DataCrazy: pills inline acima do board.
   // "all" = sem filtro · "today" = criados hoje · "7d/30d/90d" =
@@ -243,22 +257,35 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
     }
   }
 
-  const handleEditStage = async (stage: { id: string; name: string; color?: string | null }) => {
-    if (!pipeline) return
-    const novoNome = window.prompt("Novo nome da etapa:", stage.name)
-    if (!novoNome || novoNome.trim() === stage.name) return
+  const handleEditStage = (stage: { id: string; name: string; color?: string | null }) => {
+    // Abre dialog modal (sem prompt feio do browser)
+    setEditingStage({
+      id: stage.id,
+      name: stage.name,
+      color: stage.color ?? null,
+    })
+  }
+
+  const submitEditStage = async (name: string, color: string | null) => {
+    if (!pipeline || !editingStage) return
     const res = await fetch(
-      `/api/crm/pipelines/${pipeline.id}/stages/${stage.id}`,
+      `/api/crm/pipelines/${pipeline.id}/stages/${editingStage.id}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: novoNome.trim() }),
+        body: JSON.stringify({ name, color }),
       },
     )
     if (res.ok) {
+      setEditingStage(null)
+      setToast({ kind: "success", msg: `Etapa "${name}" atualizada.` })
       await mutate()
     } else {
-      window.alert("Falha ao editar etapa.")
+      const body = await res.json().catch(() => ({}))
+      setToast({
+        kind: "error",
+        msg: `Falha ao editar: ${body.error?.message ?? body.error ?? res.statusText}`,
+      })
     }
   }
 
@@ -276,10 +303,14 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
       { method: "DELETE" },
     )
     if (res.ok) {
+      setToast({ kind: "success", msg: `Etapa "${stage.name}" excluída.` })
       await mutate()
     } else {
       const body = await res.json().catch(() => ({}))
-      window.alert(`Falha ao excluir etapa: ${body.error ?? res.statusText}`)
+      setToast({
+        kind: "error",
+        msg: `Falha ao excluir: ${body.error?.message ?? body.error ?? res.statusText}`,
+      })
     }
   }
 
@@ -444,6 +475,17 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
             </button>
           </div>
 
+          {/* Chips de filtros avancados ativos (clica X pra remover) */}
+          {pipeline.layout !== "state" && (
+            <ActiveFiltersChips
+              filters={advancedFilters}
+              onFiltersChange={setAdvancedFilters}
+              ownersLookup={
+                new Map(filterOptions.owners.map((o) => [o.id, o.name]))
+              }
+            />
+          )}
+
           {/* Linha 2: barra de filtros ativos — so aparece quando ha filtro */}
           {pipeline.layout !== "state" && (search || ownerFilter || periodFilter !== "all") && (
             <div className="flex items-center justify-between gap-3 px-5 py-1.5 bg-slate-50/60 dark:bg-white/[0.02] border-b border-black/[0.04] dark:border-white/[0.04]">
@@ -600,6 +642,133 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
         />
       )}
 
+      {/* Dialog de editar etapa */}
+      {editingStage && (
+        <EditStageDialog
+          stage={editingStage}
+          onCancel={() => setEditingStage(null)}
+          onSubmit={(name, color) => submitEditStage(name, color)}
+        />
+      )}
+
+      {/* Toast feedback de acoes */}
+      {toast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-[10px] text-[13px] font-medium flex items-center gap-2.5 shadow-xl"
+          style={{
+            background: toast.kind === "success" ? "#10B981" : "#DC2626",
+            color: "white",
+            animation: "fadeIn 200ms ease",
+          }}
+        >
+          <span className="text-[16px]">
+            {toast.kind === "success" ? "✓" : "⚠"}
+          </span>
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── EditStageDialog ──────────────────────────────────────────────────────────
+
+const STAGE_COLORS = [
+  "#3B82F6", // blue
+  "#8B5CF6", // violet
+  "#EC4899", // pink
+  "#F59E0B", // amber
+  "#10B981", // emerald
+  "#EF4444", // red
+  "#6366F1", // indigo
+  "#6B7280", // gray
+]
+
+function EditStageDialog({
+  stage,
+  onCancel,
+  onSubmit,
+}: {
+  stage: { id: string; name: string; color: string | null }
+  onCancel: () => void
+  onSubmit: (name: string, color: string | null) => void
+}) {
+  const [name, setName] = useState(stage.name)
+  const [color, setColor] = useState(stage.color ?? STAGE_COLORS[0])
+  return (
+    <div
+      onClick={onCancel}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40"
+      style={{ animation: "fadeIn 150ms ease" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-[10px] shadow-2xl w-[420px] max-w-[92vw] overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-black/[0.06]">
+          <h2 className="text-[16px] font-bold text-slate-900 m-0">
+            Editar etapa
+          </h2>
+          <p className="text-[12px] text-slate-500 mt-0.5">
+            Renomeie a etapa ou troque a cor de identificação.
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-800 mb-1.5">
+              Nome
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) {
+                  onSubmit(name.trim(), color)
+                }
+                if (e.key === "Escape") onCancel()
+              }}
+              className="w-full h-9 px-3 rounded-[6px] border text-[13px] outline-none focus:border-brand-500"
+              style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              placeholder="Ex: Qualificado, Em negociacao..."
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-800 mb-2">
+              Cor
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {STAGE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={
+                    "h-8 w-8 rounded-full border-2 transition-transform " +
+                    (color === c ? "scale-110 border-slate-900" : "border-transparent hover:scale-105")
+                  }
+                  style={{ background: c }}
+                  aria-label={`Cor ${c}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-black/[0.06] flex items-center justify-end gap-2 bg-slate-50/40">
+          <button
+            onClick={onCancel}
+            className="h-9 px-4 rounded-[6px] text-[12.5px] font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSubmit(name.trim(), color)}
+            disabled={!name.trim()}
+            className="h-9 px-4 rounded-[6px] text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -103,15 +103,9 @@ export function PipelineFiltersBar({
   const filtersRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
 
-  // Estado local do popover de filtros (so aplica ao clicar Aplicar)
-  const [draft, setDraft] = useState<PipelineFilters>(filters)
-  useEffect(() => {
-    setDraft(filters)
-  }, [filters])
-
   const activeCount = useMemo(() => countActiveFilters(filters), [filters])
 
-  // Fecha popovers ao clicar fora
+  // Fecha popovers ao clicar fora (sem reset — filtros ja aplicam live)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -120,7 +114,6 @@ export function PipelineFiltersBar({
         !filtersRef.current.contains(e.target as Node)
       ) {
         setFiltersOpen(false)
-        setDraft(filters) // reset draft se fechou sem aplicar
       }
       if (
         sortOpen &&
@@ -132,7 +125,7 @@ export function PipelineFiltersBar({
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
-  }, [filtersOpen, sortOpen, filters])
+  }, [filtersOpen, sortOpen])
 
   return (
     <div className="flex items-center gap-2">
@@ -160,21 +153,13 @@ export function PipelineFiltersBar({
         </button>
         {filtersOpen && (
           <FiltersPopover
-            draft={draft}
-            setDraft={setDraft}
+            filters={filters}
+            onFiltersChange={onFiltersChange}
             availableTags={availableTags}
             availableSources={availableSources}
             availableOwners={availableOwners}
             availableLostReasons={availableLostReasons}
-            onApply={() => {
-              onFiltersChange(draft)
-              setFiltersOpen(false)
-            }}
-            onClear={() => {
-              setDraft(EMPTY_FILTERS)
-              onFiltersChange(EMPTY_FILTERS)
-              setFiltersOpen(false)
-            }}
+            onClose={() => setFiltersOpen(false)}
           />
         )}
       </div>
@@ -234,24 +219,26 @@ export function PipelineFiltersBar({
 // ── FiltersPopover ──────────────────────────────────────────────────────────
 
 function FiltersPopover({
-  draft,
-  setDraft,
+  filters,
+  onFiltersChange,
   availableTags,
   availableSources,
   availableOwners,
   availableLostReasons,
-  onApply,
-  onClear,
+  onClose,
 }: {
-  draft: PipelineFilters
-  setDraft: (next: PipelineFilters) => void
+  filters: PipelineFilters
+  onFiltersChange: (next: PipelineFilters) => void
   availableTags: string[]
   availableSources: string[]
   availableOwners: Array<{ id: string; name: string }>
   availableLostReasons: string[]
-  onApply: () => void
-  onClear: () => void
+  onClose: () => void
 }) {
+  // Aplica live (sem botao Aplicar) — cada onChange chama onFiltersChange direto.
+  const draft = filters
+  const setDraft = onFiltersChange
+  const activeCount = countActiveFilters(filters)
   return (
     <div
       className="absolute top-full left-0 mt-1.5 z-30 w-[360px] max-h-[80vh] rounded-[10px] border bg-white dark:bg-[#1A1D27] shadow-2xl flex flex-col"
@@ -406,24 +393,30 @@ function FiltersPopover({
         </FilterSection>
       </div>
 
-      {/* Footer */}
+      {/* Footer: hint + limpar (filtros aplicam ao vivo) */}
       <div
-        className="px-4 py-3 border-t flex items-center gap-2"
+        className="px-4 py-2.5 border-t flex items-center justify-between gap-2"
         style={{ borderColor: "rgba(0,0,0,0.06)" }}
       >
-        <button
-          onClick={onClear}
-          className="flex-1 h-9 rounded-[6px] border text-[12.5px] font-semibold text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
-          style={{ borderColor: "rgba(0,0,0,0.10)" }}
-        >
-          Limpar filtros
-        </button>
-        <button
-          onClick={onApply}
-          className="flex-1 h-9 rounded-[6px] text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-        >
-          Aplicar filtros
-        </button>
+        <span className="text-[11px] text-slate-500 dark:text-white/45 inline-flex items-center gap-1">
+          <Check className="h-3 w-3 text-emerald-500" />
+          Filtros aplicados em tempo real
+        </span>
+        {activeCount > 0 ? (
+          <button
+            onClick={() => onFiltersChange(EMPTY_FILTERS)}
+            className="text-[12px] font-semibold text-slate-700 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50"
+          >
+            Limpar tudo
+          </button>
+        ) : (
+          <button
+            onClick={onClose}
+            className="text-[12px] font-semibold text-slate-500 hover:text-slate-900 px-2 py-1"
+          >
+            Fechar
+          </button>
+        )}
       </div>
     </div>
   )
@@ -658,4 +651,136 @@ export function applyFiltersAndSort<
       break
   }
   return sorted
+}
+
+// ── ActiveFiltersChips ──────────────────────────────────────────────────────
+// Renderiza chips abaixo do board mostrando filtros ativos com X pra remover.
+// UX mais facil: nao precisa abrir o popover pra ver/remover filtros.
+
+interface ActiveFiltersChipsProps {
+  filters: PipelineFilters
+  onFiltersChange: (next: PipelineFilters) => void
+  ownersLookup: Map<string, string>
+}
+
+export function ActiveFiltersChips({
+  filters,
+  onFiltersChange,
+  ownersLookup,
+}: ActiveFiltersChipsProps) {
+  const chips: Array<{ key: string; label: string; remove: () => void }> = []
+  for (const t of filters.tags) {
+    chips.push({
+      key: `tag-${t}`,
+      label: `Tag: ${t}`,
+      remove: () =>
+        onFiltersChange({ ...filters, tags: filters.tags.filter((x) => x !== t) }),
+    })
+  }
+  for (const o of filters.owners) {
+    chips.push({
+      key: `owner-${o}`,
+      label: `Atendente: ${ownersLookup.get(o) ?? o}`,
+      remove: () =>
+        onFiltersChange({
+          ...filters,
+          owners: filters.owners.filter((x) => x !== o),
+        }),
+    })
+  }
+  for (const s of filters.statuses) {
+    const labels: Record<string, string> = {
+      open: "Aberto",
+      won: "Ganho",
+      lost: "Perdido",
+      archived: "Arquivado",
+    }
+    chips.push({
+      key: `status-${s}`,
+      label: `Status: ${labels[s] ?? s}`,
+      remove: () =>
+        onFiltersChange({
+          ...filters,
+          statuses: filters.statuses.filter((x) => x !== s),
+        }),
+    })
+  }
+  for (const s of filters.sources) {
+    chips.push({
+      key: `source-${s}`,
+      label: `Origem: ${s}`,
+      remove: () =>
+        onFiltersChange({
+          ...filters,
+          sources: filters.sources.filter((x) => x !== s),
+        }),
+    })
+  }
+  for (const r of filters.lostReasons) {
+    chips.push({
+      key: `reason-${r}`,
+      label: `Motivo perda: ${r}`,
+      remove: () =>
+        onFiltersChange({
+          ...filters,
+          lostReasons: filters.lostReasons.filter((x) => x !== r),
+        }),
+    })
+  }
+  if (filters.valueMin != null) {
+    chips.push({
+      key: "valueMin",
+      label: `Mín: R$ ${filters.valueMin}`,
+      remove: () => onFiltersChange({ ...filters, valueMin: null }),
+    })
+  }
+  if (filters.valueMax != null) {
+    chips.push({
+      key: "valueMax",
+      label: `Máx: R$ ${filters.valueMax}`,
+      remove: () => onFiltersChange({ ...filters, valueMax: null }),
+    })
+  }
+  if (filters.createdFrom || filters.createdTo) {
+    chips.push({
+      key: "created",
+      label: `Criado: ${filters.createdFrom ?? "…"} → ${filters.createdTo ?? "…"}`,
+      remove: () =>
+        onFiltersChange({ ...filters, createdFrom: null, createdTo: null }),
+    })
+  }
+  if (filters.movedFrom || filters.movedTo) {
+    chips.push({
+      key: "moved",
+      label: `Movido: ${filters.movedFrom ?? "…"} → ${filters.movedTo ?? "…"}`,
+      remove: () =>
+        onFiltersChange({ ...filters, movedFrom: null, movedTo: null }),
+    })
+  }
+
+  if (chips.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-6 py-2 bg-slate-50/60 dark:bg-white/[0.02] border-b border-black/[0.04]">
+      <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-white/45 mr-1">
+        Filtros ativos
+      </span>
+      {chips.map((c) => (
+        <button
+          key={c.key}
+          onClick={c.remove}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11.5px] font-medium border border-brand-200 hover:bg-brand-100 hover:border-brand-300 transition-colors group"
+        >
+          {c.label}
+          <X className="h-3 w-3 opacity-60 group-hover:opacity-100" />
+        </button>
+      ))}
+      <button
+        onClick={() => onFiltersChange(EMPTY_FILTERS)}
+        className="text-[11px] text-slate-500 hover:text-red-600 ml-1 font-medium"
+      >
+        Limpar tudo
+      </button>
+    </div>
+  )
 }
