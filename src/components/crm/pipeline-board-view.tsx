@@ -19,6 +19,13 @@ import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { ImportCsvDialog } from "./import-csv-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
+import {
+  PipelineFiltersBar,
+  type PipelineFilters,
+  type SortOrder,
+  EMPTY_FILTERS,
+  applyFiltersAndSort,
+} from "./pipeline-filters-bar"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -73,6 +80,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
+  const [advancedFilters, setAdvancedFilters] = useState<PipelineFilters>(EMPTY_FILTERS)
+  const [sortOrder, setSortOrder] = useState<SortOrder>("moved_desc")
   const [search, setSearch] = useState("")
   // Filtro temporal estilo DataCrazy: pills inline acima do board.
   // "all" = sem filtro · "today" = criados hoje · "7d/30d/90d" =
@@ -131,8 +140,32 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
         d.source?.toLowerCase().includes(q),
       )
     }
-    return list
-  }, [allDeals, ownerFilter, periodFilter, search])
+    // Aplica filtros avancados + ordenacao
+    return applyFiltersAndSort(list, advancedFilters, sortOrder)
+  }, [allDeals, ownerFilter, periodFilter, search, advancedFilters, sortOrder])
+
+  // Opcoes disponiveis pros filtros (computadas do conjunto de deals)
+  const filterOptions = useMemo(() => {
+    const tagsSet = new Set<string>()
+    const sourcesSet = new Set<string>()
+    const ownersMap = new Map<string, string>()
+    const reasonsSet = new Set<string>()
+    for (const d of allDeals) {
+      d.tags?.forEach((t) => t && tagsSet.add(t))
+      if (d.source) sourcesSet.add(d.source)
+      if (d.owner?.id) ownersMap.set(d.owner.id, d.owner.name)
+      const dl = (d as unknown as { lost_reason?: string }).lost_reason
+      if (dl) reasonsSet.add(dl)
+    }
+    return {
+      tags: Array.from(tagsSet).sort(),
+      sources: Array.from(sourcesSet).sort(),
+      owners: Array.from(ownersMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      lostReasons: Array.from(reasonsSet).sort(),
+    }
+  }, [allDeals])
 
   // Identifica won/lost stage default — usado pelos quick actions do card
   const wonStage = pipeline?.stages.find((s) => s.stage_type === "won")
@@ -376,6 +409,20 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40" />
               </div>
+            )}
+
+            {/* Filtros + Ordenacao */}
+            {pipeline.layout !== "state" && (
+              <PipelineFiltersBar
+                filters={advancedFilters}
+                onFiltersChange={setAdvancedFilters}
+                sort={sortOrder}
+                onSortChange={setSortOrder}
+                availableTags={filterOptions.tags}
+                availableSources={filterOptions.sources}
+                availableOwners={filterOptions.owners}
+                availableLostReasons={filterOptions.lostReasons}
+              />
             )}
 
             {/* Botao Configuracoes */}
