@@ -677,10 +677,19 @@ export function TaskDetailDrawer({
   task: TaskAugmented
   onClose: () => void
 }) {
-  const { apiAction, updateTaskStatus, members, profile } = useProductivityStore()
+  const { apiAction, updateTaskStatus, members, profile, fetchData } = useProductivityStore()
   const memberList = members as Member[]
 
   const [running, setRunning] = useState(false)
+  const [addingChk, setAddingChk] = useState(false)
+  const [chkInput, setChkInput] = useState("")
+  const [addingLink, setAddingLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState("")
+  const [linkLabel, setLinkLabel] = useState("")
+  const [showHistory, setShowHistory] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const [history, setHistory] = useState<Array<Record<string, unknown>> | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [timerSec, setTimerSec] = useState(0)
   const [comment, setComment] = useState("")
   const [editingDesc, setEditingDesc] = useState(false)
@@ -766,6 +775,7 @@ export function TaskDetailDrawer({
           filled_at: next === "done" ? new Date().toISOString() : null,
         }),
       })
+      fetchData()
     } catch {
       /* noop */
     }
@@ -781,6 +791,120 @@ export function TaskDetailDrawer({
           is_completed: !item.is_completed,
         }),
       })
+      fetchData()
+    } catch {
+      /* noop */
+    }
+  }
+
+  const addChecklistItem = async () => {
+    const title = chkInput.trim()
+    if (!title) {
+      setAddingChk(false)
+      return
+    }
+    try {
+      await fetch(`/api/tasks/${task.id}/checklists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      })
+      setChkInput("")
+      setAddingChk(false)
+      setShowToast("Subtarefa adicionada.")
+      fetchData()
+    } catch {
+      /* noop */
+    }
+  }
+
+  const addLink = async () => {
+    const url = linkUrl.trim()
+    if (!url) {
+      setAddingLink(false)
+      return
+    }
+    const normalized = url.startsWith("http") ? url : `https://${url}`
+    const newLink = { url: normalized, label: linkLabel.trim() || undefined }
+    const newMeta = {
+      ...(task.metadata ?? {}),
+      links: [...(task.links ?? []), newLink],
+    }
+    try {
+      await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: newMeta }),
+      })
+      setLinkUrl("")
+      setLinkLabel("")
+      setAddingLink(false)
+      setShowToast("Link adicionado.")
+      fetchData()
+    } catch {
+      /* noop */
+    }
+  }
+
+  const fetchHistory = async () => {
+    if (history !== null) return
+    setHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`)
+      if (res.ok) {
+        const json = await res.json()
+        const data = json.data ?? json
+        setHistory((data.history ?? []) as Array<Record<string, unknown>>)
+      }
+    } catch {
+      setHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const archiveTask = async () => {
+    if (!confirm("Arquivar essa tarefa? Ela some do board mas pode ser recuperada.")) return
+    try {
+      await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled" }),
+      })
+      setShowMore(false)
+      onClose()
+    } catch {
+      /* noop */
+    }
+  }
+
+  const duplicateTask = async () => {
+    try {
+      await fetch(`/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `${task.name} (cópia)`,
+          description: task.description ?? "",
+          priority: task.priority,
+          onboarding_id: task.onboarding_id,
+          operational_column_id: (task as TaskAugmented & { operational_column_id?: string }).operational_column_id,
+          status: "pending",
+        }),
+      })
+      setShowMore(false)
+      setShowToast("Tarefa duplicada.")
+    } catch {
+      /* noop */
+    }
+  }
+
+  const deleteTask = async () => {
+    if (!confirm("Excluir essa tarefa permanentemente? Esta ação não pode ser desfeita.")) return
+    try {
+      await fetch(`/api/tasks/${task.id}`, { method: "DELETE" })
+      setShowMore(false)
+      onClose()
     } catch {
       /* noop */
     }
@@ -851,11 +975,35 @@ export function TaskDetailDrawer({
               </>
             )}
           </div>
-          <div className="flex gap-1 shrink-0">
-            <button className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700" title="Histórico">
+          <div className="flex gap-1 shrink-0 relative">
+            <button
+              onClick={() => {
+                setShowHistory(!showHistory)
+                setShowMore(false)
+                if (!showHistory) fetchHistory()
+              }}
+              className={cn(
+                "p-1.5 rounded-md transition-colors",
+                showHistory
+                  ? "bg-gray-100 text-gray-900"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
+              )}
+              title="Histórico"
+            >
               {I.history({ size: 13 })}
             </button>
-            <button className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+            <button
+              onClick={() => {
+                setShowMore(!showMore)
+                setShowHistory(false)
+              }}
+              className={cn(
+                "p-1.5 rounded-md transition-colors",
+                showMore
+                  ? "bg-gray-100 text-gray-900"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
+              )}
+            >
               {I.more({ size: 13 })}
             </button>
             <button
@@ -865,6 +1013,85 @@ export function TaskDetailDrawer({
             >
               {I.close({ size: 13 })}
             </button>
+
+            {/* History dropdown */}
+            {showHistory && (
+              <div
+                className="absolute top-full right-0 mt-1.5 w-[340px] bg-white border rounded-lg shadow-xl z-20 max-h-[400px] overflow-auto"
+                style={{ borderColor: "rgba(0,0,0,0.08)" }}
+              >
+                <div className="px-3 py-2 border-b text-[11px] font-bold uppercase tracking-wider text-gray-700" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                  Histórico da tarefa
+                </div>
+                {historyLoading && (
+                  <div className="px-3 py-4 text-[12px] text-gray-400 text-center italic">
+                    Carregando…
+                  </div>
+                )}
+                {!historyLoading && history && history.length === 0 && (
+                  <div className="px-3 py-4 text-[12px] text-gray-400 text-center italic">
+                    Nenhum evento registrado.
+                  </div>
+                )}
+                {!historyLoading && history && history.length > 0 && (
+                  <div className="py-1">
+                    {history.map((h, i) => {
+                      const created = String(h.created_at ?? "")
+                      const action = String(h.action ?? h.event_type ?? "atualizou")
+                      const desc = String(h.description ?? h.detail ?? "")
+                      return (
+                        <div key={i} className="px-3 py-2 border-b last:border-b-0" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[12px] font-medium text-gray-900">
+                              {action}
+                            </span>
+                            <span className="text-[10px] font-mono text-gray-400">
+                              {created ? timeAgo(created) : "—"}
+                            </span>
+                          </div>
+                          {desc && (
+                            <div className="text-[11.5px] text-gray-600 mt-0.5 leading-snug">
+                              {desc}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* More dropdown */}
+            {showMore && (
+              <div
+                className="absolute top-full right-0 mt-1.5 w-[200px] bg-white border rounded-lg shadow-xl z-20 py-1"
+                style={{ borderColor: "rgba(0,0,0,0.08)" }}
+              >
+                <button
+                  onClick={duplicateTask}
+                  className="w-full text-left px-3 py-2 text-[12.5px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <span className="text-gray-400">{I.doc({ size: 13 })}</span>
+                  Duplicar tarefa
+                </button>
+                <button
+                  onClick={archiveTask}
+                  className="w-full text-left px-3 py-2 text-[12.5px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <span className="text-gray-400">{I.history({ size: 13 })}</span>
+                  Arquivar
+                </button>
+                <div className="border-t my-1" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
+                <button
+                  onClick={deleteTask}
+                  className="w-full text-left px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50 flex items-center gap-2"
+                >
+                  <span>{I.close({ size: 13 })}</span>
+                  Excluir
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1055,11 +1282,14 @@ export function TaskDetailDrawer({
           )}
 
           {/* Checklist */}
-          {checklist.length > 0 && (
+          {(checklist.length > 0 || addingChk) && (
             <Section
               title={`Checklist · ${checklist.filter((c) => c.is_completed).length}/${checklist.length}`}
               action={
-                <button className="bg-transparent border-none cursor-pointer text-gray-500 text-[11px] font-medium inline-flex items-center gap-1 hover:text-gray-700">
+                <button
+                  onClick={() => setAddingChk(true)}
+                  className="bg-transparent border-none cursor-pointer text-gray-500 text-[11px] font-medium inline-flex items-center gap-1 hover:text-gray-700"
+                >
                   {I.plus({ size: 11 })} Subtarefa
                 </button>
               }
@@ -1068,8 +1298,9 @@ export function TaskDetailDrawer({
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${(checklist.filter((c) => c.is_completed).length / checklist.length) * 100}%`,
+                    width: `${checklist.length > 0 ? (checklist.filter((c) => c.is_completed).length / checklist.length) * 100 : 0}%`,
                     background:
+                      checklist.length > 0 &&
                       checklist.filter((c) => c.is_completed).length === checklist.length
                         ? C.green
                         : C.brandBlue,
@@ -1090,6 +1321,26 @@ export function TaskDetailDrawer({
                     />
                   )
                 })}
+                {addingChk && (
+                  <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md bg-blue-50/40 border border-dashed border-blue-200 mt-1">
+                    <div className="w-4 h-4 rounded border-[1.5px] border-gray-300 shrink-0" />
+                    <input
+                      autoFocus
+                      value={chkInput}
+                      onChange={(e) => setChkInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addChecklistItem()
+                        if (e.key === "Escape") {
+                          setAddingChk(false)
+                          setChkInput("")
+                        }
+                      }}
+                      onBlur={addChecklistItem}
+                      placeholder="Nova subtarefa..."
+                      className="flex-1 bg-transparent border-none outline-none text-[12.5px] text-gray-900 placeholder:text-gray-400"
+                    />
+                  </div>
+                )}
               </div>
             </Section>
           )}
@@ -1099,12 +1350,15 @@ export function TaskDetailDrawer({
             <Section
               title="Anexos & links"
               action={
-                <button className="bg-transparent border-none cursor-pointer text-gray-500 text-[11px] font-medium inline-flex items-center gap-1 hover:text-gray-700">
+                <button
+                  onClick={() => setAddingLink(true)}
+                  className="bg-transparent border-none cursor-pointer text-gray-500 text-[11px] font-medium inline-flex items-center gap-1 hover:text-gray-700"
+                >
                   {I.paperclip({ size: 11 })} Anexar
                 </button>
               }
             >
-              {attachments.length === 0 && links.length === 0 ? (
+              {attachments.length === 0 && links.length === 0 && !addingLink ? (
                 <div className="text-[11.5px] italic text-gray-400 px-2">
                   Nenhum anexo ou link adicionado ainda.
                 </div>
@@ -1128,6 +1382,60 @@ export function TaskDetailDrawer({
                       isLink
                     />
                   ))}
+                </div>
+              )}
+              {addingLink && (
+                <div
+                  className="mt-2 p-3 rounded-lg border bg-white"
+                  style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">
+                    Adicionar link
+                  </div>
+                  <input
+                    autoFocus
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addLink()
+                      if (e.key === "Escape") {
+                        setAddingLink(false)
+                        setLinkUrl("")
+                        setLinkLabel("")
+                      }
+                    }}
+                    placeholder="URL (ex: figma.com/file/abc)"
+                    className="w-full px-2 py-1.5 rounded-md border text-[12.5px] mb-2 focus:outline-none focus:border-blue-500"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  />
+                  <input
+                    value={linkLabel}
+                    onChange={(e) => setLinkLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addLink()
+                    }}
+                    placeholder="Rótulo (opcional)"
+                    className="w-full px-2 py-1.5 rounded-md border text-[12.5px] mb-2 focus:outline-none focus:border-blue-500"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addLink}
+                      className="text-[11px] font-semibold bg-gray-900 text-white px-3 py-1.5 rounded-md hover:bg-gray-800"
+                    >
+                      Adicionar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingLink(false)
+                        setLinkUrl("")
+                        setLinkLabel("")
+                      }}
+                      className="text-[11px] text-gray-500 hover:text-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
               )}
             </Section>
