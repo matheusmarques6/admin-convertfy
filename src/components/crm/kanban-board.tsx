@@ -7,7 +7,8 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, AlertCircle, MoreHorizontal } from "lucide-react"
+import { Plus, AlertCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { DealCard, type DealCardData } from "./deal-card"
 
 export interface KanbanStage {
@@ -32,6 +33,8 @@ interface KanbanBoardProps {
   onMoveDeal?: (dealId: string) => void
   onAddActivity?: (dealId: string) => void
   onDeleteDeal?: (dealId: string) => void
+  onEditStage?: (stage: KanbanStage) => void
+  onDeleteStage?: (stage: KanbanStage) => void
 }
 
 const fmtBRLCompact = (v: number): string => {
@@ -87,6 +90,8 @@ export function KanbanBoard({
   onMoveDeal,
   onAddActivity,
   onDeleteDeal,
+  onEditStage,
+  onDeleteStage,
 }: KanbanBoardProps) {
   const [optimisticDeals, setOptimisticDeals] = useState(deals)
   const [isMoving, setIsMoving] = useState(false)
@@ -211,13 +216,45 @@ export function KanbanBoard({
                     </span>
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      aria-label="Mais opcoes"
-                      title="Opcoes da coluna"
-                      className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <button
+                          aria-label="Opcoes da coluna"
+                          className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          align="end"
+                          sideOffset={4}
+                          className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
+                        >
+                          {onEditStage && (
+                            <DropdownMenu.Item
+                              onClick={() => onEditStage(stage)}
+                              className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 dark:text-white/85 cursor-pointer outline-none hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                              Editar etapa
+                            </DropdownMenu.Item>
+                          )}
+                          {onDeleteStage && !isTerminal && (
+                            <>
+                              <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+                              <DropdownMenu.Item
+                                onClick={() => onDeleteStage(stage)}
+                                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-red-600 cursor-pointer outline-none hover:bg-red-50 dark:hover:bg-red-500/10"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Excluir etapa
+                              </DropdownMenu.Item>
+                            </>
+                          )}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
                   </div>
                 </div>
 

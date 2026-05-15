@@ -213,6 +213,46 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
     }
   }
 
+  const handleEditStage = async (stage: { id: string; name: string; color?: string | null }) => {
+    if (!pipeline) return
+    const novoNome = window.prompt("Novo nome da etapa:", stage.name)
+    if (!novoNome || novoNome.trim() === stage.name) return
+    const res = await fetch(
+      `/api/crm/pipelines/${pipeline.id}/stages/${stage.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: novoNome.trim() }),
+      },
+    )
+    if (res.ok) {
+      await mutate()
+    } else {
+      window.alert("Falha ao editar etapa.")
+    }
+  }
+
+  const handleDeleteStage = async (stage: { id: string; name: string }) => {
+    if (!pipeline) return
+    // Conta deals nessa stage pra avisar usuario
+    const dealsInStage = filteredDeals.filter((d) => d.stage_id === stage.id)
+    const aviso =
+      dealsInStage.length > 0
+        ? `A etapa "${stage.name}" tem ${dealsInStage.length} deal(s). Mova-os antes de excluir.\n\nDeseja continuar mesmo assim? Os deals serao movidos pra primeira etapa.`
+        : `Excluir a etapa "${stage.name}"? Esta acao nao pode ser desfeita.`
+    if (!window.confirm(aviso)) return
+    const res = await fetch(
+      `/api/crm/pipelines/${pipeline.id}/stages/${stage.id}`,
+      { method: "DELETE" },
+    )
+    if (res.ok) {
+      await mutate()
+    } else {
+      const body = await res.json().catch(() => ({}))
+      window.alert(`Falha ao excluir etapa: ${body.error ?? res.statusText}`)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15] overflow-hidden">
       {isLoading ? (
@@ -424,6 +464,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                 onMoveDeal={(id) => setActiveDealId(id)}
                 onAddActivity={(id) => setActiveDealId(id)}
                 onDeleteDeal={handleDelete}
+                onEditStage={handleEditStage}
+                onDeleteStage={handleDeleteStage}
               />
             )}
           </div>
