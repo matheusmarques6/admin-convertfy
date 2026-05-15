@@ -8,7 +8,6 @@ import {
   ChevronDown,
   Search,
   X,
-  Upload,
   Settings,
 } from "lucide-react"
 import { CrmEmptyState } from "./crm-empty-state"
@@ -17,7 +16,6 @@ import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
-import { ImportCsvDialog } from "./import-csv-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
 import {
   PipelineFiltersBar,
@@ -77,7 +75,6 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   const searchParams = useSearchParams()
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
-  const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [advancedFilters, setAdvancedFilters] = useState<PipelineFilters>(EMPTY_FILTERS)
@@ -436,17 +433,6 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               <Settings className="h-3.5 w-3.5" />
             </button>
 
-            {/* Botao Importar CSV */}
-            <button
-              onClick={() => setImportCsvOpen(true)}
-              disabled={!pipeline}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-white/80 text-[12px] font-medium border border-black/[0.08] dark:border-white/[0.10] transition-colors disabled:opacity-50"
-              title="Importar leads de CSV (Kommo, etc)"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              Importar CSV
-            </button>
-
             {/* Botao Novo deal */}
             <button
               onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
@@ -581,19 +567,6 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
           mutate()
         }}
       />
-
-      {pipeline && (
-        <ImportCsvDialog
-          open={importCsvOpen}
-          onClose={() => setImportCsvOpen(false)}
-          pipelineId={pipeline.id}
-          stages={pipeline.stages.map((s) => ({ id: s.id, name: s.name }))}
-          onImported={() => {
-            // Apos import, revalida o pipeline pra ver os novos cards
-            mutate()
-          }}
-        />
-      )}
 
       {pipeline && (
         <PipelineSettingsDialog

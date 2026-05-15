@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
-import { Plus, Search, UserPlus } from "lucide-react"
+import { Plus, Search, UserPlus, Upload } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { LeadDrawer } from "@/components/crm/lead-drawer"
 import { NewLeadDialog } from "@/components/crm/new-lead-dialog"
+import { LeadsImportWizard } from "@/components/crm/leads-import-wizard"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { useDebounce } from "@/hooks/use-debounce"
 
@@ -49,6 +50,7 @@ function SalesLeadsPageInner() {
   const [statusFilter, setStatusFilter] = useState("")
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
   const [newLeadOpen, setNewLeadOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   // Open drawer if ?lead=<id> in URL
   useEffect(() => {
@@ -74,14 +76,37 @@ function SalesLeadsPageInner() {
       title="Leads"
       subtitle={`${total} ${total === 1 ? "lead" : "leads"} no total`}
       actions={
-        <button
-          className="crm-button-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-          onClick={() => setNewLeadOpen(true)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Novo lead
-        </button>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}>
+          <button
+            onClick={() => setImportOpen(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              background: "#fff",
+              border: "1px solid rgba(0,0,0,0.10)",
+              color: "var(--crm-gray-700)",
+              cursor: "pointer",
+            }}
+            title="Importar leads de CSV"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Importar
+          </button>
+          <button
+            className="crm-button-primary"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            onClick={() => setNewLeadOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Novo lead
+          </button>
+        </div>
       }
     >
       <div className="p-6">
@@ -213,6 +238,14 @@ function SalesLeadsPageInner() {
         onCreated={(id) => {
           mutate()
           setActiveLeadId(id)
+        }}
+      />
+
+      <LeadsImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          mutate()
         }}
       />
     </CrmPageShell>

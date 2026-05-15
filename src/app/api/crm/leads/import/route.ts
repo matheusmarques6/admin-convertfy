@@ -29,12 +29,15 @@ export const dynamic = "force-dynamic"
 const rowSchema = z.object({
   // Lead
   name: z.string().min(1).max(240),
-  email: z.string().email().nullable().optional(),
+  email: z.string().email().nullable().optional().or(z.literal("")),
   phone: z.string().nullable().optional(),
   company: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   tags: z.array(z.string()).optional().default([]),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
+  utm: z.record(z.string(), z.unknown()).optional(),
   // Deal (opcional)
   deal_title: z.string().nullable().optional(),
   deal_value: z.number().nullable().optional(),
@@ -43,13 +46,43 @@ const rowSchema = z.object({
   external_id: z.string().nullable().optional(),
 })
 
-const importSchema = z.object({
-  pipeline_id: uuid(),
-  default_stage_id: uuid(),
-  /** Quando true, cria deal pra cada lead. Caso contrario so cria lead. */
-  create_deals: z.boolean().optional().default(true),
-  rows: z.array(rowSchema).min(1).max(2000),
+// Bulk fields aplicados em todos os leads (campos em massa do step 3)
+const bulkSchema = z.object({
+  tags: z.array(z.string()).optional(),
+  source: z.string().optional(),
+  assigned_to: z.string().nullable().optional(),
+  phone_ddi: z.string().optional(),
 })
+
+const importSchema = z.object({
+  pipeline_id: uuid().optional(),
+  default_stage_id: uuid().optional(),
+  /** Quando true e pipeline+stage informados, cria deal pra cada lead. */
+  create_deals: z.boolean().optional().default(false),
+  bulk: bulkSchema.optional(),
+  rows: z.array(rowSchema).min(1).max(5000),
+})
+
+// Sanitiza telefones do Kommo (caracteres invisiveis LRM/RLM/etc).
+// Mantem digits e + leading; aplica DDI se nao tiver.
+function cleanPhone(raw: string | null | undefined, ddi?: string): string | null {
+  if (!raw) return null
+  // Remove unicode controles + dashes especiais
+  // eslint-disable-next-line no-misleading-character-class
+  const cleaned = raw
+    .replace(/[​-‏‪-‮⁦-⁩﻿]/g, "")
+    .replace(/[‐-―]/g, "-")
+    .trim()
+  if (!cleaned) return null
+  const hasPlus = cleaned.startsWith("+")
+  const digits = cleaned.replace(/[^\d]/g, "")
+  if (!digits) return null
+  if (hasPlus) return `+${digits}`
+  if (ddi && !digits.startsWith(ddi)) {
+    return `+${ddi}${digits}`
+  }
+  return digits.length >= 10 ? `+${digits}` : digits
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,25 +93,33 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const parsed = importSchema.parse(body)
+    const bulk = parsed.bulk ?? {}
 
-    // Carrega stages do pipeline pra fazer fuzzy match com deal_stage_name.
-    const { data: stages } = await admin
-      .from("pipeline_stages")
-      .select("id, name")
-      .eq("pipeline_id", parsed.pipeline_id)
+    // Decide se vai criar deals: precisa pipeline_id + default_stage_id
+    const willCreateDeals = Boolean(
+      parsed.create_deals && parsed.pipeline_id && parsed.default_stage_id,
+    )
 
-    if (!stages) {
-      throw new AppError("Pipeline nao encontrado", 404, "not-found")
-    }
-
+    // Carrega stages do pipeline pra fuzzy match (so se vai criar deals)
+    let stages: Array<{ id: string; name: string }> = []
     const stageByNormalizedName = new Map<string, string>()
-    for (const s of stages) {
-      stageByNormalizedName.set(normalizeStageName(s.name), s.id)
+    if (willCreateDeals) {
+      const { data: stagesData } = await admin
+        .from("pipeline_stages")
+        .select("id, name")
+        .eq("pipeline_id", parsed.pipeline_id!)
+      if (!stagesData) {
+        throw new AppError("Pipeline nao encontrado", 404, "not-found")
+      }
+      stages = stagesData
+      for (const s of stages) {
+        stageByNormalizedName.set(normalizeStageName(s.name), s.id)
+      }
     }
 
     // Posicao corrente por stage (pra preservar ordem dos cards inseridos).
     const positionByStage = new Map<string, number>()
-    if (parsed.create_deals) {
+    if (willCreateDeals) {
       const { data: maxPositions } = await admin
         .from("deals")
         .select("stage_id, position")
@@ -122,21 +163,31 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Insere leads novos em batch.
+      // Insere leads novos em batch (aplica bulk: tags em massa, source
+      // fallback, owner, DDI no telefone).
       const newLeads = chunk
         .filter((r) => !r.email || !existingByEmail.has(r.email.toLowerCase()))
-        .map((r) => ({
-          org_id: orgId,
-          name: r.name.trim(),
-          email: r.email || null,
-          phone: r.phone || null,
-          company: r.company || null,
-          source: r.source || null,
-          tags: r.tags ?? [],
-          notes: r.notes || null,
-          status: "new" as const,
-          created_by: user.id,
-        }))
+        .map((r) => {
+          const mergedTags = Array.from(
+            new Set([...(r.tags ?? []), ...(bulk.tags ?? [])].filter(Boolean)),
+          )
+          return {
+            org_id: orgId,
+            name: r.name.trim(),
+            email: r.email && r.email.trim() ? r.email.trim() : null,
+            phone: cleanPhone(r.phone, bulk.phone_ddi),
+            company: r.company || null,
+            role: r.role || null,
+            source: r.source || bulk.source || null,
+            tags: mergedTags.length > 0 ? mergedTags : [],
+            notes: r.notes || null,
+            custom_fields: r.custom_fields ?? {},
+            utm: r.utm ?? {},
+            status: "new" as const,
+            assigned_to: bulk.assigned_to ?? null,
+            created_by: user.id,
+          }
+        })
 
       let insertedLeads: Array<{ id: string; email: string | null }> = []
       if (newLeads.length > 0) {
@@ -183,8 +234,8 @@ export async function POST(request: NextRequest) {
 
       result.leadIds.push(...(leadIdForRow.filter(Boolean) as string[]))
 
-      // Cria deals em batch.
-      if (parsed.create_deals) {
+      // Cria deals em batch (so se pipeline_id + stage_id informados).
+      if (willCreateDeals) {
         const dealsPayload = chunk
           .map((r, j) => {
             const leadId = leadIdForRow[j]
@@ -192,12 +243,15 @@ export async function POST(request: NextRequest) {
             const targetStageId =
               (r.deal_stage_name &&
                 stageByNormalizedName.get(normalizeStageName(r.deal_stage_name))) ||
-              parsed.default_stage_id
+              parsed.default_stage_id!
             const pos =
               (positionByStage.get(targetStageId) ?? 0) + 10
             positionByStage.set(targetStageId, pos)
+            const mergedTags = Array.from(
+              new Set([...(r.tags ?? []), ...(bulk.tags ?? [])].filter(Boolean)),
+            )
             return {
-              pipeline_id: parsed.pipeline_id,
+              pipeline_id: parsed.pipeline_id!,
               stage_id: targetStageId,
               lead_id: leadId,
               title: r.deal_title || r.name,
@@ -205,11 +259,11 @@ export async function POST(request: NextRequest) {
               currency: "BRL",
               probability: 50,
               status: "open" as const,
-              source: r.source || null,
-              tags: r.tags ?? [],
-              owner_id: user.id,
+              source: r.source || bulk.source || null,
+              tags: mergedTags,
+              owner_id: bulk.assigned_to ?? user.id,
               position: pos,
-              utm: {},
+              utm: r.utm ?? {},
             }
           })
           .filter((d): d is NonNullable<typeof d> => d !== null)
