@@ -507,24 +507,26 @@ function deliverableStatus(d: Deliverable): {
 }
 function DeliverableRow({ d, onCycle }: { d: Deliverable; onCycle: () => void }) {
   const st = deliverableStatus(d)
+  // Card NAO cicla no click — so o pill direito cicla quando clicado.
+  // Evita ciclar acidentalmente ao tentar visualizar o entregavel.
   return (
-    <button
-      onClick={onCycle}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 bg-white border rounded-[7px] hover:bg-gray-50 transition-colors text-left"
+    <div
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 bg-white border rounded-[7px] hover:bg-gray-50/60 transition-colors"
       style={{ borderColor: "rgba(0,0,0,0.06)" }}
-      title="Clique pra alternar status"
     >
       <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: st.dot }} />
       <span className="flex-1 text-[12.5px] font-medium text-gray-900 truncate -tracking-[0.005em]">
         {d.field_label}
       </span>
-      <span
-        className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+      <button
+        onClick={onCycle}
+        className="text-[10px] font-semibold rounded-full px-2 py-0.5 transition-opacity hover:opacity-80 cursor-pointer"
         style={{ color: st.color, background: st.bg }}
+        title="Clique pra mudar status"
       >
         {st.label}
-      </span>
-    </button>
+      </button>
+    </div>
   )
 }
 
@@ -826,8 +828,17 @@ export function TaskDetailDrawer({
     }
     const normalized = url.startsWith("http") ? url : `https://${url}`
     const newLink = { url: normalized, label: linkLabel.trim() || undefined }
+    // IMPORTANTE: o GET do board injeta campos UI dentro de metadata
+    // (client_name, store_name, column_name, stage_color, stage_role).
+    // Esses campos NAO devem voltar pro banco — filtramos antes do PUT
+    // pra preservar so o metadata real da task (deliverables, attachments,
+    // links, etc).
+    const UI_KEYS = ["client_name", "store_name", "column_name", "stage_color", "stage_role"]
+    const cleanMeta = Object.fromEntries(
+      Object.entries(task.metadata ?? {}).filter(([k]) => !UI_KEYS.includes(k)),
+    )
     const newMeta = {
-      ...(task.metadata ?? {}),
+      ...cleanMeta,
       links: [...(task.links ?? []), newLink],
     }
     try {
@@ -932,15 +943,15 @@ export function TaskDetailDrawer({
   return (
     <>
       <DrawerStyles />
-      {/* Backdrop */}
+      {/* Backdrop — opacity leve, sem blur forte */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-gray-900/30 backdrop-blur-[2px] z-[50]"
+        className="fixed inset-0 bg-gray-900/15 z-[50]"
         style={{ animation: "drawer-backdrop-in 150ms ease" }}
       />
       {/* Drawer */}
       <div
-        className="fixed top-0 right-0 bottom-0 w-[640px] bg-white shadow-2xl z-[51] overflow-y-auto flex flex-col"
+        className="fixed top-0 right-0 bottom-0 w-[760px] max-w-[92vw] bg-white shadow-2xl z-[51] overflow-y-auto flex flex-col"
         style={{ animation: "drawer-slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
         {/* Top bar — breadcrumb + actions */}

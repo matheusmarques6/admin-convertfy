@@ -450,71 +450,66 @@ async function instantiateTaskForColumn(
     return new Date(now + h * 3_600_000).toISOString()
   }
 
-  // Se a coluna nao tem checklist, cria 1 task fallback (cobre colunas sem template)
-  const items =
-    checklist.length > 0
-      ? checklist.map((c) => ({
-          ...c,
-          assignee_role: c.assignee_role ?? col.default_assignee_role ?? null,
-          sla_hours: c.sla_hours ?? col.sla_hours ?? 24,
-        }))
-      : [
-          {
-            id: "_default",
-            label: col.name,
-            order: 0,
-            assignee_role: col.default_assignee_role ?? null,
-            sla_hours: col.sla_hours ?? 24,
-            description: undefined as string | undefined,
-          },
-        ]
+  // Novo padrão (alinhado com o design do drawer):
+  // - 1 task ÚNICA por coluna (representa o macro-trabalho da etapa).
+  // - checklist_template vira task_checklists (sub-itens dentro da task).
+  // - deliverables_template vira task_deliverables anexados a essa task.
+  // Isso bate com a print: 1 card no board + drawer com CHECKLIST e
+  // ENTREGÁVEIS expandidos dentro.
+  const taskRow = {
+    org_id: onb.org_id,
+    title: col.name,
+    description: null as string | null,
+    status: "pending" as const,
+    priority: "medium" as const,
+    type: "onboarding" as const,
+    source_type: "onboarding",
+    source_id: onboardingId,
+    source_metadata: sourceMeta,
+    onboarding_id: onboardingId,
+    operational_column_id: columnId,
+    assignee_role: col.default_assignee_role ?? null,
+    version: onb.current_version,
+    due_date: computeDue(col.sla_hours ?? undefined),
+    sla_hours: col.sla_hours ?? 24,
+    created_by: createdBy,
+    metadata: {
+      column_slug: col.slug,
+      column_name: col.name,
+    },
+  }
 
-  // Insere todas as tasks de uma vez (1 por checklist item)
-  const taskRows = items
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((it) => ({
-      org_id: onb.org_id,
-      title: it.label,
-      description: it.description ?? null,
-      status: "pending" as const,
-      priority: "medium" as const,
-      type: "onboarding" as const,
-      source_type: "onboarding",
-      source_id: onboardingId,
-      source_metadata: sourceMeta,
-      onboarding_id: onboardingId,
-      operational_column_id: columnId,
-      assignee_role: it.assignee_role,
-      version: onb.current_version,
-      due_date: computeDue(it.sla_hours),
-      sla_hours: it.sla_hours ?? col.sla_hours ?? 24,
-      created_by: createdBy,
-      metadata: {
-        checklist_item_id: it.id,
-        column_slug: col.slug,
-        column_name: col.name,
-      },
-    }))
-
-  const { data: insertedTasks } = await admin
+  const { data: insertedTask } = await admin
     .from("tasks")
-    .insert(taskRows)
+    .insert(taskRow)
     .select("id, metadata")
+    .single()
 
-  if (!insertedTasks || insertedTasks.length === 0) return
+  if (!insertedTask) return
 
-  // Instancia deliverables uma unica vez, anexados a primeira task da etapa
-  // (a primeira task e o "anchor" que carrega os deliverables do stage)
-  const anchor = insertedTasks[0]
+  // Popula task_checklists com os items do template (preserva order/position)
+  if (checklist.length > 0) {
+    const chkRows = checklist
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((c, idx) => ({
+        task_id: insertedTask.id,
+        title: c.label,
+        position: c.order ?? idx,
+        is_completed: false,
+      }))
+    await admin.from("task_checklists").insert(chkRows)
+  }
+
+  // Popula task_deliverables com os items do template
   const deliverables = (col.deliverables_template ?? []) as Array<{
     slug: string
     label: string
     type: string
     required: boolean
   }>
-  if (anchor && deliverables.length > 0) {
+  if (deliverables.length > 0) {
     const rows = deliverables.map((d) => ({
-      task_id: anchor.id,
+      task_id: insertedTask.id,
       field_slug: d.slug,
       field_label: d.label,
       field_type: d.type,
@@ -736,18 +731,33 @@ async function validateColumnCompletion(
   const taskList = tasks ?? []
   const taskIds = taskList.map((t) => t.id)
 
-  // Cada item do checklist agora vira UMA task separada.
-  // Validacao: todas as tasks da etapa precisam estar concluidas.
+  // Novo padrão: 1 task única por coluna com task_checklists como sub-itens.
+  // Validacao: a task da etapa precisa estar concluida E todos os
+  // task_checklists dela precisam estar is_completed.
   const requiredChecklist = (col.checklist_template ?? []) as Array<{
     id: string
     label: string
   }>
-  if (requiredChecklist.length > 0) {
+  if (taskList.length > 0) {
     const pendingTasks = taskList.filter((t) => t.status !== "completed")
     if (pendingTasks.length > 0) {
       return {
         ok: false,
-        error: `Checklist incompleto: ${pendingTasks.length} task(s) pendente(s). Conclua todas ou use Forcar avanco.`,
+        error: `Tarefa da etapa ainda em andamento. Conclua a tarefa ou use Forcar avanco.`,
+      }
+    }
+    // Checa se todos os checklists das tasks da etapa estao completos
+    if (requiredChecklist.length > 0 && taskIds.length > 0) {
+      const { data: chkItems } = await admin
+        .from("task_checklists")
+        .select("id, is_completed")
+        .in("task_id", taskIds)
+      const pendingChk = (chkItems ?? []).filter((c) => !c.is_completed)
+      if (pendingChk.length > 0) {
+        return {
+          ok: false,
+          error: `Checklist incompleto: ${pendingChk.length} item(ns) pendente(s). Conclua todos ou use Forcar avanco.`,
+        }
       }
     }
   }
