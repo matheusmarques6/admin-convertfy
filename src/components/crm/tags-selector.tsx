@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X, Plus, Tag as TagIcon, Trash2 } from "lucide-react"
+import { X, Plus, Tag as TagIcon, Trash2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface Tag {
@@ -52,6 +52,11 @@ export function TagsSelector({
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [createName, setCreateName] = useState("")
+  const [createColor, setCreateColor] = useState(PALETTE[0])
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -119,17 +124,35 @@ export function TagsSelector({
     inputRef.current?.focus()
   }
 
-  const createTag = async () => {
-    const name = query.trim()
-    if (!name) return
+  // Abre modal pra criar tag com cor escolhida (em vez de criar inline
+  // com cor aleatoria). Pre-preenche nome com a query atual.
+  const openCreateModal = (prefillName?: string) => {
+    setCreateName(prefillName ?? query.trim() ?? "")
+    setCreateColor(PALETTE[Math.floor(Math.random() * PALETTE.length)])
+    setCreateError(null)
+    setCreateModalOpen(true)
+    setOpen(false)
+  }
+
+  const submitCreate = async () => {
+    const name = createName.trim()
+    if (!name) {
+      setCreateError("Digite um nome pra tag.")
+      return
+    }
+    setCreateSubmitting(true)
+    setCreateError(null)
     try {
-      const randomColor = PALETTE[Math.floor(Math.random() * PALETTE.length)]
       const res = await fetch("/api/crm/tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color: randomColor, entity_type: entity }),
+        body: JSON.stringify({ name, color: createColor, entity_type: entity }),
       })
       const json = await res.json()
+      if (!res.ok) {
+        setCreateError(json.error?.message ?? json.error ?? `Erro ${res.status}`)
+        return
+      }
       const created = json.data?.tag ?? json.tag
       if (created) {
         setTags((prev) =>
@@ -137,8 +160,13 @@ export function TagsSelector({
         )
         addTag(created.name)
       }
-    } catch {
-      /* noop */
+      setCreateName("")
+      setQuery("")
+      setCreateModalOpen(false)
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCreateSubmitting(false)
     }
   }
 
@@ -204,7 +232,7 @@ export function TagsSelector({
             if (e.key === "Enter") {
               e.preventDefault()
               if (filtered.length > 0) addTag(filtered[0].name)
-              else if (query.trim() && !exactMatch) createTag()
+              else if (query.trim() && !exactMatch) openCreateModal()
             }
             if (e.key === "Backspace" && !query && selected.length > 0) {
               onChange(selected.slice(0, -1))
@@ -255,18 +283,19 @@ export function TagsSelector({
               </button>
             </div>
           ))}
-          {query.trim() && !exactMatch && (
-            <div
-              onClick={createTag}
-              className="flex items-center gap-2 px-3 py-2 bg-brand-50/40 hover:bg-brand-50 cursor-pointer border-t"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
-            >
-              <Plus className="h-3.5 w-3.5 text-brand-600 shrink-0" />
-              <span className="text-[12.5px] text-brand-700 font-medium">
-                Criar tag &quot;{query.trim()}&quot;
-              </span>
-            </div>
-          )}
+          {/* Botão "Criar nova tag…" sempre visivel no fim da lista */}
+          <div
+            onClick={() => openCreateModal(query.trim() || undefined)}
+            className="flex items-center gap-2 px-3 py-2 bg-brand-50/40 hover:bg-brand-50 cursor-pointer border-t"
+            style={{ borderColor: "rgba(0,0,0,0.06)" }}
+          >
+            <Plus className="h-3.5 w-3.5 text-brand-600 shrink-0" />
+            <span className="text-[12.5px] text-brand-700 font-medium">
+              {query.trim() && !exactMatch
+                ? `Criar tag "${query.trim()}" …`
+                : "Criar nova tag…"}
+            </span>
+          </div>
           {query.trim() === "" && tags.length > 0 && (
             <div
               className="px-3 py-1.5 border-t text-[10.5px] text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1"
@@ -278,6 +307,164 @@ export function TagsSelector({
           )}
         </div>
       )}
+
+      {/* Modal de criar tag com escolha de cor */}
+      {createModalOpen && (
+        <CreateTagModal
+          name={createName}
+          color={createColor}
+          submitting={createSubmitting}
+          error={createError}
+          onNameChange={setCreateName}
+          onColorChange={setCreateColor}
+          onCancel={() => {
+            setCreateModalOpen(false)
+            setCreateError(null)
+          }}
+          onSubmit={submitCreate}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── CreateTagModal ──────────────────────────────────────────────────────────
+
+function CreateTagModal({
+  name, color, submitting, error,
+  onNameChange, onColorChange, onCancel, onSubmit,
+}: {
+  name: string
+  color: string
+  submitting: boolean
+  error: string | null
+  onNameChange: (v: string) => void
+  onColorChange: (v: string) => void
+  onCancel: () => void
+  onSubmit: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
+  return (
+    <div
+      onClick={onCancel}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900/30 backdrop-blur-[1px]"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-[12px] shadow-2xl w-[400px] max-w-[92vw] overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-black/[0.06] flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
+            style={{ background: `${color}14`, color }}
+          >
+            <TagIcon className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-[15px] font-bold text-slate-900 m-0 leading-tight">
+              Criar tag
+            </h2>
+            <p className="text-[11.5px] text-slate-500 mt-0.5">
+              Tags ficam disponíveis pra toda a organização
+            </p>
+          </div>
+        </div>
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Preview */}
+          <div className="flex items-center justify-center py-3">
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[13px] font-semibold border"
+              style={{
+                background: `${color}14`,
+                color,
+                borderColor: `${color}33`,
+              }}
+            >
+              {name.trim() || "Pré-visualização"}
+            </span>
+          </div>
+
+          {/* Nome */}
+          <div>
+            <label className="block text-[11.5px] font-semibold text-slate-700 mb-1.5">
+              Nome <span className="text-red-500">*</span>
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => onNameChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) onSubmit()
+              }}
+              placeholder="Ex: VIP, Black Friday, Frio..."
+              className="w-full h-9 px-3 rounded-[6px] border text-[13px] outline-none focus:border-brand-500"
+              style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              maxLength={60}
+            />
+          </div>
+
+          {/* Cor */}
+          <div>
+            <label className="block text-[11.5px] font-semibold text-slate-700 mb-2">
+              Cor
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onColorChange(c)}
+                  className={cn(
+                    "h-9 w-9 rounded-full border-2 transition-transform flex items-center justify-center",
+                    color === c ? "scale-110 border-slate-900" : "border-transparent hover:scale-105",
+                  )}
+                  style={{ background: c }}
+                  aria-label={`Cor ${c}`}
+                >
+                  {color === c && <Check className="h-4 w-4 text-white" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[12px] text-red-700">
+              ⚠ {error}
+            </div>
+          )}
+        </div>
+        {/* Footer */}
+        <div
+          className="px-5 py-3 border-t border-black/[0.06] flex items-center justify-end gap-2 bg-slate-50/40"
+        >
+          <button
+            onClick={onCancel}
+            disabled={submitting}
+            className="h-9 px-4 rounded-[6px] text-[12.5px] font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={!name.trim() || submitting}
+            className="h-9 px-4 rounded-[6px] text-[12.5px] font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: name.trim() && !submitting ? color : "#9CA3AF" }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {submitting ? "Criando…" : "Criar tag"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
