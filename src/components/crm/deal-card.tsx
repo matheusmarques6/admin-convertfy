@@ -428,10 +428,11 @@ function DealActionsMenu({
       <DropdownMenu.Trigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          aria-label="Acoes do deal"
-          className="flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+          aria-label="Acoes do deal (criar atividade, mover, ganhar, perder, excluir)"
+          title="Ações do negócio"
+          className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-slate-100/70 hover:bg-slate-200 dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white transition-colors data-[state=open]:bg-slate-200 dark:data-[state=open]:bg-white/[0.12]"
         >
-          <MoreHorizontal className="h-3.5 w-3.5" />
+          <MoreHorizontal className="h-4 w-4" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

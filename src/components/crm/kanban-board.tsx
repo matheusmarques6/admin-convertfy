@@ -219,8 +219,9 @@ export function KanbanBoard({
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger asChild>
                         <button
-                          aria-label="Opcoes da coluna"
-                          className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/80 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+                          aria-label="Opcoes da etapa (editar, excluir)"
+                          title="Ações da etapa"
+                          className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-slate-100/70 hover:bg-slate-200 dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white transition-colors data-[state=open]:bg-slate-200 dark:data-[state=open]:bg-white/[0.12]"
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </button>
