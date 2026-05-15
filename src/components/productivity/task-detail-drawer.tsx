@@ -679,10 +679,17 @@ export function TaskDetailDrawer({
   task: TaskAugmented
   onClose: () => void
 }) {
-  const { apiAction, updateTaskStatus, members, profile, fetchData } = useProductivityStore()
+  const { apiAction, members, profile, fetchData } = useProductivityStore()
   const memberList = members as Member[]
 
   const [running, setRunning] = useState(false)
+  const [statusMenu, setStatusMenu] = useState(false)
+  const [prioMenu, setPrioMenu] = useState(false)
+  const [assigneeMenu, setAssigneeMenu] = useState(false)
+  const [dateEdit, setDateEdit] = useState(false)
+  const [dateValue, setDateValue] = useState("")
+  const [estEdit, setEstEdit] = useState(false)
+  const [estValue, setEstValue] = useState("")
   const [addingChk, setAddingChk] = useState(false)
   const [chkInput, setChkInput] = useState("")
   const [addingLink, setAddingLink] = useState(false)
@@ -734,8 +741,75 @@ export function TaskDetailDrawer({
   const isOnboarding = task.source_type === "onboarding"
   const isOverdue = false // pode derivar de due_date depois
 
+  // Mapeia status do board (pending/progress/review/done) pro status real
+  // do banco (pending/in_progress/in_review/completed). O store usa o
+  // shorthand do board mas a tabela `tasks` usa o nome completo.
+  const STATUS_TO_DB: Record<string, string> = {
+    pending: "pending",
+    progress: "in_progress",
+    review: "in_review",
+    done: "completed",
+  }
+
+  // updateTaskField: roteia atualizacao pra tabela correta com base em
+  // source_type. Onboarding tasks vivem em `tasks`; legacy em
+  // `productivity_tasks`. Sem isso o UPDATE afeta 0 rows e fetchData
+  // recarrega o estado antigo (causa o 'reset' do botao Iniciar).
+  const updateTaskField = async (
+    fields: Record<string, unknown>,
+    optimistic?: Partial<ProductivityTask>,
+  ) => {
+    if (isOnboarding) {
+      // Traduz campos do shape do store pro shape do endpoint /api/tasks
+      const body: Record<string, unknown> = {}
+      if (fields.status !== undefined) {
+        body.status = STATUS_TO_DB[fields.status as string] ?? fields.status
+      }
+      if (fields.priority !== undefined) {
+        // 1=urgent, 2=high, 3=medium, 4=low
+        const map: Record<number, string> = {
+          1: "urgent",
+          2: "high",
+          3: "medium",
+          4: "low",
+        }
+        body.priority = map[fields.priority as number] ?? "medium"
+      }
+      if (fields.title !== undefined) body.title = fields.title
+      if (fields.description !== undefined) body.description = fields.description
+      if (fields.due_date !== undefined) body.due_date = fields.due_date
+      if (fields.assignee_id !== undefined) body.assignee_id = fields.assignee_id
+      if (fields.sla_hours !== undefined) body.sla_hours = fields.sla_hours
+      try {
+        await fetch(`/api/tasks/${task.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      } catch (e) {
+        console.error("[drawer] PUT task failed", e)
+      }
+    } else {
+      // Legacy: productivity_tasks via store
+      await apiAction("update_task", { id: task.id, ...fields })
+    }
+    // Optimistic UI: store atualiza local pra UI nao 'piscar' enquanto
+    // fetchData traz state novo.
+    if (optimistic) {
+      const updateTasks = (tasks: ProductivityTask[]) =>
+        tasks.map((t) => (t.id === task.id ? { ...t, ...optimistic } : t))
+      const state = useProductivityStore.getState()
+      useProductivityStore.setState({
+        tasks: updateTasks(state.tasks),
+        groups: state.groups.map((g) => ({ ...g, items: updateTasks(g.items) })),
+      })
+    }
+    fetchData()
+  }
+
   const handleAdvance = async (next: ProductivityTask["status"]) => {
-    await updateTaskStatus(task.id, next)
+    // Optimistic UI primeiro pro botao nao 'piscar'
+    await updateTaskField({ status: next }, { status: next })
     if (next === "progress" && !running) setRunning(true)
     if (next === "done") {
       setRunning(false)
@@ -754,7 +828,7 @@ export function TaskDetailDrawer({
 
   const saveDesc = () => {
     if (desc !== (task.description ?? "")) {
-      apiAction("update_task", { id: task.id, description: desc })
+      updateTaskField({ description: desc })
     }
     setEditingDesc(false)
   }
@@ -1117,24 +1191,156 @@ export function TaskDetailDrawer({
           </div>
 
           <div className="flex flex-col">
+            {/* Status (editavel) */}
             <PropertyRow icon={I.bolt({ size: 13 })} label="Status">
-              <StatusBadgeBig status={task.status} />
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setStatusMenu(!statusMenu)
+                    setPrioMenu(false)
+                    setAssigneeMenu(false)
+                  }}
+                  className="inline-flex items-center bg-transparent border-none cursor-pointer rounded hover:bg-gray-50 px-1 py-0.5 -ml-1"
+                >
+                  <StatusBadgeBig status={task.status} />
+                </button>
+                {statusMenu && (
+                  <div
+                    className="absolute top-full left-0 mt-1 z-30 bg-white border rounded-lg shadow-xl py-1 min-w-[180px]"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  >
+                    {(["pending", "progress", "review", "done"] as const).map((st) => {
+                      const cfg: Record<string, { label: string; color: string }> = {
+                        pending: { label: "Pendente", color: "#9CA3AF" },
+                        progress: { label: "Em andamento", color: C.brandBlue },
+                        review: { label: "Em revisão", color: C.purple },
+                        done: { label: "Concluído", color: C.green },
+                      }
+                      const c = cfg[st]
+                      return (
+                        <button
+                          key={st}
+                          onClick={() => {
+                            updateTaskField({ status: st }, { status: st })
+                            setStatusMenu(false)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color }} />
+                          {c.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </PropertyRow>
+
+            {/* Prioridade (editavel) */}
             <PropertyRow icon={I.alert({ size: 13 })} label="Prioridade">
-              <PrioDot priority={task.priority} />
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setPrioMenu(!prioMenu)
+                    setStatusMenu(false)
+                    setAssigneeMenu(false)
+                  }}
+                  className="inline-flex items-center bg-transparent border-none cursor-pointer rounded hover:bg-gray-50 px-1 py-0.5 -ml-1"
+                >
+                  <PrioDot priority={task.priority} />
+                </button>
+                {prioMenu && (
+                  <div
+                    className="absolute top-full left-0 mt-1 z-30 bg-white border rounded-lg shadow-xl py-1 min-w-[140px]"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  >
+                    {([1, 2, 3, 4] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => {
+                          updateTaskField({ priority: p }, { priority: p })
+                          setPrioMenu(false)
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <PrioDot priority={p} />
+                        <span>{PRIO[p].label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </PropertyRow>
+
+            {/* Responsavel (editavel) */}
             <PropertyRow icon={I.users({ size: 13 })} label="Responsável">
-              {task.people[0] ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <InitialsAvatar initials={task.people[0]} size={20} />
-                  <span className="text-[12px] font-medium text-gray-900">
-                    {memberList.find((m) => m.initials === task.people[0])?.name ?? task.people[0]}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-[12px] text-gray-400">+ Atribuir</span>
-              )}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setAssigneeMenu(!assigneeMenu)
+                    setStatusMenu(false)
+                    setPrioMenu(false)
+                  }}
+                  className="inline-flex items-center gap-1.5 bg-transparent border-none cursor-pointer rounded hover:bg-gray-50 px-1 py-0.5 -ml-1"
+                >
+                  {task.people[0] ? (
+                    <>
+                      <InitialsAvatar initials={task.people[0]} size={20} />
+                      <span className="text-[12px] font-medium text-gray-900">
+                        {memberList.find((m) => m.initials === task.people[0])?.name ?? task.people[0]}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[12px] text-gray-400">+ Atribuir</span>
+                  )}
+                </button>
+                {assigneeMenu && (
+                  <div
+                    className="absolute top-full left-0 mt-1 z-30 bg-white border rounded-lg shadow-xl py-1 min-w-[220px] max-h-[260px] overflow-auto"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  >
+                    {memberList.length === 0 ? (
+                      <div className="px-3 py-2 text-[11px] text-gray-400">Nenhum membro</div>
+                    ) : (
+                      <>
+                        {task.people[0] && (
+                          <button
+                            onClick={() => {
+                              updateTaskField(
+                                { assignee_id: null, assigned_to: [] },
+                                { people: [] },
+                              )
+                              setAssigneeMenu(false)
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[12px] text-red-600 hover:bg-red-50 flex items-center gap-2 border-b"
+                            style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                          >
+                            <span className="text-base">×</span> Desatribuir
+                          </button>
+                        )}
+                        {memberList.map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              updateTaskField(
+                                { assignee_id: m.id, assigned_to: [m.initials] },
+                                { people: [m.initials] },
+                              )
+                              setAssigneeMenu(false)
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[12px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <InitialsAvatar initials={m.initials} size={20} />
+                            <span>{m.name}</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </PropertyRow>
+
             {clientName && (
               <PropertyRow icon={I.store({ size: 13 })} label="Cliente">
                 <span
@@ -1152,18 +1358,89 @@ export function TaskDetailDrawer({
                 </span>
               </PropertyRow>
             )}
+
+            {/* Data (editavel) */}
             <PropertyRow icon={I.cal({ size: 13 })} label="Data">
-              <span
-                className="text-[12px] font-medium font-mono tabular-nums"
-                style={{ color: isOverdue ? C.amberText : "#111827" }}
-              >
-                {task.date || "—"}
-              </span>
+              {dateEdit ? (
+                <input
+                  type="date"
+                  autoFocus
+                  value={dateValue}
+                  onChange={(e) => setDateValue(e.target.value)}
+                  onBlur={() => {
+                    if (dateValue) {
+                      const iso = new Date(dateValue + "T23:59:59").toISOString()
+                      updateTaskField({ due_date: iso }, {
+                        date: new Date(dateValue + "T00:00:00").toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "short",
+                        }),
+                      })
+                    }
+                    setDateEdit(false)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                    if (e.key === "Escape") setDateEdit(false)
+                  }}
+                  className="text-[12px] font-mono px-1.5 py-0.5 border rounded outline-none focus:border-blue-500"
+                  style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setDateEdit(true)
+                    setDateValue("")
+                  }}
+                  className="text-[12px] font-medium font-mono tabular-nums bg-transparent border-none cursor-pointer rounded hover:bg-gray-50 px-1 py-0.5 -ml-1"
+                  style={{ color: isOverdue ? C.amberText : "#111827" }}
+                >
+                  {task.date || "+ Definir data"}
+                </button>
+              )}
             </PropertyRow>
+
+            {/* Estimativa (editavel) */}
             <PropertyRow icon={I.clock({ size: 13 })} label="Estimativa">
-              <span className="text-[12px] font-medium font-mono tabular-nums text-gray-900">
-                {task.estimatedTime || "—"}
-              </span>
+              {estEdit ? (
+                <div className="inline-flex items-center gap-1">
+                  <input
+                    type="number"
+                    autoFocus
+                    min={0}
+                    placeholder="min"
+                    value={estValue}
+                    onChange={(e) => setEstValue(e.target.value)}
+                    onBlur={() => {
+                      const minutes = parseInt(estValue, 10)
+                      if (!isNaN(minutes) && minutes > 0) {
+                        const hours = minutes / 60
+                        updateTaskField({ sla_hours: hours, estimated_minutes: minutes }, {
+                          estimatedTime: `${minutes}m`,
+                        })
+                      }
+                      setEstEdit(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                      if (e.key === "Escape") setEstEdit(false)
+                    }}
+                    className="text-[12px] font-mono px-1.5 py-0.5 border rounded outline-none focus:border-blue-500 w-20"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  />
+                  <span className="text-[11px] text-gray-400">minutos</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setEstEdit(true)
+                    setEstValue("")
+                  }}
+                  className="text-[12px] font-medium font-mono tabular-nums text-gray-900 bg-transparent border-none cursor-pointer rounded hover:bg-gray-50 px-1 py-0.5 -ml-1"
+                >
+                  {task.estimatedTime || "+ Estimar"}
+                </button>
+              )}
             </PropertyRow>
           </div>
 
