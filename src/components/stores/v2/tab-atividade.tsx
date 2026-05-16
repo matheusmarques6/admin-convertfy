@@ -1,15 +1,45 @@
 "use client"
 
 /**
- * Aba Atividade — Timeline filtravel de tudo que aconteceu na conta.
- * 4 stats no topo, filtros multi-categoria, timeline vertical + sidebar
- * com materiais e entregaveis do onboarding.
+ * Tab: Atividade — NOVA TELA. Mirror exato do prototype tab-atividade.jsx.
+ *
+ * Layout grid 2-col: minmax(0,1fr) 320px.
+ *
+ * Left:
+ *  - 4 StatCard (Otimizações brand · Testes A/B purple · Entregas pos · Reuniões neut)
+ *  - Filter row: FilterChips (Tudo · Feedbacks · Testes A/B · Otimizações ·
+ *    Entregas · Setup) + Btn "Filtros" + Btn primary "+ Registrar"
+ *  - Section "Linha do tempo" com ActivityList expanded (timeline vertical
+ *    com 36px marker + linha conectora + badge + título + summary + tags)
+ *  - Section "Testes A/B" com ABTestTable (6 colunas: teste · data ·
+ *    vencedor badge · métrica · delta colorido · chev)
+ *
+ * Right:
+ *  - Section "Materiais e arquivos" com MaterialItem rows
+ *    (icon purple/info/neut + título + sub + extLink/download)
+ *  - Section "Entregas do onboarding" com checklist done/review
  */
 
 import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
-import { Plus, X, ExternalLink, FileText, Image as ImageIcon } from "lucide-react"
-import { cn } from "@/lib/utils"
+import {
+  Zap, Target, Package, Mail, Link2, Phone, Bell, Plus, Filter, X,
+  ChevronRight, Check, Download, ExternalLink, Image as ImageIcon,
+} from "lucide-react"
+import { Section, Badge, Btn, C, TNUM } from "./_primitives"
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+interface Activity {
+  id: string
+  kind: "feedback" | "teste" | "otim" | "entrega" | "integracao" | "call" | "outro"
+  title: string
+  summary: string | null
+  tags: string[] | null
+  occurred_at: string
+  metadata?: Record<string, unknown>
+  author?: { name: string; avatar_url: string | null } | null
+}
 
 interface StoreMaterials {
   figma_onboarding_url?: string | null
@@ -26,74 +56,29 @@ interface TaskItem {
   created_at: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
-
-interface Activity {
-  id: string
-  kind: "feedback" | "teste" | "otim" | "entrega" | "integracao" | "call" | "outro"
-  title: string
-  summary: string | null
-  tags: string[] | null
-  occurred_at: string
-  metadata?: Record<string, unknown>
-  author?: { name: string; avatar_url: string | null } | null
-}
-
-const KIND_CFG = {
-  feedback: { label: "Feedback", color: "#4E62D8" },
-  teste: { label: "Teste A/B", color: "#A855F7" },
-  otim: { label: "Otimização", color: "#F59E0B" },
-  entrega: { label: "Entrega", color: "#10B981" },
-  integracao: { label: "Integração", color: "#6B7280" },
-  call: { label: "Call", color: "#3B82F6" },
-  outro: { label: "Outro", color: "#9CA3AF" },
+const KIND_META = {
+  feedback: { color: C.brand, label: "Feedback", Icon: Mail },
+  teste: { color: C.purple, label: "Teste A/B", Icon: Target },
+  otim: { color: C.amber, label: "Otimização", Icon: Zap },
+  entrega: { color: C.pos, label: "Entrega", Icon: Package },
+  integracao: { color: C.g600, label: "Integração", Icon: Link2 },
+  call: { color: C.brand, label: "Call", Icon: Phone },
+  outro: { color: C.g500, label: "Outro", Icon: Bell },
 } as const
+
+type FilterKey = "all" | "feedback" | "teste" | "otim" | "entrega" | "integracao"
 
 export function TabAtividade({ storeId }: { storeId: string }) {
   const [items, setItems] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterKind, setFilterKind] = useState<string>("tudo")
+  const [filterKind, setFilterKind] = useState<FilterKey>("all")
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // Materiais reais (links do client_stores)
-  const { data: storeData } = useSWR(`/api/client-stores/${storeId}`, fetcher, {
-    revalidateOnFocus: false,
-  })
+  const { data: storeData } = useSWR(`/api/client-stores/${storeId}`, fetcher, { revalidateOnFocus: false })
   const materials = (storeData?.data?.store ?? storeData?.store ?? storeData ?? {}) as StoreMaterials
-  const materialsList: Array<{ icon: typeof ImageIcon; label: string; sub: string; href: string }> = []
-  if (materials.figma_onboarding_url) {
-    materialsList.push({
-      icon: ImageIcon,
-      label: "Figma · Onboarding completo",
-      sub: "Pacote inicial",
-      href: materials.figma_onboarding_url,
-    })
-  }
-  if (materials.figma_emails_url) {
-    materialsList.push({
-      icon: ImageIcon,
-      label: "Figma · Pacote de e-mails",
-      sub: "Templates da loja",
-      href: materials.figma_emails_url,
-    })
-  }
-  if (materials.drive_folder_url) {
-    materialsList.push({
-      icon: FileText,
-      label: "Google Drive · Pasta da loja",
-      sub: "Briefings, exports, gravações",
-      href: materials.drive_folder_url,
-    })
-  }
 
-  // Entregas reais (tasks do onboarding com source_type=auto_onboarding_step)
-  const { data: tasksData } = useSWR(
-    `/api/tasks?store_id=${storeId}&source_type=auto_onboarding_step&limit=50`,
-    fetcher,
-    { revalidateOnFocus: false },
-  )
-  const deliveries = ((tasksData?.tasks ?? tasksData?.data?.tasks ?? []) as TaskItem[])
-    .slice(0, 12)
+  const { data: tasksData } = useSWR(`/api/tasks?store_id=${storeId}&source_type=auto_onboarding_step&limit=50`, fetcher, { revalidateOnFocus: false })
+  const deliveries = useMemo(() => ((tasksData?.tasks ?? tasksData?.data?.tasks ?? []) as TaskItem[]).slice(0, 12), [tasksData])
 
   const reload = () => {
     setLoading(true)
@@ -106,182 +91,188 @@ export function TabAtividade({ storeId }: { storeId: string }) {
 
   useEffect(() => { reload() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [storeId])
 
-  const filtered = useMemo(
-    () => filterKind === "tudo" ? items : items.filter((i) => i.kind === filterKind),
-    [items, filterKind],
-  )
-
   const counts = useMemo(() => {
-    const c: Record<string, number> = { otim: 0, teste: 0, entrega: 0, call: 0 }
+    const c: Record<string, number> = { otim: 0, teste: 0, entrega: 0, call: 0, feedback: 0, integracao: 0 }
     items.forEach((i) => {
       if (i.kind in c) c[i.kind]++
     })
     return c
   }, [items])
 
-  const abTests = items.filter((i) => i.kind === "teste")
+  const testesGanhos = useMemo(
+    () => items.filter((i) => i.kind === "teste" && (i.metadata?.delta as number) > 0).length,
+    [items],
+  )
+  const testesPerdas = useMemo(
+    () => items.filter((i) => i.kind === "teste" && (i.metadata?.delta as number) < 0).length,
+    [items],
+  )
+
+  const filters: Array<{ key: FilterKey; label: string; n: number }> = [
+    { key: "all", label: "Tudo", n: items.length },
+    { key: "feedback", label: "Feedbacks", n: counts.feedback },
+    { key: "teste", label: "Testes A/B", n: counts.teste },
+    { key: "otim", label: "Otimizações", n: counts.otim },
+    { key: "entrega", label: "Entregas", n: counts.entrega },
+    { key: "integracao", label: "Setup", n: counts.integracao },
+  ]
+
+  const filtered = useMemo(
+    () => filterKind === "all" ? items : items.filter((i) => i.kind === filterKind),
+    [items, filterKind],
+  )
+
+  const abTests = useMemo(() => items.filter((i) => i.kind === "teste"), [items])
+
+  const materialsList: Array<{
+    Icon: typeof ImageIcon
+    tone: "purple" | "info" | "neut"
+    title: string
+    sub: string
+    url: string
+    dl?: boolean
+  }> = []
+  if (materials.figma_onboarding_url) {
+    materialsList.push({
+      Icon: Link2, tone: "purple",
+      title: "Figma · Onboarding completo",
+      sub: "Pacote inicial",
+      url: materials.figma_onboarding_url,
+    })
+  }
+  if (materials.figma_emails_url) {
+    materialsList.push({
+      Icon: Link2, tone: "purple",
+      title: "Figma · Pacote de e-mails",
+      sub: "Templates da loja",
+      url: materials.figma_emails_url,
+    })
+  }
+  if (materials.drive_folder_url) {
+    materialsList.push({
+      Icon: Link2, tone: "info",
+      title: "Google Drive · Pasta da loja",
+      sub: "Briefings, exports, gravações",
+      url: materials.drive_folder_url,
+    })
+  }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
-      <div className="flex flex-col gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5">
+      {/* LEFT */}
+      <div>
         {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatTile label="Otimizações" value={String(counts.otim)} sub="aplicadas" color="#F59E0B" />
-          <StatTile label="Testes A/B" value={String(counts.teste)} sub="rodados" color="#A855F7" />
-          <StatTile label="Entregas" value={String(counts.entrega)} sub="materiais finalizados" color="#10B981" />
-          <StatTile label="Reuniões" value={String(counts.call)} sub="últimos 90d" color="#3B82F6" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <StatCard tone="brand" label="Otimizações" value={counts.otim} sub="aplicadas" Icon={Zap} />
+          <StatCard tone="purple" label="Testes A/B" value={counts.teste} sub={`${testesGanhos} wins · ${testesPerdas} perdas`} Icon={Target} />
+          <StatCard tone="pos" label="Entregas" value={counts.entrega} sub="materiais finalizados" Icon={Package} />
+          <StatCard tone="neut" label="Reuniões" value={counts.feedback + counts.call} sub="últimos 90d" Icon={Mail} />
         </div>
 
-        {/* Filtros + botao registrar */}
-        <div className="flex flex-wrap items-center gap-2 justify-between">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <FilterChip label="Tudo" count={items.length} active={filterKind === "tudo"} onClick={() => setFilterKind("tudo")} />
-            {(Object.keys(KIND_CFG) as Array<keyof typeof KIND_CFG>).map((k) => (
-              <FilterChip
-                key={k}
-                label={KIND_CFG[k].label}
-                count={items.filter((i) => i.kind === k).length}
-                active={filterKind === k}
-                color={KIND_CFG[k].color}
-                onClick={() => setFilterKind(k)}
-              />
+        {/* Filter row */}
+        <div className="flex items-center justify-between gap-2 mb-3.5 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
+            {filters.map((f) => (
+              <FilterChip key={f.key} label={f.label} n={f.n} active={filterKind === f.key} onClick={() => setFilterKind(f.key)} />
             ))}
           </div>
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold"
-          >
-            <Plus className="h-3.5 w-3.5" /> Registrar
-          </button>
+          <div className="flex gap-2">
+            <Btn variant="secondary" size="sm" icon={<Filter className="h-3.5 w-3.5" />}>Filtros</Btn>
+            <Btn variant="primary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setDrawerOpen(true)}>Registrar</Btn>
+          </div>
         </div>
 
         {/* Timeline */}
-        <Card title="Linha do tempo" subtitle={`${filtered.length} eventos · ordenados por mais recente`}>
-          {loading && (
-            <div className="py-8 text-center text-[12px] text-slate-400 italic">Carregando…</div>
-          )}
-          {!loading && filtered.length === 0 && (
+        <Section title="Linha do tempo" subtitle={`${filtered.length} eventos · ordenado por mais recente`}>
+          {loading ? (
+            <div className="py-8 text-center text-[12px] italic" style={{ color: C.g400 }}>Carregando…</div>
+          ) : filtered.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-[13px] text-slate-500 mb-2">Nenhuma atividade registrada ainda</p>
+              <p className="text-[13px] mb-2" style={{ color: C.g500 }}>Nenhuma atividade registrada ainda</p>
               <button
                 onClick={() => setDrawerOpen(true)}
-                className="text-[12px] font-medium text-brand-600 hover:underline"
+                className="text-[12px] font-medium hover:underline"
+                style={{ color: C.brand }}
               >
                 + Registrar primeira atividade
               </button>
             </div>
-          )}
-          {!loading && filtered.length > 0 && (
+          ) : (
             <div className="flex flex-col">
-              {filtered.map((a) => (
-                <ActivityItem key={a.id} a={a} />
+              {filtered.map((a, i) => (
+                <ActivityRow key={a.id} a={a} last={i === filtered.length - 1} />
               ))}
             </div>
           )}
-        </Card>
+        </Section>
 
-        {/* Tabela de testes A/B */}
+        {/* A/B Test table */}
         {abTests.length > 0 && (
-          <Card title="Testes A/B realizados" subtitle={`${abTests.length} testes · histórico`}>
-            <div className="overflow-x-auto -mx-4 px-4">
-              <table className="w-full text-[12px] min-w-[500px]">
-                <thead>
-                  <tr className="text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-                    <th className="py-2">Teste</th>
-                    <th className="py-2">Data</th>
-                    <th className="py-2">Vencedor</th>
-                    <th className="py-2">Métrica</th>
-                    <th className="py-2 text-right">Delta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {abTests.map((t) => {
-                    const m = (t.metadata ?? {}) as { winner?: string; metric?: string; delta?: number }
-                    return (
-                      <tr key={t.id} className="border-b last:border-b-0" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-                        <td className="py-2 font-medium text-slate-900">{t.title}</td>
-                        <td className="py-2 text-slate-500 font-mono">{new Date(t.occurred_at).toLocaleDateString("pt-BR")}</td>
-                        <td className="py-2 text-slate-700">{m.winner || "—"}</td>
-                        <td className="py-2 text-slate-700">{m.metric || "—"}</td>
-                        <td className="py-2 text-right">
-                          {m.delta != null ? (
-                            <span className={cn("font-bold tabular-nums", m.delta > 0 ? "text-emerald-600" : "text-red-600")}>
-                              {m.delta > 0 ? "+" : ""}{(m.delta * 100).toFixed(1)}%
-                            </span>
-                          ) : "—"}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <Section
+            title="Testes A/B"
+            subtitle="Histórico de experimentos · resultado consolidado"
+            right={<Btn variant="secondary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setDrawerOpen(true)}>Novo teste</Btn>}
+          >
+            <ABTestTable tests={abTests} />
+          </Section>
         )}
       </div>
 
-      {/* Sidebar: Materiais + Entregas do onboarding */}
-      <div className="flex flex-col gap-4">
-        <Card title="Materiais & arquivos">
+      {/* RIGHT */}
+      <div>
+        <Section title="Materiais e arquivos">
           {materialsList.length === 0 ? (
-            <div className="py-3 text-center text-[11.5px] text-slate-400 italic">
+            <div className="py-3 text-center text-[11.5px] italic" style={{ color: C.g400 }}>
               Sem materiais cadastrados.<br />Adicione links em <strong>Contexto</strong>.
             </div>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {materialsList.map((m) => {
-                const Icon = m.icon
-                return (
-                  <a
-                    key={m.label}
-                    href={m.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-start gap-2 px-2 py-2 rounded-md hover:bg-slate-50 transition-colors text-left w-full"
-                  >
-                    <Icon className="h-3.5 w-3.5 mt-0.5 text-slate-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-semibold text-slate-900 leading-tight">{m.label}</div>
-                      <div className="text-[10.5px] text-slate-500 leading-tight mt-0.5">{m.sub}</div>
-                    </div>
-                    <ExternalLink className="h-3 w-3 text-slate-300" />
-                  </a>
-                )
-              })}
+            <div className="flex flex-col gap-2">
+              {materialsList.map((m, i) => <MaterialItem key={i} {...m} />)}
             </div>
           )}
-        </Card>
+        </Section>
 
-        <Card title="Entregas do onboarding" subtitle={deliveries.length ? `${deliveries.filter((t) => t.status === "completed").length} de ${deliveries.length} concluídas` : "Pacote inicial"}>
+        <Section
+          title="Entregas do onboarding"
+          subtitle={deliveries.length ? `${deliveries.filter((t) => t.status === "completed").length} de ${deliveries.length} concluídas` : "Pacote inicial"}
+        >
           {deliveries.length === 0 ? (
-            <div className="py-3 text-center text-[11.5px] text-slate-400 italic">
+            <div className="py-3 text-center text-[11.5px] italic" style={{ color: C.g400 }}>
               Sem entregas do onboarding ainda.
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               {deliveries.map((d) => {
                 const done = d.status === "completed"
+                const review = d.status === "review"
                 const dateLabel = done && d.completed_at
                   ? new Date(d.completed_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
                   : d.due_date
                     ? new Date(d.due_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
                     : "—"
                 return (
-                  <div key={d.id} className="flex items-center justify-between text-[12px] py-1">
-                    <span className="inline-flex items-center gap-1.5 min-w-0">
-                      <span
-                        className="h-2 w-2 rounded-full shrink-0"
-                        style={{ background: done ? "#10B981" : "#9CA3AF" }}
-                      />
-                      <span className={cn("truncate", done ? "text-slate-700" : "text-slate-400")}>{d.title}</span>
-                    </span>
-                    <span className="text-[10.5px] text-slate-400 font-mono shrink-0">{dateLabel}</span>
+                  <div
+                    key={d.id}
+                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-[6px]"
+                    style={{
+                      background: review ? C.warnBg : "transparent",
+                      border: `1px solid ${review ? C.warnBorder : "transparent"}`,
+                    }}
+                  >
+                    <div
+                      className="w-[18px] h-[18px] rounded-full inline-flex items-center justify-center shrink-0 text-white"
+                      style={{ background: done ? C.pos : C.amber }}
+                    >
+                      <Check className="h-3 w-3" />
+                    </div>
+                    <span className="flex-1 text-[12.5px] font-medium text-slate-900 truncate">{d.title}</span>
+                    <span className="text-[11px] shrink-0" style={{ color: C.g400, ...TNUM }}>{dateLabel}</span>
                   </div>
                 )
               })}
             </div>
           )}
-        </Card>
+        </Section>
       </div>
 
       {drawerOpen && (
@@ -291,74 +282,92 @@ export function TabAtividade({ storeId }: { storeId: string }) {
   )
 }
 
-function StatTile({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
+// ─── Atoms ──────────────────────────────────────────
+
+function StatCard({ tone, label, value, sub, Icon }: {
+  tone: "brand" | "purple" | "pos" | "neut"
+  label: string
+  value: number
+  sub: string
+  Icon: typeof Zap
+}) {
+  const map = {
+    brand: { bg: C.blue50, c: C.brand },
+    purple: { bg: C.purpleBg, c: C.purple },
+    pos: { bg: C.posBg, c: C.pos },
+    neut: { bg: C.g50, c: C.g700 },
+  }
+  const m = map[tone]
   return (
-    <div className="bg-white border rounded-[8px] p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-        <span className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
+    <div
+      className="p-4 rounded-[12px] flex items-start gap-3"
+      style={{ background: C.white, border: `1px solid ${C.border}`, boxShadow: C.shadowSm }}
+    >
+      <div className="w-9 h-9 rounded-[8px] inline-flex items-center justify-center shrink-0" style={{ background: m.bg, color: m.c }}>
+        <Icon className="h-[18px] w-[18px]" />
       </div>
-      <div className="text-[22px] font-bold text-slate-900 tabular-nums leading-none">{value}</div>
-      <div className="text-[10.5px] text-slate-500 mt-1">{sub}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: C.g500 }}>{label}</div>
+        <div className="text-[22px] font-semibold mt-0.5" style={{ color: C.g900, ...TNUM }}>{value}</div>
+        <div className="text-[11.5px] mt-0.5" style={{ color: C.g500 }}>{sub}</div>
+      </div>
     </div>
   )
 }
 
-function FilterChip({
-  label, count, active, onClick, color,
-}: {
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
-  color?: string
-}) {
+function FilterChip({ label, n, active, onClick }: { label: string; n: number; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-medium border transition-colors",
-        active
-          ? "bg-slate-900 text-white border-slate-900"
-          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-      )}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-medium transition-colors"
+      style={{
+        background: active ? C.g900 : C.white,
+        color: active ? "#fff" : C.g700,
+        border: `1px solid ${active ? C.g900 : C.border}`,
+      }}
     >
-      {color && active && <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#fff" }} />}
-      {color && !active && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />}
       {label}
-      <span className={cn("text-[10px] font-bold tabular-nums", active ? "text-white/70" : "text-slate-400")}>{count}</span>
+      <span className="font-semibold" style={{ opacity: 0.7, ...TNUM }}>{n}</span>
     </button>
   )
 }
 
-function ActivityItem({ a }: { a: Activity }) {
-  const cfg = KIND_CFG[a.kind]
+function ActivityRow({ a, last }: { a: Activity; last: boolean }) {
+  const m = KIND_META[a.kind] ?? KIND_META.outro
+  const Icon = m.Icon
+  const dateStr = new Date(a.occurred_at).toLocaleDateString("pt-BR")
+  const tone = a.kind === "teste" ? "purple" : a.kind === "otim" ? "warn" : a.kind === "entrega" ? "pos" : "info"
   return (
-    <div className="flex items-start gap-3 py-3 border-b last:border-b-0" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-      <div className="w-1 self-stretch rounded-full shrink-0" style={{ background: cfg.color, minHeight: 32 }} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-            style={{ background: `${cfg.color}1A`, color: cfg.color }}
-          >
-            {cfg.label}
-          </span>
-          <span className="text-[10.5px] text-slate-400 font-mono">
-            {new Date(a.occurred_at).toLocaleDateString("pt-BR")}
-          </span>
-          {a.author?.name && (
-            <span className="text-[10.5px] text-slate-500">· {a.author.name}</span>
-          )}
+    <div className="flex gap-3.5 relative">
+      <div className="flex flex-col items-center shrink-0">
+        <div
+          className="w-9 h-9 rounded-full inline-flex items-center justify-center z-10"
+          style={{
+            background: m.color + "15",
+            color: m.color,
+            border: `2px solid ${C.white}`,
+          }}
+        >
+          <Icon className="h-[18px] w-[18px]" />
         </div>
-        <div className="text-[13px] font-medium text-slate-900 leading-tight">{a.title}</div>
-        {a.summary && (
-          <div className="text-[12px] text-slate-500 mt-1 leading-snug">{a.summary}</div>
-        )}
+        {!last && <div className="w-0.5 flex-1" style={{ background: C.border, marginTop: -2 }} />}
+      </div>
+      <div className="flex-1 pb-5 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <Badge tone={tone}>{m.label}</Badge>
+          <span className="text-[11.5px]" style={{ color: C.g400, ...TNUM }}>{dateStr}</span>
+          {a.author?.name && <span className="text-[11.5px]" style={{ color: C.g500 }}>· {a.author.name}</span>}
+        </div>
+        <div className="text-[14px] font-semibold text-slate-900">{a.title}</div>
+        {a.summary && <div className="text-[13px] mt-1" style={{ color: C.g600 }}>{a.summary}</div>}
         {a.tags && a.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {a.tags.map((t) => (
-              <span key={t} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+          <div className="flex gap-1.5 mt-2 flex-wrap">
+            {a.tags.map((t, i) => (
+              <span
+                key={i}
+                className="text-[10.5px] font-medium px-1.5 py-[2px] rounded-[4px]"
+                style={{ background: C.g50, border: `1px solid ${C.border}`, color: C.g600, ...TNUM }}
+              >
                 {t}
               </span>
             ))}
@@ -369,26 +378,92 @@ function ActivityItem({ a }: { a: Activity }) {
   )
 }
 
-function Card({
-  title, subtitle, children,
-}: {
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-}) {
+function ABTestTable({ tests }: { tests: Activity[] }) {
   return (
-    <div className="bg-white border rounded-[10px] p-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="mb-3">
-        <h3 className="text-[13px] font-bold text-slate-900 m-0 leading-tight">{title}</h3>
-        {subtitle && <p className="text-[11.5px] text-slate-500 mt-0.5">{subtitle}</p>}
-      </div>
-      {children}
+    <div className="overflow-x-auto -mx-[18px]">
+      <table className="w-full" style={{ borderCollapse: "collapse" as const }}>
+        <thead>
+          <tr style={{ background: C.g50 }}>
+            {["Teste", "Data", "Vencedor", "Métrica", "Delta", ""].map((h) => (
+              <th
+                key={h}
+                className="text-[10.5px] font-semibold uppercase tracking-[0.04em] text-left"
+                style={{ padding: "8px 10px", color: C.g500, borderBottom: `1px solid ${C.border}` }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {tests.map((t) => {
+            const m = (t.metadata ?? {}) as { winner?: string; metric?: string; delta?: number }
+            const deltaNum = typeof m.delta === "number" ? m.delta : null
+            const tone = deltaNum == null ? "neut" : deltaNum > 0 ? "pos" : "neg"
+            const deltaStr = deltaNum == null ? "inconcl." : `${deltaNum >= 0 ? "+" : ""}${(deltaNum * 100).toFixed(1)}%`
+            return (
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td className="text-[13px] font-medium" style={{ padding: "10px", color: C.g900 }}>{t.title}</td>
+                <td className="text-[12]" style={{ padding: "10px", color: C.g500, ...TNUM }}>{new Date(t.occurred_at).toLocaleDateString("pt-BR")}</td>
+                <td style={{ padding: "10px" }}><Badge tone={m.winner === "A" ? "neut" : "info"}>Variante {m.winner ?? "?"}</Badge></td>
+                <td className="text-[12]" style={{ padding: "10px", color: C.g600 }}>{m.metric ?? "—"}</td>
+                <td
+                  className="text-[13px] font-semibold"
+                  style={{ padding: "10px", color: tone === "pos" ? C.pos : tone === "neg" ? C.neg : C.g500, ...TNUM }}
+                >
+                  {deltaStr}
+                </td>
+                <td className="text-right" style={{ padding: "10px" }}>
+                  <ChevronRight className="h-3.5 w-3.5 inline" style={{ color: C.g400 }} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
 
+function MaterialItem({ Icon, tone, title, sub, url, dl }: {
+  Icon: typeof ImageIcon
+  tone: "purple" | "info" | "neut"
+  title: string
+  sub: string
+  url: string
+  dl?: boolean
+}) {
+  const colors: Record<string, string> = { purple: C.purple, info: C.brand, neut: C.g600 }
+  const c = colors[tone] ?? C.g600
+  return (
+    <a
+      href={url}
+      target={url.startsWith("http") ? "_blank" : undefined}
+      rel="noopener noreferrer"
+      className="flex items-center gap-2.5 px-2.5 py-2 rounded-[8px] transition-colors hover:bg-slate-50"
+      style={{ border: `1px solid ${C.border}`, background: C.white }}
+    >
+      <div
+        className="w-[30px] h-[30px] rounded-[6px] inline-flex items-center justify-center shrink-0"
+        style={{ background: c + "15", color: c }}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12.5px] font-semibold truncate" style={{ color: C.g900 }}>{title}</div>
+        <div className="text-[11px]" style={{ color: C.g500 }}>{sub}</div>
+      </div>
+      <span style={{ color: C.g400 }}>
+        {dl ? <Download className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
+      </span>
+    </a>
+  )
+}
+
+// ─── Register Drawer ──────────────────────────────────
+
 function RegisterDrawer({ storeId, onClose, onSaved }: { storeId: string; onClose: () => void; onSaved: () => void }) {
-  const [kind, setKind] = useState<keyof typeof KIND_CFG>("feedback")
+  const [kind, setKind] = useState<keyof typeof KIND_META>("feedback")
   const [title, setTitle] = useState("")
   const [summary, setSummary] = useState("")
   const [tags, setTags] = useState("")
@@ -430,95 +505,102 @@ function RegisterDrawer({ storeId, onClose, onSaved }: { storeId: string; onClos
   return (
     <>
       <div onClick={onClose} className="fixed inset-0 z-[80] bg-slate-900/30" />
-      <div className="fixed top-0 right-0 bottom-0 w-[480px] max-w-[92vw] bg-white shadow-2xl z-[81] overflow-y-auto flex flex-col">
-        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+      <div className="fixed top-0 right-0 bottom-0 w-[480px] max-w-[92vw] z-[81] overflow-y-auto flex flex-col shadow-2xl"
+        style={{ background: C.white }}
+      >
+        <header className="px-5 py-4 flex items-center justify-between shrink-0" style={{ borderBottom: `1px solid ${C.border}` }}>
           <h2 className="text-[15px] font-bold text-slate-900 m-0">Registrar atividade</h2>
-          <button onClick={onClose} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100">
+          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100" style={{ color: C.g500 }}>
             <X className="h-4 w-4" />
           </button>
-        </div>
+        </header>
         <div className="flex-1 px-5 py-4 space-y-4">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-2 uppercase tracking-wider">Tipo</label>
+          <Field label="Tipo">
             <div className="grid grid-cols-3 gap-1.5">
-              {(Object.keys(KIND_CFG) as Array<keyof typeof KIND_CFG>).map((k) => (
+              {(Object.keys(KIND_META) as Array<keyof typeof KIND_META>).map((k) => (
                 <button
                   key={k}
                   onClick={() => setKind(k)}
-                  className={cn(
-                    "px-2 py-1.5 rounded-md text-[11.5px] font-medium border transition-colors",
-                    kind === k
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-                  )}
+                  className="px-2 py-1.5 rounded-[6px] text-[11.5px] font-medium border transition-colors"
+                  style={{
+                    background: kind === k ? C.g900 : C.white,
+                    color: kind === k ? "#fff" : C.g700,
+                    borderColor: kind === k ? C.g900 : C.border,
+                  }}
                 >
-                  {KIND_CFG[k].label}
+                  {KIND_META[k].label}
                 </button>
               ))}
             </div>
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Título *</label>
+          </Field>
+          <Field label="Título *">
             <input
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Ex: Feedback semanal · Bruna"
-              className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
-              style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              className="w-full h-9 px-3 rounded-[6px] text-[13px] outline-none"
+              style={{ border: `1px solid ${C.border}` }}
             />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Resumo</label>
+          </Field>
+          <Field label="Resumo">
             <textarea
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               rows={3}
               placeholder="Detalhes do que aconteceu…"
-              className="w-full px-3 py-2 rounded-md border text-[13px] outline-none focus:border-brand-500 resize-y"
-              style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              className="w-full px-3 py-2 rounded-[6px] text-[13px] outline-none resize-y"
+              style={{ border: `1px solid ${C.border}` }}
             />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Tags (vírgulas)</label>
+          </Field>
+          <Field label="Tags (vírgulas)">
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               placeholder="Ex: open rate, ctr, mobile"
-              className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
-              style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              className="w-full h-9 px-3 rounded-[6px] text-[13px] outline-none"
+              style={{ border: `1px solid ${C.border}` }}
             />
-          </div>
+          </Field>
           {kind === "teste" && (
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Vencedor</label>
-                <input value={winner} onChange={(e) => setWinner(e.target.value)} placeholder="A / B" className="w-full h-9 px-3 rounded-md border text-[13px] outline-none" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Métrica</label>
-                <input value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="open_rate" className="w-full h-9 px-3 rounded-md border text-[13px] outline-none" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">Δ %</label>
-                <input value={delta} onChange={(e) => setDelta(e.target.value)} type="number" placeholder="18.2" className="w-full h-9 px-3 rounded-md border text-[13px] outline-none" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
-              </div>
+              <Field label="Vencedor">
+                <input value={winner} onChange={(e) => setWinner(e.target.value)} placeholder="A / B"
+                  className="w-full h-9 px-3 rounded-[6px] text-[13px] outline-none"
+                  style={{ border: `1px solid ${C.border}` }} />
+              </Field>
+              <Field label="Métrica">
+                <input value={metric} onChange={(e) => setMetric(e.target.value)} placeholder="open_rate"
+                  className="w-full h-9 px-3 rounded-[6px] text-[13px] outline-none"
+                  style={{ border: `1px solid ${C.border}` }} />
+              </Field>
+              <Field label="Δ %">
+                <input value={delta} onChange={(e) => setDelta(e.target.value)} type="number" placeholder="18.2"
+                  className="w-full h-9 px-3 rounded-[6px] text-[13px] outline-none"
+                  style={{ border: `1px solid ${C.border}` }} />
+              </Field>
             </div>
           )}
         </div>
-        <div className="px-5 py-3 border-t flex items-center justify-end gap-2 bg-slate-50/40" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-          <button onClick={onClose} className="h-9 px-4 rounded-md text-[12.5px] font-medium text-slate-700 hover:bg-slate-100">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!title.trim() || saving}
-            className="h-9 px-4 rounded-md text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50"
-          >
+        <footer className="px-5 py-3 flex items-center justify-end gap-2 shrink-0"
+          style={{ borderTop: `1px solid ${C.border}`, background: "#FAFAFA" }}>
+          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+          <Btn variant="primary" disabled={!title.trim() || saving} onClick={handleSave}>
             {saving ? "Salvando…" : "Registrar"}
-          </button>
-        </div>
+          </Btn>
+        </footer>
       </div>
     </>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[10.5px] font-bold uppercase tracking-[0.04em] mb-1.5" style={{ color: C.g600 }}>
+        {label}
+      </label>
+      {children}
+    </div>
   )
 }

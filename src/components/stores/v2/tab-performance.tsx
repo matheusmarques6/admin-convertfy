@@ -1,42 +1,43 @@
 "use client"
 
 /**
- * Aba Performance — redesign 2026-05 matching prototype.
+ * Tab: Performance — mirror exato do prototype tab-performance.jsx.
  *
  * Layout:
- *  1. Header: range selector (7d/30d/90d/1A/Custom) + comparar + ações
- *  2. 4 KPI cards com delta vs período anterior
- *  3. "Receita atribuída Convertfy" — split por canal (Email/SMS/Push) +
- *     breakdown Campanhas vs Flows + donut de participação
- *  4. "Performance de email" — 5 métricas com benchmark
- *  5. Top campanhas + Top flows lado a lado
- *
- * Dados: dispatcher email-platform (Klaviyo OR Omnisend) + Shopify report
- * pra novos clientes e ticket médio. Sem dados mockados.
+ *  - Controls row: DateRangeChip (7d/30d/90d/1A/Custom) + "Comparando com
+ *    Período anterior" Btn secondary + actions row (Abrir relatório /
+ *    Exportar PDF / Enviar ao cliente primary)
+ *  - 4 PerfKpi cards com icon, label, value, delta (R$ 1,45 mi +12,4%)
+ *  - Section "Receita atribuída Convertfy" com:
+ *    Right slot: badges Email pos / SMS neut / Push purple
+ *    Grid 3-col [1fr 1fr 280px]:
+ *     - Big value (38px) + brand pct + 3 SubKpi (Pedidos/Email/SMS)
+ *     - ChannelBar Campanhas + Flows
+ *     - Gauge 160×120 270° arc com % no centro
+ *  - Section "Performance de email" — 5 EmailMetric cards
+ *  - Grid 2-col: "Top campanhas por receita" + "Top flows por receita"
+ *    PerfTable com header bg gray-50, Live badge em flows, receita brand
  */
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import {
-  TrendingUp, ShoppingCart, Mail, MessageSquare, BellRing,
-  ExternalLink, Download, Send, Loader2, RefreshCw,
+  DollarSign, Package, BarChart3, Users, Mail, Send, Target, Zap, X,
+  Calendar, ExternalLink, Download, Loader2,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Section, Badge, Btn, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type Range = "7d" | "30d" | "90d" | "1A" | "custom"
 
-interface IntegrationStatus {
-  connected: boolean
-}
+interface IntegrationStatus { connected: boolean }
 
 interface CampaignRow {
   id: string
   name: string
   status: string
-  channel?: string
   recipients: number
   delivered?: number
   opened: number
@@ -44,6 +45,7 @@ interface CampaignRow {
   clicked: number
   clickRate: number
   revenue: number
+  sendTime?: string | null
 }
 
 interface FlowRow {
@@ -57,7 +59,6 @@ interface FlowRow {
   clicked: number
   clickRate: number
   revenue: number
-  triggerType?: string
 }
 
 interface EmailReport {
@@ -90,35 +91,36 @@ interface EmailReport {
 }
 
 interface ShopifyReport {
-  customers?: { newCustomersLast30Days?: number; totalCustomers?: number }
+  customers?: { newCustomersLast30Days?: number }
   orders?: { totalOrders?: number; totalRevenue?: number; averageOrderValue?: number }
 }
 
-interface CampaignsResponse {
-  campaigns: CampaignRow[]
-  summary?: { totalRevenue?: number; totalDelivered?: number; avgOpenRate?: number; avgClickRate?: number; sentCampaigns?: number }
-  currency?: string
-}
-
-interface FlowsResponse {
-  flows: FlowRow[]
-  summary?: { totalRevenue?: number; totalDelivered?: number; avgOpenRate?: number; avgClickRate?: number; liveFlows?: number }
-  currency?: string
-}
-
-// ─── Helpers ────────────────────────────────────────────
-
-const BENCHMARKS = {
-  openRate: 0.173,
-  clickRate: 0.011,
-  ctor: 0.041,
-}
+interface CampaignsResponse { campaigns: CampaignRow[]; summary?: { totalRevenue?: number; sentCampaigns?: number }; currency?: string }
+interface FlowsResponse { flows: FlowRow[]; summary?: { totalRevenue?: number; liveFlows?: number }; currency?: string }
 
 function rangeDays(r: Range): number {
   return r === "7d" ? 7 : r === "30d" ? 30 : r === "90d" ? 90 : r === "1A" ? 365 : 30
 }
 
-function previousPeriodDates(r: Range): { start: string; end: string } | null {
+function fmtCurrency(value: number, currency: string, compact = false): string {
+  if (!isFinite(value) || value === 0) return currency === "BRL" ? "R$ 0" : `${currency} 0`
+  if (compact) {
+    if (value >= 1_000_000) return `${currency === "BRL" ? "R$" : currency} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
+    if (value >= 10_000) return `${currency === "BRL" ? "R$" : currency} ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
+  }
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency, maximumFractionDigits: compact ? 0 : 2 }).format(value)
+  } catch {
+    return `${currency} ${value.toLocaleString("pt-BR")}`
+  }
+}
+
+function delta(curr: number, prev: number): number | null {
+  if (!isFinite(curr) || !isFinite(prev) || prev === 0) return null
+  return (curr - prev) / prev
+}
+
+function previousPeriodDates(r: Range) {
   if (r === "custom") return null
   const days = rangeDays(r)
   const now = new Date()
@@ -129,95 +131,37 @@ function previousPeriodDates(r: Range): { start: string; end: string } | null {
   return { start: fmt(prevStart), end: fmt(prevEnd) }
 }
 
-function fmtCurrency(value: number, currency: string): string {
-  if (!isFinite(value) || value === 0) {
-    return currency === "BRL" ? "R$ 0" : `${currency} 0`
-  }
-  try {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value)
-  } catch {
-    return `${currency} ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-  }
-}
-
-function fmtPct(value: number, frac = 2): string {
-  if (!isFinite(value)) return "—"
-  return `${(value * 100).toFixed(frac).replace(".", ",")}%`
-}
-
-function delta(curr: number, prev: number): number | null {
-  if (!isFinite(curr) || !isFinite(prev) || prev === 0) return null
-  return (curr - prev) / prev
-}
-
-// ─── Component ──────────────────────────────────────────
-
 export function TabPerformance({ storeId }: { storeId: string }) {
   const router = useRouter()
   const [range, setRange] = useState<Range>("30d")
-  const [channel, setChannel] = useState<"email" | "sms" | "push">("email")
   const [compareEnabled, setCompareEnabled] = useState(true)
 
-  // Conexão email-platform
-  const { data: credData, isLoading: credLoading } = useSWR(
-    `/api/client-stores/credentials?store_id=${storeId}`,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const credStatus = (credData?.status ?? {}) as Record<string, IntegrationStatus>
-  const klaviyoConnected = !!credStatus.klaviyo?.connected
-  const omnisendConnected = !!credStatus.omnisend?.connected
-  const shopifyConnected = !!credStatus.shopify?.connected
-  const emailPlatformConnected = klaviyoConnected || omnisendConnected
+  const { data: credData, isLoading: credLoading } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
+  const status = (credData?.status ?? {}) as Record<string, IntegrationStatus>
+  const emailPlatformConnected = !!status.klaviyo?.connected || !!status.omnisend?.connected
+  const shopifyConnected = !!status.shopify?.connected
 
   const periodParam = `period=${range}`
 
-  // Current period
-  const { data: report, isLoading: reportLoading, mutate: refreshReport } = useSWR<EmailReport>(
-    emailPlatformConnected ? `/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: campaignsRaw, mutate: refreshCampaigns } = useSWR<CampaignsResponse>(
-    emailPlatformConnected ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: flowsRaw, mutate: refreshFlows } = useSWR<FlowsResponse>(
-    emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: shopify, mutate: refreshShopify } = useSWR<ShopifyReport>(
-    shopifyConnected ? `/api/integrations/shopify/report?store_id=${storeId}&${periodParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
+  const { data: report } = useSWR<EmailReport>(emailPlatformConnected ? `/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
+  const { data: campaignsRaw } = useSWR<CampaignsResponse>(emailPlatformConnected ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
+  const { data: flowsRaw } = useSWR<FlowsResponse>(emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
+  const { data: shopify } = useSWR<ShopifyReport>(shopifyConnected ? `/api/integrations/shopify/report?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
 
-  // Previous period (apenas se compare ligado e nao for custom)
   const prevDates = compareEnabled ? previousPeriodDates(range) : null
   const prevParam = prevDates ? `period=custom&start_date=${prevDates.start}&end_date=${prevDates.end}` : null
-  const { data: reportPrev } = useSWR<EmailReport>(
-    emailPlatformConnected && prevParam ? `/api/integrations/email-platform/report?store_id=${storeId}&${prevParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: shopifyPrev } = useSWR<ShopifyReport>(
-    shopifyConnected && prevParam ? `/api/integrations/shopify/report?store_id=${storeId}&${prevParam}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
+  const { data: reportPrev } = useSWR<EmailReport>(emailPlatformConnected && prevParam ? `/api/integrations/email-platform/report?store_id=${storeId}&${prevParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
+  const { data: shopifyPrev } = useSWR<ShopifyReport>(shopifyConnected && prevParam ? `/api/integrations/shopify/report?store_id=${storeId}&${prevParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
 
   const currency = report?.account?.currency || campaignsRaw?.currency || flowsRaw?.currency || "BRL"
 
-  // KPIs derivados
   const kpis = useMemo(() => {
-    const rv = report?.revenue ?? {}
-    const rvPrev = reportPrev?.revenue ?? {}
     const sh = shopify?.orders ?? {}
     const shPrev = shopifyPrev?.orders ?? {}
     const cs = shopify?.customers ?? {}
     const csPrev = shopifyPrev?.customers ?? {}
+    const rv = report?.revenue ?? {}
+    const rvPrev = reportPrev?.revenue ?? {}
 
     const faturamento = Number(sh.totalRevenue ?? rv.storeRevenue ?? 0)
     const faturamentoPrev = Number(shPrev.totalRevenue ?? rvPrev.storeRevenue ?? 0)
@@ -225,8 +169,8 @@ export function TabPerformance({ storeId }: { storeId: string }) {
     const pedidosPrev = Number(shPrev.totalOrders ?? rvPrev.storeOrders ?? 0)
     const ticket = Number(sh.averageOrderValue ?? rv.averageOrderValue ?? 0)
     const ticketPrev = Number(shPrev.averageOrderValue ?? rvPrev.averageOrderValue ?? 0)
-    const novosClientes = Number(cs.newCustomersLast30Days ?? 0)
-    const novosClientesPrev = Number(csPrev.newCustomersLast30Days ?? 0)
+    const novos = Number(cs.newCustomersLast30Days ?? 0)
+    const novosPrev = Number(csPrev.newCustomersLast30Days ?? 0)
 
     return {
       faturamento,
@@ -234,82 +178,64 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       pedidos,
       pedidosDelta: delta(pedidos, pedidosPrev),
       ticket,
-      ticketDelta: ticket - ticketPrev,
+      ticketDeltaAbs: ticket - ticketPrev,
       ticketDeltaPct: delta(ticket, ticketPrev),
-      novosClientes,
-      novosClientesDelta: delta(novosClientes, novosClientesPrev),
+      novos,
+      novosDelta: delta(novos, novosPrev),
     }
   }, [report, reportPrev, shopify, shopifyPrev])
 
-  // Receita atribuída
   const attribution = useMemo(() => {
     const rv = report?.revenue ?? {}
     const totalRevenue = Number(rv.storeRevenue ?? 0)
     const attributed = Number(rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? 0)
-    const campRev = Number(rv.campaignRevenue ?? 0)
-    const flowRev = Number(rv.flowRevenue ?? 0)
-    const attributedOrders = Number(rv.klaviyoAttributedOrders ?? 0)
-    const sumCampaignOrders = (campaignsRaw?.campaigns ?? []).reduce((s, c) => s + (c.recipients > 0 && c.openRate > 0 ? Math.round(c.revenue / (ticketSafe(rv.averageOrderValue))) : 0), 0)
-    const campaignsCount = (campaignsRaw?.campaigns ?? []).filter((c) => c.status === "sent" || c.status === "Sent" || c.status === "live").length || campaignsRaw?.summary?.sentCampaigns || 0
-    const flowsCount = (flowsRaw?.flows ?? []).filter((f) => f.status === "live" || f.status === "Live" || f.status === "active").length || flowsRaw?.summary?.liveFlows || 0
+    const campRev = Number(rv.campaignRevenue ?? campaignsRaw?.summary?.totalRevenue ?? 0)
+    const flowRev = Number(rv.flowRevenue ?? flowsRaw?.summary?.totalRevenue ?? 0)
+    const orders = Number(rv.klaviyoAttributedOrders ?? 0)
+    const campOrders = (campaignsRaw?.campaigns ?? []).reduce((s, c) => s + (c.recipients > 0 ? Math.round(c.recipients * c.clickRate) : 0), 0)
+    const flowOrders = Math.max(0, orders - campOrders)
+    const sentCampaigns = Number(campaignsRaw?.summary?.sentCampaigns ?? campaignsRaw?.campaigns?.length ?? 0)
+    const liveFlows = Number(flowsRaw?.summary?.liveFlows ?? flowsRaw?.flows?.filter((f) => f.status === "live").length ?? 0)
     const pct = totalRevenue > 0 ? attributed / totalRevenue : 0
+    const sumBars = campRev + flowRev
     return {
-      totalRevenue,
       attributed,
       pct,
-      campaignRevenue: campRev,
-      flowRevenue: flowRev,
-      attributedOrders,
-      sumCampaignOrders,
-      campaignsCount,
-      flowsCount,
+      campRev,
+      flowRev,
+      campPct: sumBars > 0 ? campRev / sumBars : 0,
+      flowPct: sumBars > 0 ? flowRev / sumBars : 0,
+      orders,
+      campOrders,
+      flowOrders,
+      sentCampaigns,
+      liveFlows,
     }
   }, [report, campaignsRaw, flowsRaw])
 
-  // Email performance (já em fração 0-1)
   const emailPerf = useMemo(() => {
     const ep = report?.emailPerformance ?? {}
+    const epPrev = reportPrev?.emailPerformance ?? {}
+    const delivered = Number(ep.delivered ?? 0)
+    const deliveredPrev = Number(epPrev.delivered ?? 0)
     return {
-      delivered: Number(ep.delivered ?? campaignsRaw?.summary?.totalDelivered ?? 0),
-      openRate: Number(ep.openRate ?? campaignsRaw?.summary?.avgOpenRate ?? 0),
-      clickRate: Number(ep.clickRate ?? campaignsRaw?.summary?.avgClickRate ?? 0),
+      delivered,
+      deliveredDelta: delta(delivered, deliveredPrev),
+      openRate: Number(ep.openRate ?? 0),
+      clickRate: Number(ep.clickRate ?? 0),
       ctor: Number(ep.clickToOpenRate ?? 0),
       bounceRate: Number(ep.bounceRate ?? 0),
     }
-  }, [report, campaignsRaw])
+  }, [report, reportPrev])
 
-  const emailPerfPrev = useMemo(() => {
-    const ep = reportPrev?.emailPerformance ?? {}
-    return {
-      delivered: Number(ep.delivered ?? 0),
-    }
-  }, [reportPrev])
-
-  // Top campanhas + flows (por receita)
-  const topCampaigns = useMemo(() => {
-    return [...(campaignsRaw?.campaigns ?? [])]
-      .filter((c) => c.revenue > 0 || c.recipients > 0)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
-  }, [campaignsRaw])
-
-  const topFlows = useMemo(() => {
-    return [...(flowsRaw?.flows ?? [])]
-      .filter((f) => f.revenue > 0 || f.recipients > 0)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 6)
-  }, [flowsRaw])
-
-  // Total campanhas + flows pra footer das tabelas
-  const campCount = Number(campaignsRaw?.summary?.sentCampaigns ?? campaignsRaw?.campaigns?.length ?? 0)
-  const flowCount = Number(flowsRaw?.summary?.liveFlows ?? flowsRaw?.flows?.filter((f) => f.status === "live").length ?? 0)
-
-  const handleRefresh = () => {
-    refreshReport()
-    refreshCampaigns()
-    refreshFlows()
-    refreshShopify()
-  }
+  const topCampaigns = useMemo(
+    () => [...(campaignsRaw?.campaigns ?? [])].filter((c) => c.revenue > 0 || c.recipients > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+    [campaignsRaw],
+  )
+  const topFlows = useMemo(
+    () => [...(flowsRaw?.flows ?? [])].filter((f) => f.revenue > 0 || f.recipients > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 6),
+    [flowsRaw],
+  )
 
   if (credLoading) {
     return (
@@ -321,581 +247,305 @@ export function TabPerformance({ storeId }: { storeId: string }) {
 
   if (!emailPlatformConnected) {
     return (
-      <div className="bg-white border rounded-[10px] p-8 text-center" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-        <h3 className="text-[14px] font-bold text-slate-900 mb-2">Sem plataforma de email conectada</h3>
-        <p className="text-[12px] text-slate-500 mb-4">
-          Conecte Klaviyo ou Omnisend na aba <strong>Setup</strong> pra ver os dados de performance.
-        </p>
-      </div>
+      <Section title="Sem plataforma de email conectada">
+        <div className="py-4 text-center">
+          <p className="text-[13px] text-slate-500 mb-3">Conecte Klaviyo ou Omnisend em <strong>Setup</strong> para ver os dados de performance.</p>
+        </div>
+      </Section>
     )
   }
 
-  const loading = reportLoading
-
-  // Banner de aviso quando ha problema com a integracao
-  const reportError = report?.error
   const showPermissionBanner = report?.hasReportingAccess === false
   const showRateLimitBanner = report?.rateLimited === true
 
   return (
-    <div className="flex flex-col gap-3">
-      {(showPermissionBanner || showRateLimitBanner || reportError) && (
+    <div>
+      {(showPermissionBanner || showRateLimitBanner) && (
         <div
-          className="flex items-start gap-3 p-3 rounded-md border"
+          className="flex items-start gap-3 p-3 mb-4 rounded-[8px]"
           style={
             showRateLimitBanner
-              ? { background: "#FFFBEB", borderColor: "#FDE68A", color: "#92400E" }
-              : { background: "#FEF7F7", borderColor: "#FECACA", color: "#991B1B" }
+              ? { background: C.warnBg, border: `1px solid ${C.warnBorder}`, color: C.warn }
+              : { background: C.negBg, border: `1px solid ${C.negBorder}`, color: C.neg }
           }
         >
-          <Loader2 className={cn("h-4 w-4 mt-0.5 shrink-0", showRateLimitBanner && "animate-spin")} />
+          <Loader2 className={`h-4 w-4 mt-0.5 shrink-0 ${showRateLimitBanner ? "animate-spin" : ""}`} />
           <div className="flex-1 min-w-0">
             <div className="text-[12.5px] font-semibold leading-tight">
-              {showRateLimitBanner
-                ? "Rate limit atingido — usando cache"
-                : showPermissionBanner
-                  ? "Permissão insuficiente na API key da plataforma de email"
-                  : "Erro ao carregar dados"}
+              {showRateLimitBanner ? "Rate limit atingido — usando cache" : "Permissão insuficiente na API key"}
             </div>
-            <div className="text-[11.5px] mt-0.5 leading-snug opacity-85">
-              {showPermissionBanner
-                ? "Reconecte a integração com os escopos completos para destravar campanhas, flows e atribuição. KPIs do Shopify continuam funcionando."
-                : reportError ?? "Tentaremos novamente em alguns segundos."}
+            <div className="text-[11.5px] mt-0.5 opacity-85">
+              {showPermissionBanner ? "Reconecte a integração com os escopos completos." : "Tentaremos novamente em alguns segundos."}
             </div>
           </div>
           {showPermissionBanner && (
-            <a
-              href={`/admin/stores/${storeId}?tab=setup`}
-              className="text-[11.5px] font-semibold whitespace-nowrap shrink-0 underline"
-            >
-              Reconectar
-            </a>
+            <a href={`/admin/stores/${storeId}?tab=setup`} className="text-[11.5px] font-semibold underline shrink-0">Reconectar</a>
           )}
         </div>
       )}
-      {/* ─── Header bar: range + compare + actions ─── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+
+      {/* Controls row */}
+      <div className="flex items-center justify-between mb-[18px] gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-md">
-            {(["7d", "30d", "90d", "1A", "custom"] as Range[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={cn(
-                  "px-2.5 py-1 rounded text-[12px] font-semibold transition-colors",
-                  range === r ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
-                )}
-              >
-                {r === "custom" ? "Custom" : r}
-              </button>
-            ))}
-          </div>
+          <DateRangeChip value={range} onChange={setRange} />
+          <span className="text-[12px]" style={{ color: C.g400 }}>Comparando com</span>
           <button
             onClick={() => setCompareEnabled((v) => !v)}
-            className={cn(
-              "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11.5px] font-medium border transition-colors",
-              compareEnabled
-                ? "bg-brand-50 text-brand-700 border-brand-200"
-                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50",
-            )}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[6px] text-[12px] font-medium"
+            style={{
+              background: compareEnabled ? C.blue50 : C.white,
+              color: compareEnabled ? C.brand : C.g700,
+              border: `1px solid ${compareEnabled ? C.blue100 : C.border}`,
+            }}
           >
-            Comparando com{" "}
-            <span className={cn("font-semibold", compareEnabled ? "text-brand-700" : "text-slate-700")}>
-              Período anterior
-            </span>
-          </button>
-          <button
-            onClick={handleRefresh}
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
-            title="Atualizar"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            Período anterior
           </button>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          <ActionButton
-            icon={ExternalLink}
-            label="Abrir relatório"
-            onClick={() => {
-              const url = new URL(window.location.href)
-              url.searchParams.set("tab", "relatorio")
-              router.push(url.pathname + url.search)
-            }}
-          />
-          <ActionButton
-            icon={Download}
-            label="Exportar PDF"
-            onClick={() => window.print()}
-          />
-          <ActionButton
-            icon={Send}
-            label="Enviar ao cliente"
-            primary
+        <div className="flex gap-2">
+          <Btn variant="secondary" size="sm" icon={<ExternalLink className="h-3.5 w-3.5" />}
+            onClick={() => router.push(`/admin/stores/${storeId}?tab=relatorio`)}>
+            Abrir relatório
+          </Btn>
+          <Btn variant="secondary" size="sm" icon={<Download className="h-3.5 w-3.5" />}
+            onClick={() => window.print()}>
+            Exportar PDF
+          </Btn>
+          <Btn variant="primary" size="sm" icon={<Send className="h-3.5 w-3.5" />}
             onClick={() => {
               const link = `${window.location.origin}/cliente/${storeId}`
               window.prompt("Link do dashboard do cliente (copie):", link)
-            }}
-          />
+            }}>
+            Enviar ao cliente
+          </Btn>
         </div>
       </div>
 
-      {/* ─── 4 KPIs ─── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          icon={TrendingUp}
-          label="Faturamento total"
-          value={fmtCurrency(kpis.faturamento, currency)}
-          compact
-          rawValue={kpis.faturamento}
-          delta={kpis.faturamentoDelta}
-          deltaLabel="vs período anterior"
-        />
-        <KpiCard
-          icon={ShoppingCart}
-          label="Pedidos"
-          value={kpis.pedidos.toLocaleString("pt-BR")}
-          delta={kpis.pedidosDelta}
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Ticket médio"
-          value={fmtCurrency(kpis.ticket, currency)}
-          delta={kpis.ticketDeltaPct}
-          extraDelta={kpis.ticketDelta !== 0 ? `${kpis.ticketDelta >= 0 ? "+" : ""}${fmtCurrency(kpis.ticketDelta, currency)}` : null}
-        />
-        <KpiCard
-          icon={Mail}
-          label="Novos clientes"
-          value={kpis.novosClientes.toLocaleString("pt-BR")}
-          delta={kpis.novosClientesDelta}
-        />
+      {/* 4 PerfKpi cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <PerfKpi Icon={DollarSign} label="Faturamento total" value={fmtCurrency(kpis.faturamento, currency, true)} delta={kpis.faturamentoDelta != null ? `${kpis.faturamentoDelta >= 0 ? "+" : ""}${(kpis.faturamentoDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.faturamentoDelta != null && kpis.faturamentoDelta >= 0 ? "pos" : "neg"} />
+        <PerfKpi Icon={Package} label="Pedidos" value={kpis.pedidos.toLocaleString("pt-BR")} delta={kpis.pedidosDelta != null ? `${kpis.pedidosDelta >= 0 ? "+" : ""}${(kpis.pedidosDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.pedidosDelta != null && kpis.pedidosDelta >= 0 ? "pos" : "neg"} />
+        <PerfKpi Icon={BarChart3} label="Ticket médio" value={fmtCurrency(kpis.ticket, currency)} delta={kpis.ticketDeltaAbs !== 0 ? `${kpis.ticketDeltaAbs >= 0 ? "+" : ""}${fmtCurrency(kpis.ticketDeltaAbs, currency)}` : "—"} tone={kpis.ticketDeltaAbs >= 0 ? "pos" : "neg"} />
+        <PerfKpi Icon={Users} label="Novos clientes" value={kpis.novos.toLocaleString("pt-BR")} delta={kpis.novosDelta != null ? `${kpis.novosDelta >= 0 ? "+" : ""}${(kpis.novosDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.novosDelta != null && kpis.novosDelta >= 0 ? "pos" : "neg"} />
       </div>
 
-      {/* ─── Receita atribuída Convertfy ─── */}
-      <AttributionCard
-        attribution={attribution}
-        currency={currency}
-        channel={channel}
-        setChannel={setChannel}
-        smsActive={false}
-        pushActive={false}
-      />
+      {/* Receita atribuída */}
+      <Section
+        title="Receita atribuída Convertfy"
+        subtitle="Receita gerada por canais que gerenciamos"
+        right={
+          <div className="flex gap-1.5">
+            <Badge tone="pos" dot>Email</Badge>
+            <Badge tone="neut">SMS</Badge>
+            <Badge tone="purple">Push</Badge>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_280px] gap-6 items-center">
+          {/* Left: big value + sub kpis */}
+          <div>
+            <div className="text-[12px]" style={{ color: C.g500 }}>Total atribuído</div>
+            <div className="text-[38px] font-semibold text-slate-900" style={{ letterSpacing: "-0.025em", ...TNUM }}>
+              {fmtCurrency(attribution.attributed, currency, true)}
+            </div>
+            <div className="text-[13px] font-semibold mt-0.5" style={{ color: C.brand, ...TNUM }}>
+              {(attribution.pct * 100).toFixed(1).replace(".", ",")}% do faturamento total
+            </div>
+            <div className="flex gap-3.5 mt-3.5">
+              <SubKpi label="Pedidos" value={attribution.orders.toLocaleString("pt-BR")} />
+              <SubKpi label="Email" value={fmtCurrency(attribution.attributed, currency, true)} sub={`${(attribution.pct * 100).toFixed(1).replace(".", ",")}%`} />
+              <SubKpi label="SMS" value={`${currency === "BRL" ? "R$" : currency} 0`} sub="não ativo" mute />
+            </div>
+          </div>
 
-      {/* ─── Performance de email ─── */}
-      <div className="bg-white border rounded-[10px] p-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-        <h3 className="text-[14px] font-bold text-slate-900 m-0 mb-3">Performance de email</h3>
+          {/* Middle: channel bars */}
+          <div>
+            <ChannelBar label="Campanhas" value={attribution.campRev} pct={attribution.campPct} pedidos={attribution.sentCampaigns} pedidosSuffix="envios" currency={currency} />
+            <ChannelBar label="Flows" value={attribution.flowRev} pct={attribution.flowPct} pedidos={attribution.liveFlows} pedidosSuffix="ativos" currency={currency} />
+          </div>
+
+          {/* Right: gauge */}
+          <Gauge pct={attribution.pct * 100} />
+        </div>
+      </Section>
+
+      {/* Email performance */}
+      <Section title="Performance de email">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <EmailMetric
-            icon={Mail}
-            label="Entregues"
-            value={emailPerf.delivered.toLocaleString("pt-BR")}
-            sub={
-              emailPerfPrev.delivered > 0
-                ? `${delta(emailPerf.delivered, emailPerfPrev.delivered)! >= 0 ? "+" : ""}${((delta(emailPerf.delivered, emailPerfPrev.delivered) || 0) * 100).toFixed(0)}% vs período`
-                : null
-            }
-          />
-          <EmailMetric
-            icon={Mail}
-            label="Abertura"
-            value={fmtPct(emailPerf.openRate, 2)}
-            highlight={emailPerf.openRate > BENCHMARKS.openRate ? "pos" : "neg"}
-            sub={`benchmark ${(BENCHMARKS.openRate * 100).toFixed(1).replace(".", ",")}%`}
-          />
-          <EmailMetric
-            icon={Mail}
-            label="Clique"
-            value={fmtPct(emailPerf.clickRate, 2)}
-            highlight={emailPerf.clickRate > BENCHMARKS.clickRate ? "pos" : "neg"}
-            sub={`benchmark ${(BENCHMARKS.clickRate * 100).toFixed(1).replace(".", ",")}%`}
-          />
-          <EmailMetric
-            icon={Mail}
-            label="CTOR"
-            value={fmtPct(emailPerf.ctor, 2)}
-            highlight={emailPerf.ctor > BENCHMARKS.ctor ? "pos" : "neg"}
-            sub={`benchmark ${(BENCHMARKS.ctor * 100).toFixed(1).replace(".", ",")}%`}
-          />
-          <EmailMetric
-            icon={Mail}
-            label="Bounces"
-            value={Math.round(emailPerf.delivered * emailPerf.bounceRate).toLocaleString("pt-BR")}
-            sub={`${(emailPerf.bounceRate * 100).toFixed(2).replace(".", ",")}% taxa`}
-          />
+          <EmailMetric Icon={Send} label="Entregues" value={emailPerf.delivered.toLocaleString("pt-BR")} delta={emailPerf.deliveredDelta != null ? `${emailPerf.deliveredDelta >= 0 ? "+" : ""}${(emailPerf.deliveredDelta * 100).toFixed(0)}% vs período` : "—"} />
+          <EmailMetric Icon={Mail} label="Abertura" value={`${(emailPerf.openRate * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 17,3%" tone={emailPerf.openRate > 0.173 ? "pos" : "default"} />
+          <EmailMetric Icon={Target} label="Clique" value={`${(emailPerf.clickRate * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 1,1%" tone={emailPerf.clickRate > 0.011 ? "pos" : "default"} />
+          <EmailMetric Icon={Zap} label="CTOR" value={`${(emailPerf.ctor * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 4,1%" tone={emailPerf.ctor > 0.041 ? "pos" : "default"} />
+          <EmailMetric Icon={X} label="Bounces" value={Math.round(emailPerf.delivered * emailPerf.bounceRate).toLocaleString("pt-BR")} delta={`${(emailPerf.bounceRate * 100).toFixed(2).replace(".", ",")}% taxa`} tone={emailPerf.bounceRate < 0.02 ? "pos" : "default"} />
         </div>
-      </div>
+      </Section>
 
-      {/* ─── Top campanhas + Top flows ─── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <TopTable
-          title="Top campanhas por receita"
-          subtitle={`${campCount} envios · ${range === "1A" ? "últimos 12 meses" : `últimos ${rangeDays(range)} dias`}`}
-          columns={[
-            { key: "name", label: "Campanha", width: "1fr" },
-            { key: "envios", label: "Envios", width: "70px", align: "right" },
-            { key: "abertura", label: "Abertura", width: "80px", align: "right" },
-            { key: "cliques", label: "Cliques", width: "70px", align: "right" },
-            { key: "receita", label: "Receita", width: "100px", align: "right" },
-          ]}
-          rows={topCampaigns.map((c) => ({
-            key: c.id,
-            isLive: c.status === "live",
-            cells: {
-              name: c.name,
-              envios: (c.delivered || c.recipients || 0).toLocaleString("pt-BR"),
-              abertura: fmtPct(c.openRate, 2),
-              cliques: fmtPct(c.clickRate, 2),
-              receita: <span className="text-brand-600 font-bold">{fmtCurrency(c.revenue, currency)}</span>,
-            },
-          }))}
-        />
-        <TopTable
-          title="Top flows por receita"
-          subtitle={`${flowCount} flows ativos`}
-          columns={[
-            { key: "name", label: "Flow", width: "1fr" },
-            { key: "envios", label: "Envios", width: "70px", align: "right" },
-            { key: "abertura", label: "Abertura", width: "80px", align: "right" },
-            { key: "cliques", label: "Cliques", width: "70px", align: "right" },
-            { key: "receita", label: "Receita", width: "100px", align: "right" },
-          ]}
-          rows={topFlows.map((f) => ({
-            key: f.id,
-            isLive: f.status === "live",
-            cells: {
-              name: f.name,
-              envios: (f.delivered || f.recipients || 0).toLocaleString("pt-BR"),
-              abertura: fmtPct(f.openRate, 2),
-              cliques: fmtPct(f.clickRate, 2),
-              receita: <span className="text-brand-600 font-bold">{fmtCurrency(f.revenue, currency)}</span>,
-            },
-          }))}
-        />
+      {/* Tables */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <Section title="Top campanhas por receita" subtitle={`${attribution.sentCampaigns} envios · últimos ${rangeDays(range)} dias`}>
+          <PerfTable rows={topCampaigns} currency={currency} />
+        </Section>
+        <Section title="Top flows por receita" subtitle={`${attribution.liveFlows} flows ativos`}>
+          <PerfTable rows={topFlows} flows currency={currency} />
+        </Section>
       </div>
     </div>
   )
 }
 
-// ─── Subcomponents ──────────────────────────────────────
+// ─── Subcomponents ──────────────────────────────────
 
-function ticketSafe(v: number | undefined): number {
-  return v && v > 0 ? v : 1
+function DateRangeChip({ value, onChange }: { value: Range; onChange: (v: Range) => void }) {
+  return (
+    <div className="inline-flex p-[3px] rounded-[8px]" style={{ background: C.g50, border: `1px solid ${C.border}` }}>
+      {(["7d", "30d", "90d", "1A", "custom"] as Range[]).map((r) => {
+        const active = r === value
+        return (
+          <button
+            key={r}
+            onClick={() => onChange(r)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-[12.5px] font-medium rounded-[6px] transition-all"
+            style={{
+              color: active ? C.g900 : C.g500,
+              background: active ? C.white : "transparent",
+              boxShadow: active ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+            }}
+          >
+            {r === "custom" && <Calendar className="h-3 w-3" />}
+            {r === "custom" ? "Custom" : r}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
-function ActionButton({
-  icon: Icon,
-  label,
-  onClick,
-  primary,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  onClick: () => void
-  primary?: boolean
-}) {
+function PerfKpi({ Icon, label, value, delta, tone }: { Icon: typeof DollarSign; label: string; value: string; delta: string; tone: "pos" | "neg" }) {
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[12px] font-semibold transition-colors border",
-        primary
-          ? "bg-brand-500 hover:bg-brand-600 text-white border-brand-500"
-          : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200",
-      )}
+    <div
+      className="p-4 rounded-[12px]"
+      style={{ background: C.white, border: `1px solid ${C.border}`, boxShadow: C.shadowSm }}
     >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </button>
-  )
-}
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  delta: deltaVal,
-  deltaLabel,
-  extraDelta,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
-  compact?: boolean
-  rawValue?: number
-  delta?: number | null
-  deltaLabel?: string
-  extraDelta?: string | null
-}) {
-  const sign = deltaVal != null && deltaVal >= 0
-  const color = deltaVal == null ? "text-slate-400" : sign ? "text-emerald-600" : "text-red-600"
-  return (
-    <div className="bg-white border rounded-[10px] p-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="h-3.5 w-3.5 text-slate-400" />
-        <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-[6px] inline-flex items-center justify-center shrink-0" style={{ background: C.blue50, color: C.brand }}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <span className="text-[12px] font-medium" style={{ color: C.g500 }}>{label}</span>
       </div>
-      <div className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mb-1.5">{value}</div>
-      <div className={cn("flex items-center gap-1.5 text-[11.5px] font-semibold", color)}>
-        {extraDelta && <span>{extraDelta}</span>}
-        {deltaVal != null && (
-          <span>
-            {sign ? "+" : ""}{(deltaVal * 100).toFixed(1).replace(".", ",")}%
-          </span>
-        )}
-        {deltaLabel && <span className="text-slate-400 font-normal">{deltaLabel}</span>}
-        {deltaVal == null && !extraDelta && <span className="text-slate-400 font-normal">—</span>}
-      </div>
+      <div className="text-[26px] font-semibold text-slate-900 mt-2.5" style={{ letterSpacing: "-0.02em", ...TNUM }}>{value}</div>
+      <div className="text-[12px] font-medium mt-1" style={{ color: tone === "pos" ? C.pos : tone === "neg" ? C.neg : C.g500, ...TNUM }}>{delta}</div>
     </div>
   )
 }
 
-function AttributionCard({
-  attribution,
-  currency,
-  channel,
-  setChannel,
-  smsActive,
-  pushActive,
-}: {
-  attribution: {
-    totalRevenue: number
-    attributed: number
-    pct: number
-    campaignRevenue: number
-    flowRevenue: number
-    attributedOrders: number
-    sumCampaignOrders: number
-    campaignsCount: number
-    flowsCount: number
-  }
-  currency: string
-  channel: "email" | "sms" | "push"
-  setChannel: (c: "email" | "sms" | "push") => void
-  smsActive: boolean
-  pushActive: boolean
-}) {
-  const { attributed, pct, campaignRevenue, flowRevenue, attributedOrders, campaignsCount, flowsCount } = attribution
-  const totalBar = campaignRevenue + flowRevenue
-  const campWidth = totalBar > 0 ? (campaignRevenue / totalBar) * 100 : 0
-  const flowWidth = totalBar > 0 ? (flowRevenue / totalBar) * 100 : 0
-
-  // Donut
-  const RADIUS = 50
-  const STROKE = 12
-  const circumference = 2 * Math.PI * RADIUS
-  const filled = circumference * pct
-
+function SubKpi({ label, value, sub, mute }: { label: string; value: string; sub?: string; mute?: boolean }) {
   return (
-    <div className="bg-white border rounded-[10px] p-4 md:p-5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <h3 className="text-[14px] font-bold text-slate-900 m-0">Receita atribuída Convertfy</h3>
-          <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">Receita gerada por canais que gerenciamos</p>
-        </div>
-        <div className="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-md">
-          {(["email", "sms", "push"] as const).map((c) => {
-            const enabled = c === "email" || (c === "sms" && smsActive) || (c === "push" && pushActive)
-            const Icon = c === "email" ? Mail : c === "sms" ? MessageSquare : BellRing
-            return (
-              <button
-                key={c}
-                onClick={() => enabled && setChannel(c)}
-                disabled={!enabled}
-                className={cn(
-                  "inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors",
-                  channel === c && enabled && "bg-white text-emerald-600 shadow-sm",
-                  channel !== c && enabled && "text-slate-600 hover:text-slate-900",
-                  !enabled && "text-slate-300 cursor-not-allowed",
-                )}
+    <div>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em]" style={{ color: C.g500 }}>{label}</div>
+      <div className="text-[14px] font-semibold mt-0.5" style={{ color: mute ? C.g400 : C.g900, ...TNUM }}>{value}</div>
+      {sub && <div className="text-[11px]" style={{ color: C.g500, ...TNUM }}>{sub}</div>}
+    </div>
+  )
+}
+
+function ChannelBar({ label, value, pct, pedidos, pedidosSuffix, currency }: { label: string; value: number; pct: number; pedidos: number; pedidosSuffix: string; currency: string }) {
+  return (
+    <div className="mb-3">
+      <div className="flex justify-between items-baseline mb-1.5">
+        <span className="text-[12.5px] font-medium" style={{ color: C.g700 }}>{label}</span>
+        <span className="text-[13px] font-semibold" style={{ color: C.g900, ...TNUM }}>
+          {fmtCurrency(value, currency)}
+        </span>
+      </div>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: C.g100 }}>
+        <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: C.brand }} />
+      </div>
+      <div className="text-[10.5px] mt-1" style={{ color: C.g500, ...TNUM }}>{pedidos.toLocaleString("pt-BR")} {pedidosSuffix}</div>
+    </div>
+  )
+}
+
+function Gauge({ pct }: { pct: number }) {
+  const r = 60
+  const c = 2 * Math.PI * r
+  const visible = (pct / 100) * c * 0.75
+  return (
+    <div className="flex items-center justify-center">
+      <svg width="160" height="120" viewBox="0 0 160 120">
+        <circle cx="80" cy="80" r={r} fill="none" stroke={C.g100} strokeWidth="12"
+          strokeDasharray={`${c * 0.75} ${c}`} transform="rotate(135 80 80)" strokeLinecap="round" />
+        <circle cx="80" cy="80" r={r} fill="none" stroke={C.brand} strokeWidth="12"
+          strokeDasharray={`${visible} ${c}`} transform="rotate(135 80 80)" strokeLinecap="round" />
+        <text x="80" y="78" textAnchor="middle" fontSize="22" fontWeight="700" fill={C.g900} style={TNUM}>
+          {pct.toFixed(1).replace(".", ",")}%
+        </text>
+        <text x="80" y="96" textAnchor="middle" fontSize="9" fontWeight="600" fill={C.g400} letterSpacing="0.08em">
+          PARTICIPAÇÃO
+        </text>
+      </svg>
+    </div>
+  )
+}
+
+function EmailMetric({ Icon, label, value, delta, tone }: { Icon: typeof Send; label: string; value: string; delta: string; tone?: "pos" | "default" }) {
+  return (
+    <div className="p-3.5 rounded-[8px]" style={{ background: C.white, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className="h-4 w-4" style={{ color: C.brand }} />
+        <span className="text-[12px] font-medium" style={{ color: C.g500 }}>{label}</span>
+      </div>
+      <div className="text-[22px] font-semibold" style={{ color: tone === "pos" ? C.pos : C.g900, letterSpacing: "-0.02em", ...TNUM }}>{value}</div>
+      <div className="text-[11px] mt-0.5" style={{ color: C.g500, ...TNUM }}>{delta}</div>
+    </div>
+  )
+}
+
+function PerfTable({ rows, flows, currency }: { rows: Array<CampaignRow | FlowRow>; flows?: boolean; currency: string }) {
+  return (
+    <div className="overflow-x-auto -mx-[18px]">
+      <table className="w-full" style={{ borderCollapse: "collapse" as const }}>
+        <thead>
+          <tr style={{ background: C.g50 }}>
+            {[flows ? "Flow" : "Campanha", "Envios", "Abertura", "Cliques", "Receita"].map((h, i) => (
+              <th
+                key={h}
+                className="text-[10.5px] font-semibold uppercase tracking-[0.04em]"
+                style={{
+                  padding: "8px 10px",
+                  textAlign: i === 0 ? "left" : "right",
+                  color: C.g500,
+                  borderBottom: `1px solid ${C.border}`,
+                }}
               >
-                <Icon className="h-3 w-3" />
-                {c.toUpperCase()}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_160px] gap-4 lg:gap-6 items-center">
-        {/* Total + breakdown stats */}
-        <div className="flex flex-col gap-2">
-          <div className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">Total atribuído</div>
-          <div className="text-[34px] font-bold text-slate-900 leading-none tabular-nums">
-            {fmtCurrency(attributed, currency)}
-          </div>
-          <div className="text-[11.5px] font-semibold text-brand-600">
-            {(pct * 100).toFixed(1).replace(".", ",")}% do faturamento total
-          </div>
-          <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-            <div>
-              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">Pedidos</div>
-              <div className="text-[13px] font-bold text-slate-900 tabular-nums">{attributedOrders.toLocaleString("pt-BR")}</div>
-            </div>
-            <div>
-              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">Email</div>
-              <div className="text-[13px] font-bold text-slate-900 tabular-nums">{fmtCurrency(attributed, currency)}</div>
-              <div className="text-[9.5px] text-emerald-600 font-semibold">{(pct * 100).toFixed(1).replace(".", ",")}%</div>
-            </div>
-            <div>
-              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">SMS</div>
-              <div className="text-[13px] font-bold text-slate-400 tabular-nums">{fmtCurrency(0, currency)}</div>
-              <div className="text-[9.5px] text-slate-400">não ativo</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bar chart split */}
-        <div className="flex flex-col gap-3">
-          <div>
-            <div className="flex justify-between items-baseline mb-1.5">
-              <div className="text-[11.5px] text-slate-700">
-                <span className="font-semibold">Campanhas</span>
-                <span className="text-slate-400 ml-1.5">{campaignsCount} envios</span>
-              </div>
-              <div className="text-[12px] font-bold text-brand-600 tabular-nums">{fmtCurrency(campaignRevenue, currency)}</div>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${campWidth}%`, background: "#4E62D8" }} />
-            </div>
-          </div>
-          <div>
-            <div className="flex justify-between items-baseline mb-1.5">
-              <div className="text-[11.5px] text-slate-700">
-                <span className="font-semibold">Flows</span>
-                <span className="text-slate-400 ml-1.5">{flowsCount} ativos</span>
-              </div>
-              <div className="text-[12px] font-bold text-brand-600 tabular-nums">{fmtCurrency(flowRevenue, currency)}</div>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${flowWidth}%`, background: "#7B8AE0" }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Donut */}
-        <div className="flex flex-col items-center">
-          <div className="relative" style={{ width: 140, height: 140 }}>
-            <svg width={140} height={140} viewBox="0 0 140 140" style={{ transform: "rotate(-90deg)" }}>
-              <circle cx={70} cy={70} r={RADIUS} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={STROKE} />
-              <circle
-                cx={70}
-                cy={70}
-                r={RADIUS}
-                fill="none"
-                stroke="#4E62D8"
-                strokeWidth={STROKE}
-                strokeDasharray={`${filled} ${circumference}`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[24px] font-bold text-slate-900 tabular-nums leading-none">
-                {(pct * 100).toFixed(1).replace(".", ",")}%
-              </span>
-              <span className="text-[9.5px] font-semibold uppercase tracking-wider text-slate-500 mt-1">
-                Participação
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function EmailMetric({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  highlight,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
-  sub?: string | null
-  highlight?: "pos" | "neg"
-}) {
-  const valueColor =
-    highlight === "pos" ? "text-emerald-600" : highlight === "neg" ? "text-slate-900" : "text-slate-900"
-  return (
-    <div className="rounded-md bg-slate-50 border p-3" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="h-3 w-3 text-slate-400" />
-        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-      </div>
-      <div className={cn("text-[20px] font-bold tabular-nums leading-none", valueColor)}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-500 mt-1">{sub}</div>}
-    </div>
-  )
-}
-
-interface Column {
-  key: string
-  label: string
-  width: string
-  align?: "left" | "right"
-}
-
-interface Row {
-  key: string
-  isLive?: boolean
-  cells: Record<string, React.ReactNode>
-}
-
-function TopTable({ title, subtitle, columns, rows }: { title: string; subtitle?: string; columns: Column[]; rows: Row[] }) {
-  return (
-    <div className="bg-white border rounded-[10px] p-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="mb-3">
-        <h3 className="text-[14px] font-bold text-slate-900 m-0">{title}</h3>
-        {subtitle && <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">{subtitle}</p>}
-      </div>
-      {rows.length === 0 ? (
-        <div className="py-8 text-center text-[12px] text-slate-400 italic">Sem dados no período</div>
-      ) : (
-        <div className="overflow-x-auto -mx-4 px-4">
-          <table className="w-full text-[12px] min-w-[500px]">
-            <thead>
-              <tr className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-                {columns.map((c) => (
-                  <th key={c.key} className={cn("pb-2 px-2", c.align === "right" ? "text-right" : "text-left")} style={{ width: c.width }}>
-                    {c.label}
-                  </th>
-                ))}
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-8 text-center text-[12px] text-slate-400 italic">Sem dados no período</td>
+            </tr>
+          ) : (
+            rows.map((r) => (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td className="text-[12.5px] font-medium truncate max-w-[220px] whitespace-nowrap" style={{ padding: "10px", color: C.g900 }}>
+                  {flows && r.status === "live" && (
+                    <span className="mr-1.5 inline-block align-middle">
+                      <Badge tone="info" dot>Live</Badge>
+                    </span>
+                  )}
+                  {r.name}
+                </td>
+                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.delivered ?? r.recipients).toLocaleString("pt-BR")}</td>
+                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.openRate * 100).toFixed(2).replace(".", ",")}%</td>
+                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.clickRate * 100).toFixed(2).replace(".", ",")}%</td>
+                <td className="text-[13px] font-semibold text-right" style={{ padding: "10px", color: C.brand, ...TNUM }}>{fmtCurrency(r.revenue, currency)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.key} className="border-b last:border-b-0 hover:bg-slate-50/60" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-                  {columns.map((c) => (
-                    <td
-                      key={c.key}
-                      className={cn(
-                        "py-2.5 px-2 align-middle",
-                        c.align === "right" ? "text-right tabular-nums" : "",
-                      )}
-                    >
-                      {c.key === "name" ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-slate-800 font-medium truncate block max-w-[280px]">{row.cells[c.key]}</span>
-                          {row.isLive && (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-purple-600 w-fit">
-                              <span className="h-1.5 w-1.5 rounded-full bg-purple-500" /> Live
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        row.cells[c.key]
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   )
 }

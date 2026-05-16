@@ -1,19 +1,26 @@
 "use client"
 
 /**
- * StoreHero — card de cabecalho da pagina /admin/stores/[id].
- * Duas faixas: superior (identidade + responsavel + ring saude) e
- * inferior (4 KPIs com delta). Mantem responsivo.
+ * StoreHero — hero card de duas faixas (Convertfy DS v3).
+ *
+ * Faixa superior (padding 18×22, gap 18):
+ *  - StoreLogo (56px) com monograma Playfair italic
+ *  - Coluna info: nome (18px/600), badges (status · plano · MRR mute)
+ *    + URL clicável + avatar+nome cliente + "Cliente desde X"
+ *  - Coluna direita: card CSM (avatar + role + nome) + HealthRing
+ *
+ * Faixa inferior (bg gray-50, borda top, 4 colunas com border-left):
+ *  KPIs com label uppercase 10.5px + valor 22px tnum + delta colorido
  */
 
-import { ExternalLink, User as UserIcon } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { ExternalLink, Calendar } from "lucide-react"
+import { Avatar, Badge, C, ChannelIcon, HealthRing, StoreLogo, TNUM } from "./_primitives"
 
 interface KpiDelta {
   label: string
   value: string
   delta?: string
-  positive?: boolean
+  tone?: "pos" | "neg" | "info" | "neut"
 }
 
 interface StoreHeroProps {
@@ -27,47 +34,13 @@ interface StoreHeroProps {
   mrrCents?: number | null
   cmName?: string | null
   healthScore?: number | null
-  healthLabel?: string | null
   kpis?: KpiDelta[]
-  logoUrl?: string | null
+  channelChips?: Array<{ key: string; name: string }>
 }
 
-function HealthDonut({ score }: { score: number }) {
-  const safe = Math.max(0, Math.min(100, score))
-  const radius = 22
-  const circ = 2 * Math.PI * radius
-  const dash = (safe / 100) * circ
-  const color = safe >= 80 ? "#10B981" : safe >= 60 ? "#F59E0B" : "#DC2626"
-  return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: 56, height: 56 }}>
-      <svg width={56} height={56} viewBox="0 0 56 56" style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={28} cy={28} r={radius} fill="none" stroke="#F3F4F6" strokeWidth={6} />
-        <circle
-          cx={28}
-          cy={28}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={6}
-          strokeDasharray={`${dash} ${circ - dash}`}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[14px] font-bold tabular-nums" style={{ color }}>
-          {Math.round(safe)}
-        </span>
-      </span>
-    </div>
-  )
-}
-
-function fmtBRL(cents: number | null | undefined): string {
-  if (!cents && cents !== 0) return "—"
-  const v = cents / 100
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1).replace(".", ",")}k`
-  return `R$ ${v.toFixed(0)}`
+function formatMRR(cents?: number | null): string {
+  if (!cents || cents <= 0) return "—"
+  return `R$ ${Math.round(cents / 100).toLocaleString("pt-BR")}`
 }
 
 export function StoreHero({
@@ -81,164 +54,123 @@ export function StoreHero({
   mrrCents,
   cmName,
   healthScore,
-  healthLabel,
   kpis = [],
-  logoUrl,
 }: StoreHeroProps) {
-  const initials = storeName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase() || "??"
+  const planLabel = plan ? (planMonths ? `${plan} · ${planMonths}m` : plan) : null
+  const hostname = storeUrl?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? null
 
   return (
     <div
-      className="bg-white border rounded-[10px] overflow-hidden"
-      style={{ borderColor: "rgba(0,0,0,0.06)" }}
+      className="bg-white border rounded-[12px] overflow-hidden"
+      style={{ borderColor: C.border, boxShadow: C.shadowSm }}
     >
-      {/* Faixa superior — identidade + responsavel + ring saude */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 md:p-[18px]">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Logo / monograma */}
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logoUrl}
-              alt={storeName}
-              className="w-14 h-14 rounded-[8px] shrink-0 object-cover bg-slate-100"
-            />
-          ) : (
-            <div
-              className="w-14 h-14 rounded-[8px] shrink-0 flex items-center justify-center text-white font-bold text-[20px] tracking-tight"
-              style={{ background: "#1F2937" }}
-            >
-              {initials}
-            </div>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h2 className="text-[18px] font-bold text-slate-900 m-0 leading-tight truncate">
-                {storeName}
-              </h2>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold uppercase tracking-wider",
-                  status === "active"
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-slate-100 text-slate-600",
-                )}
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: status === "active" ? "#10B981" : "#9CA3AF" }}
-                />
-                {status === "active" ? "Ativo" : "Pausado"}
+      {/* TOP BAND */}
+      <div className="flex items-start gap-[18px] p-[18px_22px]">
+        <StoreLogo name={storeName} size={56} />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <span className="text-[18px] font-semibold text-slate-900" style={{ letterSpacing: "-0.01em" }}>
+              {storeName}
+            </span>
+            <Badge tone={status === "active" ? "pos" : "neut"} dot>
+              {status === "active" ? "Ativo" : "Pausado"}
+            </Badge>
+            {planLabel && <Badge tone="info">{planLabel}</Badge>}
+            {mrrCents != null && (
+              <span className="text-[11px] text-slate-400 ml-1" style={TNUM}>
+                MRR {formatMRR(mrrCents)}
               </span>
-              {plan && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[10.5px] font-semibold uppercase tracking-wider">
-                  {plan}{planMonths ? ` · ${planMonths}m` : ""}
-                </span>
-              )}
-              {mrrCents != null && (
-                <span className="text-[11.5px] text-slate-500 font-mono tabular-nums">
-                  MRR {fmtBRL(mrrCents)}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-[12px] text-slate-600 flex-wrap">
-              {storeUrl && (
-                <a
-                  href={storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-brand-600 hover:underline"
-                >
-                  {storeUrl.replace(/^https?:\/\//, "")}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-              {clientName && (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <span className="inline-flex items-center gap-1">
-                    <UserIcon className="h-3 w-3" />
-                    {clientName}
-                  </span>
-                </>
-              )}
-              {clientSince && (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <span className="text-slate-500">Cliente desde {clientSince}</span>
-                </>
-              )}
-            </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 text-[12.5px] text-slate-600">
+            {hostname && (
+              <a
+                href={storeUrl ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 hover:underline"
+                style={{ color: C.brand, textDecoration: "none" }}
+              >
+                {hostname}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+            {clientName && (
+              <span className="inline-flex items-center gap-1.5">
+                <Avatar name={clientName} size={18} />
+                {clientName}
+              </span>
+            )}
+            {clientSince && (
+              <span className="inline-flex items-center gap-1" style={{ color: C.g500 }}>
+                <Calendar className="h-3 w-3" />
+                Cliente desde {clientSince}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Lado direito: CSM + ring de saude */}
-        <div className="flex items-center gap-4 shrink-0">
+        {/* CSM + Health */}
+        <div className="flex items-stretch gap-3 shrink-0">
           {cmName && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] bg-slate-50 border border-slate-100">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold uppercase"
-                style={{ background: "linear-gradient(135deg,#4E62D8,#2137B6)" }}
-              >
-                {cmName.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")}
-              </div>
+            <div
+              className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-[8px]"
+              style={{ background: C.g50, border: `1px solid ${C.border}` }}
+            >
+              <Avatar name={cmName} size={28} />
               <div>
-                <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">CSM</div>
-                <div className="text-[12px] font-semibold text-slate-900 leading-tight">{cmName}</div>
-              </div>
-            </div>
-          )}
-          {healthScore != null && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] bg-slate-50 border border-slate-100">
-              <HealthDonut score={healthScore} />
-              <div>
-                <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">Saúde</div>
-                <div className="text-[12px] font-semibold text-slate-900 leading-tight">
-                  {healthLabel ||
-                    (healthScore >= 80 ? "Boa" : healthScore >= 60 ? "Atenção" : "Crítica")}
+                <div className="text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: C.g400 }}>
+                  CSM
                 </div>
+                <div className="text-[12.5px] font-semibold text-slate-900">{cmName.split(" ")[0]} {cmName.split(" ").slice(-1)[0]?.[0]}.</div>
               </div>
             </div>
           )}
+          {healthScore != null && <HealthRing score={healthScore} />}
         </div>
       </div>
 
-      {/* Faixa inferior — KPIs */}
+      {/* KPI BAND */}
       {kpis.length > 0 && (
         <div
-          className="grid grid-cols-2 md:grid-cols-4 border-t"
-          style={{ borderColor: "rgba(0,0,0,0.06)", background: "#F8FAFC" }}
+          className="grid grid-cols-2 md:grid-cols-4"
+          style={{ background: C.g50, borderTop: `1px solid ${C.border}` }}
         >
           {kpis.map((k, i) => (
             <div
-              key={k.label}
-              className={cn(
-                "py-3 md:py-4 px-3 md:px-5",
-                i < kpis.length - 1 && "border-r",
-                "[&:nth-child(2)]:border-r-0 md:[&:nth-child(2)]:border-r",
-                "[&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0",
-              )}
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
+              key={i}
+              className="px-[22px] py-[14px]"
+              style={{ borderLeft: i === 0 ? "none" : `1px solid ${C.border}` }}
             >
-              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+              <div
+                className="text-[10.5px] font-semibold uppercase tracking-[0.06em]"
+                style={{ color: C.g500 }}
+              >
                 {k.label}
               </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[18px] md:text-[20px] font-bold text-slate-900 tabular-nums leading-none">
+              <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+                <span
+                  className="text-[22px] font-semibold text-slate-900"
+                  style={{ letterSpacing: "-0.02em", ...TNUM }}
+                >
                   {k.value}
                 </span>
                 {k.delta && (
                   <span
-                    className={cn(
-                      "text-[10.5px] font-bold tabular-nums",
-                      k.positive ? "text-emerald-600" : "text-red-600",
-                    )}
+                    className="text-[11px] font-semibold"
+                    style={{
+                      ...TNUM,
+                      color:
+                        k.tone === "pos"
+                          ? C.pos
+                          : k.tone === "neg"
+                            ? C.neg
+                            : k.tone === "info"
+                              ? C.brand
+                              : C.g500,
+                    }}
                   >
                     {k.delta}
                   </span>
@@ -251,3 +183,6 @@ export function StoreHero({
     </div>
   )
 }
+
+// Re-export channel chip if needed
+export { ChannelIcon }

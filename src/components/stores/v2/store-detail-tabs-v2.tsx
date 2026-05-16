@@ -1,12 +1,18 @@
 "use client"
 
 /**
- * StoreDetailTabsV2 — container das 6 abas novas (visao/performance/
- * relatorio/contexto/atividade/setup). Mantem compat com URLs antigas
- * via redirect transparente.
+ * StoreDetailTabsV2 — container das 6 abas (visao/performance/relatorio/
+ * contexto/atividade/setup). Hero + Tabs nav + content slot.
+ *
+ * Tab style mirror do Convertfy DS v3:
+ *  - height ~43px, padding 10×14, font 13.5/500 (600 active)
+ *  - border-bottom 2px brand quando ativa
+ *  - hint badge "cliente" pequeno (9px/700 uppercase)
+ *  - count badge circular brand quando ativa
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import useSWR from "swr"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { StoreHero } from "./store-hero"
@@ -16,17 +22,17 @@ import { TabContexto } from "./tab-contexto"
 import { TabRelatorio } from "./tab-relatorio"
 import { TabPerformance } from "./tab-performance"
 import { TabSetup } from "./tab-setup"
+import { C, TNUM } from "./_primitives"
 
 const TABS = [
   { key: "visao", label: "Visão Geral" },
   { key: "performance", label: "Performance" },
-  { key: "relatorio", label: "Relatório", badge: "CLIENTE" },
+  { key: "relatorio", label: "Relatório", hint: "cliente" },
   { key: "contexto", label: "Contexto" },
-  { key: "atividade", label: "Atividade", isNew: true },
+  { key: "atividade", label: "Atividade", showCount: true },
   { key: "setup", label: "Setup" },
 ] as const
 
-// Mapeia URLs antigas pra novas pra nao quebrar links em circulacao
 const LEGACY_TAB_MAP: Record<string, string> = {
   overview: "visao",
   integrations: "setup",
@@ -34,6 +40,8 @@ const LEGACY_TAB_MAP: Record<string, string> = {
   briefing: "contexto",
   reports: "performance",
 }
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface StoreDetailTabsV2Props {
   store: {
@@ -55,7 +63,7 @@ interface StoreDetailTabsV2Props {
     clients?: { id: string; name: string } | null
   }
   cmName?: string | null
-  kpis?: Array<{ label: string; value: string; delta?: string; positive?: boolean }>
+  kpis?: Array<{ label: string; value: string; delta?: string; tone?: "pos" | "neg" | "info" | "neut" }>
 }
 
 export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV2Props) {
@@ -63,14 +71,12 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab") || ""
 
-  // Resolve aba ativa (com redirect legado)
   const resolvedTab = LEGACY_TAB_MAP[tabParam] || tabParam || "visao"
   const isLegacy = tabParam && LEGACY_TAB_MAP[tabParam]
   const [activeTab, setActiveTab] = useState<string>(resolvedTab)
 
   useEffect(() => {
     if (isLegacy) {
-      // Substitui silenciosamente a URL antiga sem reload
       const url = new URL(window.location.href)
       url.searchParams.set("tab", LEGACY_TAB_MAP[tabParam])
       router.replace(url.pathname + url.search)
@@ -89,7 +95,19 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
     router.replace(url.pathname + url.search, { scroll: false })
   }
 
-  // Plano + meses (deriva de contract_start_date)
+  // Activity count for Atividade tab badge (last 7d as "novidades")
+  const { data: activityRes } = useSWR<{ items?: Array<{ occurred_at: string }> }>(
+    `/api/admin/stores/${store.id}/activity?limit=20`,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+  const recentCount = useMemo(() => {
+    const items = activityRes?.items ?? []
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+    return items.filter((a) => new Date(a.occurred_at).getTime() >= cutoff).length
+  }, [activityRes])
+
+  // Plano label + meses
   const plan = store.platform === "shopify" ? "Performance" : null
   const planMonths = store.contract_start_date
     ? Math.max(
@@ -110,8 +128,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
     : null
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero */}
+    <div className="flex flex-col">
       <StoreHero
         storeName={store.store_name}
         storeUrl={store.store_url}
@@ -126,39 +143,54 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         kpis={kpis}
       />
 
-      {/* Tabs */}
+      {/* Tabs nav */}
       <div
-        className="border-b sticky top-0 z-10 bg-white"
-        style={{ borderColor: "rgba(0,0,0,0.06)" }}
+        className="sticky top-0 z-10 bg-white mt-5"
+        style={{ borderBottom: `1px solid ${C.border}` }}
       >
-        <div className="flex gap-0 overflow-x-auto">
+        <div className="flex">
           {TABS.map((t) => {
             const isActive = activeTab === t.key
+            const showBadge = "showCount" in t && t.showCount && recentCount > 0
             return (
               <button
                 key={t.key}
                 onClick={() => handleTabChange(t.key)}
                 className={cn(
-                  "px-3.5 py-2.5 text-[13px] -mb-px transition-colors whitespace-nowrap inline-flex items-center gap-1.5",
-                  isActive
-                    ? "border-b-2 border-brand-500 text-brand-600 font-semibold"
-                    : "border-b-2 border-transparent text-slate-500 font-medium hover:text-slate-700",
+                  "inline-flex items-center gap-1.5 whitespace-nowrap transition-colors -mb-px",
+                  "px-[14px] py-[10px] text-[13.5px]",
                 )}
+                style={{
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? C.brand : C.g500,
+                  borderBottom: `2px solid ${isActive ? C.brand : "transparent"}`,
+                }}
               >
                 {t.label}
-                {"badge" in t && t.badge && (
+                {"hint" in t && t.hint && (
                   <span
-                    className={cn(
-                      "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                      isActive ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-500",
-                    )}
+                    className="text-[9px] font-bold uppercase tracking-[0.06em] px-[5px] py-[2px] rounded-[4px]"
+                    style={{
+                      color: isActive ? C.brand : C.g500,
+                      background: isActive ? C.blue50 : C.g100,
+                    }}
                   >
-                    {t.badge}
+                    {t.hint}
                   </span>
                 )}
-                {"isNew" in t && t.isNew && (
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                    Novo
+                {showBadge && (
+                  <span
+                    className="inline-flex items-center justify-center text-[10px] font-bold rounded-full"
+                    style={{
+                      minWidth: 16,
+                      height: 16,
+                      padding: "0 5px",
+                      background: isActive ? C.brand : C.g200,
+                      color: isActive ? "#fff" : C.g600,
+                      ...TNUM,
+                    }}
+                  >
+                    {recentCount}
                   </span>
                 )}
               </button>
@@ -167,8 +199,8 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         </div>
       </div>
 
-      {/* Conteudo da aba */}
-      <div>
+      {/* Tab content */}
+      <div className="pt-6">
         {activeTab === "visao" && <TabVisao storeId={store.id} />}
         {activeTab === "performance" && <TabPerformance storeId={store.id} />}
         {activeTab === "relatorio" && <TabRelatorio storeId={store.id} />}

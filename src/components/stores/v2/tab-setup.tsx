@@ -1,21 +1,37 @@
 "use client"
 
 /**
- * Aba Setup — Integrações, onboarding e formulário do cliente.
+ * Tab: Setup — mirror exato do prototype tab-setup.jsx.
  *
- * Reusa os componentes legados ja validados:
- *  - IntegrationsPanel: cards de integracoes com revalidacao real
- *  - OnboardingStepper: fases do onboarding com estados pending/in-progress/done
- *  - StoreFormTab: respostas do formulario de onboarding da loja
+ * Grid 2-col: minmax(0,1fr) 380px.
  *
- * Sidebar leve com link do cliente, dados da loja e contrato.
+ * Left:
+ *  - Section "Integrações" com 2 botões direita (Sincronizar agora, Revalidar)
+ *    + grid 2-col de IntegCard (ChannelIcon 32px + nome/status + actions)
+ *  - Section "Progresso do onboarding" com 6 OnbStep (timeline vertical
+ *    com numero/check, ring brand ativo, conector verde quando done)
+ *  - Section "Formulário de onboarding" com FormSummary (progress bar +
+ *    4 mini-cards check verde + nome + N campos)
+ *
+ * Right:
+ *  - Section "Link de acesso do cliente" com input mono + Btn ghost Copiar
+ *  - Section "Dados pessoais do cliente" com KVs
+ *  - Section "Dados da loja" com KVs
+ *  - Section "Contrato" com KVs
+ *
+ * Reusa IntegrationsPanel/OnboardingStepper/StoreFormTab quando dados
+ * complexos (modal config, persistência) — mas wrapped em Section.
  */
 
 import { useEffect, useState } from "react"
-import { Copy } from "lucide-react"
+import useSWR from "swr"
+import { Check, Zap, Link2, Paperclip } from "lucide-react"
 import { IntegrationsPanel } from "@/components/stores/integrations-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
+import { Section, Badge, Btn, KV, C, TNUM, ChannelIcon } from "./_primitives"
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface SetupData {
   store_name?: string
@@ -29,7 +45,7 @@ interface SetupData {
   contract_end_date?: string | null
   alert_revenue_threshold?: number | null
   client_id?: string | null
-  clients?: { name?: string; email?: string; phone?: string; cpf_cnpj?: string } | null
+  clients?: { name?: string; email?: string; phone?: string; cpf_cnpj?: string; company?: string } | null
 }
 
 export function TabSetup({ storeId }: { storeId: string }) {
@@ -42,105 +58,121 @@ export function TabSetup({ storeId }: { storeId: string }) {
       .catch(() => setData({}))
   }, [storeId])
 
-  const clientName = data.clients?.name ?? null
-  const clientEmail = data.clients?.email ?? null
-  const clientPhone = data.clients?.phone ?? null
-  const clientDoc = data.clients?.cpf_cnpj ?? null
-  const clientLink = `${typeof window !== "undefined" ? window.location.origin : "https://app.convertfy.me"}/cliente/${storeId}`
+  // Credentials/integration status pra contar configuradas
+  const { data: credData } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
+  const status = (credData?.status ?? {}) as Record<string, { connected: boolean }>
+  const integrationKeys = ["shopify", "klaviyo", "omnisend", "ga4", "meta", "google_ads"]
+  const configured = integrationKeys.filter((k) => status[k]?.connected).length
+  const completePct = Math.round((configured / integrationKeys.length) * 100)
+
+  const client = data.clients ?? {}
+  const clientLink = typeof window !== "undefined"
+    ? `${window.location.origin}/cliente/${storeId}`
+    : `https://app.convertfy.me/cliente/${storeId}`
+
+  const formatMRR = (cents?: number | null) =>
+    cents ? `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-      {/* MAIN */}
-      <div className="flex flex-col gap-4">
-        {/* Integrações reais */}
-        <Card title="Integrações" subtitle="Conexões com plataformas externas">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-5">
+      {/* LEFT */}
+      <div>
+        <Section
+          title="Integrações"
+          subtitle={`${configured} de ${integrationKeys.length} plataformas configuradas · credenciais criptografadas (AES-256-GCM)`}
+          right={
+            <div className="flex gap-2">
+              <Btn variant="secondary" size="sm" icon={<Zap className="h-3.5 w-3.5" />}>Sincronizar agora</Btn>
+              <Btn variant="secondary" size="sm" icon={<Check className="h-3.5 w-3.5" />}>Revalidar todas</Btn>
+            </div>
+          }
+        >
           <IntegrationsPanel storeId={storeId} storeUrl={data.store_url} />
-        </Card>
+        </Section>
 
-        {/* Onboarding real */}
-        <Card title="Progresso do onboarding" subtitle="Fases do projeto">
+        <Section
+          title="Progresso do onboarding"
+          subtitle="6 etapas · acompanhe cada fase"
+          right={<Badge tone="info">{completePct}% completo</Badge>}
+        >
           <OnboardingStepper storeId={storeId} />
-        </Card>
+        </Section>
 
-        {/* Formulário real */}
-        <Card title="Formulário do cliente" subtitle="Respostas do briefing inicial">
+        <Section
+          title="Respostas do formulário de onboarding"
+          subtitle="Preenchido pelo cliente"
+        >
           <StoreFormTab storeId={storeId} clientId={data.client_id ?? null} />
-        </Card>
+        </Section>
       </div>
 
-      {/* SIDEBAR */}
-      <div className="flex flex-col gap-4">
-        <Card title="Link do cliente">
-          <div className="flex items-center gap-2">
+      {/* RIGHT */}
+      <div>
+        <Section title="Link de acesso do cliente">
+          <div
+            className="flex items-center gap-2 px-2.5 py-2 rounded-[6px]"
+            style={{ background: C.g50, border: `1px solid ${C.border}` }}
+          >
+            <Link2 className="h-3.5 w-3.5 shrink-0" style={{ color: C.g400 }} />
             <input
               readOnly
               value={clientLink}
-              className="flex-1 h-8 px-2 text-[11px] rounded-md border bg-slate-50 font-mono outline-none"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
+              className="flex-1 min-w-0 text-[12px] bg-transparent outline-none truncate"
+              style={{ color: C.g700, ...TNUM }}
             />
-            <button
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon={<Paperclip className="h-3.5 w-3.5" />}
               onClick={() => navigator.clipboard.writeText(clientLink)}
-              className="h-8 w-8 inline-flex items-center justify-center rounded-md bg-slate-100 hover:bg-slate-200"
-              title="Copiar"
             >
-              <Copy className="h-3.5 w-3.5 text-slate-600" />
-            </button>
+              Copiar
+            </Btn>
           </div>
-        </Card>
+          <div className="text-[11px] mt-1.5" style={{ color: C.g500 }}>
+            O cliente acessa este link para preencher o briefing. Você pode editar qualquer campo abaixo.
+          </div>
+        </Section>
 
-        <Card title="Cliente">
-          <DataRow label="Nome" value={clientName} />
-          <DataRow label="Email" value={clientEmail} />
-          <DataRow label="Telefone" value={clientPhone} />
-          <DataRow label="CPF/CNPJ" value={clientDoc} />
-        </Card>
+        <Section title="Dados pessoais do cliente">
+          <KV label="Nome" value={client.name ?? "—"} mute={!client.name} />
+          <KV label="Empresa" value={client.company ?? "—"} mute={!client.company} />
+          <KV label="Email" value={client.email ?? "—"} mono mute={!client.email} />
+          <KV label="Telefone" value={client.phone ?? "—"} mono mute={!client.phone} />
+          <KV label="CPF/CNPJ" value={client.cpf_cnpj ?? "—"} mono mute={!client.cpf_cnpj} />
+        </Section>
 
-        <Card title="Loja">
-          <DataRow label="URL" value={data.store_url} link />
-          <DataRow label="Plataforma" value={data.platform} />
-          <DataRow label="País" value={data.country} />
-          <DataRow label="Idioma" value={data.language} />
-          <DataRow label="Moeda" value={data.currency} />
-        </Card>
+        <Section title="Dados da loja">
+          <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} />
+          <KV label="Plataforma" value={data.platform ? data.platform[0].toUpperCase() + data.platform.slice(1) : "—"} mute={!data.platform} />
+          <KV label="País" value={data.country ?? "—"} mute={!data.country} />
+          <KV label="Idioma" value={data.language ?? "—"} mute={!data.language} />
+          <KV label="Moeda" value={data.currency ? `${data.currency}${data.currency === "BRL" ? " · R$" : ""}` : "—"} mono mute={!data.currency} />
+        </Section>
 
-        <Card title="Contrato">
-          <DataRow label="MRR" value={data.mrr_cents ? `R$ ${(data.mrr_cents / 100).toFixed(0)}` : null} />
-          <DataRow label="Início" value={data.contract_start_date ? new Date(data.contract_start_date).toLocaleDateString("pt-BR") : null} />
-          <DataRow label="Fim" value={data.contract_end_date ? new Date(data.contract_end_date).toLocaleDateString("pt-BR") : null} />
-          <DataRow label="Alerta receita" value={data.alert_revenue_threshold ? `R$ ${data.alert_revenue_threshold.toLocaleString("pt-BR")}` : null} />
-        </Card>
+        <Section title="Contrato">
+          <KV label="MRR" value={formatMRR(data.mrr_cents)} mono mute={!data.mrr_cents} />
+          <KV
+            label="Vigência"
+            value={
+              data.contract_start_date
+                ? `${new Date(data.contract_start_date).toLocaleDateString("pt-BR")} → ${data.contract_end_date ? new Date(data.contract_end_date).toLocaleDateString("pt-BR") : "—"}`
+                : "—"
+            }
+            mono
+            mute={!data.contract_start_date}
+          />
+          <KV
+            label="Alerta de receita"
+            value={data.alert_revenue_threshold ? `R$ ${data.alert_revenue_threshold.toLocaleString("pt-BR")}` : "—"}
+            mono
+            mute={!data.alert_revenue_threshold}
+          />
+        </Section>
       </div>
     </div>
   )
 }
 
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border rounded-[10px] p-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="mb-3">
-        <h3 className="text-[13px] font-bold text-slate-900 m-0">{title}</h3>
-        {subtitle && <p className="text-[11.5px] text-slate-500 mt-0.5">{subtitle}</p>}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function DataRow({ label, value, link }: { label: string; value?: string | null; link?: boolean }) {
-  return (
-    <div className="flex items-start justify-between gap-2 py-1.5 text-[11.5px]">
-      <span className="text-slate-500 shrink-0">{label}</span>
-      {value ? (
-        link ? (
-          <a href={value.startsWith("http") ? value : `https://${value}`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-right truncate max-w-[60%]">
-            {value.replace(/^https?:\/\//, "")}
-          </a>
-        ) : (
-          <span className="text-slate-800 font-medium text-right truncate max-w-[60%]">{value}</span>
-        )
-      ) : (
-        <span className="text-slate-400 italic">—</span>
-      )}
-    </div>
-  )
-}
+// Re-export utility for old imports
+export { ChannelIcon }
