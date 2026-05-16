@@ -194,6 +194,69 @@ export class N8nTriggerService {
       login_url: params.login_url,
     })
   }
+
+  /**
+   * Trigger o workflow "Analisador de ADS" no n8n quando uma loja é criada.
+   * URL configurável via N8N_ADS_ANALYZER_WEBHOOK_URL. Os 7 callbacks
+   * (snapshot, icp, tone, ads-review, products, competitors,
+   * briefing-markdown) são chamados pelo próprio workflow.
+   */
+  async triggerAdsAnalyzer(params: {
+    store_id: string
+    client_id: string
+    store_name: string
+    store_url: string | null
+    platform: string | null
+  }): Promise<TriggerResult> {
+    const url = process.env.N8N_ADS_ANALYZER_WEBHOOK_URL
+    if (!url) {
+      log.warn("N8N_ADS_ANALYZER_WEBHOOK_URL not configured, skipping ads analyzer trigger")
+      return { success: false, error: "N8N_ADS_ANALYZER_WEBHOOK_URL not configured" }
+    }
+
+    log.info(`Triggering ads analyzer for store ${params.store_id}`)
+
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15_000)
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: params.store_id,
+          client_id: params.client_id,
+          store: {
+            id: params.store_id,
+            name: params.store_name,
+            url: params.store_url,
+            platform: params.platform,
+          },
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeout)
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "Unknown error")
+        log.error(`Ads analyzer webhook failed: ${response.status}`, { status: response.status, body: text })
+        return { success: false, error: `N8N responded with ${response.status}` }
+      }
+
+      log.info(`Ads analyzer webhook triggered successfully`, { store_id: params.store_id })
+      return { success: true }
+    } catch (error) {
+      // Timeout aceito como sucesso (n8n já recebeu o trigger e processa async)
+      if (error instanceof Error && error.name === "AbortError") {
+        log.info(`Ads analyzer webhook timed out but trigger was sent`, { store_id: params.store_id })
+        return { success: true }
+      }
+      const message = error instanceof Error ? error.message : "Unknown error"
+      log.error(`Ads analyzer webhook error: ${message}`)
+      return { success: false, error: message }
+    }
+  }
 }
 
 export const n8nTriggerService = new N8nTriggerService()
