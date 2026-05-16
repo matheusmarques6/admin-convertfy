@@ -55,15 +55,15 @@ export async function POST(request: NextRequest) {
     }
 
     const generatedAt = body.generated_at ?? new Date().toISOString()
+    // Salva como `raw_text` para alinhar com BriefingData["raw_text"] que
+    // StoreBriefingView já sabe renderizar.
     const { data: inserted, error: insErr } = await admin
       .from("store_briefings")
       .insert({
         store_id: body.store_id,
         briefing_data: {
-          format: "markdown",
+          raw_text: body.raw_text,
           mode: body.mode ?? null,
-          markdown: body.raw_text,
-          generated_at: generatedAt,
           source: "n8n:ads-analyzer",
         },
         version: nextVersion,

@@ -26,14 +26,25 @@ interface MilestoneRaw {
   description?: string | null
 }
 
+// Formato canônico esperado pelo UI (PesquisaSection.Milestone):
+//   { year: string, event: string, highlight?: boolean, muted?: boolean }
 interface ProcessedMilestone {
-  date: string | null
-  description: string
+  year: string
+  event: string
+  highlight?: boolean
+  muted?: boolean
 }
 
 interface AIOutput {
   story: string
   milestones: ProcessedMilestone[]
+}
+
+function extractYear(raw: string | null | undefined): string {
+  if (!raw) return "—"
+  const trimmed = raw.trim()
+  const yearMatch = trimmed.match(/(\d{4})/)
+  return yearMatch ? yearMatch[1] : trimmed
 }
 
 function fallback(historyRaw: string | null, milestonesRaw: MilestoneRaw[] | null): AIOutput {
@@ -42,8 +53,8 @@ function fallback(historyRaw: string | null, milestonesRaw: MilestoneRaw[] | nul
     milestones: (milestonesRaw ?? [])
       .filter((m) => m.description?.trim())
       .map((m) => ({
-        date: m.date?.trim() ?? null,
-        description: m.description!.trim(),
+        year: extractYear(m.date),
+        event: m.description!.trim(),
       })),
   }
 }
@@ -58,10 +69,10 @@ function parseAi(raw: string, fb: AIOutput): AIOutput {
     const milestones = Array.isArray(parsed.milestones)
       ? parsed.milestones
           .map((m) => {
-            const desc = typeof m?.description === "string" ? m.description.trim() : ""
-            if (!desc) return null
-            const date = typeof m?.date === "string" && m.date.trim() ? m.date.trim() : null
-            return { date, description: desc } satisfies ProcessedMilestone
+            const event = typeof m?.event === "string" ? m.event.trim() : ""
+            if (!event) return null
+            const year = typeof m?.year === "string" && m.year.trim() ? m.year.trim() : "—"
+            return { year, event } satisfies ProcessedMilestone
           })
           .filter((m): m is ProcessedMilestone => m !== null)
           .slice(0, 20)
@@ -126,19 +137,20 @@ Saída em JSON puro, sem markdown ou preâmbulo.`
 2) Jornada — desafios, virada de chave, evolução
 3) Hoje — posicionamento e ambição
 
-E organize os marcos em ordem cronológica, normalizando datas para YYYY-MM ou YYYY quando possível.
+E organize os marcos em ordem cronológica.
 
 Devolva JSON exato:
 {
   "story": "<3 parágrafos separados por \\n\\n>",
   "milestones": [
-    {"date": "YYYY-MM ou YYYY ou null", "description": "<marco curto, 1 frase>"}
+    {"year": "YYYY", "event": "<marco curto, 1 frase>"}
   ]
 }
 
 Regras:
 - PT-BR, sem emoji, sem hype ("revolucionário", "incrível"), sem clichês
-- Se um marco não tiver data clara, use null
+- year: extraia o ano (4 dígitos) das datas brutas; se não houver, use "—"
+- event: 1 frase curta descrevendo o marco
 - Máximo 10 marcos, priorize os mais significativos
 - Mantenha o tom do fundador, só limpe e estruture
 

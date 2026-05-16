@@ -58,8 +58,14 @@ echo "=== 2) /icp ==="
 call "icp · happy path" "/api/webhooks/n8n/ads-analyzer/icp" "$(cat <<JSON
 {
   "store_id": "${STORE_ID}",
-  "demographics": { "gender": "female", "age": "28-45", "countries": ["BR"] },
-  "persona_text": "Camila, 34 anos, advogada em SP, casada com 1 filho, renda 15k+/mês, valoriza produtos com proposito",
+  "persona": { "name": "Camila", "age": "34 anos", "city": "São Paulo · SP", "monogram": "CA" },
+  "demographics": {
+    "age_range": "28-45",
+    "income": "R\$ 15k+/mês",
+    "education": "Pós-graduação",
+    "occupation": "Advogada",
+    "religion": "Católica"
+  },
   "day_in_life": "Acorda 6h, treina pilates antes do trabalho, almoça fora 3x/semana, faz skincare antes de dormir",
   "motivations": ["antienvelhecimento natural", "rotina simples", "produtos clean"],
   "frictions": ["medo de ingredientes desconhecidos", "rotinas longas demais", "preço muito alto sem justificativa"]

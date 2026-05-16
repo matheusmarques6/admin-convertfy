@@ -16,10 +16,30 @@ import { errorResponse, successResponse, parseAndValidate } from "@/lib/api/erro
 
 export const dynamic = "force-dynamic"
 
+// Formato canônico esperado pelo UI (PesquisaSection):
+//  - icp_persona  : { name, age, city, monogram }
+//  - icp_demographics : { age_range, income, education, occupation, religion }
+// O n8n deve produzir esses formatos. Campos individuais opcionais — o UI
+// já lida com chaves faltantes mostrando "—".
+const personaSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  age: z.string().trim().max(40).optional().default(""),
+  city: z.string().trim().max(120).optional().default(""),
+  monogram: z.string().trim().max(4).optional().default(""),
+})
+
+const demographicsSchema = z.object({
+  age_range: z.string().trim().max(60).optional().default(""),
+  income: z.string().trim().max(120).optional().default(""),
+  education: z.string().trim().max(120).optional().default(""),
+  occupation: z.string().trim().max(160).optional().default(""),
+  religion: z.string().trim().max(80).optional().default(""),
+})
+
 const schema = z.object({
   store_id: z.string().uuid(),
-  demographics: z.record(z.string(), z.unknown()).optional().nullable(),
-  persona_text: z.string().trim().min(1).optional().nullable(),
+  persona: personaSchema.optional().nullable(),
+  demographics: demographicsSchema.optional().nullable(),
   day_in_life: z.string().trim().optional().nullable(),
   motivations: z.array(z.string().trim().min(1)).max(20).optional().nullable(),
   frictions: z.array(z.string().trim().min(1)).max(20).optional().nullable(),
@@ -32,7 +52,8 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient()
 
-    // Lê demografia atual para fazer merge sem destruir chaves preexistentes
+    // Merge demografia preservando chaves preexistentes (n8n pode só ter
+    // alguns campos; o resto pode ter sido preenchido manualmente).
     let mergedDemographics: Record<string, unknown> | null = null
     if (body.demographics) {
       const { data: current } = await admin
@@ -41,14 +62,24 @@ export async function POST(request: NextRequest) {
         .eq("id", body.store_id)
         .single()
       const existing = (current?.icp_demographics ?? {}) as Record<string, unknown>
-      mergedDemographics = { ...existing, ...body.demographics }
+      const incoming: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(body.demographics)) {
+        if (typeof v === "string" && v.length > 0) incoming[k] = v
+      }
+      mergedDemographics = { ...existing, ...incoming }
     }
 
     const update: Record<string, unknown> = {}
     if (mergedDemographics !== null) update.icp_demographics = mergedDemographics
-    if (body.persona_text !== undefined && body.persona_text !== null) {
-      // icp_persona é jsonb — armazenamos como objeto { text }
-      update.icp_persona = { text: body.persona_text }
+    if (body.persona) {
+      // Garante monogram não-vazio (UI usa pra avatar)
+      const p = body.persona
+      update.icp_persona = {
+        name: p.name,
+        age: p.age || "—",
+        city: p.city || "—",
+        monogram: p.monogram || p.name.slice(0, 2).toUpperCase(),
+      }
     }
     if (body.day_in_life !== undefined && body.day_in_life !== null) {
       update.icp_day_in_life = body.day_in_life
