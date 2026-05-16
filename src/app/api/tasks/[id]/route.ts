@@ -6,6 +6,9 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("Tasks")
 
+// Sem cache: mutations frequentes precisam reflectir imediato.
+export const dynamic = "force-dynamic"
+
 async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
   const { data: orgMember } = await supabase
     .from("org_members")
