@@ -34,9 +34,15 @@ async function getStore(id: string) {
       created_at,
       client_id,
       org_id,
+      mrr_cents,
+      health_score,
+      contract_start_date,
+      contract_end_date,
       clients (
         id,
-        name
+        name,
+        owner_id,
+        owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
       )
     `)
     .eq("id", id)
@@ -180,6 +186,19 @@ export default async function StoreDetailPage({
     ? await convertToBRL(revenueLocal, storeCurrency)
     : revenueLocal
 
+  // Resolve client + CSM (owner do cliente) pro hero
+  const clientObj = store.clients
+    ? Array.isArray(store.clients)
+      ? store.clients[0]
+      : store.clients
+    : null
+  const ownerRaw = (clientObj as Record<string, unknown> | null)?.owner
+  const cmName = (() => {
+    if (!ownerRaw) return null
+    const o = Array.isArray(ownerRaw) ? ownerRaw[0] : ownerRaw
+    return (o as { name?: string } | null)?.name ?? null
+  })()
+
   // Calcula KPIs pro hero (compativeis com StoreDetailTabsV2)
   const heroKpis = [
     {
@@ -239,12 +258,13 @@ export default async function StoreDetailPage({
           created_at: store.created_at,
           client_id: store.client_id,
           org_id: store.org_id,
-          clients: store.clients
-            ? Array.isArray(store.clients)
-              ? store.clients[0]
-              : store.clients
-            : null,
+          mrr_cents: (store as Record<string, unknown>).mrr_cents as number | null ?? null,
+          health_score: (store as Record<string, unknown>).health_score as number | null ?? null,
+          contract_start_date: (store as Record<string, unknown>).contract_start_date as string | null ?? null,
+          contract_end_date: (store as Record<string, unknown>).contract_end_date as string | null ?? null,
+          clients: clientObj,
         }}
+        cmName={cmName}
         kpis={heroKpis}
       />
     </div>

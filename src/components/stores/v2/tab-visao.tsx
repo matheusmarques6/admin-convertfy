@@ -1,11 +1,13 @@
 "use client"
 
 /**
- * Aba Visão Geral — Alertas + Performance snapshot + Atividade recente
- * Sidebar: Saúde detalhada + Próximos eventos + Integrações.
+ * Aba Visão Geral — Alertas (derivados de integracoes faltantes + briefing)
+ * + Performance snapshot 30d + Atividade recente.
+ * Sidebar: Integrações reais + Próximos eventos.
  */
 
 import { useEffect, useState } from "react"
+import useSWR from "swr"
 import { AlertTriangle, Info, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -29,6 +31,13 @@ interface CsEvent {
   scheduled_at: string
 }
 
+interface IntegrationStatus {
+  connected: boolean
+  status?: string
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
 const KIND_LABELS: Record<string, { label: string; color: string }> = {
   feedback: { label: "Feedback", color: "#4E62D8" },
   teste: { label: "Teste A/B", color: "#A855F7" },
@@ -39,9 +48,34 @@ const KIND_LABELS: Record<string, { label: string; color: string }> = {
   outro: { label: "Outro", color: "#9CA3AF" },
 }
 
+const INTEGRATIONS: Array<{ key: string; name: string }> = [
+  { key: "shopify", name: "Shopify" },
+  { key: "klaviyo", name: "Klaviyo" },
+  { key: "omnisend", name: "Omnisend" },
+  { key: "ga4", name: "Google Analytics (GA4)" },
+  { key: "meta", name: "Meta Ads" },
+  { key: "google_ads", name: "Google Ads" },
+]
+
 export function TabVisao({ storeId }: TabVisaoProps) {
   const [activities, setActivities] = useState<Activity[]>([])
   const [events, setEvents] = useState<CsEvent[]>([])
+
+  // Status real das integracoes
+  const { data: credData } = useSWR(
+    `/api/client-stores/credentials?store_id=${storeId}`,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+  const status = (credData?.status ?? {}) as Record<string, IntegrationStatus>
+
+  // Briefing existente
+  const { data: briefingData } = useSWR(
+    `/api/onboarding/store-briefing?store_id=${storeId}`,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+  const hasBriefing = !!briefingData?.briefing
 
   useEffect(() => {
     fetch(`/api/admin/stores/${storeId}/activity?limit=5`)
@@ -54,39 +88,67 @@ export function TabVisao({ storeId }: TabVisaoProps) {
       .catch(() => setEvents([]))
   }, [storeId])
 
+  const connectedCount = INTEGRATIONS.filter((i) => status[i.key]?.connected).length
+  const totalIntegrations = INTEGRATIONS.length
+
+  // Alertas derivados de estado real
+  const alerts: Array<{ kind: "warn" | "info"; title: string; detail: string; ctaLabel: string; href: string }> = []
+  if (!status.shopify?.connected) {
+    alerts.push({
+      kind: "info",
+      title: "Shopify não conectado",
+      detail: "Sem Shopify a receita total da loja não é capturada. Conecte para destravar atribuição completa.",
+      ctaLabel: "Conectar",
+      href: `/admin/stores/${storeId}?tab=setup`,
+    })
+  }
+  if (!status.klaviyo?.connected && !status.omnisend?.connected) {
+    alerts.push({
+      kind: "warn",
+      title: "Sem plataforma de email",
+      detail: "Conecte Klaviyo ou Omnisend para Performance e Relatório funcionarem.",
+      ctaLabel: "Conectar email",
+      href: `/admin/stores/${storeId}?tab=setup`,
+    })
+  }
+  if (!hasBriefing) {
+    alerts.push({
+      kind: "info",
+      title: "Briefing não gerado",
+      detail: "Preencha o formulário de onboarding para gerar o briefing automaticamente.",
+      ctaLabel: "Abrir briefing",
+      href: `/admin/stores/${storeId}?tab=contexto#briefing-completo`,
+    })
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
       {/* MAIN */}
       <div className="flex flex-col gap-4">
         {/* Alertas */}
-        <Card title="Alertas" subtitle="Itens que merecem ação agora" linkLabel="Ver todos" linkHref={`/admin/stores/${storeId}?tab=atividade`}>
-          <div className="flex flex-col gap-2">
-            <AlertRow
-              kind="warn"
-              title="Feedback semanal — agendar"
-              detail="Próxima reunião com Bruna em 22/05. Confirme até 19/05."
-              ctaLabel="Agendar"
-            />
-            <AlertRow
-              kind="info"
-              title="Shopify não conectado"
-              detail="A loja está em Omnisend. Conecte o Shopify para destravar Receita atribuída completa."
-              ctaLabel="Conectar Shopify"
-            />
-          </div>
+        <Card title="Alertas" subtitle="Itens que merecem ação agora">
+          {alerts.length === 0 ? (
+            <div className="py-4 text-center text-[12px] text-slate-400 italic">
+              Sem alertas no momento
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {alerts.map((a, i) => (
+                <AlertRow key={i} {...a} />
+              ))}
+            </div>
+          )}
         </Card>
 
-        {/* Performance snapshot */}
-        <Card title="Performance · últimos 30 dias">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Kpi label="Receita Convertfy" value="—" sub="vs período anterior" />
-            <Kpi label="Email + SMS" value="—" sub="entregues" />
-            <Kpi label="Open rate" value="—" sub="vs benchmark" />
-            <Kpi label="CTOR" value="—" sub="vs benchmark" />
-          </div>
-          <div className="h-[120px] rounded-md bg-slate-50 border flex items-center justify-center text-[12px] text-slate-400 italic" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-            Receita atribuída diária — gráfico aparece quando há dados
-          </div>
+        {/* Performance snapshot — direciona pra aba Performance */}
+        <Card
+          title="Performance · últimos 30 dias"
+          linkLabel="Ver Performance →"
+          linkHref={`/admin/stores/${storeId}?tab=performance`}
+        >
+          <p className="text-[12px] text-slate-500">
+            KPIs detalhados de receita atribuída, campanhas e flows estão na aba Performance.
+          </p>
         </Card>
 
         {/* Atividade recente */}
@@ -148,59 +210,34 @@ export function TabVisao({ storeId }: TabVisaoProps) {
 
       {/* SIDEBAR */}
       <div className="flex flex-col gap-4">
-        {/* Saúde da loja */}
-        <Card title="Saúde da loja">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="text-[36px] font-bold text-emerald-600 tabular-nums leading-none">
-              82
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                SAÚDE
-              </div>
-              <div className="text-[13px] font-bold text-slate-900">Boa</div>
-              <div className="text-[10.5px] text-slate-500">Boa · +4 vs mês passado</div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            {[
-              { label: "Engajamento de envio", value: 88 },
-              { label: "Crescimento de lista", value: 75 },
-              { label: "Receita vs meta", value: 92 },
-              { label: "Adoção de canal", value: 45, isNeg: true },
-              { label: "Setup completo", value: 67 },
-            ].map((s) => (
-              <div key={s.label}>
-                <div className="flex justify-between text-[11px] mb-1">
-                  <span className="text-slate-600">{s.label}</span>
+        {/* Integrações reais */}
+        <Card
+          title="Integrações"
+          subtitle={`${connectedCount} de ${totalIntegrations} configuradas`}
+          linkLabel="Setup →"
+          linkHref={`/admin/stores/${storeId}?tab=setup`}
+        >
+          <div className="flex flex-col gap-1.5">
+            {INTEGRATIONS.map((i) => {
+              const s = status[i.key]
+              const isConnected = !!s?.connected
+              return (
+                <div
+                  key={i.key}
+                  className="flex items-center justify-between text-[12px] px-2 py-1.5 rounded-md hover:bg-slate-50"
+                >
+                  <span className="text-slate-700">{i.name}</span>
                   <span
                     className={cn(
-                      "font-bold tabular-nums",
-                      s.isNeg
-                        ? "text-red-600"
-                        : s.value >= 75
-                          ? "text-emerald-600"
-                          : "text-amber-600",
+                      "text-[10px] font-semibold uppercase tracking-wider",
+                      isConnected ? "text-emerald-600" : "text-slate-400",
                     )}
                   >
-                    {s.value}%
+                    {isConnected ? "● Conectado" : "Não configurado"}
                   </span>
                 </div>
-                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${s.value}%`,
-                      background: s.isNeg
-                        ? "#DC2626"
-                        : s.value >= 75
-                          ? "#10B981"
-                          : "#F59E0B",
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </Card>
 
@@ -241,40 +278,6 @@ export function TabVisao({ storeId }: TabVisaoProps) {
             </div>
           )}
         </Card>
-
-        {/* Integrações */}
-        <Card
-          title="Integrações"
-          subtitle="3 de 6 configuradas"
-          linkLabel="Setup →"
-          linkHref={`/admin/stores/${storeId}?tab=setup`}
-        >
-          <div className="flex flex-col gap-1.5">
-            {[
-              { name: "Shopify", status: "not_configured" },
-              { name: "Klaviyo", status: "not_configured" },
-              { name: "Omnisend", status: "connected" },
-              { name: "Google Analytics (GA4)", status: "not_configured" },
-              { name: "Meta Ads", status: "not_configured" },
-              { name: "TikTok Ads", status: "not_configured" },
-            ].map((i) => (
-              <div
-                key={i.name}
-                className="flex items-center justify-between text-[12px] px-2 py-1.5 rounded-md hover:bg-slate-50"
-              >
-                <span className="text-slate-700">{i.name}</span>
-                <span
-                  className={cn(
-                    "text-[10px] font-semibold uppercase tracking-wider",
-                    i.status === "connected" ? "text-emerald-600" : "text-slate-400",
-                  )}
-                >
-                  {i.status === "connected" ? "● Conectado" : "Não configurado"}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
     </div>
   )
@@ -313,12 +316,13 @@ function Card({
 }
 
 function AlertRow({
-  kind, title, detail, ctaLabel,
+  kind, title, detail, ctaLabel, href,
 }: {
   kind: "warn" | "info"
   title: string
   detail: string
   ctaLabel?: string
+  href?: string
 }) {
   const cfg =
     kind === "warn"
@@ -339,24 +343,15 @@ function AlertRow({
           {detail}
         </div>
       </div>
-      {ctaLabel && (
-        <button
+      {ctaLabel && href && (
+        <a
+          href={href}
           className="text-[11.5px] font-semibold whitespace-nowrap inline-flex items-center gap-1"
           style={{ color: cfg.color }}
         >
           {ctaLabel} <ArrowRight className="h-3 w-3" />
-        </button>
+        </a>
       )}
-    </div>
-  )
-}
-
-function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div className="rounded-md bg-slate-50 border px-3 py-2.5" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-      <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</div>
-      <div className="text-[18px] font-bold text-slate-900 tabular-nums leading-none mb-1">{value}</div>
-      <div className="text-[10.5px] text-slate-500">{sub}</div>
     </div>
   )
 }

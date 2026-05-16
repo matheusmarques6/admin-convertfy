@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react"
 import { Edit2, Plus, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 
 interface StoreContext {
   niche?: string | null
@@ -50,11 +51,16 @@ interface Competitor {
   notas: string | null
 }
 
+interface StoreLite {
+  client_id?: string | null
+}
+
 const TOM_OPTS = ["formal", "casual", "afetivo", "divertido"] as const
 const PRECO_OPTS = ["popular", "medio", "premium"] as const
 
 export function TabContexto({ storeId }: { storeId: string }) {
   const [ctx, setCtx] = useState<StoreContext>({})
+  const [storeLite, setStoreLite] = useState<StoreLite>({})
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -65,7 +71,9 @@ export function TabContexto({ storeId }: { storeId: string }) {
         fetch(`/api/client-stores/${storeId}`).then((r) => r.json()),
         fetch(`/api/admin/stores/${storeId}/competitors`).then((r) => r.json()),
       ])
-      setCtx((cs.data?.store ?? cs.store ?? cs) as StoreContext)
+      const storeObj = (cs.data?.store ?? cs.store ?? cs) as Record<string, unknown>
+      setCtx(storeObj as StoreContext)
+      setStoreLite({ client_id: (storeObj.client_id as string | null) ?? null })
       setCompetitors((comps.data?.competitors ?? comps.competitors ?? []) as Competitor[])
     } catch {
       // noop
@@ -94,7 +102,7 @@ export function TabContexto({ storeId }: { storeId: string }) {
     <div className="flex flex-col gap-4">
       {/* Anchors */}
       <div className="flex gap-1 overflow-x-auto pb-2 text-[12px] font-medium text-slate-500">
-        {["Marca", "Briefing", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
+        {["Marca", "Briefing", "Briefing completo", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
           <a key={a} href={`#${a.toLowerCase().replace(/\s+&\s+/g, "-").replace(/\s+/g, "-")}`} className="px-2.5 py-1 rounded-md hover:bg-slate-100 whitespace-nowrap">
             {a}
           </a>
@@ -187,8 +195,8 @@ export function TabContexto({ storeId }: { storeId: string }) {
         )}
       </Section>
 
-      {/* BRIEFING */}
-      <Section id="briefing" title="Briefing estratégico" onEdit={() => setEditing(editing === "briefing" ? null : "briefing")}>
+      {/* BRIEFING — campos rapidos editaveis (publico + notas) */}
+      <Section id="briefing" title="Briefing estratégico · resumo" onEdit={() => setEditing(editing === "briefing" ? null : "briefing")}>
         {editing === "briefing" ? (
           <div className="space-y-3">
             <Textarea label="Público-alvo" value={ctx.target_audience ?? ""} onChange={(v) => setCtx({ ...ctx, target_audience: v })} />
@@ -206,6 +214,11 @@ export function TabContexto({ storeId }: { storeId: string }) {
             <Field label="Notas adicionais" value={ctx.additional_notes} fallback="—" multiline />
           </div>
         )}
+      </Section>
+
+      {/* BRIEFING COMPLETO (IA + formulario de onboarding) */}
+      <Section id="briefing-completo" title="Briefing completo (gerado por IA)">
+        <StoreBriefingTab storeId={storeId} clientId={storeLite.client_id ?? null} />
       </Section>
 
       {/* OPERAÇÃO */}

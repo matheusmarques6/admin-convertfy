@@ -7,8 +7,26 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import useSWR from "swr"
 import { Plus, X, ExternalLink, FileText, Image as ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+interface StoreMaterials {
+  figma_onboarding_url?: string | null
+  figma_emails_url?: string | null
+  drive_folder_url?: string | null
+}
+
+interface TaskItem {
+  id: string
+  title: string
+  status: string
+  completed_at?: string | null
+  due_date?: string | null
+  created_at: string
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface Activity {
   id: string
@@ -36,6 +54,46 @@ export function TabAtividade({ storeId }: { storeId: string }) {
   const [loading, setLoading] = useState(true)
   const [filterKind, setFilterKind] = useState<string>("tudo")
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // Materiais reais (links do client_stores)
+  const { data: storeData } = useSWR(`/api/client-stores/${storeId}`, fetcher, {
+    revalidateOnFocus: false,
+  })
+  const materials = (storeData?.data?.store ?? storeData?.store ?? storeData ?? {}) as StoreMaterials
+  const materialsList: Array<{ icon: typeof ImageIcon; label: string; sub: string; href: string }> = []
+  if (materials.figma_onboarding_url) {
+    materialsList.push({
+      icon: ImageIcon,
+      label: "Figma · Onboarding completo",
+      sub: "Pacote inicial",
+      href: materials.figma_onboarding_url,
+    })
+  }
+  if (materials.figma_emails_url) {
+    materialsList.push({
+      icon: ImageIcon,
+      label: "Figma · Pacote de e-mails",
+      sub: "Templates da loja",
+      href: materials.figma_emails_url,
+    })
+  }
+  if (materials.drive_folder_url) {
+    materialsList.push({
+      icon: FileText,
+      label: "Google Drive · Pasta da loja",
+      sub: "Briefings, exports, gravações",
+      href: materials.drive_folder_url,
+    })
+  }
+
+  // Entregas reais (tasks do onboarding com source_type=auto_onboarding_step)
+  const { data: tasksData } = useSWR(
+    `/api/tasks?store_id=${storeId}&source_type=auto_onboarding_step&limit=50`,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+  const deliveries = ((tasksData?.tasks ?? tasksData?.data?.tasks ?? []) as TaskItem[])
+    .slice(0, 12)
 
   const reload = () => {
     setLoading(true)
@@ -165,55 +223,64 @@ export function TabAtividade({ storeId }: { storeId: string }) {
       {/* Sidebar: Materiais + Entregas do onboarding */}
       <div className="flex flex-col gap-4">
         <Card title="Materiais & arquivos">
-          <div className="flex flex-col gap-1.5">
-            {[
-              { icon: ImageIcon, label: "Figma · Onboarding completo", sub: "20 e-mails · 6 popups · 4 fluxos" },
-              { icon: ImageIcon, label: "Figma · Pacote de e-mails", sub: "Atualizado 08/05/2026" },
-              { icon: FileText, label: "Google Drive · Pasta da loja", sub: "briefings, exports, gravações" },
-            ].map((m) => {
-              const Icon = m.icon
-              return (
-                <button
-                  key={m.label}
-                  className="flex items-start gap-2 px-2 py-2 rounded-md hover:bg-slate-50 transition-colors text-left w-full"
-                >
-                  <Icon className="h-3.5 w-3.5 mt-0.5 text-slate-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-slate-900 leading-tight">{m.label}</div>
-                    <div className="text-[10.5px] text-slate-500 leading-tight mt-0.5">{m.sub}</div>
-                  </div>
-                  <ExternalLink className="h-3 w-3 text-slate-300" />
-                </button>
-              )
-            })}
-          </div>
+          {materialsList.length === 0 ? (
+            <div className="py-3 text-center text-[11.5px] text-slate-400 italic">
+              Sem materiais cadastrados.<br />Adicione links em <strong>Contexto</strong>.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {materialsList.map((m) => {
+                const Icon = m.icon
+                return (
+                  <a
+                    key={m.label}
+                    href={m.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-2 px-2 py-2 rounded-md hover:bg-slate-50 transition-colors text-left w-full"
+                  >
+                    <Icon className="h-3.5 w-3.5 mt-0.5 text-slate-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] font-semibold text-slate-900 leading-tight">{m.label}</div>
+                      <div className="text-[10.5px] text-slate-500 leading-tight mt-0.5">{m.sub}</div>
+                    </div>
+                    <ExternalLink className="h-3 w-3 text-slate-300" />
+                  </a>
+                )
+              })}
+            </div>
+          )}
         </Card>
 
-        <Card title="Entregas do onboarding" subtitle="Pacote inicial">
-          <div className="flex flex-col gap-1">
-            {[
-              { label: "Welcome Flow", date: "15/03", done: true },
-              { label: "Abandoned Cart", date: "15/03", done: true },
-              { label: "Abandoned Checkout", date: "15/03", done: true },
-              { label: "Viewed Product", date: "15/03", done: true },
-              { label: "Rastreio Criado", date: "15/03", done: true },
-              { label: "Upsell", date: "20/03", done: true },
-              { label: "Winback", date: "02/04", done: true },
-              { label: "Site Abandonado", date: "02/04", done: true },
-              { label: "Pacote Dia das Mães", date: "02/05", done: true },
-            ].map((d) => (
-              <div key={d.label} className="flex items-center justify-between text-[12px] py-1">
-                <span className="inline-flex items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: d.done ? "#10B981" : "#9CA3AF" }}
-                  />
-                  <span className={d.done ? "text-slate-700" : "text-slate-400"}>{d.label}</span>
-                </span>
-                <span className="text-[10.5px] text-slate-400 font-mono">{d.date}</span>
-              </div>
-            ))}
-          </div>
+        <Card title="Entregas do onboarding" subtitle={deliveries.length ? `${deliveries.filter((t) => t.status === "completed").length} de ${deliveries.length} concluídas` : "Pacote inicial"}>
+          {deliveries.length === 0 ? (
+            <div className="py-3 text-center text-[11.5px] text-slate-400 italic">
+              Sem entregas do onboarding ainda.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {deliveries.map((d) => {
+                const done = d.status === "completed"
+                const dateLabel = done && d.completed_at
+                  ? new Date(d.completed_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+                  : d.due_date
+                    ? new Date(d.due_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+                    : "—"
+                return (
+                  <div key={d.id} className="flex items-center justify-between text-[12px] py-1">
+                    <span className="inline-flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ background: done ? "#10B981" : "#9CA3AF" }}
+                      />
+                      <span className={cn("truncate", done ? "text-slate-700" : "text-slate-400")}>{d.title}</span>
+                    </span>
+                    <span className="text-[10.5px] text-slate-400 font-mono shrink-0">{dateLabel}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </Card>
       </div>
 

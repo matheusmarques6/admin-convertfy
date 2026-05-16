@@ -103,18 +103,65 @@ export async function POST(
       body.month_label ||
       `${MONTH_LABELS[ps.getMonth()]} ${ps.getFullYear()}`
 
-    // Snapshot inicial — placeholder. Idealmente puxa de
-    // /api/reports?store_id=... e congela aqui.
+    // Snapshot real — chama os endpoints de email-platform internamente
+    // pra cristalizar dados de campanhas, flows e KPIs no momento da geracao.
+    // Se algo falhar (sem credencial, rate limit), cai pra snapshot parcial
+    // pra nao bloquear a criacao do relatorio.
+    const origin = request.nextUrl.origin
+    const periodParam = `start=${body.period_start}&end=${body.period_end}`
+    const cookie = request.headers.get("cookie") ?? ""
+
+    async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
+      try {
+        const r = await fetch(url, { headers: { cookie } })
+        if (!r.ok) return null
+        return (await r.json()) as Record<string, unknown>
+      } catch {
+        return null
+      }
+    }
+
+    const [reportRes, campaignsRes, flowsRes] = await Promise.all([
+      fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}`),
+    ])
+
+    const rv = (reportRes?.revenue ?? {}) as Record<string, number>
+    const overview = (reportRes?.overview ?? {}) as Record<string, number>
+    const account = (reportRes?.account ?? {}) as Record<string, unknown>
+    const campaignsList = ((campaignsRes?.campaigns ?? []) as Array<Record<string, unknown>>).slice(0, 10)
+    const flowsList = ((flowsRes?.flows ?? []) as Array<Record<string, unknown>>).slice(0, 10)
+    const cs = (campaignsRes?.summary ?? {}) as Record<string, number>
+    const fs = (flowsRes?.summary ?? {}) as Record<string, number>
+
+    const totalRevenue = Number(rv.storeRevenue || 0)
+    const attributedRevenue = Number(rv.klaviyoAttributedRevenue || rv.totalRevenue || (cs.totalRevenue ?? 0) + (fs.totalRevenue ?? 0))
+
     const snapshot = {
       generated_at: new Date().toISOString(),
       period: { start: body.period_start, end: body.period_end },
       tone: body.tone,
-      // estes ficam vazios por default e sao preenchidos pelo job
-      // de "ai-fill" que pode rodar depois (ver /api/admin/stores/[id]/
-      // reports/[reportId]/ai-fill).
-      kpis: {},
-      campaigns: [],
-      flows: [],
+      account: {
+        currency: account.currency ?? "BRL",
+        platform: reportRes?.platform ?? null,
+      },
+      kpis: {
+        receita_total: totalRevenue,
+        pedidos: Number(rv.storeOrders ?? 0),
+        receita_atribuida: attributedRevenue,
+        receita_campanhas: Number(rv.campaignRevenue ?? cs.totalRevenue ?? 0),
+        receita_flows: Number(rv.flowRevenue ?? fs.totalRevenue ?? 0),
+        atribuicao_pct: totalRevenue > 0 ? attributedRevenue / totalRevenue : 0,
+        envios: Number(cs.totalSent ?? 0),
+        open_rate: Number(cs.avgOpenRate ?? 0),
+        click_rate: Number(cs.avgClickRate ?? 0),
+        recovery_rate: Number(rv.recoveryRate ?? 0),
+        total_campaigns: Number(cs.sentCampaigns ?? overview.campaignsInPeriod ?? 0),
+        total_flows: Number(fs.liveFlows ?? overview.liveFlows ?? 0),
+      },
+      campaigns: campaignsList,
+      flows: flowsList,
       insights: {},
     }
 

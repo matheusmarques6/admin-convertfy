@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
     const clientId = searchParams.get("client_id")
     const storeId = searchParams.get("store_id")
     const priority = searchParams.get("priority")
+    const sourceType = searchParams.get("source_type")
+    const limitParam = searchParams.get("limit")
     const myTasks = searchParams.get("my_tasks") === "true"
 
     let query = adminClient
@@ -56,6 +58,11 @@ export async function GET(request: NextRequest) {
     if (clientId) query = query.eq("client_id", clientId)
     if (storeId) query = query.eq("store_id", storeId)
     if (priority) query = query.eq("priority", priority)
+    if (sourceType) query = query.eq("source_type", sourceType)
+    if (limitParam) {
+      const n = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200)
+      query = query.limit(n)
+    }
 
     // Get current user's org_member_id for "my tasks" filter
     if (myTasks) {
