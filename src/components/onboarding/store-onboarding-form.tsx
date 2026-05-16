@@ -73,8 +73,14 @@ const STEPS = [
   { title: "Dados Pessoais", description: "Informações do responsável" },
   { title: "Dados da Loja", description: "Informações da loja" },
   { title: "Público e Marca", description: "Audiência e posicionamento" },
+  { title: "História da Loja", description: "Origem, jornada e marcos" },
   { title: "Arquivos", description: "Logo e materiais visuais" },
 ]
+
+interface MilestoneInput {
+  date: string
+  description: string
+}
 
 export function StoreOnboardingForm({
   storeId: initialStoreId,
@@ -109,11 +115,14 @@ export function StoreOnboardingForm({
     target_audience: "",
     price_sensitivity: "" as "" | "price" | "quality" | "balanced",
     additional_notes: "",
+    history_raw: "",
     logo_url: "",
     design_direction_text: "",
     design_direction_file_url: "",
     brand_manual_url: "",
   })
+
+  const [milestones, setMilestones] = useState<MilestoneInput[]>([])
 
   // File names for display
   const [fileNames, setFileNames] = useState({
@@ -148,11 +157,21 @@ export function StoreOnboardingForm({
         target_audience: (store.target_audience as string) || "",
         price_sensitivity: ((od.price_sensitivity as string) || "") as "" | "price" | "quality" | "balanced",
         additional_notes: (od.additional_notes as string) || "",
+        history_raw: (od.history_raw as string) || "",
         logo_url: (od.logo_url as string) || "",
         design_direction_text: (od.design_direction_text as string) || "",
         design_direction_file_url: (od.design_direction_file_url as string) || "",
         brand_manual_url: (od.brand_manual_url as string) || "",
       }))
+      const rawMs = od.milestones_raw
+      if (Array.isArray(rawMs)) {
+        setMilestones(
+          (rawMs as Array<Record<string, unknown>>).map((m) => ({
+            date: (m.date as string) ?? "",
+            description: (m.description as string) ?? "",
+          })),
+        )
+      }
     }
   }, [initialData])
 
@@ -218,9 +237,15 @@ export function StoreOnboardingForm({
   async function handleSave(complete: boolean) {
     setSaving(true)
     try {
+      const milestonesPayload = milestones
+        .map((m) => ({ date: m.date.trim() || null, description: m.description.trim() }))
+        .filter((m) => m.description.length > 0)
+
       const payload: Record<string, unknown> = {
         ...formData,
         price_sensitivity: formData.price_sensitivity || null,
+        history_raw: formData.history_raw.trim() || null,
+        milestones_raw: milestonesPayload,
         is_complete: complete,
       }
 
@@ -521,8 +546,84 @@ export function StoreOnboardingForm({
           </div>
         )}
 
-        {/* Step 3: Arquivos */}
+        {/* Step 3: História da Loja */}
         {currentStep === 3 && (
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="history_raw">História da Loja</Label>
+              <p className="text-xs text-muted-foreground">
+                Conte de onde a marca veio: quem fundou, por que, como evoluiu. Pode escrever de forma livre — vamos estruturar depois.
+              </p>
+              <Textarea
+                id="history_raw"
+                value={formData.history_raw}
+                onChange={(e) => updateField("history_raw", e.target.value)}
+                placeholder="Ex: Comecei em 2019 vendendo produtos artesanais no Instagram. Em 2021 abri a loja online quando percebi que o público pedia mais variedade. Hoje atendemos clientes em todo o Brasil com foco em produtos sustentáveis."
+                rows={8}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Marcos da Operação</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setMilestones((prev) => [...prev, { date: "", description: "" }])}
+                >
+                  + Adicionar marco
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Eventos importantes da jornada: lançamento, primeira meta batida, expansão de catálogo, etc.
+              </p>
+              {milestones.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic py-3">
+                  Nenhum marco adicionado ainda.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {milestones.map((m, idx) => (
+                    <div key={idx} className="flex gap-2 items-start">
+                      <Input
+                        type="text"
+                        placeholder="2021-03"
+                        value={m.date}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setMilestones((prev) => prev.map((x, i) => (i === idx ? { ...x, date: v } : x)))
+                        }}
+                        className="w-32"
+                      />
+                      <Input
+                        type="text"
+                        placeholder="Lançamento da loja online"
+                        value={m.description}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setMilestones((prev) => prev.map((x, i) => (i === idx ? { ...x, description: v } : x)))
+                        }}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setMilestones((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Arquivos */}
+        {currentStep === 4 && (
           <div className="space-y-6">
             {/* Logo */}
             <FileUploadArea

@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }
 
-    const onboardingFields = ["price_sensitivity", "additional_notes", "logo_url", "design_direction_text", "design_direction_file_url", "brand_manual_url"]
+    const onboardingFields = ["price_sensitivity", "additional_notes", "logo_url", "design_direction_text", "design_direction_file_url", "brand_manual_url", "history_raw", "milestones_raw"]
     for (const field of onboardingFields) {
       if (body[field] !== undefined) {
         onboardingDataFields[field] = body[field]
@@ -348,6 +348,18 @@ export async function POST(request: NextRequest) {
         .catch((err) => log.error("Error triggering briefing generation", err))
 
       briefingTriggered = true
+
+      // Em paralelo: processa "Sobre a loja" via AI (fire-and-forget)
+      const hasHistoryOrMilestones = !!body.history_raw || (Array.isArray(body.milestones_raw) && body.milestones_raw.length > 0)
+      if (hasHistoryOrMilestones) {
+        const cookieHeader = request.headers.get("cookie") ?? ""
+        fetch(`${appUrl}/api/admin/stores/${storeId}/store-story/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", cookie: cookieHeader },
+        })
+          .then((r) => log.info(`store-story/process kicked off for store ${storeId}`, { status: r.status }))
+          .catch((err) => log.error("Error kicking off store-story/process", err))
+      }
     }
 
     return successResponse(request, {
