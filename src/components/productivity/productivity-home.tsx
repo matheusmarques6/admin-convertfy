@@ -106,7 +106,7 @@ export function ProductivityHome() {
 
   return (
     <>
-    <div className="max-w-[1500px] mx-auto flex flex-col gap-6">
+    <div className="max-w-[1500px] mx-auto flex flex-col gap-6 w-full pb-8">
 
         {/* ═══════════ PAGE HEADER: Workspace + Título + Stats + DayFilter ═══════════ */}
         <PageHeader
@@ -199,7 +199,6 @@ export function ProductivityHome() {
           onReflect={() => setShowShutdown(true)}
         />
 
-        <div className="h-8" />
       </div>
 
       {/* Modais */}
