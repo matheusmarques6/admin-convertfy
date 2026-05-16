@@ -71,6 +71,7 @@ export interface ReportSnapshot {
   store_name?: string
   client_name?: string
   cm_name?: string
+  plan?: string
   month_label?: string
   period?: { start: string; end: string }
   account?: { currency?: string; platform?: string | null }
@@ -86,6 +87,7 @@ export interface ReportSnapshot {
     ticket_medio?: number
     novos_clientes?: number
     envios?: number
+    total_leads?: number
     open_rate?: number
     click_rate?: number
     recovery_rate?: number
@@ -497,9 +499,11 @@ function SlideCover({ snapshot, monthLabel }: { snapshot: ReportSnapshot; monthL
           {snapshot.client_name && (
             <CoverInfo label="Cliente" value={snapshot.client_name} sub={storeName} />
           )}
-          {snapshot.account?.platform && (
+          {snapshot.plan ? (
+            <CoverInfo label="Plano" value={snapshot.plan} />
+          ) : snapshot.account?.platform ? (
             <CoverInfo label="Plataforma" value={snapshot.account.platform.toUpperCase()} />
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -609,11 +613,11 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           gap: 10,
         }}
       >
-        <ResumoTile label="Faturamento total" value={fmtCurrency(totalRevenue, currency, { compact: true })} delta="período" />
-        <ResumoTile label="Pedidos" value={(k.pedidos ?? 0).toLocaleString("pt-BR")} delta="atribuídos + outros" />
+        <ResumoTile label="Faturamento total" value={fmtCurrency(totalRevenue, currency, { compact: true })} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
+        <ResumoTile label="Pedidos" value={(k.pedidos ?? 0).toLocaleString("pt-BR")} delta="atribuídos" tone={(k.pedidos ?? 0) > 0 ? "pos" : "default"} />
         <ResumoTile label="Ticket médio" value={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} delta="período" />
         <ResumoTile label="Novos clientes" value={(k.novos_clientes ?? 0).toLocaleString("pt-BR")} delta="período" />
-        <ResumoTile label="Envios" value={(k.envios ?? 0).toLocaleString("pt-BR")} delta="campanhas + flows" />
+        <ResumoTile label="Total de leads" value={(k.total_leads ?? 0).toLocaleString("pt-BR")} delta="base atual" />
         <ResumoTile label="Campanhas enviadas" value={String(k.total_campaigns ?? 0)} delta={`${k.total_flows ?? 0} flows ativos`} />
       </div>
 
@@ -1078,7 +1082,11 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               label="Receita/pedido"
               value={pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
             />
-            <MicroStat label="Recuperação" value={k.recovery_rate ? `${k.recovery_rate.toFixed(2).replace(".", ",")}%` : "—"} sub="vs benchmark 12%" />
+            <MicroStat
+              label="Receita/contato"
+              value={(k.total_leads ?? 0) > 0 ? fmtCurrency(attributed / (k.total_leads as number), currency) : "—"}
+              sub={k.total_leads ? `${(k.total_leads as number).toLocaleString("pt-BR")} contatos` : undefined}
+            />
           </div>
         </div>
       </div>

@@ -18,13 +18,42 @@ async function getReport(reportId: string) {
       `id, store_id, month_label, period_start, period_end, status,
        generated_at, presented_at, sent_to, tone, ai_filled, pdf_url,
        sections, snapshot, proximos_passos, generated_by,
-       store:client_stores(id, store_name, store_url, clients(name)),
+       store:client_stores(id, store_name, store_url,
+         contract_start_date, contract_end_date,
+         clients(name)),
        generator:profiles!client_monthly_reports_generated_by_fkey(name)`,
     )
     .eq("id", reportId)
     .single()
   if (error || !data) return null
-  return data
+
+  // Total de leads vem do cache store_revenue_summary (não tem na loja)
+  let totalLeads: number | null = null
+  if (data.store_id) {
+    const { data: revSum } = await admin
+      .from("store_revenue_summary")
+      .select("total_leads")
+      .eq("store_id", data.store_id)
+      .eq("period_label", "30d")
+      .maybeSingle()
+    totalLeads = (revSum?.total_leads as number | null) ?? null
+  }
+
+  return { ...data, total_leads: totalLeads }
+}
+
+function derivePlan(
+  contractStart: string | null | undefined,
+  contractEnd: string | null | undefined,
+  platform: string | null | undefined,
+): string | null {
+  if (!contractStart) return null
+  const base = platform === "shopify" ? "Performance" : "Starter"
+  if (!contractEnd) return base
+  const start = new Date(contractStart)
+  const end = new Date(contractEnd)
+  const months = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30)))
+  return `${base} · ${months}m`
 }
 
 export default async function ReportPreviewPage({
@@ -37,13 +66,23 @@ export default async function ReportPreviewPage({
   if (!report) notFound()
 
   // Helpers de tipo
-  const storeRaw = report.store as unknown as { id: string; store_name: string; store_url: string | null; clients?: { name?: string } | Array<{ name?: string }> } | null
+  const storeRaw = report.store as unknown as {
+    id: string
+    store_name: string
+    store_url: string | null
+    contract_start_date?: string | null
+    contract_end_date?: string | null
+    clients?: { name?: string } | Array<{ name?: string }>
+  } | null
   const store = storeRaw
   const clientName = store?.clients
     ? Array.isArray(store.clients)
       ? store.clients[0]?.name
       : store.clients.name
     : null
+  const snapshotData = (report.snapshot ?? {}) as Record<string, unknown>
+  const platformFromSnapshot = (snapshotData.account as { platform?: string } | undefined)?.platform ?? null
+  const plan = derivePlan(store?.contract_start_date, store?.contract_end_date, platformFromSnapshot)
   const generator = (report.generator as unknown as { name: string } | null)
   const period =
     `${new Date(report.period_start).toLocaleDateString("pt-BR")} → ${new Date(
@@ -99,6 +138,8 @@ export default async function ReportPreviewPage({
           storeName={store?.store_name}
           clientName={clientName ?? null}
           cmName={generator?.name ?? null}
+          plan={plan}
+          totalLeads={report.total_leads}
         />
       </div>
     </div>
@@ -113,16 +154,25 @@ async function ReportSlidesWrapper(props: {
   storeName?: string | null
   clientName?: string | null
   cmName?: string | null
+  plan?: string | null
+  totalLeads?: number | null
 }) {
   const { ReportSlides } = await import("@/components/stores/v2/slides/report-slides")
   const snap = (props.snapshot ?? {}) as Record<string, unknown>
+  const kpis = (snap.kpis ?? {}) as Record<string, number>
+  // Injeta total_leads do client_stores quando o snapshot nao tem
+  if (props.totalLeads != null && !kpis.total_leads) {
+    kpis.total_leads = props.totalLeads
+  }
   return (
     <ReportSlides
       snapshot={{
         ...snap,
+        kpis,
         store_name: props.storeName ?? undefined,
         client_name: props.clientName ?? undefined,
         cm_name: props.cmName ?? undefined,
+        plan: props.plan ?? undefined,
         month_label: props.monthLabel,
       }}
       proximosPassos={props.proximosPassos}
