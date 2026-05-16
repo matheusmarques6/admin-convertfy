@@ -100,7 +100,9 @@ const INTEGRATIONS = [
   { key: "google_ads", name: "Google Ads" },
 ]
 
-const BENCHMARKS = { openRate: 0.173, ctor: 0.041 }
+// Benchmarks em escala PERCENTUAL (0-100), mesmo que rates do Klaviyo
+// e Omnisend dispatcher (open_rate = 19.66 representa 19.66%, nao 1966%).
+const BENCHMARKS = { openRate: 17.3, ctor: 4.1 }
 
 function rangeDays(r: Range): number {
   return r === "7d" ? 7 : r === "30d" ? 30 : r === "90d" ? 90 : 365
@@ -327,8 +329,8 @@ export function TabVisao({ storeId }: { storeId: string }) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                 <Kpi label="Receita Convertfy" value={fmtCompact(perf.attributed, currency)} sub={`${(perf.attributedPct * 100).toFixed(1).replace(".", ",")}% do faturamento`} tone="brand" />
                 <Kpi label="Email + SMS" value={fmtCompact(perf.attributed, currency)} sub={`${perf.attributedOrders.toLocaleString("pt-BR")} pedidos`} tone="default" />
-                <Kpi label="Open rate" value={`${(perf.openRate * 100).toFixed(1).replace(".", ",")}%`} sub={`vs ${(BENCHMARKS.openRate * 100).toFixed(1).replace(".", ",")}% benchmark`} tone={perf.openRate > BENCHMARKS.openRate ? "pos" : "default"} />
-                <Kpi label="CTOR" value={`${(perf.ctor * 100).toFixed(2).replace(".", ",")}%`} sub={`vs ${(BENCHMARKS.ctor * 100).toFixed(1).replace(".", ",")}% benchmark`} tone={perf.ctor > BENCHMARKS.ctor ? "pos" : "default"} />
+                <Kpi label="Open rate" value={`${perf.openRate.toFixed(1).replace(".", ",")}%`} sub={`vs ${BENCHMARKS.openRate.toFixed(1).replace(".", ",")}% benchmark`} tone={perf.openRate > BENCHMARKS.openRate ? "pos" : "default"} />
+                <Kpi label="CTOR" value={`${perf.ctor.toFixed(2).replace(".", ",")}%`} sub={`vs ${BENCHMARKS.ctor.toFixed(1).replace(".", ",")}% benchmark`} tone={perf.ctor > BENCHMARKS.ctor ? "pos" : "default"} />
               </div>
               <Trend data={dailySeries} />
             </>

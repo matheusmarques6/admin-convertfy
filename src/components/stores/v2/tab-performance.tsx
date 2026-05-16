@@ -172,13 +172,17 @@ export function TabPerformance({ storeId }: { storeId: string }) {
     const novos = Number(cs.newCustomersLast30Days ?? 0)
     const novosPrev = Number(csPrev.newCustomersLast30Days ?? 0)
 
+    // Delta absoluto so faz sentido se houver dado anterior valido.
+    // Sem prev: mostra "—" em vez de "+R$ {valor inteiro}" enganoso.
+    const ticketDeltaAbs = ticketPrev > 0 ? ticket - ticketPrev : null
+
     return {
       faturamento,
       faturamentoDelta: delta(faturamento, faturamentoPrev),
       pedidos,
       pedidosDelta: delta(pedidos, pedidosPrev),
       ticket,
-      ticketDeltaAbs: ticket - ticketPrev,
+      ticketDeltaAbs,
       ticketDeltaPct: delta(ticket, ticketPrev),
       novos,
       novosDelta: delta(novos, novosPrev),
@@ -218,6 +222,9 @@ export function TabPerformance({ storeId }: { storeId: string }) {
     const epPrev = reportPrev?.emailPerformance ?? {}
     const delivered = Number(ep.delivered ?? 0)
     const deliveredPrev = Number(epPrev.delivered ?? 0)
+    // IMPORTANTE: Omnisend e Klaviyo dispatcher armazenam rates como
+    // PERCENTUAL (0-100), nao fracao (0-1). Ex: open_rate = 19.66
+    // representa 19.66%. Nao multiplicar por 100 no frontend.
     return {
       delivered,
       deliveredDelta: delta(delivered, deliveredPrev),
@@ -324,7 +331,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <PerfKpi Icon={DollarSign} label="Faturamento total" value={fmtCurrency(kpis.faturamento, currency, true)} delta={kpis.faturamentoDelta != null ? `${kpis.faturamentoDelta >= 0 ? "+" : ""}${(kpis.faturamentoDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.faturamentoDelta != null && kpis.faturamentoDelta >= 0 ? "pos" : "neg"} />
         <PerfKpi Icon={Package} label="Pedidos" value={kpis.pedidos.toLocaleString("pt-BR")} delta={kpis.pedidosDelta != null ? `${kpis.pedidosDelta >= 0 ? "+" : ""}${(kpis.pedidosDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.pedidosDelta != null && kpis.pedidosDelta >= 0 ? "pos" : "neg"} />
-        <PerfKpi Icon={BarChart3} label="Ticket médio" value={fmtCurrency(kpis.ticket, currency)} delta={kpis.ticketDeltaAbs !== 0 ? `${kpis.ticketDeltaAbs >= 0 ? "+" : ""}${fmtCurrency(kpis.ticketDeltaAbs, currency)}` : "—"} tone={kpis.ticketDeltaAbs >= 0 ? "pos" : "neg"} />
+        <PerfKpi Icon={BarChart3} label="Ticket médio" value={fmtCurrency(kpis.ticket, currency)} delta={kpis.ticketDeltaAbs != null && kpis.ticketDeltaAbs !== 0 ? `${kpis.ticketDeltaAbs >= 0 ? "+" : ""}${fmtCurrency(kpis.ticketDeltaAbs, currency)}` : "—"} tone={kpis.ticketDeltaAbs != null && kpis.ticketDeltaAbs >= 0 ? "pos" : "neg"} />
         <PerfKpi Icon={Users} label="Novos clientes" value={kpis.novos.toLocaleString("pt-BR")} delta={kpis.novosDelta != null ? `${kpis.novosDelta >= 0 ? "+" : ""}${(kpis.novosDelta * 100).toFixed(1).replace(".", ",")}%` : "—"} tone={kpis.novosDelta != null && kpis.novosDelta >= 0 ? "pos" : "neg"} />
       </div>
 
@@ -372,10 +379,10 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       <Section title="Performance de email">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <EmailMetric Icon={Send} label="Entregues" value={emailPerf.delivered.toLocaleString("pt-BR")} delta={emailPerf.deliveredDelta != null ? `${emailPerf.deliveredDelta >= 0 ? "+" : ""}${(emailPerf.deliveredDelta * 100).toFixed(0)}% vs período` : "—"} />
-          <EmailMetric Icon={Mail} label="Abertura" value={`${(emailPerf.openRate * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 17,3%" tone={emailPerf.openRate > 0.173 ? "pos" : "default"} />
-          <EmailMetric Icon={Target} label="Clique" value={`${(emailPerf.clickRate * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 1,1%" tone={emailPerf.clickRate > 0.011 ? "pos" : "default"} />
-          <EmailMetric Icon={Zap} label="CTOR" value={`${(emailPerf.ctor * 100).toFixed(2).replace(".", ",")}%`} delta="benchmark 4,1%" tone={emailPerf.ctor > 0.041 ? "pos" : "default"} />
-          <EmailMetric Icon={X} label="Bounces" value={Math.round(emailPerf.delivered * emailPerf.bounceRate).toLocaleString("pt-BR")} delta={`${(emailPerf.bounceRate * 100).toFixed(2).replace(".", ",")}% taxa`} tone={emailPerf.bounceRate < 0.02 ? "pos" : "default"} />
+          <EmailMetric Icon={Mail} label="Abertura" value={`${emailPerf.openRate.toFixed(2).replace(".", ",")}%`} delta="benchmark 17,3%" tone={emailPerf.openRate > 17.3 ? "pos" : "default"} />
+          <EmailMetric Icon={Target} label="Clique" value={`${emailPerf.clickRate.toFixed(2).replace(".", ",")}%`} delta="benchmark 1,1%" tone={emailPerf.clickRate > 1.1 ? "pos" : "default"} />
+          <EmailMetric Icon={Zap} label="CTOR" value={`${emailPerf.ctor.toFixed(2).replace(".", ",")}%`} delta="benchmark 4,1%" tone={emailPerf.ctor > 4.1 ? "pos" : "default"} />
+          <EmailMetric Icon={X} label="Bounces" value={Math.round(emailPerf.delivered * emailPerf.bounceRate / 100).toLocaleString("pt-BR")} delta={`${emailPerf.bounceRate.toFixed(2).replace(".", ",")}% taxa`} tone={emailPerf.bounceRate < 2 ? "pos" : "default"} />
         </div>
       </Section>
 
@@ -538,8 +545,8 @@ function PerfTable({ rows, flows, currency }: { rows: Array<CampaignRow | FlowRo
                   {r.name}
                 </td>
                 <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.delivered ?? r.recipients).toLocaleString("pt-BR")}</td>
-                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.openRate * 100).toFixed(2).replace(".", ",")}%</td>
-                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{(r.clickRate * 100).toFixed(2).replace(".", ",")}%</td>
+                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{r.openRate.toFixed(2).replace(".", ",")}%</td>
+                <td className="text-[12] text-right" style={{ padding: "10px", color: C.g600, ...TNUM }}>{r.clickRate.toFixed(2).replace(".", ",")}%</td>
                 <td className="text-[13px] font-semibold text-right" style={{ padding: "10px", color: C.brand, ...TNUM }}>{fmtCurrency(r.revenue, currency)}</td>
               </tr>
             ))
