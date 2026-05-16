@@ -83,8 +83,15 @@ export default async function ReportPreviewPage({
         <ReportPreviewClient reportId={report.id} pdfUrl={report.pdf_url} status={report.status} />
       </div>
 
-      {/* Deck */}
-      <div className="bg-slate-100 rounded-[14px] p-4 md:p-6">
+      {/* Deck container — dark gradient matching prototype */}
+      <div
+        className="rounded-[14px] py-9 px-4 md:px-7 relative overflow-hidden"
+        style={{ background: "linear-gradient(180deg, #14171F 0%, #0B0D14 100%)" }}
+      >
+        <div
+          className="absolute top-0 left-0 right-0"
+          style={{ height: 3, background: "linear-gradient(90deg, #4E62D8, #2137B6, #041366)" }}
+        />
         <ReportSlidesWrapper
           snapshot={report.snapshot}
           proximosPassos={report.proximos_passos}

@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react"
-import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink } from "lucide-react"
+import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink, Maximize2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface Props {
@@ -38,7 +38,6 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
       if (pdfUrl) {
         window.open(pdfUrl, "_blank")
       } else {
-        // Tenta gerar
         const res = await fetch(`/api/admin/stores/reports/${reportId}/pdf`, { method: "POST" })
         if (res.ok) {
           const j = await res.json()
@@ -67,6 +66,11 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
     }
   }
 
+  const handlePresentMode = () => {
+    // Abre a view print em outra janela em fullscreen pseudo (Cmd+P friendly)
+    window.open(`/admin/stores/relatorios/${reportId}/print`, "_blank", "noopener")
+  }
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <button
@@ -79,13 +83,21 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
         Refazer com IA
       </button>
       <button
+        onClick={handlePresentMode}
+        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold"
+        style={{ borderColor: "rgba(0,0,0,0.10)" }}
+      >
+        <Maximize2 className="h-3 w-3" />
+        Modo apresentação
+      </button>
+      <button
         onClick={handlePDF}
         disabled={busy === "pdf"}
         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold disabled:opacity-50"
         style={{ borderColor: "rgba(0,0,0,0.10)" }}
       >
         {busy === "pdf" ? <Loader2 className="h-3 w-3 animate-spin" /> : pdfUrl ? <ExternalLink className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-        {pdfUrl ? "Abrir PDF" : "Gerar PDF"}
+        {pdfUrl ? "Abrir PDF" : "Baixar PDF"}
       </button>
       {status !== "sent" && status !== "presented" && (
         <button

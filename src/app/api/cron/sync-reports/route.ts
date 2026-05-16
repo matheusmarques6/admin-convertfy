@@ -627,7 +627,7 @@ export async function GET(request: NextRequest) {
       // Get all stores with Klaviyo credentials (either field)
       const { data: stores, error: storesError } = await supabase
         .from("client_stores")
-        .select("id, store_name, org_id, klaviyo_has_reporting_access, klaviyo_validated_at, klaviyo_missing_scopes")
+        .select("id, store_name, org_id, klaviyo_has_reporting_access, klaviyo_validated_at, klaviyo_missing_scopes, klaviyo_validation_error")
         .or(KLAVIYO_CREDENTIALS_FILTER)
         .not("org_id", "is", null)
 
@@ -636,28 +636,40 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Failed to fetch stores" }, { status: 500 })
       }
 
-      // Filter out stores with recent permission failures (retry after 24h)
+      // Filter out stores with recent permission failures OR recent invalid
+      // key marks (retry after 24h pra ambos).
       const now = Date.now()
       const retryThreshold = new Date(now - PERMISSION_RETRY_MS).toISOString()
 
       const skippedPermission: { name: string; scopes: string[]; validatedAt: string }[] = []
+      const skippedInvalidKey: { name: string; validatedAt: string }[] = []
       const eligibleStores = stores.filter(store => {
-        // Include if has reporting access or field is null/undefined
-        if (store.klaviyo_has_reporting_access !== false) return true
-        // Include if validation timestamp is missing (treat as needing retry)
+        const errMsg = (store.klaviyo_validation_error as string | null) ?? ""
+        const isInvalidKey = errMsg.startsWith("[INVALID_KEY]")
+        const isPermission = store.klaviyo_has_reporting_access === false
+
+        // Sem erro registrado ou validacao antiga: incluir
+        if (!isInvalidKey && !isPermission) return true
         if (!store.klaviyo_validated_at) return true
-        // Include if validation is older than 24h (retry)
         if (store.klaviyo_validated_at < retryThreshold) return true
-        // Skip — recent permission failure
+
         const minutesAgo = Math.round((now - new Date(store.klaviyo_validated_at).getTime()) / (60 * 1000))
         const timeAgo = minutesAgo < 60 ? `${minutesAgo}min ago` : `${Math.round(minutesAgo / 60)}h ago`
-        skippedPermission.push({
-          name: store.store_name,
-          scopes: store.klaviyo_missing_scopes ?? [],
-          validatedAt: timeAgo,
-        })
+        if (isInvalidKey) {
+          skippedInvalidKey.push({ name: store.store_name, validatedAt: timeAgo })
+        } else {
+          skippedPermission.push({
+            name: store.store_name,
+            scopes: store.klaviyo_missing_scopes ?? [],
+            validatedAt: timeAgo,
+          })
+        }
         return false
       })
+
+      if (skippedInvalidKey.length > 0) {
+        log.warn(`[Cron] Skipping ${skippedInvalidKey.length} stores with recent INVALID_KEY (24h cooldown): ${skippedInvalidKey.map(s => `${s.name} (${s.validatedAt})`).join(", ")}`)
+      }
 
       if (skippedPermission.length > 0) {
         const details = skippedPermission

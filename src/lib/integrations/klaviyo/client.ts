@@ -181,6 +181,26 @@ async function _klaviyoRequestInner<T>(
       const responseText = await response.text()
 
       if (!response.ok) {
+        // Detect 401 authentication_failed — API key inválida/revogada.
+        // Throw KlaviyoInvalidKeyError pra cron marcar a loja e nao
+        // ficar retentando a cada ciclo (estava produzindo log spam).
+        if (response.status === 401) {
+          let authFailed = false
+          try {
+            const errBody = JSON.parse(responseText)
+            const firstError = errBody?.errors?.[0]
+            if (firstError?.code === "authentication_failed") authFailed = true
+          } catch {
+            // Body nao JSON — assume auth failure se status 401
+            authFailed = true
+          }
+          if (authFailed) {
+            const masked = apiKey.slice(0, 6) + "..." + apiKey.slice(-4)
+            log.warn(`[${logTag}] 401 authentication_failed for key ${masked} — marking invalid`)
+            throw new KlaviyoInvalidKeyError(`Klaviyo API key invalid (401 authentication_failed) for ${masked}`)
+          }
+        }
+
         // Detect 403 permission_denied — not retryable, surface to caller
         if (response.status === 403) {
           try {
@@ -205,7 +225,13 @@ async function _klaviyoRequestInner<T>(
           }
         }
 
-        log.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
+        // 4xx logam como warn (esperado: invalid key, scopes faltando, etc).
+        // 5xx ou outros logam como error.
+        if (response.status >= 400 && response.status < 500) {
+          log.warn(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
+        } else {
+          log.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
+        }
         return null
       }
 
