@@ -18,8 +18,17 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+
+    // Multi-tenant: filtra leads pela org do user
+    const { data: userOrg } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
 
     const sp = request.nextUrl.searchParams
     const status = sp.get("status")
@@ -39,6 +48,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
+    if (userOrg?.org_id) q = q.eq("org_id", userOrg.org_id)
     if (status) q = q.eq("status", status)
     if (assigned_to) q = q.eq("assigned_to", assigned_to)
     if (source) q = q.eq("source", source)
@@ -78,20 +88,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = createLeadSchema.parse(body)
 
-    const { data, error } = await admin
-      .from("crm_leads")
-      .insert({
-        ...parsed,
-        created_by: user.id,
-      })
-      .select("id")
-      .single()
-
-    if (error) throw error
-
-    log.info("[Leads] created", { id: data.id, name: parsed.name })
-
-    // Dispara trigger lead_created
+    // Resolve org_id do user pra multi-tenant
     const { data: userOrg } = await admin
       .from("org_members")
       .select("org_id")
@@ -99,6 +96,20 @@ export async function POST(request: NextRequest) {
       .eq("is_active", true)
       .limit(1)
       .maybeSingle()
+
+    const { data, error } = await admin
+      .from("crm_leads")
+      .insert({
+        ...parsed,
+        created_by: user.id,
+        org_id: userOrg?.org_id ?? null,
+      })
+      .select("id")
+      .single()
+
+    if (error) throw error
+
+    log.info("[Leads] created", { id: data.id, name: parsed.name })
 
     if (userOrg?.org_id) {
       dispatchTrigger({

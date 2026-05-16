@@ -227,6 +227,7 @@ export function LeadsImportWizard({
     imported: number
     deals_created: number
     errors: number
+    errorMessages: string[]
   } | null>(null)
 
   // Carrega members + pipelines pra dropdowns
@@ -485,10 +486,16 @@ export function LeadsImportWizard({
         return
       }
       const data = json.data ?? json
+      // Extrai mensagens unicas dos erros pra mostrar no resumo
+      const errArr = (data.errors ?? []) as Array<{ error?: string; row?: number }>
+      const errorMessages = Array.from(
+        new Set(errArr.map((e) => e.error).filter(Boolean) as string[]),
+      )
       setResult({
         imported: data.leadsCreated ?? data.imported ?? validLeads.length,
         deals_created: data.dealsCreated ?? 0,
-        errors: data.errors?.length ?? 0,
+        errors: errArr.length,
+        errorMessages,
       })
       onImported({
         imported: data.leadsCreated ?? data.imported ?? 0,
@@ -994,21 +1001,46 @@ function Step4Confirm({
   setSearch: (s: string) => void
   bulk: BulkAttribution
   pipelines: Pipeline[]
-  result: { imported: number; deals_created: number; errors: number } | null
+  result: { imported: number; deals_created: number; errors: number; errorMessages: string[] } | null
 }) {
   const pipeline = pipelines.find((p) => p.id === bulk.pipeline_id)
   const stage = pipeline?.stages.find((s) => s.id === bulk.stage_id)
 
   if (result) {
+    const allFailed = result.imported === 0 && result.errors > 0
+    const partialFailed = result.imported > 0 && result.errors > 0
+
     return (
-      <div className="py-12 text-center">
-        <div className="mx-auto w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-          <Check className="h-8 w-8 text-emerald-600" />
+      <div className="py-8 max-w-[600px] mx-auto">
+        <div
+          className={cn(
+            "mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4",
+            allFailed
+              ? "bg-red-100"
+              : partialFailed
+                ? "bg-amber-100"
+                : "bg-emerald-100",
+          )}
+        >
+          {allFailed ? (
+            <X className="h-8 w-8 text-red-600" />
+          ) : (
+            <Check
+              className={cn(
+                "h-8 w-8",
+                partialFailed ? "text-amber-600" : "text-emerald-600",
+              )}
+            />
+          )}
         </div>
-        <h3 className="text-[18px] font-bold text-slate-900 mb-2">
-          Importação concluída!
+        <h3 className="text-[18px] font-bold text-slate-900 mb-2 text-center">
+          {allFailed
+            ? "Importação falhou"
+            : partialFailed
+              ? "Importação parcial"
+              : "Importação concluída!"}
         </h3>
-        <p className="text-[13px] text-slate-600 mb-4">
+        <p className="text-[13px] text-slate-600 mb-4 text-center">
           <span className="font-semibold text-slate-900">{result.imported}</span>{" "}
           {result.imported === 1 ? "lead criado" : "leads criados"}
           {result.deals_created > 0 && (
@@ -1029,6 +1061,37 @@ function Step4Confirm({
             </>
           )}
         </p>
+
+        {/* Detalhe dos erros — mostra mensagens unicas pra debugging */}
+        {result.errorMessages.length > 0 && (
+          <div
+            className="mt-4 p-4 rounded-[8px] border bg-red-50/40"
+            style={{ borderColor: "#FECACA" }}
+          >
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[16px]">⚠</span>
+              <span className="text-[12.5px] font-bold text-red-700">
+                Detalhe do{result.errorMessages.length === 1 ? "" : "s"} erro
+                {result.errorMessages.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <ul className="space-y-1.5 ml-1">
+              {result.errorMessages.map((msg, i) => (
+                <li
+                  key={i}
+                  className="text-[12px] text-red-800 font-mono leading-snug pl-3 border-l-2 border-red-300 break-all"
+                >
+                  {msg}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 pt-3 border-t border-red-200 text-[11.5px] text-slate-600">
+              💡 <span className="font-medium">Dica:</span> copie a mensagem
+              acima e mostre pro time técnico. Geralmente é problema de
+              mapeamento de coluna, formato inesperado, ou enum/banco.
+            </div>
+          </div>
+        )}
       </div>
     )
   }
