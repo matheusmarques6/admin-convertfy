@@ -1,120 +1,39 @@
 /**
- * GET  /api/admin/stores/[id]/reports                 — lista
- * POST /api/admin/stores/[id]/reports                 — gera novo
+ * POST /api/admin/stores/reports/[reportId]/resync
  *
- * Tabela: client_monthly_reports
- *  - status: draft | sent | presented
- *  - snapshot: jsonb cristalizado no momento da geracao (dados imutaveis)
- *  - sections: jsonb { resumo: true, financeiro: true, ... }
- *  - tone: editorial | corporate | casual
+ * Recomputa o snapshot do relatório a partir dos dados atuais (Omnisend
+ * cache + Shopify + soma dos rows). Usado quando o snapshot original ficou
+ * com KPIs zerados ou o periodo nao matched o cache.
+ *
+ * Mantem os campos editorial (proximos_passos, insights) intactos.
  */
 
 import { NextRequest } from "next/server"
-import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
-const sectionsSchema = z.object({
-  resumo: z.boolean().default(true),
-  financeiro: z.boolean().default(true),
-  email_perf: z.boolean().default(true),
-  top_campanhas: z.boolean().default(true),
-  top_flows: z.boolean().default(true),
-  trabalho: z.boolean().default(true),
-  proximos: z.boolean().default(true),
-})
-
-const createSchema = z.object({
-  period_start: z.string().min(1, "period_start é obrigatório"),
-  period_end: z.string().min(1, "period_end é obrigatório"),
-  month_label: z.string().optional(),
-  sections: sectionsSchema.default({
-    resumo: true,
-    financeiro: true,
-    email_perf: true,
-    top_campanhas: true,
-    top_flows: true,
-    trabalho: true,
-    proximos: true,
-  }),
-  tone: z.enum(["editorial", "corporate", "casual"]).default("editorial"),
-  // Aceita null pra UI poder mandar `proximos_passos: proximos || null`
-  // sem disparar 400 Zod (era a causa principal do bug "Gerar falhou").
-  proximos_passos: z.string().nullable().optional(),
-  ai_filled: z.boolean().default(true),
-})
-
-const MONTH_LABELS = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-]
-
-export async function GET(
+export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ reportId: string }> },
 ) {
   try {
-    const { id: storeId } = await params
+    const { reportId } = await params
     const sb = await createClient()
     await requireAuth(sb)
     const admin = createAdminClient()
 
-    const { data, error } = await admin
+    const { data: report, error: fetchErr } = await admin
       .from("client_monthly_reports")
-      .select(
-        "id, month_label, period_start, period_end, status, " +
-          "generated_at, presented_at, sent_to, tone, ai_filled, pdf_url, " +
-          "snapshot, generated_by, " +
-          "generator:profiles!client_monthly_reports_generated_by_fkey(name, avatar_url)",
-      )
-      .eq("store_id", storeId)
-      .order("period_start", { ascending: false })
-    if (error) throw error
-    return successResponse(request, { reports: data ?? [] })
-  } catch (error) {
-    return errorResponse(request, error, "store-reports-list")
-  }
-}
+      .select("id, store_id, period_start, period_end, snapshot")
+      .eq("id", reportId)
+      .single()
+    if (fetchErr || !report) throw new AppError("Relatório não encontrado", 404)
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    const { id: storeId } = await params
-    const sb = await createClient()
-    const user = await requireAuth(sb)
-    const admin = createAdminClient()
-
-    const raw = await request.json()
-    const parsed = createSchema.safeParse(raw)
-    if (!parsed.success) {
-      throw new AppError(
-        "Payload invalido: " +
-          parsed.error.issues.map((i) => i.message).join("; "),
-        400,
-      )
-    }
-    const body = parsed.data
-
-    // Deriva month_label se nao veio
-    const ps = new Date(body.period_start + "T12:00:00")
-    const monthLabel =
-      body.month_label ||
-      `${MONTH_LABELS[ps.getMonth()]} ${ps.getFullYear()}`
-
-    // Snapshot real — chama os endpoints de email-platform internamente
-    // pra cristalizar dados de campanhas, flows e KPIs no momento da geracao.
-    // Se algo falhar (sem credencial, rate limit), cai pra snapshot parcial
-    // pra nao bloquear a criacao do relatorio.
-    //
-    // IMPORTANTE: os endpoints email-platform/* esperam
-    // `period=custom&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
-    // (nao `start=` / `end=`).
     const origin = request.nextUrl.origin
-    const periodParam = `period=custom&start_date=${body.period_start}&end_date=${body.period_end}`
+    const periodParam = `period=custom&start_date=${report.period_start}&end_date=${report.period_end}`
     const cookie = request.headers.get("cookie") ?? ""
 
     async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
@@ -128,28 +47,26 @@ export async function POST(
     }
 
     const [reportRes, campaignsRes, flowsRes, shopifyRes] = await Promise.all([
-      fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/shopify/report?store_id=${storeId}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${report.store_id}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${report.store_id}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${report.store_id}&${periodParam}`),
+      fetchJson(`${origin}/api/integrations/shopify/report?store_id=${report.store_id}&${periodParam}`),
     ])
 
-    // Fallback: store_revenue_summary (cached) quando report.revenue vier
-    // zerado por period_label não match. Tenta primeiro o período do
-    // relatorio, depois 30d como aproximação.
+    // Cached fallback
     const cachedSummary = await (async () => {
       const periodDays = Math.max(1, Math.round(
-        (new Date(body.period_end).getTime() - new Date(body.period_start).getTime()) / (1000 * 60 * 60 * 24),
+        (new Date(report.period_end).getTime() - new Date(report.period_start).getTime()) / (1000 * 60 * 60 * 24),
       ))
       const candidates = periodDays <= 31 ? ["30d", "90d"] : ["90d", "30d"]
       for (const label of candidates) {
         const { data } = await admin
           .from("store_revenue_summary")
           .select("store_total_revenue, store_orders, total_leads, engaged_leads, currency, omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, omnisend_total_orders, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue")
-          .eq("store_id", storeId)
+          .eq("store_id", report.store_id)
           .eq("period_label", label)
           .maybeSingle()
-        if (data) return { ...data, period_label: label }
+        if (data) return data
       }
       return null
     })()
@@ -165,13 +82,10 @@ export async function POST(
     const sh = (shopifyRes?.orders ?? {}) as Record<string, number>
     const shCustomers = (shopifyRes?.customers ?? {}) as Record<string, number>
 
-    // Helper: soma um campo de uma lista de objetos
     function sumField(rows: Array<Record<string, unknown>>, field: string): number {
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
     }
 
-    // ─── Receitas ─────────────────────────────────
-    // Prioridade: report endpoint > soma dos rows > store_revenue_summary
     const receitaCampanhas =
       Number(rv.campaignRevenue) ||
       Number(cs.totalRevenue) ||
@@ -190,12 +104,11 @@ export async function POST(
       (receitaCampanhas + receitaFlows) ||
       Number(cachedSummary?.omnisend_total_revenue ?? cachedSummary?.klaviyo_total_revenue) || 0
 
-    // Receita total da loja (Shopify > store_revenue_summary > attributed)
     const totalRevenue =
       Number(sh.totalRevenue) ||
       Number(rv.storeRevenue) ||
       Number(cachedSummary?.store_total_revenue) ||
-      attributedRevenue // fallback: se nao temos receita total, usa atribuida como denominador
+      attributedRevenue
 
     const pedidos =
       Number(sh.totalOrders) ||
@@ -207,7 +120,6 @@ export async function POST(
     const novosClientes = Number(shCustomers.newCustomersLast30Days) || 0
     const ticketMedio = pedidos > 0 ? totalRevenue / pedidos : (Number(sh.averageOrderValue) || 0)
 
-    // ─── Email metrics (derivar de rows quando summary nao tem) ───
     const allRows = [...campaignsList, ...flowsList]
     const totalDelivered = Number(ep.delivered) || sumField(allRows, "delivered") || sumField(allRows, "recipients")
     const totalOpened = Number(ep.opened) || sumField(allRows, "opened")
@@ -220,15 +132,18 @@ export async function POST(
     const unsubed = sumField(allRows, "unsubscribed")
     const unsubRate = totalDelivered > 0 ? (unsubed / totalDelivered) * 100 : 0
 
-    // Total de contagens
     const totalCampaigns = Number(cs.sentCampaigns) || Number(overview.campaignsInPeriod) || campaignsList.length
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
+    // Preserva insights existentes do snapshot anterior
+    const oldSnapshot = (report.snapshot ?? {}) as Record<string, unknown>
+    const oldInsights = (oldSnapshot.insights ?? {}) as Record<string, unknown>
+
     const snapshot = {
+      ...oldSnapshot,
       generated_at: new Date().toISOString(),
-      period: { start: body.period_start, end: body.period_end },
-      tone: body.tone,
+      period: { start: report.period_start, end: report.period_end },
       account: {
         currency: account.currency ?? cachedSummary?.currency ?? "BRL",
         platform: reportRes?.platform ?? null,
@@ -265,39 +180,20 @@ export async function POST(
       },
       campaigns: campaignsList,
       flows: flowsList,
-      insights: {},
+      insights: oldInsights,
     }
 
-    const { data, error } = await admin
+    const { error: updateErr } = await admin
       .from("client_monthly_reports")
-      .insert({
-        store_id: storeId,
-        month_label: monthLabel,
-        period_start: body.period_start,
-        period_end: body.period_end,
-        sections: body.sections,
-        tone: body.tone,
-        snapshot,
-        proximos_passos: body.proximos_passos || null,
-        ai_filled: body.ai_filled,
-        generated_by: user.id,
-        status: "draft",
-      })
-      .select("id")
-      .single()
-    if (error) {
-      // Unique (store_id, month_label) violation: surface 409 com msg clara
-      // ao inves de 500 generico.
-      if (error.code === "23505") {
-        throw new AppError(
-          `Já existe um relatório para ${monthLabel}. Abra o relatório existente ou ajuste o período.`,
-          409,
-        )
-      }
-      throw new AppError(`Erro ao salvar relatório: ${error.message}`, 500)
-    }
-    return successResponse(request, { id: data.id, month_label: monthLabel })
+      .update({ snapshot })
+      .eq("id", reportId)
+    if (updateErr) throw updateErr
+
+    return successResponse(request, {
+      resynced: true,
+      kpis: snapshot.kpis,
+    })
   } catch (error) {
-    return errorResponse(request, error, "store-reports-create")
+    return errorResponse(request, error, "report-resync")
   }
 }

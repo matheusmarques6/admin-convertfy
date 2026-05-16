@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react"
-import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink, Maximize2 } from "lucide-react"
+import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink, Maximize2, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface Props {
@@ -27,6 +27,23 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
       })
       if (res.ok) router.refresh()
       else alert("Falha ao preencher com IA. Verifique credenciais.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleResync = async () => {
+    setBusy("resync")
+    try {
+      const res = await fetch(`/api/admin/stores/reports/${reportId}/resync`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        router.refresh()
+      } else {
+        const j = await res.json().catch(() => ({}))
+        alert(`Falha ao re-sincronizar: ${j?.error?.message ?? res.statusText}`)
+      }
     } finally {
       setBusy(null)
     }
@@ -73,6 +90,16 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      <button
+        onClick={handleResync}
+        disabled={busy === "resync"}
+        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold disabled:opacity-50"
+        style={{ borderColor: "rgba(0,0,0,0.10)" }}
+        title="Recalcula KPIs a partir dos dados atuais (Omnisend/Klaviyo/Shopify)"
+      >
+        {busy === "resync" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+        Re-sincronizar dados
+      </button>
       <button
         onClick={handleAIFill}
         disabled={busy === "ai"}
