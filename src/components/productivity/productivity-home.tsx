@@ -106,7 +106,7 @@ export function ProductivityHome() {
 
   return (
     <>
-    <div className="max-w-[1500px] mx-auto flex flex-col gap-6 w-full pb-8">
+    <div className="max-w-[1500px] mx-auto flex flex-col gap-4 md:gap-6 w-full pb-8">
 
         {/* ═══════════ PAGE HEADER: Workspace + Título + Stats + DayFilter ═══════════ */}
         <PageHeader
@@ -133,7 +133,7 @@ export function ProductivityHome() {
         )}
 
         {/* ═══════════ VISÃO DO DIA: Objetivos + Calendário ═══════════ */}
-        <div className="grid grid-cols-2 gap-[18px]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-[18px]">
           <ObjectivesCard
             objectives={dayObjectives}
             onAddObjective={() => setShowDailyPlanning(true)}
@@ -162,7 +162,7 @@ export function ProductivityHome() {
         )}
 
         {/* ═══════════ PRODUTIVIDADE: Foco + Gráfico semanal ═══════════ */}
-        <div className="grid grid-cols-[1.2fr_1fr] gap-[18px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 lg:gap-[18px]">
           <FocusModeCard
             currentTask={
               tasks.find((t) => t.status === "progress") ||
@@ -182,7 +182,7 @@ export function ProductivityHome() {
         </div>
 
         {/* ═══════════ CRESCIMENTO: Metas + Hábitos ═══════════ */}
-        <div className="grid grid-cols-2 gap-[18px]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-[18px]">
           <GoalsCard
             goals={goals}
             onAddGoal={() => setGoalModalOpen(true)}
@@ -273,17 +273,17 @@ function PageHeader({
   ]
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex justify-between items-end gap-4 flex-wrap">
-        <div>
+    <div className="flex flex-col gap-4 md:gap-5">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 sm:gap-4 flex-wrap">
+        <div className="min-w-0">
           <div className="text-[11px] font-medium text-gray-500 mb-1 tracking-[0.01em]">
             Workspace · Geral
           </div>
-          <div className="flex items-baseline gap-2.5">
-            <h1 className="text-[24px] font-bold text-gray-900 m-0 -tracking-[0.025em] leading-tight">
+          <div className="flex items-baseline gap-2.5 flex-wrap">
+            <h1 className="text-[20px] md:text-[24px] font-bold text-gray-900 m-0 -tracking-[0.025em] leading-tight">
               Início
             </h1>
-            <span className={cn("text-[13px] font-medium text-gray-500 px-2 py-0.5 rounded-md bg-gray-100", mono)}>
+            <span className={cn("text-[12px] md:text-[13px] font-medium text-gray-500 px-2 py-0.5 rounded-md bg-gray-100", mono)}>
               {pendingTasks} tarefas hoje
             </span>
           </div>
@@ -291,26 +291,28 @@ function PageHeader({
         <DayFilter dayLabel={dayLabel} onDayChange={onDayChange} />
       </div>
 
-      {/* Stats inline bar */}
+      {/* Stats inline bar — grid responsivo (2 cols mobile, 4 desktop) */}
       <div
-        className="bg-white border rounded-xl flex shadow-sm"
-        style={{ borderColor: "rgba(0,0,0,0.06)" }}
+        className="bg-white border rounded-xl grid grid-cols-2 md:grid-cols-4 shadow-sm overflow-hidden divide-x divide-y md:divide-y-0"
+        style={{
+          borderColor: "rgba(0,0,0,0.06)",
+        }}
       >
-        {stats.map((s, i) => (
+        {stats.map((s) => (
           <div
             key={s.label}
-            className="flex-1 py-4 px-5"
+            className="py-3 md:py-4 px-3 md:px-5"
             style={{
-              borderRight: i < stats.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
+              borderColor: "rgba(0,0,0,0.06)",
             }}
           >
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-[0.08em] mb-1.5">
+            <div className="text-[9.5px] md:text-[10px] font-semibold text-gray-500 uppercase tracking-[0.08em] mb-1 md:mb-1.5">
               {s.label}
             </div>
-            <div className={cn("text-[22px] font-bold text-gray-900 -tracking-[0.025em] leading-none mb-1", mono)}>
+            <div className={cn("text-[18px] md:text-[22px] font-bold text-gray-900 -tracking-[0.025em] leading-none mb-1", mono)}>
               {s.value}
             </div>
-            <div className="text-[11px] text-gray-500">{s.sub}</div>
+            <div className="text-[10.5px] md:text-[11px] text-gray-500">{s.sub}</div>
           </div>
         ))}
       </div>
@@ -444,7 +446,7 @@ function MorningRitualCard({
       <div className="absolute top-5 right-[200px] w-[3px] h-[3px] rounded-full bg-white/40" />
       <div className="absolute top-[50px] right-[240px] w-[2px] h-[2px] rounded-full bg-white/30" />
 
-      <div className="flex justify-between items-center gap-4 relative">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-4 relative">
         <div className="flex items-center gap-4 min-w-0 flex-1">
           <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center text-white backdrop-blur-sm shrink-0">
             <IconSun size={22} />
@@ -464,7 +466,7 @@ function MorningRitualCard({
             </div>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
           <button
             onClick={onSkip}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 text-white border border-white/20 rounded-lg text-[12px] font-semibold cursor-pointer hover:bg-white/20 transition-colors"
@@ -714,9 +716,9 @@ function TodayTasksCard({
         }
       />
 
-      {/* Header de colunas */}
+      {/* Header de colunas — esconde colunas extras em mobile */}
       <div
-        className="grid gap-2.5 px-2.5 py-1.5 text-[9.5px] font-semibold text-gray-400 uppercase tracking-[0.08em] border-b mb-1"
+        className="hidden md:grid gap-2.5 px-2.5 py-1.5 text-[9.5px] font-semibold text-gray-400 uppercase tracking-[0.08em] border-b mb-1"
         style={{
           gridTemplateColumns: "auto auto minmax(0,1fr) 130px 70px 32px 50px",
           borderColor: "rgba(0,0,0,0.06)",
@@ -742,63 +744,121 @@ function TodayTasksCard({
       {tasks.map((t) => {
         const isDone = t.status === "done"
         return (
-          <div
+          <TaskRow
             key={t.id}
-            className="grid gap-2.5 px-2.5 py-2 rounded-md cursor-pointer transition-colors items-center group hover:bg-gray-50"
-            style={{
-              gridTemplateColumns: "auto auto minmax(0,1fr) 130px 70px 32px 50px",
-            }}
-          >
-            <PriorityDot priority={t.priority} />
-            <Checkbox
-              checked={isDone}
-              onChange={() => onToggle(t.id)}
-            />
-            <span
-              className={cn(
-                "text-[13px] font-medium truncate -tracking-[0.005em]",
-                isDone ? "text-gray-400 line-through" : "text-gray-900",
-              )}
-            >
-              {t.name}
-            </span>
-            <span
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full truncate -tracking-[0.005em]"
-              title={t.project}
-            >
-              <span className="w-1 h-1 rounded-full bg-brand-500 shrink-0" />
-              <span className="truncate">{t.project}</span>
-            </span>
-            <span className={cn("text-[11px] text-gray-500", mono)}>{t.estimatedTime || "—"}</span>
-            <div className="flex">
-              <Avatar initials={t.people[0]} size={22} />
-            </div>
-            <div className="flex items-center justify-end gap-1">
-              <span
-                className={cn(
-                  "text-[10px] font-bold text-right",
-                  isDone ? "text-emerald-700" : "text-gray-400",
-                  mono,
-                )}
-              >
-                {isDone ? "Feito" : (t.time || "—")}
-              </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(t.id, t.name) }}
-                className="h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Excluir tarefa"
-              >
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-2 14H7L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                </svg>
-              </button>
-            </div>
-          </div>
+            task={t}
+            isDone={isDone}
+            onToggle={() => onToggle(t.id)}
+            onDelete={() => onDelete(t.id, t.name)}
+          />
         )
       })}
     </Card>
+  )
+}
+
+// TaskRow — linha responsiva: mobile = flex compacto, desktop = grid 7-cols
+function TaskRow({
+  task: t,
+  isDone,
+  onToggle,
+  onDelete,
+}: {
+  task: Task
+  isDone: boolean
+  onToggle: () => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      {/* Mobile (< md): card compacto com nome em cima e chips embaixo */}
+      <div className="md:hidden flex items-start gap-2.5 px-2.5 py-2.5 rounded-md hover:bg-gray-50 transition-colors group border-b last:border-b-0" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
+        <div className="flex flex-col gap-1.5 pt-0.5 items-center">
+          <PriorityDot priority={t.priority} />
+          <Checkbox checked={isDone} onChange={onToggle} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={cn(
+            "text-[13px] font-medium -tracking-[0.005em] mb-1",
+            isDone ? "text-gray-400 line-through" : "text-gray-900",
+          )}>
+            {t.name}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full truncate max-w-[60vw]">
+              <span className="w-1 h-1 rounded-full bg-brand-500 shrink-0" />
+              <span className="truncate">{t.project}</span>
+            </span>
+            {t.estimatedTime && (
+              <span className={cn("text-[10.5px] text-gray-500 px-1.5 py-0.5 bg-gray-100 rounded", mono)}>
+                {t.estimatedTime}
+              </span>
+            )}
+            {t.people[0] && <Avatar initials={t.people[0]} size={18} />}
+            {isDone && (
+              <span className={cn("text-[10px] font-bold text-emerald-700", mono)}>✓ Feito</span>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          className="h-7 w-7 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 shrink-0"
+          title="Excluir tarefa"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-2 14H7L5 6" />
+            <path d="M10 11v6M14 11v6" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Desktop (>= md): grid 7-cols */}
+      <div
+        className="hidden md:grid gap-2.5 px-2.5 py-2 rounded-md cursor-pointer transition-colors items-center group hover:bg-gray-50"
+        style={{ gridTemplateColumns: "auto auto minmax(0,1fr) 130px 70px 32px 50px" }}
+      >
+        <PriorityDot priority={t.priority} />
+        <Checkbox checked={isDone} onChange={onToggle} />
+        <span className={cn(
+          "text-[13px] font-medium truncate -tracking-[0.005em]",
+          isDone ? "text-gray-400 line-through" : "text-gray-900",
+        )}>
+          {t.name}
+        </span>
+        <span
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full truncate"
+          title={t.project}
+        >
+          <span className="w-1 h-1 rounded-full bg-brand-500 shrink-0" />
+          <span className="truncate">{t.project}</span>
+        </span>
+        <span className={cn("text-[11px] text-gray-500", mono)}>{t.estimatedTime || "—"}</span>
+        <div className="flex">
+          <Avatar initials={t.people[0]} size={22} />
+        </div>
+        <div className="flex items-center justify-end gap-1">
+          <span className={cn(
+            "text-[10px] font-bold text-right",
+            isDone ? "text-emerald-700" : "text-gray-400",
+            mono,
+          )}>
+            {isDone ? "Feito" : (t.time || "—")}
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="h-5 w-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Excluir tarefa"
+          >
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-2 14H7L5 6" />
+              <path d="M10 11v6M14 11v6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -847,25 +907,30 @@ function ProjectsOverview({ projects }: { projects: Array<ProjectGroup> }) {
         </a>
       </div>
 
-      {/* Header de colunas */}
-      <div
-        className="grid gap-3 px-[46px] py-2.5 text-[9.5px] font-semibold text-gray-500 uppercase tracking-[0.08em] bg-gray-50/60 border-b"
-        style={{
-          gridTemplateColumns: "minmax(0,1fr) 130px 80px 100px 70px 40px",
-          borderColor: "rgba(0,0,0,0.06)",
-        }}
-      >
-        <span>Tarefa</span>
-        <span>Status</span>
-        <span>Resp.</span>
-        <span>Data</span>
-        <span>Est.</span>
-        <span />
-      </div>
+      {/* Wrapper com overflow-x pra permitir scroll horizontal em mobile */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
+          {/* Header de colunas — esconde em mobile */}
+          <div
+            className="hidden md:grid gap-3 px-[46px] py-2.5 text-[9.5px] font-semibold text-gray-500 uppercase tracking-[0.08em] bg-gray-50/60 border-b"
+            style={{
+              gridTemplateColumns: "minmax(0,1fr) 130px 80px 100px 70px 40px",
+              borderColor: "rgba(0,0,0,0.06)",
+            }}
+          >
+            <span>Tarefa</span>
+            <span>Status</span>
+            <span>Resp.</span>
+            <span>Data</span>
+            <span>Est.</span>
+            <span />
+          </div>
 
-      {projects.map((p, i) => (
-        <ProjectBlock key={p.id} project={p} defaultOpen={i === 0} />
-      ))}
+          {projects.map((p, i) => (
+            <ProjectBlock key={p.id} project={p} defaultOpen={i === 0} />
+          ))}
+        </div>
+      </div>
     </Card>
   )
 }
