@@ -84,10 +84,12 @@ export default async function ReportPreviewPage({
   const platformFromSnapshot = (snapshotData.account as { platform?: string } | undefined)?.platform ?? null
   const plan = derivePlan(store?.contract_start_date, store?.contract_end_date, platformFromSnapshot)
   const generator = (report.generator as unknown as { name: string } | null)
-  const period =
-    `${new Date(report.period_start).toLocaleDateString("pt-BR")} → ${new Date(
-      report.period_end,
-    ).toLocaleDateString("pt-BR")}`
+  // Parse manual evita TZ shift que mostraria "31/03" pra "2026-04-01"
+  const fmtYMD = (ymd: string): string => {
+    const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : ymd
+  }
+  const period = `${fmtYMD(report.period_start)} → ${fmtYMD(report.period_end)}`
 
   return (
     <div className="flex flex-col gap-4 min-h-0">

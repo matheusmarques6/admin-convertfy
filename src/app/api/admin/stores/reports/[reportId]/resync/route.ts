@@ -11,9 +11,12 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("ReportResync")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+export const maxDuration = 90
 
 export async function POST(
   request: NextRequest,
@@ -36,22 +39,39 @@ export async function POST(
     const periodParam = `period=custom&start_date=${report.period_start}&end_date=${report.period_end}`
     const cookie = request.headers.get("cookie") ?? ""
 
-    async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
+    // Timeout individual de 25s por fetch — evita que um endpoint lento
+    // (Omnisend rate limit, Klaviyo cold) bloqueie a operacao toda.
+    async function fetchJson(url: string, tag: string): Promise<Record<string, unknown> | null> {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 25_000)
       try {
-        const r = await fetch(url, { headers: { cookie } })
-        if (!r.ok) return null
+        const r = await fetch(url, { headers: { cookie }, signal: controller.signal })
+        clearTimeout(timer)
+        if (!r.ok) {
+          log.warn(`[Resync] ${tag} returned ${r.status}`)
+          return null
+        }
         return (await r.json()) as Record<string, unknown>
-      } catch {
+      } catch (err) {
+        clearTimeout(timer)
+        log.warn(`[Resync] ${tag} failed`, {
+          error: err instanceof Error ? err.message : String(err),
+        })
         return null
       }
     }
 
-    const [reportRes, campaignsRes, flowsRes, shopifyRes] = await Promise.all([
-      fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${report.store_id}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${report.store_id}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${report.store_id}&${periodParam}`),
-      fetchJson(`${origin}/api/integrations/shopify/report?store_id=${report.store_id}&${periodParam}`),
+    // Promise.allSettled garante que UM fetch lento nao mata todos os outros.
+    const results = await Promise.allSettled([
+      fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${report.store_id}&${periodParam}`, "email-report"),
+      fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${report.store_id}&${periodParam}`, "email-campaigns"),
+      fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${report.store_id}&${periodParam}`, "email-flows"),
+      fetchJson(`${origin}/api/integrations/shopify/report?store_id=${report.store_id}&${periodParam}`, "shopify-report"),
     ])
+    const reportRes = results[0].status === "fulfilled" ? results[0].value : null
+    const campaignsRes = results[1].status === "fulfilled" ? results[1].value : null
+    const flowsRes = results[2].status === "fulfilled" ? results[2].value : null
+    const shopifyRes = results[3].status === "fulfilled" ? results[3].value : null
 
     // Cached fallback
     const cachedSummary = await (async () => {

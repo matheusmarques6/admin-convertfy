@@ -203,8 +203,14 @@ function SummaryStat({ Icon, tone, label, value, sub }: {
 
 function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean }) {
   const s = STATUS_META[report.status] ?? STATUS_META.draft
-  const periodStart = new Date(report.period_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-  const periodEnd = new Date(report.period_end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+  // Parse manual evita TZ shift (new Date("2026-04-01") em fuso BR mostra 31/03)
+  const fmtShort = (ymd: string, withYear = false) => {
+    const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!m) return ymd
+    return withYear ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : `${m[3]}/${m[2]}`
+  }
+  const periodStart = fmtShort(report.period_start)
+  const periodEnd = fmtShort(report.period_end, true)
   const parts = report.month_label.split(" ")
   const month = parts[0]
   const year = parts.slice(1).join(" ")

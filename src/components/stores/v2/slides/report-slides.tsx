@@ -140,28 +140,45 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────
 
 function fmtCurrency(value: number, currency = "BRL", opts?: { compact?: boolean }): string {
-  if (!isFinite(value) || value === 0) return currency === "BRL" ? "R$ 0" : `${currency} 0`
+  const sym = currencySymbol(currency)
+  if (!isFinite(value) || value === 0) return `${sym} 0`
   if (opts?.compact) {
-    if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
-    if (value >= 10_000) return `R$ ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
+    if (value >= 1_000_000) return `${sym} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
+    if (value >= 10_000) return `${sym} ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
   }
   try {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value)
   } catch {
-    return `${currency} ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+    return `${sym} ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
   }
 }
 
-function fmtBRLLong(value: number): string {
-  if (!isFinite(value) || value === 0) return "R$ 0,00"
-  return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function fmtMoney(value: number, currency = "BRL"): string {
+  if (!isFinite(value) || value === 0) return currency === "BRL" ? "R$ 0,00" : `${currencySymbol(currency)} 0,00`
+  return `${currencySymbol(currency)} ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function currencySymbol(currency: string): string {
+  if (currency === "BRL") return "R$"
+  if (currency === "USD") return "US$"
+  if (currency === "EUR") return "€"
+  if (currency === "GBP") return "£"
+  return currency
 }
 
 function periodLabel(period?: { start: string; end: string }): string {
   if (!period?.start || !period?.end) return ""
-  const start = new Date(period.start).toLocaleDateString("pt-BR")
-  const end = new Date(period.end).toLocaleDateString("pt-BR")
-  return `${start} — ${end}`
+  // IMPORTANTE: nao usar `new Date("2026-04-01").toLocaleDateString("pt-BR")`
+  // porque parsea como UTC midnight, fuso BR (UTC-3) mostra como dia anterior
+  // (31/03 quando o usuario digitou 01/04). Parse manual preserva a data.
+  return `${fmtYMD(period.start)} — ${fmtYMD(period.end)}`
+}
+
+function fmtYMD(ymd: string): string {
+  // Aceita "2026-04-01" ou "2026-04-01T..." → "01/04/2026"
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return ymd
+  return `${m[3]}/${m[2]}/${m[1]}`
 }
 
 const BENCHMARKS = {
@@ -1023,7 +1040,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             }}
           >
             <DarkMetric label="Faturamento E-mail" value={fmtCurrency(attributed, currency, { compact: true })} sub={`${pct.toFixed(2).replace(".", ",")}% · ${pedidos.toLocaleString("pt-BR")} pedidos`} />
-            <DarkMetric label="Faturamento SMS" value={`${currency === "BRL" ? "R$" : currency} 0`} sub="canal a ativar" mute />
+            <DarkMetric label="Faturamento SMS" value={`${currencySymbol(currency)} 0`} sub="canal a ativar" mute />
           </div>
         </div>
 
@@ -1426,7 +1443,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {campPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={campaigns} />
+          <CompactTable rows={campaigns} currency={currency} />
         </div>
 
         <div>
@@ -1460,7 +1477,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {flowPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={flows} flows />
+          <CompactTable rows={flows} flows currency={currency} />
         </div>
       </div>
 
@@ -1489,7 +1506,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
   )
 }
 
-function CompactTable({ rows, flows }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean }) {
+function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string }) {
   const items = rows ?? []
   return (
     <table style={{ width: "100%", borderCollapse: "collapse" as const, fontFamily: F_SANS, fontSize: 12 }}>
@@ -1558,7 +1575,7 @@ function CompactTable({ rows, flows }: { rows: ReportSnapshot["campaigns"] | Rep
                   ...TNUM,
                 }}
               >
-                {fmtBRLLong(r.revenue ?? 0)}
+                {fmtMoney(r.revenue ?? 0, currency)}
               </td>
             </tr>
           ))
