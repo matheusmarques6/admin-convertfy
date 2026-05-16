@@ -235,13 +235,16 @@ export default async function DashboardLayout({
                 precisam de breadcrumbs/contexto extra. */}
 
             {/* Page content with responsive padding.
-                min-h-0 + overscroll-contain garantem que o scroll vertical
-                funcione corretamente em flex-col (sem isso o conteudo
-                'overflowava' fora do main sem scroll). */}
-            <main className="flex-1 overflow-auto overscroll-contain p-4 md:p-6 lg:p-8 min-h-0">
-              <ErrorBoundary>
-                {children}
-              </ErrorBoundary>
+                relative + filho com overflow-y-auto + position absolute
+                inset-0 garante scroll independente do flex parent
+                (forca o scroll mesmo quando flex-col ancestral nao tem
+                min-h-0 ou outras restricoes). */}
+            <main className="flex-1 relative min-h-0">
+              <div className="absolute inset-0 overflow-y-auto overscroll-contain p-4 md:p-6 lg:p-8">
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
+              </div>
             </main>
           </div>
         </div>

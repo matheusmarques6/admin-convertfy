@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import { DailyPlanning } from "./daily-planning"
 import { NightlyReflection } from "./nightly-reflection"
+import { TaskDetailDrawer } from "./task-detail-drawer"
 import {
   PriorityDot, Avatar, Checkbox,
   IconCheck, IconCalendar, IconChevronLeft, IconChevronRight,
@@ -45,8 +46,15 @@ export function ProductivityHome() {
     weeklyBars, groups,
     focusRunning, focusTime, toggleFocus, resetFocus, tickFocus,
     isLoaded, fetchData, profile, apiAction,
-    dailyPlan,
+    dailyPlan, selectedTaskId, selectTask,
   } = useProductivityStore()
+
+  // Encontra task selecionada pra abrir drawer (tasks do dia OU items
+  // de groups de projeto)
+  const allClickableTasks = [...tasks, ...groups.flatMap((g) => g.items)]
+  const selectedTask = selectedTaskId
+    ? allClickableTasks.find((t) => t.id === selectedTaskId) ?? null
+    : null
 
   const [showDailyPlanning, setShowDailyPlanning] = useState(false)
   const [habitModalOpen, setHabitModalOpen] = useState(false)
@@ -154,11 +162,15 @@ export function ProductivityHome() {
               apiAction("delete_task", { id })
             }
           }}
+          onOpen={(id) => selectTask(id)}
         />
 
         {/* ═══════════ PROJETOS ATIVOS (overview) ═══════════ */}
         {onboardingProjects.length > 0 && (
-          <ProjectsOverview projects={onboardingProjects} />
+          <ProjectsOverview
+            projects={onboardingProjects}
+            onOpenTask={(id) => selectTask(id)}
+          />
         )}
 
         {/* ═══════════ PRODUTIVIDADE: Foco + Gráfico semanal ═══════════ */}
@@ -231,6 +243,14 @@ export function ProductivityHome() {
           setGoalModalOpen(false)
         }}
       />
+
+      {/* Drawer lateral ao clicar em tarefa/projeto — mesmo do board */}
+      {selectedTask && (
+        <TaskDetailDrawer
+          task={selectedTask}
+          onClose={() => selectTask(null)}
+        />
+      )}
     </>
   )
 }
@@ -692,11 +712,12 @@ type Task = {
 }
 
 function TodayTasksCard({
-  tasks, onToggle, onDelete,
+  tasks, onToggle, onDelete, onOpen,
 }: {
   tasks: Task[]
   onToggle: (id: string) => void
   onDelete: (id: string, name: string) => void
+  onOpen: (id: string) => void
 }) {
   const pending = tasks.filter(t => t.status !== "done").length
   return (
@@ -750,6 +771,7 @@ function TodayTasksCard({
             isDone={isDone}
             onToggle={() => onToggle(t.id)}
             onDelete={() => onDelete(t.id, t.name)}
+            onOpen={() => onOpen(t.id)}
           />
         )
       })}
@@ -763,17 +785,26 @@ function TaskRow({
   isDone,
   onToggle,
   onDelete,
+  onOpen,
 }: {
   task: Task
   isDone: boolean
   onToggle: () => void
   onDelete: () => void
+  onOpen: () => void
 }) {
   return (
     <>
       {/* Mobile (< md): card compacto com nome em cima e chips embaixo */}
-      <div className="md:hidden flex items-start gap-2.5 px-2.5 py-2.5 rounded-md hover:bg-gray-50 transition-colors group border-b last:border-b-0" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-        <div className="flex flex-col gap-1.5 pt-0.5 items-center">
+      <div
+        onClick={onOpen}
+        className="md:hidden flex items-start gap-2.5 px-2.5 py-2.5 rounded-md hover:bg-gray-50 transition-colors group border-b last:border-b-0 cursor-pointer"
+        style={{ borderColor: "rgba(0,0,0,0.04)" }}
+      >
+        <div
+          className="flex flex-col gap-1.5 pt-0.5 items-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <PriorityDot priority={t.priority} />
           <Checkbox checked={isDone} onChange={onToggle} />
         </div>
@@ -815,11 +846,14 @@ function TaskRow({
 
       {/* Desktop (>= md): grid 7-cols */}
       <div
+        onClick={onOpen}
         className="hidden md:grid gap-2.5 px-2.5 py-2 rounded-md cursor-pointer transition-colors items-center group hover:bg-gray-50"
         style={{ gridTemplateColumns: "auto auto minmax(0,1fr) 130px 70px 32px 50px" }}
       >
         <PriorityDot priority={t.priority} />
-        <Checkbox checked={isDone} onChange={onToggle} />
+        <span onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={isDone} onChange={onToggle} />
+        </span>
         <span className={cn(
           "text-[13px] font-medium truncate -tracking-[0.005em]",
           isDone ? "text-gray-400 line-through" : "text-gray-900",
@@ -879,7 +913,12 @@ type ProjectGroup = {
   client_name?: string
 }
 
-function ProjectsOverview({ projects }: { projects: Array<ProjectGroup> }) {
+function ProjectsOverview({
+  projects, onOpenTask,
+}: {
+  projects: Array<ProjectGroup>
+  onOpenTask: (id: string) => void
+}) {
   return (
     <Card padding={0}>
       <div
@@ -927,7 +966,7 @@ function ProjectsOverview({ projects }: { projects: Array<ProjectGroup> }) {
           </div>
 
           {projects.map((p, i) => (
-            <ProjectBlock key={p.id} project={p} defaultOpen={i === 0} />
+            <ProjectBlock key={p.id} project={p} defaultOpen={i === 0} onOpenTask={onOpenTask} />
           ))}
         </div>
       </div>
@@ -944,10 +983,11 @@ function fmtBRL(v: number | string | null | undefined): string {
 }
 
 function ProjectBlock({
-  project, defaultOpen,
+  project, defaultOpen, onOpenTask,
 }: {
   project: ProjectGroup
   defaultOpen: boolean
+  onOpenTask: (id: string) => void
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const done = project.items.filter((t) => t.status === "done").length
@@ -1010,6 +1050,7 @@ function ProjectBlock({
         return (
           <div
             key={t.id}
+            onClick={() => onOpenTask(t.id)}
             className="grid gap-3 px-[46px] py-2.5 bg-white items-center cursor-pointer transition-colors hover:bg-gray-50"
             style={{
               gridTemplateColumns: "minmax(0,1fr) 130px 80px 100px 70px 40px",
