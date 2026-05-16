@@ -52,6 +52,18 @@ interface Competitor {
   notas: string | null
 }
 
+interface TopProduct {
+  id: string
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  image_url: string | null
+  external_id: string | null
+  captured_at: string | null
+}
+
 interface StoreLite {
   client_id?: string | null
 }
@@ -63,19 +75,22 @@ export function TabContexto({ storeId }: { storeId: string }) {
   const [ctx, setCtx] = useState<StoreContext>({})
   const [storeLite, setStoreLite] = useState<StoreLite>({})
   const [competitors, setCompetitors] = useState<Competitor[]>([])
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const reload = async () => {
     try {
-      const [cs, comps] = await Promise.all([
+      const [cs, comps, tops] = await Promise.all([
         fetch(`/api/client-stores/${storeId}`).then((r) => r.json()),
         fetch(`/api/admin/stores/${storeId}/competitors`).then((r) => r.json()),
+        fetch(`/api/admin/stores/${storeId}/top-products`).then((r) => r.json()),
       ])
       const storeObj = (cs.data?.store ?? cs.store ?? cs) as Record<string, unknown>
       setCtx(storeObj as StoreContext)
       setStoreLite({ client_id: (storeObj.client_id as string | null) ?? null })
       setCompetitors((comps.data?.competitors ?? comps.competitors ?? []) as Competitor[])
+      setTopProducts((tops.data?.products ?? tops.products ?? []) as TopProduct[])
     } catch {
       // noop
     }
@@ -220,6 +235,39 @@ export function TabContexto({ storeId }: { storeId: string }) {
             <Kpi label="Cobertura" value={ctx.frete_cobertura ?? "—"} />
           </div>
         )}
+
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            Top produtos
+          </div>
+          {topProducts.length === 0 ? (
+            <div className="text-[12px] text-slate-400 italic py-1">
+              Sem dados de top produtos ainda. Será preenchido automaticamente pelo Analisador de ADS.
+            </div>
+          ) : (
+            <ol className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {topProducts.slice(0, 5).map((p) => (
+                <li key={p.id} className="border rounded-md p-2.5 flex flex-col gap-1.5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-900 text-white">
+                      #{p.rank}
+                    </span>
+                    {p.price !== null && (
+                      <span className="text-[10.5px] font-semibold text-slate-700">
+                        {p.currency ?? "R$"} {p.price.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  {p.image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image_url} alt={p.title} className="w-full aspect-square object-cover rounded" />
+                  )}
+                  <div className="text-[11.5px] text-slate-800 leading-tight line-clamp-3">{p.title}</div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </Section>
 
       {/* LISTA & ENGAJAMENTO */}
