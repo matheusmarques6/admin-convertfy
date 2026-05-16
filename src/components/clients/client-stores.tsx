@@ -190,7 +190,20 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         })
         const result = await response.json()
         if (!response.ok) throw new Error(result.error || "Erro ao criar")
-        toast({ title: "Loja criada! Configure as integrações." })
+
+        // Fire-and-forget: dispara o Analisador de ADS no n8n. Os 7
+        // callbacks vão popular Pesquisa, Briefing, Top Produtos e
+        // Concorrência automaticamente em 1-2 minutos.
+        fetch(`/api/admin/stores/${result.store.id}/trigger-ads-analyzer`, {
+          method: "POST",
+        }).catch((err) => {
+          console.error("Falha ao disparar Analisador de ADS (não bloqueia):", err)
+        })
+
+        toast({
+          title: "Loja criada!",
+          description: "Analisador de ADS rodando em background. Configure as integrações.",
+        })
         setDialogOpen(false)
         // Redirect to store settings for credential configuration
         router.push(`/admin/stores/${result.store.id}?tab=settings`)
