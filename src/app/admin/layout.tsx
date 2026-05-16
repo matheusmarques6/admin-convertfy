@@ -216,37 +216,34 @@ export default async function DashboardLayout({
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
       <CommandPalette>
-        <div className="flex h-screen overflow-hidden bg-[#FCFCFD] dark:bg-[#0F1117]">
-          {/* Sidebar — desktop/tablet (hidden on mobile) */}
-          <div className="hidden md:block shrink-0">
-            <Sidebar user={userData} />
-          </div>
+        {/* Layout 100dvh + flex row. Cada filho gerencia sua propria altura
+            sem depender de flex-col + min-h-0 (essa cadeia quebra o scroll
+            em varios browsers). Sidebar sticky a esquerda; main com altura
+            explicita = 100dvh + overflow-y-auto direto.
 
-          {/* Sidebar mobile drawer */}
+            100dvh > 100vh porque inclui ajuste dinamico de URL bar mobile
+            (Safari/Chrome iOS) e nao "salta" quando barra some/aparece. */}
+        <div className="flex h-[100dvh] w-full overflow-hidden bg-[#FCFCFD] dark:bg-[#0F1117]">
+          {/* Sidebar — desktop/tablet (oculta em mobile) */}
+          <aside className="hidden md:block shrink-0 h-[100dvh] sticky top-0">
+            <Sidebar user={userData} />
+          </aside>
+
+          {/* Sidebar mobile drawer (overlay, nao toma espaco) */}
           <SidebarMobileDrawer user={userData} />
 
-          {/* Main content */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            {/* Mobile top bar — only < 768px */}
+          {/* Main content — h-[100dvh] explicito + overflow-y-auto = scroll
+              GARANTIDO em todos os browsers. Sem dependencia de flex-col
+              ancestral propagar altura corretamente. */}
+          <main className="flex-1 min-w-0 h-[100dvh] overflow-y-auto overscroll-contain">
+            {/* Mobile top bar sticky no topo do scroller (some quando rola) */}
             <MobileTopBar user={userData} />
-
-            {/* Header desktop removido: titulo + notificacoes + busca + tema
-                ja moram na sidebar. Pages individuais usam PageHeader quando
-                precisam de breadcrumbs/contexto extra. */}
-
-            {/* Page content with responsive padding.
-                relative + filho com overflow-y-auto + position absolute
-                inset-0 garante scroll independente do flex parent
-                (forca o scroll mesmo quando flex-col ancestral nao tem
-                min-h-0 ou outras restricoes). */}
-            <main className="flex-1 relative min-h-0">
-              <div className="absolute inset-0 overflow-y-auto overscroll-contain p-4 md:p-6 lg:p-8">
-                <ErrorBoundary>
-                  {children}
-                </ErrorBoundary>
-              </div>
-            </main>
-          </div>
+            <div className="p-4 md:p-6 lg:p-8">
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
+            </div>
+          </main>
         </div>
       </CommandPalette>
       <WelcomeTour />
