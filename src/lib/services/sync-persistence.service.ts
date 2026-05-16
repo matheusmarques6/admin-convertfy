@@ -20,6 +20,30 @@ const PERIOD_DAYS: Record<string, number> = {
 
 const log = logger.child("SyncPersistence")
 
+// ─── Clamp helpers ────────────────────────────────────────────
+// Colunas NUMERIC(p,s) explodem com "numeric field overflow" se o valor
+// passar do max. Edge cases comuns: API retorna Infinity quando
+// delivered=0 + opened>0, ou rates > 100% por bugs upstream. Clampar
+// antes de persistir mantem o sync estavel.
+
+function clampRate(v: number | null | undefined): number | null {
+  // NUMERIC(5,2) = max 999.99
+  if (v == null || !isFinite(v)) return 0
+  return Math.max(0, Math.min(999.99, Number(v)))
+}
+
+function clampMoney10(v: number | null | undefined): number | null {
+  // NUMERIC(10,2) = max 99_999_999.99
+  if (v == null || !isFinite(v)) return 0
+  return Math.max(0, Math.min(99_999_999.99, Number(v)))
+}
+
+function clampMoney12(v: number | null | undefined): number | null {
+  // NUMERIC(12,2) = max 9_999_999_999.99
+  if (v == null || !isFinite(v)) return 0
+  return Math.max(0, Math.min(9_999_999_999.99, Number(v)))
+}
+
 /**
  * Normaliza period_label para o que a constraint `valid_period_label`
  * aceita em store_revenue_summary, omnisend_campaign_metrics e
@@ -339,19 +363,23 @@ export async function upsertOmnisendSyncResults(
       period_label: normalizedPeriod,
       recipients: c.recipients,
       delivered: c.delivered,
-      delivery_rate: c.delivery_rate,
+      // Rates: clamp em [0, 999.99] pra caber em NUMERIC(5,2). Sem isso,
+      // valores edge-case (delivered=0 + opened>0 = Infinity, ou bugs da
+      // API) explodem a coluna com "numeric field overflow" e quebram o
+      // sync inteiro.
+      delivery_rate: clampRate(c.delivery_rate),
       opened: c.opened,
-      open_rate: c.open_rate,
+      open_rate: clampRate(c.open_rate),
       clicked: c.clicked,
-      click_rate: c.click_rate,
+      click_rate: clampRate(c.click_rate),
       conversions: c.conversions,
-      conversion_rate: c.conversion_rate,
-      conversion_value: c.conversion_value,
-      revenue_per_recipient: c.revenue_per_recipient,
+      conversion_rate: clampRate(c.conversion_rate),
+      conversion_value: clampMoney12(c.conversion_value),
+      revenue_per_recipient: clampMoney10(c.revenue_per_recipient),
       bounced: c.bounced,
-      bounce_rate: c.bounce_rate,
+      bounce_rate: clampRate(c.bounce_rate),
       unsubscribed: c.unsubscribed,
-      unsubscribe_rate: c.unsubscribe_rate,
+      unsubscribe_rate: clampRate(c.unsubscribe_rate),
       spam_complaints: c.spam_complaints,
       fetched_at: nowIso,
       expires_at: expiresAt,
@@ -396,19 +424,19 @@ export async function upsertOmnisendSyncResults(
       period_label: normalizedPeriod,
       recipients: a.recipients,
       delivered: a.delivered,
-      delivery_rate: a.delivery_rate,
+      delivery_rate: clampRate(a.delivery_rate),
       opened: a.opened,
-      open_rate: a.open_rate,
+      open_rate: clampRate(a.open_rate),
       clicked: a.clicked,
-      click_rate: a.click_rate,
+      click_rate: clampRate(a.click_rate),
       conversions: a.conversions,
-      conversion_rate: a.conversion_rate,
-      conversion_value: a.conversion_value,
-      revenue_per_recipient: a.revenue_per_recipient,
+      conversion_rate: clampRate(a.conversion_rate),
+      conversion_value: clampMoney12(a.conversion_value),
+      revenue_per_recipient: clampMoney10(a.revenue_per_recipient),
       bounced: a.bounced,
-      bounce_rate: a.bounce_rate,
+      bounce_rate: clampRate(a.bounce_rate),
       unsubscribed: a.unsubscribed,
-      unsubscribe_rate: a.unsubscribe_rate,
+      unsubscribe_rate: clampRate(a.unsubscribe_rate),
       fetched_at: nowIso,
       expires_at: expiresAt,
     }))
@@ -517,9 +545,9 @@ export async function savePerfDataToCache(
         opened: c.opened || 0,
         clicked: c.clicked || 0,
         conversions: c.conversions || 0,
-        open_rate: c.openRate,
-        click_rate: c.clickRate,
-        conversion_value: c.revenue,
+        open_rate: clampRate(c.openRate),
+        click_rate: clampRate(c.clickRate),
+        conversion_value: clampMoney12(c.revenue),
         fetched_at: now,
         expires_at: metricsExpiresAt,
       }))
@@ -543,9 +571,9 @@ export async function savePerfDataToCache(
         period_start: periodStartISO,
         period_end: periodEndISO,
         delivered: f.delivered,
-        open_rate: f.openRate,
-        click_rate: f.clickRate,
-        conversion_value: f.revenue,
+        open_rate: clampRate(f.openRate),
+        click_rate: clampRate(f.clickRate),
+        conversion_value: clampMoney12(f.revenue),
         fetched_at: now,
         expires_at: metricsExpiresAt,
       }))

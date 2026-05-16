@@ -380,27 +380,38 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
   const sectionsCount = Object.values(sections).filter(Boolean).length
 
   const handleSubmit = async () => {
+    if (!periodStart || !periodEnd) {
+      alert("Selecione o período (início e fim) antes de gerar o relatório.")
+      return
+    }
     setSubmitting(true)
     try {
+      const payload: Record<string, unknown> = {
+        period_start: periodStart,
+        period_end: periodEnd,
+        tone,
+        sections,
+        ai_filled: aiFilled,
+      }
+      // Só envia proximos_passos se houver texto — evita null/empty na payload
+      const trimmed = proximos.trim()
+      if (trimmed) payload.proximos_passos = trimmed
+
       const res = await fetch(`/api/admin/stores/${storeId}/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          period_start: periodStart,
-          period_end: periodEnd,
-          tone,
-          sections,
-          ai_filled: aiFilled,
-          proximos_passos: proximos || null,
-        }),
+        body: JSON.stringify(payload),
       })
       if (res.ok) {
         onCreated()
         onClose()
       } else {
         const j = await res.json().catch(() => ({}))
-        alert(`Falha: ${j.error?.message ?? res.statusText}`)
+        const msg = j?.error?.message ?? j?.message ?? `Falha ao gerar (HTTP ${res.status})`
+        alert(msg)
       }
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }

@@ -27,8 +27,8 @@ const sectionsSchema = z.object({
 })
 
 const createSchema = z.object({
-  period_start: z.string(), // YYYY-MM-DD
-  period_end: z.string(),
+  period_start: z.string().min(1, "period_start é obrigatório"),
+  period_end: z.string().min(1, "period_end é obrigatório"),
   month_label: z.string().optional(),
   sections: sectionsSchema.default({
     resumo: true,
@@ -40,7 +40,9 @@ const createSchema = z.object({
     proximos: true,
   }),
   tone: z.enum(["editorial", "corporate", "casual"]).default("editorial"),
-  proximos_passos: z.string().optional(),
+  // Aceita null pra UI poder mandar `proximos_passos: proximos || null`
+  // sem disparar 400 Zod (era a causa principal do bug "Gerar falhou").
+  proximos_passos: z.string().nullable().optional(),
   ai_filled: z.boolean().default(true),
 })
 
@@ -107,8 +109,12 @@ export async function POST(
     // pra cristalizar dados de campanhas, flows e KPIs no momento da geracao.
     // Se algo falhar (sem credencial, rate limit), cai pra snapshot parcial
     // pra nao bloquear a criacao do relatorio.
+    //
+    // IMPORTANTE: os endpoints email-platform/* esperam
+    // `period=custom&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+    // (nao `start=` / `end=`).
     const origin = request.nextUrl.origin
-    const periodParam = `start=${body.period_start}&end=${body.period_end}`
+    const periodParam = `period=custom&start_date=${body.period_start}&end_date=${body.period_end}`
     const cookie = request.headers.get("cookie") ?? ""
 
     async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
@@ -182,7 +188,17 @@ export async function POST(
       })
       .select("id")
       .single()
-    if (error) throw error
+    if (error) {
+      // Unique (store_id, month_label) violation: surface 409 com msg clara
+      // ao inves de 500 generico.
+      if (error.code === "23505") {
+        throw new AppError(
+          `Já existe um relatório para ${monthLabel}. Abra o relatório existente ou ajuste o período.`,
+          409,
+        )
+      }
+      throw new AppError(`Erro ao salvar relatório: ${error.message}`, 500)
+    }
     return successResponse(request, { id: data.id, month_label: monthLabel })
   } catch (error) {
     return errorResponse(request, error, "store-reports-create")
