@@ -1,13 +1,34 @@
 "use client"
 
 /**
- * Aba Relatório — Lista de relatórios mensais cliente-facing + modal
- * "Gerar novo relatório" que persiste em client_monthly_reports.
+ * Tab: Relatório (cliente-facing) — mirror exato do prototype.
+ *
+ * Header: title + subtitle "X de Y já apresentadas" + actions (Filtrar /
+ * Year / Gerar novo relatório primary)
+ *
+ * 4 SummaryStat cards (Total brand · Apresentados pos · Enviados info ·
+ * Em rascunho neut com sub)
+ *
+ * Grid 3-col de ReportCard:
+ *  - Cover gradient #0B0E18 → #2137B6 com radial glow + "Apresentação · N
+ *    slides" eyebrow + Playfair month/year split
+ *  - Status badge + período no body
+ *  - 2-col KvSmall (Receita Convertfy / Participação brand Playfair)
+ *  - Footer: avatar + "Gerado por X" + "Abrir →"
+ *  - Atual card tem destaque (border blue100, gradient sutil top, tag
+ *    "ATUAL" no canto)
+ *
+ * Hint footer: card brand-bg com Zap icon + texto explicativo
+ *
+ * GenerateModal: 760px wide com header + body grid + section checks +
+ * tone radio + toggle AI + footer com contador e CTA
  */
 
 import { useEffect, useState } from "react"
-import { Plus, X, Sparkles } from "lucide-react"
-import { cn } from "@/lib/utils"
+import {
+  Plus, X, Zap, Filter, Calendar, Check, Edit3, Send, Layers,
+} from "lucide-react"
+import { Section, Badge, Btn, Avatar, C, TNUM, StoreLogo } from "./_primitives"
 
 interface Report {
   id: string
@@ -24,10 +45,10 @@ interface Report {
   generator?: { name: string; avatar_url: string | null } | null
 }
 
-const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
-  draft: { label: "Rascunho", bg: "#F3F4F6", color: "#4B5563" },
-  sent: { label: "Enviado", bg: "#DBEAFE", color: "#1D4ED8" },
-  presented: { label: "Apresentado", bg: "#D1FAE5", color: "#065F46" },
+const STATUS_META: Record<string, { label: string; tone: "neut" | "info" | "pos"; dot?: boolean }> = {
+  draft: { label: "Rascunho", tone: "neut" },
+  sent: { label: "Enviado ao cliente", tone: "info", dot: true },
+  presented: { label: "Apresentado", tone: "pos", dot: true },
 }
 
 export function TabRelatorio({ storeId }: { storeId: string }) {
@@ -43,6 +64,7 @@ export function TabRelatorio({ storeId }: { storeId: string }) {
       .catch(() => setReports([]))
       .finally(() => setLoading(false))
   }
+
   useEffect(() => { reload() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [storeId])
 
   const total = reports.length
@@ -51,165 +73,277 @@ export function TabRelatorio({ storeId }: { storeId: string }) {
   const drafts = reports.filter((r) => r.status === "draft").length
 
   const now = new Date()
-  const currentMonth = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+  const currentMonthLabel = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+  const draftMonth = reports.find((r) => r.status === "draft")?.month_label
 
   return (
-    <div className="flex flex-col gap-4">
+    <div>
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-end justify-between mb-5 gap-3 flex-wrap">
         <div>
-          <h2 className="text-[18px] font-bold text-slate-900 m-0">Relatórios apresentados ao cliente</h2>
-          <p className="text-[12px] text-slate-500 mt-0.5">
-            Histórico de apresentações mensais geradas pela Convertfy
+          <h2 className="m-0 text-[22px] font-semibold text-slate-900" style={{ letterSpacing: "-0.015em" }}>
+            Relatórios apresentados ao cliente
+          </h2>
+          <p className="mt-1 mb-0 text-[13px]" style={{ color: C.g500 }}>
+            Histórico de apresentações mensais geradas para a loja · <strong style={{ color: C.g900 }}>{presented}</strong> de <strong style={{ color: C.g900 }}>{total}</strong> já apresentadas.
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12.5px] font-semibold"
-        >
-          <Plus className="h-3.5 w-3.5" /> Gerar novo relatório
-        </button>
+        <div className="flex gap-2">
+          <Btn variant="secondary" size="md" icon={<Filter className="h-3.5 w-3.5" />}>Filtrar</Btn>
+          <Btn variant="secondary" size="md" icon={<Calendar className="h-3.5 w-3.5" />}>{now.getFullYear()}</Btn>
+          <Btn variant="primary" size="md" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+            Gerar novo relatório
+          </Btn>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Total de relatórios" value={String(total)} />
-        <Tile label="Apresentados ao cliente" value={String(presented)} />
-        <Tile label="Enviados (não apresentados)" value={String(sent)} />
-        <Tile label="Em rascunho" value={String(drafts)} accent="amber" />
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <SummaryStat Icon={Layers} tone="brand" label="Total de relatórios" value={String(total)} />
+        <SummaryStat Icon={Check} tone="pos" label="Apresentados ao cliente" value={String(presented)} />
+        <SummaryStat Icon={Send} tone="info" label="Enviados (não apresent.)" value={String(sent)} />
+        <SummaryStat Icon={Edit3} tone="neut" label="Em rascunho" value={String(drafts)} sub={draftMonth} />
       </div>
 
-      {/* Grid de relatórios */}
+      {/* Grid */}
       {loading ? (
-        <div className="py-10 text-center text-[12px] text-slate-400 italic">Carregando…</div>
+        <div className="py-10 text-center text-[12px] italic" style={{ color: C.g400 }}>Carregando…</div>
       ) : reports.length === 0 ? (
-        <div className="bg-white border rounded-[10px] p-10 text-center" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-          <p className="text-[14px] font-semibold text-slate-700 mb-1">Nenhum relatório gerado ainda</p>
-          <p className="text-[12px] text-slate-500 mb-4">
-            Gere o primeiro relatório mensal pra apresentar resultados ao cliente
-          </p>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12.5px] font-semibold"
-          >
-            <Plus className="h-3.5 w-3.5" /> Gerar primeiro relatório
-          </button>
-        </div>
+        <Section title="Nenhum relatório gerado ainda">
+          <div className="py-6 text-center">
+            <p className="text-[13px] mb-3" style={{ color: C.g500 }}>
+              Gere o primeiro relatório mensal para apresentar resultados ao cliente.
+            </p>
+            <Btn variant="primary" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setModalOpen(true)}>
+              Gerar primeiro relatório
+            </Btn>
+          </div>
+        </Section>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-5">
           {reports.map((r) => (
-            <ReportCard key={r.id} report={r} isCurrent={r.month_label.toLowerCase().includes(currentMonth.split(" ")[0].toLowerCase())} />
+            <ReportCard
+              key={r.id}
+              report={r}
+              isCurrent={r.month_label.toLowerCase().startsWith(currentMonthLabel.split(" ")[0].toLowerCase())}
+            />
           ))}
         </div>
       )}
 
-      {/* Como funciona hint */}
-      <div className="bg-slate-50 border rounded-md p-3 flex items-start gap-2.5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-        <Sparkles className="h-4 w-4 mt-0.5 text-brand-500 shrink-0" />
-        <div className="text-[11.5px] text-slate-600 leading-snug">
-          <span className="font-semibold text-slate-800">Como funciona:</span> os dados de receita, e-mail e flows
-          são puxados automaticamente do sistema. Campos editoriais como
-          &quot;Próximos passos&quot; e leituras dos insights são preenchidos com IA — você revisa antes de enviar.
-          <a href="#" className="text-brand-600 hover:underline ml-1">Saiba mais →</a>
+      {/* Hint */}
+      <div
+        className="px-[18px] py-[14px] rounded-[10px] flex items-center gap-3"
+        style={{ background: C.blue50, border: `1px solid ${C.blue100}` }}
+      >
+        <Zap className="h-4 w-4 shrink-0" style={{ color: C.brand }} />
+        <div className="flex-1 text-[12.5px] leading-[1.5]" style={{ color: C.g700 }}>
+          <strong style={{ color: C.g900 }}>Como funciona:</strong> os dados de receita, e-mail e flows são puxados automaticamente do sistema. Campos como &ldquo;Próximos passos&rdquo; e leituras editoriais são preenchidos com IA · você revisa antes de enviar.
         </div>
+        <Btn variant="ghost" size="sm" className="!text-brand-500" onClick={() => window.open("https://convertfy.me/docs/relatorios", "_blank")}>
+          Saiba mais →
+        </Btn>
       </div>
 
-      {modalOpen && (
-        <GenerateModal storeId={storeId} onClose={() => setModalOpen(false)} onCreated={reload} />
-      )}
+      {modalOpen && <GenerateModal storeId={storeId} onClose={() => setModalOpen(false)} onCreated={reload} />}
     </div>
   )
 }
 
-function Tile({ label, value, accent }: { label: string; value: string; accent?: "amber" }) {
+// ─── SummaryStat ──────────────────────────────────────
+
+function SummaryStat({ Icon, tone, label, value, sub }: {
+  Icon: typeof Layers
+  tone: "brand" | "pos" | "info" | "neut"
+  label: string
+  value: string
+  sub?: string
+}) {
+  const map = {
+    brand: { bg: C.blue50, c: C.brand, bd: C.blue100 },
+    pos: { bg: C.posBg, c: C.pos, bd: C.posBorder },
+    info: { bg: C.infoBg, c: C.info, bd: C.infoBorder },
+    neut: { bg: C.g50, c: C.g600, bd: C.border },
+  }
+  const m = map[tone]
   return (
-    <div className="bg-white border rounded-[8px] p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-      <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-2">{label}</div>
-      <div className={cn(
-        "text-[22px] font-bold tabular-nums leading-none",
-        accent === "amber" ? "text-amber-600" : "text-slate-900",
-      )}>
+    <div
+      className="p-[14px_16px] rounded-[10px] flex items-center gap-3"
+      style={{ background: C.white, border: `1px solid ${C.border}` }}
+    >
+      <div
+        className="w-[38px] h-[38px] rounded-[8px] inline-flex items-center justify-center shrink-0"
+        style={{ background: m.bg, color: m.c, border: `1px solid ${m.bd}` }}
+      >
+        <Icon className="h-[18px] w-[18px]" />
+      </div>
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: C.g500 }}>{label}</div>
+        <div className="flex items-baseline gap-2">
+          <span
+            className="text-[22px] leading-none"
+            style={{
+              fontFamily: '"Playfair Display", Georgia, serif',
+              color: C.g900,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              ...TNUM,
+            }}
+          >
+            {value}
+          </span>
+          {sub && <span className="text-[11px]" style={{ color: C.g500 }}>{sub}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ReportCard ───────────────────────────────────────
+
+function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean }) {
+  const s = STATUS_META[report.status] ?? STATUS_META.draft
+  const periodStart = new Date(report.period_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+  const periodEnd = new Date(report.period_end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+  const parts = report.month_label.split(" ")
+  const month = parts[0]
+  const year = parts.slice(1).join(" ")
+
+  const snap = report.snapshot ?? {}
+  const kpis = (snap.kpis ?? {}) as Record<string, number>
+  const revenue = kpis.receita_atribuida ?? kpis.receita_total ?? 0
+  const sharePct = kpis.atribuicao_pct ?? 0
+  const slides = (snap.slides_count as number) ?? 7
+
+  return (
+    <a
+      href={`/admin/stores/relatorios/${report.id}`}
+      className="rounded-[12px] p-[18px] block transition-all"
+      style={{
+        background: isCurrent
+          ? "linear-gradient(180deg, rgba(78,98,216,0.04) 0%, rgba(255,255,255,1) 60%)"
+          : C.white,
+        border: `1px solid ${isCurrent ? C.blue100 : C.border}`,
+        textDecoration: "none",
+        position: "relative",
+        boxShadow: C.shadowSm,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = isCurrent ? C.brand : C.borderHv
+        e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.05)"
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = isCurrent ? C.blue100 : C.border
+        e.currentTarget.style.boxShadow = C.shadowSm
+      }}
+    >
+      {isCurrent && (
+        <span
+          className="absolute top-3 right-3 text-[9.5px] font-bold uppercase tracking-[0.1em] px-1.5 py-[3px] rounded-[4px]"
+          style={{ color: C.brand, background: C.blue50, border: `1px solid ${C.blue100}` }}
+        >
+          Atual
+        </span>
+      )}
+
+      {/* Mini cover */}
+      <div
+        className="h-[120px] rounded-[8px] mb-3.5 px-3.5 py-3 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #0B0E18 0%, #2137B6 100%)",
+          color: "#fff",
+        }}
+      >
+        <div
+          className="absolute"
+          style={{
+            right: -40,
+            top: -40,
+            width: 140,
+            height: 140,
+            borderRadius: "50%",
+            background: "radial-gradient(circle at center, rgba(78,98,216,0.6) 0%, rgba(78,98,216,0) 70%)",
+          }}
+        />
+        <div
+          className="relative text-[9px] font-semibold tracking-[0.12em] uppercase"
+          style={{ color: "rgba(255,255,255,0.55)" }}
+        >
+          Apresentação · {slides} slides
+        </div>
+        <div
+          className="relative mt-3.5"
+          style={{
+            fontFamily: '"Playfair Display", Georgia, serif',
+            fontSize: 32,
+            fontWeight: 600,
+            color: "#fff",
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+          }}
+        >
+          {month}
+          <br />
+          <span style={{ fontSize: 14, color: "rgba(255,255,255,0.6)" }}>{year}</span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex items-center justify-between mb-2.5">
+        <Badge tone={s.tone} dot={s.dot}>{s.label}</Badge>
+        <span className="text-[11px]" style={{ color: C.g400, ...TNUM }}>{periodStart} → {periodEnd}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+        <KvSmall label="Receita Convertfy" value={revenue > 0 ? formatCompact(revenue) : "—"} />
+        <KvSmall label="Participação" value={sharePct > 0 ? `${(sharePct * 100).toFixed(2).replace(".", ",")}%` : "—"} brand />
+      </div>
+
+      <div className="pt-2.5 flex items-center justify-between" style={{ borderTop: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-2 text-[11.5px]" style={{ color: C.g500 }}>
+          {report.generator?.name && (
+            <>
+              <Avatar name={report.generator.name} size={20} />
+              <span>Gerado por {report.generator.name.split(" ")[0]}</span>
+            </>
+          )}
+        </div>
+        <span className="text-[11px] font-semibold" style={{ color: C.brand }}>Abrir →</span>
+      </div>
+    </a>
+  )
+}
+
+function KvSmall({ label, value, brand }: { label: string; value: string; brand?: boolean }) {
+  return (
+    <div>
+      <div className="text-[9.5px] font-semibold uppercase tracking-[0.06em]" style={{ color: C.g500 }}>
+        {label}
+      </div>
+      <div
+        className="mt-0.5"
+        style={{
+          fontFamily: '"Playfair Display", Georgia, serif',
+          fontSize: 14,
+          fontWeight: 700,
+          color: brand ? C.brand : C.g900,
+          letterSpacing: "-0.02em",
+          ...TNUM,
+        }}
+      >
         {value}
       </div>
     </div>
   )
 }
 
-function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean }) {
-  const status = STATUS_CFG[report.status]
-  const periodStart = new Date(report.period_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-  const periodEnd = new Date(report.period_end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
-  const [month, year] = report.month_label.split(" ")
-  return (
-    <a
-      href={`/admin/stores/relatorios/${report.id}`}
-      className={cn(
-        "bg-white border rounded-[10px] overflow-hidden hover:border-brand-300 hover:shadow-md transition-all group",
-        isCurrent && "border-brand-300",
-      )}
-      style={{ borderColor: isCurrent ? "#A8B2EE" : "rgba(0,0,0,0.06)" }}
-    >
-      {/* Cover gradient */}
-      <div
-        className="aspect-[4/3] relative flex items-end p-4"
-        style={{
-          background: isCurrent
-            ? "linear-gradient(135deg, #0B0E18, #2137B6 70%, #4E62D8)"
-            : "linear-gradient(135deg, #0B0E18, #2137B6)",
-        }}
-      >
-        <div>
-          <div
-            className="text-white font-bold leading-none mb-0.5"
-            style={{ fontFamily: "'Playfair Display', serif", fontSize: 44 }}
-          >
-            {month}
-          </div>
-          <div className="text-white/70 text-[12px] tabular-nums">{year}</div>
-        </div>
-        {isCurrent && (
-          <span className="absolute top-3 right-3 text-[9px] font-bold uppercase tracking-widest text-white/90 bg-white/15 backdrop-blur px-1.5 py-0.5 rounded">
-            ATUAL
-          </span>
-        )}
-        <div className="absolute top-3 left-3">
-          <span className="text-[9.5px] font-bold uppercase tracking-wider text-white/80">
-            Apresentação · {(report.snapshot?.slides_count as number) || 7} slides
-          </span>
-        </div>
-      </div>
-      {/* Footer */}
-      <div className="p-3 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-        <span
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold mb-2"
-          style={{ background: status.bg, color: status.color }}
-        >
-          {report.status === "draft" && <span className="h-1 w-1 rounded-full bg-current" />}
-          {status.label}
-        </span>
-        <div className="text-[10px] text-slate-400 font-mono">{periodStart} → {periodEnd}</div>
-        <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-            {report.generator?.name && (
-              <>
-                <span
-                  className="w-4 h-4 rounded-full inline-flex items-center justify-center text-[8px] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg,#4E62D8,#2137B6)" }}
-                >
-                  {report.generator.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")}
-                </span>
-                <span>Gerado por {report.generator.name.split(/\s+/)[0]}</span>
-              </>
-            )}
-          </div>
-          <span className="text-[11px] font-medium text-brand-600 group-hover:underline inline-flex items-center gap-0.5">
-            Abrir →
-          </span>
-        </div>
-      </div>
-    </a>
-  )
+function formatCompact(value: number): string {
+  if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
+  if (value >= 1_000) return `R$ ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
+  return `R$ ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
 }
+
+// ─── GenerateModal (refinado, matching prototype) ─────
 
 function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClose: () => void; onCreated: () => void }) {
   const now = new Date()
@@ -223,23 +357,24 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
   const [proximos, setProximos] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [sections, setSections] = useState({
-    resumo: true,
-    financeiro: true,
-    email_perf: true,
-    top_campanhas: true,
-    top_flows: true,
-    trabalho: true,
-    proximos: true,
+    resumo: true, financeiro: true, email_perf: true, top_campanhas: true,
+    top_flows: true, trabalho: true, proximos: true,
   })
 
-  const sectionsList = [
-    { key: "resumo" as const, label: "Resumo executivo", tag: "auto" },
-    { key: "financeiro" as const, label: "Resultados financeiros", tag: "auto" },
-    { key: "email_perf" as const, label: "Performance de e-mail", tag: "auto" },
-    { key: "top_campanhas" as const, label: "Top campanhas", tag: "auto" },
-    { key: "top_flows" as const, label: "Top flows", tag: "auto" },
-    { key: "trabalho" as const, label: "Trabalho realizado", tag: "auto" },
-    { key: "proximos" as const, label: "Próximos passos", tag: "manual + ia" },
+  const sectionsList: Array<{
+    key: keyof typeof sections
+    label: string
+    sub: string
+    source: "auto" | "manual"
+    full?: boolean
+  }> = [
+    { key: "resumo", label: "Resumo executivo", sub: "participação Convertfy + KPIs", source: "auto" },
+    { key: "financeiro", label: "Resultados financeiros", sub: "faturamento, ticket, atribuição", source: "auto" },
+    { key: "email_perf", label: "Performance de e-mail", sub: "abertura, clique, CTOR · benchmark", source: "auto" },
+    { key: "top_campanhas", label: "Top campanhas", sub: "ranking + leitura editorial", source: "auto" },
+    { key: "top_flows", label: "Top flows", sub: "ranking + análise", source: "auto" },
+    { key: "trabalho", label: "Trabalho realizado", sub: "otimizações + testes A/B", source: "auto" },
+    { key: "proximos", label: "Próximos passos", sub: "plano para o ciclo", source: "manual", full: true },
   ]
 
   const sectionsCount = Object.values(sections).filter(Boolean).length
@@ -272,113 +407,264 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
   }
 
   return (
-    <>
-      <div onClick={onClose} className="fixed inset-0 z-[90] bg-slate-900/40" />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] max-w-[92vw] max-h-[88vh] bg-white rounded-2xl shadow-2xl z-[91] flex flex-col overflow-hidden">
-        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-6"
+      style={{ background: "rgba(11, 14, 24, 0.5)", backdropFilter: "blur(2px)" }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="rounded-[14px] flex flex-col overflow-hidden"
+        style={{
+          width: 760,
+          maxWidth: "92vw",
+          maxHeight: "92vh",
+          background: C.white,
+          boxShadow: "0 30px 60px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="px-6 py-5 flex items-center justify-between shrink-0"
+          style={{ borderBottom: `1px solid ${C.border}` }}
+        >
           <div>
-            <h2 className="text-[16px] font-bold text-slate-900 m-0">Gerar novo relatório</h2>
-            <p className="text-[12px] text-slate-500 mt-0.5">Dados são puxados automaticamente · gaps preenchidos com IA</p>
+            <div
+              className="text-[11px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: C.brand }}
+            >
+              Novo relatório
+            </div>
+            <h3
+              className="m-0 mt-0.5 text-[18px] font-semibold text-slate-900"
+              style={{ letterSpacing: "-0.01em" }}
+            >
+              Gerar relatório mensal
+            </h3>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-[6px] inline-flex items-center justify-center hover:bg-slate-50"
+            style={{ background: C.white, color: C.g500, border: `1px solid ${C.border}` }}
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FieldLabel label="Início do período" />
-              <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
-            </div>
-            <div>
-              <FieldLabel label="Fim do período" />
-              <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
-            </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-[18px]">
+          {/* Loja + período */}
+          <div className="grid grid-cols-2 gap-3.5">
+            <FormField label="Loja" sub="travada">
+              <FormBox>
+                <StoreLogo name="Loja" size={26} />
+                <span className="text-[13px] font-semibold text-slate-900">Esta loja</span>
+              </FormBox>
+            </FormField>
+            <FormField label="Período" sub="auto · puxado do sistema">
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="date"
+                  value={periodStart}
+                  onChange={(e) => setPeriodStart(e.target.value)}
+                  className="h-9 px-2.5 rounded-[8px] text-[12.5px] outline-none"
+                  style={{ border: `1px solid ${C.border}`, background: C.white, color: C.g700, ...TNUM }}
+                />
+                <input
+                  type="date"
+                  value={periodEnd}
+                  onChange={(e) => setPeriodEnd(e.target.value)}
+                  className="h-9 px-2.5 rounded-[8px] text-[12.5px] outline-none"
+                  style={{ border: `1px solid ${C.border}`, background: C.white, color: C.g700, ...TNUM }}
+                />
+              </div>
+            </FormField>
           </div>
 
-          <div>
-            <FieldLabel label="Seções a incluir" />
-            <div className="border rounded-md divide-y" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          {/* Sections to include */}
+          <FormField label="Seções a incluir" sub="todas são puxadas automaticamente · você pode desligar o que não for relevante">
+            <div className="grid grid-cols-2 gap-2">
               {sectionsList.map((s) => (
-                <label key={s.key} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={sections[s.key]}
-                    onChange={(e) => setSections({ ...sections, [s.key]: e.target.checked })}
-                    className="h-4 w-4 accent-brand-500"
-                  />
-                  <span className="flex-1 text-[12.5px] text-slate-800">{s.label}</span>
-                  <span className={cn(
-                    "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                    s.tag === "auto" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-                  )}>
-                    {s.tag}
-                  </span>
-                </label>
+                <SectionCheck
+                  key={s.key}
+                  label={s.label}
+                  sub={s.sub}
+                  on={sections[s.key]}
+                  onToggle={() => setSections({ ...sections, [s.key]: !sections[s.key] })}
+                  source={s.source}
+                  full={s.full}
+                />
               ))}
             </div>
-          </div>
+          </FormField>
 
+          {/* Próximos passos */}
           {sections.proximos && (
-            <div>
-              <FieldLabel label="Próximos passos (opcional · IA completa se vazio)" />
+            <FormField label="Próximos passos · plano para o próximo ciclo" sub="o que você quer incluir · a IA completa o resto">
               <textarea
                 value={proximos}
                 onChange={(e) => setProximos(e.target.value)}
-                rows={3}
-                placeholder="Ex: Subir Browse Abandonment, configurar segmentos VIP, agendar campanha de Junho…"
-                className="w-full px-3 py-2 rounded-md border text-[13px] outline-none focus:border-brand-500 resize-y"
-                style={{ borderColor: "rgba(0,0,0,0.10)" }}
+                placeholder="Ex: ativar SMS, lançar pacote Dia dos Namorados, conectar Shopify, otimizar Winback Flow..."
+                className="w-full min-h-[80px] p-3 rounded-[8px] text-[13px] outline-none resize-y"
+                style={{ border: `1px solid ${C.border}`, background: C.g50, color: C.g900 }}
               />
-            </div>
+            </FormField>
           )}
 
-          <div>
-            <FieldLabel label="Tom de apresentação" />
-            <div className="grid grid-cols-3 gap-2">
-              {(["editorial", "corporate", "casual"] as const).map((t) => (
+          {/* Tom */}
+          <FormField label="Tom de apresentação">
+            <div className="flex gap-2">
+              {[
+                { k: "editorial" as const, label: "Editorial", sub: "serif + grande" },
+                { k: "corporate" as const, label: "Corporate", sub: "limpo + neutro" },
+                { k: "casual" as const, label: "Casual", sub: "conversacional" },
+              ].map((o) => (
                 <button
-                  key={t}
-                  onClick={() => setTone(t)}
-                  className={cn(
-                    "px-3 py-2 rounded-md text-[12px] font-medium border transition-colors",
-                    tone === t ? "bg-brand-50 text-brand-700 border-brand-300" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-                  )}
+                  key={o.k}
+                  onClick={() => setTone(o.k)}
+                  className="flex-1 px-3.5 py-2.5 rounded-[8px] text-left"
+                  style={{
+                    border: `1px solid ${tone === o.k ? C.brand : C.border}`,
+                    background: tone === o.k ? C.blue50 : C.white,
+                    color: tone === o.k ? C.brand : C.g700,
+                  }}
                 >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  <div className="text-[12.5px] font-semibold">{o.label}</div>
+                  <div
+                    className="text-[10.5px] mt-0.5"
+                    style={{ color: tone === o.k ? C.brand : C.g500 }}
+                  >
+                    {o.sub}
+                  </div>
                 </button>
               ))}
             </div>
-          </div>
+          </FormField>
 
-          <label className="flex items-center gap-2.5 text-[12.5px] text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={aiFilled}
-              onChange={(e) => setAiFilled(e.target.checked)}
-              className="h-4 w-4 accent-brand-500"
-            />
-            <Sparkles className="h-3.5 w-3.5 text-brand-500" />
-            Preencher gaps editoriais (insights, leituras) com IA
-          </label>
+          {/* AI assist toggle */}
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-[10px]"
+            style={{ background: C.blue50, border: `1px solid ${C.blue100}` }}
+          >
+            <Zap className="h-[18px] w-[18px] shrink-0" style={{ color: C.brand }} />
+            <div className="flex-1">
+              <div className="text-[13px] font-semibold text-slate-900">Preencher gaps com IA</div>
+              <div className="text-[11.5px] mt-0.5" style={{ color: C.g600 }}>
+                Leituras editoriais, destaques e próximos passos faltantes são gerados com base nos números e no briefing.
+              </div>
+            </div>
+            <Toggle on={aiFilled} onChange={() => setAiFilled(!aiFilled)} />
+          </div>
         </div>
-        <div className="px-5 py-3 border-t bg-slate-50/40 flex items-center justify-between gap-2" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-          <span className="text-[11.5px] text-slate-500">
-            {sectionsCount} seções selecionadas · ~30s pra gerar
-          </span>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="h-9 px-4 rounded-md text-[12.5px] font-medium text-slate-700 hover:bg-slate-100">Cancelar</button>
-            <button onClick={handleSubmit} disabled={submitting} className="h-9 px-4 rounded-md text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 inline-flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
+
+        {/* Footer */}
+        <div
+          className="px-6 py-3.5 flex items-center justify-between shrink-0"
+          style={{
+            background: C.g50,
+            borderTop: `1px solid ${C.border}`,
+            borderBottomLeftRadius: 14,
+            borderBottomRightRadius: 14,
+          }}
+        >
+          <div className="text-[11.5px]" style={{ color: C.g500 }}>
+            <strong style={{ color: C.g900 }}>{sectionsCount}</strong> seções selecionadas · estimativa de geração: ~30s
+          </div>
+          <div className="flex gap-2">
+            <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+            <Btn variant="primary" icon={<Zap className="h-3.5 w-3.5" />} onClick={handleSubmit} disabled={submitting}>
               {submitting ? "Gerando…" : "Gerar relatório"}
-            </button>
+            </Btn>
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
-function FieldLabel({ label }: { label: string }) {
-  return <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</div>
+function FormField({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[11.5px] font-semibold tracking-[0.02em]" style={{ color: C.g700 }}>{label}</span>
+        {sub && <span className="text-[10.5px]" style={{ color: C.g400 }}>{sub}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function FormBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-[8px]"
+      style={{ border: `1px solid ${C.border}`, background: C.white }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionCheck({ label, sub, on, onToggle, source, full }: {
+  label: string
+  sub: string
+  on: boolean
+  onToggle: () => void
+  source: "auto" | "manual"
+  full?: boolean
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-left"
+      style={{
+        gridColumn: full ? "1 / -1" : "auto",
+        border: `1px solid ${on ? C.blue100 : C.border}`,
+        background: on ? C.blue50 : C.white,
+      }}
+    >
+      <div
+        className="w-[18px] h-[18px] rounded-[4px] inline-flex items-center justify-center shrink-0 text-white"
+        style={{
+          background: on ? C.brand : C.white,
+          border: `1px solid ${on ? C.brand : C.border}`,
+        }}
+      >
+        {on && <Check className="h-3 w-3" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12.5px] font-semibold text-slate-900">{label}</div>
+        <div className="text-[10.5px] mt-px" style={{ color: C.g500 }}>{sub}</div>
+      </div>
+      <span
+        className="text-[9px] font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-[4px]"
+        style={{
+          color: source === "auto" ? C.pos : C.amber,
+          background: source === "auto" ? C.posBg : C.warnBg,
+          border: `1px solid ${source === "auto" ? C.posBorder : C.warnBorder}`,
+        }}
+      >
+        {source === "auto" ? "auto" : "manual + ia"}
+      </span>
+    </button>
+  )
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className="w-9 h-5 rounded-full relative cursor-pointer transition-colors"
+      style={{ background: on ? C.brand : C.g300, border: "none" }}
+    >
+      <span
+        className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+        style={{
+          left: on ? 18 : 2,
+          background: C.white,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+        }}
+      />
+    </button>
+  )
 }
