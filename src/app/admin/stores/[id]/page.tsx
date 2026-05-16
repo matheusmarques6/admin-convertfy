@@ -1,18 +1,13 @@
 import { notFound } from "next/navigation"
-import Link from "next/link"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
-import { StatusBadge } from "@/components/ui/status-badge"
 import { PageHeader } from "@/components/ui/page-header"
-import { BrandIcon } from "@/components/ui/icon"
 import { ROUTES } from "@/lib/routes"
-import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
-import { WeeklyReportLink } from "@/components/stores/weekly-report-link"
+import { StoreDetailTabsV2 } from "@/components/stores/v2/store-detail-tabs-v2"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
 import { StoreForceResyncAction } from "@/components/stores/store-force-resync-action"
-import { ExternalLink } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -138,7 +133,7 @@ async function getStore(id: string) {
   }
 }
 
-function getPlatformIcon(platform: string | null) {
+function _getPlatformIcon(platform: string | null) {
   if (platform?.toLowerCase() === "shopify") return "/images/integrations/shopify.svg"
   return null
 }
@@ -168,8 +163,8 @@ export default async function StoreDetailPage({
   const integrationStatus = store.integrationStatus
   const _connectedCount = Object.values(integrationStatus).filter((s: unknown) => (s as Record<string, unknown>)?.connected).length
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clientName = (store.clients as any)?.name || null
-  const platformIcon = getPlatformIcon(store.platform)
+  // clientName e platformIcon nao sao mais usados — StoreDetailTabsV2
+  // ja consome store.clients direto e renderiza logo via initials.
 
   // Header sempre em BRL: pra lojas em outras moedas (USD, JPY, CNY, etc)
   // converte usando exchange rate atual (open.er-api.com via cache 1h).
@@ -185,11 +180,33 @@ export default async function StoreDetailPage({
     ? await convertToBRL(revenueLocal, storeCurrency)
     : revenueLocal
 
+  // Calcula KPIs pro hero (compativeis com StoreDetailTabsV2)
+  const heroKpis = [
+    {
+      label: "Receita 30d",
+      value: revenueBRL > 0
+        ? `R$ ${revenueBRL.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+        : "—",
+    },
+    {
+      label: "Pedidos 30d",
+      value: rs?.store_orders ? String(rs.store_orders) : "—",
+    },
+    {
+      label: "Engajamento",
+      value: rs?.engagement_rate ? `${Number(rs.engagement_rate).toFixed(1)}%` : "—",
+    },
+    {
+      label: "Contatos",
+      value: rs?.total_leads ? Number(rs.total_leads).toLocaleString("pt-BR") : "—",
+    },
+  ]
+
   return (
-    <div className="space-y-6">
-      {/* Breadcrumbs + Header */}
+    <div className="space-y-4">
+      {/* Breadcrumbs + Header (acima do StoreDetailTabsV2 que tem hero proprio) */}
       <PageHeader
-        title={store.store_name}
+        title="Lojas"
         breadcrumb={[
           { label: "Lojas", href: ROUTES.ADMIN.STORES.LIST },
           { label: store.store_name },
@@ -208,100 +225,30 @@ export default async function StoreDetailPage({
         }
       />
 
-      {/* Store Header Card */}
-      <div className="rounded-[8px] border border-border bg-card p-4 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          {/* Left: brand icon + name + url + status */}
-          <div className="flex items-start gap-3 min-w-0">
-            {platformIcon ? (
-              <BrandIcon src={platformIcon} alt={store.platform || "Platform"} size={32} className="mt-0.5" />
-            ) : (
-              <div className="w-8 h-8 rounded-[6px] bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-sm font-semibold text-muted-foreground">
-                  {store.store_name.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-semibold text-foreground">{store.store_name}</h2>
-                <StatusBadge status={store.is_active ? "active" : "inactive"} />
-              </div>
-              {store.store_url && (
-                <a
-                  href={store.store_url.startsWith("http") ? store.store_url : `https://${store.store_url}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline mt-0.5"
-                >
-                  {store.store_url}
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-              {clientName && (
-                <Link
-                  href={`/admin/clients/${store.client_id}`}
-                  className="block text-sm text-muted-foreground hover:text-foreground mt-0.5"
-                >
-                  Cliente: {clientName}
-                </Link>
-              )}
-              <WeeklyReportLink storeId={store.id} />
-            </div>
-          </div>
-
-          {/* Right: Mini KPIs — Receita sempre em BRL pra padronizar
-              comparacao entre lojas. Lojas em outras moedas tem valor
-              convertido via exchange-rate.service (open.er-api.com,
-              cache 1h). Detalhe na moeda original aparece dentro da
-              loja (cards "Receita Total" etc no Reports tab). */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <MiniKpi
-              label="Receita 30d"
-              value={revenueBRL > 0
-                ? `R$ ${revenueBRL.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-                : "—"}
-              hint={storeCurrency !== "BRL" && revenueLocal > 0
-                ? `${storeCurrency} ${revenueLocal.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-                : undefined}
-            />
-            <MiniKpi label="Pedidos 30d" value={rs?.store_orders ? String(rs.store_orders) : "—"} />
-            <MiniKpi label="Engajamento" value={rs?.engagement_rate ? `${Number(rs.engagement_rate).toFixed(1)}%` : "—"} />
-            <MiniKpi label="Contatos" value={rs?.total_leads ? Number(rs.total_leads).toLocaleString("pt-BR") : "—"} />
-          </div>
-        </div>
-      </div>
-
-      {/* Detail Tabs */}
-      <StoreDetailTabs
-        storeId={store.id}
-        storeName={store.store_name}
-        storeUrl={store.store_url}
-        platform={store.platform}
-        niche={store.niche}
-        country={store.country}
-        language={store.language}
-        integrationStatus={integrationStatus}
-        clientId={store.client_id}
-        onboardingFormComplete={store.onboarding_form_complete}
-        onboardingStatus={store.onboarding_status}
-        onboardingProgress={store.onboarding_progress}
-        hasBriefing={store.has_briefing}
-        driveFolderUrl={store.drive_folder_url}
-        currency={undefined}
+      {/* Detail Tabs V2 com Hero integrado */}
+      <StoreDetailTabsV2
+        store={{
+          id: store.id,
+          store_name: store.store_name,
+          store_url: store.store_url,
+          platform: store.platform,
+          is_active: store.is_active,
+          niche: store.niche,
+          country: store.country,
+          language: store.language,
+          created_at: store.created_at,
+          client_id: store.client_id,
+          org_id: store.org_id,
+          clients: store.clients
+            ? Array.isArray(store.clients)
+              ? store.clients[0]
+              : store.clients
+            : null,
+        }}
+        kpis={heroKpis}
       />
     </div>
   )
 }
 
-function MiniKpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="text-center sm:text-left">
-      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-foreground font-mono tabular-nums">{value}</p>
-      {hint && (
-        <p className="text-[10px] text-muted-foreground/70 font-mono tabular-nums mt-0.5">{hint}</p>
-      )}
-    </div>
-  )
-}
+

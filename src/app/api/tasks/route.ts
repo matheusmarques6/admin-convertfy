@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     const nextPosition = (lastTask?.position || 0) + 1
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
       title: body.title.trim(),
       description: body.description?.trim() || null,
       type: body.type,
@@ -130,7 +130,13 @@ export async function POST(request: NextRequest) {
       tags: body.tags || [],
       metadata: body.metadata || {},
       position: nextPosition,
-      status: "pending" as const,
+      status: body.status || ("pending" as const),
+      // Suporte a tarefas manuais vinculadas a onboarding (Jean cria
+      // pra outro user; ganha checklist/deliverables/anexos como
+      // tarefas automatizadas, mas marcada como source_type='manual')
+      onboarding_id: body.onboarding_id || null,
+      operational_column_id: body.operational_column_id || null,
+      source_type: body.source_type || null,
     }
 
     log.info("Creating task", { title: insertData.title, type: insertData.type })

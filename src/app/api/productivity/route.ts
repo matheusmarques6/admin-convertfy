@@ -9,6 +9,12 @@ import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 
+// Sem cache: tasks/goals/habits mudam constantemente e o fetchData precisa
+// ler estado fresco apos cada mutation. Sem isso, o Next cacheia e o
+// optimistic update e sobrescrito por dados antigos (bug 'inicia e pausa').
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 // ── GET: Fetch all productivity data for the current user ──
 
 export async function GET(request: NextRequest) {

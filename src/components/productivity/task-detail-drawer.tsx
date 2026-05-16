@@ -717,6 +717,8 @@ export function TaskDetailDrawer({
   const [addingLink, setAddingLink] = useState(false)
   const [linkUrl, setLinkUrl] = useState("")
   const [linkLabel, setLinkLabel] = useState("")
+  const [addingDeliv, setAddingDeliv] = useState(false)
+  const [delivLabel, setDelivLabel] = useState("")
   const [showHistory, setShowHistory] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const [history, setHistory] = useState<Array<Record<string, unknown>> | null>(null)
@@ -761,6 +763,11 @@ export function TaskDetailDrawer({
   const stageName = (meta.column_name as string) ?? null
   const stageColor = (meta.stage_color as string) ?? C.brandBlueLight
   const isOnboarding = task.source_type === "onboarding"
+  // Tasks vivem em `tasks` table quando tem source_type (onboarding ou manual)
+  // OU tem onboarding_id. Essas usam endpoint /api/tasks/[id] e ganham
+  // todas as features (checklist, deliverables, anexos, comentarios).
+  const isInTasksTable =
+    !!task.source_type || !!task.onboarding_id
   const isOverdue = false // pode derivar de due_date depois
 
   // Mapeia status do board (pending/progress/review/done) pro status real
@@ -781,7 +788,7 @@ export function TaskDetailDrawer({
     fields: Record<string, unknown>,
     optimistic?: Partial<ProductivityTask>,
   ) => {
-    if (isOnboarding) {
+    if (isInTasksTable) {
       // Traduz campos do shape do store pro shape do endpoint /api/tasks
       const body: Record<string, unknown> = {}
       if (fields.status !== undefined) {
@@ -876,6 +883,44 @@ export function TaskDetailDrawer({
       fetchData()
     } catch {
       /* noop */
+    }
+  }
+
+  const addDeliverable = async () => {
+    const label = delivLabel.trim()
+    if (!label) return
+    // Slug derivado do label (lowercase, sem acento, alfanum + underscore)
+    const slug = label
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60) || `deliverable_${Date.now()}`
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/deliverables`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          field_slug: slug,
+          field_label: label,
+          field_type: "text",
+          required: false,
+        }),
+      })
+      if (res.ok) {
+        setDelivLabel("")
+        setAddingDeliv(false)
+        setShowToast("Entregável adicionado.")
+        fetchData()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setShowToast(
+          `Falha: ${body.error?.message ?? body.error ?? res.statusText}`,
+        )
+      }
+    } catch (e) {
+      setShowToast(`Erro: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -1578,18 +1623,72 @@ export function TaskDetailDrawer({
             </Section>
           )}
 
-          {/* Entregaveis */}
-          {deliverables.length > 0 && (
-            <Section
-              title={`Entregáveis · ${deliverables.filter((d) => deliverableStatus(d).label === "Pronto").length}/${deliverables.length}`}
-            >
-              <div className="flex flex-col gap-1.5">
-                {deliverables.map((d) => (
-                  <DeliverableRow key={d.id} d={d} onCycle={() => cycleDeliverable(d)} />
-                ))}
+          {/* Entregaveis — sempre visivel (botao + Entregavel mesmo lista vazia) */}
+          <Section
+            title={`Entregáveis · ${deliverables.filter((d) => deliverableStatus(d).label === "Pronto").length}/${deliverables.length}`}
+            action={
+              <button
+                onClick={() => setAddingDeliv(true)}
+                className="bg-transparent border-none cursor-pointer text-gray-500 text-[11px] font-medium inline-flex items-center gap-1 hover:text-gray-700"
+              >
+                {I.plus({ size: 11 })} Entregável
+              </button>
+            }
+          >
+            {deliverables.length === 0 && !addingDeliv && (
+              <div className="text-[11.5px] italic text-gray-400 px-2 py-1">
+                Nenhum entregável definido. Adicione o que precisa entregar
+                pra concluir a tarefa.
               </div>
-            </Section>
-          )}
+            )}
+            <div className="flex flex-col gap-1.5">
+              {deliverables.map((d) => (
+                <DeliverableRow key={d.id} d={d} onCycle={() => cycleDeliverable(d)} />
+              ))}
+              {addingDeliv && (
+                <div
+                  className="mt-1 p-3 rounded-lg border bg-blue-50/40 border-dashed border-blue-200"
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-2">
+                    Novo entregável
+                  </div>
+                  <input
+                    autoFocus
+                    value={delivLabel}
+                    onChange={(e) => setDelivLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && delivLabel.trim()) addDeliverable()
+                      if (e.key === "Escape") {
+                        setAddingDeliv(false)
+                        setDelivLabel("")
+                      }
+                    }}
+                    placeholder="Ex: Welcome Series (3 emails), Briefing aprovado..."
+                    className="w-full px-2 py-1.5 rounded-md border text-[12.5px] mb-2 focus:outline-none focus:border-blue-500"
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addDeliverable}
+                      disabled={!delivLabel.trim()}
+                      className="text-[11px] font-semibold bg-gray-900 text-white px-3 py-1.5 rounded-md hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      Adicionar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingDeliv(false)
+                        setDelivLabel("")
+                      }}
+                      className="text-[11px] text-gray-500 hover:text-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Section>
 
           {/* Checklist */}
           {(checklist.length > 0 || addingChk) && (
@@ -1656,7 +1755,7 @@ export function TaskDetailDrawer({
           )}
 
           {/* Anexos & Links */}
-          {(attachments.length > 0 || links.length > 0 || isOnboarding) && (
+          {(attachments.length > 0 || links.length > 0 || isInTasksTable) && (
             <Section
               title="Anexos & links"
               action={

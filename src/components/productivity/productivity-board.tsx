@@ -938,21 +938,53 @@ function EditableGroupName({ groupId, name }: { groupId: string; name: string })
 // Inline New Task — add task within a group
 // ============================================================================
 
-function InlineNewTask({ groupId, groupName, groupColor }: { groupId: string; groupName: string; groupColor: string }) {
+function InlineNewTask({ groupId, groupName, groupColor, onboardingId, operationalColumnId }: {
+  groupId: string
+  groupName: string
+  groupColor: string
+  /** Quando presente, cria task em `tasks` table com features completas
+   *  (checklist, deliverables, anexos, comentarios). */
+  onboardingId?: string
+  operationalColumnId?: string
+}) {
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState("")
-  const { apiAction } = useProductivityStore()
+  const { apiAction, fetchData } = useProductivityStore()
 
   const handleAdd = async () => {
     if (!name.trim()) return
-    await apiAction("create_task", {
-      name: name.trim(),
-      status: "pending",
-      priority: 3,
-      group_id: groupId,
-      group_name: groupName,
-      group_color: groupColor,
-    })
+    if (onboardingId) {
+      // Task de projeto/onboarding: cria em `tasks` table pra ganhar
+      // checklist, deliverables, attachments, comments automaticamente
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: name.trim(),
+            type: "onboarding",
+            status: "pending",
+            priority: "medium",
+            onboarding_id: onboardingId,
+            operational_column_id: operationalColumnId,
+            source_type: "manual",
+          }),
+        })
+        if (res.ok) fetchData()
+      } catch (e) {
+        console.error("[InlineNewTask] create failed", e)
+      }
+    } else {
+      // Task legacy/livre: vai pra productivity_tasks
+      await apiAction("create_task", {
+        name: name.trim(),
+        status: "pending",
+        priority: 3,
+        group_id: groupId,
+        group_name: groupName,
+        group_color: groupColor,
+      })
+    }
     setName("")
     setIsAdding(false)
   }
@@ -1358,7 +1390,13 @@ function TableView({
 
             {/* Add task inline */}
             {!isCollapsed && (
-              <InlineNewTask groupId={g.id} groupName={g.name} groupColor={g.color} />
+              <InlineNewTask
+                groupId={g.id}
+                groupName={g.name}
+                groupColor={g.color}
+                onboardingId={(g as unknown as { onboarding_id?: string }).onboarding_id}
+                operationalColumnId={(g as unknown as { stage_id?: string }).stage_id}
+              />
             )}
               </div>
             )}

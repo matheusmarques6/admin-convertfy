@@ -86,6 +86,11 @@ export const taskCreateSchema = z.object({
   due_date: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Permite tarefa manual vinculada a onboarding (Jean cria pra time) */
+  onboarding_id: uuidSchema.nullable().optional(),
+  operational_column_id: uuidSchema.nullable().optional(),
+  source_type: z.string().optional(),
+  status: z.enum(["pending", "in_progress", "in_review", "completed", "cancelled"]).optional(),
 })
 
 // --- Portal User ---
