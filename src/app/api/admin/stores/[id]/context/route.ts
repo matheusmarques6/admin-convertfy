@@ -60,6 +60,46 @@ const patchSchema = z.object({
   figma_onboarding_url: z.string().nullable().optional(),
   figma_emails_url: z.string().nullable().optional(),
   drive_folder_url: z.string().nullable().optional(),
+  // Pesquisa & Diagnóstico · 1. Perfil da Marca
+  brand_thesis: z.string().nullable().optional(),
+  brand_about: z.string().nullable().optional(),
+  brand_pillars: z.array(z.object({
+    number: z.string(),
+    label: z.string(),
+    text: z.string(),
+  })).nullable().optional(),
+  brand_presence: z.string().nullable().optional(),
+  // 2. Sobre a loja
+  store_story: z.string().nullable().optional(),
+  store_milestones: z.array(z.object({
+    year: z.string(),
+    event: z.string(),
+    highlight: z.boolean().optional(),
+    muted: z.boolean().optional(),
+  })).nullable().optional(),
+  // 3. Cliente Ideal
+  icp_persona: z.object({
+    name: z.string(),
+    age: z.string(),
+    city: z.string(),
+    monogram: z.string(),
+  }).nullable().optional(),
+  icp_demographics: z.object({
+    age_range: z.string(),
+    income: z.string(),
+    education: z.string(),
+    occupation: z.string(),
+    religion: z.string(),
+  }).nullable().optional(),
+  icp_day_in_life: z.string().nullable().optional(),
+  icp_motivations: z.array(z.string()).nullable().optional(),
+  icp_frictions: z.array(z.string()).nullable().optional(),
+  // 4. Tom de Comunicação
+  tone_description: z.string().nullable().optional(),
+  tone_do: z.array(z.string()).nullable().optional(),
+  tone_dont: z.array(z.string()).nullable().optional(),
+  tone_use_words: z.array(z.string()).nullable().optional(),
+  tone_avoid_words: z.array(z.string()).nullable().optional(),
 })
 
 export async function PATCH(

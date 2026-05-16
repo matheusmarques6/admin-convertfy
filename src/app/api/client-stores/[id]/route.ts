@@ -6,6 +6,47 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoreDelete")
 
+export const dynamic = "force-dynamic"
+
+// GET - Fetch single store with full row (todos os campos do client_stores)
+// Usado pelas abas v2 (Contexto, Setup, Atividade, Pesquisa) que precisam
+// ler campos diversos sem ter que listar cada coluna no select.
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const { id: storeId } = await params
+
+    if (!storeId) {
+      throw new AppError("store_id é obrigatório", 400)
+    }
+
+    // Valida acesso (org isolation · sem requirement explicito = read-only)
+    await requireStoreAccess(storeId, user.id)
+
+    const adminClient = createAdminClient()
+    const { data: store, error } = await adminClient
+      .from("client_stores")
+      .select(
+        `*,
+         clients (id, name, email, phone, cpf_cnpj)`,
+      )
+      .eq("id", storeId)
+      .single()
+
+    if (error || !store) {
+      throw new AppError("Loja não encontrada", 404)
+    }
+
+    return successResponse(request, { store })
+  } catch (error) {
+    return errorResponse(request, error, "ClientStoreGet")
+  }
+}
+
 // DELETE - Remove a store and all related data
 export async function DELETE(
   request: NextRequest,

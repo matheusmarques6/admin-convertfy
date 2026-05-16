@@ -9,6 +9,7 @@ import { useEffect, useState } from "react"
 import { Edit2, Plus, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
+import { PesquisaSection, type PesquisaData } from "./pesquisa/pesquisa-section"
 
 interface StoreContext {
   niche?: string | null
@@ -102,7 +103,7 @@ export function TabContexto({ storeId }: { storeId: string }) {
     <div className="flex flex-col gap-4">
       {/* Anchors */}
       <div className="flex gap-1 overflow-x-auto pb-2 text-[12px] font-medium text-slate-500">
-        {["Marca", "Briefing", "Briefing completo", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
+        {["Marca", "Pesquisa & Diagnóstico", "Briefing completo", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
           <a key={a} href={`#${a.toLowerCase().replace(/\s+&\s+/g, "-").replace(/\s+/g, "-")}`} className="px-2.5 py-1 rounded-md hover:bg-slate-100 whitespace-nowrap">
             {a}
           </a>
@@ -195,26 +196,8 @@ export function TabContexto({ storeId }: { storeId: string }) {
         )}
       </Section>
 
-      {/* BRIEFING — campos rapidos editaveis (publico + notas) */}
-      <Section id="briefing" title="Briefing estratégico · resumo" onEdit={() => setEditing(editing === "briefing" ? null : "briefing")}>
-        {editing === "briefing" ? (
-          <div className="space-y-3">
-            <Textarea label="Público-alvo" value={ctx.target_audience ?? ""} onChange={(v) => setCtx({ ...ctx, target_audience: v })} />
-            <Textarea label="Notas adicionais / tom de voz" value={ctx.additional_notes ?? ""} onChange={(v) => setCtx({ ...ctx, additional_notes: v })} />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className="h-9 px-4 rounded-md text-[12.5px] font-medium text-slate-700 hover:bg-slate-100">Cancelar</button>
-              <button onClick={() => patch({ target_audience: ctx.target_audience, additional_notes: ctx.additional_notes })} disabled={saving} className="h-9 px-4 rounded-md text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50">
-                {saving ? "Salvando…" : "Salvar"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Público-alvo" value={ctx.target_audience} fallback="—" multiline />
-            <Field label="Notas adicionais" value={ctx.additional_notes} fallback="—" multiline />
-          </div>
-        )}
-      </Section>
+      {/* PESQUISA & DIAGNÓSTICO — 5 pilares editoriais (substitui o antigo "Briefing estratégico") */}
+      <PesquisaSection storeId={storeId} initialData={ctx as PesquisaData} />
 
       {/* BRIEFING COMPLETO (IA + formulario de onboarding) */}
       <Section id="briefing-completo" title="Briefing completo (gerado por IA)">
@@ -348,15 +331,6 @@ function Kpi({ label, value }: { label: string; value: string }) {
     <div className="rounded-md bg-slate-50 border px-3 py-2.5" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
       <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</div>
       <div className="text-[16px] font-bold text-slate-900 tabular-nums leading-none">{value}</div>
-    </div>
-  )
-}
-
-function Textarea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div>
-      <FieldLabel label={label} />
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-md border text-[13px] outline-none focus:border-brand-500 resize-y" style={{ borderColor: "rgba(0,0,0,0.10)" }} />
     </div>
   )
 }
