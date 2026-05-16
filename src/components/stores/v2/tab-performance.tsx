@@ -63,6 +63,9 @@ interface FlowRow {
 interface EmailReport {
   account?: { currency?: string }
   platform?: "klaviyo" | "omnisend"
+  hasReportingAccess?: boolean
+  error?: string
+  rateLimited?: boolean
   revenue?: {
     storeRevenue?: number
     storeOrders?: number
@@ -159,7 +162,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   const { data: credData, isLoading: credLoading } = useSWR(
     `/api/client-stores/credentials?store_id=${storeId}`,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
   const credStatus = (credData?.status ?? {}) as Record<string, IntegrationStatus>
   const klaviyoConnected = !!credStatus.klaviyo?.connected
@@ -173,22 +176,22 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   const { data: report, isLoading: reportLoading, mutate: refreshReport } = useSWR<EmailReport>(
     emailPlatformConnected ? `/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
   const { data: campaignsRaw, mutate: refreshCampaigns } = useSWR<CampaignsResponse>(
     emailPlatformConnected ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
   const { data: flowsRaw, mutate: refreshFlows } = useSWR<FlowsResponse>(
     emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
   const { data: shopify, mutate: refreshShopify } = useSWR<ShopifyReport>(
     shopifyConnected ? `/api/integrations/shopify/report?store_id=${storeId}&${periodParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
 
   // Previous period (apenas se compare ligado e nao for custom)
@@ -197,12 +200,12 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   const { data: reportPrev } = useSWR<EmailReport>(
     emailPlatformConnected && prevParam ? `/api/integrations/email-platform/report?store_id=${storeId}&${prevParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
   const { data: shopifyPrev } = useSWR<ShopifyReport>(
     shopifyConnected && prevParam ? `/api/integrations/shopify/report?store_id=${storeId}&${prevParam}` : null,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
 
   const currency = report?.account?.currency || campaignsRaw?.currency || flowsRaw?.currency || "BRL"
@@ -329,8 +332,47 @@ export function TabPerformance({ storeId }: { storeId: string }) {
 
   const loading = reportLoading
 
+  // Banner de aviso quando ha problema com a integracao
+  const reportError = report?.error
+  const showPermissionBanner = report?.hasReportingAccess === false
+  const showRateLimitBanner = report?.rateLimited === true
+
   return (
     <div className="flex flex-col gap-3">
+      {(showPermissionBanner || showRateLimitBanner || reportError) && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-md border"
+          style={
+            showRateLimitBanner
+              ? { background: "#FFFBEB", borderColor: "#FDE68A", color: "#92400E" }
+              : { background: "#FEF7F7", borderColor: "#FECACA", color: "#991B1B" }
+          }
+        >
+          <Loader2 className={cn("h-4 w-4 mt-0.5 shrink-0", showRateLimitBanner && "animate-spin")} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12.5px] font-semibold leading-tight">
+              {showRateLimitBanner
+                ? "Rate limit atingido — usando cache"
+                : showPermissionBanner
+                  ? "Permissão insuficiente na API key da plataforma de email"
+                  : "Erro ao carregar dados"}
+            </div>
+            <div className="text-[11.5px] mt-0.5 leading-snug opacity-85">
+              {showPermissionBanner
+                ? "Reconecte a integração com os escopos completos para destravar campanhas, flows e atribuição. KPIs do Shopify continuam funcionando."
+                : reportError ?? "Tentaremos novamente em alguns segundos."}
+            </div>
+          </div>
+          {showPermissionBanner && (
+            <a
+              href={`/admin/stores/${storeId}?tab=setup`}
+              className="text-[11.5px] font-semibold whitespace-nowrap shrink-0 underline"
+            >
+              Reconectar
+            </a>
+          )}
+        </div>
+      )}
       {/* ─── Header bar: range + compare + actions ─── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2 flex-wrap">

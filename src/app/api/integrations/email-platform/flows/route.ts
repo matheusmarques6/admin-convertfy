@@ -382,8 +382,37 @@ export async function GET(request: NextRequest) {
         )
         return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {
-        log.error("[Omnisend Flows] build failed", err)
         const isRateLimit = err instanceof Error && err.name === "OmnisendRateLimitError"
+        const isPermission =
+          err instanceof Error &&
+          (err.name === "OmnisendPermissionError" ||
+            /Insufficient permissions|403/i.test(err.message))
+        const isInvalidKey =
+          err instanceof Error &&
+          (err.name === "OmnisendInvalidKeyError" || /401|Unauthorized/i.test(err.message))
+
+        if (isPermission || isInvalidKey) {
+          log.warn(
+            `[Omnisend Flows] ${isPermission ? "permission" : "auth"} error`,
+            { error: err instanceof Error ? err.message : String(err) },
+          )
+          return NextResponse.json(
+            {
+              success: false,
+              platform: "omnisend",
+              hasReportingAccess: false,
+              error: isPermission
+                ? "API key sem permissão (escopo insuficiente)"
+                : "API key inválida — reconecte Omnisend",
+              summary: {},
+              flows: [],
+              currency: "BRL",
+            },
+            { status: 200, headers: corsHeaders(request.headers.get("origin")) },
+          )
+        }
+
+        log.error("[Omnisend Flows] build failed", err)
         return NextResponse.json({
           success: isRateLimit,
           platform: "omnisend",
