@@ -52,6 +52,18 @@ interface Competitor {
   notas: string | null
 }
 
+interface TopProduct {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  image_url: string | null
+  external_id: string | null
+  source: string
+  captured_at: string | null
+}
+
 interface StoreLite {
   client_id?: string | null
 }
@@ -63,19 +75,22 @@ export function TabContexto({ storeId }: { storeId: string }) {
   const [ctx, setCtx] = useState<StoreContext>({})
   const [storeLite, setStoreLite] = useState<StoreLite>({})
   const [competitors, setCompetitors] = useState<Competitor[]>([])
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const reload = async () => {
     try {
-      const [cs, comps] = await Promise.all([
+      const [cs, comps, tp] = await Promise.all([
         fetch(`/api/client-stores/${storeId}`).then((r) => r.json()),
         fetch(`/api/admin/stores/${storeId}/competitors`).then((r) => r.json()),
+        fetch(`/api/admin/stores/${storeId}/top-products?limit=5`).then((r) => r.json()),
       ])
       const storeObj = (cs.data?.store ?? cs.store ?? cs) as Record<string, unknown>
       setCtx(storeObj as StoreContext)
       setStoreLite({ client_id: (storeObj.client_id as string | null) ?? null })
       setCompetitors((comps.data?.competitors ?? comps.competitors ?? []) as Competitor[])
+      setTopProducts((tp.products ?? tp.data?.products ?? []) as TopProduct[])
     } catch {
       // noop
     }
@@ -209,16 +224,58 @@ export function TabContexto({ storeId }: { storeId: string }) {
         {editing === "operacao" ? (
           <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Ticket médio" value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(0)}` : "—"} />
-            <Kpi label="Taxa de conversão" value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2)}%` : "—"} />
-            <Kpi label="Faturamento médio (3m)" value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1000).toFixed(0)}k` : "—"} />
-            <Kpi label="Margem média" value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"} />
-            <Kpi label="Recorrência" value={ctx.recorrencia ?? "—"} />
-            <Kpi label="Frete médio" value={ctx.frete_medio_cents ? `R$ ${(ctx.frete_medio_cents / 100).toFixed(0)}` : "—"} />
-            <Kpi label="Prazo entrega" value={ctx.frete_prazo ?? "—"} />
-            <Kpi label="Cobertura" value={ctx.frete_cobertura ?? "—"} />
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Kpi label="Ticket médio" value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(0)}` : "—"} />
+              <Kpi label="Taxa de conversão" value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2)}%` : "—"} />
+              <Kpi label="Faturamento médio (3m)" value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1000).toFixed(0)}k` : "—"} />
+              <Kpi label="Margem média" value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"} />
+              <Kpi label="Recorrência" value={ctx.recorrencia ?? "—"} />
+              <Kpi label="Frete médio" value={ctx.frete_medio_cents ? `R$ ${(ctx.frete_medio_cents / 100).toFixed(0)}` : "—"} />
+              <Kpi label="Prazo entrega" value={ctx.frete_prazo ?? "—"} />
+              <Kpi label="Cobertura" value={ctx.frete_cobertura ?? "—"} />
+            </div>
+
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                Top 5 produtos (TrendTrack)
+              </div>
+              {topProducts.length === 0 ? (
+                <div className="text-[12px] text-slate-400 italic py-2">
+                  Nenhum produto capturado ainda.
+                </div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {topProducts.map((p) => (
+                    <li
+                      key={`${p.rank}-${p.external_id ?? p.title}`}
+                      className="flex items-center gap-3 text-[12.5px]"
+                    >
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10.5px] font-bold bg-slate-100 text-slate-600">
+                        {p.rank}
+                      </span>
+                      {p.image_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.image_url}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover border"
+                          style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                        />
+                      )}
+                      <span className="flex-1 text-slate-800 truncate">{p.title}</span>
+                      {p.price != null && (
+                        <span className="text-slate-500 tabular-nums">
+                          {p.currency ? `${p.currency} ` : "R$ "}
+                          {Number(p.price).toFixed(2)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
         )}
       </Section>
 
