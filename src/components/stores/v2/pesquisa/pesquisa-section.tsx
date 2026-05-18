@@ -134,8 +134,16 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
     }
   }, [storeId])
 
+  // Sincroniza com initialData quando o pai carrega o ctx async.
+  // O pai (tab-contexto) passa `{}` no mount e popula depois do fetch —
+  // sem este effect o useState fica preso no `{}` inicial.
   useEffect(() => {
-    if (!initialData) reload()
+    const hasData = initialData && Object.keys(initialData).length > 0
+    if (hasData) {
+      setData(initialData)
+    } else {
+      reload()
+    }
   }, [initialData, reload])
 
   const patch = async (update: Partial<PesquisaData>) => {
