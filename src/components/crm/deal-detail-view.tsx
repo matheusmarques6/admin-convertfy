@@ -27,6 +27,7 @@ import {
   Zap,
 } from "lucide-react"
 import type { DealFile } from "@/types/crm"
+import { InlineEditField } from "./inline-edit-field"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -284,6 +285,20 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const waLink = phone ? `https://wa.me/${phone.replace(/\D/g, "")}` : null
   const mailto = email ? `mailto:${email}` : null
 
+  // PATCH helper reutilizavel — usado por todos os InlineEditField.
+  const patchDeal = async (update: Record<string, unknown>) => {
+    const res = await fetch(`/api/crm/deals/${dealId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+    }
+    await mutate()
+  }
+
   const handleMoveToNextStage = async () => {
     // Implementacao simples: o user volta pro board pra mover.
     // Futuro: dialog inline pra escolher etapa.
@@ -477,7 +492,16 @@ export function DealDetailView({ dealId }: { dealId: string }) {
                 textAlign: "center",
               }}
             >
-              {leadName}
+              <InlineEditField
+                value={deal.title}
+                placeholder="Título do deal"
+                onSave={(v) => patchDeal({ title: v })}
+                displayStyle={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  textAlign: "center",
+                }}
+              />
             </h1>
             <div
               className="crm-tnum"
@@ -660,25 +684,39 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             </div>
           </Section>
 
-          {/* Notas */}
-          {deal.notes && (
-            <Section title="Notas" expandable>
-              <div
-                style={{
+          {/* Notas (editavel inline) */}
+          <Section title="Notas">
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--crm-gray-700)",
+                lineHeight: 1.5,
+                padding: "10px 12px",
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 8,
+              }}
+            >
+              <InlineEditField
+                type="textarea"
+                value={deal.notes}
+                placeholder="Anote algo importante sobre esse deal..."
+                onSave={(v) => patchDeal({ notes: v || null })}
+                rows={4}
+                rootStyle={{ width: "100%" }}
+                displayStyle={{
                   fontSize: 12.5,
-                  color: "var(--crm-gray-700)",
+                  color: deal.notes
+                    ? "var(--crm-gray-700)"
+                    : "var(--crm-gray-400)",
                   lineHeight: 1.5,
                   whiteSpace: "pre-wrap",
-                  padding: "10px 12px",
-                  background: "var(--crm-gray-0)",
-                  border: "1px solid var(--crm-border)",
-                  borderRadius: 8,
+                  display: "block",
+                  width: "100%",
                 }}
-              >
-                {deal.notes}
-              </div>
-            </Section>
-          )}
+              />
+            </div>
+          </Section>
 
           {/* Contact tabs */}
           <div>
@@ -814,7 +852,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               <AtividadesTab activities={activities} />
             )}
             {activeTab === "negocios" && (
-              <NegociosTab deal={deal} />
+              <NegociosTab deal={deal} onPatch={patchDeal} />
             )}
             {activeTab === "arquivos" && (
               <ArquivosTab
@@ -1313,8 +1351,10 @@ function AtividadesTab({
 
 function NegociosTab({
   deal,
+  onPatch,
 }: {
   deal: DealFullResponse["deal"]
+  onPatch: (update: Record<string, unknown>) => Promise<void>
 }) {
   return (
     <div
@@ -1365,7 +1405,39 @@ function NegociosTab({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <Stat label="Valor recorrente" value={fmtBRL(deal.value || 0) + "/mês"} />
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--crm-gray-500)",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Valor recorrente
+          </div>
+          <div
+            className="crm-tnum"
+            style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: "var(--crm-gray-900)",
+              marginTop: 4,
+            }}
+          >
+            <InlineEditField
+              type="number"
+              value={deal.value || 0}
+              prefix="R$ "
+              suffix="/mês"
+              min={0}
+              step={100}
+              onSave={(v) => onPatch({ value: parseFloat(v) || 0 })}
+              displayStyle={{ fontSize: 16, fontWeight: 600 }}
+            />
+          </div>
+        </div>
         <Stat
           label="Em 12 meses"
           value={fmtBRL((deal.value || 0) * 12)}
