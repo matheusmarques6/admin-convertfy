@@ -147,43 +147,72 @@ export function NewDealDialog({
           style={{ animationDuration: "var(--crm-duration-normal)" }}
         />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0"
+          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 overflow-hidden data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0"
           style={{
             background: "var(--crm-gray-0)",
-            borderRadius: "var(--crm-radius-lg)",
+            borderRadius: "var(--crm-radius-2xl)",
             width: "90vw",
-            maxWidth: 520,
+            maxWidth: 560,
             fontFamily: "var(--crm-font-sans)",
             animationDuration: "var(--crm-duration-normal)",
-            boxShadow: "var(--crm-shadow-lg)",
+            boxShadow: "var(--crm-shadow-modal)",
+            maxHeight: "90vh",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <form onSubmit={submit}>
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <div
-              className="flex items-center justify-between border-b px-5 py-4"
-              style={{ borderColor: "var(--crm-gray-200)" }}
+              className="flex items-start justify-between"
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid var(--crm-border)",
+              }}
             >
-              <DialogPrimitive.Title
-                style={{
-                  fontSize: "var(--crm-text-md)",
-                  fontWeight: "var(--crm-weight-medium)",
-                  color: "var(--crm-gray-900)",
-                }}
-              >
-                Novo deal
-              </DialogPrimitive.Title>
+              <div>
+                <DialogPrimitive.Title
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: "var(--crm-gray-900)",
+                    letterSpacing: "-0.01em",
+                    margin: 0,
+                  }}
+                >
+                  Novo deal
+                </DialogPrimitive.Title>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--crm-gray-500)",
+                    marginTop: 3,
+                  }}
+                >
+                  {stages.find((s) => s.id === stageId)?.name ?? "Nova etapa"}
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Fechar"
-                className="flex h-7 w-7 items-center justify-center hover:bg-[color:var(--crm-gray-100)]"
-                style={{ borderRadius: "var(--crm-radius-md)", color: "var(--crm-gray-500)" }}
+                className="flex items-center justify-center cf-focusable"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "var(--crm-radius-md)",
+                  color: "var(--crm-gray-500)",
+                  background: "transparent",
+                  border: 0,
+                }}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-3 px-5 py-4">
+            <div
+              className="space-y-3 overflow-y-auto"
+              style={{ padding: "20px 24px" }}
+            >
               <Field label="Titulo *">
                 <input
                   className="crm-input w-full"
@@ -373,8 +402,13 @@ export function NewDealDialog({
             </div>
 
             <div
-              className="flex items-center justify-end gap-2 border-t px-5 py-3"
-              style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-50)" }}
+              className="flex items-center justify-end gap-2"
+              style={{
+                padding: "16px 24px",
+                borderTop: "1px solid var(--crm-border)",
+                background: "var(--crm-gray-25)",
+                flexShrink: 0,
+              }}
             >
               <button type="button" className="crm-button-ghost" onClick={onClose}>
                 Cancelar
