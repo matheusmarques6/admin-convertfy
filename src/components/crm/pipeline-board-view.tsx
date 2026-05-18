@@ -314,8 +314,36 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
     }
   }
 
+  // KPIs do header (Convertfy DS V2)
+  const totalDeals = filteredDeals.length
+  const wonCount = filteredDeals.filter((d) => d.status === "won").length
+  const openCount = totalDeals - wonCount
+  const totalValue = filteredDeals
+    .filter((d) => d.status === "open")
+    .reduce((s, d) => s + (d.value || 0), 0)
+  const atRiskCount = filteredDeals.filter((d) => {
+    const stage = pipeline?.stages.find((s) => s.id === d.stage_id)
+    const slaDays = stage?.sla_hours ? Math.ceil(stage.sla_hours / 24) : null
+    if (slaDays == null) return false
+    const days = d.last_stage_changed_at
+      ? Math.floor((Date.now() - new Date(d.last_stage_changed_at).getTime()) / 86400000)
+      : 0
+    return days > slaDays
+  }).length
+  const fmtBRLCompact = (v: number): string => {
+    if (v >= 1_000_000) return "R$ " + (v / 1_000_000).toFixed(1).replace(".", ",") + "M"
+    if (v >= 1_000) return "R$ " + Math.round(v / 1_000) + "k"
+    return "R$ " + Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })
+  }
+
   return (
-    <div className="flex h-full flex-col bg-slate-50 dark:bg-[#0B0E15] overflow-hidden">
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      style={{
+        background: "var(--crm-gray-50)",
+        fontFamily: "var(--crm-font-sans)",
+      }}
+    >
       {isLoading ? (
         <PipelineSkeleton />
       ) : !pipeline ? (
@@ -334,35 +362,162 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
         </div>
       ) : (
         <>
-          {/* ═══════════ HEADER UNICO — toolbar consolidada ═══════════
-              Uma unica linha com: titulo · pills periodo · search · owner ·
-              settings · importar · novo deal. Linha 2 opcional aparece
-              SO quando ha filtros ativos (contador + limpar). */}
-          <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#0F1117] border-b border-black/[0.06] dark:border-white/[0.08]">
-            {/* Titulo */}
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{ background: pipeline.color ?? "#2563EB" }}
-                aria-hidden
-              />
-              <h1 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-white truncate">
-                {pipeline.name}
-              </h1>
-              {pipeline.description && (
-                <span className="hidden lg:inline text-[12px] text-slate-500 dark:text-white/45 truncate">
-                  · {pipeline.description}
-                </span>
-              )}
-              <span className="text-[11px] font-medium text-slate-400 dark:text-white/40 tabular-nums shrink-0 ml-1">
-                {filteredDeals.length}
-              </span>
-            </div>
+          {/* ═══════════ HEADER V2 ═══════════
+              Title + dot + fav star + descricao inline.
+              Subtitle com 3 KPI stats inline.
+              Actions: Novo deal + dots menu. */}
+          <div
+            className="shrink-0"
+            style={{
+              padding: "20px 32px 16px",
+              background: "var(--crm-gray-0)",
+              borderBottom: "1px solid var(--crm-border)",
+            }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                {/* Titulo */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: pipeline.color ?? "var(--crm-gray-700)" }}
+                  />
+                  <h1
+                    className="m-0 truncate"
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: "var(--crm-gray-900)",
+                      letterSpacing: "-0.015em",
+                    }}
+                  >
+                    {pipeline.name}
+                  </h1>
+                  {(pipeline as { is_favorite?: boolean }).is_favorite && (
+                    <span style={{ color: "var(--crm-amber)", fontSize: 14 }}>
+                      ★
+                    </span>
+                  )}
+                  {pipeline.description && (
+                    <>
+                      <span style={{ fontSize: 13, color: "var(--crm-gray-300)" }}>
+                        ·
+                      </span>
+                      <span
+                        className="truncate"
+                        style={{
+                          fontSize: 13,
+                          color: "var(--crm-gray-500)",
+                        }}
+                      >
+                        {pipeline.description}
+                      </span>
+                    </>
+                  )}
+                </div>
 
-            {/* Pills de periodo — compactas */}
+                {/* Subtitle stats KPI */}
+                <div
+                  className="flex items-center gap-2 flex-wrap"
+                  style={{ marginTop: 6, fontSize: 13 }}
+                >
+                  <span style={{ color: "var(--crm-gray-500)" }}>
+                    <span
+                      className="crm-tnum"
+                      style={{
+                        color: "var(--crm-gray-900)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {openCount}
+                    </span>{" "}
+                    deals abertos
+                  </span>
+                  <span style={{ color: "var(--crm-gray-300)" }}>·</span>
+                  <span style={{ color: "var(--crm-gray-500)" }}>
+                    <span
+                      className="crm-tnum"
+                      style={{
+                        color: "var(--crm-gray-900)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fmtBRLCompact(totalValue)}
+                    </span>{" "}
+                    em pipe
+                  </span>
+                  {atRiskCount > 0 && (
+                    <>
+                      <span style={{ color: "var(--crm-gray-300)" }}>·</span>
+                      <span style={{ color: "var(--crm-warn)" }}>
+                        <span
+                          className="crm-tnum"
+                          style={{ fontWeight: 600 }}
+                        >
+                          {atRiskCount}
+                        </span>{" "}
+                        precisam atenção
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
+                  disabled={!pipeline}
+                  className="cf-focusable inline-flex items-center gap-1.5 rounded-[6px] transition-colors"
+                  style={{
+                    height: 34,
+                    padding: "0 14px",
+                    background: "var(--crm-brand)",
+                    color: "var(--crm-brand-fg)",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    border: 0,
+                  }}
+                  onMouseEnter={(e) => ((e.currentTarget.style.background = "var(--crm-brand-hover)"))}
+                  onMouseLeave={(e) => ((e.currentTarget.style.background = "var(--crm-brand)"))}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Novo deal
+                </button>
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  disabled={!pipeline}
+                  className="cf-focusable flex items-center justify-center rounded-[6px]"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    background: "var(--crm-gray-0)",
+                    border: "1px solid var(--crm-border)",
+                    color: "var(--crm-gray-600)",
+                  }}
+                  title="Configurar pipeline"
+                  aria-label="Configurar pipeline"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══════════ FILTER ROW V2 ═══════════ */}
+          <div
+            className="shrink-0 flex items-center justify-between gap-3 flex-wrap"
+            style={{
+              padding: "14px 32px",
+              background: "var(--crm-gray-0)",
+              borderBottom: "1px solid var(--crm-border)",
+            }}
+          >
+            {/* Pills temporais */}
             {pipeline.layout !== "state" && (
               <div
-                className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-50 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] p-0.5"
+                className="flex gap-1"
                 role="tablist"
                 aria-label="Filtrar por periodo"
               >
@@ -383,11 +538,21 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                       role="tab"
                       aria-selected={active}
                       onClick={() => setPeriodFilter(p.id)}
-                      className={
-                        active
-                          ? "text-[11px] font-semibold px-2 py-1 rounded-[4px] bg-white dark:bg-[#1A1D27] text-slate-900 dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-                          : "text-[11px] font-medium px-2 py-1 rounded-[4px] text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white"
-                      }
+                      className="cf-focusable transition-colors"
+                      style={{
+                        height: 30,
+                        padding: "0 12px",
+                        borderRadius: 6,
+                        background: active ? "var(--crm-blue-50)" : "transparent",
+                        color: active ? "var(--crm-brand)" : "var(--crm-gray-600)",
+                        border: active
+                          ? "1px solid var(--crm-blue-100)"
+                          : "1px solid transparent",
+                        fontSize: 12,
+                        fontWeight: active ? 600 : 500,
+                        fontFamily: "var(--crm-font-sans)",
+                        cursor: "pointer",
+                      }}
                     >
                       {p.label}
                     </button>
@@ -396,83 +561,109 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               </div>
             )}
 
-            {/* Search */}
-            {pipeline.layout !== "state" && (
-              <div className="relative w-[220px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/40" />
-                <input
-                  type="text"
-                  placeholder="Buscar deals..."
-                  aria-label="Buscar deals"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full h-8 rounded-[6px] pl-8 pr-7 text-[12px] bg-slate-50 dark:bg-white/[0.04] text-slate-900 dark:text-white/90 border border-black/[0.06] dark:border-white/[0.06] placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-300 dark:focus:border-white/20 focus:bg-white dark:focus:bg-[#1A1D27]"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch("")}
-                    aria-label="Limpar busca"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white/70"
+            {/* Search + Filtros + Ordenar */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {pipeline.layout !== "state" && (
+                <div className="relative" style={{ width: 260 }}>
+                  <Search
+                    className="absolute h-3.5 w-3.5 pointer-events-none"
+                    style={{
+                      left: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--crm-gray-400)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Buscar lead, empresa, tag..."
+                    aria-label="Buscar deals"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full outline-none"
+                    style={{
+                      height: 32,
+                      padding: "0 32px 0 30px",
+                      fontSize: 13,
+                      border: "1px solid var(--crm-border)",
+                      borderRadius: 6,
+                      background: "var(--crm-gray-0)",
+                      color: "var(--crm-gray-700)",
+                      fontFamily: "var(--crm-font-sans)",
+                    }}
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch("")}
+                      aria-label="Limpar busca"
+                      className="absolute"
+                      style={{
+                        right: 8,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        color: "var(--crm-gray-400)",
+                        background: "transparent",
+                        border: 0,
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Owner filter */}
+              {owners.length > 1 && (
+                <div className="relative">
+                  <select
+                    value={ownerFilter}
+                    onChange={(e) => setOwnerFilter(e.target.value)}
+                    className="appearance-none cursor-pointer"
+                    style={{
+                      height: 32,
+                      paddingLeft: 12,
+                      paddingRight: 28,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      borderRadius: 6,
+                      background: "var(--crm-gray-0)",
+                      color: "var(--crm-gray-700)",
+                      border: "1px solid var(--crm-border)",
+                      fontFamily: "var(--crm-font-sans)",
+                    }}
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            )}
+                    <option value="">Todos owners</option>
+                    {owners.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className="absolute h-3 w-3 pointer-events-none"
+                    style={{
+                      right: 8,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--crm-gray-400)",
+                    }}
+                  />
+                </div>
+              )}
 
-            {/* Owner filter — so se >1 owner */}
-            {owners.length > 1 && (
-              <div className="relative">
-                <select
-                  value={ownerFilter}
-                  onChange={(e) => setOwnerFilter(e.target.value)}
-                  className="appearance-none h-8 pl-3 pr-7 text-[12px] font-medium rounded-[6px] bg-slate-50 dark:bg-white/[0.04] text-slate-700 dark:text-white/80 border border-black/[0.06] dark:border-white/[0.06] hover:bg-white dark:hover:bg-[#1A1D27] cursor-pointer focus:outline-none"
-                >
-                  <option value="">Todos owners</option>
-                  {owners.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-slate-400 dark:text-white/40" />
-              </div>
-            )}
-
-            {/* Filtros + Ordenacao */}
-            {pipeline.layout !== "state" && (
-              <PipelineFiltersBar
-                filters={advancedFilters}
-                onFiltersChange={setAdvancedFilters}
-                sort={sortOrder}
-                onSortChange={setSortOrder}
-                availableTags={filterOptions.tags}
-                availableSources={filterOptions.sources}
-                availableOwners={filterOptions.owners}
-                availableLostReasons={filterOptions.lostReasons}
-              />
-            )}
-
-            {/* Botao Configuracoes */}
-            <button
-              onClick={() => setSettingsOpen(true)}
-              disabled={!pipeline}
-              className="inline-flex items-center justify-center h-8 w-8 rounded-[6px] bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-white/80 border border-black/[0.08] dark:border-white/[0.10] transition-colors disabled:opacity-50"
-              title="Configurar pipeline (etapas, campos personalizados, exclusao)"
-              aria-label="Configurar pipeline"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </button>
-
-            {/* Botao Novo deal */}
-            <button
-              onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
-              disabled={!pipeline}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[12px] font-semibold shadow-[0_1px_2px_rgba(37,99,235,0.25)] transition-colors disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Novo deal
-            </button>
+              {pipeline.layout !== "state" && (
+                <PipelineFiltersBar
+                  filters={advancedFilters}
+                  onFiltersChange={setAdvancedFilters}
+                  sort={sortOrder}
+                  onSortChange={setSortOrder}
+                  availableTags={filterOptions.tags}
+                  availableSources={filterOptions.sources}
+                  availableOwners={filterOptions.owners}
+                  availableLostReasons={filterOptions.lostReasons}
+                />
+              )}
+            </div>
           </div>
 
           {/* Chips de filtros avancados ativos (clica X pra remover) */}
