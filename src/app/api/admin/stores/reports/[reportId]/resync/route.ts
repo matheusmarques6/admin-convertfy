@@ -104,6 +104,61 @@ export async function POST(
     const sh = (shopifyRes?.orders ?? {}) as Record<string, number>
     const shCustomers = (shopifyRes?.customers ?? {}) as Record<string, number>
 
+    // Cache omnisend_campaign_metrics — receita real per-campaign filtrada
+    // por send_time no periodo do relatorio. Mesma fonte que a Performance
+    // tab usa pra mostrar valores reais.
+    const { data: omnisendCampaignRows } = await admin
+      .from("omnisend_campaign_metrics")
+      .select(
+        "campaign_id, campaign_name, send_time, subject, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate",
+      )
+      .eq("store_id", report.store_id)
+      .gte("send_time", `${report.period_start}T00:00:00Z`)
+      .lte("send_time", `${report.period_end}T23:59:59Z`)
+      .eq("period_label", "30d")
+      .order("conversion_value", { ascending: false })
+      .limit(20)
+    const { data: omnisendFlowRows } = await admin
+      .from("omnisend_flow_metrics")
+      .select("flow_id, flow_name, flow_status, trigger_type, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate")
+      .eq("store_id", report.store_id)
+      .eq("period_label", "30d")
+      .order("conversion_value", { ascending: false })
+      .limit(15)
+
+    const cacheCampaigns = (omnisendCampaignRows ?? []).map((r) => ({
+      id: r.campaign_id as string,
+      name: r.campaign_name as string,
+      sendTime: r.send_time as string,
+      subject: r.subject as string | null,
+      recipients: Number(r.recipients) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      clicked: Number(r.clicked) || 0,
+      conversions: Number(r.conversions) || 0,
+      openRate: Number(r.open_rate) || 0,
+      clickRate: Number(r.click_rate) || 0,
+      bounceRate: Number(r.bounce_rate) || 0,
+      revenue: Number(r.conversion_value) || 0,
+    }))
+    const cacheFlows = (omnisendFlowRows ?? []).map((r) => ({
+      id: r.flow_id as string,
+      name: r.flow_name as string,
+      status: r.flow_status as string,
+      triggerType: r.trigger_type as string,
+      recipients: Number(r.recipients) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      clicked: Number(r.clicked) || 0,
+      conversions: Number(r.conversions) || 0,
+      openRate: Number(r.open_rate) || 0,
+      clickRate: Number(r.click_rate) || 0,
+      revenue: Number(r.conversion_value) || 0,
+    }))
+
+    const finalCampaigns = cacheCampaigns.some((c) => c.revenue > 0) ? cacheCampaigns.slice(0, 10) : campaignsList
+    const finalFlows = cacheFlows.some((f) => f.revenue > 0) ? cacheFlows.slice(0, 10) : flowsList
+
     function sumField(rows: Array<Record<string, unknown>>, field: string): number {
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
     }
@@ -166,13 +221,13 @@ export async function POST(
     const receitaCampanhas =
       Number(rv.campaignRevenue) ||
       Number(cs.totalRevenue) ||
-      sumField(campaignsList, "revenue") ||
+      sumField(finalCampaigns, "revenue") ||
       Number(cachedSummary?.omnisend_campaign_revenue ?? cachedSummary?.klaviyo_campaign_revenue) || 0
 
     const receitaFlows =
       Number(rv.flowRevenue) ||
       Number(fs.totalRevenue) ||
-      sumField(flowsList, "revenue") ||
+      sumField(finalFlows, "revenue") ||
       Number(cachedSummary?.omnisend_flow_revenue ?? cachedSummary?.klaviyo_flow_revenue) || 0
 
     const attributedRevenue =
@@ -213,8 +268,8 @@ export async function POST(
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
-    let enrichedCampaigns = campaignsList
-    if (reportRes?.platform === "omnisend") {
+    let enrichedCampaigns = finalCampaigns
+    if (!finalCampaigns.some((c) => Number((c as Record<string, unknown>).revenue) > 0) && reportRes?.platform === "omnisend") {
       try {
         const creds = await getStoreCredentials(report.store_id)
         if (creds.omnisend_api_key) {
@@ -232,7 +287,7 @@ export async function POST(
       }
     }
     enrichedCampaigns = distributeRevenue(enrichedCampaigns, receitaCampanhas)
-    const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
+    const enrichedFlows = distributeRevenue(finalFlows, receitaFlows)
 
     // Preserva insights existentes do snapshot anterior
     const oldSnapshot = (report.snapshot ?? {}) as Record<string, unknown>

@@ -120,35 +120,56 @@ function delta(curr: number, prev: number): number | null {
   return (curr - prev) / prev
 }
 
-function previousPeriodDates(r: Range) {
+function previousPeriodDates(r: Range, customStart?: string, customEnd?: string) {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+  if (r === "custom" && customStart && customEnd) {
+    const start = new Date(customStart + "T00:00:00")
+    const end = new Date(customEnd + "T00:00:00")
+    const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
+    const prevEnd = new Date(start.getTime() - 1000 * 60 * 60 * 24)
+    const prevStart = new Date(prevEnd.getTime() - days * 1000 * 60 * 60 * 24)
+    return { start: fmt(prevStart), end: fmt(prevEnd) }
+  }
   if (r === "custom") return null
   const days = rangeDays(r)
   const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   const prevEnd = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
   const prevStart = new Date(prevEnd.getTime() - days * 24 * 60 * 60 * 1000)
   return { start: fmt(prevStart), end: fmt(prevEnd) }
+}
+
+function todayYMD(offsetDays = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() - offsetDays)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 export function TabPerformance({ storeId }: { storeId: string }) {
   const router = useRouter()
   const [range, setRange] = useState<Range>("30d")
   const [compareEnabled, setCompareEnabled] = useState(true)
+  const [customStart, setCustomStart] = useState<string>(todayYMD(30))
+  const [customEnd, setCustomEnd] = useState<string>(todayYMD(0))
 
   const { data: credData, isLoading: credLoading } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
   const status = (credData?.status ?? {}) as Record<string, IntegrationStatus>
   const emailPlatformConnected = !!status.klaviyo?.connected || !!status.omnisend?.connected
   const shopifyConnected = !!status.shopify?.connected
 
-  const periodParam = `period=${range}`
+  const periodParam =
+    range === "custom"
+      ? `period=custom&start_date=${customStart}&end_date=${customEnd}`
+      : `period=${range}`
 
   const { data: report } = useSWR<EmailReport>(emailPlatformConnected ? `/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
   const { data: campaignsRaw } = useSWR<CampaignsResponse>(emailPlatformConnected ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
   const { data: flowsRaw } = useSWR<FlowsResponse>(emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
   const { data: shopify } = useSWR<ShopifyReport>(shopifyConnected ? `/api/integrations/shopify/report?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
 
-  const prevDates = compareEnabled ? previousPeriodDates(range) : null
+  const prevDates = compareEnabled ? previousPeriodDates(range, customStart, customEnd) : null
   const prevParam = prevDates ? `period=custom&start_date=${prevDates.start}&end_date=${prevDates.end}` : null
   const { data: reportPrev } = useSWR<EmailReport>(emailPlatformConnected && prevParam ? `/api/integrations/email-platform/report?store_id=${storeId}&${prevParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
   const { data: shopifyPrev } = useSWR<ShopifyReport>(shopifyConnected && prevParam ? `/api/integrations/shopify/report?store_id=${storeId}&${prevParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
@@ -295,6 +316,31 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       <div className="flex items-center justify-between mb-[18px] gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeChip value={range} onChange={setRange} />
+          {range === "custom" && (
+            <div
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-[8px]"
+              style={{ background: C.white, border: `1px solid ${C.border}` }}
+            >
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                max={customEnd}
+                className="h-7 px-1.5 text-[12px] outline-none"
+                style={{ color: C.g700, ...TNUM, border: "none", background: "transparent" }}
+              />
+              <span style={{ color: C.g400, fontSize: 12 }}>→</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                min={customStart}
+                max={todayYMD(0)}
+                className="h-7 px-1.5 text-[12px] outline-none"
+                style={{ color: C.g700, ...TNUM, border: "none", background: "transparent" }}
+              />
+            </div>
+          )}
           <span className="text-[12px]" style={{ color: C.g400 }}>Comparando com</span>
           <button
             onClick={() => setCompareEnabled((v) => !v)}

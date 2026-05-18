@@ -167,6 +167,73 @@ export async function POST(
     const sh = (shopifyRes?.orders ?? {}) as Record<string, number>
     const shCustomers = (shopifyRes?.customers ?? {}) as Record<string, number>
 
+    // ─── Cache de omnisend_campaign_metrics — fonte autoritativa de
+    // revenue per-campaign, mesma que a Performance tab usa.
+    // O endpoint email-platform/campaigns com period=custom não retorna
+    // conversion_value porque a Statistics API da Omnisend (event-date)
+    // não bate com /v5/campaigns. Mas as rows com period_label='30d' já
+    // estão sincronizadas pela cron com o conversion_value real.
+    // Buscamos diretamente filtrando por send_time no periodo do relatorio.
+    const { data: omnisendCampaignRows } = await admin
+      .from("omnisend_campaign_metrics")
+      .select(
+        "campaign_id, campaign_name, send_time, subject, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate",
+      )
+      .eq("store_id", storeId)
+      .gte("send_time", `${body.period_start}T00:00:00Z`)
+      .lte("send_time", `${body.period_end}T23:59:59Z`)
+      .eq("period_label", "30d") // rows com conversion_value populado pela cron
+      .order("conversion_value", { ascending: false })
+      .limit(20)
+
+    const { data: omnisendFlowRows } = await admin
+      .from("omnisend_flow_metrics")
+      .select("flow_id, flow_name, flow_status, trigger_type, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate")
+      .eq("store_id", storeId)
+      .eq("period_label", "30d")
+      .order("conversion_value", { ascending: false })
+      .limit(15)
+
+    // Constrói lista enriquecida: se temos rows do cache com conversion_value,
+    // usa elas (revenue real). Senão cai no que veio do endpoint.
+    const cacheCampaigns = (omnisendCampaignRows ?? []).map((r) => ({
+      id: r.campaign_id as string,
+      name: r.campaign_name as string,
+      sendTime: r.send_time as string,
+      subject: r.subject as string | null,
+      recipients: Number(r.recipients) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      clicked: Number(r.clicked) || 0,
+      conversions: Number(r.conversions) || 0,
+      openRate: Number(r.open_rate) || 0,
+      clickRate: Number(r.click_rate) || 0,
+      bounceRate: Number(r.bounce_rate) || 0,
+      revenue: Number(r.conversion_value) || 0,
+    }))
+    const cacheFlows = (omnisendFlowRows ?? []).map((r) => ({
+      id: r.flow_id as string,
+      name: r.flow_name as string,
+      status: r.flow_status as string,
+      triggerType: r.trigger_type as string,
+      recipients: Number(r.recipients) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      clicked: Number(r.clicked) || 0,
+      conversions: Number(r.conversions) || 0,
+      openRate: Number(r.open_rate) || 0,
+      clickRate: Number(r.click_rate) || 0,
+      revenue: Number(r.conversion_value) || 0,
+    }))
+
+    // Prefere o cache quando há receita real. Senão usa o que veio do endpoint.
+    const finalCampaigns = cacheCampaigns.some((c) => c.revenue > 0)
+      ? cacheCampaigns.slice(0, 10)
+      : campaignsList
+    const finalFlows = cacheFlows.some((f) => f.revenue > 0)
+      ? cacheFlows.slice(0, 10)
+      : flowsList
+
     // Helper: soma um campo de uma lista de objetos
     function sumField(rows: Array<Record<string, unknown>>, field: string): number {
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
@@ -254,13 +321,13 @@ export async function POST(
     const receitaCampanhas =
       Number(rv.campaignRevenue) ||
       Number(cs.totalRevenue) ||
-      sumField(campaignsList, "revenue") ||
+      sumField(finalCampaigns, "revenue") ||
       Number(cachedSummary?.omnisend_campaign_revenue ?? cachedSummary?.klaviyo_campaign_revenue) || 0
 
     const receitaFlows =
       Number(rv.flowRevenue) ||
       Number(fs.totalRevenue) ||
-      sumField(flowsList, "revenue") ||
+      sumField(finalFlows, "revenue") ||
       Number(cachedSummary?.omnisend_flow_revenue ?? cachedSummary?.klaviyo_flow_revenue) || 0
 
     const attributedRevenue =
@@ -308,8 +375,9 @@ export async function POST(
     // (send-date, matches UI). Se vier, faz join por nome+data já que
     // marketingActivityID nao bate com campaignID. Senao, fallback pra
     // distribuicao proporcional por delivered.
-    let enrichedCampaigns = campaignsList
-    if (reportRes?.platform === "omnisend") {
+    let enrichedCampaigns = finalCampaigns
+    // Se o cache local não tinha receita, tenta a Reports API + matchByDate
+    if (!finalCampaigns.some((c) => Number((c as Record<string, unknown>).revenue) > 0) && reportRes?.platform === "omnisend") {
       try {
         const creds = await getStoreCredentials(storeId)
         if (creds.omnisend_api_key) {
@@ -326,9 +394,9 @@ export async function POST(
         // silent — fica com fallback
       }
     }
-    // Se ainda não tem revenue per row, distribui proporcional
+    // Último fallback: distribui proporcional pelo total agregado
     enrichedCampaigns = distributeRevenue(enrichedCampaigns, receitaCampanhas)
-    const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
+    const enrichedFlows = distributeRevenue(finalFlows, receitaFlows)
 
     const snapshot = {
       generated_at: new Date().toISOString(),
