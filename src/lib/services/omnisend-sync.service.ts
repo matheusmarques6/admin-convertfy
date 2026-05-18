@@ -485,8 +485,8 @@ export async function fetchOmnisendStatistics(
               { name: "attributedOrders" },
             ],
             dateRange: {
-              from: new Date(startDate).toISOString(),
-              to: new Date(endDate).toISOString(),
+              from: startDate,
+              to: endDate,
             },
             dimensions: [{ name: "timestamp", granularity: "day" }],
           }],
@@ -840,8 +840,8 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "clickedUnique" },
               ],
               dateRange: {
-                from: new Date(startDate).toISOString(),
-                to: new Date(endDate).toISOString(),
+                from: startDate,
+                to: endDate,
               },
               dimensions: [
                 { name: "timestamp", granularity: "day" },
@@ -861,8 +861,8 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "clickedUnique" },
               ],
               dateRange: {
-                from: new Date(startDate).toISOString(),
-                to: new Date(endDate).toISOString(),
+                from: startDate,
+                to: endDate,
               },
               dimensions: [
                 { name: "timestamp", granularity: "day" },
@@ -876,8 +876,8 @@ export async function fetchOmnisendActivityBreakdown(
               alias: "total",
               metrics: [{ name: "totalRevenue" }, { name: "totalOrders" }],
               dateRange: {
-                from: new Date(startDate).toISOString(),
-                to: new Date(endDate).toISOString(),
+                from: startDate,
+                to: endDate,
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
@@ -906,8 +906,8 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "failed" },
               ],
               dateRange: {
-                from: new Date(startDate).toISOString(),
-                to: new Date(endDate).toISOString(),
+                from: startDate,
+                to: endDate,
               },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
@@ -1086,8 +1086,8 @@ export async function fetchOmnisendReports(
             ],
             dateRange: {
               interval: "custom",
-              from: new Date(startDate).toISOString(),
-              to: new Date(endDate).toISOString(),
+              from: startDate,
+              to: endDate,
             },
           }],
         },

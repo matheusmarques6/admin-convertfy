@@ -14,6 +14,7 @@
 
 import { logger } from "@/lib/logger"
 import { omnisendRequest, OMNISEND_API } from "./client"
+import { omnisendDateRange } from "./timezone"
 
 const log = logger.child("OmnisendReportsAPI")
 
@@ -43,9 +44,12 @@ export async function fetchOmnisendCampaignReports(
   apiKey: string,
   startDate: string,
   endDate: string,
+  tzOffset: string = "-03:00",
 ): Promise<OmnisendCampaignReport[] | null> {
-  const from = new Date(startDate).toISOString()
-  const to = new Date(endDate).toISOString()
+  // dateRange.to e EXCLUSIVO no fuso da brand (confirmado pelo suporte
+  // Omnisend 2026-05-18). Pra "Apr 1..30" mandamos from=Apr 1 00:00 e
+  // to=May 1 00:00 — ambos no mesmo offset da loja, batendo com dashboard.
+  const { from, to } = omnisendDateRange(startDate, endDate, tzOffset)
 
   try {
     const resp = await omnisendRequest<ReportsResponse>(

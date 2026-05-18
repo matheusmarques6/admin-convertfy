@@ -14,6 +14,7 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore, type OmnisendSyncData } from "@/lib/services/omnisend-sync.service"
 import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
+import { omnisendDateRange, offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
 
 /** Persiste os dados do sync vivo nas tabelas omnisend_*_metrics +
@@ -324,14 +325,22 @@ export async function buildOmnisendCampaignsResponse(
 
   // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
   const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
+  // Converte janela pra fuso da loja com `to` exclusivo (Omnisend convention).
+  const currency = await getStoreCurrency(store.storeId)
+  const tzOffset = offsetForCurrency(currency)
+  const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
+    startDateStr,
+    endDateStr,
+    tzOffset,
+  )
   try {
     const result = await syncOmnisendForStore({
       storeId: store.storeId,
       orgId: store.orgId,
       apiKey,
       periodDays: days,
-      startDate: `${startDateStr}T00:00:00.000Z`,
-      endDate: `${endDateStr}T23:59:59.999Z`,
+      startDate: omnisendStart,
+      endDate: omnisendEnd,
     })
 
     if (!result.ok || !result.data) {
@@ -505,14 +514,21 @@ export async function buildOmnisendFlowsResponse(
 
   // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
   const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
+  const currency = await getStoreCurrency(store.storeId)
+  const tzOffset = offsetForCurrency(currency)
+  const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
+    startDateStr,
+    endDateStr,
+    tzOffset,
+  )
   try {
     const result = await syncOmnisendForStore({
       storeId: store.storeId,
       orgId: store.orgId,
       apiKey,
       periodDays: days,
-      startDate: `${startDateStr}T00:00:00.000Z`,
-      endDate: `${endDateStr}T23:59:59.999Z`,
+      startDate: omnisendStart,
+      endDate: omnisendEnd,
     })
 
     if (!result.ok || !result.data) {

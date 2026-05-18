@@ -15,6 +15,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { fetchOmnisendCampaignReports } from "@/lib/integrations/omnisend/reports-api"
+import { offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
 
 export const dynamic = "force-dynamic"
 
@@ -167,22 +168,24 @@ export async function POST(
     const sh = (shopifyRes?.orders ?? {}) as Record<string, number>
     const shCustomers = (shopifyRes?.customers ?? {}) as Record<string, number>
 
-    // ─── Cache de omnisend_campaign_metrics — fonte autoritativa de
-    // revenue per-campaign, mesma que a Performance tab usa.
-    // O endpoint email-platform/campaigns com period=custom não retorna
-    // conversion_value porque a Statistics API da Omnisend (event-date)
-    // não bate com /v5/campaigns. Mas as rows com period_label='30d' já
-    // estão sincronizadas pela cron com o conversion_value real.
-    // Buscamos diretamente filtrando por send_time no periodo do relatorio.
+    // ─── Cache de omnisend_campaign_metrics ────────────────────
+    // O endpoint email-platform/campaigns?period=custom acima ja rodou um
+    // live sync com a janela exata do relatorio (timezone-aware,
+    // confirmado pelo suporte Omnisend 2026-05-18). Ele persiste com
+    // period_label="custom:YYYY-MM-DD:YYYY-MM-DD". Buscamos esse cache
+    // como fonte autoritativa de revenue per-campaign.
+    //
+    // NUNCA filtrar por period_label="30d" aqui — a cron grava rolling
+    // "ultimos 30 dias" que so cobre parte do periodo do relatorio,
+    // causando ate 40% de divergencia (bug 2026-05-18).
+    const customPeriodLabel = `custom:${body.period_start.slice(0, 10)}:${body.period_end.slice(0, 10)}`
     const { data: omnisendCampaignRows } = await admin
       .from("omnisend_campaign_metrics")
       .select(
         "campaign_id, campaign_name, send_time, subject, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate",
       )
       .eq("store_id", storeId)
-      .gte("send_time", `${body.period_start}T00:00:00Z`)
-      .lte("send_time", `${body.period_end}T23:59:59Z`)
-      .eq("period_label", "30d") // rows com conversion_value populado pela cron
+      .eq("period_label", customPeriodLabel)
       .order("conversion_value", { ascending: false })
       .limit(20)
 
@@ -190,7 +193,7 @@ export async function POST(
       .from("omnisend_flow_metrics")
       .select("flow_id, flow_name, flow_status, trigger_type, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate")
       .eq("store_id", storeId)
-      .eq("period_label", "30d")
+      .eq("period_label", customPeriodLabel)
       .order("conversion_value", { ascending: false })
       .limit(15)
 
@@ -381,10 +384,12 @@ export async function POST(
       try {
         const creds = await getStoreCredentials(storeId)
         if (creds.omnisend_api_key) {
+          const storeCurrency = (account.currency as string | undefined) ?? cachedSummary?.currency ?? "BRL"
           const reportsData = await fetchOmnisendCampaignReports(
             creds.omnisend_api_key,
             body.period_start,
             body.period_end,
+            offsetForCurrency(storeCurrency),
           )
           if (reportsData && reportsData.length > 0) {
             enrichedCampaigns = matchByDate(campaignsList, reportsData)

@@ -16,7 +16,22 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
 import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
+import { omnisendDateRange, offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
+
+async function fetchStoreCurrencyForReport(storeId: string): Promise<{ currency: string }> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from("client_stores")
+      .select("currency")
+      .eq("id", storeId)
+      .maybeSingle()
+    return { currency: (data?.currency as string) || "BRL" }
+  } catch {
+    return { currency: "BRL" }
+  }
+}
 
 const log = logger.child("OmnisendReportBuilder")
 
@@ -667,16 +682,22 @@ async function buildFromLiveFetch(
   days: number,
   apiKey: string
 ): Promise<OmnisendReportResponse> {
+  // Datas precisam ir no fuso da brand pra bater com dashboard Omnisend
+  // (confirmado pelo suporte 2026-05-18). `to` e EXCLUSIVO no fuso da loja.
+  const { currency: storeCurrency } = await fetchStoreCurrencyForReport(store.storeId)
+  const tzOffset = offsetForCurrency(storeCurrency)
+  const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
+    dateRange.startDateStr,
+    dateRange.endDateStr,
+    tzOffset,
+  )
   const result = await syncOmnisendForStore({
     storeId: store.storeId,
     orgId: store.orgId,
     apiKey,
     periodDays: days,
-    // Alinha com calendar para coincidir com dashboard Omnisend (00:00 do
-    // primeiro dia ate 23:59:59.999 do ultimo). dateRangeForPeriod ja entrega
-    // strings YYYY-MM-DD; aqui so anexamos a parte horaria em UTC.
-    startDate: `${dateRange.startDateStr}T00:00:00.000Z`,
-    endDate: `${dateRange.endDateStr}T23:59:59.999Z`,
+    startDate: omnisendStart,
+    endDate: omnisendEnd,
   })
 
   if (!result.ok || !result.data) {
