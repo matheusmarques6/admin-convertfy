@@ -12,10 +12,22 @@
  *  - POST add_comment via store (mesma rota legacy)
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import type { ProductivityTask } from "@/types/productivity"
+import { BlockIdentidadeLoja } from "./blocks/block-identidade-loja"
+import { BlockBrandBrain } from "./blocks/block-brand-brain"
+import { BlockAssetsVisuais } from "./blocks/block-assets-visuais"
+import { BlockCriteriosAceitacao } from "./blocks/block-criterios-aceitacao"
+import { BlockSugestoesIA } from "./blocks/block-sugestoes-ia"
+import { BlockTimelineUnificada } from "./blocks/block-timeline-unificada"
+import { BlockAnotacoesPessoais } from "./blocks/block-anotacoes-pessoais"
+import {
+  TaskPanelSidebar,
+  type SidebarSection,
+  type SidebarGroup,
+} from "./blocks/task-panel-sidebar"
 
 // ── Design tokens (replicam DS do prototipo) ────────────────────────────────
 const C = {
@@ -752,6 +764,9 @@ export function TaskDetailDrawer({
     return () => clearTimeout(t)
   }, [showToast])
 
+  // Sidebar interna (modo enriched para tasks de onboarding)
+  const [enrichedSection, setEnrichedSection] = useState<SidebarSection>("visao-geral")
+
   const formatTimer = () => {
     const min = Math.floor(timerSec / 60)
     const sec = timerSec % 60
@@ -1090,9 +1105,12 @@ export function TaskDetailDrawer({
         className="fixed inset-0 bg-gray-900/15 z-[50]"
         style={{ animation: "drawer-backdrop-in 150ms ease" }}
       />
-      {/* Drawer */}
+      {/* Drawer — largura expandida em onboarding pra acomodar sidebar */}
       <div
-        className="fixed top-0 right-0 bottom-0 w-[760px] max-w-[92vw] bg-white shadow-2xl z-[51] overflow-y-auto flex flex-col"
+        className={cn(
+          "fixed top-0 right-0 bottom-0 max-w-[96vw] bg-white shadow-2xl z-[51] overflow-hidden flex flex-col",
+          isOnboarding ? "w-[1100px]" : "w-[760px] overflow-y-auto",
+        )}
         style={{ animation: "drawer-slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
         {/* Top bar — breadcrumb + actions */}
@@ -1247,8 +1265,87 @@ export function TaskDetailDrawer({
           </div>
         </div>
 
+        {/* Layout horizontal (sidebar + content) quando onboarding */}
+        <div className={isOnboarding ? "flex flex-1 min-h-0 overflow-hidden" : "contents"}>
+          {isOnboarding && (
+            <TaskPanelSidebar
+              active={enrichedSection}
+              onChange={(id) => {
+                setEnrichedSection(id)
+                const el = document.getElementById(`task-section-${id}`)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+              groups={[
+                {
+                  label: "Contexto",
+                  items: [
+                    { id: "visao-geral", label: "Visão geral" },
+                    { id: "sobre-cliente", label: "Sobre o cliente" },
+                    { id: "brand-brain", label: "Brand Brain", badge: { value: "IA", tone: "purple" } },
+                    { id: "assets-visuais", label: "Assets visuais" },
+                  ],
+                },
+                {
+                  label: "Execução",
+                  items: [
+                    { id: "criterios", label: "Critérios" },
+                    { id: "checklist", label: "Checklist interno" },
+                    { id: "sugestoes-ia", label: "Sugestões da IA", badge: { value: "IA", tone: "purple" } },
+                    { id: "entregaveis", label: "Entregáveis" },
+                  ],
+                },
+                {
+                  label: "Acompanhamento",
+                  items: [
+                    { id: "comentarios", label: "Comentários" },
+                    { id: "historico", label: "Histórico" },
+                    { id: "anotacoes", label: "Anotações pessoais" },
+                  ],
+                },
+              ]}
+              progressPct={(() => {
+                const items = (task.checklist ?? []) as Array<{ is_completed?: boolean }>
+                if (items.length === 0) return 0
+                const done = items.filter((i) => i.is_completed).length
+                return Math.round((done / items.length) * 100)
+              })()}
+              subtasksLabel={(() => {
+                const items = (task.checklist ?? []) as Array<{ is_completed?: boolean }>
+                const done = items.filter((i) => i.is_completed).length
+                return `${done}/${items.length} sub-tasks`
+              })()}
+            />
+          )}
+        <div className={isOnboarding ? "flex-1 overflow-y-auto" : "contents"}>
+        {/* Identidade da loja (novo bloco no topo, só em onboarding) */}
+        {isOnboarding && (
+          <div id="task-section-visao-geral" className="px-5 pt-5">
+            <BlockIdentidadeLoja taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-sobre-cliente" className="px-5 pt-3">
+            {/* Placeholder reservado para ancorar a navegação */}
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-brand-brain" className="px-5 pt-3">
+            <BlockBrandBrain taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-assets-visuais" className="px-5 pt-3">
+            <BlockAssetsVisuais taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-criterios" className="px-5 pt-3">
+            <BlockCriteriosAceitacao taskId={task.id} />
+          </div>
+        )}
+
         {/* Title + status + properties */}
-        <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+        <div id="task-section-checklist" className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
           <h1 className="text-[20px] font-bold text-gray-900 m-0 leading-tight tracking-tight mb-3.5">
             {task.name}
           </h1>
@@ -1918,6 +2015,24 @@ export function TaskDetailDrawer({
             </div>
           </Section>
         </div>
+
+        {/* Blocos finais (sugestões IA, anotações, histórico — só em onboarding) */}
+        {isOnboarding && (
+          <>
+            <div id="task-section-sugestoes-ia" className="px-5 pt-3 pb-3">
+              <BlockSugestoesIA taskId={task.id} />
+            </div>
+            <div id="task-section-anotacoes" className="px-5 pt-3 pb-3">
+              <BlockAnotacoesPessoais taskId={task.id} />
+            </div>
+            <div id="task-section-historico" className="px-5 pt-3 pb-6">
+              <BlockTimelineUnificada taskId={task.id} />
+            </div>
+          </>
+        )}
+
+        </div>{/* close flex-1 overflow-y-auto */}
+        </div>{/* close flex flex-1 layout wrapper */}
       </div>
 
       {/* Toast */}
