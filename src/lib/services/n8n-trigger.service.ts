@@ -197,7 +197,8 @@ export class N8nTriggerService {
 
   /**
    * Trigger o workflow "Analisador de ADS" no n8n quando uma loja é criada.
-   * URL configurável via N8N_ADS_ANALYZER_WEBHOOK_URL. Os 7 callbacks
+   * URL: env N8N_ADS_ANALYZER_WEBHOOK_URL (fallback hardcoded para
+   * https://n8n-n8n.1fpac5.easypanel.host/webhook/ads-analyze-convertfy). Os 7 callbacks
    * (snapshot, icp, tone, ads-review, products, competitors,
    * briefing-markdown) são chamados pelo próprio workflow.
    */
@@ -208,11 +209,9 @@ export class N8nTriggerService {
     store_url: string | null
     platform: string | null
   }): Promise<TriggerResult> {
-    const url = process.env.N8N_ADS_ANALYZER_WEBHOOK_URL
-    if (!url) {
-      log.warn("N8N_ADS_ANALYZER_WEBHOOK_URL not configured, skipping ads analyzer trigger")
-      return { success: false, error: "N8N_ADS_ANALYZER_WEBHOOK_URL not configured" }
-    }
+    const url =
+      process.env.N8N_ADS_ANALYZER_WEBHOOK_URL ||
+      "https://n8n-n8n.1fpac5.easypanel.host/webhook/ads-analyze-convertfy"
 
     log.info(`Triggering ads analyzer for store ${params.store_id}`)
 
