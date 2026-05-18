@@ -7,8 +7,6 @@
  * Versionamento: arquiva o status='current' anterior e insere o novo
  * como 'current'. Metadados (mode, model, tokens) ficam no jsonb
  * briefing_data porque o schema da tabela não tem colunas dedicadas.
- *
- * UI: src/components/stores/store-briefing-tab.tsx
  */
 
 import { NextRequest } from "next/server"

@@ -8,7 +8,6 @@
 import { useEffect, useState } from "react"
 import { Edit2, Plus, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { PesquisaSection, type PesquisaData } from "./pesquisa/pesquisa-section"
 
 interface StoreContext {
@@ -118,7 +117,7 @@ export function TabContexto({ storeId }: { storeId: string }) {
     <div className="flex flex-col gap-4">
       {/* Anchors */}
       <div className="flex gap-1 overflow-x-auto pb-2 text-[12px] font-medium text-slate-500">
-        {["Marca", "Pesquisa & Diagnóstico", "Briefing completo", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
+        {["Marca", "Pesquisa & Diagnóstico", "Operação", "Lista & Engajamento", "Concorrência"].map((a) => (
           <a key={a} href={`#${a.toLowerCase().replace(/\s+&\s+/g, "-").replace(/\s+/g, "-")}`} className="px-2.5 py-1 rounded-md hover:bg-slate-100 whitespace-nowrap">
             {a}
           </a>
@@ -213,11 +212,6 @@ export function TabContexto({ storeId }: { storeId: string }) {
 
       {/* PESQUISA & DIAGNÓSTICO — 5 pilares editoriais (substitui o antigo "Briefing estratégico") */}
       <PesquisaSection storeId={storeId} initialData={ctx as PesquisaData} />
-
-      {/* BRIEFING COMPLETO (IA + formulario de onboarding) */}
-      <Section id="briefing-completo" title="Briefing completo (gerado por IA)">
-        <StoreBriefingTab storeId={storeId} clientId={storeLite.client_id ?? null} />
-      </Section>
 
       {/* OPERAÇÃO — h2 macro Playfair (estilo Pesquisa & Diagnóstico) */}
       <section

@@ -13,7 +13,6 @@ import { Progress } from "@/components/ui/progress"
 import { StoreEmailPerformanceReport } from "@/components/clients/store-email-performance-report"
 import { formatCurrency } from "@/lib/utils"
 import { useStoreEmailCampaigns, useStoreEmailFlows } from "@/lib/hooks/use-api-data"
-import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
@@ -68,7 +67,7 @@ interface CampaignData {
 type Period = "7d" | "30d" | "90d" | "all" | "custom"
 
 const VALID_TABS = [
-  "overview", "integrations", "onboarding", "briefing", "reports",
+  "overview", "integrations", "onboarding", "reports",
 ] as const
 
 export function StoreDetailTabs({
@@ -162,7 +161,6 @@ export function StoreDetailTabs({
         <UnderlineTabItem value="overview">Overview</UnderlineTabItem>
         <UnderlineTabItem value="integrations">Integrações</UnderlineTabItem>
         <UnderlineTabItem value="onboarding">Onboarding</UnderlineTabItem>
-        <UnderlineTabItem value="briefing">Briefing</UnderlineTabItem>
         <UnderlineTabItem value="reports">Reports</UnderlineTabItem>
       </UnderlineTabs>
 
@@ -323,11 +321,6 @@ export function StoreDetailTabs({
           {/* Formulário de onboarding da loja */}
           <StoreFormTab storeId={storeId} clientId={clientId} />
         </div>
-      )}
-
-      {/* ─── Briefing ──────────────────────────────────────── */}
-      {activeTab === "briefing" && (
-        <StoreBriefingTab storeId={storeId} clientId={clientId} />
       )}
 
       {/* ─── Reports ───────────────────────────────────────── */}
