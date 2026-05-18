@@ -170,6 +170,31 @@ export async function POST(
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
     }
 
+    // ─── Distribuição proporcional de receita ────────────
+    // Omnisend Statistics API retorna marketingActivityID que NÃO bate com
+    // campaignID de /v5/campaigns (confirmado pelo suporte 2026-05-16). O
+    // total agregado vem certo, mas as rows individuais ficam com revenue=0.
+    // Pra preservar o ranking visual com valores significativos, distribui
+    // proporcionalmente por delivered (reach) quando há total conhecido mas
+    // per-row zerado.
+    function distributeRevenue<T extends Record<string, unknown>>(
+      rows: T[],
+      totalRevenue: number,
+    ): T[] {
+      const sumRow = sumField(rows, "revenue")
+      if (sumRow > 0 || totalRevenue <= 0 || rows.length === 0) return rows
+      // Distribui pelo delivered (ou recipients) como proxy de share
+      const weights = rows.map((r) => Number(r.delivered) || Number(r.recipients) || 0)
+      const totalWeight = weights.reduce((s, w) => s + w, 0)
+      if (totalWeight === 0) return rows
+      return rows.map((r, i) => ({
+        ...r,
+        revenue: (totalRevenue * weights[i]) / totalWeight,
+        // Marca como estimado pra UI poder sinalizar se quiser
+        revenue_estimated: true,
+      }))
+    }
+
     // ─── Receitas ─────────────────────────────────
     // Prioridade: report endpoint > soma dos rows > store_revenue_summary
     const receitaCampanhas =
@@ -225,6 +250,11 @@ export async function POST(
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
+    // Aplica distribuição proporcional quando per-campaign revenue ficou 0
+    // mas total agregado é conhecido (limitação API Omnisend).
+    const enrichedCampaigns = distributeRevenue(campaignsList, receitaCampanhas)
+    const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
+
     const snapshot = {
       generated_at: new Date().toISOString(),
       period: { start: body.period_start, end: body.period_end },
@@ -263,8 +293,8 @@ export async function POST(
         bounce_rate: bounceRate,
         unsub_rate: unsubRate,
       },
-      campaigns: campaignsList,
-      flows: flowsList,
+      campaigns: enrichedCampaigns,
+      flows: enrichedFlows,
       insights: {},
     }
 

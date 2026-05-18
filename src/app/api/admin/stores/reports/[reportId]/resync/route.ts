@@ -106,6 +106,22 @@ export async function POST(
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
     }
 
+    // Distribuição proporcional por delivered quando per-row revenue
+    // vier zerado (limitação API Omnisend Statistics: marketingActivityID
+    // != campaignID).
+    function distributeRevenue<T extends Record<string, unknown>>(rows: T[], totalRevenue: number): T[] {
+      const sumRow = sumField(rows, "revenue")
+      if (sumRow > 0 || totalRevenue <= 0 || rows.length === 0) return rows
+      const weights = rows.map((r) => Number(r.delivered) || Number(r.recipients) || 0)
+      const totalWeight = weights.reduce((s, w) => s + w, 0)
+      if (totalWeight === 0) return rows
+      return rows.map((r, i) => ({
+        ...r,
+        revenue: (totalRevenue * weights[i]) / totalWeight,
+        revenue_estimated: true,
+      }))
+    }
+
     const receitaCampanhas =
       Number(rv.campaignRevenue) ||
       Number(cs.totalRevenue) ||
@@ -156,6 +172,9 @@ export async function POST(
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
+    const enrichedCampaigns = distributeRevenue(campaignsList, receitaCampanhas)
+    const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
+
     // Preserva insights existentes do snapshot anterior
     const oldSnapshot = (report.snapshot ?? {}) as Record<string, unknown>
     const oldInsights = (oldSnapshot.insights ?? {}) as Record<string, unknown>
@@ -198,8 +217,8 @@ export async function POST(
         bounce_rate: bounceRate,
         unsub_rate: unsubRate,
       },
-      campaigns: campaignsList,
-      flows: flowsList,
+      campaigns: enrichedCampaigns,
+      flows: enrichedFlows,
       insights: oldInsights,
     }
 
