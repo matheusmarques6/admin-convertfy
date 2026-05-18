@@ -26,7 +26,7 @@
 
 import { useEffect, useState } from "react"
 import {
-  Plus, X, Zap, Filter, Calendar, Check, Edit3, Send, Layers,
+  Plus, X, Zap, Filter, Calendar, Check, Edit3, Send, Layers, Trash2, Loader2,
 } from "lucide-react"
 import { Section, Badge, Btn, Avatar, C, TNUM, StoreLogo } from "./_primitives"
 
@@ -126,6 +126,7 @@ export function TabRelatorio({ storeId }: { storeId: string }) {
               key={r.id}
               report={r}
               isCurrent={r.month_label.toLowerCase().startsWith(currentMonthLabel.split(" ")[0].toLowerCase())}
+              onDeleted={reload}
             />
           ))}
         </div>
@@ -201,8 +202,9 @@ function SummaryStat({ Icon, tone, label, value, sub }: {
 
 // ─── ReportCard ───────────────────────────────────────
 
-function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean }) {
+function ReportCard({ report, isCurrent, onDeleted }: { report: Report; isCurrent: boolean; onDeleted: () => void }) {
   const s = STATUS_META[report.status] ?? STATUS_META.draft
+  const [deleting, setDeleting] = useState(false)
   // Parse manual evita TZ shift (new Date("2026-04-01") em fuso BR mostra 31/03)
   const fmtShort = (ymd: string, withYear = false) => {
     const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
@@ -221,10 +223,31 @@ function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean 
   const sharePct = kpis.atribuicao_pct ?? 0
   const slides = (snap.slides_count as number) ?? 7
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const confirmed = window.confirm(
+      `Excluir o relatório de ${report.month_label}? Esta ação não pode ser desfeita.`,
+    )
+    if (!confirmed) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/stores/reports/${report.id}`, { method: "DELETE" })
+      if (res.ok) {
+        onDeleted()
+      } else {
+        const j = await res.json().catch(() => ({}))
+        alert(`Falha ao excluir: ${j?.error?.message ?? res.statusText}`)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <a
       href={`/admin/stores/relatorios/${report.id}`}
-      className="rounded-[12px] p-[18px] block transition-all"
+      className="rounded-[12px] p-[18px] block transition-all group"
       style={{
         background: isCurrent
           ? "linear-gradient(180deg, rgba(78,98,216,0.04) 0%, rgba(255,255,255,1) 60%)"
@@ -243,14 +266,37 @@ function ReportCard({ report, isCurrent }: { report: Report; isCurrent: boolean 
         e.currentTarget.style.boxShadow = C.shadowSm
       }}
     >
-      {isCurrent && (
-        <span
-          className="absolute top-3 right-3 text-[9.5px] font-bold uppercase tracking-[0.1em] px-1.5 py-[3px] rounded-[4px]"
-          style={{ color: C.brand, background: C.blue50, border: `1px solid ${C.blue100}` }}
+      {/* Top-right actions: Atual badge + Delete button */}
+      <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+        {isCurrent && (
+          <span
+            className="text-[9.5px] font-bold uppercase tracking-[0.1em] px-1.5 py-[3px] rounded-[4px]"
+            style={{ color: C.brand, background: C.blue50, border: `1px solid ${C.blue100}` }}
+          >
+            Atual
+          </span>
+        )}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          aria-label="Excluir relatório"
+          title="Excluir relatório"
+          className="inline-flex items-center justify-center w-7 h-7 rounded-[6px] transition-colors hover:bg-red-50"
+          style={{
+            background: "rgba(255,255,255,0.85)",
+            border: `1px solid ${C.border}`,
+            color: deleting ? C.g400 : C.neg,
+            opacity: deleting ? 0.5 : 1,
+            backdropFilter: "blur(4px)",
+          }}
         >
-          Atual
-        </span>
-      )}
+          {deleting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
 
       {/* Mini cover */}
       <div

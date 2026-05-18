@@ -133,6 +133,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         storeName={store.store_name}
         storeUrl={store.store_url}
         clientName={store.clients?.name ?? null}
+        clientId={store.client_id ?? store.clients?.id ?? null}
         clientSince={clientSince}
         status={store.is_active ? "active" : "paused"}
         plan={plan}

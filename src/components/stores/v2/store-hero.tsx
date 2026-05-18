@@ -27,6 +27,7 @@ interface StoreHeroProps {
   storeName: string
   storeUrl: string | null
   clientName: string | null
+  clientId?: string | null
   clientSince: string | null
   status: "active" | "paused"
   plan?: string | null
@@ -47,6 +48,7 @@ export function StoreHero({
   storeName,
   storeUrl,
   clientName,
+  clientId,
   clientSince,
   status,
   plan,
@@ -98,10 +100,22 @@ export function StoreHero({
               </a>
             )}
             {clientName && (
-              <span className="inline-flex items-center gap-1.5">
-                <Avatar name={clientName} size={18} />
-                {clientName}
-              </span>
+              clientId ? (
+                <a
+                  href={`/admin/clients/${clientId}`}
+                  className="inline-flex items-center gap-1.5 hover:underline"
+                  style={{ color: "inherit", textDecoration: "none" }}
+                  title={`Abrir perfil de ${clientName}`}
+                >
+                  <Avatar name={clientName} size={18} />
+                  {clientName}
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar name={clientName} size={18} />
+                  {clientName}
+                </span>
+              )
             )}
             {clientSince && (
               <span className="inline-flex items-center gap-1" style={{ color: C.g500 }}>
