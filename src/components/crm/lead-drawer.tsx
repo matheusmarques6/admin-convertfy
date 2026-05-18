@@ -54,9 +54,17 @@ interface LeadDrawerProps {
   leadId: string | null
   onClose: () => void
   onUpdated?: () => void
+  /** Quando definido, abre o drawer ja em um modo (ex: "convert"
+   *  abre o dialog de conversao em deal automaticamente). */
+  initialAction?: "convert" | "edit" | null
 }
 
-export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
+export function LeadDrawer({
+  leadId,
+  onClose,
+  onUpdated,
+  initialAction,
+}: LeadDrawerProps) {
   const router = useRouter()
   const open = !!leadId
   const { data, isLoading, mutate } = useSWR<LeadDetailResponse>(
@@ -66,6 +74,15 @@ export function LeadDrawer({ leadId, onClose, onUpdated }: LeadDrawerProps) {
 
   const [editing, setEditing] = useState(false)
   const [converting, setConverting] = useState(false)
+
+  // Quando initialAction muda, aciona o estado correspondente.
+  // Importante: só dispara quando ha leadId + action. Reset acontece
+  // quando o drawer fecha.
+  useEffect(() => {
+    if (!leadId || !initialAction) return
+    if (initialAction === "convert") setConverting(true)
+    if (initialAction === "edit") setEditing(true)
+  }, [leadId, initialAction])
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")

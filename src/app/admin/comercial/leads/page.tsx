@@ -49,13 +49,20 @@ function SalesLeadsPageInner() {
   const debouncedSearch = useDebounce(search, 250)
   const [statusFilter, setStatusFilter] = useState("")
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
+  const [drawerAction, setDrawerAction] = useState<"convert" | "edit" | null>(null)
   const [newLeadOpen, setNewLeadOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
 
-  // Open drawer if ?lead=<id> in URL
+  // Open drawer if ?lead=<id> in URL; action=convert/edit aciona modo
   useEffect(() => {
     const leadParam = searchParams.get("lead")
     if (leadParam) setActiveLeadId(leadParam)
+    const actionParam = searchParams.get("action")
+    if (actionParam === "convert" || actionParam === "edit") {
+      setDrawerAction(actionParam)
+    } else {
+      setDrawerAction(null)
+    }
   }, [searchParams])
 
   const params = new URLSearchParams()
@@ -228,8 +235,12 @@ function SalesLeadsPageInner() {
 
       <LeadDrawer
         leadId={activeLeadId}
-        onClose={() => setActiveLeadId(null)}
+        onClose={() => {
+          setActiveLeadId(null)
+          setDrawerAction(null)
+        }}
         onUpdated={() => mutate()}
+        initialAction={drawerAction}
       />
 
       <NewLeadDialog

@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { createClient as createBrowserSupabase } from "@/lib/supabase/client"
 import {
   AlertCircle,
   ArrowRight,
@@ -100,7 +101,16 @@ interface DealDetailResponse {
     owner?: { id: string; name: string; avatar_url: string | null } | null
     client?: { id: string; name: string; email?: string | null; phone?: string | null; company?: string | null } | null
     store?: { id: string; name: string } | null
-    lead?: { id: string; name: string; email: string | null; phone?: string | null } | null
+    lead?: {
+      id: string
+      name: string
+      email: string | null
+      phone?: string | null
+      company?: string | null
+      ai_qualification_score?: number | null
+      ai_qualification_reason?: string | null
+    } | null
+    /** Reservado pra futuro — score de deal direto. Hoje vem do lead vinculado. */
     ai_qualification_score?: number | null
     ai_qualification_reason?: string | null
   }
@@ -339,9 +349,9 @@ export function DealDrawer({
                 />
 
                 {/* AI Suggestion */}
-                {(apiDeal?.ai_qualification_score ?? 0) > 0 && (
-                  <AiSuggestion deal={deal} apiDeal={apiDeal} />
-                )}
+                {(apiDeal?.lead?.ai_qualification_score ??
+                  apiDeal?.ai_qualification_score ??
+                  0) > 0 && <AiSuggestion deal={deal} apiDeal={apiDeal} />}
 
                 {/* Banners de motivo */}
                 {apiDeal?.won_reason && deal.status === "won" && (
@@ -398,7 +408,12 @@ function DrawerHeader({
 }) {
   const leadName = deal.client?.name || deal.title
   const avatarColors = avatarColorFromName(leadName)
-  const score = apiDeal?.ai_qualification_score ?? 0
+  // Score vem do lead vinculado (crm_leads.ai_qualification_score) ou,
+  // como fallback, do proprio deal (campo futuro). 0 = sem score.
+  const score =
+    apiDeal?.lead?.ai_qualification_score ??
+    apiDeal?.ai_qualification_score ??
+    0
   const stages = pipelineStages
     ? [...pipelineStages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : []
@@ -1456,10 +1471,69 @@ function FilesSection({
   files: DealFile[]
   onChanged: () => void
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
   const handleDelete = async (fileId: string) => {
     if (!window.confirm("Excluir este arquivo?")) return
     await fetch(`/api/crm/deals/${dealId}/files/${fileId}`, { method: "DELETE" })
     onChanged()
+  }
+
+  const handleUpload = async (file: File) => {
+    setUploadError(null)
+    setUploading(true)
+    try {
+      const supabase = createBrowserSupabase()
+      const uniq = Math.random().toString(36).slice(2, 10)
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const storagePath = `deals/${dealId}/${uniq}-${safeName}`
+
+      // 1. Upload pro Storage (bucket crm-files)
+      const { error: uploadErr } = await supabase.storage
+        .from("crm-files")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadErr) {
+        throw new Error(uploadErr.message || "Falha no upload")
+      }
+
+      // 2. Registra metadata via API
+      const res = await fetch(`/api/crm/deals/${dealId}/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: file.name,
+          mime_type: file.type || null,
+          size_bytes: file.size,
+          storage_path: storagePath,
+          storage_bucket: "crm-files",
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error?.message || body.error || "Falha ao registrar")
+      }
+
+      onChanged()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setUploadError(msg)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    handleUpload(file)
+    e.target.value = ""
   }
 
   return (
@@ -1477,25 +1551,48 @@ function FilesSection({
         >
           Arquivos · {files.length}
         </h3>
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={onPick}
+          style={{ display: "none" }}
+          disabled={uploading}
+        />
         <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
           style={{
             background: "transparent",
             border: 0,
-            color: "var(--crm-brand)",
+            color: uploading ? "var(--crm-gray-400)" : "var(--crm-brand)",
             fontSize: 11,
             fontWeight: 600,
-            cursor: "pointer",
+            cursor: uploading ? "default" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
           }}
-          title="Anexar arquivo (em breve)"
-          disabled
+          title="Anexar arquivo"
         >
           <Paperclip className="h-3 w-3" />
-          Anexar
+          {uploading ? "Enviando..." : "Anexar"}
         </button>
       </div>
+      {uploadError && (
+        <div
+          style={{
+            padding: "6px 10px",
+            background: "var(--crm-neg-bg)",
+            border: "1px solid var(--crm-neg-border)",
+            color: "var(--crm-neg)",
+            borderRadius: 6,
+            fontSize: 11,
+            marginBottom: 8,
+          }}
+        >
+          Erro no upload: {uploadError}
+        </div>
+      )}
       {files.length === 0 ? (
         <div
           style={{
@@ -1627,8 +1724,14 @@ function AiSuggestion({
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
 }) {
-  const score = apiDeal?.ai_qualification_score ?? 0
-  const reason = apiDeal?.ai_qualification_reason
+  const score =
+    apiDeal?.lead?.ai_qualification_score ??
+    apiDeal?.ai_qualification_score ??
+    0
+  const reason =
+    apiDeal?.lead?.ai_qualification_reason ??
+    apiDeal?.ai_qualification_reason ??
+    null
   const stageDays = daysSince(deal.last_stage_changed_at)
   return (
     <div

@@ -76,3 +76,53 @@ SET category = CASE
   ELSE 'Outros'
 END
 WHERE category IS NULL;
+
+-- ── Storage bucket: crm-files ────────────────────────────────
+-- Bucket private (signed URLs via API). Cria o bucket se nao existir.
+-- O Storage no Supabase tem RLS proprio em storage.objects;
+-- nosso fluxo passa pelo service_role das APIs, entao nao precisa
+-- de policies para clientes.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'crm-files',
+  'crm-files',
+  false,
+  52428800,  -- 50 MB por arquivo
+  ARRAY[
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
+    'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+    'application/zip',
+    'application/x-zip-compressed'
+  ]
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policies do bucket: leitura/escrita por usuarios autenticados.
+-- O proprio servico (API rota) ja usa service_role bypass, mas isso
+-- permite que o front faca upload direto pelo Storage client com cookie
+-- de sessao (browser → supabase storage).
+DROP POLICY IF EXISTS "crm_files_authenticated_read" ON storage.objects;
+CREATE POLICY "crm_files_authenticated_read" ON storage.objects
+  FOR SELECT
+  TO authenticated
+  USING (bucket_id = 'crm-files');
+
+DROP POLICY IF EXISTS "crm_files_authenticated_insert" ON storage.objects;
+CREATE POLICY "crm_files_authenticated_insert" ON storage.objects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'crm-files');
+
+DROP POLICY IF EXISTS "crm_files_authenticated_delete" ON storage.objects;
+CREATE POLICY "crm_files_authenticated_delete" ON storage.objects
+  FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'crm-files');

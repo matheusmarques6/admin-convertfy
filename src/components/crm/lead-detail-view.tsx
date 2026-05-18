@@ -195,6 +195,11 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() =>
+              router.push(
+                `/admin/comercial/leads?lead=${leadId}&action=edit`,
+              )
+            }
             className="cf-focusable inline-flex items-center gap-1.5"
             style={{
               height: 32,
@@ -205,6 +210,7 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
               color: "var(--crm-gray-700)",
               fontSize: 12,
               fontWeight: 500,
+              cursor: "pointer",
             }}
           >
             <Edit className="h-3 w-3" />
@@ -222,6 +228,7 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
               color: "var(--crm-neg)",
               fontSize: 12,
               fontWeight: 500,
+              cursor: "pointer",
             }}
           >
             <Trash2 className="h-3 w-3" />
