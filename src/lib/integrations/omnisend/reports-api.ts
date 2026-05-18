@@ -67,7 +67,7 @@ export async function fetchOmnisendCampaignReports(
                 { name: "attributedRevenue" },
                 { name: "attributedOrders" },
               ],
-              dateRange: { from, to },
+              dateRange: { interval: "custom", from, to },
               dimensions: [
                 { name: "timestamp", granularity: "day" },
                 { name: "marketingActivityID" },
