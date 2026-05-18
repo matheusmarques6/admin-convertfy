@@ -219,161 +219,152 @@ export function TabContexto({ storeId }: { storeId: string }) {
         <StoreBriefingTab storeId={storeId} clientId={storeLite.client_id ?? null} />
       </Section>
 
-      {/* OPERAÇÃO — estética alinhada à Pesquisa (header creme, h2 Playfair) */}
+      {/* OPERAÇÃO — h2 macro Playfair (estilo Pesquisa & Diagnóstico) */}
       <section
         id="operacao"
-        className="bg-white border rounded-[10px] overflow-hidden"
+        className="bg-white border rounded-[10px] p-5"
         style={{ borderColor: "rgba(0,0,0,0.06)" }}
       >
-        <header
-          className="px-5 py-4 border-b flex items-center justify-between gap-3"
-          style={{
-            background: "linear-gradient(180deg, #FDFBF6 0%, #FFFFFF 100%)",
-            borderColor: "rgba(0,0,0,0.05)",
-          }}
-        >
-          <div className="flex items-baseline gap-3 min-w-0">
-            <span
-              className="font-bold shrink-0"
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                color: "#4E62D8",
-                fontSize: 28,
-                lineHeight: 1,
-                letterSpacing: "-0.02em",
-              }}
+        <header className="mb-5 pb-4 border-b" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div
+                className="text-[10.5px] font-bold uppercase tracking-[0.12em] mb-1.5"
+                style={{ color: "#4E62D8" }}
+              >
+                DADOS DA OPERAÇÃO
+              </div>
+              <h2
+                className="m-0 text-slate-900 mb-1"
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Operação &amp; catálogo
+              </h2>
+              <p className="text-[12.5px] text-slate-500 m-0 max-w-[640px] leading-snug">
+                Indicadores comerciais, ticket médio e produtos mais vendidos
+                que sustentam a operação da loja.
+              </p>
+            </div>
+            <button
+              onClick={() => setEditing(editing === "operacao" ? null : "operacao")}
+              className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-100 border"
+              style={{ borderColor: "rgba(0,0,0,0.08)" }}
             >
-              06
-            </span>
-            <h3
-              className="m-0 text-slate-900"
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                fontSize: 19,
-                fontWeight: 600,
-                lineHeight: 1.2,
-              }}
-            >
-              Operação &amp; catálogo
-            </h3>
+              <Edit2 className="h-3 w-3" /> Editar
+            </button>
           </div>
-          <button
-            onClick={() => setEditing(editing === "operacao" ? null : "operacao")}
-            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-100 border"
-            style={{ borderColor: "rgba(0,0,0,0.08)" }}
-          >
-            <Edit2 className="h-3 w-3" /> Editar
-          </button>
         </header>
 
-        <div className="p-5">
-          {editing === "operacao" ? (
-            <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
-          ) : (
-            <>
-              {/* KPIs no mesmo padrão visual da Pesquisa (label uppercase 9.5px + valor serif 17px) */}
-              <div
-                className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-5 mb-5 border-b"
-                style={{ borderColor: "rgba(0,0,0,0.06)" }}
+        {editing === "operacao" ? (
+          <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
+        ) : (
+          <>
+            {/* KPIs nus (sem card) — label uppercase + valor Playfair + sub */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pb-5 mb-5 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <OpKpi
+                label="Ticket médio"
+                value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(2).replace(".", ",")}` : "—"}
+                sub="média 30d"
+              />
+              <OpKpi
+                label="Taxa de conversão"
+                value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2).replace(".", ",")}%` : "—"}
+                sub="benchmark 1,8%"
+              />
+              <OpKpi
+                label="Faturamento médio"
+                value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1_000_000).toFixed(1).replace(".", ",")} mi` : "—"}
+                sub="médio últimos 3m"
+              />
+              <OpKpi
+                label="Margem média"
+                value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"}
+                sub="declarada"
+              />
+            </div>
+
+            {/* Sub-section Top 5 produtos · header próprio creme + tabela */}
+            <section
+              className="rounded-md border overflow-hidden"
+              style={{ borderColor: "rgba(0,0,0,0.06)" }}
+            >
+              <header
+                className="px-4 py-3 border-b flex items-baseline justify-between gap-3"
+                style={{
+                  background: "linear-gradient(180deg, #FDFBF6 0%, #FFFFFF 100%)",
+                  borderColor: "rgba(0,0,0,0.05)",
+                }}
               >
-                <OpKpi
-                  label="Ticket médio"
-                  value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(2).replace(".", ",")}` : "—"}
-                  sub="média 30d"
-                />
-                <OpKpi
-                  label="Taxa de conversão"
-                  value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2).replace(".", ",")}%` : "—"}
-                  sub="benchmark 1,8%"
-                />
-                <OpKpi
-                  label="Faturamento médio"
-                  value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1_000_000).toFixed(1).replace(".", ",")} mi` : "—"}
-                  sub="médio últimos 3m"
-                />
-                <OpKpi
-                  label="Margem média"
-                  value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"}
-                  sub="declarada"
-                />
-              </div>
+                <h4
+                  className="m-0 text-slate-900"
+                  style={{
+                    fontFamily: "'Playfair Display', serif",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  Top 5 produtos
+                </h4>
+                <span className="text-[10.5px] text-slate-400 font-medium">
+                  captado pela TrendTrack
+                </span>
+              </header>
 
-              {/* Top 5 produtos · tabela alinhada ao protótipo */}
-              <div>
-                <header className="flex items-baseline justify-between gap-3 mb-3">
-                  <h4
-                    className="m-0 text-slate-900"
-                    style={{
-                      fontFamily: "'Playfair Display', serif",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    Top 5 produtos
-                  </h4>
-                  <span className="text-[10.5px] text-slate-400 font-medium">
-                    captado pela TrendTrack
-                  </span>
-                </header>
-
-                {topProducts.length === 0 ? (
-                  <div className="text-[12px] text-slate-400 italic py-2">
-                    Nenhum produto capturado ainda.
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-md border" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-                    <table className="w-full text-left text-[12.5px]">
-                      <thead>
-                        <tr
-                          className="border-b"
-                          style={{
-                            background: "#FAFAF7",
-                            borderColor: "rgba(0,0,0,0.06)",
-                          }}
-                        >
-                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2 w-8">#</th>
-                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2">Produto</th>
-                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2 text-right w-28">Preço</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {topProducts.map((p, i) => (
-                          <tr
-                            key={`${p.rank}-${p.external_id ?? p.title}`}
-                            className={i < topProducts.length - 1 ? "border-b" : ""}
-                            style={{ borderColor: "rgba(0,0,0,0.04)" }}
-                          >
-                            <td className="px-3 py-2.5 tabular-nums text-slate-500 font-semibold">{p.rank}</td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-2.5">
-                                {p.image_url && (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={p.image_url}
-                                    alt=""
-                                    className="w-8 h-8 rounded object-cover border shrink-0"
-                                    style={{ borderColor: "rgba(0,0,0,0.06)" }}
-                                  />
-                                )}
-                                <span className="text-slate-800 leading-tight">{p.title}</span>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
-                              {p.price != null
-                                ? `${p.currency ? p.currency + " " : "R$ "}${Number(p.price).toFixed(2).replace(".", ",")}`
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+              {topProducts.length === 0 ? (
+                <div className="px-4 py-6 text-[12px] text-slate-400 italic text-center">
+                  Nenhum produto capturado ainda.
+                </div>
+              ) : (
+                <table className="w-full text-left text-[12.5px]">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
+                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5 w-8">#</th>
+                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5">Produto</th>
+                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5 text-right w-32">Preço</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topProducts.map((p, i) => (
+                      <tr
+                        key={`${p.rank}-${p.external_id ?? p.title}`}
+                        className={i < topProducts.length - 1 ? "border-b" : ""}
+                        style={{ borderColor: "rgba(0,0,0,0.04)" }}
+                      >
+                        <td className="px-4 py-2.5 tabular-nums text-slate-500 font-semibold">{p.rank}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            {p.image_url && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.image_url}
+                                alt=""
+                                className="w-8 h-8 rounded object-cover border shrink-0"
+                                style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                              />
+                            )}
+                            <span className="text-slate-800 leading-tight">{p.title}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">
+                          {p.price != null
+                            ? `${p.currency ? p.currency + " " : "R$ "}${Number(p.price).toFixed(2).replace(".", ",")}`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </>
+        )}
       </section>
 
       {/* LISTA & ENGAJAMENTO */}
