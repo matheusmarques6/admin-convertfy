@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { createClient as createBrowserSupabase } from "@/lib/supabase/client"
@@ -208,6 +209,7 @@ export function DealDrawer({
   const open = !!dealId
 
   const isMobile = useIsMobile()
+  const router = useRouter()
 
   const { data, isLoading, error, mutate } = useSWR<DealDetailResponse>(
     dealId ? `/api/crm/deals/${dealId}` : null,
@@ -389,6 +391,14 @@ export function DealDrawer({
                 hasError={!!error && !!deal}
                 errorIs404={errorIs404}
                 onRetry={() => mutate()}
+                onOpenFullPage={
+                  dealId
+                    ? () => {
+                        onClose()
+                        router.push(`/admin/comercial/deals/${dealId}/detail`)
+                      }
+                    : undefined
+                }
               />
 
               <div
@@ -505,6 +515,7 @@ function DrawerHeader({
   hasError,
   errorIs404,
   onRetry,
+  onOpenFullPage,
 }: {
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
@@ -514,6 +525,7 @@ function DrawerHeader({
   hasError: boolean
   errorIs404: boolean
   onRetry: () => void
+  onOpenFullPage?: () => void
 }) {
   const leadName = deal.client?.name || deal.title
   const avatarColors = avatarColorFromName(leadName)
@@ -624,13 +636,18 @@ function DrawerHeader({
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex gap-1">
             <button
+              onClick={onOpenFullPage}
+              disabled={!onOpenFullPage}
               className="cf-focusable flex items-center justify-center rounded-[6px]"
               style={{
                 width: 30,
                 height: 30,
                 border: "1px solid var(--crm-border)",
                 background: "var(--crm-gray-0)",
-                color: "var(--crm-gray-500)",
+                color: onOpenFullPage
+                  ? "var(--crm-gray-500)"
+                  : "var(--crm-gray-300)",
+                cursor: onOpenFullPage ? "pointer" : "default",
               }}
               title="Abrir tela cheia"
               aria-label="Abrir tela cheia"
