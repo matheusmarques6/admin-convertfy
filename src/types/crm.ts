@@ -65,6 +65,8 @@ export interface Pipeline {
   layout: PipelineLayout
   is_default: boolean
   is_archived: boolean
+  is_favorite: boolean
+  category: string | null
   default_assignee_id: string | null
   created_by: string | null
   created_at: string
@@ -73,6 +75,17 @@ export interface Pipeline {
   stages?: PipelineStage[]
   deal_count?: number
   total_value_cents?: number
+}
+
+/**
+ * Agrupamento de pipelines por categoria, usado pela sidebar V2.
+ * `category` vem de `pipelines.category`; pipelines sem categoria
+ * caem em "Sem categoria" no final.
+ */
+export interface PipelineGroup {
+  label: string
+  pipelines: Pipeline[]
+  count: number
 }
 
 export interface PipelineStage {
@@ -222,6 +235,25 @@ export interface DealHistory {
   changed_at: string
   // Join
   changer?: { id: string; name: string; avatar_url: string | null }
+}
+
+// ─── Deal files (anexos) ─────────────────────────────────────────
+
+export interface DealFile {
+  id: string
+  deal_id: string
+  name: string
+  mime_type: string | null
+  size_bytes: number | null
+  storage_path: string
+  storage_bucket: string
+  uploaded_by: string | null
+  category: string | null
+  created_at: string
+  // Join
+  uploader?: { id: string; name: string; avatar_url: string | null }
+  // Computado pela API (signed URL temporaria)
+  signed_url?: string
 }
 
 // ─── Health ──────────────────────────────────────────────────────

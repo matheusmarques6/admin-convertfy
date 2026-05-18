@@ -29,7 +29,8 @@ export async function GET(
       .from("pipelines")
       .select(`
         id, name, description, scope, color, layout,
-        is_default, is_archived, default_assignee_id, created_at, updated_at,
+        is_default, is_archived, is_favorite, category,
+        default_assignee_id, created_at, updated_at,
         pipeline_stages (
           id, name, color, "order", stage_type, sla_hours, description, exit_criteria
         )
@@ -149,6 +150,8 @@ const patchSchema = z.object({
   default_assignee_id: uuid().nullable().optional(),
   is_archived: z.boolean().optional(),
   is_default: z.boolean().optional(),
+  is_favorite: z.boolean().optional(),
+  category: z.string().max(64).nullable().optional(),
   layout: z.enum(["kanban", "state"]).optional(),
 })
 

@@ -32,7 +32,8 @@ export async function GET(request: NextRequest) {
       .from("pipelines")
       .select(`
         id, name, description, scope, color, layout,
-        is_default, is_archived, default_assignee_id, created_at, updated_at,
+        is_default, is_archived, is_favorite, category,
+        default_assignee_id, created_at, updated_at,
         pipeline_stages (
           id, name, color, "order", stage_type, sla_hours, description, exit_criteria
         )
@@ -83,8 +84,10 @@ const createPipelineSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().optional().nullable(),
   scope: z.enum(["sales", "cs", "internal"]).default("sales"),
-  color: z.string().optional().default("#1F1F1F"),
+  color: z.string().optional().default("#4E62D8"),
   layout: z.enum(["kanban", "state"]).default("kanban"),
+  category: z.string().max(64).optional().nullable(),
+  is_favorite: z.boolean().optional().default(false),
   default_assignee_id: uuid().optional().nullable(),
   stages: z
     .array(
@@ -119,6 +122,8 @@ export async function POST(request: NextRequest) {
         scope: parsed.scope,
         color: parsed.color,
         layout: parsed.layout,
+        category: parsed.category ?? null,
+        is_favorite: parsed.is_favorite,
         default_assignee_id: parsed.default_assignee_id ?? null,
         created_by: user.id,
       })
