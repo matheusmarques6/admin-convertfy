@@ -110,6 +110,7 @@ export interface ReportSnapshot {
     openRate?: number
     clickRate?: number
     revenue?: number
+    revenue_estimated?: boolean
   }>
   flows?: Array<{
     id: string
@@ -119,6 +120,7 @@ export interface ReportSnapshot {
     openRate?: number
     clickRate?: number
     revenue?: number
+    revenue_estimated?: boolean
   }>
   insights?: {
     capa?: string
@@ -1508,80 +1510,89 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
 
 function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string }) {
   const items = rows ?? []
+  const hasEstimated = items.some((r) => r.revenue_estimated)
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" as const, fontFamily: F_SANS, fontSize: 12 }}>
-      <thead>
-        <tr style={{ borderBottom: `2px solid ${C.g900}` }}>
-          {["#", flows ? "Flow" : "Campanha", "Entr.", "Abert.", "Clk.", "Receita"].map((h, i) => (
-            <th
-              key={h}
-              style={{
-                padding: "6px 6px",
-                textAlign: i === 0 || i === 1 ? "left" : "right",
-                fontSize: 9.5,
-                fontWeight: 700,
-                color: C.g500,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {items.length === 0 ? (
-          <tr>
-            <td colSpan={6} style={{ padding: "20px 6px", fontSize: 12, color: C.g400, fontStyle: "italic", textAlign: "center" }}>
-              Sem dados no período
-            </td>
-          </tr>
-        ) : (
-          items.map((r, i) => (
-            <tr key={r.id ?? i} style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, color: C.brand, ...TNUM }}>{String(i + 1).padStart(2, "0")}</td>
-              <td
+    <div>
+      <table style={{ width: "100%", borderCollapse: "collapse" as const, fontFamily: F_SANS, fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: `2px solid ${C.g900}` }}>
+            {["#", flows ? "Flow" : "Campanha", "Entr.", "Abert.", "Clk.", "Receita"].map((h, i) => (
+              <th
+                key={h}
                 style={{
-                  padding: "9px 6px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: C.g900,
-                  maxWidth: 240,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {r.name}
-              </td>
-              <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
-                {(r.delivered ?? r.recipients ?? 0).toLocaleString("pt-BR")}
-              </td>
-              <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
-                {((r.openRate ?? 0)).toFixed(2).replace(".", ",")}%
-              </td>
-              <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
-                {((r.clickRate ?? 0)).toFixed(2).replace(".", ",")}%
-              </td>
-              <td
-                style={{
-                  padding: "9px 6px",
-                  textAlign: "right",
-                  fontSize: 12.5,
+                  padding: "6px 6px",
+                  textAlign: i === 0 || i === 1 ? "left" : "right",
+                  fontSize: 9.5,
                   fontWeight: 700,
-                  color: C.g900,
-                  fontFamily: F_SERIF,
-                  ...TNUM,
+                  color: C.g500,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
                 }}
               >
-                {fmtMoney(r.revenue ?? 0, currency)}
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.length === 0 ? (
+            <tr>
+              <td colSpan={6} style={{ padding: "20px 6px", fontSize: 12, color: C.g400, fontStyle: "italic", textAlign: "center" }}>
+                Sem dados no período
               </td>
             </tr>
-          ))
-        )}
-      </tbody>
-    </table>
+          ) : (
+            items.map((r, i) => (
+              <tr key={r.id ?? i} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, color: C.brand, ...TNUM }}>{String(i + 1).padStart(2, "0")}</td>
+                <td
+                  style={{
+                    padding: "9px 6px",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: C.g900,
+                    maxWidth: 240,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {r.name}
+                </td>
+                <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
+                  {(r.delivered ?? r.recipients ?? 0).toLocaleString("pt-BR")}
+                </td>
+                <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
+                  {((r.openRate ?? 0)).toFixed(2).replace(".", ",")}%
+                </td>
+                <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
+                  {((r.clickRate ?? 0)).toFixed(2).replace(".", ",")}%
+                </td>
+                <td
+                  style={{
+                    padding: "9px 6px",
+                    textAlign: "right",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: C.g900,
+                    fontFamily: F_SERIF,
+                    ...TNUM,
+                  }}
+                >
+                  {r.revenue_estimated && <span style={{ color: C.g400, marginRight: 2, fontWeight: 500 }}>~</span>}
+                  {fmtMoney(r.revenue ?? 0, currency)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+      {hasEstimated && (
+        <div style={{ marginTop: 8, fontSize: 9.5, color: C.g400, letterSpacing: "0.02em" }}>
+          <span style={{ color: C.g500 }}>~</span> receita por linha estimada por share de envios · total agregado é o reportado pela Omnisend
+        </div>
+      )}
+    </div>
   )
 }
 
