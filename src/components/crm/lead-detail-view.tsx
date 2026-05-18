@@ -9,11 +9,9 @@ import {
   Building2,
   Calendar,
   ChevronRight,
-  Edit,
   ExternalLink,
   Flag,
   Mail,
-  MessageSquare,
   Phone,
   Sparkles,
   StickyNote,
@@ -23,6 +21,7 @@ import {
   Users,
   Zap,
 } from "lucide-react"
+import { InlineEditField } from "./inline-edit-field"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -127,6 +126,22 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
     router.push("/admin/comercial/leads")
   }
 
+  // Helper: PATCH parcial no lead + revalida cache do SWR.
+  // Usado por todos os InlineEditField. Throw em caso de erro pra
+  // o campo mostrar a mensagem inline.
+  const patchLead = async (update: Record<string, unknown>) => {
+    const res = await fetch(`/api/crm/leads/${leadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+    }
+    await mutate()
+  }
+
   if (isLoading && !lead) {
     return <LeadSkeleton />
   }
@@ -193,29 +208,16 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
             {lead.name}
           </span>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() =>
-              router.push(
-                `/admin/comercial/leads?lead=${leadId}&action=edit`,
-              )
-            }
-            className="cf-focusable inline-flex items-center gap-1.5"
+        <div className="flex items-center gap-2">
+          <span
             style={{
-              height: 32,
-              padding: "0 12px",
-              background: "var(--crm-gray-0)",
-              border: "1px solid var(--crm-border)",
-              borderRadius: 6,
-              color: "var(--crm-gray-700)",
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: "pointer",
+              fontSize: 11,
+              color: "var(--crm-gray-400)",
+              fontStyle: "italic",
             }}
           >
-            <Edit className="h-3 w-3" />
-            Editar
-          </button>
+            Clique nos campos para editar
+          </span>
           <button
             onClick={handleDelete}
             className="cf-focusable inline-flex items-center gap-1.5"
@@ -275,23 +277,59 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
                 letterSpacing: "-0.015em",
               }}
             >
-              {lead.name}
+              <InlineEditField
+                value={lead.name}
+                placeholder="Nome do lead"
+                onSave={(v) => patchLead({ name: v })}
+                rootStyle={{ fontSize: 20 }}
+                displayStyle={{ fontSize: 20, fontWeight: 600 }}
+              />
             </h1>
-            {lead.role && (
-              <div style={{ fontSize: 13, color: "var(--crm-gray-600)", marginTop: 2 }}>
-                {lead.role}
-              </div>
-            )}
-            {lead.company && (
-              <div
-                className="inline-flex items-center gap-1"
-                style={{ fontSize: 13, color: "var(--crm-gray-500)", marginTop: 2 }}
-              >
-                <Building2 className="h-3 w-3" />
-                {lead.company}
-              </div>
-            )}
-            <StatusBadge status={lead.status} />
+            <div style={{ fontSize: 13, color: "var(--crm-gray-600)", marginTop: 2 }}>
+              <InlineEditField
+                value={lead.role}
+                placeholder="Cargo (ex: Fundadora)"
+                onSave={(v) => patchLead({ role: v || null })}
+                displayStyle={{ fontSize: 13 }}
+              />
+            </div>
+            <div
+              className="inline-flex items-center gap-1"
+              style={{ fontSize: 13, color: "var(--crm-gray-500)", marginTop: 2 }}
+            >
+              <Building2 className="h-3 w-3" />
+              <InlineEditField
+                value={lead.company}
+                placeholder="Empresa"
+                onSave={(v) => patchLead({ company: v || null })}
+                displayStyle={{ fontSize: 13, color: "var(--crm-gray-500)" }}
+              />
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <InlineEditField
+                type="select"
+                value={lead.status}
+                display={(() => {
+                  const labels: Record<string, string> = {
+                    new: "Novo",
+                    qualified: "Qualificado",
+                    unqualified: "Desqualificado",
+                    converted: "Convertido",
+                    lost: "Perdido",
+                  }
+                  return labels[lead.status] ?? lead.status
+                })()}
+                options={[
+                  { value: "new", label: "Novo" },
+                  { value: "qualified", label: "Qualificado" },
+                  { value: "unqualified", label: "Desqualificado" },
+                  { value: "converted", label: "Convertido" },
+                  { value: "lost", label: "Perdido" },
+                ]}
+                onSave={(v) => patchLead({ status: v })}
+                displayStyle={{ fontSize: 11 }}
+              />
+            </div>
           </div>
 
           {/* KPIs grid */}
@@ -324,37 +362,31 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
             />
           </div>
 
-          {/* Contato */}
+          {/* Contato (editavel inline) */}
           <Section title="Contato">
-            <div className="flex flex-col gap-2">
-              {lead.email && (
-                <ContactLine
-                  icon={<Mail className="h-3.5 w-3.5" />}
-                  label={lead.email}
-                  href={`mailto:${lead.email}`}
-                />
-              )}
-              {lead.phone && (
-                <ContactLine
-                  icon={<MessageSquare className="h-3.5 w-3.5" />}
-                  label={lead.phone}
-                  href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`}
-                  mono
-                />
-              )}
-              {lead.phone && (
-                <ContactLine
-                  icon={<Phone className="h-3.5 w-3.5" />}
-                  label={lead.phone}
-                  href={`tel:${lead.phone}`}
-                  mono
-                />
-              )}
-              {!lead.email && !lead.phone && (
-                <span style={{ fontSize: 12, color: "var(--crm-gray-400)" }}>
-                  Sem contato registrado
-                </span>
-              )}
+            <div className="flex flex-col gap-2.5">
+              <EditableContactRow
+                icon={<Mail className="h-3.5 w-3.5" />}
+                label="E-mail"
+                value={lead.email}
+                placeholder="email@exemplo.com"
+                onSave={(v) => patchLead({ email: v || null })}
+              />
+              <EditableContactRow
+                icon={<Phone className="h-3.5 w-3.5" />}
+                label="Telefone"
+                value={lead.phone}
+                placeholder="+55 11 90000-0000"
+                mono
+                onSave={(v) => patchLead({ phone: v || null })}
+              />
+              <EditableContactRow
+                icon={<TagIcon className="h-3.5 w-3.5" />}
+                label="Origem"
+                value={lead.source}
+                placeholder="ex: Indicação, Inbound..."
+                onSave={(v) => patchLead({ source: v || null })}
+              />
             </div>
           </Section>
 
@@ -546,6 +578,7 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
 
 // ─── Subcomponents ───────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function StatusBadge({ status }: { status: string }) {
   const map: Record<
     string,
@@ -662,6 +695,53 @@ function KpiCard({
   )
 }
 
+/** Linha de contato com label + valor editavel inline. */
+function EditableContactRow({
+  icon,
+  label,
+  value,
+  placeholder,
+  mono,
+  onSave,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string | null
+  placeholder?: string
+  mono?: boolean
+  onSave: (v: string) => Promise<void>
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span style={{ fontSize: 11, color: "var(--crm-gray-500)" }}>{label}</span>
+      <div
+        className="flex items-center gap-2"
+        style={{
+          fontSize: 13,
+          color: "var(--crm-gray-800)",
+        }}
+      >
+        <span style={{ color: "var(--crm-gray-400)", flexShrink: 0 }}>{icon}</span>
+        <div className="flex-1 min-w-0">
+          <InlineEditField
+            value={value}
+            placeholder={placeholder}
+            onSave={onSave}
+            displayStyle={
+              mono
+                ? {
+                    fontVariantNumeric: "tabular-nums lining-nums",
+                    fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                  }
+                : undefined
+            }
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Section({
   title,
   children,
@@ -688,6 +768,7 @@ function Section({
   )
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ContactLine({
   icon,
   label,

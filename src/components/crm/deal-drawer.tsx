@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { CustomFieldsPanel } from "./custom-fields-panel"
 import { LostReasonDialog } from "./lost-reason-dialog"
+import { InlineEditField } from "./inline-edit-field"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import type { DealFile } from "@/types/crm"
 
@@ -288,6 +289,23 @@ export function DealDrawer({
     }
   }
 
+  // Helper genérico pra editar campos do deal inline (usado por
+  // InlineEditField em varios lugares do drawer).
+  const patchDeal = async (update: Record<string, unknown>) => {
+    if (!dealId) return
+    const res = await fetch(`/api/crm/deals/${dealId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+    }
+    await mutate()
+    onUpdated?.()
+  }
+
   const moveToStage = async (stageId: string, lostReason?: string) => {
     if (!dealId) return
     // Se for stage do tipo 'lost' e nao tem razao, abre o dialog
@@ -391,6 +409,7 @@ export function DealDrawer({
                 hasError={!!error && !!deal}
                 errorIs404={errorIs404}
                 onRetry={() => mutate()}
+                onPatch={patchDeal}
                 onOpenFullPage={
                   dealId
                     ? () => {
@@ -406,7 +425,7 @@ export function DealDrawer({
                 style={{ padding: "22px 22px 100px", minHeight: 0 }}
               >
                 {/* Hero numbers row */}
-                <HeroNumbers deal={deal} />
+                <HeroNumbers deal={deal} onPatch={patchDeal} />
 
                 {/* Últimas interações */}
                 <LastInteractions activities={activities} loading={isLoading && !data} />
@@ -435,12 +454,61 @@ export function DealDrawer({
                   }
                 />
 
-                {/* Contato + Custom fields */}
+                {/* Contato + Custom fields (com edit inline quando ha apiDeal) */}
                 <ContactAndFields
                   deal={deal}
                   apiDeal={apiDeal}
                   onSaved={() => mutate()}
+                  onPatch={patchDeal}
                 />
+
+                {/* Notas (editavel inline) */}
+                {apiDeal && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <h3
+                        className="m-0"
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "var(--crm-gray-700)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Notas
+                      </h3>
+                    </div>
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        background: "var(--crm-gray-0)",
+                        border: "1px solid var(--crm-border)",
+                        borderRadius: 8,
+                        fontSize: 13,
+                      }}
+                    >
+                      <InlineEditField
+                        type="textarea"
+                        value={apiDeal.notes}
+                        placeholder="Anote algo sobre esse deal..."
+                        onSave={(v) => patchDeal({ notes: v || null })}
+                        rows={4}
+                        rootStyle={{ width: "100%" }}
+                        displayStyle={{
+                          fontSize: 13,
+                          color: apiDeal.notes
+                            ? "var(--crm-gray-800)"
+                            : "var(--crm-gray-400)",
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          display: "block",
+                          width: "100%",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Arquivos */}
                 <FilesSection
@@ -516,6 +584,7 @@ function DrawerHeader({
   errorIs404,
   onRetry,
   onOpenFullPage,
+  onPatch,
 }: {
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
@@ -526,6 +595,7 @@ function DrawerHeader({
   errorIs404: boolean
   onRetry: () => void
   onOpenFullPage?: () => void
+  onPatch?: (update: Record<string, unknown>) => Promise<void>
 }) {
   const leadName = deal.client?.name || deal.title
   const avatarColors = avatarColorFromName(leadName)
@@ -579,7 +649,16 @@ function DrawerHeader({
                 letterSpacing: "-0.015em",
               }}
             >
-              {leadName}
+              {onPatch ? (
+                <InlineEditField
+                  value={deal.title}
+                  placeholder="Título do deal"
+                  onSave={(v) => onPatch({ title: v })}
+                  displayStyle={{ fontSize: 18, fontWeight: 600 }}
+                />
+              ) : (
+                leadName
+              )}
             </h2>
             <span
               className="crm-tnum"
@@ -867,7 +946,13 @@ function ScoreDonut({
 
 // ─── Hero numbers ────────────────────────────────────────────────
 
-function HeroNumbers({ deal }: { deal: DealDetailResponse["deal"] }) {
+function HeroNumbers({
+  deal,
+  onPatch,
+}: {
+  deal: DealDetailResponse["deal"]
+  onPatch?: (update: Record<string, unknown>) => Promise<void>
+}) {
   const value = deal.value || 0
   const annual = value * 12
   const owner = deal.owner
@@ -889,11 +974,54 @@ function HeroNumbers({ deal }: { deal: DealDetailResponse["deal"] }) {
         marginBottom: 18,
       }}
     >
-      <HeroStat
-        label="Valor recorrente"
-        big={fmtBRL(value)}
-        suffix={<span style={{ fontSize: 13, color: "var(--crm-gray-500)", fontWeight: 500 }}>/mês</span>}
-      />
+      <div>
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--crm-gray-500)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Valor recorrente
+        </div>
+        <div
+          className="crm-tnum"
+          style={{
+            fontSize: 26,
+            fontWeight: 700,
+            color: "var(--crm-gray-900)",
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+            marginTop: 2,
+          }}
+        >
+          {onPatch ? (
+            <InlineEditField
+              type="number"
+              value={value}
+              placeholder="0"
+              prefix="R$ "
+              min={0}
+              step={100}
+              onSave={(v) => onPatch({ value: parseFloat(v) || 0 })}
+              displayStyle={{ fontSize: 26, fontWeight: 700 }}
+            />
+          ) : (
+            fmtBRL(value)
+          )}
+          <span
+            style={{
+              fontSize: 13,
+              color: "var(--crm-gray-500)",
+              fontWeight: 500,
+            }}
+          >
+            /mês
+          </span>
+        </div>
+      </div>
       <div className="w-px h-9" style={{ background: "var(--crm-gray-200)" }} />
       <HeroStat
         label="Em 12m"
@@ -1588,6 +1716,8 @@ function ContactAndFields({
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
   onSaved: () => void
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onPatch?: (update: Record<string, unknown>) => Promise<void>
 }) {
   const email = deal.client?.email ?? deal.lead?.email ?? null
   const phone = deal.client?.phone ?? deal.lead?.phone ?? null
