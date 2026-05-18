@@ -13,6 +13,8 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { fetchOmnisendCampaignReports } from "@/lib/integrations/omnisend/reports-api"
 
 export const dynamic = "force-dynamic"
 
@@ -177,6 +179,58 @@ export async function POST(
     // Pra preservar o ranking visual com valores significativos, distribui
     // proporcionalmente por delivered (reach) quando há total conhecido mas
     // per-row zerado.
+    // Tenta atribuir revenue real do Reports API matchando pelo dia do
+    // sendTime. Para cada campanha, soma reports[*].byDate[sendDay].
+    // Se nenhuma data bater, retorna rows sem mudar (cai pro fallback).
+    function matchByDate<T extends Record<string, unknown>>(
+      campaigns: T[],
+      reports: Array<{ marketingActivityID: string; attributedRevenue: number; byDate?: Map<string, number> }>,
+    ): T[] {
+      // Total de receita por dia (somando todas as activities daquele dia)
+      const revenueByDay = new Map<string, number>()
+      const countByDay = new Map<string, number>()
+      for (const r of reports) {
+        if (!r.byDate) continue
+        for (const [day, rev] of r.byDate.entries()) {
+          revenueByDay.set(day, (revenueByDay.get(day) ?? 0) + rev)
+        }
+      }
+      // Conta quantas campanhas enviadas em cada dia
+      for (const c of campaigns) {
+        const sendTime = c.sendTime as string | undefined
+        if (!sendTime) continue
+        const day = sendTime.slice(0, 10)
+        countByDay.set(day, (countByDay.get(day) ?? 0) + 1)
+      }
+      // Atribui: se um dia tem 1 campanha → recebe todo o revenue do dia.
+      // Se tem N campanhas → split por delivered (mais reach = mais revenue).
+      const campaignsByDay = new Map<string, T[]>()
+      for (const c of campaigns) {
+        const sendTime = c.sendTime as string | undefined
+        if (!sendTime) continue
+        const day = sendTime.slice(0, 10)
+        const arr = campaignsByDay.get(day) ?? []
+        arr.push(c)
+        campaignsByDay.set(day, arr)
+      }
+      const result = campaigns.map((c) => ({ ...c } as Record<string, unknown>))
+      for (const [day, dayCamps] of campaignsByDay.entries()) {
+        const dayRevenue = revenueByDay.get(day) ?? 0
+        if (dayRevenue <= 0) continue
+        const totalDelivered = dayCamps.reduce((s, x) => s + (Number(x.delivered) || Number(x.recipients) || 0), 0) || 1
+        for (const c of dayCamps) {
+          const idx = result.findIndex((x) => x.id === c.id)
+          if (idx >= 0) {
+            const share = (Number(c.delivered) || Number(c.recipients) || 0) / totalDelivered
+            result[idx].revenue = dayRevenue * share
+            // Se só tem uma campanha no dia, é exata (não estimada)
+            result[idx].revenue_estimated = dayCamps.length > 1
+          }
+        }
+      }
+      return result as T[]
+    }
+
     function distributeRevenue<T extends Record<string, unknown>>(
       rows: T[],
       totalRevenue: number,
@@ -250,9 +304,30 @@ export async function POST(
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
-    // Aplica distribuição proporcional quando per-campaign revenue ficou 0
-    // mas total agregado é conhecido (limitação API Omnisend).
-    const enrichedCampaigns = distributeRevenue(campaignsList, receitaCampanhas)
+    // Per-campaign revenue: tenta primeiro o Reports API da Omnisend
+    // (send-date, matches UI). Se vier, faz join por nome+data já que
+    // marketingActivityID nao bate com campaignID. Senao, fallback pra
+    // distribuicao proporcional por delivered.
+    let enrichedCampaigns = campaignsList
+    if (reportRes?.platform === "omnisend") {
+      try {
+        const creds = await getStoreCredentials(storeId)
+        if (creds.omnisend_api_key) {
+          const reportsData = await fetchOmnisendCampaignReports(
+            creds.omnisend_api_key,
+            body.period_start,
+            body.period_end,
+          )
+          if (reportsData && reportsData.length > 0) {
+            enrichedCampaigns = matchByDate(campaignsList, reportsData)
+          }
+        }
+      } catch {
+        // silent — fica com fallback
+      }
+    }
+    // Se ainda não tem revenue per row, distribui proporcional
+    enrichedCampaigns = distributeRevenue(enrichedCampaigns, receitaCampanhas)
     const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
 
     const snapshot = {

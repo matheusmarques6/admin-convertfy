@@ -12,6 +12,8 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { fetchOmnisendCampaignReports } from "@/lib/integrations/omnisend/reports-api"
 
 const log = logger.child("ReportResync")
 
@@ -106,9 +108,48 @@ export async function POST(
       return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0)
     }
 
+    // Tenta atribuir revenue real do Reports API matchando pelo dia do
+    // sendTime. Quando há 1 campanha no dia → valor exato. Quando há
+    // múltiplas → split por share de delivered (flag estimated).
+    function matchByDate<T extends Record<string, unknown>>(
+      campaigns: T[],
+      reports: Array<{ marketingActivityID: string; attributedRevenue: number; byDate?: Map<string, number> }>,
+    ): T[] {
+      const revenueByDay = new Map<string, number>()
+      for (const r of reports) {
+        if (!r.byDate) continue
+        for (const [day, rev] of r.byDate.entries()) {
+          revenueByDay.set(day, (revenueByDay.get(day) ?? 0) + rev)
+        }
+      }
+      const campaignsByDay = new Map<string, T[]>()
+      for (const c of campaigns) {
+        const sendTime = c.sendTime as string | undefined
+        if (!sendTime) continue
+        const day = sendTime.slice(0, 10)
+        const arr = campaignsByDay.get(day) ?? []
+        arr.push(c)
+        campaignsByDay.set(day, arr)
+      }
+      const result = campaigns.map((c) => ({ ...c } as Record<string, unknown>))
+      for (const [day, dayCamps] of campaignsByDay.entries()) {
+        const dayRevenue = revenueByDay.get(day) ?? 0
+        if (dayRevenue <= 0) continue
+        const totalDelivered = dayCamps.reduce((s, x) => s + (Number(x.delivered) || Number(x.recipients) || 0), 0) || 1
+        for (const c of dayCamps) {
+          const idx = result.findIndex((x) => x.id === c.id)
+          if (idx >= 0) {
+            const share = (Number(c.delivered) || Number(c.recipients) || 0) / totalDelivered
+            result[idx].revenue = dayRevenue * share
+            result[idx].revenue_estimated = dayCamps.length > 1
+          }
+        }
+      }
+      return result as T[]
+    }
+
     // Distribuição proporcional por delivered quando per-row revenue
-    // vier zerado (limitação API Omnisend Statistics: marketingActivityID
-    // != campaignID).
+    // vier zerado (fallback se Reports API falhar).
     function distributeRevenue<T extends Record<string, unknown>>(rows: T[], totalRevenue: number): T[] {
       const sumRow = sumField(rows, "revenue")
       if (sumRow > 0 || totalRevenue <= 0 || rows.length === 0) return rows
@@ -172,7 +213,25 @@ export async function POST(
     const totalFlows = Number(fs.liveFlows) || Number(overview.liveFlows) || flowsList.length
     const totalLeads = Number(cachedSummary?.total_leads ?? 0)
 
-    const enrichedCampaigns = distributeRevenue(campaignsList, receitaCampanhas)
+    let enrichedCampaigns = campaignsList
+    if (reportRes?.platform === "omnisend") {
+      try {
+        const creds = await getStoreCredentials(report.store_id)
+        if (creds.omnisend_api_key) {
+          const reportsData = await fetchOmnisendCampaignReports(
+            creds.omnisend_api_key,
+            report.period_start,
+            report.period_end,
+          )
+          if (reportsData && reportsData.length > 0) {
+            enrichedCampaigns = matchByDate(campaignsList, reportsData)
+          }
+        }
+      } catch {
+        // silent — fica com fallback
+      }
+    }
+    enrichedCampaigns = distributeRevenue(enrichedCampaigns, receitaCampanhas)
     const enrichedFlows = distributeRevenue(flowsList, receitaFlows)
 
     // Preserva insights existentes do snapshot anterior
