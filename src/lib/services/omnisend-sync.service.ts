@@ -1727,18 +1727,20 @@ async function doSyncOmnisendForStore(params: {
       .map((a) => {
         const s = getAutomationStats(a)
         // Revenue + engagement REAIS por automation individual via
-        // Statistics API; fallback no listing /v5 quando o breakdown
-        // nao tem entrada. /v5/automations nem sempre retorna stats
-        // inline — antes resultava em "—" em Entregues/Abertura/Cliques.
+        // Statistics API. NUNCA cair no fallback s.totalRevenue/s.revenue
+        // — esses sao LIFETIME (todos os tempos) do automation, nao do
+        // periodo do report. Cair neles inflava o numero (visto Blue Wolf
+        // Apr 2026 mostrando R$47k em vez de R$26k do dashboard porque o
+        // breakdown com filter "Workflow" voltava vazio).
         const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
-        const sent = autoBreakdownEntry?.sent || s.sent || 0
-        const delivered = autoBreakdownEntry?.sent || s.delivered || 0
-        const opened = autoBreakdownEntry?.opened || s.uniqueOpened || s.opened || 0
-        const clicked = autoBreakdownEntry?.clicked || s.uniqueClicked || s.clicked || 0
+        const sent = autoBreakdownEntry?.sent ?? 0
+        const delivered = autoBreakdownEntry?.sent ?? 0
+        const opened = autoBreakdownEntry?.opened ?? 0
+        const clicked = autoBreakdownEntry?.clicked ?? 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
-        const revenue = autoBreakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
-        const automationOrders = autoBreakdownEntry?.totalOrders ?? (s.ordersCount || s.orders || 0)
+        const revenue = autoBreakdownEntry?.totalRevenue ?? 0
+        const automationOrders = autoBreakdownEntry?.totalOrders ?? 0
         const triggerType = typeof a.trigger === "string"
           ? a.trigger
           : (a.triggerType || (a.trigger && typeof a.trigger === "object" && typeof (a.trigger as Record<string, unknown>).event === "string"
