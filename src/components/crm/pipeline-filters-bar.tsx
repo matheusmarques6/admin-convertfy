@@ -65,6 +65,12 @@ interface PipelineFiltersBarProps {
   availableSources: string[]
   availableOwners: Array<{ id: string; name: string }>
   availableLostReasons: string[]
+  /**
+   * Quando definido, o botao "Filtros" chama esse callback ao inves
+   * de abrir o popover. Use pra abrir o `PipelineFiltersPanel` lateral
+   * (artboard 03 do prototipo).
+   */
+  onOpenFiltersPanel?: () => void
 }
 
 function countActiveFilters(f: PipelineFilters): number {
@@ -97,6 +103,7 @@ export function PipelineFiltersBar({
   availableSources,
   availableOwners,
   availableLostReasons,
+  onOpenFiltersPanel,
 }: PipelineFiltersBarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
@@ -133,6 +140,10 @@ export function PipelineFiltersBar({
       <div className="relative" ref={filtersRef}>
         <button
           onClick={() => {
+            if (onOpenFiltersPanel) {
+              onOpenFiltersPanel()
+              return
+            }
             setFiltersOpen(!filtersOpen)
             setSortOpen(false)
           }}

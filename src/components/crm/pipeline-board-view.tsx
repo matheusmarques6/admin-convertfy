@@ -15,6 +15,7 @@ import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
 import { OnboardingCard, type OnboardingCardData } from "./onboarding-card"
+import { PipelineFiltersPanel } from "./pipeline-filters-panel"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
@@ -80,6 +81,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [advancedFilters, setAdvancedFilters] = useState<PipelineFilters>(EMPTY_FILTERS)
   const [sortOrder, setSortOrder] = useState<SortOrder>("moved_desc")
@@ -164,10 +166,27 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
     const sourcesSet = new Set<string>()
     const ownersMap = new Map<string, string>()
     const reasonsSet = new Set<string>()
+    const countsByTag: Record<string, number> = {}
+    const countsBySource: Record<string, number> = {}
+    const countsByOwner: Record<string, number> = {}
+    const countsByStatus: Record<string, number> = {}
     for (const d of allDeals) {
-      d.tags?.forEach((t) => t && tagsSet.add(t))
-      if (d.source) sourcesSet.add(d.source)
-      if (d.owner?.id) ownersMap.set(d.owner.id, d.owner.name)
+      d.tags?.forEach((t) => {
+        if (!t) return
+        tagsSet.add(t)
+        countsByTag[t] = (countsByTag[t] ?? 0) + 1
+      })
+      if (d.source) {
+        sourcesSet.add(d.source)
+        countsBySource[d.source] = (countsBySource[d.source] ?? 0) + 1
+      }
+      if (d.owner?.id) {
+        ownersMap.set(d.owner.id, d.owner.name)
+        countsByOwner[d.owner.id] = (countsByOwner[d.owner.id] ?? 0) + 1
+      }
+      if (d.status) {
+        countsByStatus[d.status] = (countsByStatus[d.status] ?? 0) + 1
+      }
       const dl = (d as unknown as { lost_reason?: string }).lost_reason
       if (dl) reasonsSet.add(dl)
     }
@@ -178,6 +197,10 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       lostReasons: Array.from(reasonsSet).sort(),
+      countsByTag,
+      countsBySource,
+      countsByOwner,
+      countsByStatus,
     }
   }, [allDeals])
 
@@ -662,6 +685,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                   availableSources={filterOptions.sources}
                   availableOwners={filterOptions.owners}
                   availableLostReasons={filterOptions.lostReasons}
+                  onOpenFiltersPanel={() => setFiltersPanelOpen(true)}
                 />
               )}
             </div>
@@ -783,6 +807,21 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
           </div>
         </>
       )}
+
+      <PipelineFiltersPanel
+        open={filtersPanelOpen}
+        onOpenChange={setFiltersPanelOpen}
+        filters={advancedFilters}
+        onFiltersChange={setAdvancedFilters}
+        matchingCount={filteredDeals.length}
+        availableTags={filterOptions.tags}
+        availableSources={filterOptions.sources}
+        availableOwners={filterOptions.owners}
+        countsByTag={filterOptions.countsByTag}
+        countsBySource={filterOptions.countsBySource}
+        countsByOwner={filterOptions.countsByOwner}
+        countsByStatus={filterOptions.countsByStatus}
+      />
 
       <DealDrawer
         dealId={activeDealId}
