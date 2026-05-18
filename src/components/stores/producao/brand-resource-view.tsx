@@ -7,15 +7,19 @@ import type { StoreBrandIdentity, BrandColor } from "@/types/email-workspace"
 
 interface BrandResourceViewProps {
   storeId: string
+  storeName: string
   brand: StoreBrandIdentity | null
   onChanged: () => void
 }
 
 export function BrandResourceView({
   storeId,
+  storeName,
   brand,
   onChanged,
 }: BrandResourceViewProps) {
+  const wordmark = storeName.toUpperCase()
+  const monogramLetter = storeName.charAt(0).toUpperCase() || "?"
   const toast = useToast()
   const [generating, setGenerating] = useState(false)
 
@@ -168,7 +172,7 @@ export function BrandResourceView({
             }}
           >
             {/* Nome da loja em destaque, simulando logo principal */}
-            {brand.logo_main_svg ? null : "VIVAZZ"}
+            {brand.logo_main_svg ? null : wordmark}
           </h1>
           {brand.voice && brand.voice.length > 0 && (
             <p
@@ -215,7 +219,7 @@ export function BrandResourceView({
                       textTransform: "uppercase",
                     }}
                   >
-                    VIVAZZ
+                    {wordmark}
                   </div>
                 }
               />
@@ -235,12 +239,12 @@ export function BrandResourceView({
                       textTransform: "uppercase",
                     }}
                   >
-                    VIVAZZ
+                    {wordmark}
                   </div>
                 }
               />
               <LogoCard
-                title="Monograma · V"
+                title={`Monograma · ${monogramLetter}`}
                 subtitle="Avatar · favicon · selo"
                 svg={brand.logo_monogram_svg}
                 png={brand.logo_monogram_png}
@@ -261,7 +265,7 @@ export function BrandResourceView({
                       borderRadius: 10,
                     }}
                   >
-                    V
+                    {monogramLetter}
                   </div>
                 }
               />
@@ -281,7 +285,7 @@ export function BrandResourceView({
                       textTransform: "uppercase",
                     }}
                   >
-                    VIVAZZ
+                    {wordmark}
                   </div>
                 }
               />

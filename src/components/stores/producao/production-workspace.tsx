@@ -156,6 +156,14 @@ export function ProductionWorkspace({
   }, [flows])
 
   // Conta emails prontos (status ready/approved/live) vs total
+  // Tick pra forçar refresh do "salvo automaticamente · há X min".
+  // Roda a cada minuto; o useMemo de lastUpdateMin escuta esse tick.
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
   const emailsCounts = useMemo(() => {
     const all = flows.flatMap((f) => f.emails ?? [])
     const ready = all.filter(
@@ -163,6 +171,38 @@ export function ProductionWorkspace({
     ).length
     return { ready, total: all.length }
   }, [flows])
+
+  // Find current email pra topbar (antes dos early returns pra manter hooks order)
+  const currentEmail = useMemo(
+    () =>
+      selection.kind === "email"
+        ? flows
+            .find((f) => f.id === selection.flowId)
+            ?.emails?.find((e) => e.id === selection.emailId) ?? null
+        : null,
+    [selection, flows],
+  )
+  const currentFlow = useMemo(
+    () =>
+      selection.kind === "email"
+        ? flows.find((f) => f.id === selection.flowId) ?? null
+        : null,
+    [selection, flows],
+  )
+
+  // Save time relative — recalcula a cada minuto.
+  const lastUpdateMin = useMemo(() => {
+    if (!currentEmail) return null
+    const min = Math.floor(
+      (Date.now() - new Date(currentEmail.updated_at).getTime()) / 60000,
+    )
+    if (min < 1) return "agora"
+    if (min < 60) return `há ${min} min`
+    const h = Math.floor(min / 60)
+    if (h < 24) return `há ${h}h`
+    return `há ${Math.floor(h / 24)}d`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEmail?.updated_at, tick])
 
   if (isLoading && !resp) {
     return <WorkspaceSkeleton />
@@ -209,31 +249,6 @@ export function ProductionWorkspace({
       </div>
     )
   }
-
-  // Find current email pra topbar
-  const currentEmail =
-    selection.kind === "email"
-      ? flows
-          .find((f) => f.id === selection.flowId)
-          ?.emails?.find((e) => e.id === selection.emailId) ?? null
-      : null
-  const currentFlow =
-    selection.kind === "email"
-      ? flows.find((f) => f.id === selection.flowId) ?? null
-      : null
-
-  // Save time relative
-  const lastUpdateMin = (() => {
-    if (!currentEmail) return null
-    const min = Math.floor(
-      (Date.now() - new Date(currentEmail.updated_at).getTime()) / 60000,
-    )
-    if (min < 1) return "agora"
-    if (min < 60) return `há ${min} min`
-    const h = Math.floor(min / 60)
-    if (h < 24) return `há ${h}h`
-    return `há ${Math.floor(h / 24)}d`
-  })()
 
   return (
     <div
@@ -486,6 +501,7 @@ export function ProductionWorkspace({
           {selection.kind === "resource" && selection.resource === "brand" && (
             <BrandResourceView
               storeId={storeId}
+              storeName={store.store_name}
               brand={brand}
               onChanged={() => mutate()}
             />

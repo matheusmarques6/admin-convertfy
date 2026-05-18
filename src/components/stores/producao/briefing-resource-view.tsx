@@ -199,8 +199,8 @@ export function BriefingResourceView({
       <div style={{ padding: "24px 32px 48px" }}>
         {activeTab === "marca" && (
           <>
-            {/* Slogan card */}
-            {marca.slogan !== undefined && (
+            {/* Slogan card — sempre aparece pra permitir adicionar */}
+            {(briefing || marca.slogan !== undefined) && (
               <div
                 style={{
                   padding: "32px 32px",
@@ -233,7 +233,7 @@ export function BriefingResourceView({
                 >
                   &ldquo;
                   <InlineEditField
-                    value={marca.slogan}
+                    value={marca.slogan ?? null}
                     placeholder="Slogan da marca"
                     onSave={(v) => patchBriefing("marca", { slogan: v || null })}
                     displayStyle={{ fontSize: 24, fontWeight: 600, fontStyle: "italic" }}
