@@ -1,20 +1,20 @@
 /**
- * CRM Convertfy — Design tokens (Fase 1)
+ * CRM Convertfy — Design tokens (Fase Pipeline V2)
  *
- * Tokens copiados literalmente do UI_UX_DESIGN_SYSTEM.md §2.
+ * Atualizado para o "Convertfy Design System" (Maio 2026):
+ *   - Brand AZUL #4E62D8 (gradient #4E62D8 → #2137B6 → #041366)
+ *   - Border-radius maiores (8, 10, 14)
+ *   - Tipografia Inter (com font-feature-settings: 'tnum')
+ *   - Semantica expandida (pos/neg/warn/info/neut/purple)
+ *   - Microinterações injetadas (cf-advance, cf-assign, cf-statusin, cf-toast)
  *
- * Uso: importar em src/app/layout.tsx ou globals.css. Componentes do CRM
- * referenciam via var(--crm-*) — nunca valores avulsos. Isso garante que
- * mudar um token muda toda a interface CRM consistentemente.
- *
- * Por que prefixo `--crm-`? Pra nao colidir com tokens existentes do
- * admin (Tailwind config). Quando quisermos unificar o admin todo no
- * mesmo design system, basta remover o prefixo.
+ * Convencao: componentes do CRM referenciam via var(--crm-*) — nunca valores
+ * avulsos. Os tokens antigos permanecem (compat) e os novos sao adicionados.
  */
 
 :root {
   /* ── Tipografia ───────────────────────────────────────────────── */
-  --crm-font-sans: "Geist", "Inter", "Söhne", "Helvetica Neue", sans-serif;
+  --crm-font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --crm-font-mono: "Geist Mono", "JetBrains Mono", monospace;
 
   --crm-text-xs: 11px;
@@ -27,50 +27,86 @@
   --crm-text-3xl: 32px;
 
   --crm-weight-regular: 400;
-  --crm-weight-medium: 530;
+  --crm-weight-medium: 500;
+  --crm-weight-semibold: 600;
+  --crm-weight-bold: 700;
 
   --crm-leading-tight: 1.25;
   --crm-leading-normal: 1.45;
   --crm-leading-relaxed: 1.6;
 
-  /* ── Cinzas (paleta principal — 80% da UI) ─────────────────────── */
+  /* ── Cinzas (paleta principal — Tailwind slate / Convertfy DS) ── */
   --crm-gray-0: #FFFFFF;
-  --crm-gray-50: #FAFAFA;
-  --crm-gray-100: #F4F4F5;
-  --crm-gray-200: #E4E4E7;
-  --crm-gray-300: #D4D4D8;
-  --crm-gray-400: #A1A1AA;
-  --crm-gray-500: #71717A;
-  --crm-gray-600: #52525B;
-  --crm-gray-700: #3F3F46;
-  --crm-gray-800: #27272A;
-  --crm-gray-900: #18181B;
+  --crm-gray-25: #FCFCFD;
+  --crm-gray-50: #F8FAFC;
+  --crm-gray-100: #F3F4F6;
+  --crm-gray-200: #E5E7EB;
+  --crm-gray-300: #D1D5DB;
+  --crm-gray-400: #9CA3AF;
+  --crm-gray-500: #6B7280;
+  --crm-gray-600: #4B5563;
+  --crm-gray-700: #374151;
+  --crm-gray-800: #1F2937;
+  --crm-gray-900: #111827;
   --crm-gray-950: #09090B;
 
-  /* ── Cores semanticas (uso escasso) ───────────────────────────── */
-  --crm-success-bg: #ECFDF5;
-  --crm-success-fg: #047857;
-  --crm-success-border: #A7F3D0;
-
-  --crm-warning-bg: #FEFCE8;
-  --crm-warning-fg: #854D0E;
-  --crm-warning-border: #FDE68A;
-
-  --crm-danger-bg: #FEF2F2;
-  --crm-danger-fg: #B91C1C;
-  --crm-danger-border: #FECACA;
-
-  --crm-info-bg: #EFF6FF;
-  --crm-info-fg: #1D4ED8;
-  --crm-info-border: #BFDBFE;
-
-  /* ── Marca: PRETO, nao azul. Nao roxo. ────────────────────────── */
-  --crm-brand: #1F1F1F;
+  /* ── Marca AZUL (Convertfy DS) ────────────────────────────────── */
+  --crm-brand: #4E62D8;
+  --crm-brand-hover: #2137B6;
+  --crm-brand-dark: #041366;
   --crm-brand-fg: #FFFFFF;
-  --crm-brand-hover: #2A2A2A;
+  --crm-brand-gradient: linear-gradient(90deg, #4E62D8, #2137B6, #041366);
+  --crm-brand-gradient-diag: linear-gradient(135deg, #EEF0FB 0%, #FFFFFF 100%);
+
+  /* Tons claros da marca (backgrounds, borders, hovers) */
+  --crm-blue-50: #EEF0FB;
+  --crm-blue-100: #C7CDEF;
+  --crm-blue-200: #A8B2EE;
+
+  /* ── Cores semanticas (Convertfy DS) ──────────────────────────── */
+  --crm-pos: #065F46;
+  --crm-pos-bg: #ECFDF5;
+  --crm-pos-border: #A7F3D0;
+
+  --crm-neg: #991B1B;
+  --crm-neg-bg: #FEF2F2;
+  --crm-neg-border: #FECACA;
+
+  --crm-warn: #92400E;
+  --crm-warn-bg: #FFFBEB;
+  --crm-warn-border: #FDE68A;
+
+  --crm-info: #2137B6;
+  --crm-info-bg: #EEF0FB;
+  --crm-info-border: #C7CDEF;
+
+  --crm-neut: #374151;
+  --crm-neut-bg: #F3F4F6;
+  --crm-neut-border: #E5E7EB;
+
+  --crm-purple: #7C3AED;
+  --crm-purple-bg: #F3E8FF;
+  --crm-purple-border: #E0CBFF;
+
+  --crm-amber: #D97706;
+
+  /* Aliases legados (mantidos pra retrocompat com componentes antigos) */
+  --crm-success-bg: var(--crm-pos-bg);
+  --crm-success-fg: #047857;
+  --crm-success-border: var(--crm-pos-border);
+  --crm-warning-bg: var(--crm-warn-bg);
+  --crm-warning-fg: #854D0E;
+  --crm-warning-border: var(--crm-warn-border);
+  --crm-danger-bg: var(--crm-neg-bg);
+  --crm-danger-fg: #B91C1C;
+  --crm-danger-border: var(--crm-neg-border);
+  --crm-info-fg: var(--crm-info);
+
+  --crm-border: rgba(0, 0, 0, 0.08);
+  --crm-border-hover: rgba(0, 0, 0, 0.12);
 
   /* ── Acento (link / focus ring) ───────────────────────────────── */
-  --crm-accent: #2563EB;
+  --crm-accent: var(--crm-brand);
 
   /* ── Espacamento (escala 4px) ─────────────────────────────────── */
   --crm-space-1: 4px;
@@ -84,23 +120,29 @@
   --crm-space-12: 48px;
   --crm-space-16: 64px;
 
-  /* ── Border-radius (4px e 6px — nao 8px) ──────────────────────── */
-  --crm-radius-sm: 3px;
-  --crm-radius-md: 4px;
-  --crm-radius-lg: 6px;
+  /* ── Border-radius (Convertfy DS Pipeline V2: 4/6/8/10/14) ────── */
+  --crm-radius-sm: 4px;
+  --crm-radius-md: 6px;
+  --crm-radius-lg: 8px;
+  --crm-radius-xl: 10px;
+  --crm-radius-2xl: 14px;
   --crm-radius-full: 9999px;
 
-  /* ── Sombras (quase nada) ─────────────────────────────────────── */
+  /* ── Sombras (Convertfy DS) ───────────────────────────────────── */
   --crm-shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.04);
-  --crm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --crm-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --crm-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --crm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --crm-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.03), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --crm-shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 8px rgba(0, 0, 0, 0.04), 0 12px 24px rgba(0, 0, 0, 0.06);
+  --crm-shadow-drawer: -12px 0 32px rgba(0, 0, 0, 0.06);
+  --crm-shadow-modal: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 8px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
 
-  /* ── Dimensoes fixas (nao improvisar) ─────────────────────────── */
+  /* ── Dimensoes fixas (Convertfy DS Pipeline V2) ───────────────── */
   --crm-card-kanban-width: 280px;
   --crm-column-kanban-width: 296px;
-  --crm-sidebar-width: 216px;
-  --crm-sidebar-collapsed: 56px;
+  --crm-sidebar-width: 220px;
+  --crm-sidebar-collapsed: 44px;
+  --crm-pipeline-sidebar-width: 280px;
+  --crm-pipeline-sidebar-collapsed: 44px;
   --crm-topbar-height: 44px;
   --crm-table-row-height: 36px;
   --crm-table-header-height: 32px;
@@ -109,11 +151,14 @@
   --crm-button-height-sm: 28px;
   --crm-button-height-lg: 36px;
   --crm-card-padding: 12px;
+  --crm-drawer-width: 520px;
+  --crm-filter-panel-width: 360px;
 
   /* ── Animacao ─────────────────────────────────────────────────── */
   --crm-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --crm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --crm-duration-fast: 150ms;
-  --crm-duration-normal: 200ms;
+  --crm-duration-normal: 220ms;
   --crm-duration-slow: 300ms;
 }
 
@@ -121,6 +166,7 @@
 [data-theme="dark"],
 .dark {
   --crm-gray-0: #18181B;
+  --crm-gray-25: #1A1A1D;
   --crm-gray-50: #1F1F23;
   --crm-gray-100: #27272A;
   --crm-gray-200: #3F3F46;
@@ -133,40 +179,62 @@
   --crm-gray-900: #FAFAFA;
   --crm-gray-950: #FFFFFF;
 
-  --crm-brand: #FAFAFA;
-  --crm-brand-fg: #18181B;
-  --crm-brand-hover: #E4E4E7;
+  --crm-brand: #7B8CEA;
+  --crm-brand-hover: #6A7CE0;
+  --crm-brand-dark: #4E62D8;
+  --crm-brand-gradient: linear-gradient(90deg, #7B8CEA, #5A6EE0, #3B50C8);
 
-  --crm-success-bg: rgba(4, 120, 87, 0.15);
-  --crm-warning-bg: rgba(133, 77, 14, 0.15);
-  --crm-danger-bg: rgba(185, 28, 28, 0.15);
-  --crm-info-bg: rgba(29, 78, 216, 0.15);
+  --crm-blue-50: rgba(123, 140, 234, 0.12);
+  --crm-blue-100: rgba(123, 140, 234, 0.28);
+  --crm-blue-200: rgba(123, 140, 234, 0.40);
+
+  --crm-pos-bg: rgba(6, 95, 70, 0.18);
+  --crm-warn-bg: rgba(146, 64, 14, 0.18);
+  --crm-neg-bg: rgba(153, 27, 27, 0.18);
+  --crm-info-bg: rgba(33, 55, 182, 0.18);
+  --crm-neut-bg: rgba(255, 255, 255, 0.06);
+  --crm-purple-bg: rgba(124, 58, 237, 0.18);
+
+  --crm-border: rgba(255, 255, 255, 0.08);
+  --crm-border-hover: rgba(255, 255, 255, 0.16);
+}
+
+/* ── Tabular numerals helper ──────────────────────────────────── */
+.crm-tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
 /* ── Utilities pra rapido uso ─────────────────────────────────── */
 .crm-card {
   background: var(--crm-gray-0);
-  border: 1px solid var(--crm-gray-200);
-  border-radius: var(--crm-radius-md);
+  border: 1px solid var(--crm-border);
+  border-radius: var(--crm-radius-lg);
   padding: var(--crm-card-padding);
   font-family: var(--crm-font-sans);
+  transition: border-color var(--crm-duration-fast) var(--crm-ease),
+              box-shadow var(--crm-duration-fast) var(--crm-ease);
 }
 
 .crm-card:hover {
-  border-color: var(--crm-gray-300);
-  box-shadow: var(--crm-shadow-sm);
+  border-color: var(--crm-border-hover);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .crm-button-primary {
   background: var(--crm-brand);
   color: var(--crm-brand-fg);
   height: var(--crm-button-height);
-  padding: 8px 14px;
+  padding: 0 14px;
   font-size: var(--crm-text-base);
   font-weight: var(--crm-weight-medium);
   border-radius: var(--crm-radius-md);
   border: 0;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   transition: background var(--crm-duration-fast) var(--crm-ease);
 }
 
@@ -178,12 +246,16 @@
   background: transparent;
   color: var(--crm-gray-700);
   height: var(--crm-button-height);
-  padding: 8px 14px;
+  padding: 0 14px;
   font-size: var(--crm-text-base);
   font-weight: var(--crm-weight-medium);
-  border: 1px solid var(--crm-gray-300);
+  border: 1px solid var(--crm-border);
   border-radius: var(--crm-radius-md);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   transition: background var(--crm-duration-fast) var(--crm-ease);
 }
 
@@ -193,17 +265,76 @@
 
 .crm-input {
   background: var(--crm-gray-0);
-  border: 1px solid var(--crm-gray-300);
+  border: 1px solid var(--crm-border);
   border-radius: var(--crm-radius-md);
   padding: 0 10px;
   height: var(--crm-input-height);
   font-size: var(--crm-text-base);
   color: var(--crm-gray-900);
   font-family: var(--crm-font-sans);
+  outline: none;
 }
 
 .crm-input:focus {
-  outline: 2px solid rgba(37, 99, 235, 0.2);
-  outline-offset: 0;
-  border-color: var(--crm-accent);
+  border-color: var(--crm-brand);
+  box-shadow: 0 0 0 3px var(--crm-blue-50);
+}
+
+/* ── Microinteracoes (Convertfy DS Pipeline V2) ──────────────── */
+@keyframes cf-advance {
+  0% {
+    box-shadow: 0 0 0 0 rgba(6, 95, 70, 0.0), 0 1px 2px rgba(0, 0, 0, 0.03);
+    border-color: var(--crm-pos-border);
+  }
+  35% {
+    box-shadow: 0 0 0 4px rgba(6, 95, 70, 0.18), 0 1px 2px rgba(0, 0, 0, 0.03);
+    border-color: var(--crm-pos);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(6, 95, 70, 0.0), 0 1px 2px rgba(0, 0, 0, 0.03);
+    border-color: var(--crm-border);
+  }
+}
+
+@keyframes cf-assign {
+  0% { box-shadow: 0 0 0 0 rgba(78, 98, 216, 0.0); }
+  40% { box-shadow: 0 0 0 3px rgba(78, 98, 216, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(78, 98, 216, 0.0); }
+}
+
+@keyframes cf-statusin {
+  0% { opacity: 0; transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cf-toastin {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cf-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.cf-advance { animation: cf-advance 1.2s ease-out 1; }
+.cf-assign { animation: cf-assign 1.5s ease-out 1; }
+.cf-statusin { animation: cf-statusin 220ms ease-out 1; }
+.cf-toast { animation: cf-toastin 240ms var(--crm-ease-out) 1; }
+.cf-pulse-dot { animation: cf-pulse-dot 2s ease-in-out infinite; }
+
+/* Card hover lift — borders do the work, no scale */
+.cf-card {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.cf-card:hover {
+  border-color: var(--crm-border-hover);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* Focus ring — accessibility, not optional */
+.cf-focusable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--crm-brand);
+  border-radius: var(--crm-radius-md);
 }
