@@ -276,13 +276,27 @@ export async function omnisendRequest<T>(
 
       if (!response.ok) {
         if (response.status === 401) {
-          log.error(`[${logTag}] 401 Unauthorized — invalid API key`)
+          log.error(`[${logTag}] 401 Unauthorized — invalid API key`, {
+            body: responseText.substring(0, 500),
+          })
           throw new OmnisendInvalidKeyError("API key is invalid or expired")
         }
 
         if (response.status === 403) {
-          log.error(`[${logTag}] 403 Forbidden`)
-          throw new OmnisendPermissionError("Insufficient permissions for this endpoint")
+          // Loga endpoint + body real do Omnisend pra distinguir entre:
+          //  - Permission scope ausente (a UI da Omnisend lista quais
+          //    scopes a key tem, body geralmente diz qual scope falta)
+          //  - Header errado (Omnisend-Version, auth combo)
+          //  - Plano da loja nao tem acesso a esse endpoint
+          log.error(`[${logTag}] 403 Forbidden`, {
+            url,
+            authStyle,
+            omnisendVersion,
+            body: responseText.substring(0, 500),
+          })
+          throw new OmnisendPermissionError(
+            `Insufficient permissions for ${endpoint}: ${responseText.substring(0, 200)}`,
+          )
         }
 
         if (response.status === 404) {
