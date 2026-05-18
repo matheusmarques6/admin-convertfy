@@ -195,37 +195,6 @@ export default function NewClientPage() {
         description: `Cliente "${data.name}" foi criado${asaasCustomerId ? ` (Asaas: ${asaasCustomerId})` : ""}`,
       })
 
-      // Dispara webhook externo (fire-and-forget) com os dados do cliente criado
-      fetch("https://n8n-n8n.1fpac5.easypanel.host/webhook/ads-analyze-convertfy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "client.created",
-          triggered_at: new Date().toISOString(),
-          client: {
-            id: newClient.id,
-            org_id: member.org_id,
-            name: data.name,
-            email: data.email || null,
-            phone: data.phone || null,
-            company: data.company || null,
-            website: data.website || null,
-            cpf_cnpj: data.cpf_cnpj || null,
-            status: data.status,
-            asaas_customer_id: asaasCustomerId,
-            skip_asaas: skipAsaas || false,
-            address: address,
-            notes: data.notes || null,
-          },
-          created_by: {
-            user_id: user.id,
-            email: user.email ?? null,
-          },
-        }),
-      }).catch((webhookError) => {
-        console.warn("Webhook ads-analyze-convertfy failed:", webhookError)
-      })
-
       toast({
         title: "Cliente criado!",
         description: asaasCustomerId
