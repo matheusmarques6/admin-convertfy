@@ -102,7 +102,16 @@ interface DealDetailResponse {
     stage?: { id: string; name: string; stage_type: string | null; color?: string | null }
     owner?: { id: string; name: string; avatar_url: string | null } | null
     client?: { id: string; name: string; email?: string | null; phone?: string | null; company?: string | null } | null
-    store?: { id: string; name: string } | null
+    store?: {
+      id: string
+      name: string
+      store_name?: string | null
+      store_url?: string | null
+      platform?: string | null
+      currency?: string | null
+      mrr_cents?: number | null
+      health_score?: number | null
+    } | null
     lead?: {
       id: string
       name: string
@@ -389,27 +398,32 @@ export function DealDrawer({
                 {/* Hero numbers row */}
                 <HeroNumbers deal={deal} />
 
-                {/* Composer rapido (collapsible) */}
-                {apiDeal && deal.status === "open" && (
-                  <QuickComposer
-                    show={showComposer}
-                    onToggle={() => setShowComposer((v) => !v)}
-                    tab={composerTab}
-                    onTabChange={setComposerTab}
-                    content={composerContent}
-                    onContentChange={setComposerContent}
-                    dueIn={composerDueIn}
-                    onDueInChange={setComposerDueIn}
-                    onSubmit={postActivity}
-                    posting={posting}
-                  />
-                )}
-
                 {/* Últimas interações */}
                 <LastInteractions activities={activities} loading={isLoading && !data} />
 
-                {/* Próximos passos (tasks pendentes) */}
-                <NextSteps activities={activities} />
+                {/* Próximos passos (tasks pendentes) — com botao "+ Adicionar"
+                    que abre o composer inline (artboard 02). */}
+                <NextSteps
+                  activities={activities}
+                  canAdd={!!apiDeal && deal.status === "open"}
+                  showComposer={showComposer}
+                  onToggleComposer={() => setShowComposer((v) => !v)}
+                  composer={
+                    showComposer && apiDeal && deal.status === "open" ? (
+                      <QuickComposer
+                        tab={composerTab}
+                        onTabChange={setComposerTab}
+                        content={composerContent}
+                        onContentChange={setComposerContent}
+                        dueIn={composerDueIn}
+                        onDueInChange={setComposerDueIn}
+                        onSubmit={postActivity}
+                        onCancel={() => setShowComposer(false)}
+                        posting={posting}
+                      />
+                    ) : null
+                  }
+                />
 
                 {/* Contato + Custom fields */}
                 <ContactAndFields
@@ -428,7 +442,19 @@ export function DealDrawer({
                 {/* AI Suggestion */}
                 {(apiDeal?.lead?.ai_qualification_score ??
                   apiDeal?.ai_qualification_score ??
-                  0) > 0 && <AiSuggestion deal={deal} apiDeal={apiDeal} />}
+                  0) > 0 && (
+                  <AiSuggestion
+                    deal={deal}
+                    apiDeal={apiDeal}
+                    contactPhone={
+                      deal.client?.phone ?? apiDeal?.lead?.phone ?? null
+                    }
+                    contactEmail={
+                      deal.client?.email ?? apiDeal?.lead?.email ?? null
+                    }
+                    onAddActivity={() => setShowComposer(true)}
+                  />
+                )}
 
                 {/* Banners de motivo */}
                 {apiDeal?.won_reason && deal.status === "won" && (
@@ -945,8 +971,6 @@ function HeroStat({
 // ─── Quick Composer ──────────────────────────────────────────────
 
 function QuickComposer({
-  show,
-  onToggle,
   tab,
   onTabChange,
   content,
@@ -954,10 +978,9 @@ function QuickComposer({
   dueIn,
   onDueInChange,
   onSubmit,
+  onCancel,
   posting,
 }: {
-  show: boolean
-  onToggle: () => void
   tab: ComposerTab
   onTabChange: (t: ComposerTab) => void
   content: string
@@ -965,150 +988,145 @@ function QuickComposer({
   dueIn: string
   onDueInChange: (v: string) => void
   onSubmit: () => void
+  onCancel?: () => void
   posting: boolean
 }) {
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div className="flex items-baseline justify-between mb-2">
-        <h3
-          className="m-0"
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: "var(--crm-gray-700)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          Atividade rápida
-        </h3>
-        <button
-          onClick={onToggle}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--crm-brand)",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {show ? "Fechar" : "+ Adicionar"}
-        </button>
-      </div>
-      {show && (
-        <div
-          style={{
-            background: "var(--crm-gray-0)",
-            border: "1px solid var(--crm-border)",
-            borderRadius: 8,
-            padding: 10,
-          }}
-        >
-          <div className="flex items-center gap-1 mb-2">
-            {COMPOSER_TABS.map((t) => {
-              const Icon = t.icon
-              const active = tab === t.id
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => onTabChange(t.id)}
-                  className="inline-flex items-center gap-1.5"
-                  style={{
-                    padding: "4px 9px",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    borderRadius: 4,
-                    background: active ? "var(--crm-gray-900)" : "var(--crm-gray-0)",
-                    color: active ? "var(--crm-gray-0)" : "var(--crm-gray-700)",
-                    border: `1px solid ${active ? "var(--crm-gray-900)" : "var(--crm-border)"}`,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Icon className="h-3 w-3" />
-                  {t.label}
-                </button>
-              )
-            })}
-          </div>
-          <textarea
-            className="w-full outline-none"
-            style={{
-              minHeight: 64,
-              padding: "8px 10px",
-              fontSize: 13,
-              borderRadius: 6,
-              background: "var(--crm-gray-0)",
-              color: "var(--crm-gray-900)",
-              border: "1px solid var(--crm-border)",
-              resize: "vertical",
-              fontFamily: "var(--crm-font-sans)",
-            }}
-            placeholder={
-              tab === "note"
-                ? "Anote uma observação interna..."
-                : tab === "task"
-                  ? "Descreva a tarefa..."
-                  : tab === "call"
-                    ? "Resumo da ligação..."
-                    : "Resumo do email..."
-            }
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault()
-                onSubmit()
-              }
-            }}
-          />
-          <div className="mt-2 flex items-center justify-between gap-2">
-            {tab === "task" ? (
-              <select
-                style={{
-                  height: 28,
-                  padding: "0 8px",
-                  fontSize: 12,
-                  borderRadius: 4,
-                  background: "var(--crm-gray-0)",
-                  color: "var(--crm-gray-700)",
-                  border: "1px solid var(--crm-border)",
-                }}
-                value={dueIn}
-                onChange={(e) => onDueInChange(e.target.value)}
-              >
-                <option value="2">Vence em 2h</option>
-                <option value="24">Vence em 24h</option>
-                <option value="72">Vence em 3 dias</option>
-                <option value="168">Vence em 1 semana</option>
-                <option value="">Sem prazo</option>
-              </select>
-            ) : (
-              <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
-                ⌘/Ctrl+Enter pra enviar
-              </span>
-            )}
+    <div
+      style={{
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 8,
+        padding: 10,
+      }}
+    >
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
+        {COMPOSER_TABS.map((t) => {
+          const Icon = t.icon
+          const active = tab === t.id
+          return (
             <button
-              onClick={onSubmit}
-              disabled={!content.trim() || posting}
+              key={t.id}
+              onClick={() => onTabChange(t.id)}
+              className="inline-flex items-center gap-1.5"
               style={{
-                height: 28,
-                padding: "0 12px",
+                padding: "4px 9px",
                 fontSize: 12,
                 fontWeight: 500,
                 borderRadius: 4,
-                background: "var(--crm-brand)",
-                color: "var(--crm-brand-fg)",
-                border: 0,
-                cursor: posting ? "default" : "pointer",
-                opacity: !content.trim() || posting ? 0.5 : 1,
+                background: active ? "var(--crm-gray-900)" : "var(--crm-gray-0)",
+                color: active ? "var(--crm-gray-0)" : "var(--crm-gray-700)",
+                border: `1px solid ${active ? "var(--crm-gray-900)" : "var(--crm-border)"}`,
+                cursor: "pointer",
               }}
             >
-              {posting ? "Salvando..." : "Adicionar"}
+              <Icon className="h-3 w-3" />
+              {t.label}
             </button>
-          </div>
+          )
+        })}
+      </div>
+      <textarea
+        className="w-full outline-none"
+        autoFocus
+        style={{
+          minHeight: 64,
+          padding: "8px 10px",
+          fontSize: 13,
+          borderRadius: 6,
+          background: "var(--crm-gray-0)",
+          color: "var(--crm-gray-900)",
+          border: "1px solid var(--crm-border)",
+          resize: "vertical",
+          fontFamily: "var(--crm-font-sans)",
+        }}
+        placeholder={
+          tab === "note"
+            ? "Anote uma observação interna..."
+            : tab === "task"
+              ? "Descreva a tarefa..."
+              : tab === "call"
+                ? "Resumo da ligação..."
+                : "Resumo do email..."
+        }
+        value={content}
+        onChange={(e) => onContentChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            onSubmit()
+          }
+          if (e.key === "Escape" && onCancel) {
+            e.preventDefault()
+            onCancel()
+          }
+        }}
+      />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        {tab === "task" ? (
+          <select
+            style={{
+              height: 28,
+              padding: "0 8px",
+              fontSize: 12,
+              borderRadius: 4,
+              background: "var(--crm-gray-0)",
+              color: "var(--crm-gray-700)",
+              border: "1px solid var(--crm-border)",
+            }}
+            value={dueIn}
+            onChange={(e) => onDueInChange(e.target.value)}
+          >
+            <option value="2">Vence em 2h</option>
+            <option value="24">Vence em 24h</option>
+            <option value="72">Vence em 3 dias</option>
+            <option value="168">Vence em 1 semana</option>
+            <option value="">Sem prazo</option>
+          </select>
+        ) : (
+          <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
+            ⌘/Ctrl+Enter pra enviar
+          </span>
+        )}
+        <div className="flex gap-2">
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              style={{
+                height: 28,
+                padding: "0 10px",
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 4,
+                background: "transparent",
+                color: "var(--crm-gray-600)",
+                border: "1px solid var(--crm-border)",
+                cursor: "pointer",
+              }}
+            >
+              Cancelar
+            </button>
+          )}
+          <button
+            onClick={onSubmit}
+            disabled={!content.trim() || posting}
+            style={{
+              height: 28,
+              padding: "0 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              borderRadius: 4,
+              background: "var(--crm-brand)",
+              color: "var(--crm-brand-fg)",
+              border: 0,
+              cursor: posting ? "default" : "pointer",
+              opacity: !content.trim() || posting ? 0.5 : 1,
+            }}
+          >
+            {posting ? "Salvando..." : "Adicionar"}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -1138,7 +1156,37 @@ function LastInteractions({
   activities: DealDetailResponse["activities"]
   loading: boolean
 }) {
-  const visibleActivities = useMemo(() => activities.slice(0, 5), [activities])
+  // Filtro por tipo (DataCrazy-style): all / messages / notes / tasks / calls
+  const [filterType, setFilterType] = useState<
+    "all" | "messages" | "notes" | "tasks" | "calls"
+  >("all")
+  const [expanded, setExpanded] = useState(false)
+
+  const filtered = useMemo(() => {
+    if (filterType === "all") return activities
+    return activities.filter((a) => {
+      if (filterType === "messages")
+        return a.type === "wa_message" || a.type === "ig_message" || a.type === "email"
+      if (filterType === "notes") return a.type === "note"
+      if (filterType === "tasks") return a.type === "task"
+      if (filterType === "calls") return a.type === "call"
+      return true
+    })
+  }, [activities, filterType])
+
+  const visible = useMemo(
+    () => (expanded ? filtered : filtered.slice(0, 5)),
+    [filtered, expanded],
+  )
+
+  const filterPills: Array<{ id: typeof filterType; label: string }> = [
+    { id: "all", label: "Todas" },
+    { id: "messages", label: "Mensagens" },
+    { id: "notes", label: "Notas" },
+    { id: "tasks", label: "Tarefas" },
+    { id: "calls", label: "Ligações" },
+  ]
+
   return (
     <div style={{ marginBottom: 18 }}>
       <div className="flex items-baseline justify-between mb-2.5">
@@ -1152,10 +1200,11 @@ function LastInteractions({
             letterSpacing: "0.06em",
           }}
         >
-          Últimas interações · {activities.length}
+          Últimas interações · {filtered.length}
         </h3>
-        {activities.length > 5 && (
+        {filtered.length > 5 && (
           <button
+            onClick={() => setExpanded((v) => !v)}
             style={{
               background: "transparent",
               border: 0,
@@ -1165,10 +1214,42 @@ function LastInteractions({
               cursor: "pointer",
             }}
           >
-            Ver todas →
+            {expanded ? "Ver menos ↑" : "Ver todas →"}
           </button>
         )}
       </div>
+
+      {/* Filtros por tipo (DataCrazy-style) */}
+      {activities.length > 1 && (
+        <div className="flex gap-1 mb-2 overflow-x-auto">
+          {filterPills.map((p) => {
+            const active = filterType === p.id
+            return (
+              <button
+                key={p.id}
+                onClick={() => setFilterType(p.id)}
+                className="shrink-0"
+                style={{
+                  height: 26,
+                  padding: "0 10px",
+                  fontSize: 11,
+                  fontWeight: active ? 600 : 500,
+                  borderRadius: 999,
+                  background: active ? "var(--crm-blue-50)" : "transparent",
+                  color: active ? "var(--crm-brand)" : "var(--crm-gray-600)",
+                  border: active
+                    ? "1px solid var(--crm-blue-100)"
+                    : "1px solid var(--crm-border)",
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -1183,7 +1264,7 @@ function LastInteractions({
             />
           ))}
         </div>
-      ) : activities.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div
           style={{
             padding: "24px 12px",
@@ -1195,11 +1276,13 @@ function LastInteractions({
             fontSize: 12,
           }}
         >
-          Nenhuma interação registrada ainda.
+          {filterType === "all"
+            ? "Nenhuma interação registrada ainda."
+            : `Nenhuma interação do tipo "${filterPills.find((p) => p.id === filterType)?.label}" ainda.`}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {visibleActivities.map((a) => (
+          {visible.map((a) => (
             <InteractionRow key={a.id} activity={a} />
           ))}
         </div>
@@ -1336,16 +1419,29 @@ function formatRelativeOrShort(d: Date): string {
 
 function NextSteps({
   activities,
+  canAdd,
+  showComposer,
+  onToggleComposer,
+  composer,
 }: {
   activities: DealDetailResponse["activities"]
+  canAdd?: boolean
+  showComposer?: boolean
+  onToggleComposer?: () => void
+  composer?: React.ReactNode
 }) {
   const tasks = useMemo(() => {
     return activities.filter(
       (a) => a.type === "task" && (a.due_at || !a.completed_at),
     )
   }, [activities])
-  if (tasks.length === 0) return null
+
+  // Renderiza a section mesmo sem tasks quando o user pode adicionar
+  // (pra mostrar o botao "+ Adicionar" e o composer inline).
+  if (tasks.length === 0 && !canAdd) return null
+
   const done = tasks.filter((t) => t.completed_at).length
+
   return (
     <div style={{ marginBottom: 18 }}>
       <div className="flex items-baseline justify-between mb-2">
@@ -1359,10 +1455,44 @@ function NextSteps({
             letterSpacing: "0.06em",
           }}
         >
-          Próximos passos · {done}/{tasks.length}
+          Próximos passos
+          {tasks.length > 0 && ` · ${done}/${tasks.length}`}
         </h3>
+        {canAdd && onToggleComposer && (
+          <button
+            onClick={onToggleComposer}
+            style={{
+              background: "transparent",
+              border: 0,
+              color: "var(--crm-brand)",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {showComposer ? "Fechar" : "+ Adicionar"}
+          </button>
+        )}
       </div>
-      <div
+
+      {composer && <div style={{ marginBottom: 8 }}>{composer}</div>}
+
+      {tasks.length === 0 && !showComposer && (
+        <div
+          style={{
+            padding: "16px 12px",
+            textAlign: "center",
+            color: "var(--crm-gray-400)",
+            background: "var(--crm-gray-0)",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 8,
+            fontSize: 12,
+          }}
+        >
+          Nenhuma tarefa pendente. Use &ldquo;+ Adicionar&rdquo; para criar.
+        </div>
+      )}
+      {tasks.length > 0 && <div
         style={{
           background: "var(--crm-gray-0)",
           border: "1px solid var(--crm-border)",
@@ -1426,7 +1556,7 @@ function NextSteps({
             </div>
           )
         })}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -1445,6 +1575,17 @@ function ContactAndFields({
   const email = deal.client?.email ?? deal.lead?.email ?? null
   const phone = deal.client?.phone ?? deal.lead?.phone ?? null
   const company = deal.client?.company ?? null
+  // Site: vem do store.store_url (mais comum) ou de custom_fields.website
+  const cf = (apiDeal?.custom_fields ?? null) as Record<string, unknown> | null
+  const storeUrl = deal.store?.store_url ?? null
+  const website =
+    storeUrl ??
+    (cf && typeof cf.website === "string" ? cf.website : null) ??
+    (cf && typeof cf.site === "string" ? cf.site : null) ??
+    (cf && typeof cf.url_da_sua_loja === "string"
+      ? (cf.url_da_sua_loja as string)
+      : null) ??
+    null
 
   return (
     <div
@@ -1495,7 +1636,14 @@ function ContactAndFields({
               label={company}
             />
           )}
-          {!email && !phone && !company && (
+          {website && (
+            <ContactRow
+              icon={<ExternalLink className="h-3.5 w-3.5" />}
+              label={website.replace(/^https?:\/\//, "")}
+              href={website.startsWith("http") ? website : `https://${website}`}
+            />
+          )}
+          {!email && !phone && !company && !website && (
             <span style={{ fontSize: 12, color: "var(--crm-gray-400)" }}>
               Sem contato registrado
             </span>
@@ -1849,9 +1997,15 @@ function FileRow({
 function AiSuggestion({
   deal,
   apiDeal,
+  contactPhone,
+  contactEmail,
+  onAddActivity,
 }: {
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
+  contactPhone?: string | null
+  contactEmail?: string | null
+  onAddActivity?: () => void
 }) {
   const score =
     apiDeal?.lead?.ai_qualification_score ??
@@ -1862,6 +2016,35 @@ function AiSuggestion({
     apiDeal?.ai_qualification_reason ??
     null
   const stageDays = daysSince(deal.last_stage_changed_at)
+
+  const waLink = contactPhone
+    ? `https://wa.me/${contactPhone.replace(/\D/g, "")}`
+    : null
+  const mailto = contactEmail ? `mailto:${contactEmail}` : null
+
+  // Acao primaria sugerida pelo agente:
+  //   - se ha telefone -> WhatsApp ("Chamar agora")
+  //   - senao se ha email -> Email ("Enviar email")
+  //   - senao -> "Criar atividade"
+  const primaryActionLabel = waLink
+    ? "Chamar agora"
+    : mailto
+      ? "Enviar email"
+      : "Criar atividade"
+  const primaryActionIcon = waLink ? (
+    <MessageSquare className="h-3.5 w-3.5" />
+  ) : mailto ? (
+    <Mail className="h-3.5 w-3.5" />
+  ) : (
+    <Plus className="h-3.5 w-3.5" />
+  )
+
+  const handlePrimary = () => {
+    if (waLink) window.open(waLink, "_blank", "noopener,noreferrer")
+    else if (mailto) window.location.href = mailto
+    else onAddActivity?.()
+  }
+
   return (
     <div
       style={{
@@ -1915,6 +2098,45 @@ function AiSuggestion({
           </>
         )}
         . {reason || "Considere acelerar a próxima ação."}
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={handlePrimary}
+          className="cf-focusable inline-flex items-center gap-1.5"
+          style={{
+            height: 28,
+            padding: "0 12px",
+            fontSize: 12,
+            fontWeight: 500,
+            borderRadius: 6,
+            background: "var(--crm-brand)",
+            color: "var(--crm-brand-fg)",
+            border: 0,
+            cursor: "pointer",
+          }}
+        >
+          {primaryActionIcon}
+          {primaryActionLabel}
+        </button>
+        {onAddActivity && (
+          <button
+            onClick={onAddActivity}
+            className="cf-focusable"
+            style={{
+              height: 28,
+              padding: "0 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              borderRadius: 6,
+              background: "var(--crm-gray-0)",
+              color: "var(--crm-gray-700)",
+              border: "1px solid var(--crm-border)",
+              cursor: "pointer",
+            }}
+          >
+            Outras ações
+          </button>
+        )}
       </div>
     </div>
   )
