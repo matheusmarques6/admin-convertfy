@@ -41,6 +41,13 @@ const TEMPLATES: Record<"sales" | "cs", DraftStage[]> = {
 
 const COLORS = ["#71717A", "#DC2626", "#EA580C", "#D97706", "#059669", "#0284C7", "#1D4ED8", "#7C3AED", "#9333EA", "#DB2777"]
 
+// Sugestoes de categoria pra usar na sidebar agrupada V2.
+// Usuario pode digitar uma livremente; estas sao atalhos.
+const CATEGORY_SUGGESTIONS: Record<"sales" | "cs", string[]> = {
+  sales: ["Comerciais", "Inbound", "Outbound", "Indicacoes", "Parceiros"],
+  cs: ["Operacoes", "Onboarding", "Retencao", "Renovacao"],
+}
+
 export function NewPipelineDialog({
   open,
   onClose,
@@ -51,7 +58,11 @@ export function NewPipelineDialog({
   const toast = useToast()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [color, setColor] = useState(scope === "cs" ? "#059669" : "#2563EB")
+  const [category, setCategory] = useState<string>(
+    scope === "cs" ? "Operacoes" : "Comerciais",
+  )
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [color, setColor] = useState(scope === "cs" ? "#059669" : "#4E62D8")
   const [stages, setStages] = useState<DraftStage[]>(TEMPLATES[scope])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,7 +74,9 @@ export function NewPipelineDialog({
   const reset = () => {
     setName("")
     setDescription("")
-    setColor(scope === "cs" ? "#059669" : "#2563EB")
+    setCategory(scope === "cs" ? "Operacoes" : "Comerciais")
+    setIsFavorite(false)
+    setColor(scope === "cs" ? "#059669" : "#4E62D8")
     setStages(TEMPLATES[scope])
     setError(null)
   }
@@ -115,6 +128,8 @@ export function NewPipelineDialog({
           scope,
           color,
           layout: "kanban",
+          category: category.trim() || null,
+          is_favorite: isFavorite,
           stages: stages.map((s, i) => ({
             name: s.name.trim(),
             color: s.color,
@@ -220,6 +235,46 @@ export function NewPipelineDialog({
                 rows={2}
                 className="w-full px-3 py-2 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 resize-y"
               />
+            </div>
+
+            {/* Categoria + Favorito */}
+            <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="pipe-cat"
+                  className="text-[12px] font-medium text-slate-700 dark:text-white/75"
+                >
+                  Categoria
+                  <span className="text-slate-400 dark:text-white/40 ml-1 font-normal">
+                    (agrupamento na sidebar)
+                  </span>
+                </label>
+                <input
+                  id="pipe-cat"
+                  type="text"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Ex: Comerciais, Inbound, Outbound..."
+                  list="pipe-cat-suggestions"
+                  className="w-full h-9 px-3 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30"
+                />
+                <datalist id="pipe-cat-suggestions">
+                  {CATEGORY_SUGGESTIONS[scope].map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer h-9">
+                <input
+                  type="checkbox"
+                  checked={isFavorite}
+                  onChange={(e) => setIsFavorite(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span className="text-[12px] font-medium text-slate-700 dark:text-white/75">
+                  ★ Favorito
+                </span>
+              </label>
             </div>
 
             {/* Cor do pipeline */}

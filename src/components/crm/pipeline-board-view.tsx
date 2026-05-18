@@ -37,6 +37,8 @@ interface PipelineDetailResponse {
     color: string | null
     layout: string | null
     is_default?: boolean
+    is_favorite?: boolean
+    category?: string | null
     stages: Array<KanbanStage & {
       order?: number
       description?: string | null
@@ -393,7 +395,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                   >
                     {pipeline.name}
                   </h1>
-                  {(pipeline as { is_favorite?: boolean }).is_favorite && (
+                  {pipeline.is_favorite && (
                     <span style={{ color: "var(--crm-amber)", fontSize: 14 }}>
                       ★
                     </span>
@@ -810,6 +812,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
             scope: pipeline.scope,
             color: pipeline.color,
             is_default: pipeline.is_default,
+            category: pipeline.category ?? null,
+            is_favorite: pipeline.is_favorite ?? false,
             stages: pipeline.stages.map((s) => ({
               id: s.id,
               name: s.name,

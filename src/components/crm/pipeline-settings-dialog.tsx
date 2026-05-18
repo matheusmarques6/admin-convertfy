@@ -57,6 +57,8 @@ interface PipelineSummary {
   description: string | null
   scope: string
   color: string | null
+  category?: string | null
+  is_favorite?: boolean
   is_default?: boolean
   stages: Stage[]
 }
@@ -135,8 +137,10 @@ export function PipelineSettingsDialog({
   // Estado local pra metadata do pipeline (edit local + botao salvar).
   const [name, setName] = useState(pipeline.name)
   const [description, setDescription] = useState(pipeline.description ?? "")
-  const [color, setColor] = useState(pipeline.color ?? "#1F1F1F")
+  const [color, setColor] = useState(pipeline.color ?? "#4E62D8")
   const [isDefault, setIsDefault] = useState(pipeline.is_default ?? false)
+  const [category, setCategory] = useState(pipeline.category ?? "")
+  const [isFavorite, setIsFavorite] = useState(pipeline.is_favorite ?? false)
 
   // Stages: estado local pra reorder otimista (depois sincroniza).
   const [stages, setStages] = useState<Stage[]>(pipeline.stages)
@@ -168,8 +172,10 @@ export function PipelineSettingsDialog({
     if (!open) return
     setName(pipeline.name)
     setDescription(pipeline.description ?? "")
-    setColor(pipeline.color ?? "#1F1F1F")
+    setColor(pipeline.color ?? "#4E62D8")
     setIsDefault(pipeline.is_default ?? false)
+    setCategory(pipeline.category ?? "")
+    setIsFavorite(pipeline.is_favorite ?? false)
     setStages(pipeline.stages)
   }, [open, pipeline])
 
@@ -177,10 +183,12 @@ export function PipelineSettingsDialog({
     return (
       name.trim() !== pipeline.name ||
       (description.trim() || "") !== (pipeline.description || "") ||
-      color !== (pipeline.color ?? "#1F1F1F") ||
-      isDefault !== (pipeline.is_default ?? false)
+      color !== (pipeline.color ?? "#4E62D8") ||
+      isDefault !== (pipeline.is_default ?? false) ||
+      (category.trim() || "") !== (pipeline.category || "") ||
+      isFavorite !== (pipeline.is_favorite ?? false)
     )
-  }, [name, description, color, isDefault, pipeline])
+  }, [name, description, color, isDefault, category, isFavorite, pipeline])
 
   // ── Save metadata ──
   const handleSaveMeta = async () => {
@@ -201,6 +209,8 @@ export function PipelineSettingsDialog({
           description: description.trim() || null,
           color,
           is_default: isDefault,
+          category: category.trim() || null,
+          is_favorite: isFavorite,
         }),
       })
       toast.toast({ title: "Pipeline atualizado" })
@@ -453,6 +463,37 @@ export function PipelineSettingsDialog({
                   ))}
                 </div>
               </Field>
+
+              <Field
+                label="Categoria"
+                hint="Agrupamento na sidebar de pipelines"
+              >
+                <input
+                  type="text"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Ex: Comerciais, Inbound, Outbound..."
+                  className="w-full h-9 px-3 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30"
+                />
+              </Field>
+
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isFavorite}
+                  onChange={(e) => setIsFavorite(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-white/20 cursor-pointer"
+                />
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-1.5 text-[13px] font-medium text-slate-800 dark:text-white/85">
+                    <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                    Marcar como favorito
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed">
+                    Pipelines favoritos aparecem no topo da sidebar.
+                  </p>
+                </div>
+              </label>
 
               <label className="flex items-start gap-2.5 cursor-pointer select-none">
                 <input
@@ -793,16 +834,23 @@ function SectionHeading({
 function Field({
   label,
   required,
+  hint,
   children,
 }: {
   label: string
   required?: boolean
+  hint?: string
   children: React.ReactNode
 }) {
   return (
     <div className="space-y-1.5">
       <label className="text-[12px] font-medium text-slate-700 dark:text-white/75 block">
         {label} {required && <span className="text-red-500">*</span>}
+        {hint && (
+          <span className="ml-1 text-slate-400 dark:text-white/40 font-normal">
+            ({hint})
+          </span>
+        )}
       </label>
       {children}
     </div>

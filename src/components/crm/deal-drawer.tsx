@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react"
 import { CustomFieldsPanel } from "./custom-fields-panel"
+import { LostReasonDialog } from "./lost-reason-dialog"
 import type { DealFile } from "@/types/crm"
 
 const fetcher = async (url: string) => {
@@ -204,6 +205,8 @@ export function DealDrawer({
   const [composerDueIn, setComposerDueIn] = useState<string>("24")
   const [posting, setPosting] = useState(false)
   const [showComposer, setShowComposer] = useState(false)
+  // Quando mover pra terminal-lost stage, exibe o dialog de razao
+  const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -252,17 +255,33 @@ export function DealDrawer({
     }
   }
 
-  const moveToStage = async (stageId: string) => {
+  const moveToStage = async (stageId: string, lostReason?: string) => {
     if (!dealId) return
+    // Se for stage do tipo 'lost' e nao tem razao, abre o dialog
+    const target = pipelineStages?.find((s) => s.id === stageId)
+    if (target?.stage_type === "lost" && !lostReason) {
+      setPendingLostStageId(stageId)
+      return
+    }
+    const body: Record<string, unknown> = { stage_id: stageId, position: 10 }
+    if (lostReason) body.lost_reason = lostReason
     const res = await fetch(`/api/crm/deals/${dealId}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage_id: stageId, position: 10 }),
+      body: JSON.stringify(body),
     })
     if (res.ok) {
       await mutate()
       onUpdated?.()
     }
+  }
+
+  const confirmLostMove = async (reason: string, comment: string) => {
+    if (!pendingLostStageId) return
+    const stageId = pendingLostStageId
+    setPendingLostStageId(null)
+    const fullReason = comment ? `${reason} — ${comment}` : reason
+    await moveToStage(stageId, fullReason)
   }
 
   return (
@@ -381,6 +400,12 @@ export function DealDrawer({
           )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
+
+      <LostReasonDialog
+        open={pendingLostStageId !== null}
+        onConfirm={confirmLostMove}
+        onCancel={() => setPendingLostStageId(null)}
+      />
     </DialogPrimitive.Root>
   )
 }
