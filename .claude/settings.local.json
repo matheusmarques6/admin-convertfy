@@ -7,7 +7,8 @@
       "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__execute_sql",
       "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__apply_migration",
       "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__get_advisors",
-      "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__list_migrations"
+      "mcp__9cbb1b16-0ba2-4b74-abe0-07978c8ada78__list_migrations",
+      "Bash(grep -o '<body[^>]*>.*</body>' /root/.claude/uploads/d3d542fe-a224-45f2-87f4-edafef334e21/9f2f275a-01___Tela_cheia___interativa.html 2>/dev/null | head -c 5000 || sed -n '/<body/,/<\\\\/body>/p' /root/.claude/uploads/d3d542fe-a224-45f2-87f4-edafef334e21/9f2f275a-01___Tela_cheia___interativa.html | head -100)"
     ]
   },
   "hooks": {
