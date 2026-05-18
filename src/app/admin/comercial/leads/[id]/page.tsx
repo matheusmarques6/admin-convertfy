@@ -1,11 +1,17 @@
-import { redirect } from "next/navigation"
-import { ROUTES } from "@/lib/routes"
+import { Suspense } from "react"
+import { LeadDetailView } from "@/components/crm/lead-detail-view"
 
-export default async function SalesLeadRedirect({
+export const dynamic = "force-dynamic"
+
+export default async function SalesLeadDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  redirect(`${ROUTES.ADMIN.COMERCIAL.LEADS}?lead=${id}`)
+  return (
+    <Suspense fallback={null}>
+      <LeadDetailView leadId={id} />
+    </Suspense>
+  )
 }
