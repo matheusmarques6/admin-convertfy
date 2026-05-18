@@ -484,10 +484,7 @@ export async function fetchOmnisendStatistics(
               { name: "attributedRevenue" },
               { name: "attributedOrders" },
             ],
-            dateRange: {
-              from: startDate,
-              to: endDate,
-            },
+            dateRange: { interval: "custom", from: startDate, to: endDate },
             dimensions: [{ name: "timestamp", granularity: "day" }],
           }],
         },
@@ -850,10 +847,7 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "openedUnique" },
                 { name: "clickedUnique" },
               ],
-              dateRange: {
-                from: startDate,
-                to: endDate,
-              },
+              dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [
                 { name: "timestamp", granularity: "day" },
                 { name: "marketingActivityID" },
@@ -871,25 +865,19 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "openedUnique" },
                 { name: "clickedUnique" },
               ],
-              dateRange: {
-                from: startDate,
-                to: endDate,
-              },
+              dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [
                 { name: "timestamp", granularity: "day" },
                 { name: "marketingActivityID" },
               ],
               filters: [
-                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
+                { name: "marketingActivityType", operator: "in", values: ["Workflow"] },
               ],
             },
             {
               alias: "total",
               metrics: [{ name: "totalRevenue" }, { name: "totalOrders" }],
-              dateRange: {
-                from: startDate,
-                to: endDate,
-              },
+              dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
             // 4a query: engagement TOTAL agregado do periodo.
@@ -916,10 +904,7 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "clickedUnique" },
                 { name: "failed" },
               ],
-              dateRange: {
-                from: startDate,
-                to: endDate,
-              },
+              dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [{ name: "timestamp", granularity: "month" }],
             },
           ],
@@ -1101,7 +1086,7 @@ export async function fetchOmnisendReports(
               alias: "aggCampaign",
               metrics: [
                 { name: "attributedRevenue" },
-                { name: "attributedOrders" },
+                { name: "attributedOrdersUnique" },
               ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
               filters: [
@@ -1112,11 +1097,15 @@ export async function fetchOmnisendReports(
               alias: "aggAutomation",
               metrics: [
                 { name: "attributedRevenue" },
-                { name: "attributedOrders" },
+                { name: "attributedOrdersUnique" },
               ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
               filters: [
-                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
+                // VALOR CORRETO confirmado pelo suporte Omnisend (2026-05-18):
+                // o dashboard chama de "Automation" mas o filter value e
+                // "Workflow". Antes usavamos "Automation" e API silenciosamente
+                // retornava menos revenue.
+                { name: "marketingActivityType", operator: "in", values: ["Workflow"] },
               ],
             },
           ],
@@ -1131,11 +1120,11 @@ export async function fetchOmnisendReports(
     const automationRow = findRow("aggAutomation")
     if (campaignRow) {
       result.campaignAttributedRevenue = Number(campaignRow.attributedRevenue) || 0
-      result.campaignAttributedOrders = Number(campaignRow.attributedOrders) || 0
+      result.campaignAttributedOrders = Number(campaignRow.attributedOrdersUnique) || 0
     }
     if (automationRow) {
       result.automationAttributedRevenue = Number(automationRow.attributedRevenue) || 0
-      result.automationAttributedOrders = Number(automationRow.attributedOrders) || 0
+      result.automationAttributedOrders = Number(automationRow.attributedOrdersUnique) || 0
     }
     if (row) {
       log.info(`[OmnisendReports] row received: ${JSON.stringify(row).slice(0, 400)}`)

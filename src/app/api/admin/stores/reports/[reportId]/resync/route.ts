@@ -244,16 +244,19 @@ export async function POST(
       (receitaCampanhas + receitaFlows) ||
       Number(cachedSummary?.omnisend_total_revenue ?? cachedSummary?.klaviyo_total_revenue) || 0
 
+    // Total store revenue: prefere Omnisend Statistics API (totalRevenue)
+    // que e a fonte do dashboard. Shopify direto fica como fallback porque
+    // diverge (filtros de status, refunds) — confirmado pelo suporte 2026-05-18.
     const totalRevenue =
-      Number(sh.totalRevenue) ||
       Number(rv.storeRevenue) ||
       Number(cachedSummary?.store_total_revenue) ||
+      Number(sh.totalRevenue) ||
       attributedRevenue
 
     const pedidos =
-      Number(sh.totalOrders) ||
       Number(rv.storeOrders) ||
       Number(cachedSummary?.store_orders) ||
+      Number(sh.totalOrders) ||
       Number(rv.klaviyoAttributedOrders) ||
       Number(cachedSummary?.omnisend_total_orders) || 0
 
