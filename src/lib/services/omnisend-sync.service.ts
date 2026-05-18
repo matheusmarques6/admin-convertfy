@@ -1529,14 +1529,25 @@ async function doSyncOmnisendForStore(params: {
     if (reportsCampaign > 0 || reportsAutomation > 0) {
       // Fonte primaria: Reports API com filter por marketingActivityType.
       // Bate 1:1 com o dashboard "Marketing activity performance".
+      //
+      // IMPORTANTE: o dashboard tem identidade `Campaigns + Automation =
+      // Total From Omnisend`. Mas a API com filter "Automation" sozinha
+      // pode perder revenue de outros tipos que o dashboard agrupa em
+      // "Automation" (ex: TransactionalEmail, BehavioralTrigger). Pra
+      // garantir consistencia matematica e bater 1:1, derivamos automation
+      // como `total - campaign` em vez de usar o valor filtered direto.
+      // Diferenca observada Blue Wolf Apr 2026: filtered $25.5k vs
+      // dashboard $26.2k ($723 nao capturados pelo filter "Automation").
       totalCampaignRevenueFinal = reportsCampaign
-      totalAutomationRevenueFinal = reportsAutomation
       totalAttributedRevenueFinal = reportsAttributed || (reportsCampaign + reportsAutomation)
+      totalAutomationRevenueFinal = Math.max(0, totalAttributedRevenueFinal - reportsCampaign)
       log.info("[OmnisendSync] Using Reports API split (send-date, matches dashboard)", {
         storeId,
         reportsCampaign,
-        reportsAutomation,
+        reportsAutomationFiltered: reportsAutomation,
+        reportsAutomationDerived: totalAutomationRevenueFinal,
         reportsAttributed,
+        derivedDelta: totalAutomationRevenueFinal - reportsAutomation,
         statsCampSum,
         statsAutoSum,
         statsAttributed,
