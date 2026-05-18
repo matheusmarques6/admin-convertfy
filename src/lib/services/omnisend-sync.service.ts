@@ -545,6 +545,13 @@ export interface OmnisendReportsResult {
   attributedOrdersUnique: number
   attributedRevenuePerOrder: number
   attributedRevenuePerSent: number
+  // Per-type breakdown (send-date attribution, matches dashboard "Marketing
+  // activity performance" tile). Confirmado pelo suporte Omnisend que
+  // Reports API aceita `filters: [marketingActivityType in [Campaign]]`.
+  campaignAttributedRevenue: number
+  campaignAttributedOrders: number
+  automationAttributedRevenue: number
+  automationAttributedOrders: number
   // Engagement
   sent: number
   opened: number
@@ -570,6 +577,10 @@ const EMPTY_REPORTS_RESULT: OmnisendReportsResult = {
   attributedOrdersUnique: 0,
   attributedRevenuePerOrder: 0,
   attributedRevenuePerSent: 0,
+  campaignAttributedRevenue: 0,
+  campaignAttributedOrders: 0,
+  automationAttributedRevenue: 0,
+  automationAttributedOrders: 0,
   sent: 0,
   opened: 0,
   openedUnique: 0,
@@ -1052,51 +1063,83 @@ export async function fetchOmnisendReports(
         omnisendVersion: "2026-preview",
         authStyle: "bearer",
         body: {
-          queries: [{
-            alias: "agg",
-            // Metrics suportados pela Statistics API 2026-preview (validado
-            // pelo erro 400 do retorno: "Allowed: sent, sentCost, opened,
-            // openedUnique, openRate, clicked, clickedUnique, clickRate,
-            // failed, failRate, markedAsSpamUnique, markedAsSpamRate,
-            // unsubscribedUnique, unsubscribeRate, attributedOrders,
-            // attributedOrdersUnique, attributedOrderRate, attributedRevenue").
-            //
-            // Removidos (causavam 400):
-            //   - bounced / bounceRate (nao existem no Omnisend; bounce
-            //     vai pro failed/failRate)
-            //   - attributedRevenuePerOrder / attributedRevenuePerSent
-            //     (nao expostos via metrics; calcula no client se precisar)
-            metrics: [
-              { name: "attributedRevenue" },
-              { name: "attributedOrders" },
-              { name: "attributedOrdersUnique" },
-              { name: "sent" },
-              { name: "opened" },
-              { name: "openedUnique" },
-              { name: "openRate" },
-              { name: "clicked" },
-              { name: "clickedUnique" },
-              { name: "clickRate" },
-              { name: "failed" },
-              { name: "failRate" },
-              { name: "unsubscribedUnique" },
-              { name: "unsubscribeRate" },
-              { name: "markedAsSpamUnique" },
-              { name: "markedAsSpamRate" },
-            ],
-            dateRange: {
-              interval: "custom",
-              from: startDate,
-              to: endDate,
+          queries: [
+            {
+              alias: "agg",
+              // Metrics suportados pela Statistics API 2026-preview (validado
+              // pelo erro 400 do retorno: "Allowed: sent, sentCost, opened,
+              // openedUnique, openRate, clicked, clickedUnique, clickRate,
+              // failed, failRate, markedAsSpamUnique, markedAsSpamRate,
+              // unsubscribedUnique, unsubscribeRate, attributedOrders,
+              // attributedOrdersUnique, attributedOrderRate, attributedRevenue").
+              metrics: [
+                { name: "attributedRevenue" },
+                { name: "attributedOrders" },
+                { name: "attributedOrdersUnique" },
+                { name: "sent" },
+                { name: "opened" },
+                { name: "openedUnique" },
+                { name: "openRate" },
+                { name: "clicked" },
+                { name: "clickedUnique" },
+                { name: "clickRate" },
+                { name: "failed" },
+                { name: "failRate" },
+                { name: "unsubscribedUnique" },
+                { name: "unsubscribeRate" },
+                { name: "markedAsSpamUnique" },
+                { name: "markedAsSpamRate" },
+              ],
+              dateRange: { interval: "custom", from: startDate, to: endDate },
             },
-          }],
+            // Per-type splits — Reports API com filter retorna o mesmo split
+            // que o dashboard mostra em "Marketing activity performance".
+            // Antes calibravamos via ratio do Statistics API (event-date),
+            // mas isso divergia ~7% do dashboard porque Statistics e Reports
+            // tem janela de atribuicao diferente.
+            {
+              alias: "aggCampaign",
+              metrics: [
+                { name: "attributedRevenue" },
+                { name: "attributedOrders" },
+              ],
+              dateRange: { interval: "custom", from: startDate, to: endDate },
+              filters: [
+                { name: "marketingActivityType", operator: "in", values: ["Campaign"] },
+              ],
+            },
+            {
+              alias: "aggAutomation",
+              metrics: [
+                { name: "attributedRevenue" },
+                { name: "attributedOrders" },
+              ],
+              dateRange: { interval: "custom", from: startDate, to: endDate },
+              filters: [
+                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
+              ],
+            },
+          ],
         },
       }
     )
 
-    const row = resp?.reports?.[0]?.rows?.[0]
+    const findRow = (alias: string) =>
+      resp?.reports?.find((r) => r.alias === alias)?.rows?.[0]
+    const row = findRow("agg") ?? resp?.reports?.[0]?.rows?.[0]
+    const campaignRow = findRow("aggCampaign")
+    const automationRow = findRow("aggAutomation")
+    if (campaignRow) {
+      result.campaignAttributedRevenue = Number(campaignRow.attributedRevenue) || 0
+      result.campaignAttributedOrders = Number(campaignRow.attributedOrders) || 0
+    }
+    if (automationRow) {
+      result.automationAttributedRevenue = Number(automationRow.attributedRevenue) || 0
+      result.automationAttributedOrders = Number(automationRow.attributedOrders) || 0
+    }
     if (row) {
       log.info(`[OmnisendReports] row received: ${JSON.stringify(row).slice(0, 400)}`)
+      log.info(`[OmnisendReports] split: campaign=${result.campaignAttributedRevenue}, automation=${result.automationAttributedRevenue}`)
       result.attributedRevenue = Number(row.attributedRevenue) || 0
       result.attributedOrders = Number(row.attributedOrders) || 0
       result.attributedOrdersUnique = Number(row.attributedOrdersUnique) || 0
@@ -1446,29 +1489,40 @@ async function doSyncOmnisendForStore(params: {
     //   - /statistics: agrega por DATA DO EVENTO (quando o pedido aconteceu)
     //   - /reports: agrega por DATA DE ENVIO (quando o email foi disparado)
     //
-    // Mesmo pedido pode aparecer em dias diferentes no /statistics se a
-    // atribuicao se estende — pedido em D+5 atribuido a um envio em D+0
-    // pode contar em ambos os dias se a janela de atribuicao se sobrepoe.
-    // Isso gera divergencia (~1.9x visto na Blessed Choice: stats R$ 693K
-    // vs reports R$ 366K).
-    //
     // O dashboard do Omnisend usa send-date — entao /reports e o que bate
-    // com o que o cliente ve. Estrategia: usar /reports como fonte de
-    // verdade pro total atribuido, e calibrar o split campaign/automation
-    // (so o /statistics consegue separar) pela proporcao do statistics.
+    // com o que o cliente ve. Agora /reports tambem retorna split per-type
+    // (aggCampaign + aggAutomation com filter marketingActivityType), entao
+    // usamos os splits DIRETO do Reports API. Antes calibravamos via ratio
+    // do Statistics API, mas divergia ~7% do dashboard (ex: dashboard
+    // R$52k/R$264k vs nosso R$48k/R$267k pra Blessed Choice Apr 2026).
     const statsCampSum = totalCampaignsRevenue
     const statsAutoSum = totalAutomationsRevenue
     const statsAttributed = statsCampSum + statsAutoSum
     const reportsAttributed = reportsTotals.attributedRevenue || 0
+    const reportsCampaign = reportsTotals.campaignAttributedRevenue || 0
+    const reportsAutomation = reportsTotals.automationAttributedRevenue || 0
 
-    // Calibracao SEMPRE quando ambas fontes tem valor (sem threshold).
-    // Antes usavamos 5% mas pequenas-mas-reais divergencias passavam.
-    // Como /reports e a fonte que bate com o dashboard Omnisend, sempre
-    // alinhamos com ela quando disponivel.
     let totalCampaignRevenueFinal = statsCampSum
     let totalAutomationRevenueFinal = statsAutoSum
     let totalAttributedRevenueFinal = statsAttributed
-    if (reportsAttributed > 0 && statsAttributed > 0) {
+    if (reportsCampaign > 0 || reportsAutomation > 0) {
+      // Fonte primaria: Reports API com filter por marketingActivityType.
+      // Bate 1:1 com o dashboard "Marketing activity performance".
+      totalCampaignRevenueFinal = reportsCampaign
+      totalAutomationRevenueFinal = reportsAutomation
+      totalAttributedRevenueFinal = reportsAttributed || (reportsCampaign + reportsAutomation)
+      log.info("[OmnisendSync] Using Reports API split (send-date, matches dashboard)", {
+        storeId,
+        reportsCampaign,
+        reportsAutomation,
+        reportsAttributed,
+        statsCampSum,
+        statsAutoSum,
+        statsAttributed,
+      })
+    } else if (reportsAttributed > 0 && statsAttributed > 0) {
+      // Fallback: split filtrado vazio. Mantem calibracao por ratio do
+      // Statistics API contra total do Reports API.
       const ratio = reportsAttributed / statsAttributed
       totalCampaignRevenueFinal = statsCampSum * ratio
       totalAutomationRevenueFinal = statsAutoSum * ratio

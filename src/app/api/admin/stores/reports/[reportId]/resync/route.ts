@@ -42,11 +42,16 @@ export async function POST(
     const periodParam = `period=custom&start_date=${report.period_start}&end_date=${report.period_end}`
     const cookie = request.headers.get("cookie") ?? ""
 
-    // Timeout individual de 25s por fetch — evita que um endpoint lento
-    // (Omnisend rate limit, Klaviyo cold) bloqueie a operacao toda.
+    // Timeout individual de 75s por fetch — antes era 25s, mas o
+    // /email-platform/campaigns faz um live sync da Omnisend que combina
+    // Statistics + Reports + /v5/campaigns + /v5/automations e leva
+    // 30-50s pra Blessed Choice. Timeout curto abortava ANTES do sync
+    // persistir, deixando o cache vazio — causa do resync produzir
+    // numeros diferentes da criacao nova (que nao tem timeout). 75s
+    // mantem margem de seguranca dentro do maxDuration=90s da route.
     async function fetchJson(url: string, tag: string): Promise<Record<string, unknown> | null> {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 25_000)
+      const timer = setTimeout(() => controller.abort(), 75_000)
       try {
         const r = await fetch(url, { headers: { cookie }, signal: controller.signal })
         clearTimeout(timer)
