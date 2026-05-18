@@ -219,65 +219,162 @@ export function TabContexto({ storeId }: { storeId: string }) {
         <StoreBriefingTab storeId={storeId} clientId={storeLite.client_id ?? null} />
       </Section>
 
-      {/* OPERAÇÃO */}
-      <Section id="operacao" title="Operação & catálogo" onEdit={() => setEditing(editing === "operacao" ? null : "operacao")}>
-        {editing === "operacao" ? (
-          <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Kpi label="Ticket médio" value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(0)}` : "—"} />
-              <Kpi label="Taxa de conversão" value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2)}%` : "—"} />
-              <Kpi label="Faturamento médio (3m)" value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1000).toFixed(0)}k` : "—"} />
-              <Kpi label="Margem média" value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"} />
-              <Kpi label="Recorrência" value={ctx.recorrencia ?? "—"} />
-              <Kpi label="Frete médio" value={ctx.frete_medio_cents ? `R$ ${(ctx.frete_medio_cents / 100).toFixed(0)}` : "—"} />
-              <Kpi label="Prazo entrega" value={ctx.frete_prazo ?? "—"} />
-              <Kpi label="Cobertura" value={ctx.frete_cobertura ?? "—"} />
-            </div>
+      {/* OPERAÇÃO — estética alinhada à Pesquisa (header creme, h2 Playfair) */}
+      <section
+        id="operacao"
+        className="bg-white border rounded-[10px] overflow-hidden"
+        style={{ borderColor: "rgba(0,0,0,0.06)" }}
+      >
+        <header
+          className="px-5 py-4 border-b flex items-center justify-between gap-3"
+          style={{
+            background: "linear-gradient(180deg, #FDFBF6 0%, #FFFFFF 100%)",
+            borderColor: "rgba(0,0,0,0.05)",
+          }}
+        >
+          <div className="flex items-baseline gap-3 min-w-0">
+            <span
+              className="font-bold shrink-0"
+              style={{
+                fontFamily: "'Playfair Display', serif",
+                color: "#4E62D8",
+                fontSize: 28,
+                lineHeight: 1,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              06
+            </span>
+            <h3
+              className="m-0 text-slate-900"
+              style={{
+                fontFamily: "'Playfair Display', serif",
+                fontSize: 19,
+                fontWeight: 600,
+                lineHeight: 1.2,
+              }}
+            >
+              Operação &amp; catálogo
+            </h3>
+          </div>
+          <button
+            onClick={() => setEditing(editing === "operacao" ? null : "operacao")}
+            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-100 border"
+            style={{ borderColor: "rgba(0,0,0,0.08)" }}
+          >
+            <Edit2 className="h-3 w-3" /> Editar
+          </button>
+        </header>
 
-            <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                Top 5 produtos (TrendTrack)
+        <div className="p-5">
+          {editing === "operacao" ? (
+            <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
+          ) : (
+            <>
+              {/* KPIs no mesmo padrão visual da Pesquisa (label uppercase 9.5px + valor serif 17px) */}
+              <div
+                className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-5 mb-5 border-b"
+                style={{ borderColor: "rgba(0,0,0,0.06)" }}
+              >
+                <OpKpi
+                  label="Ticket médio"
+                  value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(2).replace(".", ",")}` : "—"}
+                  sub="média 30d"
+                />
+                <OpKpi
+                  label="Taxa de conversão"
+                  value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2).replace(".", ",")}%` : "—"}
+                  sub="benchmark 1,8%"
+                />
+                <OpKpi
+                  label="Faturamento médio"
+                  value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1_000_000).toFixed(1).replace(".", ",")} mi` : "—"}
+                  sub="médio últimos 3m"
+                />
+                <OpKpi
+                  label="Margem média"
+                  value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"}
+                  sub="declarada"
+                />
               </div>
-              {topProducts.length === 0 ? (
-                <div className="text-[12px] text-slate-400 italic py-2">
-                  Nenhum produto capturado ainda.
-                </div>
-              ) : (
-                <ul className="space-y-1.5">
-                  {topProducts.map((p) => (
-                    <li
-                      key={`${p.rank}-${p.external_id ?? p.title}`}
-                      className="flex items-center gap-3 text-[12.5px]"
-                    >
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10.5px] font-bold bg-slate-100 text-slate-600">
-                        {p.rank}
-                      </span>
-                      {p.image_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={p.image_url}
-                          alt=""
-                          className="w-8 h-8 rounded object-cover border"
-                          style={{ borderColor: "rgba(0,0,0,0.06)" }}
-                        />
-                      )}
-                      <span className="flex-1 text-slate-800 truncate">{p.title}</span>
-                      {p.price != null && (
-                        <span className="text-slate-500 tabular-nums">
-                          {p.currency ? `${p.currency} ` : "R$ "}
-                          {Number(p.price).toFixed(2)}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
-      </Section>
+
+              {/* Top 5 produtos · tabela alinhada ao protótipo */}
+              <div>
+                <header className="flex items-baseline justify-between gap-3 mb-3">
+                  <h4
+                    className="m-0 text-slate-900"
+                    style={{
+                      fontFamily: "'Playfair Display', serif",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    Top 5 produtos
+                  </h4>
+                  <span className="text-[10.5px] text-slate-400 font-medium">
+                    captado pela TrendTrack
+                  </span>
+                </header>
+
+                {topProducts.length === 0 ? (
+                  <div className="text-[12px] text-slate-400 italic py-2">
+                    Nenhum produto capturado ainda.
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-md border" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                    <table className="w-full text-left text-[12.5px]">
+                      <thead>
+                        <tr
+                          className="border-b"
+                          style={{
+                            background: "#FAFAF7",
+                            borderColor: "rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2 w-8">#</th>
+                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2">Produto</th>
+                          <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2 text-right w-28">Preço</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topProducts.map((p, i) => (
+                          <tr
+                            key={`${p.rank}-${p.external_id ?? p.title}`}
+                            className={i < topProducts.length - 1 ? "border-b" : ""}
+                            style={{ borderColor: "rgba(0,0,0,0.04)" }}
+                          >
+                            <td className="px-3 py-2.5 tabular-nums text-slate-500 font-semibold">{p.rank}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2.5">
+                                {p.image_url && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={p.image_url}
+                                    alt=""
+                                    className="w-8 h-8 rounded object-cover border shrink-0"
+                                    style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                                  />
+                                )}
+                                <span className="text-slate-800 leading-tight">{p.title}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                              {p.price != null
+                                ? `${p.currency ? p.currency + " " : "R$ "}${Number(p.price).toFixed(2).replace(".", ",")}`
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       {/* LISTA & ENGAJAMENTO */}
       <Section id="lista-engajamento" title="Lista & engajamento" onEdit={() => setEditing(editing === "lista" ? null : "lista")}>
@@ -388,6 +485,33 @@ function Kpi({ label, value }: { label: string; value: string }) {
     <div className="rounded-md bg-slate-50 border px-3 py-2.5" style={{ borderColor: "rgba(0,0,0,0.04)" }}>
       <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</div>
       <div className="text-[16px] font-bold text-slate-900 tabular-nums leading-none">{value}</div>
+    </div>
+  )
+}
+
+/**
+ * KPI editorial usado na seção Operação & catálogo — alinhado com a
+ * tipografia da Pesquisa (label uppercase 9.5px + valor serif Playfair +
+ * sub-rótulo cinza). Sem fundo cinza para combinar com o cartão branco.
+ */
+function OpKpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">
+        {label}
+      </span>
+      <span
+        className="text-slate-900 leading-tight"
+        style={{
+          fontFamily: "'Playfair Display', serif",
+          fontSize: 22,
+          fontWeight: 600,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {value}
+      </span>
+      {sub && <span className="text-[10.5px] text-slate-400 leading-tight">{sub}</span>}
     </div>
   )
 }
