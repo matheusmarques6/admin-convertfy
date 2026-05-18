@@ -1,12 +1,12 @@
 /**
  * Briefing Generation Service
  *
- * Chama o webhook do n8n para gerar o briefing a partir das respostas
- * do formulario. Como o n8n e assincrono (10-30s), marca status como
- * "generating" e espera callback em /api/webhooks/n8n/briefing-generated.
+ * Gera o briefing a partir das respostas do formulario via Claude
+ * (Anthropic SDK) e persiste em `onboardings.briefing`.
  *
- * Se N8N_BRIEFING_WEBHOOK_URL nao estiver configurada, faz fallback
- * via Claude API direta (mesmo modelo do AI chat).
+ * Marca status como "generating" antes da chamada e "generated_pending_review"
+ * quando salva. Se a IA falhar, volta pra "not_started" com mensagem de erro
+ * em `briefing.error`.
  */
 
 import Anthropic from "@anthropic-ai/sdk"
@@ -16,7 +16,7 @@ import type { BriefingContent } from "@/types/onboarding-pipeline"
 
 const log = logger.child("BriefingGeneration")
 
-const FALLBACK_SYSTEM = `Você é assistente da Convertfy (agência de email marketing). Sua tarefa: a partir das respostas do formulário de onboarding de uma loja, gerar um BRIEFING estruturado em JSON com a forma:
+const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marketing). Sua tarefa: a partir das respostas do formulário de onboarding de uma loja, gerar um BRIEFING estruturado em JSON com a forma:
 
 {
   "about_brand": "...",
@@ -36,7 +36,9 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
   const admin = createAdminClient()
   const { data: onb } = await admin
     .from("onboardings")
-    .select("id, org_id, form_responses, client_id, store_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name, store_url, platform)")
+    .select(
+      "id, org_id, form_responses, client_id, store_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name, store_url, platform)",
+    )
     .eq("id", onboardingId)
     .maybeSingle()
   if (!onb) {
@@ -49,43 +51,6 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
     .update({ briefing_status: "generating" })
     .eq("id", onboardingId)
 
-  const n8nUrl = process.env.N8N_BRIEFING_WEBHOOK_URL
-  if (n8nUrl) {
-    try {
-      const res = await fetch(n8nUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-secret": process.env.N8N_WEBHOOK_SECRET ?? "",
-        },
-        body: JSON.stringify({
-          onboarding_id: onboardingId,
-          form_responses: onb.form_responses,
-          client: onb.client,
-          store: onb.store,
-          callback_url: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/webhooks/n8n/briefing-generated`,
-        }),
-      })
-      if (!res.ok) {
-        log.warn("n8n webhook respondeu erro, fazendo fallback Claude", {
-          status: res.status,
-        })
-        await generateViaFallback(onboardingId, onb)
-      }
-    } catch (e) {
-      log.warn("n8n webhook falhou, fallback Claude", e)
-      await generateViaFallback(onboardingId, onb)
-    }
-  } else {
-    // Fallback Claude direto (mais simples e funcional pra producao agora)
-    await generateViaFallback(onboardingId, onb)
-  }
-}
-
-async function generateViaFallback(
-  onboardingId: string,
-  onb: { form_responses: unknown; client: unknown; store: unknown; org_id: string },
-): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     log.error("ANTHROPIC_API_KEY nao configurada — briefing nao pode ser gerado")
@@ -100,7 +65,7 @@ async function generateViaFallback(
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2048,
-      system: FALLBACK_SYSTEM,
+      system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     })
 
@@ -117,7 +82,7 @@ async function generateViaFallback(
     const briefing = JSON.parse(jsonMatch[0]) as BriefingContent
     await saveBriefing(onboardingId, briefing)
   } catch (e) {
-    log.error("Fallback Claude falhou", e)
+    log.error("Geracao do briefing falhou", e)
     await markBriefingFailed(onboardingId, (e as Error).message)
   }
 }
