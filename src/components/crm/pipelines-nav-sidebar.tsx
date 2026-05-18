@@ -1,72 +1,95 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import useSWR from "swr"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { useRouter } from "next/navigation"
 import {
   Plus,
   Search,
-  GitBranch,
-  HeartHandshake,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Star,
+  StarOff,
   MoreHorizontal,
   Trash2,
-  Star as StarOff,
-  ChevronRight,
-  Star,
+  Settings,
+  DollarSign,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { NewPipelineDialog } from "./new-pipeline-dialog"
+import type { Pipeline } from "@/types/crm"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-interface PipelineSummary {
-  id: string
-  name: string
-  description: string | null
-  scope: string
-  color: string | null
-  layout: string | null
-  is_archived: boolean
-  is_default?: boolean
-  stages: Array<{ id: string; name: string; position: number; stage_type: string | null }>
-  deals_count: number
+interface PipelineSummary extends Omit<Pipeline, "stages"> {
+  stages: Array<{ id: string; name: string; position?: number; stage_type: string | null }>
+  deal_count: number
+  total_value?: number
 }
 
 interface PipelinesNavSidebarProps {
   scope: "sales" | "cs"
 }
 
+interface PipelineGroup {
+  label: string
+  count: number
+  pipelines: PipelineSummary[]
+}
+
+const COLLAPSED_KEY = "crm-pipelines-sidebar-collapsed"
+const COLLAPSED_GROUPS_KEY = "crm-pipelines-collapsed-groups"
+
 /**
- * Sidebar de navegação entre pipelines do CRM (estilo DataCrazy).
+ * Sidebar V2 dos pipelines do CRM (Convertfy DS).
  *
- * Lista todos os pipelines do scope (sales/cs) com badge de contagem
- * de deals abertos. Item ativo destacado pelo pathname atual.
+ * Estrutura:
+ *   - Header com icone Layers + titulo + contador total + botao toggle
+ *   - "Novo pipeline" primario (gradient brand)
+ *   - Search local
+ *   - Lista AGRUPADA por categoria (colapsavel cada grupo)
+ *   - Cada item: dot colorido + nome + star (favorito) + descricao + stats
+ *   - Footer: botao "Configurar pipelines"
  *
- * Inclui:
- *   - Header com titulo + botão "Novo pipeline" primário
- *   - Busca local com debounce visual (filtra na hora)
- *   - Lista com dot colorido (cor do pipeline) + nome + descrição
- *   - Active state: bg accent muito sutil + border-left forte
- *   - Skeleton enquanto carrega
- *   - Empty state quando não há pipelines
+ * Estados:
+ *   - Expandido: 280px (padrao)
+ *   - Colapsado: 44px (so dots + toggle), preferencia salva em localStorage
  */
-export function PipelinesNavSidebar({
-  scope,
-}: PipelinesNavSidebarProps) {
+export function PipelinesNavSidebar({ scope }: PipelinesNavSidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  const { data, isLoading, mutate } = useSWR<{ pipelines: PipelineSummary[] }>(
+  // Restaura preferencia de collapsed/grupos do localStorage
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem(COLLAPSED_KEY)
+      if (c === "1") setCollapsed(true)
+      const g = localStorage.getItem(COLLAPSED_GROUPS_KEY)
+      if (g) setCollapsedGroups(new Set(JSON.parse(g)))
+    } catch {
+      /* noop */
+    }
+  }, [])
+
+  const { data, isLoading, mutate } = useSWR<{ data?: { pipelines: PipelineSummary[] }; pipelines?: PipelineSummary[] }>(
     `/api/crm/pipelines?scope=${scope}`,
     fetcher,
   )
 
-  const pipelines = useMemo(() => data?.pipelines ?? [], [data?.pipelines])
+  // O endpoint retorna { success, data: { pipelines, scope } } via successResponse
+  const pipelines = useMemo<PipelineSummary[]>(
+    () => data?.data?.pipelines ?? data?.pipelines ?? [],
+    [data],
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -74,52 +97,188 @@ export function PipelinesNavSidebar({
     return pipelines.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q),
+        (p.description || "").toLowerCase().includes(q) ||
+        (p.category || "").toLowerCase().includes(q),
     )
   }, [pipelines, search])
 
-  // Identifica o pipeline ativo pelo pathname (.../pipelines/[id])
+  // Agrupa por category (ordem: favoritos primeiro dentro de cada grupo)
+  const groups = useMemo<PipelineGroup[]>(() => {
+    const byCat = new Map<string, PipelineSummary[]>()
+    for (const p of filtered) {
+      const k = p.category || "Sem categoria"
+      const arr = byCat.get(k) || []
+      arr.push(p)
+      byCat.set(k, arr)
+    }
+    // Ordena pipelines dentro de cada grupo: favoritos primeiro, depois alfabetico
+    for (const [k, arr] of byCat.entries()) {
+      arr.sort((a, b) => {
+        if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      byCat.set(k, arr)
+    }
+    // Ordem dos grupos: "Comerciais" primeiro (scope=sales), depois outros, "Sem categoria" por ultimo
+    const order = ["Comerciais", "Operacoes", "Operações", "Producao", "Produção"]
+    const sorted = Array.from(byCat.entries()).sort(([a], [b]) => {
+      if (a === "Sem categoria") return 1
+      if (b === "Sem categoria") return -1
+      const ai = order.indexOf(a)
+      const bi = order.indexOf(b)
+      if (ai >= 0 && bi >= 0) return ai - bi
+      if (ai >= 0) return -1
+      if (bi >= 0) return 1
+      return a.localeCompare(b)
+    })
+    return sorted.map(([label, pipes]) => ({
+      label,
+      count: pipes.length,
+      pipelines: pipes,
+    }))
+  }, [filtered])
+
   const activeId = useMemo(() => {
     const m = pathname.match(/\/pipelines\/([^/?#]+)/)
     return m?.[1] ?? null
   }, [pathname])
 
-  const Icon = scope === "cs" ? HeartHandshake : GitBranch
-  const sectionLabel = scope === "cs" ? "Pipelines CS" : "Pipelines comerciais"
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0")
+    } catch {
+      /* noop */
+    }
+  }
+
+  const toggleGroup = (label: string) => {
+    const next = new Set(collapsedGroups)
+    if (next.has(label)) next.delete(label)
+    else next.add(label)
+    setCollapsedGroups(next)
+    try {
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(Array.from(next)))
+    } catch {
+      /* noop */
+    }
+  }
+
+  // ── Versao colapsada ──────────────────────────────────────────
+  if (collapsed) {
+    return (
+      <aside
+        className="flex h-full flex-col shrink-0 items-center gap-2 py-3"
+        style={{
+          width: "var(--crm-pipeline-sidebar-collapsed)",
+          background: "var(--crm-gray-0)",
+          borderRight: "1px solid var(--crm-border)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title="Expandir"
+          className="cf-focusable flex h-7 w-7 items-center justify-center rounded-[6px] border text-slate-600 hover:bg-slate-50 dark:text-white/70"
+          style={{ borderColor: "var(--crm-border)" }}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <div className="h-px w-6 my-1" style={{ background: "var(--crm-gray-100)" }} />
+        {pipelines.slice(0, 12).map((p) => {
+          const isActive = p.id === activeId
+          return (
+            <Link
+              key={p.id}
+              href={pipelineHref(scope, p.id)}
+              title={p.name}
+              className={cn(
+                "cf-focusable flex h-7 w-7 items-center justify-center rounded-[6px] transition-colors",
+                isActive ? "" : "hover:bg-slate-50",
+              )}
+              style={{
+                background: isActive ? "var(--crm-blue-50)" : "transparent",
+              }}
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: p.color ?? "var(--crm-gray-500)" }}
+              />
+            </Link>
+          )
+        })}
+      </aside>
+    )
+  }
+
+  // ── Versao expandida (padrao) ────────────────────────────────
+  const sectionLabel = scope === "cs" ? "Pipelines CS" : "Pipelines"
+  const dialogScope: "sales" | "cs" = scope
 
   return (
     <aside
-      className={cn(
-        "flex h-full flex-col shrink-0 overflow-hidden",
-        "w-[280px] border-r border-black/[0.06] dark:border-white/[0.08]",
-        "bg-white dark:bg-[#0F1117]",
-      )}
+      className="flex h-full flex-col shrink-0 overflow-hidden"
+      style={{
+        width: "var(--crm-pipeline-sidebar-width)",
+        background: "var(--crm-gray-0)",
+        borderRight: "1px solid var(--crm-border)",
+        fontFamily: "var(--crm-font-sans)",
+      }}
     >
       {/* ── Header ── */}
-      <div className="px-4 pt-4 pb-3 border-b border-black/[0.04] dark:border-white/[0.06]">
-        <div className="flex items-center gap-2 mb-3">
-          <Icon className="h-4 w-4 text-slate-500 dark:text-white/55 shrink-0" />
-          <h2 className="text-[13px] font-semibold text-slate-900 dark:text-white/95 truncate flex-1">
+      <div
+        className="flex items-center justify-between px-4 py-3.5"
+        style={{ borderBottom: "1px solid var(--crm-gray-100)" }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <Layers className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--crm-gray-500)" }} />
+          <h2
+            className="text-[14px] truncate"
+            style={{
+              color: "var(--crm-gray-900)",
+              fontWeight: "var(--crm-weight-semibold)",
+            }}
+          >
             {sectionLabel}
           </h2>
           {pipelines.length > 0 && (
-            <span className="text-[10px] font-medium text-slate-400 dark:text-white/40 tabular-nums">
+            <span
+              className="crm-tnum text-[11px]"
+              style={{
+                color: "var(--crm-gray-500)",
+                fontWeight: "var(--crm-weight-medium)",
+              }}
+            >
               {pipelines.length}
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title="Recolher"
+          className="cf-focusable flex h-6 w-6 items-center justify-center rounded-[4px] hover:bg-slate-50"
+          style={{ color: "var(--crm-gray-400)" }}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+      </div>
 
+      {/* ── Novo pipeline ── */}
+      <div className="px-3 pt-3 pb-2">
         <button
           type="button"
           onClick={() => setNewDialogOpen(true)}
-          className={cn(
-            "w-full flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px]",
-            "text-[12px] font-semibold text-white",
-            scope === "cs"
-              ? "bg-[#059669] hover:bg-[#047857] active:bg-[#065F46] shadow-[0_1px_2px_rgba(5,150,105,0.25)]"
-              : "bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] shadow-[0_1px_2px_rgba(37,99,235,0.25)]",
-            "transition-colors",
-          )}
+          className="cf-focusable w-full flex h-[34px] items-center justify-center gap-1.5 rounded-[6px] text-[13px] transition-colors"
+          style={{
+            background: "var(--crm-brand)",
+            color: "var(--crm-brand-fg)",
+            fontWeight: "var(--crm-weight-semibold)",
+            border: 0,
+          }}
+          onMouseEnter={(e) => ((e.currentTarget.style.background = "var(--crm-brand-hover)"))}
+          onMouseLeave={(e) => ((e.currentTarget.style.background = "var(--crm-brand)"))}
         >
           <Plus className="h-3.5 w-3.5" />
           Novo pipeline
@@ -127,29 +286,33 @@ export function PipelinesNavSidebar({
       </div>
 
       {/* ── Busca ── */}
-      {pipelines.length > 3 && (
-        <div className="relative px-4 pt-3 pb-2">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-white/40 pointer-events-none" />
+      {pipelines.length > 4 && (
+        <div className="relative px-3 pb-2">
+          <Search
+            className="absolute left-5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none"
+            style={{ color: "var(--crm-gray-400)" }}
+          />
           <input
             type="text"
             placeholder="Buscar pipeline..."
             aria-label="Buscar pipeline"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className={cn(
-              "w-full h-8 rounded-[6px] pl-8 pr-7 text-[12px]",
-              "bg-slate-50 dark:bg-white/[0.04]",
-              "border border-black/[0.06] dark:border-white/[0.06]",
-              "text-slate-900 dark:text-white/90",
-              "placeholder:text-slate-400 dark:placeholder:text-white/30",
-              "focus:outline-none focus:border-slate-300 dark:focus:border-white/20",
-            )}
+            className="w-full h-[30px] rounded-[6px] pl-7 pr-7 text-[12px] outline-none transition-colors"
+            style={{
+              background: "var(--crm-gray-0)",
+              border: "1px solid var(--crm-border)",
+              color: "var(--crm-gray-700)",
+              fontFamily: "var(--crm-font-sans)",
+            }}
           />
           {search && (
             <button
+              type="button"
               onClick={() => setSearch("")}
               aria-label="Limpar busca"
-              className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white/70"
+              className="absolute right-5 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--crm-gray-400)" }}
             >
               <X className="h-3 w-3" />
             </button>
@@ -157,47 +320,134 @@ export function PipelinesNavSidebar({
         </div>
       )}
 
-      {/* ── Lista ── */}
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      {/* ── Lista agrupada ── */}
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
         {isLoading ? (
           <PipelinesSkeleton />
-        ) : filtered.length === 0 && pipelines.length === 0 ? (
+        ) : pipelines.length === 0 ? (
           <PipelinesEmpty scope={scope} />
         ) : filtered.length === 0 ? (
-          <div className="px-3 py-6 text-center text-[11px] text-slate-400 dark:text-white/40">
+          <div className="px-3 py-6 text-center text-[11px]" style={{ color: "var(--crm-gray-400)" }}>
             Nenhum pipeline corresponde a &ldquo;{search}&rdquo;.
           </div>
         ) : (
-          <ul className="space-y-0.5" role="list">
-            {filtered.map((p) => (
-              <PipelineItem
-                key={p.id}
-                pipeline={p}
-                href={pipelineHref(scope, p.id)}
-                active={p.id === activeId}
-                onChanged={() => mutate()}
-              />
-            ))}
-          </ul>
+          groups.map((g) => (
+            <PipelineGroupBlock
+              key={g.label}
+              group={g}
+              collapsed={collapsedGroups.has(g.label)}
+              onToggle={() => toggleGroup(g.label)}
+              activeId={activeId}
+              scope={scope}
+              onChanged={() => mutate()}
+            />
+          ))
         )}
+      </div>
+
+      {/* ── Footer: configurar ── */}
+      <div
+        className="px-3 py-2.5"
+        style={{ borderTop: "1px solid var(--crm-gray-100)" }}
+      >
+        <button
+          type="button"
+          onClick={() => router.push(`/admin/comercial/pipelines/admin`)}
+          className="cf-focusable w-full flex h-[30px] items-center justify-center gap-1.5 rounded-[6px] text-[12px] transition-colors"
+          style={{
+            background: "var(--crm-gray-0)",
+            border: "1px solid var(--crm-border)",
+            color: "var(--crm-gray-600)",
+            fontWeight: "var(--crm-weight-medium)",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget.style.background = "var(--crm-gray-100)"))}
+          onMouseLeave={(e) => ((e.currentTarget.style.background = "var(--crm-gray-0)"))}
+        >
+          <Settings className="h-3 w-3" />
+          Configurar pipelines
+        </button>
       </div>
 
       <NewPipelineDialog
         open={newDialogOpen}
-        scope={scope}
+        scope={dialogScope}
         onClose={() => setNewDialogOpen(false)}
-        onCreated={() => {
-          // Revalida lista pra mostrar o novo pipeline imediatamente.
-          // O proprio dialog ja faz router.push pra abrir o board do
-          // pipeline recem-criado.
-          mutate()
-        }}
+        onCreated={() => mutate()}
       />
     </aside>
   )
 }
 
-// ─── Sub-componentes ────────────────────────────────────────────
+// ─── Grupo de pipelines (colapsavel) ─────────────────────────────
+
+function PipelineGroupBlock({
+  group,
+  collapsed,
+  onToggle,
+  activeId,
+  scope,
+  onChanged,
+}: {
+  group: PipelineGroup
+  collapsed: boolean
+  onToggle: () => void
+  activeId: string | null
+  scope: "sales" | "cs"
+  onChanged: () => void
+}) {
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="cf-focusable w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] hover:bg-slate-50 group"
+      >
+        <div className="flex items-center gap-1.5">
+          <ChevronDown
+            className="h-3 w-3 transition-transform"
+            style={{
+              color: "var(--crm-gray-400)",
+              transform: collapsed ? "rotate(-90deg)" : "none",
+            }}
+          />
+          <span
+            className="text-[12px] truncate"
+            style={{
+              color: "var(--crm-gray-700)",
+              fontWeight: "var(--crm-weight-semibold)",
+            }}
+          >
+            {group.label}
+          </span>
+        </div>
+        <span
+          className="crm-tnum text-[10px]"
+          style={{
+            color: "var(--crm-gray-400)",
+            fontWeight: "var(--crm-weight-semibold)",
+          }}
+        >
+          {group.count}
+        </span>
+      </button>
+      {!collapsed && (
+        <ul className="space-y-0.5 mt-0.5" role="list">
+          {group.pipelines.map((p) => (
+            <PipelineItem
+              key={p.id}
+              pipeline={p}
+              href={pipelineHref(scope, p.id)}
+              active={p.id === activeId}
+              onChanged={onChanged}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ─── Item individual ─────────────────────────────────────────────
 
 function PipelineItem({
   pipeline,
@@ -210,16 +460,18 @@ function PipelineItem({
   active: boolean
   onChanged: () => void
 }) {
-  const dotColor = pipeline.color ?? "#475569"
+  const dotColor = pipeline.color ?? "#4E62D8"
   const router = useRouter()
+  const stageCount = pipeline.stages?.length ?? 0
+  const dealCount = pipeline.deal_count ?? 0
 
   const handleDelete = async (e: Event) => {
     e.preventDefault()
     e.stopPropagation()
-    const dealsCount = pipeline.deals_count ?? 0
-    const aviso = dealsCount > 0
-      ? `O pipeline "${pipeline.name}" tem ${dealsCount} deal(s). Excluir vai mover esses deals pra archived. Continuar?`
-      : `Excluir o pipeline "${pipeline.name}"? Esta ação não pode ser desfeita.`
+    const aviso =
+      dealCount > 0
+        ? `O pipeline "${pipeline.name}" tem ${dealCount} deal(s). Excluir vai arquivar esses deals. Continuar?`
+        : `Excluir o pipeline "${pipeline.name}"? Esta ação não pode ser desfeita.`
     if (!window.confirm(aviso)) return
     try {
       const res = await fetch(`/api/crm/pipelines/${pipeline.id}`, { method: "DELETE" })
@@ -228,11 +480,25 @@ function PipelineItem({
         window.alert(`Falha ao excluir: ${body.error?.message ?? body.error ?? res.statusText}`)
         return
       }
-      // Se estava ativo, redireciona pra home do scope
       if (active) router.push(href.replace(/\/[^/]+$/, ""))
       onChanged()
     } catch (err) {
       window.alert(`Erro: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const handleToggleFavorite = async (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/crm/pipelines/${pipeline.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_favorite: !pipeline.is_favorite }),
+      })
+      if (res.ok) onChanged()
+    } catch {
+      /* noop */
     }
   }
 
@@ -255,88 +521,112 @@ function PipelineItem({
     <li className="relative group">
       <Link
         href={href}
-        className={cn(
-          "relative flex items-start gap-2.5 rounded-[6px] px-2.5 py-2 transition-colors",
-          active
-            ? "bg-slate-100 dark:bg-white/[0.06]"
-            : "hover:bg-slate-50 dark:hover:bg-white/[0.03]",
-        )}
         aria-current={active ? "page" : undefined}
+        className="relative flex items-start gap-2 rounded-[6px] px-2.5 py-2 transition-colors"
+        style={{
+          background: active ? "var(--crm-blue-50)" : "transparent",
+        }}
+        onMouseEnter={(e) => {
+          if (!active) (e.currentTarget.style.background = "var(--crm-gray-50)")
+        }}
+        onMouseLeave={(e) => {
+          if (!active) (e.currentTarget.style.background = "transparent")
+        }}
       >
-        {/* Indicador lateral colorido quando ativo */}
+        {/* Barra colorida lateral quando ativo */}
         {active && (
           <span
             aria-hidden
-            className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full"
-            style={{ background: dotColor }}
+            className="absolute left-[-8px] top-1.5 bottom-1.5 w-[3px] rounded-r-[2px]"
+            style={{ background: "var(--crm-brand)" }}
           />
         )}
 
-        {/* Dot colorido (cor do pipeline) */}
+        {/* Dot colorido (pipeline color) */}
         <span
           aria-hidden
-          className="mt-1 shrink-0 h-2 w-2 rounded-full"
+          className="mt-[3px] h-2 w-2 shrink-0 rounded-full"
           style={{ background: dotColor }}
         />
 
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
+          {/* Nome + fav star */}
+          <span className="flex items-center gap-1">
             <span
-              className={cn(
-                "truncate text-[13px] leading-tight",
-                active
-                  ? "font-semibold text-slate-900 dark:text-white"
-                  : "font-medium text-slate-800 dark:text-white/85",
-              )}
+              className="truncate text-[13px] leading-tight"
+              style={{
+                color: active ? "var(--crm-brand)" : "var(--crm-gray-900)",
+                fontWeight: active
+                  ? "var(--crm-weight-semibold)"
+                  : "var(--crm-weight-medium)",
+              }}
             >
               {pipeline.name}
             </span>
-            {pipeline.is_default && (
+            {pipeline.is_favorite && (
               <Star
-                className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400"
-                aria-label="Pipeline padrao"
+                className="h-2.5 w-2.5 shrink-0 fill-amber-500 text-amber-500"
+                aria-label="Pipeline favorito"
               />
             )}
+            {pipeline.is_default && (
+              <span
+                className="text-[9px] uppercase tracking-wider px-1 rounded-[2px]"
+                style={{
+                  color: "var(--crm-gray-500)",
+                  background: "var(--crm-gray-100)",
+                  fontWeight: "var(--crm-weight-semibold)",
+                }}
+              >
+                DEFAULT
+              </span>
+            )}
           </span>
+
+          {/* Descricao */}
           {pipeline.description && (
             <span
-              className={cn(
-                "block truncate text-[11px] leading-tight mt-0.5",
-                active
-                  ? "text-slate-600 dark:text-white/60"
-                  : "text-slate-500 dark:text-white/45",
-              )}
+              className="block truncate text-[11px] leading-tight mt-0.5"
+              style={{ color: "var(--crm-gray-500)" }}
             >
               {pipeline.description}
             </span>
           )}
-          {/* Stats compactas: deals_count + stages */}
-          <span className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-white/40 tabular-nums">
-            <span>
-              {pipeline.deals_count} {pipeline.deals_count === 1 ? "deal" : "deals"}
+
+          {/* Stats: deals + etapas */}
+          <span
+            className="crm-tnum mt-1.5 flex items-center gap-1.5 text-[10px]"
+            style={{ color: "var(--crm-gray-500)" }}
+          >
+            <span className="inline-flex items-center gap-0.5">
+              <DollarSign className="h-2.5 w-2.5" />
+              {dealCount} {dealCount === 1 ? "deal" : "deals"}
             </span>
-            {pipeline.stages.length > 0 && (
+            {stageCount > 0 && (
               <>
-                <span aria-hidden>·</span>
-                <span>{pipeline.stages.length} etapas</span>
+                <span aria-hidden style={{ color: "var(--crm-gray-300)" }}>
+                  ·
+                </span>
+                <span className="inline-flex items-center gap-0.5">
+                  <Layers className="h-2.5 w-2.5" />
+                  {stageCount} etapas
+                </span>
               </>
             )}
           </span>
         </span>
 
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 shrink-0 mt-1 transition-opacity",
-            active
-              ? "opacity-100 text-slate-700 dark:text-white/70"
-              : "opacity-0 group-hover:opacity-60 text-slate-400 dark:text-white/40",
-          )}
-          aria-hidden
-        />
+        {active && (
+          <ChevronRight
+            className="h-3 w-3 shrink-0 mt-1"
+            style={{ color: "var(--crm-brand)" }}
+            aria-hidden
+          />
+        )}
       </Link>
 
-      {/* Menu de ações (... aparece no hover) — posicionado absoluto sobre o Link */}
-      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 data-[open=true]:opacity-100">
+      {/* Menu de acoes (... no hover) */}
+      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button
@@ -346,7 +636,11 @@ function PipelineItem({
               }}
               aria-label="Opções do pipeline"
               title="Ações do pipeline"
-              className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white transition-colors"
+              className="flex h-6 w-6 items-center justify-center rounded-[4px]"
+              style={{
+                background: "var(--crm-gray-100)",
+                color: "var(--crm-gray-600)",
+              }}
             >
               <MoreHorizontal className="h-3 w-3" />
             </button>
@@ -355,19 +649,42 @@ function PipelineItem({
             <DropdownMenu.Content
               align="end"
               sideOffset={4}
-              className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
+              className="z-50 min-w-[200px] rounded-[6px] py-1"
+              style={{
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-border)",
+                boxShadow: "var(--crm-shadow-lg)",
+              }}
             >
               <DropdownMenu.Item
-                onSelect={handleSetDefault}
-                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 dark:text-white/85 cursor-pointer outline-none hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                onSelect={handleToggleFavorite}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer outline-none data-[highlighted]:bg-slate-50"
+                style={{ color: "var(--crm-gray-700)" }}
               >
-                <StarOff className={cn("h-3.5 w-3.5", pipeline.is_default ? "text-amber-400 fill-amber-400" : "text-slate-400")} />
+                <Star
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    pipeline.is_favorite ? "fill-amber-500 text-amber-500" : "text-slate-400",
+                  )}
+                />
+                {pipeline.is_favorite ? "Remover favorito" : "Marcar favorito"}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={handleSetDefault}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer outline-none data-[highlighted]:bg-slate-50"
+                style={{ color: "var(--crm-gray-700)" }}
+              >
+                <StarOff className="h-3.5 w-3.5 text-slate-400" />
                 {pipeline.is_default ? "Remover padrão" : "Definir como padrão"}
               </DropdownMenu.Item>
-              <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
+              <DropdownMenu.Separator
+                className="h-px my-1"
+                style={{ background: "var(--crm-gray-100)" }}
+              />
               <DropdownMenu.Item
                 onSelect={handleDelete}
-                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-red-600 cursor-pointer outline-none hover:bg-red-50 dark:hover:bg-red-500/10"
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer outline-none data-[highlighted]:bg-red-50"
+                style={{ color: "var(--crm-neg)" }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Excluir pipeline
@@ -380,19 +697,39 @@ function PipelineItem({
   )
 }
 
+// ─── Skeleton ───────────────────────────────────────────────────
+
 function PipelinesSkeleton() {
   return (
-    <ul className="space-y-1 px-1" aria-hidden>
-      {Array.from({ length: 4 }).map((_, i) => (
+    <ul className="space-y-1 px-1 mt-2" aria-hidden>
+      {Array.from({ length: 5 }).map((_, i) => (
         <li
           key={i}
           className="rounded-[6px] px-2.5 py-2 animate-pulse flex items-start gap-2.5"
         >
-          <span className="mt-1 h-2 w-2 rounded-full bg-slate-200 dark:bg-white/[0.10]" />
+          <span
+            className="mt-1 h-2 w-2 rounded-full"
+            style={{ background: "var(--crm-gray-200)" }}
+          />
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 rounded bg-slate-200 dark:bg-white/[0.08]" style={{ width: `${60 + i * 8}%` }} />
-            <div className="h-2 rounded bg-slate-100 dark:bg-white/[0.05] w-full" />
-            <div className="h-2 rounded bg-slate-100 dark:bg-white/[0.05]" style={{ width: "40%" }} />
+            <div
+              className="h-3 rounded"
+              style={{
+                background: "var(--crm-gray-200)",
+                width: `${60 + i * 8}%`,
+              }}
+            />
+            <div
+              className="h-2 rounded w-full"
+              style={{ background: "var(--crm-gray-100)" }}
+            />
+            <div
+              className="h-2 rounded"
+              style={{
+                background: "var(--crm-gray-100)",
+                width: "40%",
+              }}
+            />
           </div>
         </li>
       ))}
@@ -400,23 +737,36 @@ function PipelinesSkeleton() {
   )
 }
 
+// ─── Empty ──────────────────────────────────────────────────────
+
 function PipelinesEmpty({ scope }: { scope: "sales" | "cs" }) {
   return (
     <div className="px-4 py-8 text-center">
-      <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-400 dark:text-white/40 mb-3">
-        {scope === "cs" ? (
-          <HeartHandshake className="h-4 w-4" />
-        ) : (
-          <GitBranch className="h-4 w-4" />
-        )}
+      <div
+        className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] mb-3"
+        style={{
+          background: "var(--crm-blue-50)",
+          color: "var(--crm-brand)",
+        }}
+      >
+        <Layers className="h-4 w-4" />
       </div>
-      <p className="text-[12px] font-medium text-slate-700 dark:text-white/70">
+      <p
+        className="text-[12px]"
+        style={{
+          color: "var(--crm-gray-700)",
+          fontWeight: "var(--crm-weight-medium)",
+        }}
+      >
         Nenhum pipeline ainda
       </p>
-      <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45 leading-relaxed">
+      <p
+        className="mt-1 text-[11px] leading-relaxed"
+        style={{ color: "var(--crm-gray-500)" }}
+      >
         Pipelines organizam o fluxo de{" "}
-        {scope === "cs" ? "pós-venda e CS" : "aquisição e prospecção"}{" "}
-        em estagios.
+        {scope === "cs" ? "pós-venda e CS" : "aquisição e prospecção"} em
+        etapas.
       </p>
     </div>
   )

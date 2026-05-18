@@ -28,12 +28,13 @@ export async function GET(request: NextRequest) {
     const scopeRaw = request.nextUrl.searchParams.get("scope") || "all"
     const scope = scopeSchema.parse(scopeRaw)
 
+    // Select com * pra ser resiliente caso a migration de category/is_favorite
+    // ainda nao tenha rodado em algum ambiente — colunas novas simplesmente nao
+    // virao no payload, mas o resto continua funcionando.
     let q = admin
       .from("pipelines")
       .select(`
-        id, name, description, scope, color, layout,
-        is_default, is_archived, is_favorite, category,
-        default_assignee_id, created_at, updated_at,
+        *,
         pipeline_stages (
           id, name, color, "order", stage_type, sla_hours, description, exit_criteria
         )
@@ -114,23 +115,42 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = createPipelineSchema.parse(body)
 
-    const { data: pipeline, error } = await admin
+    // Payload base + campos opcionais (incluidos so se enviados, pra ser
+    // resiliente a ambientes onde a migration de category/is_favorite
+    // ainda nao rodou).
+    const insertPayload: Record<string, unknown> = {
+      name: parsed.name,
+      description: parsed.description ?? null,
+      scope: parsed.scope,
+      color: parsed.color,
+      layout: parsed.layout,
+      default_assignee_id: parsed.default_assignee_id ?? null,
+      created_by: user.id,
+    }
+    if (parsed.category !== undefined) insertPayload.category = parsed.category
+    if (parsed.is_favorite !== undefined) insertPayload.is_favorite = parsed.is_favorite
+
+    let { data: pipeline, error } = await admin
       .from("pipelines")
-      .insert({
-        name: parsed.name,
-        description: parsed.description ?? null,
-        scope: parsed.scope,
-        color: parsed.color,
-        layout: parsed.layout,
-        category: parsed.category ?? null,
-        is_favorite: parsed.is_favorite,
-        default_assignee_id: parsed.default_assignee_id ?? null,
-        created_by: user.id,
-      })
+      .insert(insertPayload)
       .select("id")
       .single()
 
-    if (error) throw error
+    // Retry sem category/is_favorite se a migration nao tiver rodado
+    if (error && /column .* does not exist/i.test(error.message)) {
+      log.warn("[Pipelines] retrying without category/is_favorite (migration pending)")
+      delete insertPayload.category
+      delete insertPayload.is_favorite
+      const retry = await admin
+        .from("pipelines")
+        .insert(insertPayload)
+        .select("id")
+        .single()
+      pipeline = retry.data
+      error = retry.error
+    }
+
+    if (error || !pipeline) throw error
 
     const stagesPayload = parsed.stages.map((s) => ({
       pipeline_id: pipeline.id,

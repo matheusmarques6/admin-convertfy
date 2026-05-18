@@ -25,12 +25,12 @@ export async function GET(
     await requireAuth(sb)
     const admin = createAdminClient()
 
+    // Select com * pra ser resiliente caso a migration de category/is_favorite
+    // ainda nao tenha rodado.
     const { data: pipeline, error: pErr } = await admin
       .from("pipelines")
       .select(`
-        id, name, description, scope, color, layout,
-        is_default, is_archived, is_favorite, category,
-        default_assignee_id, created_at, updated_at,
+        *,
         pipeline_stages (
           id, name, color, "order", stage_type, sla_hours, description, exit_criteria
         )
@@ -184,10 +184,24 @@ export async function PATCH(
       }
     }
 
-    const { error } = await admin
+    // Resiliente caso migration de category/is_favorite nao tenha rodado:
+    // tenta primeiro com o payload completo, retry omitindo os campos novos.
+    const updatePayload: Record<string, unknown> = { ...parsed }
+    let { error } = await admin
       .from("pipelines")
-      .update(parsed)
+      .update(updatePayload)
       .eq("id", id)
+
+    if (error && /column .* does not exist/i.test(error.message)) {
+      log.warn("[Pipelines] PATCH retrying without category/is_favorite (migration pending)")
+      delete updatePayload.category
+      delete updatePayload.is_favorite
+      const retry = await admin
+        .from("pipelines")
+        .update(updatePayload)
+        .eq("id", id)
+      error = retry.error
+    }
 
     if (error) throw error
     return successResponse(request, { ok: true })
