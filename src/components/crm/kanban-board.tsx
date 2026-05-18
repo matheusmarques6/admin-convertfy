@@ -7,7 +7,7 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, AlertCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Plus, Flag, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { DealCard, type DealCardData } from "./deal-card"
 
@@ -39,39 +39,29 @@ interface KanbanBoardProps {
 
 const fmtBRLCompact = (v: number): string => {
   if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace(".", ",")}M`
-  if (v >= 1_000) return `R$ ${Math.round(v / 1_000)}K`
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(v)
+  if (v >= 1_000) return `R$ ${Math.round(v / 1_000)}k`
+  return "R$ " + Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })
 }
 
 // Cor default por stage_type — usada quando stage.color e null.
-// Tons saturados estilo DataCrazy: open=ardosia, won=verde esmeralda,
-// lost=vermelho coral, paused=ambar.
 const STAGE_TYPE_DEFAULT_COLOR: Record<string, string> = {
-  open: "#475569",
-  won: "#059669",
-  lost: "#DC2626",
+  open: "#6B7280",
+  won: "#065F46",
+  lost: "#991B1B",
   paused: "#D97706",
 }
 
 function stageColor(stage: KanbanStage): string {
   if (stage.color) return stage.color
-  return STAGE_TYPE_DEFAULT_COLOR[stage.stage_type || "open"] || "#475569"
+  return STAGE_TYPE_DEFAULT_COLOR[stage.stage_type || "open"] || "#6B7280"
 }
 
-function daysSince(iso: string | null): number {
+function daysSince(iso: string | null | undefined): number {
   if (!iso) return 0
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
 }
 
-/**
- * Converte um hex (#RRGGBB) num rgba com alpha. Usado pra gerar versoes
- * mais claras da cor da etapa pro background do header sem precisar de
- * variaveis CSS extras.
- */
+/** Hex → rgba com alpha. */
 function hexAlpha(hex: string, alpha: number): string {
   const m = hex.replace("#", "").match(/.{2}/g)
   if (!m || m.length !== 3) return hex
@@ -160,7 +150,14 @@ export function KanbanBoard({
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full gap-4 overflow-x-auto px-6 py-5 bg-slate-50 dark:bg-[#0B0E15]">
+      <div
+        className="flex h-full gap-[18px] overflow-x-auto items-stretch"
+        style={{
+          padding: "22px 28px 28px",
+          background: "var(--crm-gray-100)",
+          fontFamily: "var(--crm-font-sans)",
+        }}
+      >
         {stages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
@@ -169,178 +166,164 @@ export function KanbanBoard({
             (sum, d) => sum + (d.value || 0),
             0,
           )
-          const slaDays = stage.sla_hours
-            ? Math.ceil(stage.sla_hours / 24)
-            : null
-          const breachCount = slaDays
-            ? stageDeals.filter(
-                (d) => daysSince(d.last_stage_changed_at) > slaDays,
-              ).length
-            : 0
+          const slaDays = stage.sla_hours ? Math.ceil(stage.sla_hours / 24) : null
+          const atRiskCount = stageDeals.filter((d) => {
+            if (d.warn || d.critical) return true
+            if (slaDays != null && daysSince(d.last_stage_changed_at) > slaDays) return true
+            return false
+          }).length
           const isTerminal = stageType === "won" || stageType === "lost"
 
           return (
             <div
               key={stage.id}
-              className="flex flex-col"
-              style={{ width: 304, minWidth: 304 }}
+              className="flex flex-col shrink-0"
+              style={{
+                width: "var(--crm-column-kanban-width)",
+                minHeight: 0,
+                background: "var(--crm-gray-25)",
+                border: "1px solid var(--crm-gray-200)",
+                borderRadius: "var(--crm-radius-2xl)",
+                overflow: "hidden",
+              }}
             >
-              {/* ── Header da coluna — bloco solido colorido ──
-                  Estilo direto: dot + nome em uppercase + count badge.
-                  Background branco com border. Subtotal embaixo em bg
-                  cinza claro. Mais limpo, menos intrusivo. */}
+              {/* ── Top stripe: cor do stage ── */}
               <div
-                className="sticky top-0 z-[1] bg-white dark:bg-[#161922] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                aria-hidden
+                style={{ height: 3, background: color }}
+              />
+
+              {/* ── Header ── */}
+              <div
                 style={{
-                  borderRadius: "10px 10px 0 0",
+                  padding: "14px 14px 12px",
+                  background: "var(--crm-gray-0)",
+                  borderBottom: "1px solid var(--crm-gray-100)",
                 }}
               >
-                {/* Header chip principal */}
-                <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ background: color }}
-                      aria-hidden
-                    />
-                    <span
-                      title={stage.name}
-                      className="truncate text-[13px] font-semibold text-slate-900 dark:text-white"
-                    >
-                      {stage.name}
-                    </span>
-                    <span
-                      className="shrink-0 inline-flex items-center justify-center text-[11px] font-semibold tabular-nums rounded-full px-1.5 min-w-[20px] h-[18px] bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-white/70"
-                    >
-                      {stageDeals.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          aria-label="Opcoes da etapa (editar, excluir)"
-                          title="Ações da etapa"
-                          className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-slate-100/70 hover:bg-slate-200 dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white transition-colors data-[state=open]:bg-slate-200 dark:data-[state=open]:bg-white/[0.12]"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          align="end"
-                          sideOffset={4}
-                          className="z-50 min-w-[180px] rounded-[6px] border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#1A1D27] shadow-[0_8px_24px_rgba(15,23,42,0.12)] py-1"
-                        >
-                          {onEditStage && (
-                            <DropdownMenu.Item
-                              onClick={() => onEditStage(stage)}
-                              className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 dark:text-white/85 cursor-pointer outline-none hover:bg-slate-50 dark:hover:bg-white/[0.04]"
-                            >
-                              <Pencil className="h-3.5 w-3.5 text-slate-400" />
-                              Editar etapa
-                            </DropdownMenu.Item>
-                          )}
-                          {onDeleteStage && !isTerminal && (
-                            <>
-                              <DropdownMenu.Separator className="h-px bg-slate-100 dark:bg-white/[0.06] my-1" />
-                              <DropdownMenu.Item
-                                onClick={() => onDeleteStage(stage)}
-                                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-red-600 cursor-pointer outline-none hover:bg-red-50 dark:hover:bg-red-500/10"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Excluir etapa
-                              </DropdownMenu.Item>
-                            </>
-                          )}
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
-                  </div>
-                </div>
-
-                {/* Subtotal inline */}
-                <div className="flex items-center justify-between gap-2 px-4 pb-3 -mt-0.5">
-                <span
-                  className="truncate text-slate-500 dark:text-white/55 tabular-nums"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                  }}
-                >
-                  {stageTotal > 0 ? fmtBRLCompact(stageTotal) : "Nenhum negocio"}
-                </span>
-                {breachCount > 0 ? (
+                <div className="flex items-center gap-2 mb-1.5">
                   <span
-                    title={`${breachCount} deal(s) acima do SLA (${slaDays}d)`}
-                    className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: color }}
+                  />
+                  <span
+                    className="flex-1 truncate"
                     style={{
-                      fontSize: 10,
-                      padding: "1px 6px",
-                      borderRadius: 999,
+                      fontSize: 13,
                       fontWeight: 600,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 3,
+                      color: "var(--crm-gray-900)",
+                    }}
+                    title={stage.name}
+                  >
+                    {stage.name}
+                  </span>
+                  <span
+                    className="crm-tnum"
+                    style={{
+                      fontSize: 11,
+                      color: "var(--crm-gray-500)",
+                      fontWeight: 600,
+                      padding: "1px 7px",
+                      background: "var(--crm-gray-100)",
+                      borderRadius: 9999,
                     }}
                   >
-                    <AlertCircle className="h-2.5 w-2.5" />
-                    {breachCount}
+                    {stageDeals.length}
                   </span>
-                ) : (
+                  <StageMenu
+                    stage={stage}
+                    isTerminal={isTerminal}
+                    onEditStage={onEditStage}
+                    onDeleteStage={onDeleteStage}
+                  />
+                  {onAddDeal && !isTerminal && (
+                    <button
+                      onClick={() => onAddDeal(stage.id)}
+                      title="Adicionar deal"
+                      className="flex h-6 w-6 items-center justify-center rounded-[4px] cf-focusable"
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        color: "var(--crm-gray-400)",
+                      }}
+                      onMouseEnter={(e) => ((e.currentTarget.style.background = "var(--crm-gray-100)"))}
+                      onMouseLeave={(e) => ((e.currentTarget.style.background = "transparent"))}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Subtotal + atrisk */}
+                <div className="flex items-center justify-between gap-1.5">
                   <span
-                    className="text-slate-400 dark:text-white/40"
-                    style={{ fontSize: 10, fontWeight: 500 }}
+                    className="crm-tnum truncate"
+                    style={{
+                      fontSize: 11,
+                      color: "var(--crm-gray-600)",
+                      fontWeight: 500,
+                    }}
                   >
-                    {slaDays ? `SLA ${slaDays}d` : ""}
+                    {stageTotal > 0 ? (
+                      <>
+                        {fmtBRLCompact(stageTotal)}
+                        <span style={{ color: "var(--crm-gray-400)", fontWeight: 400 }}>
+                          {" "}em pipe
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--crm-gray-400)" }}>Sem valor</span>
+                    )}
                   </span>
-                )}
+                  {atRiskCount > 0 ? (
+                    <span
+                      className="crm-tnum inline-flex items-center gap-1"
+                      style={{
+                        fontSize: 10,
+                        color: "var(--crm-warn)",
+                        fontWeight: 600,
+                      }}
+                      title={`${atRiskCount} deal(s) precisam atenção`}
+                    >
+                      <Flag className="h-2.5 w-2.5" />
+                      {atRiskCount}
+                    </span>
+                  ) : (
+                    slaDays && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "var(--crm-gray-400)",
+                          fontWeight: 500,
+                        }}
+                      >
+                        SLA {slaDays}d
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
 
-              {/* ── Droppable column ──
-                  Container que recebe os cards. Continuacao visual do
-                  header (mesmo bg, bordas laterais, fechamento bottom).
-                  Quando dragging-over, ganha tinta da cor do stage e
-                  borda dashed pra indicar drop target. */}
+              {/* ── Droppable column ── */}
               <Droppable droppableId={stage.id}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className="flex-1 flex flex-col bg-white dark:bg-[#161922] border-l border-r border-black/[0.06] dark:border-white/[0.08]"
+                    className="flex-1 flex flex-col overflow-y-auto"
                     style={{
+                      gap: 12,
+                      padding: "14px 12px 16px",
                       background: snapshot.isDraggingOver
-                        ? hexAlpha(color, 0.08)
-                        : undefined,
-                      padding: 10,
+                        ? hexAlpha(color, 0.06)
+                        : "transparent",
                       transition: "background 150ms ease",
                       minHeight: 200,
-                      gap: 8,
-                      borderTop: snapshot.isDraggingOver
-                        ? `1.5px dashed ${color}`
-                        : "1px solid transparent",
                     }}
                   >
                     {stageDeals.length === 0 && !snapshot.isDraggingOver ? (
-                      <div className="flex flex-col items-center justify-center text-center px-4 py-8">
-                        <div
-                          className="flex h-9 w-9 items-center justify-center rounded-full mb-2.5 shrink-0"
-                          style={{
-                            background: hexAlpha(color, 0.10),
-                            color: color,
-                          }}
-                          aria-hidden
-                        >
-                          <Plus className="h-4 w-4" />
-                        </div>
-                        <p className="text-[12px] font-medium text-slate-700 dark:text-white/70 mb-1">
-                          Nenhum negocio
-                        </p>
-                        <p className="text-[11px] text-slate-400 dark:text-white/40 leading-relaxed max-w-[180px]">
-                          Arraste um card ou clique em <span className="font-semibold">+ Novo negocio</span> abaixo
-                        </p>
-                      </div>
+                      <EmptyColumn color={color} onAddDeal={onAddDeal ? () => onAddDeal(stage.id) : undefined} isTerminal={isTerminal} />
                     ) : null}
 
                     {stageDeals.map((deal, index) => (
@@ -380,22 +363,146 @@ export function KanbanBoard({
                   </div>
                 )}
               </Droppable>
-
-              {/* ── Footer da coluna: + Novo negocio (sempre visivel) ── */}
-              {onAddDeal && !isTerminal && (
-                <button
-                  onClick={() => onAddDeal(stage.id)}
-                  className="flex items-center justify-center gap-1.5 w-full px-4 py-2.5 text-[12px] font-medium text-slate-600 dark:text-white/70 bg-white dark:bg-[#161922] border-l border-r border-b border-black/[0.06] dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-white/[0.03] hover:text-slate-900 dark:hover:text-white transition-colors"
-                  style={{ borderRadius: "0 0 10px 10px" }}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Novo negocio
-                </button>
-              )}
             </div>
           )
         })}
       </div>
     </DragDropContext>
+  )
+}
+
+// ─── Empty column ────────────────────────────────────────────────
+
+function EmptyColumn({
+  color,
+  onAddDeal,
+  isTerminal,
+}: {
+  color: string
+  onAddDeal?: () => void
+  isTerminal: boolean
+}) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center text-center"
+      style={{
+        padding: "24px 12px",
+        border: "1.5px dashed var(--crm-gray-200)",
+        borderRadius: "var(--crm-radius-xl)",
+        background: "var(--crm-gray-0)",
+      }}
+    >
+      <div
+        className="flex h-9 w-9 items-center justify-center rounded-full mb-2.5"
+        style={{
+          background: hexAlpha(color, 0.1),
+          color,
+        }}
+        aria-hidden
+      >
+        <Plus className="h-4 w-4" />
+      </div>
+      <p
+        style={{
+          fontSize: 12,
+          fontWeight: 500,
+          color: "var(--crm-gray-700)",
+          marginBottom: 4,
+        }}
+      >
+        Sem deals nesta etapa
+      </p>
+      {onAddDeal && !isTerminal && (
+        <button
+          onClick={onAddDeal}
+          style={{
+            fontSize: 11,
+            color: "var(--crm-brand)",
+            fontWeight: 500,
+            background: "transparent",
+            border: 0,
+            cursor: "pointer",
+            marginTop: 2,
+          }}
+        >
+          + Adicionar deal
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── Stage menu (⋯) ──────────────────────────────────────────────
+
+function StageMenu({
+  stage,
+  isTerminal,
+  onEditStage,
+  onDeleteStage,
+}: {
+  stage: KanbanStage
+  isTerminal: boolean
+  onEditStage?: (stage: KanbanStage) => void
+  onDeleteStage?: (stage: KanbanStage) => void
+}) {
+  if (!onEditStage && !onDeleteStage) return null
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          aria-label="Opções da etapa"
+          title="Ações da etapa"
+          className="flex h-6 w-6 items-center justify-center rounded-[4px] cf-focusable"
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "var(--crm-gray-400)",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget.style.background = "var(--crm-gray-100)"))}
+          onMouseLeave={(e) => ((e.currentTarget.style.background = "transparent"))}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="z-50 min-w-[180px] rounded-[6px] py-1"
+          style={{
+            background: "var(--crm-gray-0)",
+            border: "1px solid var(--crm-border)",
+            boxShadow: "var(--crm-shadow-lg)",
+          }}
+        >
+          {onEditStage && (
+            <DropdownMenu.Item
+              onClick={() => onEditStage(stage)}
+              className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer outline-none data-[highlighted]:bg-slate-50"
+              style={{ color: "var(--crm-gray-700)" }}
+            >
+              <Pencil className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-400)" }} />
+              Editar etapa
+            </DropdownMenu.Item>
+          )}
+          {onDeleteStage && !isTerminal && (
+            <>
+              <DropdownMenu.Separator
+                className="h-px my-1"
+                style={{ background: "var(--crm-gray-100)" }}
+              />
+              <DropdownMenu.Item
+                onClick={() => onDeleteStage(stage)}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer outline-none data-[highlighted]:bg-red-50"
+                style={{ color: "var(--crm-neg)" }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir etapa
+              </DropdownMenu.Item>
+            </>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }
