@@ -367,9 +367,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
               Subtitle com 3 KPI stats inline.
               Actions: Novo deal + dots menu. */}
           <div
-            className="shrink-0"
+            className="shrink-0 px-4 md:px-8 pt-4 md:pt-5 pb-3 md:pb-4"
             style={{
-              padding: "20px 32px 16px",
               background: "var(--crm-gray-0)",
               borderBottom: "1px solid var(--crm-border)",
             }}
@@ -507,9 +506,8 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
 
           {/* ═══════════ FILTER ROW V2 ═══════════ */}
           <div
-            className="shrink-0 flex items-center justify-between gap-3 flex-wrap"
+            className="shrink-0 flex items-center justify-between gap-3 flex-wrap px-4 md:px-8 py-3 md:py-3.5"
             style={{
-              padding: "14px 32px",
               background: "var(--crm-gray-0)",
               borderBottom: "1px solid var(--crm-border)",
             }}

@@ -151,9 +151,8 @@ export function KanbanBoard({
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div
-        className="flex h-full gap-[18px] overflow-x-auto items-stretch"
+        className="flex h-full overflow-x-auto items-stretch gap-3 md:gap-[18px] px-4 md:px-7 py-5 md:py-[22px] pb-7"
         style={{
-          padding: "22px 28px 28px",
           background: "var(--crm-gray-100)",
           fontFamily: "var(--crm-font-sans)",
         }}

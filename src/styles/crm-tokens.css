@@ -162,6 +162,27 @@
   --crm-duration-slow: 300ms;
 }
 
+/* ── Responsive — variaveis adaptam ao viewport ──────────────────
+ * Mobile (<768px): cards mais finos, drawer full-screen, board padding
+ * menor. As paddings inline em px nos componentes nao mudam, mas
+ * tudo que usa var() segue automatico.
+ */
+@media (max-width: 768px) {
+  :root {
+    --crm-column-kanban-width: 280px;
+    --crm-card-kanban-width: 260px;
+    --crm-drawer-width: 100vw;
+    --crm-filter-panel-width: 100vw;
+    --crm-pipeline-sidebar-width: 240px;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --crm-column-kanban-width: calc(100vw - 32px);
+  }
+}
+
 /* ── Dark mode — auto via [data-theme="dark"] ──────────────────── */
 [data-theme="dark"],
 .dark {
