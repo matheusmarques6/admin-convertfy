@@ -135,7 +135,7 @@ function getInitials(name: string): string {
 export function DealCard({
   deal,
   slaHours,
-  stageColor,
+  stageColor: _stageColor,
   onClick,
   onWin,
   onLose,
@@ -172,7 +172,14 @@ export function DealCard({
   const segment = deal.segment ?? deal.store?.name ?? null
 
   // Plano
-  const plan = deal.plan ?? null
+  // Plan: usa o que vier via prop ou deriva de tags (ex: "Pro · 12m",
+  // "Performance · 6m", "Starter"). Pega a primeira tag que casa.
+  const plan =
+    deal.plan ??
+    deal.tags?.find((t) =>
+      /^(starter|performance|pro|enterprise|premium)/i.test(t),
+    ) ??
+    null
 
   // Next step
   const nextStep = useMemo<{
@@ -538,22 +545,7 @@ export function DealCard({
         </div>
       </div>
 
-      {/* Stage color visual hint no canto */}
-      {stageColor && !accent && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 28,
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: stageColor,
-            opacity: 0.6,
-          }}
-        />
-      )}
+      {/* Stage color visual hint REMOVIDO — nao existe no prototipo V2 */}
     </div>
   )
 }

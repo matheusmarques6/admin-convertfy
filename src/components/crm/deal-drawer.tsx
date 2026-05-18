@@ -146,6 +146,25 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
+// Heuristica de cor por categoria de tag (V2 prototipo):
+//   - score/top → purple
+//   - inbound/outbound/indicacao/LP/site → neut (cinza)
+//   - critico/risco → neg (vermelho)
+//   - ganho/won → pos (verde)
+//   - resto → info (azul)
+function tagToneFor(
+  tag: string,
+): "info" | "neg" | "pos" | "warn" | "neut" | "purple" {
+  const t = tag.toLowerCase()
+  if (/score|top \d|premium/.test(t)) return "purple"
+  if (/inbound|outbound|indicacao|indicação|lp|site|cold/.test(t))
+    return "neut"
+  if (/critico|crítico|risco|urgente/.test(t)) return "neg"
+  if (/ganho|won|fechado/.test(t)) return "pos"
+  if (/atencao|atenção|atraso|warning/.test(t)) return "warn"
+  return "info"
+}
+
 function avatarColorFromName(name: string): { bg: string; fg: string } {
   const palette: Array<{ bg: string; fg: string }> = [
     { bg: "#EEF0FB", fg: "#4E62D8" },
@@ -572,11 +591,11 @@ function DrawerHeader({
         </div>
       </div>
 
-      {/* Tags */}
+      {/* Tags — cor por categoria (igual prototipo) */}
       {deal.tags && deal.tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5" style={{ marginTop: 12 }}>
           {deal.tags.map((t) => (
-            <Badge key={t} tone="info">
+            <Badge key={t} tone={tagToneFor(t)}>
               {t}
             </Badge>
           ))}
@@ -770,6 +789,13 @@ function HeroNumbers({ deal }: { deal: DealDetailResponse["deal"] }) {
   const value = deal.value || 0
   const annual = value * 12
   const owner = deal.owner
+
+  // Plano: tenta extrair de tags (ex: "Pro · 12m", "Performance · 6m", "Starter").
+  // Como o banco nao tem campo dedicado, busca em tags por palavras-chave.
+  const plan = deal.tags?.find((t) =>
+    /^(starter|performance|pro|enterprise|premium)/i.test(t),
+  ) ?? null
+
   return (
     <div
       className="flex items-center justify-between flex-wrap gap-3"
@@ -795,14 +821,8 @@ function HeroNumbers({ deal }: { deal: DealDetailResponse["deal"] }) {
       />
       <div className="w-px h-9" style={{ background: "var(--crm-gray-200)" }} />
       <HeroStat
-        label="Status"
-        big={
-          deal.status === "won"
-            ? "Ganho"
-            : deal.status === "lost"
-              ? "Perdido"
-              : "Aberto"
-        }
+        label="Plano"
+        big={plan ?? "—"}
         bigSize={13}
       />
       {owner && (
@@ -1158,6 +1178,27 @@ function InteractionRow({
   const Icon = meta.icon
   const when = new Date(activity.created_at)
   const whenLabel = formatRelativeOrShort(when)
+
+  // Status pill (ex: "SEM RESPOSTA", "ABERTO · CLICOU") vem do
+  // metadata da activity. tone: warn (sem resposta), pos (lida/clicada),
+  // neut (qualquer outro).
+  const metadata = (activity as unknown as { metadata?: Record<string, unknown> })
+    .metadata
+  const status =
+    metadata && typeof metadata.status === "string" ? metadata.status : null
+  const statusTone =
+    metadata && typeof metadata.status_tone === "string"
+      ? (metadata.status_tone as "warn" | "pos" | "neut" | "neg")
+      : ("neut" as const)
+  const statusColor =
+    statusTone === "warn"
+      ? "var(--crm-warn)"
+      : statusTone === "pos"
+        ? "var(--crm-pos)"
+        : statusTone === "neg"
+          ? "var(--crm-neg)"
+          : "var(--crm-gray-500)"
+
   return (
     <div
       className="flex items-start gap-3"
@@ -1209,6 +1250,30 @@ function InteractionRow({
         >
           {activity.content}
         </div>
+        {status && (
+          <div
+            className="inline-flex items-center gap-1"
+            style={{
+              marginTop: 6,
+              fontSize: 10,
+              fontWeight: 600,
+              color: statusColor,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: statusColor,
+              }}
+            />
+            {status}
+          </div>
+        )}
       </div>
     </div>
   )
