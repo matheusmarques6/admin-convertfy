@@ -1,8 +1,12 @@
 /**
- * POST /api/webhooks/n8n/ads-analyzer/products
+ * POST /api/webhooks/n8n/top-products
  *
- * Callback do workflow n8n. Substitui top produtos da loja em
- * store_top_products (DELETE + INSERT atômico via service role).
+ * Callback do n8n que popula a seção "Top 5 produtos" dentro de
+ * "Operação & catálogo" na aba Contexto. Substitui atomicamente
+ * (DELETE + INSERT via service role) os produtos da loja em
+ * `store_top_products`.
+ *
+ * UI: src/components/stores/v2/tab-contexto.tsx (seção "Operação")
  */
 
 import { NextRequest } from "next/server"
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
       .insert(rows)
     if (insErr) throw insErr
 
-    logger.info("[n8n:ads-analyzer/products] persisted", {
+    logger.info("[n8n:top-products] persisted", {
       store_id: body.store_id,
       inserted: rows.length,
     })
@@ -85,6 +89,6 @@ export async function POST(request: NextRequest) {
       data: { store_id: body.store_id, inserted: rows.length },
     })
   } catch (e) {
-    return errorResponse(request, e, "n8n:ads-analyzer/products")
+    return errorResponse(request, e, "n8n:top-products")
   }
 }

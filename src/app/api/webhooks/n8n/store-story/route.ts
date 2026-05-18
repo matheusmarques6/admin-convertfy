@@ -1,10 +1,13 @@
 /**
- * POST /api/webhooks/n8n/ads-analyzer/tone
+ * POST /api/webhooks/n8n/store-story
  *
- * Callback do workflow n8n. Persiste tom de comunicação inferido
- * pelo AI Agent a partir das copies de ads.
+ * Callback do n8n que popula a área "02 Sobre a loja" da Pesquisa.
+ * Persiste em `client_stores`:
+ *   - story       → store_story (text — 3 parágrafos)
+ *   - milestones  → store_milestones (jsonb — Array<{year, event, ...}>)
  *
- * Disparado apenas no branch `Tem Advertiser`.
+ * Schema alinhado com PesquisaData (pesquisa-section.tsx:64-66 +
+ * interface Milestone:46-51).
  */
 
 import { NextRequest } from "next/server"
@@ -21,13 +24,17 @@ import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
 
+const milestoneSchema = z.object({
+  year: z.string().min(1).max(20),
+  event: z.string().min(1).max(300),
+  highlight: z.boolean().optional(),
+  muted: z.boolean().optional(),
+})
+
 const schema = z.object({
   store_id: z.string().uuid(),
-  description: z.string().min(60).max(1500),
-  do_phrases: z.array(z.string().min(3)).min(2).max(15),
-  dont_phrases: z.array(z.string().min(3)).min(2).max(15),
-  use_words: z.array(z.string().min(2)).min(2).max(30),
-  avoid_words: z.array(z.string().min(2)).min(2).max(30),
+  story: z.string().min(80).max(6000),
+  milestones: z.array(milestoneSchema).min(1).max(20),
 })
 
 export async function POST(request: NextRequest) {
@@ -39,11 +46,8 @@ export async function POST(request: NextRequest) {
     const { data, error } = await admin
       .from("client_stores")
       .update({
-        tone_description: body.description,
-        tone_do: body.do_phrases,
-        tone_dont: body.dont_phrases,
-        tone_use_words: body.use_words,
-        tone_avoid_words: body.avoid_words,
+        store_story: body.story,
+        store_milestones: body.milestones,
       })
       .eq("id", body.store_id)
       .select("id")
@@ -52,12 +56,12 @@ export async function POST(request: NextRequest) {
     if (error) throw error
     if (!data) throw new NotFoundError("Loja")
 
-    logger.info("[n8n:ads-analyzer/tone] persisted", {
+    logger.info("[n8n:store-story] persisted", {
       store_id: body.store_id,
+      milestones: body.milestones.length,
     })
-
     return successResponse(request, { data: { store_id: body.store_id } })
   } catch (e) {
-    return errorResponse(request, e, "n8n:ads-analyzer/tone")
+    return errorResponse(request, e, "n8n:store-story")
   }
 }

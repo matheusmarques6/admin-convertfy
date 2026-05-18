@@ -1,13 +1,14 @@
 /**
- * POST /api/webhooks/n8n/ads-analyzer/briefing-markdown
+ * POST /api/webhooks/n8n/briefing-markdown
  *
- * Callback do workflow n8n. Persiste o markdown completo do briefing
- * (saída final do AI Agent) em store_briefings.
+ * Callback do n8n que persiste o briefing completo em markdown
+ * (saída final do AI Agent) em `store_briefings`.
  *
  * Versionamento: arquiva o status='current' anterior e insere o novo
- * como 'current'. Metadados (mode, model, tokens) ficam dentro do
- * JSONB briefing_data já que o schema de store_briefings não tem
- * colunas dedicadas pra eles.
+ * como 'current'. Metadados (mode, model, tokens) ficam no jsonb
+ * briefing_data porque o schema da tabela não tem colunas dedicadas.
+ *
+ * UI: src/components/stores/store-briefing-tab.tsx
  */
 
 import { NextRequest } from "next/server"
@@ -26,10 +27,10 @@ export const dynamic = "force-dynamic"
 
 const schema = z.object({
   store_id: z.string().uuid(),
-  raw_text: z.string().min(200),
+  markdown: z.string().min(200),
   mode: z.enum(["full", "reduced", "reduced-enriched"]),
   generated_at: z.string().datetime().optional(),
-  model_used: z.string().optional(),
+  model_used: z.string().max(100).optional(),
   tokens_used: z.number().int().nonnegative().optional(),
 })
 
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Insere nova como current
     const briefingData = {
-      raw_text: body.raw_text,
+      markdown: body.markdown,
       mode: body.mode,
       model_used: body.model_used ?? null,
       tokens_used: body.tokens_used ?? null,
@@ -70,23 +71,22 @@ export async function POST(request: NextRequest) {
         store_id: body.store_id,
         briefing_data: briefingData,
         generated_at: generatedAt,
-        generated_by: "n8n:ads-analyzer",
+        generated_by: "n8n:briefing-markdown",
         status: "current",
       })
       .select("id")
       .single()
     if (insErr) throw insErr
 
-    logger.info("[n8n:ads-analyzer/briefing-markdown] persisted", {
+    logger.info("[n8n:briefing-markdown] persisted", {
       store_id: body.store_id,
       briefing_id: inserted?.id,
       mode: body.mode,
     })
-
     return successResponse(request, {
       data: { store_id: body.store_id, briefing_id: inserted?.id },
     })
   } catch (e) {
-    return errorResponse(request, e, "n8n:ads-analyzer/briefing-markdown")
+    return errorResponse(request, e, "n8n:briefing-markdown")
   }
 }

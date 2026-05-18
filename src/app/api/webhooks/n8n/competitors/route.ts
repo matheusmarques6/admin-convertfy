@@ -1,8 +1,8 @@
 /**
- * POST /api/webhooks/n8n/ads-analyzer/competitors
+ * POST /api/webhooks/n8n/competitors
  *
- * Callback do workflow n8n. Sincroniza concorrentes vindos do
- * TrendTrack `/v1/shops` em client_competitors.
+ * Callback do n8n que sincroniza concorrentes (origem: TrendTrack
+ * `/v1/shops` ou similar) em `client_competitors`.
  *
  * Idempotência: preserva concorrentes com source='manual' (criados
  * pela UI). Substitui apenas os com source='trendtrack' — faz
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       inserted = rows.length
     }
 
-    logger.info("[n8n:ads-analyzer/competitors] persisted", {
+    logger.info("[n8n:competitors] persisted", {
       store_id: body.store_id,
       inserted,
     })
@@ -86,6 +86,6 @@ export async function POST(request: NextRequest) {
       data: { store_id: body.store_id, inserted },
     })
   } catch (e) {
-    return errorResponse(request, e, "n8n:ads-analyzer/competitors")
+    return errorResponse(request, e, "n8n:competitors")
   }
 }
