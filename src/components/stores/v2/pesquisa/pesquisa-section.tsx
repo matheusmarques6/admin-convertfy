@@ -196,6 +196,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
         {editor?.name && (
           <div className="shrink-0 flex items-center gap-2 text-right">
             {editor.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={editor.avatar_url} alt={editor.name} className="h-7 w-7 rounded-full border" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
             ) : (
               <div className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "linear-gradient(135deg, #4E62D8, #2137B6)" }}>

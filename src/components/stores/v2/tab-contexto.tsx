@@ -72,7 +72,7 @@ const PRECO_OPTS = ["popular", "medio", "premium"] as const
 
 export function TabContexto({ storeId }: { storeId: string }) {
   const [ctx, setCtx] = useState<StoreContext>({})
-  const [storeLite, setStoreLite] = useState<StoreLite>({})
+  const [, setStoreLite] = useState<StoreLite>({})
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [editing, setEditing] = useState<string | null>(null)
