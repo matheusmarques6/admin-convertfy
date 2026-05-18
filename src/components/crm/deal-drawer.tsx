@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { CustomFieldsPanel } from "./custom-fields-panel"
 import { LostReasonDialog } from "./lost-reason-dialog"
+import { useIsMobile } from "@/hooks/use-is-mobile"
 import type { DealFile } from "@/types/crm"
 
 const fetcher = async (url: string) => {
@@ -197,6 +198,8 @@ export function DealDrawer({
 }: DealDrawerProps) {
   const open = !!dealId
 
+  const isMobile = useIsMobile()
+
   const { data, isLoading, error, mutate } = useSWR<DealDetailResponse>(
     dealId ? `/api/crm/deals/${dealId}` : null,
     fetcher,
@@ -311,20 +314,56 @@ export function DealDrawer({
           style={{ background: "rgba(15, 17, 23, 0.32)" }}
         />
         <DialogPrimitive.Content
-          className="fixed inset-y-0 right-0 z-50 flex flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
-          style={{
-            width: "var(--crm-drawer-width)",
-            maxWidth: "100vw",
-            background: "var(--crm-gray-25)",
-            borderLeft: "1px solid var(--crm-border)",
-            boxShadow: "var(--crm-shadow-drawer)",
-            fontFamily: "var(--crm-font-sans)",
-            animationDuration: "220ms",
-          }}
+          className={
+            isMobile
+              ? "fixed inset-x-0 bottom-0 z-50 flex flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom"
+              : "fixed inset-y-0 right-0 z-50 flex flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
+          }
+          style={
+            isMobile
+              ? {
+                  // Bottom sheet (artboard 15)
+                  width: "100vw",
+                  maxHeight: "calc(100vh - 60px)",
+                  background: "var(--crm-gray-25)",
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                  boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.15)",
+                  fontFamily: "var(--crm-font-sans)",
+                  animationDuration: "260ms",
+                }
+              : {
+                  width: "var(--crm-drawer-width)",
+                  maxWidth: "100vw",
+                  background: "var(--crm-gray-25)",
+                  borderLeft: "1px solid var(--crm-border)",
+                  boxShadow: "var(--crm-shadow-drawer)",
+                  fontFamily: "var(--crm-font-sans)",
+                  animationDuration: "220ms",
+                }
+          }
         >
           <DialogPrimitive.Title className="sr-only">
             {deal?.title || "Detalhes do deal"}
           </DialogPrimitive.Title>
+
+          {/* Drag handle (so em mobile/bottom sheet) */}
+          {isMobile && (
+            <div
+              className="flex justify-center shrink-0"
+              style={{ padding: "8px 0 4px" }}
+              aria-hidden
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 4,
+                  background: "var(--crm-gray-300)",
+                  borderRadius: 2,
+                }}
+              />
+            </div>
+          )}
 
           {isLoading && !deal ? (
             <DrawerSkeleton onClose={onClose} />
