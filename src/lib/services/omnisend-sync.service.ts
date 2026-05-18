@@ -946,6 +946,13 @@ export async function fetchOmnisendActivityBreakdown(
               })
             : "empty map",
         })
+        // [omnisend-debug] 3 primeiros rows brutos do statistics filtrando
+        // marketingActivityType=Campaign — usados pra cruzar com /v5/campaigns
+        // e diagnosticar mismatch de marketingActivityID vs campaignID.
+        console.log(
+          "[omnisend-debug] activity rows from /statistics (Campaign):",
+          JSON.stringify((block.rows || []).slice(0, 3), null, 2),
+        )
       } else if (block.alias === "automations") {
         result.automations = aggregateActivityRows(block.rows || [])
         log.info("[OmnisendActivityBreakdown] automations block", {
@@ -1567,6 +1574,27 @@ async function doSyncOmnisendForStore(params: {
       sampleBreakdownAutoIds: [...breakdownAutoIds].slice(0, 3),
       sampleListingAutoIds: [...listingAutoIds].slice(0, 3),
     })
+
+    // [omnisend-debug] 3 primeiras campanhas do /v5/campaigns lado a lado
+    // com os IDs do breakdown, pra cruzar com os rows do statistics logados
+    // em fetchActivityBreakdown.
+    console.log(
+      "[omnisend-debug] campaigns from /v5:",
+      JSON.stringify(
+        campaigns.slice(0, 3).map((c) => ({
+          campaignID: (c as Record<string, unknown>).campaignID,
+          id: (c as Record<string, unknown>).id,
+          resolvedId: getCampaignId(c),
+          name: c.name,
+        })),
+        null,
+        2,
+      ),
+    )
+    console.log(
+      "[omnisend-debug] sample breakdown campaign IDs:",
+      JSON.stringify([...breakdownCampIds].slice(0, 3)),
+    )
 
     // 7. Map campaigns to rows
     const campaignRows: OmnisendCampaignRow[] = campaigns
