@@ -871,7 +871,12 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "marketingActivityID" },
               ],
               filters: [
-                { name: "marketingActivityType", operator: "in", values: ["Workflow"] },
+                // ATENCAO: suporte Omnisend (2026-05-18) disse pra usar
+                // "Workflow" mas LOGS COMPROVARAM que "Workflow" retorna 0
+                // rows. O valor correto e "Automation" mesmo. Confirmado
+                // contra dashboard Blue Wolf Apr 2026 onde dashboard mostra
+                // R$26,223.31 e API com "Automation" retorna ~igual.
+                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
               ],
             },
             {
@@ -1101,11 +1106,9 @@ export async function fetchOmnisendReports(
               ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
               filters: [
-                // VALOR CORRETO confirmado pelo suporte Omnisend (2026-05-18):
-                // o dashboard chama de "Automation" mas o filter value e
-                // "Workflow". Antes usavamos "Automation" e API silenciosamente
-                // retornava menos revenue.
-                { name: "marketingActivityType", operator: "in", values: ["Workflow"] },
+                // Suporte sugeriu "Workflow" mas logs comprovaram que
+                // retorna 0 — o valor correto e "Automation" mesmo.
+                { name: "marketingActivityType", operator: "in", values: ["Automation"] },
               ],
             },
           ],
@@ -1226,7 +1229,36 @@ async function countContacts(
   let pages = 0
 
   for (let page = 0; page < CONTACTS_MAX_PAGES && url; page++) {
-    const resp: Record<string, unknown> | null = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
+    // Paginacao de /v3/contacts retorna 403 transitoriamente em paginas
+    // especificas (visto em 2026-05-18 com a Blessed Choice: cursor X
+    // deu 403, mesmo cursor 2 minutos depois deu 200). Tratamos como
+    // erro transiente: retry 2x com backoff, depois pula a pagina pra
+    // nao matar o sync inteiro.
+    let resp: Record<string, unknown> | null = null
+    let lastErr: unknown = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        resp = await omnisendRequest<Record<string, unknown>>(apiKey, url, { logTag })
+        lastErr = null
+        break
+      } catch (err) {
+        lastErr = err
+        const isPermission = err instanceof OmnisendPermissionError
+        if (!isPermission || attempt === 2) break
+        const backoff = 1500 * Math.pow(2, attempt)
+        log.warn(`[${logTag}] page ${page} returned 403 — retrying in ${backoff}ms (attempt ${attempt + 1}/3)`)
+        await sleep(backoff)
+      }
+    }
+    if (lastErr && !resp) {
+      // 3 tentativas falharam. Pula esta pagina e tenta a proxima:
+      // sem `paging.next` da pagina atual nao temos pra onde ir, entao
+      // encerra a contagem com o que ja temos.
+      log.warn(`[${logTag}] page ${page} permanently failed — returning partial count ${count}`, {
+        error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+      })
+      break
+    }
     if (!resp) break
 
     // Primeira pagina: tentar extrair total direto do paging (se a API fornecer)

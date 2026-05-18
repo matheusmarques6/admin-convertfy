@@ -166,6 +166,15 @@ export async function upsertSyncResults(
     return
   }
 
+  // Constraint chk_custom_range_dates exige range_start/range_end pra
+  // period_label "custom:..." e NULL pra demais (migration 20260318).
+  const klaviyoCustomRangeFields = normalizedPeriod.startsWith("custom:")
+    ? (() => {
+        const [, start, end] = normalizedPeriod.split(":")
+        return { range_start: start, range_end: end }
+      })()
+    : { range_start: null, range_end: null }
+
   // Build upsert payload — only include revenue fields when data was actually fetched
   const summaryPayload: Record<string, unknown> = {
     store_id: store.id,
@@ -173,6 +182,7 @@ export async function upsertSyncResults(
     period_label: normalizedPeriod,
     period_start: data.startDateStr,
     period_end: data.endDateStr,
+    ...klaviyoCustomRangeFields,
     currency: data.currency || "BRL",
     sync_source: "cron",
     sync_error: null,
@@ -294,12 +304,23 @@ export async function upsertOmnisendSyncResults(
     omnisend_flow_revenue: data.totalAutomationRevenue,
   } : {}
 
+  // Constraint chk_custom_range_dates (migration 20260318): quando
+  // period_label e "custom:YYYY-MM-DD:YYYY-MM-DD" precisa setar
+  // range_start/range_end. Quando e "30d" etc precisa deixar NULL.
+  const customRangeFields = normalizedPeriod.startsWith("custom:")
+    ? (() => {
+        const [, start, end] = normalizedPeriod.split(":")
+        return { range_start: start, range_end: end }
+      })()
+    : { range_start: null, range_end: null }
+
   const summaryPayload = {
     store_id: store.id,
     org_id: store.org_id,
     period_label: normalizedPeriod,
     period_start: periodStartIso,
     period_end: nowIso,
+    ...customRangeFields,
     ...revenueFields,
     total_leads: data.totalContacts,
     engaged_leads: engagedCount,
