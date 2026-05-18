@@ -258,106 +258,28 @@ export function TabContexto({ storeId }: { storeId: string }) {
         {editing === "operacao" ? (
           <EditOperacao ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
         ) : (
-          <>
-            {/* KPIs nus (sem card) — label uppercase + valor Playfair + sub */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pb-5 mb-5 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-              <OpKpi
-                label="Ticket médio"
-                value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(2).replace(".", ",")}` : "—"}
-                sub="média 30d"
-              />
-              <OpKpi
-                label="Taxa de conversão"
-                value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2).replace(".", ",")}%` : "—"}
-                sub="benchmark 1,8%"
-              />
-              <OpKpi
-                label="Faturamento médio"
-                value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1_000_000).toFixed(1).replace(".", ",")} mi` : "—"}
-                sub="médio últimos 3m"
-              />
-              <OpKpi
-                label="Margem média"
-                value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"}
-                sub="declarada"
-              />
-            </div>
-
-            {/* Sub-section Top 5 produtos · header próprio creme + tabela */}
-            <section
-              className="rounded-md border overflow-hidden"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
-            >
-              <header
-                className="px-4 py-3 border-b flex items-baseline justify-between gap-3"
-                style={{
-                  background: "linear-gradient(180deg, #FDFBF6 0%, #FFFFFF 100%)",
-                  borderColor: "rgba(0,0,0,0.05)",
-                }}
-              >
-                <h4
-                  className="m-0 text-slate-900"
-                  style={{
-                    fontFamily: "'Playfair Display', serif",
-                    fontSize: 15,
-                    fontWeight: 600,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  Top 5 produtos
-                </h4>
-                <span className="text-[10.5px] text-slate-400 font-medium">
-                  captado pela TrendTrack
-                </span>
-              </header>
-
-              {topProducts.length === 0 ? (
-                <div className="px-4 py-6 text-[12px] text-slate-400 italic text-center">
-                  Nenhum produto capturado ainda.
-                </div>
-              ) : (
-                <table className="w-full text-left text-[12.5px]">
-                  <thead>
-                    <tr className="border-b" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
-                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5 w-8">#</th>
-                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5">Produto</th>
-                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-4 py-2.5 text-right w-32">Preço</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topProducts.map((p, i) => (
-                      <tr
-                        key={`${p.rank}-${p.external_id ?? p.title}`}
-                        className={i < topProducts.length - 1 ? "border-b" : ""}
-                        style={{ borderColor: "rgba(0,0,0,0.04)" }}
-                      >
-                        <td className="px-4 py-2.5 tabular-nums text-slate-500 font-semibold">{p.rank}</td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2.5">
-                            {p.image_url && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={p.image_url}
-                                alt=""
-                                className="w-8 h-8 rounded object-cover border shrink-0"
-                                style={{ borderColor: "rgba(0,0,0,0.06)" }}
-                              />
-                            )}
-                            <span className="text-slate-800 leading-tight">{p.title}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">
-                          {p.price != null
-                            ? `${p.currency ? p.currency + " " : "R$ "}${Number(p.price).toFixed(2).replace(".", ",")}`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-          </>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <OpKpi
+              label="Ticket médio"
+              value={ctx.ticket_medio_cents ? `R$ ${(ctx.ticket_medio_cents / 100).toFixed(2).replace(".", ",")}` : "—"}
+              sub="média 30d"
+            />
+            <OpKpi
+              label="Taxa de conversão"
+              value={ctx.taxa_conversao ? `${(ctx.taxa_conversao * 100).toFixed(2).replace(".", ",")}%` : "—"}
+              sub="benchmark 1,8%"
+            />
+            <OpKpi
+              label="Faturamento médio"
+              value={ctx.faturamento_medio_cents ? `R$ ${((ctx.faturamento_medio_cents / 100) / 1_000_000).toFixed(1).replace(".", ",")} mi` : "—"}
+              sub="médio últimos 3m"
+            />
+            <OpKpi
+              label="Margem média"
+              value={ctx.margem_media ? `${(ctx.margem_media * 100).toFixed(0)}%` : "—"}
+              sub="declarada"
+            />
+          </div>
         )}
       </section>
 
@@ -375,6 +297,9 @@ export function TabContexto({ storeId }: { storeId: string }) {
           </div>
         )}
       </Section>
+
+      {/* TOP 5 PRODUTOS — grid de cards (populado via webhook n8n) */}
+      <TopProdutosGrid products={topProducts} />
 
       {/* CONCORRÊNCIA */}
       <Section id="concorrencia" title="Concorrência" actions={
@@ -498,6 +423,92 @@ function OpKpi({ label, value, sub }: { label: string; value: string; sub?: stri
       </span>
       {sub && <span className="text-[10.5px] text-slate-400 leading-tight">{sub}</span>}
     </div>
+  )
+}
+
+function formatCaptadoAgo(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  const diffMin = Math.max(0, Math.round((Date.now() - t) / 60000))
+  if (diffMin < 1) return "captado agora"
+  if (diffMin < 60) return `captado há ${diffMin} min`
+  const diffH = Math.round(diffMin / 60)
+  if (diffH < 24) return `captado há ${diffH} h`
+  const diffD = Math.round(diffH / 24)
+  return `captado há ${diffD} d`
+}
+
+const RANK_BG = ["#4E62D8", "rgba(78,98,216,0.85)", "rgba(78,98,216,0.7)", "rgba(78,98,216,0.55)", "rgba(78,98,216,0.4)"] as const
+
+function TopProdutosGrid({ products }: { products: TopProduct[] }) {
+  const captured = products[0]?.captured_at ?? null
+  const captadoLabel = formatCaptadoAgo(captured)
+
+  return (
+    <section className="bg-white border rounded-[10px] p-6" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+      <header className="mb-5 flex items-end justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.12em] mb-1.5" style={{ color: "#4E62D8" }}>
+            Dados da operação
+          </div>
+          <h3 className="text-[16px] font-bold text-slate-900 mb-1">Top 5 produtos</h3>
+          <p className="text-[12.5px] text-slate-500 max-w-[460px] leading-snug">
+            Catálogo capturado da loja. Atualizado periodicamente pela TrendTrack.
+          </p>
+        </div>
+        {captadoLabel && (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full">
+            {captadoLabel}
+          </span>
+        )}
+      </header>
+
+      {products.length === 0 ? (
+        <div className="px-4 py-10 text-[12.5px] text-slate-400 italic text-center border border-dashed rounded-md" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+          Nenhum produto capturado ainda.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 min-[490px]:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+          {products.slice(0, 5).map((p) => {
+            const rankBg = RANK_BG[Math.min(Math.max(p.rank, 1), 5) - 1]
+            const priceLabel = p.price != null
+              ? `${p.currency ? p.currency + " " : "R$ "}${Number(p.price).toFixed(2).replace(".", ",")}`
+              : "—"
+            return (
+              <div
+                key={`${p.rank}-${p.external_id ?? p.title}`}
+                className="bg-white border rounded-lg p-2.5 flex flex-col gap-2.5 transition-colors hover:border-slate-300"
+                style={{ borderColor: "rgba(0,0,0,0.08)" }}
+              >
+                <div className="relative aspect-square bg-slate-100 rounded-md overflow-hidden">
+                  {p.image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  )}
+                  <span
+                    className="absolute top-1.5 left-1.5 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full tabular-nums tracking-wide"
+                    style={{ background: rankBg }}
+                  >
+                    #{p.rank}
+                  </span>
+                </div>
+                <div
+                  className="text-[12px] font-medium leading-[1.35] text-slate-900 min-h-[48px] overflow-hidden"
+                  style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}
+                  title={p.title}
+                >
+                  {p.title}
+                </div>
+                <div className="text-[14px] font-semibold text-slate-900 tabular-nums">
+                  {priceLabel}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
