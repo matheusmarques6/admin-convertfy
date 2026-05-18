@@ -999,7 +999,8 @@ export async function buildOmnisendReport(
   store: StoreContext,
   rawPeriod: string,
   customStartDate?: string | null,
-  customEndDate?: string | null
+  customEndDate?: string | null,
+  forceRefresh: boolean = false,
 ): Promise<OmnisendReportResponse> {
   // Normaliza period_label para o que a constraint do DB aceita.
   //   "today"/"yesterday" → "1d"
@@ -1010,16 +1011,20 @@ export async function buildOmnisendReport(
   const period = normalizePeriodLabel(rawPeriod, customStartDate, customEndDate)
   const dateRange = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
 
-  // 1) Tenta cache fresco
+  // 1) Tenta cache fresco (a menos que forceRefresh=true)
   let staleCache: NonNullable<Awaited<ReturnType<typeof readFromCache>>> | null = null
-  try {
-    const cached = await readFromCache(store.storeId, period)
-    if (cached) {
-      log.info("[Omnisend Report] Serving from fresh cache", { storeId: store.storeId, period })
-      return await buildFromCache(store, period, dateRange, cached)
+  if (!forceRefresh) {
+    try {
+      const cached = await readFromCache(store.storeId, period)
+      if (cached) {
+        log.info("[Omnisend Report] Serving from fresh cache", { storeId: store.storeId, period })
+        return await buildFromCache(store, period, dateRange, cached)
+      }
+    } catch (err) {
+      log.warn("[Omnisend Report] Cache read failed", { error: err })
     }
-  } catch (err) {
-    log.warn("[Omnisend Report] Cache read failed", { error: err })
+  } else {
+    log.info("[Omnisend Report] forceRefresh=true — bypassing cache", { storeId: store.storeId, period })
   }
 
   // 2) Tenta cache stale (ate 24h) como fallback

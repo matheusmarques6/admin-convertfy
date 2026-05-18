@@ -39,7 +39,10 @@ export async function POST(
     if (fetchErr || !report) throw new AppError("Relatório não encontrado", 404)
 
     const origin = request.nextUrl.origin
-    const periodParam = `period=custom&start_date=${report.period_start}&end_date=${report.period_end}`
+    // force_refresh=true e CRITICO no resync — sem isso o Omnisend report
+    // builder retorna cache de ate 35min, mostrando dados antigos. O usuario
+    // clicou em "resincronizar" justamente pra ter dados frescos.
+    const periodParam = `period=custom&start_date=${report.period_start}&end_date=${report.period_end}&force_refresh=true`
     const cookie = request.headers.get("cookie") ?? ""
 
     // Timeout individual de 75s por fetch — antes era 25s, mas o

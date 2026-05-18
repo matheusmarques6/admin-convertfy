@@ -887,7 +887,8 @@ export async function GET(request: NextRequest) {
           { storeId, storeName: store.storeName, orgId: store.orgId },
           period,
           customStartDate,
-          customEndDate
+          customEndDate,
+          searchParams.get("force_refresh") === "true",
         )
         return NextResponse.json(omnisendReport, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {

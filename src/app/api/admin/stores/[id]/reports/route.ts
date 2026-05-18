@@ -117,7 +117,9 @@ export async function POST(
     // `period=custom&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
     // (nao `start=` / `end=`).
     const origin = request.nextUrl.origin
-    const periodParam = `period=custom&start_date=${body.period_start}&end_date=${body.period_end}`
+    // force_refresh=true pra garantir live sync no momento da geracao,
+    // sem servir cache potencialmente velho (~35min do report-builder).
+    const periodParam = `period=custom&start_date=${body.period_start}&end_date=${body.period_end}&force_refresh=true`
     const cookie = request.headers.get("cookie") ?? ""
 
     async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
