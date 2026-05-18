@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   DragDropContext,
   Droppable,
@@ -10,6 +10,7 @@ import {
 import { Plus, Flag, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { DealCard, type DealCardData } from "./deal-card"
+import { useIsMobile } from "@/hooks/use-is-mobile"
 
 export interface KanbanStage {
   id: string
@@ -35,6 +36,30 @@ interface KanbanBoardProps {
   onDeleteDeal?: (dealId: string) => void
   onEditStage?: (stage: KanbanStage) => void
   onDeleteStage?: (stage: KanbanStage) => void
+  /**
+   * Renderer customizado de card. Permite trocar `DealCard` por
+   * `OnboardingCard` (CS) ou outros sem refactorar o board.
+   * Recebe o deal/store enriquecido + handlers + stage color.
+   */
+  renderCard?: (
+    item: DealCardData & {
+      stage_id: string
+      pipeline_id: string
+      position?: number
+    },
+    ctx: {
+      stage: KanbanStage
+      stageColor: string
+      isTerminal: boolean
+      isDragging: boolean
+      onClick?: (id: string) => void
+      onWin?: (id: string) => void
+      onLose?: (id: string) => void
+      onMove?: (id: string) => void
+      onAddActivity?: (id: string) => void
+      onDelete?: (id: string) => void
+    },
+  ) => React.ReactNode
 }
 
 const fmtBRLCompact = (v: number): string => {
@@ -82,13 +107,37 @@ export function KanbanBoard({
   onDeleteDeal,
   onEditStage,
   onDeleteStage,
+  renderCard,
 }: KanbanBoardProps) {
   const [optimisticDeals, setOptimisticDeals] = useState(deals)
   const [isMoving, setIsMoving] = useState(false)
+  const isMobile = useIsMobile()
+  const [activeMobileStageId, setActiveMobileStageId] = useState<string | null>(
+    null,
+  )
+  const pillsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setOptimisticDeals(deals)
   }, [deals])
+
+  // Inicializa stage ativa em mobile com a primeira (ou primeira nao-terminal)
+  useEffect(() => {
+    if (!isMobile || activeMobileStageId) return
+    const first = stages.find((s) => s.stage_type !== "won" && s.stage_type !== "lost") ?? stages[0]
+    if (first) setActiveMobileStageId(first.id)
+  }, [isMobile, stages, activeMobileStageId])
+
+  // Auto-centraliza a pill ativa quando muda
+  useEffect(() => {
+    if (!isMobile || !activeMobileStageId || !pillsRef.current) return
+    const active = pillsRef.current.querySelector(
+      `[data-stage-id="${activeMobileStageId}"]`,
+    ) as HTMLElement | null
+    if (active) {
+      active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" })
+    }
+  }, [isMobile, activeMobileStageId])
 
   const dealsByStage = useMemo(() => {
     const map = new Map<string, typeof optimisticDeals>()
@@ -148,16 +197,99 @@ export function KanbanBoard({
     }
   }
 
+  // Em mobile, renderiza so a stage ativa (selecionada pelas pills)
+  const visibleStages = isMobile && activeMobileStageId
+    ? stages.filter((s) => s.id === activeMobileStageId)
+    : stages
+
+  // Counts por stage pra exibir nas pills
+  const stageCounts = useMemo<Record<string, number>>(() => {
+    const counts: Record<string, number> = {}
+    for (const s of stages) counts[s.id] = dealsByStage.get(s.id)?.length ?? 0
+    return counts
+  }, [stages, dealsByStage])
+
+  // Onde o FAB cai (primeira stage nao-terminal)
+  const firstOpenStage = stages.find(
+    (s) => s.stage_type !== "won" && s.stage_type !== "lost",
+  )
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div
-        className="flex h-full overflow-x-auto items-stretch gap-3 md:gap-[18px] px-4 md:px-7 py-5 md:py-[22px] pb-7"
+        className="flex h-full flex-col relative"
         style={{
           background: "var(--crm-gray-100)",
           fontFamily: "var(--crm-font-sans)",
         }}
       >
-        {stages.map((stage) => {
+        {/* Pill picker mobile (artboard 13 do prototipo) */}
+        {isMobile && (
+          <div
+            ref={pillsRef}
+            className="flex gap-2 overflow-x-auto shrink-0"
+            style={{
+              padding: "8px 16px 12px",
+              background: "var(--crm-gray-0)",
+              borderBottom: "1px solid var(--crm-border)",
+              scrollbarWidth: "none",
+            }}
+          >
+            {stages.map((s) => {
+              const isActive = s.id === activeMobileStageId
+              const dot = stageColor(s)
+              const count = stageCounts[s.id] ?? 0
+              return (
+                <button
+                  key={s.id}
+                  data-stage-id={s.id}
+                  onClick={() => setActiveMobileStageId(s.id)}
+                  className="cf-focusable inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+                  style={{
+                    height: 32,
+                    padding: "0 12px",
+                    borderRadius: 999,
+                    background: isActive ? "var(--crm-gray-900)" : "var(--crm-gray-0)",
+                    color: isActive ? "#fff" : "var(--crm-gray-700)",
+                    border: isActive ? "none" : "1px solid var(--crm-border)",
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: isActive ? "#fff" : dot,
+                      opacity: isActive ? 0.6 : 1,
+                    }}
+                  />
+                  {s.name}
+                  <span
+                    className="crm-tnum"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      opacity: 0.7,
+                    }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        <div
+          className="flex flex-1 overflow-x-auto items-stretch gap-3 md:gap-[18px] px-4 md:px-7 py-5 md:py-[22px] pb-7"
+          style={{
+            scrollSnapType: isMobile ? "x mandatory" : undefined,
+          }}
+        >
+          {visibleStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) || []
           const stageType = stage.stage_type || "open"
           const color = stageColor(stage)
@@ -342,18 +474,33 @@ export function KanbanBoard({
                                 isMoving && dragSnapshot.isDragging ? 0.5 : 1,
                             }}
                           >
-                            <DealCard
-                              deal={deal}
-                              slaHours={stage.sla_hours}
-                              stageColor={color}
-                              onClick={onCardClick}
-                              onWin={!isTerminal ? onWinDeal : undefined}
-                              onLose={!isTerminal ? onLoseDeal : undefined}
-                              onMove={onMoveDeal}
-                              onAddActivity={onAddActivity}
-                              onDelete={onDeleteDeal}
-                              isDragging={dragSnapshot.isDragging}
-                            />
+                            {renderCard ? (
+                              renderCard(deal, {
+                                stage,
+                                stageColor: color,
+                                isTerminal,
+                                isDragging: dragSnapshot.isDragging,
+                                onClick: onCardClick,
+                                onWin: !isTerminal ? onWinDeal : undefined,
+                                onLose: !isTerminal ? onLoseDeal : undefined,
+                                onMove: onMoveDeal,
+                                onAddActivity,
+                                onDelete: onDeleteDeal,
+                              })
+                            ) : (
+                              <DealCard
+                                deal={deal}
+                                slaHours={stage.sla_hours}
+                                stageColor={color}
+                                onClick={onCardClick}
+                                onWin={!isTerminal ? onWinDeal : undefined}
+                                onLose={!isTerminal ? onLoseDeal : undefined}
+                                onMove={onMoveDeal}
+                                onAddActivity={onAddActivity}
+                                onDelete={onDeleteDeal}
+                                isDragging={dragSnapshot.isDragging}
+                              />
+                            )}
                           </div>
                         )}
                       </Draggable>
@@ -365,6 +512,34 @@ export function KanbanBoard({
             </div>
           )
         })}
+        </div>
+
+        {/* FAB mobile (artboard 13/14): primary action no canto inferior direito */}
+        {isMobile && onAddDeal && firstOpenStage && (
+          <button
+            onClick={() => onAddDeal(activeMobileStageId ?? firstOpenStage.id)}
+            aria-label="Novo deal"
+            title="Novo deal"
+            className="cf-focusable absolute"
+            style={{
+              right: 20,
+              bottom: 24,
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              background: "var(--crm-brand)",
+              color: "var(--crm-brand-fg)",
+              border: 0,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 24px rgba(78, 98, 216, 0.40)",
+            }}
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        )}
       </div>
     </DragDropContext>
   )

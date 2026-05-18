@@ -14,6 +14,7 @@ import { CrmEmptyState } from "./crm-empty-state"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
+import { OnboardingCard, type OnboardingCardData } from "./onboarding-card"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
@@ -732,6 +733,51 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
                 onDeleteDeal={handleDelete}
                 onEditStage={handleEditStage}
                 onDeleteStage={handleDeleteStage}
+                renderCard={
+                  pipeline.scope === "cs"
+                    ? (deal, ctx) => {
+                        // Adapta o deal para o formato OnboardingCardData;
+                        // dados extras (status_sentence, tasks_done, tasks_total)
+                        // viriam de custom_fields ou estado derivado.
+                        const stages = pipeline.stages
+                        const currentIdx = stages.findIndex(
+                          (s) => s.id === deal.stage_id,
+                        )
+                        const store: OnboardingCardData = {
+                          id: deal.id,
+                          title: deal.title,
+                          status: deal.status,
+                          tags: deal.tags,
+                          last_stage_changed_at: deal.last_stage_changed_at,
+                          created_at: deal.created_at,
+                          owner: deal.owner,
+                          store: deal.store
+                            ? { id: deal.store.id, name: deal.store.name }
+                            : null,
+                          is_blocked:
+                            deal.tags?.some((t) =>
+                              /bloqueado|blocked/i.test(t),
+                            ) ?? false,
+                          current_stage_idx: currentIdx,
+                          total_stages: stages.length,
+                        }
+                        return (
+                          <OnboardingCard
+                            store={store}
+                            slaHours={ctx.stage.sla_hours}
+                            stageColor={ctx.stageColor}
+                            onClick={ctx.onClick}
+                            onWin={ctx.onWin}
+                            onLose={ctx.onLose}
+                            onMove={ctx.onMove}
+                            onAddActivity={ctx.onAddActivity}
+                            onDelete={ctx.onDelete}
+                            isDragging={ctx.isDragging}
+                          />
+                        )
+                      }
+                    : undefined
+                }
               />
             )}
           </div>
