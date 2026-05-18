@@ -88,10 +88,11 @@ export async function GET(
       dealIds.length > 0
         ? admin
             .from("crm_deal_activities")
-            .select("deal_id")
+            .select("deal_id, type, content, due_at, completed_at")
             .in("deal_id", dealIds)
             .not("due_at", "is", null)
             .is("completed_at", null)
+            .order("due_at", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       leadIds.length > 0
         ? admin
@@ -101,9 +102,56 @@ export async function GET(
         : Promise.resolve({ data: [], error: null }),
     ])
 
+    // Mapeia o NEXT step de cada deal (atividade pendente com due_at
+    // mais proxima do agora). Tambem conta total de pendentes.
+    type PendingActivity = {
+      deal_id: string | null
+      type: string | null
+      content: string | null
+      due_at: string | null
+    }
     const pendingMap = new Map<string, number>()
-    for (const a of pendingRes.data || []) {
-      if (a.deal_id) pendingMap.set(a.deal_id, (pendingMap.get(a.deal_id) || 0) + 1)
+    const nextStepMap = new Map<
+      string,
+      { label: string; when: string; tone: "info" | "warn" | "neg" | "pos" }
+    >()
+    const now = Date.now()
+    for (const raw of pendingRes.data || []) {
+      const a = raw as PendingActivity
+      if (!a.deal_id) continue
+      pendingMap.set(a.deal_id, (pendingMap.get(a.deal_id) || 0) + 1)
+      // So pega a primeira (mais proxima) — query ja vem ordenada ASC
+      if (nextStepMap.has(a.deal_id)) continue
+      if (!a.due_at) continue
+      const dueMs = new Date(a.due_at).getTime()
+      const diffDays = Math.floor((dueMs - now) / 86400000)
+      let when: string
+      let tone: "info" | "warn" | "neg" | "pos" = "info"
+      if (diffDays < -1) {
+        when = `há ${-diffDays}d`
+        tone = "neg"
+      } else if (diffDays === -1) {
+        when = "ontem"
+        tone = "warn"
+      } else if (diffDays === 0) {
+        const hour = new Date(a.due_at).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+        when = `Hoje ${hour}`
+      } else if (diffDays === 1) {
+        when = "Amanhã"
+      } else if (diffDays < 7) {
+        when = `em ${diffDays}d`
+      } else {
+        when = new Date(a.due_at).toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+        })
+      }
+      // Label: usa primeiros 40 chars do content
+      const label = (a.content || "Próxima ação").slice(0, 40).trim()
+      nextStepMap.set(a.deal_id, { label, when, tone })
     }
 
     const leadMap = new Map<
@@ -130,6 +178,7 @@ export async function GET(
         contact_email: client?.email || lead?.email || null,
         ai_score: lead?.ai_qualification_score ?? null,
         activities_pending: pendingMap.get(d.id) || 0,
+        next_step: nextStepMap.get(d.id) ?? null,
       }
     })
 

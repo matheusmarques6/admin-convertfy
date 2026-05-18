@@ -61,7 +61,7 @@ interface PipelineDetailResponse {
     last_stage_changed_at: string | null
     created_at?: string | null
     owner?: { id: string; name: string; avatar_url: string | null } | null
-    client?: { id: string; name: string } | null
+    client?: { id: string; name: string; company?: string | null; email?: string | null; phone?: string | null } | null
     store?: { id: string; name: string } | null
   }>
 }

@@ -31,7 +31,7 @@ export interface DealCardData {
   source: string | null
   tags: string[] | null
   owner?: { id: string; name: string; avatar_url: string | null } | null
-  client?: { id: string; name: string } | null
+  client?: { id: string; name: string; company?: string | null; email?: string | null; phone?: string | null } | null
   store?: { id: string; name: string } | null
   ai_score?: number | null
   last_activity_type?:
@@ -168,10 +168,21 @@ export function DealCard({
   const avatarColors = avatarColorFromName(leadName)
   const avatarInitials = getInitials(leadName)
 
-  // Segmento da loja se disponivel
-  const segment = deal.segment ?? deal.store?.name ?? null
+  // Subtítulo "Empresa · Segmento" abaixo do nome (sempre presente).
+  // Ordem: prop segment > client.company > store.name > "—"
+  // Segment é derivado de tags conhecidas (Shopify, Klaviyo, etc).
+  const company = deal.client?.company ?? deal.store?.name ?? null
+  const platformTag = deal.tags?.find((t) =>
+    /^(shopify|vtex|woocommerce|tray|nuvemshop|magento)/i.test(t),
+  )
+  const subtitle = useMemo<string>(() => {
+    if (deal.segment) return deal.segment
+    const parts: string[] = []
+    if (company) parts.push(company)
+    if (platformTag) parts.push(platformTag)
+    return parts.length > 0 ? parts.join(" · ") : "—"
+  }, [deal.segment, company, platformTag])
 
-  // Plano
   // Plan: usa o que vier via prop ou deriva de tags (ex: "Pro · 12m",
   // "Performance · 6m", "Starter"). Pega a primeira tag que casa.
   const plan =
@@ -181,13 +192,60 @@ export function DealCard({
     ) ??
     null
 
+  // Source bonito pro footer: corta prefixo tipo "form:" e capitaliza.
+  // "form:pagina-de-vendas" -> "Form · Pagina de vendas"
+  // "indicacao" -> "Indicação"
+  const prettySource = useMemo<string | null>(() => {
+    if (!deal.source) return null
+    const raw = deal.source.trim()
+    if (!raw) return null
+    // Map de aliases conhecidos pra forma pretty.
+    const aliases: Record<string, string> = {
+      indicacao: "Indicação",
+      "indicação": "Indicação",
+      inbound: "Inbound",
+      outbound: "Outbound",
+      meta_ads: "Meta Ads",
+      google_ads: "Google Ads",
+      "meta ads": "Meta Ads",
+      "google ads": "Google Ads",
+      linkedin: "LinkedIn",
+      instagram: "Instagram",
+      tiktok: "TikTok",
+      youtube: "YouTube",
+      site: "Site",
+      evento: "Evento",
+      parceiro: "Parceiro",
+      cold_call: "Cold call",
+      "cold call": "Cold call",
+    }
+    const lower = raw.toLowerCase()
+    if (aliases[lower]) return aliases[lower]
+    // Truncate longos (ex: "form:pagina-de-vendas")
+    if (raw.length > 20) {
+      // Pega prefixo antes de ":" se houver
+      const prefix = raw.split(":")[0]
+      if (aliases[prefix.toLowerCase()]) return aliases[prefix.toLowerCase()]
+      // Capitaliza prefixo
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1).toLowerCase()
+    }
+    return raw.charAt(0).toUpperCase() + raw.slice(1)
+  }, [deal.source])
+
   // Next step
   const nextStep = useMemo<{
     label: string
     when: string
     tone: "info" | "warn" | "neg" | "pos" | "neut"
   } | null>(() => {
-    if (deal.next_step) return { tone: "info", ...deal.next_step }
+    if (deal.next_step) {
+      // Spread depois do tone default — preserva tone vindo do backend
+      return {
+        tone: deal.next_step.tone ?? "info",
+        label: deal.next_step.label,
+        when: deal.next_step.when,
+      }
+    }
     // Fallback: derivado do estado
     if (isCritical) {
       return {
@@ -347,18 +405,17 @@ export function DealCard({
               </span>
             )}
           </div>
-          {segment && (
-            <div
-              className="truncate"
-              style={{
-                fontSize: 11.5,
-                color: "var(--crm-gray-500)",
-                marginTop: 1,
-              }}
-            >
-              {segment}
-            </div>
-          )}
+          {/* Subtitle: empresa · segmento (sempre presente) */}
+          <div
+            className="truncate"
+            style={{
+              fontSize: 11.5,
+              color: "var(--crm-gray-500)",
+              marginTop: 1,
+            }}
+          >
+            {subtitle}
+          </div>
         </div>
         {(onAddActivity || onMove || onWin || onLose || onDelete) && (
           <DealActionsMenu
@@ -392,59 +449,47 @@ export function DealCard({
             </span>
           </div>
         )}
-        {/* Value */}
-        {deal.value != null && deal.value > 0 && (
-          <div className="flex items-center gap-2">
+        {/* Value (sempre presente — usa "—" se vazio) */}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex w-[18px] justify-center shrink-0"
+            style={{ color: "var(--crm-gray-400)" }}
+          >
+            <CircleDollarSign className="h-3.5 w-3.5" />
+          </span>
+          <span
+            className="crm-tnum truncate"
+            style={{
+              color: deal.value && deal.value > 0
+                ? "var(--crm-gray-900)"
+                : "var(--crm-gray-400)",
+              fontWeight: deal.value && deal.value > 0 ? 600 : 400,
+            }}
+          >
+            {deal.value && deal.value > 0 ? fmtBRL(deal.value) : "—"}
             <span
-              className="flex w-[18px] justify-center shrink-0"
-              style={{ color: "var(--crm-gray-400)" }}
+              style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}
             >
-              <CircleDollarSign className="h-3.5 w-3.5" />
+              /mês
+              {plan ? ` · ${plan}` : ""}
             </span>
-            <span
-              className="crm-tnum"
-              style={{
-                color: "var(--crm-gray-900)",
-                fontWeight: 600,
-              }}
-            >
-              {fmtBRL(deal.value)}
-              {plan ? (
-                <span
-                  style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}
-                >
-                  /mês · {plan}
-                </span>
-              ) : (
-                <span
-                  style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}
-                >
-                  /mês
-                </span>
-              )}
+          </span>
+        </div>
+        {/* Created (sempre presente) */}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex w-[18px] justify-center shrink-0"
+            style={{ color: "var(--crm-gray-400)" }}
+          >
+            <Calendar className="h-3.5 w-3.5" />
+          </span>
+          <span className="crm-tnum truncate" style={{ color: "var(--crm-gray-600)" }}>
+            {formatDateBR(deal.created_at) ?? "—"}
+            <span style={{ color: "var(--crm-gray-400)" }}>
+              {" "}· {days > 0 ? `há ${days}d na etapa` : "hoje"}
             </span>
-          </div>
-        )}
-        {/* Created */}
-        {(deal.created_at || days > 0) && (
-          <div className="flex items-center gap-2">
-            <span
-              className="flex w-[18px] justify-center shrink-0"
-              style={{ color: "var(--crm-gray-400)" }}
-            >
-              <Calendar className="h-3.5 w-3.5" />
-            </span>
-            <span className="crm-tnum" style={{ color: "var(--crm-gray-600)" }}>
-              {formatDateBR(deal.created_at) ?? "—"}
-              {days > 0 && (
-                <span style={{ color: "var(--crm-gray-400)" }}>
-                  {" "}
-                  · há {days}d na etapa
-                </span>
-              )}
-            </span>
-          </div>
-        )}
+          </span>
+        </div>
         {/* Next step (activity row) */}
         {nextStep && NextStepIcon && (
           <div
@@ -488,8 +533,8 @@ export function DealCard({
         }}
       >
         <div className="flex flex-wrap gap-1.5 min-w-0">
-          {deal.source && (
-            <Badge tone="info">{deal.source}</Badge>
+          {prettySource && (
+            <Badge tone="info">{prettySource}</Badge>
           )}
           {isCritical && (
             <Badge tone="neg" dot>
