@@ -167,7 +167,14 @@ export function PipelineSettingsDialog({
     CustomField | "new" | null
   >(null)
 
-  // Re-sincroniza estado local quando o prop muda (ex: outro modal salvou).
+  // Re-sincroniza estado local quando o dialog ABRE. Depois disso, o
+  // local state gerencia stages independente — caso contrario, o re-fetch
+  // do SWR (disparado por onChanged) substitui a lista local pela versao
+  // do prop antes do refetch terminar, causando a "stage nova some" ao
+  // clicar em "Adicionar etapa".
+  //
+  // Tambem re-sincroniza meta (name/desc/color/etc) toda vez que o prop
+  // muda — esses campos sao read-mostly e nao tem conflito de race.
   useEffect(() => {
     if (!open) return
     setName(pipeline.name)
@@ -176,8 +183,17 @@ export function PipelineSettingsDialog({
     setIsDefault(pipeline.is_default ?? false)
     setCategory(pipeline.category ?? "")
     setIsFavorite(pipeline.is_favorite ?? false)
-    setStages(pipeline.stages)
   }, [open, pipeline])
+
+  // Sincroniza stages SO quando o dialog abre. Apos isso, fica
+  // manualmente em sincronia via handleAdd/Update/Delete + Reorder.
+  // Re-sync forcado tambem ocorre quando o pipeline.id muda (troca
+  // de pipeline).
+  useEffect(() => {
+    if (!open) return
+    setStages(pipeline.stages)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pipeline.id])
 
   const metaDirty = useMemo(() => {
     return (
