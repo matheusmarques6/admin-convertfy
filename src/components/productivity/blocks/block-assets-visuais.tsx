@@ -2,21 +2,25 @@
 
 import { useState, useRef, useEffect } from "react"
 import { BlockSection, EmptyState, MiniSpinner, useFetch, C } from "./_shared"
-
-type VisualAssets = {
-  palette?: string[]
-  logos?: {
-    main?: { url: string; filename: string; size: number; path?: string }
-    mono?: { url: string; filename: string; size: number; path?: string }
-  }
-  font?: { family: string; fallback?: string }
-  top_products?: Array<{ name: string; image_url?: string; url?: string }>
-} | null
+import type {
+  TaskStoreContext,
+  TaskTopProduct,
+} from "@/types/task-store-context"
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b}B`
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)}KB`
   return `${(b / 1024 / 1024).toFixed(1)}MB`
+}
+
+function moneyBRL(n: number | null): string {
+  if (n == null || isNaN(Number(n))) return "—"
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number(n))
 }
 
 function Swatch({
@@ -153,52 +157,145 @@ function LogoSlot({
   )
 }
 
-export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
-  // 1. busca contexto pra pegar onboarding_id
-  const { data: ctx } = useFetch<{ onboarding_id: string | null }>(
-    `/api/tasks/${taskId}/store-context`,
+function TopProductCard({ p }: { p: TaskTopProduct }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${C.gray200}`,
+        borderRadius: 4,
+        padding: 6,
+        background: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "1",
+          background: C.gray50,
+          borderRadius: 4,
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        {p.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={p.image_url}
+            alt={p.title}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : null}
+        <span
+          style={{
+            position: "absolute",
+            top: 2,
+            left: 2,
+            fontSize: 9,
+            fontWeight: 700,
+            background: C.gray900,
+            color: "#fff",
+            padding: "1px 5px",
+            borderRadius: 3,
+          }}
+        >
+          #{p.rank}
+        </span>
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: C.gray700,
+          textAlign: "center",
+          lineHeight: 1.2,
+          minHeight: 24,
+        }}
+        title={p.title}
+      >
+        {p.title}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: C.brandBlue,
+          fontFamily: "ui-monospace, monospace",
+        }}
+      >
+        {moneyBRL(p.price)}
+      </div>
+    </div>
   )
-  const onbId = ctx?.onboarding_id ?? null
+}
 
-  // 2. busca assets
-  const { data, loading, mutate } = useFetch<{ visual_assets: VisualAssets }>(
-    onbId ? `/api/onboardings/${onbId}/visual-assets` : null,
+export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
+  const { data, loading, mutate } = useFetch<TaskStoreContext>(
+    taskId ? `/api/tasks/${taskId}/store-context` : null,
   )
+
+  const onbId = data?.onboarding_id ?? null
+  const storeId = data?.store_id ?? data?.identity?.store_id ?? null
 
   const [editing, setEditing] = useState(false)
   const [draftPalette, setDraftPalette] = useState<string[]>([])
   const [draftFont, setDraftFont] = useState<{ family: string; fallback?: string }>({
     family: "",
   })
-  const [draftProducts, setDraftProducts] = useState<
-    Array<{ name: string; image_url?: string; url?: string }>
-  >([])
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (data?.visual_assets) {
-      const a = data.visual_assets
-      setDraftPalette(a.palette ?? ["#1A1A1A", "#FFFFFF", "#6B7280", "#D1D5DB", "#E5E7EB"])
-      setDraftFont(a.font ?? { family: "Inter", fallback: "Helvetica, sans-serif" })
-      setDraftProducts(a.top_products ?? [])
-    } else {
-      setDraftPalette(["#1A1A1A", "#FFFFFF", "#6B7280", "#D1D5DB", "#E5E7EB"])
-      setDraftFont({ family: "Inter", fallback: "Helvetica, sans-serif" })
-      setDraftProducts([])
+    if (data?.assets_visuais) {
+      const a = data.assets_visuais
+      setDraftPalette(
+        a.palette.length > 0
+          ? a.palette
+          : ["#1A1A1A", "#FFFFFF", "#6B7280", "#D1D5DB", "#E5E7EB"],
+      )
+      setDraftFont(
+        a.font ?? { family: "Inter", fallback: "Helvetica, sans-serif" },
+      )
     }
   }, [data])
 
-  async function savePalette() {
-    if (!onbId) return
-    await fetch(`/api/onboardings/${onbId}/visual-assets`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ visual_assets: { palette: draftPalette, font: draftFont, top_products: draftProducts } }),
-    })
-    setEditing(false)
-    mutate()
+  async function saveAssets() {
+    if (!storeId) return
+    setSaving(true)
+    setError(null)
+    try {
+      // Converte string[] → cores ([{hex, name}]) e {family, fallback} → fontes ({titulo, corpo})
+      const coresPayload = draftPalette.map((hex, i) => ({
+        hex,
+        name: `Cor ${i + 1}`,
+      }))
+      const fontesPayload = {
+        titulo: draftFont.family || undefined,
+        corpo: draftFont.fallback || undefined,
+      }
+
+      const r = await fetch(`/api/admin/stores/${storeId}/context`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          cores: coresPayload,
+          fontes: fontesPayload,
+        }),
+      })
+      if (!r.ok) {
+        const t = await r.text()
+        setError(`Erro ao salvar: ${t.slice(0, 100)}`)
+        return
+      }
+      setEditing(false)
+      mutate()
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function uploadLogo(slot: "logo_main" | "logo_mono", file: File) {
@@ -222,9 +319,9 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
       const j = await r.json()
       const u = j.data ?? j
       const slotKey = slot === "logo_main" ? "main" : "mono"
-      const current = data?.visual_assets ?? {}
+      const currentLogos = data?.assets_visuais.logos ?? {}
       const newLogos = {
-        ...(current.logos ?? {}),
+        ...currentLogos,
         [slotKey]: {
           url: u.url,
           filename: u.filename,
@@ -232,6 +329,7 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
           path: u.path,
         },
       }
+      // Logos ainda ficam em onboardings.visual_assets.logos (escopo separado)
       await fetch(`/api/onboardings/${onbId}/visual-assets`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -255,21 +353,31 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
     )
   }
 
-  if (!onbId) {
+  if (!storeId) {
     return (
       <BlockSection title="Assets visuais">
         <EmptyState
-          title="Sem onboarding vinculado"
-          description="Assets visuais ficam atrelados a um onboarding ativo."
+          title="Sem loja vinculada"
+          description="Assets visuais ficam atrelados a uma loja. Vincule esta task a um onboarding."
         />
       </BlockSection>
     )
   }
 
-  const assets = data?.visual_assets ?? null
-  const palette = assets?.palette ?? draftPalette
-  const font = assets?.font ?? draftFont
-  const products = assets?.top_products ?? []
+  const assets = data?.assets_visuais ?? {
+    palette: [],
+    font: null,
+    logos: {},
+  }
+  const palette = editing
+    ? draftPalette
+    : assets.palette.length > 0
+      ? assets.palette
+      : ["#1A1A1A", "#FFFFFF", "#6B7280", "#D1D5DB", "#E5E7EB"]
+  const font = editing
+    ? draftFont
+    : assets.font ?? { family: "Inter", fallback: "Helvetica, sans-serif" }
+  const products = data?.top_products ?? []
 
   return (
     <BlockSection
@@ -280,12 +388,13 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
             <button
               type="button"
               onClick={() => setEditing(false)}
+              disabled={saving}
               style={{
                 fontSize: 11,
                 color: C.gray500,
                 background: "transparent",
                 border: "none",
-                cursor: "pointer",
+                cursor: saving ? "wait" : "pointer",
                 padding: "4px 8px",
               }}
             >
@@ -293,19 +402,20 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
             </button>
             <button
               type="button"
-              onClick={savePalette}
+              onClick={saveAssets}
+              disabled={saving}
               style={{
                 fontSize: 11,
                 fontWeight: 600,
                 color: "#fff",
                 background: C.brandBlue,
                 border: "none",
-                cursor: "pointer",
+                cursor: saving ? "wait" : "pointer",
                 padding: "4px 10px",
                 borderRadius: 4,
               }}
             >
-              Salvar
+              {saving ? "Salvando..." : "Salvar"}
             </button>
           </div>
         ) : (
@@ -349,7 +459,7 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
           Paleta
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {(editing ? draftPalette : palette).map((hex, i) => (
+          {palette.map((hex, i) => (
             <Swatch
               key={i}
               hex={hex}
@@ -375,13 +485,13 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <LogoSlot
             slot="logo_main"
-            data={assets?.logos?.main}
+            data={assets.logos?.main}
             uploading={uploadingSlot === "logo_main"}
             onUpload={(f) => uploadLogo("logo_main", f)}
           />
           <LogoSlot
             slot="logo_mono"
-            data={assets?.logos?.mono}
+            data={assets.logos?.mono}
             uploading={uploadingSlot === "logo_mono"}
             onUpload={(f) => uploadLogo("logo_mono", f)}
           />
@@ -398,7 +508,7 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
             <input
               value={draftFont.family}
               onChange={(e) => setDraftFont((f) => ({ ...f, family: e.target.value }))}
-              placeholder="Nome (ex: Inter, Roboto)"
+              placeholder="Título (ex: Inter, Roboto)"
               style={{
                 flex: 1,
                 padding: "6px 8px",
@@ -411,7 +521,7 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
             <input
               value={draftFont.fallback ?? ""}
               onChange={(e) => setDraftFont((f) => ({ ...f, fallback: e.target.value }))}
-              placeholder="Fallback (Helvetica, sans-serif)"
+              placeholder="Corpo (Helvetica, sans-serif)"
               style={{
                 flex: 1,
                 padding: "6px 8px",
@@ -440,96 +550,40 @@ export function BlockAssetsVisuais({ taskId }: { taskId: string }) {
         )}
       </div>
 
-      {/* Top 5 produtos */}
+      {/* Top 5 produtos — read-only (vem do n8n via store_top_products) */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: C.gray500, marginBottom: 8 }}>
-          Top 5 produtos
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              color: C.gray500,
+            }}
+          >
+            Top 5 produtos
+          </div>
+          <span style={{ fontSize: 10, color: C.gray500, fontStyle: "italic" }}>
+            Capturado automaticamente
+          </span>
         </div>
-        {products.length === 0 && !editing ? (
+        {products.length === 0 ? (
           <EmptyState
-            title="Nenhum produto cadastrado"
-            description="Adicione os produtos campeões pra ancorar o copy gerado pela IA."
+            title="Nenhum produto capturado"
+            description="Os produtos top da loja são capturados periodicamente pela integração. Edição manual disponível na aba Contexto/Operação."
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-            {(editing ? draftProducts : products).map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  border: `1px solid ${C.gray200}`,
-                  borderRadius: 4,
-                  padding: 6,
-                  background: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    aspectRatio: "1",
-                    background: C.gray50,
-                    borderRadius: 4,
-                    overflow: "hidden",
-                  }}
-                >
-                  {p.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.image_url}
-                      alt={p.name}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : null}
-                </div>
-                {editing ? (
-                  <input
-                    value={p.name}
-                    onChange={(e) =>
-                      setDraftProducts((arr) =>
-                        arr.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)),
-                      )
-                    }
-                    placeholder="Nome"
-                    style={{
-                      width: "100%",
-                      padding: 4,
-                      fontSize: 10,
-                      border: `1px solid ${C.gray200}`,
-                      borderRadius: 4,
-                      outline: "none",
-                    }}
-                  />
-                ) : (
-                  <div style={{ fontSize: 10, color: C.gray700, textAlign: "center", lineHeight: 1.2 }}>
-                    {p.name}
-                  </div>
-                )}
-              </div>
+            {products.map((p) => (
+              <TopProductCard key={p.rank} p={p} />
             ))}
-            {editing && draftProducts.length < 5 && (
-              <button
-                type="button"
-                onClick={() =>
-                  setDraftProducts((arr) => [...arr, { name: "", image_url: "" }])
-                }
-                style={{
-                  border: `1px dashed ${C.brandBlue}40`,
-                  background: C.brandBlue50,
-                  color: C.brandBlue,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: 6,
-                  aspectRatio: "1",
-                }}
-              >
-                + Produto
-              </button>
-            )}
           </div>
         )}
       </div>

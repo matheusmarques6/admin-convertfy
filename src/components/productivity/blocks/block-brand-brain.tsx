@@ -2,46 +2,10 @@
 
 import { useState } from "react"
 import { BlockSection, EmptyState, MiniSpinner, useFetch, C } from "./_shared"
-
-type StoreContext = {
-  briefing: Record<string, unknown> | null
-  briefing_status?: string
-  onboarding_id: string | null
-}
-
-// Briefing tem várias formas dependendo da fase. Tentamos extrair os 4
-// quadrantes mais úteis pro drawer: tom de voz, posicionamento,
-// persona, benefícios-chave. Faz fallback pro shape antigo.
-function parseBriefing(b: Record<string, unknown> | null) {
-  if (!b || typeof b !== "object") return null
-  // Estrutura nova esperada:
-  const tom =
-    (b.language_tone as string | undefined) ??
-    (b.tom_voz as string | undefined) ??
-    (b.tone as string | undefined) ??
-    null
-  const posicionamento =
-    (b.about_brand as string | undefined) ??
-    (b.posicionamento as string | undefined) ??
-    (b.positioning as string | undefined) ??
-    null
-  const persona =
-    (b.audience as string | undefined) ??
-    (b.persona as string | undefined) ??
-    null
-  let beneficios: string[] = []
-  const bRaw =
-    (b.offers_and_differentials as unknown) ??
-    (b.beneficios as unknown) ??
-    (b.benefits as unknown) ??
-    null
-  if (typeof bRaw === "string") {
-    beneficios = bRaw.split(/[\n·•,;]+/).map((s) => s.trim()).filter(Boolean).slice(0, 6)
-  } else if (Array.isArray(bRaw)) {
-    beneficios = bRaw.filter((x): x is string => typeof x === "string")
-  }
-  return { tom, posicionamento, persona, beneficios }
-}
+import type {
+  TaskStoreContext,
+  BrandBrainSource,
+} from "@/types/task-store-context"
 
 function Quadrante({
   label,
@@ -84,8 +48,71 @@ function Quadrante({
   )
 }
 
+function ExtraSection({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 10,
+        background: C.gray50,
+        border: `1px solid ${C.gray200}`,
+        borderRadius: 4,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          color: C.gray500,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 12, lineHeight: 1.5, color: C.gray700 }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ChipList({ items, tone = "neutral" }: { items: string[]; tone?: "neutral" | "do" | "dont" }) {
+  const palette = {
+    neutral: { bg: C.gray100, fg: C.gray700 },
+    do: { bg: "#ECFDF5", fg: "#047857" },
+    dont: { bg: "#FEF2F2", fg: "#BE123C" },
+  }[tone]
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {items.map((it, i) => (
+        <span
+          key={i}
+          style={{
+            fontSize: 11,
+            background: palette.bg,
+            color: palette.fg,
+            padding: "2px 8px",
+            borderRadius: 10,
+            fontWeight: 500,
+          }}
+        >
+          {it}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function BlockBrandBrain({ taskId }: { taskId: string }) {
-  const { data, loading, error } = useFetch<StoreContext>(
+  const { data, loading, error } = useFetch<TaskStoreContext>(
     taskId ? `/api/tasks/${taskId}/store-context` : null,
   )
   const [showFull, setShowFull] = useState(false)
@@ -95,19 +122,22 @@ export function BlockBrandBrain({ taskId }: { taskId: string }) {
       <BlockSection title="Brand Brain">
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.gray500, fontSize: 13 }}>
           <MiniSpinner />
-          Carregando briefing...
+          Carregando contexto da marca...
         </div>
       </BlockSection>
     )
   }
 
-  if (error || !data?.briefing) {
+  const bb = data?.brand_brain
+  const sourceLabel = labelForSource(bb?.source ?? "empty")
+
+  if (error || !bb || bb.source === "empty") {
     const status = data?.briefing_status
-    let description = "Será criado automaticamente quando o cliente preencher 100% do formulário."
+    let description = "Será criado automaticamente quando o cliente preencher 100% do formulário ou quando o time curar o diagnóstico na aba Contexto."
     if (status === "generating") description = "IA está gerando o briefing agora. Aguarde alguns segundos."
     if (status === "needs_review") description = "Briefing aguardando ajustes solicitados pelo cliente."
     return (
-      <BlockSection title="Brand Brain" badge={<Badge label="IA" />}>
+      <BlockSection title="Brand Brain" badge={<Badge label="IA" tone="purple" />}>
         <EmptyState
           title={
             status === "generating"
@@ -120,38 +150,42 @@ export function BlockBrandBrain({ taskId }: { taskId: string }) {
     )
   }
 
-  const parsed = parseBriefing(data.briefing)
-  if (!parsed) {
-    return (
-      <BlockSection title="Brand Brain" badge={<Badge label="IA" />}>
-        <EmptyState title="Formato inesperado" description="O briefing salvo não tem a estrutura esperada." />
-      </BlockSection>
-    )
-  }
-
-  const briefingFull = JSON.stringify(data.briefing, null, 2)
+  const hasExtras =
+    !!bb.brand_thesis ||
+    !!bb.brand_presence ||
+    (bb.icp_motivations?.length ?? 0) > 0 ||
+    (bb.icp_frictions?.length ?? 0) > 0 ||
+    (bb.tone_do?.length ?? 0) > 0 ||
+    (bb.tone_dont?.length ?? 0) > 0
 
   return (
     <BlockSection
       title="Brand Brain"
-      badge={<Badge label="IA" />}
+      badge={
+        <span style={{ display: "inline-flex", gap: 4 }}>
+          <Badge label="IA" tone="purple" />
+          {sourceLabel && <Badge label={sourceLabel.text} tone={sourceLabel.tone} />}
+        </span>
+      }
       action={
-        <button
-          type="button"
-          onClick={() => setShowFull(!showFull)}
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: C.purpleText,
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            padding: "4px 8px",
-            borderRadius: 4,
-          }}
-        >
-          {showFull ? "Recolher" : "Ver completo →"}
-        </button>
+        hasExtras && (
+          <button
+            type="button"
+            onClick={() => setShowFull(!showFull)}
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.purpleText,
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px 8px",
+              borderRadius: 4,
+            }}
+          >
+            {showFull ? "Recolher" : "Ver completo →"}
+          </button>
+        )
       }
     >
       <div
@@ -165,57 +199,80 @@ export function BlockBrandBrain({ taskId }: { taskId: string }) {
           gap: 10,
         }}
       >
-        <Quadrante label="Tom de voz" value={parsed.tom} />
-        <Quadrante label="Posicionamento" value={parsed.posicionamento} />
-        <Quadrante label="Persona" value={parsed.persona} />
-        <Quadrante
-          label="Benefícios-chave"
-          value={
-            parsed.beneficios.length > 0 ? (
-              <ul style={{ margin: 0, paddingLeft: 14 }}>
-                {parsed.beneficios.map((b, i) => (
-                  <li key={i} style={{ marginBottom: 2 }}>
-                    {b}
-                  </li>
-                ))}
-              </ul>
-            ) : null
-          }
-        />
+        <Quadrante label="Tom de voz" value={bb.language_tone} />
+        <Quadrante label="Posicionamento" value={bb.about_brand} />
+        <Quadrante label="Persona" value={bb.audience} />
+        <Quadrante label="Ofertas & diferenciais" value={bb.offers_and_differentials} />
       </div>
 
-      {showFull && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            background: C.gray50,
-            border: `1px solid ${C.gray200}`,
-            borderRadius: 4,
-            fontSize: 11,
-            fontFamily: "ui-monospace, monospace",
-            color: C.gray700,
-            maxHeight: 320,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {briefingFull}
-        </div>
+      {showFull && hasExtras && (
+        <>
+          {bb.brand_thesis && (
+            <ExtraSection label="Pull-quote da marca">{bb.brand_thesis}</ExtraSection>
+          )}
+          {bb.brand_presence && (
+            <ExtraSection label="Presença digital">{bb.brand_presence}</ExtraSection>
+          )}
+          {(bb.icp_motivations?.length ?? 0) > 0 && (
+            <ExtraSection label="Motivações do ICP">
+              <ChipList items={bb.icp_motivations!} />
+            </ExtraSection>
+          )}
+          {(bb.icp_frictions?.length ?? 0) > 0 && (
+            <ExtraSection label="Fricções do ICP">
+              <ChipList items={bb.icp_frictions!} />
+            </ExtraSection>
+          )}
+          {(bb.tone_do?.length ?? 0) > 0 && (
+            <ExtraSection label="Tom · DO">
+              <ChipList items={bb.tone_do!} tone="do" />
+            </ExtraSection>
+          )}
+          {(bb.tone_dont?.length ?? 0) > 0 && (
+            <ExtraSection label="Tom · DON'T">
+              <ChipList items={bb.tone_dont!} tone="dont" />
+            </ExtraSection>
+          )}
+        </>
       )}
     </BlockSection>
   )
 }
 
-function Badge({ label }: { label: string }) {
+function labelForSource(
+  source: BrandBrainSource,
+): { text: string; tone: "purple" | "gray" | "blue" } | null {
+  switch (source) {
+    case "curated":
+      return { text: "Diagnóstico do time", tone: "gray" }
+    case "briefing":
+      return { text: "Briefing IA", tone: "purple" }
+    case "mixed":
+      return { text: "Diagnóstico + briefing", tone: "blue" }
+    case "empty":
+      return null
+  }
+}
+
+function Badge({
+  label,
+  tone = "purple",
+}: {
+  label: string
+  tone?: "purple" | "gray" | "blue"
+}) {
+  const palette = {
+    purple: { bg: C.purple, fg: "#fff" },
+    gray: { bg: C.gray200, fg: C.gray700 },
+    blue: { bg: C.brandBlue, fg: "#fff" },
+  }[tone]
   return (
     <span
       style={{
         fontSize: 9,
         fontWeight: 700,
-        background: C.purple,
-        color: "#fff",
+        background: palette.bg,
+        color: palette.fg,
         padding: "2px 6px",
         borderRadius: 3,
         letterSpacing: 0.6,

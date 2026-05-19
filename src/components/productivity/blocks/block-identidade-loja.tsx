@@ -2,27 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { BlockSection, EmptyState, MiniSpinner, useFetch, C } from "./_shared"
-
-type StoreContext = {
-  identity: {
-    store_id?: string
-    store_name?: string | null
-    store_url?: string | null
-    client_id?: string
-    client_name?: string | null
-    client_owner?: { name: string; avatar_url?: string | null } | null
-    platform?: string | null
-    niche?: string | null
-    country?: string | null
-    language?: string | null
-    mrr?: number | null
-    plan?: string | null
-  } | null
-  briefing: unknown
-  visual_assets: unknown
-  onboarding_id: string | null
-  store_id: string | null
-}
+import type { TaskStoreContext } from "@/types/task-store-context"
 
 function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -65,7 +45,7 @@ function moneyBRL(n: number | null | undefined): string {
 
 export function BlockIdentidadeLoja({ taskId }: { taskId: string }) {
   const router = useRouter()
-  const { data, loading, error } = useFetch<StoreContext>(
+  const { data, loading, error } = useFetch<TaskStoreContext>(
     taskId ? `/api/tasks/${taskId}/store-context` : null,
   )
 
