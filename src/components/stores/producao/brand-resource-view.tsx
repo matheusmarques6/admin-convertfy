@@ -1,9 +1,40 @@
 "use client"
 
 import { useState } from "react"
-import { Download, Heart, Sparkles } from "lucide-react"
+import {
+  Award,
+  CreditCard,
+  Download,
+  Gift,
+  Heart,
+  Lock,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Trophy,
+  Truck,
+} from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
-import type { StoreBrandIdentity, BrandColor } from "@/types/email-workspace"
+import type {
+  StoreBrandIdentity,
+  BrandColor,
+  TrustIcon,
+  TopProduct,
+} from "@/types/email-workspace"
+
+const TRUST_ICON_MAP: Record<TrustIcon["icon_type"], typeof Truck> = {
+  truck: Truck,
+  seal: Award,
+  shield: ShieldCheck,
+  star: Star,
+  card: CreditCard,
+  refresh: RefreshCw,
+  trophy: Trophy,
+  heart: Heart,
+  lock: Lock,
+  gift: Gift,
+}
 
 interface BrandResourceViewProps {
   storeId: string
@@ -371,10 +402,192 @@ export function BrandResourceView({
                 </div>
               </>
             )}
+
+            {/* Selos de confiança */}
+            {brand.trust_icons && brand.trust_icons.length > 0 && (
+              <>
+                <SectionTitle
+                  title="Selos de confiança"
+                  subtitle="Use estes selos no rodapé ou na hero dos e-mails"
+                  style={{ marginTop: 40 }}
+                />
+                <div
+                  className="grid"
+                  style={{
+                    marginTop: 16,
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(180px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {brand.trust_icons.map((ic, i) => (
+                    <TrustIconCard key={i} icon={ic} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Produtos em destaque */}
+            {brand.top_products && brand.top_products.length > 0 && (
+              <>
+                <SectionTitle
+                  title="Produtos em destaque"
+                  subtitle="Top produtos captados da loja — use no bloco Produtos dos e-mails"
+                  style={{ marginTop: 40 }}
+                />
+                <div
+                  className="grid"
+                  style={{
+                    marginTop: 16,
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(180px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  {brand.top_products.map((p, i) => (
+                    <TopProductCard key={p.id ?? i} product={p} />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
     </div>
+  )
+}
+
+function TrustIconCard({ icon }: { icon: TrustIcon }) {
+  const Icon = TRUST_ICON_MAP[icon.icon_type] ?? Award
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 8,
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+      }}
+    >
+      <span
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: icon.is_existing
+            ? "var(--crm-pos-bg)"
+            : "var(--crm-blue-50)",
+          color: icon.is_existing ? "var(--crm-pos)" : "var(--crm-brand)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div
+          className="truncate"
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: "var(--crm-gray-900)",
+          }}
+        >
+          {icon.title}
+        </div>
+        {icon.subtitle && (
+          <div
+            className="truncate"
+            style={{
+              fontSize: 11,
+              color: "var(--crm-gray-500)",
+              marginTop: 1,
+            }}
+          >
+            {icon.subtitle}
+          </div>
+        )}
+        {!icon.is_existing && (
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--crm-warn)",
+              marginTop: 3,
+              fontWeight: 500,
+            }}
+          >
+            Sugerido (não confirmado)
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TopProductCard({ product }: { product: TopProduct }) {
+  const priceText =
+    typeof product.price === "number"
+      ? `R$ ${product.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+      : product.price
+        ? String(product.price)
+        : ""
+  return (
+    <a
+      href={product.url || undefined}
+      target={product.url ? "_blank" : undefined}
+      rel={product.url ? "noreferrer" : undefined}
+      style={{
+        display: "block",
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 10,
+        overflow: "hidden",
+        color: "inherit",
+        textDecoration: "none",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "1 / 1",
+          background: "var(--crm-gray-100)",
+          backgroundImage: product.image_url
+            ? `url(${product.image_url})`
+            : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      />
+      <div style={{ padding: "8px 10px" }}>
+        <div
+          className="truncate"
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--crm-gray-900)",
+          }}
+        >
+          {product.name}
+        </div>
+        {priceText && (
+          <div
+            className="crm-tnum"
+            style={{
+              marginTop: 2,
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--crm-brand)",
+            }}
+          >
+            {priceText}
+          </div>
+        )}
+      </div>
+    </a>
   )
 }
 
