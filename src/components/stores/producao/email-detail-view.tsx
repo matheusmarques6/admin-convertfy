@@ -4,8 +4,10 @@ import { useEffect, useState } from "react"
 import useSWR from "swr"
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Code as CodeIcon,
   Copy,
   Download,
@@ -13,12 +15,15 @@ import {
   FileImage,
   Image as ImageIcon,
   LayoutGrid,
+  Plus,
   Square,
   Tag as TagIcon,
+  Trash2,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
 import type {
+  BlockType,
   EmailBlock,
   EmailFlow,
   EmailFlowEmail,
@@ -139,6 +144,127 @@ export function EmailDetailView({
     }
     await mutate()
     onEmailUpdated()
+  }
+
+  const createBlock = async (blockType: BlockType) => {
+    try {
+      const res = await fetch(`/api/admin/email-blocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_id: emailId, block_type: blockType }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao criar bloco")
+      }
+      await mutate()
+      onEmailUpdated()
+      toast.toast({ title: "Bloco adicionado", description: `${blockType} criado` })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao criar bloco",
+        description: (e as Error).message,
+      })
+    }
+  }
+
+  const deleteBlock = async (blockId: string) => {
+    try {
+      const res = await fetch(`/api/admin/email-blocks/${blockId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao remover bloco")
+      }
+      await mutate()
+      onEmailUpdated()
+      toast.toast({ title: "Bloco removido" })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao remover",
+        description: (e as Error).message,
+      })
+    }
+  }
+
+  const moveBlock = async (blockId: string, direction: "up" | "down") => {
+    const idx = blocks.findIndex((b) => b.id === blockId)
+    if (idx === -1) return
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= blocks.length) return
+
+    const newOrder = [...blocks]
+    ;[newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]]
+
+    try {
+      const res = await fetch(`/api/admin/email-blocks`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email_id: emailId,
+          order: newOrder.map((b) => b.id),
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao reordenar")
+      }
+      await mutate()
+      onEmailUpdated()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao reordenar",
+        description: (e as Error).message,
+      })
+    }
+  }
+
+  const createQAItem = async (label: string) => {
+    try {
+      const res = await fetch(`/api/admin/email-qa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_id: emailId, label }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao criar item")
+      }
+      await mutate()
+      onEmailUpdated()
+      toast.toast({ title: "Item adicionado ao checklist" })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao criar item",
+        description: (e as Error).message,
+      })
+    }
+  }
+
+  const deleteQAItem = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/admin/email-qa/${itemId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao remover")
+      }
+      await mutate()
+      onEmailUpdated()
+      toast.toast({ title: "Item removido" })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao remover item",
+        description: (e as Error).message,
+      })
+    }
   }
 
   const copyToClipboard = async (text: string, label = "Conteúdo") => {
@@ -326,56 +452,72 @@ export function EmailDetailView({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto" style={{ padding: 12 }}>
-            {activeTab === "struct" &&
-              blocks.map((block) => (
-                <BlockCard
-                  key={block.id}
-                  block={block}
-                  onToggleApplied={(applied) =>
-                    patchBlock(block.id, { applied })
-                  }
-                  onCopy={copyToClipboard}
-                  onPatch={(update) => patchBlock(block.id, update)}
-                />
-              ))}
-            {activeTab === "struct" && blocks.length === 0 && (
-              <div
-                style={{
-                  padding: "20px 16px",
-                  textAlign: "center",
-                  fontSize: 12,
-                  color: "var(--crm-gray-500)",
-                  background: "var(--crm-gray-50)",
-                  border: "1px solid var(--crm-border)",
-                  borderRadius: 8,
-                }}
-              >
-                Nenhum bloco definido. Adicione blocos no template do email.
-              </div>
+            {activeTab === "struct" && (
+              <>
+                {blocks.map((block, idx) => (
+                  <BlockCard
+                    key={block.id}
+                    block={block}
+                    isFirst={idx === 0}
+                    isLast={idx === blocks.length - 1}
+                    onToggleApplied={(applied) =>
+                      patchBlock(block.id, { applied })
+                    }
+                    onCopy={copyToClipboard}
+                    onPatch={(update) => patchBlock(block.id, update)}
+                    onDelete={() => deleteBlock(block.id)}
+                    onMoveUp={() => moveBlock(block.id, "up")}
+                    onMoveDown={() => moveBlock(block.id, "down")}
+                  />
+                ))}
+                {blocks.length === 0 && (
+                  <div
+                    style={{
+                      padding: "20px 16px",
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: "var(--crm-gray-500)",
+                      background: "var(--crm-gray-50)",
+                      border: "1px solid var(--crm-border)",
+                      borderRadius: 8,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Nenhum bloco ainda. Adicione abaixo.
+                  </div>
+                )}
+                <AddBlockPicker onAdd={createBlock} />
+              </>
             )}
-            {activeTab === "qa" &&
-              qaItems.map((item) => (
-                <QACard
-                  key={item.id}
-                  item={item}
-                  onToggle={(done) => patchQA(item.id, { done })}
-                  onEditNotes={(notes) => patchQA(item.id, { notes: notes || null })}
-                />
-              ))}
-            {activeTab === "qa" && qaItems.length === 0 && (
-              <div
-                style={{
-                  padding: "20px 16px",
-                  textAlign: "center",
-                  fontSize: 12,
-                  color: "var(--crm-gray-500)",
-                  background: "var(--crm-gray-50)",
-                  border: "1px solid var(--crm-border)",
-                  borderRadius: 8,
-                }}
-              >
-                Nenhum item de QA configurado.
-              </div>
+            {activeTab === "qa" && (
+              <>
+                {qaItems.map((item) => (
+                  <QACard
+                    key={item.id}
+                    item={item}
+                    onToggle={(done) => patchQA(item.id, { done })}
+                    onEditNotes={(notes) => patchQA(item.id, { notes: notes || null })}
+                    onDelete={() => deleteQAItem(item.id)}
+                  />
+                ))}
+                {qaItems.length === 0 && (
+                  <div
+                    style={{
+                      padding: "20px 16px",
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: "var(--crm-gray-500)",
+                      background: "var(--crm-gray-50)",
+                      border: "1px solid var(--crm-border)",
+                      borderRadius: 8,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Nenhum item de QA ainda. Adicione abaixo.
+                  </div>
+                )}
+                <AddQAInput onAdd={createQAItem} />
+              </>
             )}
           </div>
 
@@ -1400,16 +1542,27 @@ const BLOCK_TYPE_ICON: Record<string, typeof FileImage> = {
 
 function BlockCard({
   block,
+  isFirst,
+  isLast,
   onToggleApplied,
   onCopy,
   onPatch,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   block: EmailBlock
+  isFirst: boolean
+  isLast: boolean
   onToggleApplied: (applied: boolean) => Promise<void>
   onCopy: (text: string, label?: string) => void
   onPatch: (update: Record<string, unknown>) => Promise<void>
+  onDelete: () => Promise<void>
+  onMoveUp: () => Promise<void>
+  onMoveDown: () => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(block.applied === false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const Icon = BLOCK_TYPE_ICON[block.block_type] ?? FileImage
   const content = block.content as Record<string, unknown>
 
@@ -1501,7 +1654,69 @@ function BlockCard({
             borderTop: "1px solid var(--crm-gray-100)",
           }}
         >
-          <div className="flex justify-end" style={{ paddingTop: 8 }}>
+          <div className="flex items-center justify-between gap-2" style={{ paddingTop: 8 }}>
+            <div className="flex items-center gap-1">
+              <IconBtn
+                title="Mover para cima"
+                onClick={onMoveUp}
+                disabled={isFirst}
+              >
+                <ChevronUp className="h-3 w-3" />
+              </IconBtn>
+              <IconBtn
+                title="Mover para baixo"
+                onClick={onMoveDown}
+                disabled={isLast}
+              >
+                <ChevronDown className="h-3 w-3" />
+              </IconBtn>
+              {confirmDelete ? (
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    onClick={async () => {
+                      setConfirmDelete(false)
+                      await onDelete()
+                    }}
+                    style={{
+                      height: 24,
+                      padding: "0 8px",
+                      background: "var(--crm-neg)",
+                      color: "#fff",
+                      border: 0,
+                      borderRadius: 4,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Confirmar remoção
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    style={{
+                      height: 24,
+                      padding: "0 8px",
+                      background: "transparent",
+                      color: "var(--crm-gray-600)",
+                      border: "1px solid var(--crm-border)",
+                      borderRadius: 4,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <IconBtn
+                  title="Remover bloco"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </IconBtn>
+              )}
+            </div>
             <button
               onClick={() => onCopy(JSON.stringify(block.content, null, 2), "Bloco")}
               className="cf-focusable inline-flex items-center gap-1.5"
@@ -1530,6 +1745,41 @@ function BlockCard({
         </div>
       )}
     </div>
+  )
+}
+
+function IconBtn({
+  children,
+  onClick,
+  disabled,
+  title,
+}: {
+  children: React.ReactNode
+  onClick: () => void | Promise<void>
+  disabled?: boolean
+  title?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        width: 24,
+        height: 24,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "transparent",
+        color: disabled ? "var(--crm-gray-300)" : "var(--crm-gray-600)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 4,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -2324,20 +2574,24 @@ function QACard({
   item,
   onToggle,
   onEditNotes,
+  onDelete,
 }: {
   item: EmailQAItem
   onToggle: (done: boolean) => Promise<void>
   onEditNotes: (notes: string) => Promise<void>
+  onDelete: () => Promise<void>
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
   return (
     <div
-      className="flex items-start gap-2.5"
+      className="flex items-start gap-2.5 group"
       style={{
         padding: "10px 12px",
         background: "var(--crm-gray-0)",
         border: "1px solid var(--crm-border)",
         borderRadius: 8,
         marginBottom: 8,
+        position: "relative",
       }}
     >
       <button
@@ -2360,16 +2614,85 @@ function QACard({
         {item.done && <Check className="h-3 w-3" />}
       </button>
       <div className="min-w-0 flex-1">
-        <div
-          style={{
-            fontSize: 12.5,
-            fontWeight: 500,
-            color: item.done ? "var(--crm-gray-500)" : "var(--crm-gray-900)",
-            textDecoration: item.done ? "line-through" : "none",
-            lineHeight: 1.4,
-          }}
-        >
-          {item.label}
+        <div className="flex items-start justify-between gap-2">
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: item.done ? "var(--crm-gray-500)" : "var(--crm-gray-900)",
+              textDecoration: item.done ? "line-through" : "none",
+              lineHeight: 1.4,
+              flex: 1,
+            }}
+          >
+            {item.label}
+          </div>
+          {confirmDelete ? (
+            <div className="inline-flex items-center gap-1 shrink-0">
+              <button
+                onClick={async () => {
+                  setConfirmDelete(false)
+                  await onDelete()
+                }}
+                title="Confirmar"
+                style={{
+                  width: 22,
+                  height: 22,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "var(--crm-neg)",
+                  color: "#fff",
+                  border: 0,
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <Check className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                title="Cancelar"
+                style={{
+                  width: 22,
+                  height: 22,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "transparent",
+                  color: "var(--crm-gray-500)",
+                  border: "1px solid var(--crm-border)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              title="Remover item"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{
+                width: 22,
+                height: 22,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                color: "var(--crm-gray-400)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 4,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
         </div>
         {item.category && (
           <span
@@ -2546,5 +2869,273 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       />
       {v.label}
     </span>
+  )
+}
+
+// ─── AddBlockPicker / AddQAInput ──────────────────────────
+
+const BLOCK_TYPE_OPTIONS: Array<{ value: BlockType; label: string }> = [
+  { value: "hero", label: "Hero" },
+  { value: "text", label: "Texto" },
+  { value: "coupon", label: "Cupom" },
+  { value: "products", label: "Produtos" },
+  { value: "image", label: "Imagem" },
+  { value: "cta", label: "Botão (CTA)" },
+  { value: "footer", label: "Rodapé" },
+  { value: "divider", label: "Divisor" },
+  { value: "spacer", label: "Espaçador" },
+  { value: "social", label: "Redes sociais" },
+]
+
+function AddBlockPicker({
+  onAdd,
+}: {
+  onAdd: (blockType: BlockType) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="cf-focusable"
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          background: "var(--crm-gray-0)",
+          border: "1px dashed var(--crm-border)",
+          borderRadius: 8,
+          color: "var(--crm-gray-600)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        <Plus className="h-3 w-3" />
+        Adicionar bloco
+      </button>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-brand)",
+        borderRadius: 8,
+      }}
+    >
+      <div
+        className="flex items-center justify-between"
+        style={{ marginBottom: 8 }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--crm-gray-700)",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Escolha o tipo
+        </span>
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "var(--crm-gray-500)",
+            cursor: "pointer",
+            fontSize: 14,
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 6,
+        }}
+      >
+        {BLOCK_TYPE_OPTIONS.map((opt) => {
+          const Icon = BLOCK_TYPE_ICON[opt.value] ?? FileImage
+          return (
+            <button
+              key={opt.value}
+              onClick={async () => {
+                setOpen(false)
+                await onAdd(opt.value)
+              }}
+              style={{
+                padding: "8px 10px",
+                background: "var(--crm-gray-50)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 6,
+                color: "var(--crm-gray-800)",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                textAlign: "left",
+              }}
+            >
+              <span
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 4,
+                  background: "var(--crm-blue-50)",
+                  color: "var(--crm-brand)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon className="h-3 w-3" />
+              </span>
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function AddQAInput({
+  onAdd,
+}: {
+  onAdd: (label: string) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async () => {
+    const v = value.trim()
+    if (!v) return
+    setSubmitting(true)
+    try {
+      await onAdd(v)
+      setValue("")
+      setOpen(false)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="cf-focusable"
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          background: "var(--crm-gray-0)",
+          border: "1px dashed var(--crm-border)",
+          borderRadius: 8,
+          color: "var(--crm-gray-600)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        <Plus className="h-3 w-3" />
+        Adicionar item de checklist
+      </button>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-brand)",
+        borderRadius: 8,
+      }}
+    >
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            submit()
+          } else if (e.key === "Escape") {
+            setOpen(false)
+            setValue("")
+          }
+        }}
+        placeholder="Ex.: verificar links UTM"
+        style={{
+          width: "100%",
+          padding: "6px 8px",
+          background: "var(--crm-gray-50)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 4,
+          fontSize: 12,
+          color: "var(--crm-gray-900)",
+          outline: "none",
+          marginBottom: 6,
+        }}
+      />
+      <div className="flex items-center justify-end gap-1">
+        <button
+          onClick={() => {
+            setOpen(false)
+            setValue("")
+          }}
+          style={{
+            height: 24,
+            padding: "0 10px",
+            background: "transparent",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 4,
+            color: "var(--crm-gray-600)",
+            fontSize: 11,
+            fontWeight: 500,
+            cursor: "pointer",
+          }}
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={submit}
+          disabled={!value.trim() || submitting}
+          style={{
+            height: 24,
+            padding: "0 10px",
+            background: !value.trim() ? "var(--crm-gray-200)" : "var(--crm-brand)",
+            border: 0,
+            borderRadius: 4,
+            color: !value.trim() ? "var(--crm-gray-500)" : "var(--crm-brand-fg)",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: !value.trim() || submitting ? "default" : "pointer",
+          }}
+        >
+          {submitting ? "..." : "Adicionar"}
+        </button>
+      </div>
+    </div>
   )
 }

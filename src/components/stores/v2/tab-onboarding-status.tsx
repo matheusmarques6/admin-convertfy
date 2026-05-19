@@ -10,6 +10,8 @@
 
 import useSWR from "swr"
 import { useState } from "react"
+import Link from "next/link"
+import { Mail, ArrowRight } from "lucide-react"
 import { Section, Badge, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
@@ -115,20 +117,75 @@ export default function TabOnboardingStatus({ storeId }: { storeId: string }) {
 
   if (!payload.active) {
     return (
-      <Section title="Onboarding">
-        <div style={{ padding: 32, textAlign: "center" }}>
-          <div style={{ fontSize: 13, color: C.g700, fontWeight: 600, marginBottom: 4 }}>
-            {payload.last_onboarding?.status === "completed"
-              ? "Onboarding concluído"
-              : "Loja ainda sem onboarding"}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Section title="Onboarding">
+          <div style={{ padding: 32, textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: C.g700, fontWeight: 600, marginBottom: 4 }}>
+              {payload.last_onboarding?.status === "completed"
+                ? "Onboarding concluído"
+                : "Loja ainda sem onboarding"}
+            </div>
+            <div style={{ fontSize: 12, color: C.g500 }}>
+              {payload.last_onboarding?.status === "completed"
+                ? "Esta loja já passou pelo processo de implementação."
+                : "Crie um onboarding pra essa loja a partir do menu Onboarding."}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: C.g500 }}>
-            {payload.last_onboarding?.status === "completed"
-              ? "Esta loja já passou pelo processo de implementação."
-              : "Crie um onboarding pra essa loja a partir do menu Onboarding."}
+        </Section>
+        <Link
+          href={`/admin/stores/${storeId}/producao`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            background: "linear-gradient(135deg, var(--crm-blue-50, #eff6ff), #ffffff 80%)",
+            border: `1px solid ${C.brand}`,
+            borderRadius: 8,
+            textDecoration: "none",
+            color: "inherit",
+          }}
+          className="hover:shadow-sm"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: C.brand,
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Mail size={18} strokeWidth={2.2} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>
+                Workspace de Produção de E-mails
+              </div>
+              <div style={{ fontSize: 11.5, color: C.g500, marginTop: 1 }}>
+                Acesse os flows, marca e briefing dessa loja
+              </div>
+            </div>
           </div>
-        </div>
-      </Section>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: C.brand,
+            }}
+          >
+            Abrir workspace
+            <ArrowRight size={14} />
+          </div>
+        </Link>
+      </div>
     )
   }
 
@@ -137,6 +194,62 @@ export default function TabOnboardingStatus({ storeId }: { storeId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* CTA: Workspace de Produção */}
+      <Link
+        href={`/admin/stores/${storeId}/producao`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          background: "linear-gradient(135deg, var(--crm-blue-50, #eff6ff), #ffffff 80%)",
+          border: `1px solid ${C.brand}`,
+          borderRadius: 8,
+          textDecoration: "none",
+          color: "inherit",
+          transition: "transform 120ms ease, box-shadow 120ms ease",
+        }}
+        className="hover:shadow-sm hover:-translate-y-px"
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              background: C.brand,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Mail size={18} strokeWidth={2.2} />
+          </div>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>
+              Workspace de Produção de E-mails
+            </div>
+            <div style={{ fontSize: 11.5, color: C.g500, marginTop: 1 }}>
+              Marca, briefing, flows do onboarding · QA por e-mail
+            </div>
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.brand,
+          }}
+        >
+          Abrir workspace
+          <ArrowRight size={14} />
+        </div>
+      </Link>
+
       {/* Header com progresso */}
       <Section
         title="Onboarding em andamento"
