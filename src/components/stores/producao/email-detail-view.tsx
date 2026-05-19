@@ -626,7 +626,7 @@ export function EmailDetailView({
             )}
           </div>
 
-          {/* Footer: Salvar rascunho + Enviar pra aprovação */}
+          {/* Footer: acoes dependem do status do email */}
           <div
             className="shrink-0 flex flex-col gap-2"
             style={{
@@ -635,58 +635,11 @@ export function EmailDetailView({
               background: "var(--crm-gray-0)",
             }}
           >
-            <div className="flex gap-2">
-              <button
-                className="cf-focusable flex-1"
-                style={{
-                  height: 32,
-                  background: "var(--crm-gray-0)",
-                  border: "1px solid var(--crm-border)",
-                  borderRadius: 6,
-                  color: "var(--crm-gray-700)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-                onClick={() => patchEmail({ status: "draft" })}
-              >
-                <Download className="h-3 w-3" />
-                Salvar rascunho
-              </button>
-              <button
-                disabled={blocksApplied < blocksTotal}
-                onClick={() => patchEmail({ status: "ready" })}
-                className="cf-focusable flex-1"
-                style={{
-                  height: 32,
-                  background:
-                    blocksApplied < blocksTotal
-                      ? "var(--crm-gray-100)"
-                      : "var(--crm-brand)",
-                  color:
-                    blocksApplied < blocksTotal
-                      ? "var(--crm-gray-400)"
-                      : "var(--crm-brand-fg)",
-                  border: 0,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor:
-                    blocksApplied < blocksTotal ? "default" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                Enviar pra aprovação
-                <ChevronRight className="h-3 w-3" />
-              </button>
-            </div>
+            <EmailStatusActions
+              status={email.status}
+              canAdvance={blocksApplied >= blocksTotal && blocksTotal > 0}
+              onUpdateStatus={(s) => patchEmail({ status: s })}
+            />
             <span
               className="crm-tnum"
               style={{
@@ -2989,6 +2942,177 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       />
       {v.label}
     </span>
+  )
+}
+
+// ─── EmailStatusActions ───────────────────────────────────
+
+function EmailStatusActions({
+  status,
+  canAdvance,
+  onUpdateStatus,
+}: {
+  status: EmailFlowEmail["status"]
+  canAdvance: boolean
+  onUpdateStatus: (s: EmailFlowEmail["status"]) => Promise<void>
+}) {
+  // Estados por status atual (left = recuar/salvar, right = avancar)
+  if (status === "draft" || status === "in_progress") {
+    return (
+      <div className="flex gap-2">
+        <SecondaryBtn
+          onClick={() => onUpdateStatus("draft")}
+          icon={<Download className="h-3 w-3" />}
+        >
+          Salvar rascunho
+        </SecondaryBtn>
+        <PrimaryBtn
+          disabled={!canAdvance}
+          onClick={() => onUpdateStatus("ready")}
+          icon={<ChevronRight className="h-3 w-3" />}
+          iconRight
+        >
+          Enviar pra aprovação
+        </PrimaryBtn>
+      </div>
+    )
+  }
+  if (status === "ready") {
+    return (
+      <div className="flex gap-2">
+        <SecondaryBtn
+          onClick={() => onUpdateStatus("draft")}
+          icon={<ChevronLeft className="h-3 w-3" />}
+        >
+          Voltar pra rascunho
+        </SecondaryBtn>
+        <PrimaryBtn
+          onClick={() => onUpdateStatus("approved")}
+          icon={<Check className="h-3 w-3" />}
+        >
+          Aprovar
+        </PrimaryBtn>
+      </div>
+    )
+  }
+  if (status === "approved") {
+    return (
+      <div className="flex gap-2">
+        <SecondaryBtn
+          onClick={() => onUpdateStatus("draft")}
+          icon={<ChevronLeft className="h-3 w-3" />}
+        >
+          Reabrir
+        </SecondaryBtn>
+        <PrimaryBtn
+          onClick={() => onUpdateStatus("live")}
+          icon={<ChevronRight className="h-3 w-3" />}
+          iconRight
+        >
+          Marcar como ao vivo
+        </PrimaryBtn>
+      </div>
+    )
+  }
+  // status === "live"
+  return (
+    <div className="flex gap-2">
+      <SecondaryBtn
+        onClick={() => onUpdateStatus("draft")}
+        icon={<ChevronLeft className="h-3 w-3" />}
+      >
+        Reabrir e revisar
+      </SecondaryBtn>
+      <div
+        className="flex-1 inline-flex items-center justify-center"
+        style={{
+          height: 32,
+          borderRadius: 6,
+          background: "var(--crm-pos-bg)",
+          color: "var(--crm-pos)",
+          fontSize: 12,
+          fontWeight: 600,
+          gap: 6,
+        }}
+      >
+        <Check className="h-3 w-3" />
+        Ao vivo
+      </div>
+    </div>
+  )
+}
+
+function PrimaryBtn({
+  children,
+  onClick,
+  disabled,
+  icon,
+  iconRight,
+}: {
+  children: React.ReactNode
+  onClick: () => void | Promise<void>
+  disabled?: boolean
+  icon?: React.ReactNode
+  iconRight?: boolean
+}) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className="cf-focusable flex-1"
+      style={{
+        height: 32,
+        background: disabled ? "var(--crm-gray-100)" : "var(--crm-brand)",
+        color: disabled ? "var(--crm-gray-400)" : "var(--crm-brand-fg)",
+        border: 0,
+        borderRadius: 6,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: disabled ? "default" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+      }}
+    >
+      {!iconRight && icon}
+      {children}
+      {iconRight && icon}
+    </button>
+  )
+}
+
+function SecondaryBtn({
+  children,
+  onClick,
+  icon,
+}: {
+  children: React.ReactNode
+  onClick: () => void | Promise<void>
+  icon?: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="cf-focusable flex-1"
+      style={{
+        height: 32,
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 6,
+        color: "var(--crm-gray-700)",
+        fontSize: 12,
+        fontWeight: 500,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+      }}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
