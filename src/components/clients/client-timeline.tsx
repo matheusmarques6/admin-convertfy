@@ -23,6 +23,7 @@ import {
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -413,6 +414,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ActivityCategory | "all">("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "90d">("all")
 
   useEffect(() => {
     async function loadData() {
@@ -471,8 +473,13 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
       const q = searchQuery.toLowerCase()
       list = list.filter((a) => a.description?.toLowerCase().includes(q))
     }
+    if (dateRange !== "all") {
+      const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+      list = list.filter((a) => new Date(a.created_at).getTime() >= cutoff)
+    }
     return list
-  }, [activities, filter, searchQuery])
+  }, [activities, filter, searchQuery, dateRange])
 
   // Group by month
   const groupedActivities = useMemo(() => {
@@ -612,17 +619,34 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <div className="inline-flex rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-0.5">
+            {([
+              { v: "all" as const, l: "Tudo" },
+              { v: "7d" as const, l: "7d" },
+              { v: "30d" as const, l: "30d" },
+              { v: "90d" as const, l: "90d" },
+            ]).map((d) => (
+              <button
+                key={d.v}
+                onClick={() => setDateRange(d.v)}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] font-medium rounded-[4px] transition-colors",
+                  dateRange === d.v
+                    ? "bg-[#EEF0FB] text-[#2137B6] dark:bg-[#141C3D] dark:text-[#7B8CEA]"
+                    : "text-gray-500 dark:text-[#8B92A5] hover:text-gray-900 dark:hover:text-[#EAEDF3]",
+                )}
+              >
+                {d.l}
+              </button>
+            ))}
+          </div>
+          <Input
             type="text"
             placeholder="Buscar evento..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              "h-8 w-44 rounded-[6px] px-2.5 text-[12px]",
-              "bg-white border border-[rgba(0,0,0,0.08)] text-gray-700 placeholder:text-gray-400",
-              "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-[#EAEDF3] dark:placeholder:text-[#5C6378]",
-              "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
-            )}
+            className="h-8 w-44 text-[12px]"
+            aria-label="Buscar evento na timeline"
           />
           <span className="text-[11px] text-gray-400 dark:text-[#5C6378]">
             {filteredActivities.length} eventos
