@@ -855,7 +855,21 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
           <CardHeader className="pb-3 flex flex-row items-start justify-between">
             <div>
-              <CardTitle className="text-sm font-semibold">Atividade recente</CardTitle>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                Atividade recente
+                {(() => {
+                  const last7d = Date.now() - 7 * 24 * 60 * 60 * 1000
+                  const recentCount = activities.filter(
+                    (a) => new Date(a.created_at).getTime() >= last7d,
+                  ).length
+                  if (recentCount === 0) return null
+                  return (
+                    <Badge variant="info" showDot={false} className="text-[10px]">
+                      {recentCount} nova{recentCount !== 1 ? "s" : ""} · 7d
+                    </Badge>
+                  )
+                })()}
+              </CardTitle>
               <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
                 Últimas interações do time com este cliente
               </p>
