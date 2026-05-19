@@ -10,7 +10,7 @@
 
 import useSWR from "swr"
 import { useState } from "react"
-import { Section, Badge, Btn, C, TNUM } from "./_primitives"
+import { Section, Badge, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 

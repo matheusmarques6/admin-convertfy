@@ -352,3 +352,154 @@ Buckets: `avatars`, `onboarding-deliverables`. RLS habilitado.
 ---
 
 **Próximo passo:** aguardando tuas respostas Q1-Q4 antes de implementar qualquer linha. Não vou desfazer trabalho existente sem confirmação explícita.
+
+---
+
+# UPDATE · Implementação concluída · 2026-05-19
+
+Decisão do usuário: **Manter Onboarding v2** + **Tier A+B → D+C → revisão final**.
+
+## Entregue · Tier A+B (commit `fad0e67`)
+
+### Migration `20260519_task_panel_enrichments.sql` (aplicada via MCP)
+- `onboardings.visual_assets` (jsonb): paleta, logos, fonte, top produtos
+- `tasks.acceptance_criteria` (text[]): critérios de aceitação
+- `tasks.private_notes` (text): anotações pessoais (RLS app-layer)
+- `tasks.ai_suggestions` (jsonb): cache de 3 variações de IA
+- 4 triggers em `task_history`: status_changed, assigned, completed, commented, deliverable_status_changed
+- Bucket Storage `onboarding-visual-assets` (privado, 10MB max, 4 mime types)
+- 3 policies RLS pro bucket (org_members based)
+
+### API routes (7 novas)
+| Rota | Método | Função |
+|---|---|---|
+| `/api/tasks/[id]/store-context` | GET | Identidade da loja + Brand Brain + visual_assets |
+| `/api/tasks/[id]/private-notes` | GET/PATCH | Auto-save de anotações pessoais |
+| `/api/tasks/[id]/ai-suggestions` | GET/POST | 3 variações via Claude Sonnet 4.6 |
+| `/api/tasks/[id]/acceptance-criteria` | GET/PATCH | Critérios editáveis |
+| `/api/tasks/[id]/timeline` | GET | task_history + task_comments mesclados |
+| `/api/onboardings/[id]/visual-assets` | GET/PATCH | Paleta, logos, fonte, produtos |
+| `/api/onboardings/[id]/visual-assets/upload` | POST | Upload pra Supabase Storage |
+
+### Service `ai-task-suggestions.service.ts`
+- Reusa o briefing/Brand Brain pra gerar 3 variações (direto/benefício/pergunta)
+- Modelo `claude-sonnet-4-6` (mesmo do briefing-generation existente)
+- Output validado (3 variations, JSON estruturado)
+- Cache em `tasks.ai_suggestions` com timestamp e model versionado
+
+### Componentes UI (8 novos em `src/components/productivity/blocks/`)
+- `_shared.tsx` — tokens C, BlockSection wrapper, EmptyState, MiniSpinner, useFetch hook
+- `task-panel-sidebar.tsx` — 260px sidebar com 3 grupos (Contexto/Execução/Acompanhamento), progress bar rodapé com X% / Y sub-tasks, scroll-to-section ao clicar
+- `block-identidade-loja.tsx` — grid 3x2 nome/nicho/plano/MRR/plataforma/idioma + footer com cliente/CS + botão "Ver loja completa →"
+- `block-brand-brain.tsx` — fundo lilás 2x2 (tom_voz, posicionamento, persona, benefícios) + "Ver completo" expand inline JSON
+- `block-assets-visuais.tsx` — 5 swatches paleta editável (color picker), 2 slots logo upload (principal e mono), fonte preview, top 5 produtos grid 5col
+- `block-criterios-aceitacao.tsx` — checks verdes inline, edit/add/remove
+- `block-anotacoes-pessoais.tsx` — textarea auto-save debounce 800ms + indicador "Salvando..."
+- `block-sugestoes-ia.tsx` — 3 cards (direto/benefício/pergunta) com expand, botão "Pedir novas opções" + "Aplicar variação escolhida"
+- `block-timeline-unificada.tsx` — merge task_history + task_comments, dots coloridos (brand=comentário, green=conclusão, gray=neutro, amber=alerta)
+
+### Integração `task-detail-drawer.tsx`
+- Quando `task.source_type === 'onboarding'`, drawer expande de 760 → 1100px
+- Layout horizontal: sidebar 260px + content scrollable
+- Blocos novos injetados como seções ancoráveis com IDs `task-section-{slug}`
+- Conteúdo original preservado intacto (Title + Properties + Stepper + Checklist + Entregáveis + Anexos + Comentários)
+- Sidebar permite scroll-to-section por clique
+- Para tasks não-onboarding: comportamento original 100% (760px, sem sidebar)
+
+## Entregue · Tier D (commit `a5030a4`)
+
+### Migration `20260519_store_requests.sql` (aplicada via MCP)
+- Tabela `client_store_requests` com RLS org-based
+- 5 status (open/in_progress/completed/declined/on_hold)
+- 4 prioridades (low/medium/high/urgent)
+- Vínculo opcional com task em productivity
+
+### API routes (5 novas)
+- `GET/POST /api/stores/[id]/requests`
+- `PATCH/DELETE /api/stores/[id]/requests/[requestId]`
+- `GET/POST /api/stores/[id]/calls` (usa `store_feedback_calls` existente)
+- `GET /api/stores/[id]/acompanhamento` (health score derivado)
+- `GET /api/stores/[id]/onboarding-status` (pipeline + tasks agrupadas)
+
+### Componentes UI (4 novos em `src/components/stores/v2/`)
+- `tab-onboarding-status.tsx` — pipeline 7 etapas expansíveis, KPI pills (briefing/pagamento/contrato/tempo na etapa), progress bar
+- `tab-acompanhamento.tsx` — donut 120px health score com cor por estado (rampup/healthy/attention/risk/renewal), AI summary, highlights/concerns, histórico 12 semanas
+- `tab-calls.tsx` — próxima call destacada, form inline pra registrar (datetime + duração + notes + action_items + next_call_date), histórico
+- `tab-solicitacoes.tsx` — filter chips (todas/abertas/finalizadas), form inline pra criar, mini-btns pra mudar status, badges coloridos
+
+### Integração `store-detail-tabs-v2.tsx`
+- 4 tabs novas entre Performance e Contexto
+- Ordem final (10 tabs): Visão Geral, **Onboarding**, Performance, Relatório, **Acompanhamento**, **Calls**, **Solicitações**, Contexto, Atividade, Setup
+
+## Entregue · Tier C (commit `1d8b032`)
+
+### Cron `/api/cron/onboarding-form-reminder`
+- Schedule: 12:00 UTC daily (09:00 BRT)
+- Lista onboardings em coluna 2 (cliente_formulario) há > 24h sem submit
+- Cria task pro CS owner "Cobrar formulário do cliente" com prioridade `high` e due_date +24h
+- Idempotente: skip se já criou nas últimas 24h pra mesmo onboarding
+
+### Service `onboarding-email.service.ts`
+- `sendAccountActiveEmail(onboardingId)` — usa EmailService (Resend) existente
+- Template HTML brand-styled (brand blue + purple para destaques)
+- Inclui greeting, status da loja, próxima call info, reply-to do CS owner
+
+### Hook em `advanceColumn`
+- Quando coluna final atingida → dispara email fire-and-forget
+- Mantém logica existente de `events.onboarding.completed`
+
+### Loop Etapa 4→3 (já existente, validado)
+- Endpoint `POST /api/onboardings/[id]/go-back`
+- Service `goBackToColumn` com versionamento via `onboarding_versions`
+- Mantém histórico de feedback (severity + completed_at)
+- Cria nova task pra refazer + dispatch event `onboarding.preview_rejected`
+
+## Como testar end-to-end
+
+### 1. Painel da task enriquecido (Tier A+B)
+1. Ir em `/admin/onboarding` e clicar num card de onboarding
+2. Ir em `/admin/onboarding/[id]` e clicar numa task (qualquer)
+3. Drawer abre com **sidebar 260px à esquerda** (em onboarding) ou layout normal (em productivity tasks)
+4. Clicar em cada item da sidebar → conteúdo scroll-to-section
+5. **Identidade da loja** (Sobre o cliente) → grid 3x2 com nome/nicho/plano/MRR/etc + botão "Ver loja completa"
+6. **Brand Brain** → quadrante lilás 2x2; se onboarding ainda não tem briefing, empty state explicativo
+7. **Assets visuais** → 5 swatches paleta editável, upload logo (PNG/JPEG/SVG/WebP), preview fonte
+8. **Critérios** → adicionar/editar/remover critérios; salva via PATCH
+9. **Sugestões IA** → primeiro clique gera 3 variações via Claude Sonnet (~5-10s)
+10. **Anotações pessoais** → digite, espere 800ms, vai aparecer "Salvo HH:MM"
+11. **Histórico** → mostra eventos do sistema + comentários cronologicamente
+
+### 2. Detalhe da Loja (Tier D)
+1. Ir em `/admin/stores/[id]?tab=onboarding`
+2. **Onboarding tab** → pipeline 7 etapas com tasks expansíveis
+3. **Acompanhamento tab** → health score donut + weekly reports
+4. **Calls tab** → registrar uma call com data/notas/ações
+5. **Solicitações tab** → criar uma nova solicitação, mudar status, excluir
+
+### 3. Automações (Tier C)
+1. **Reminder Etapa 2**: rodar manualmente o cron via `GET /api/cron/onboarding-form-reminder` (precisa header `Authorization: Bearer $CRON_SECRET`)
+2. **Email Etapa 7**: avançar um onboarding até a coluna final via `/api/onboardings/[id]/advance` → email é enviado ao cliente
+3. **Loop 4→3**: `POST /api/onboardings/[id]/go-back` com body `{ target_column_slug, feedback, severity }`
+
+## Status técnico
+
+- ✅ Migration 20260519_task_panel_enrichments aplicada (4 colunas + 4 triggers + bucket)
+- ✅ Migration 20260519_store_requests aplicada (tabela + RLS + trigger updated_at)
+- ✅ TypeScript: 0 erros (warnings só em arquivos fora desta sprint)
+- ✅ ESLint: 0 erros, 0 warnings após cleanup de imports
+- ⚠️ Build full não rodado (timeout > 3min) — typecheck stand-in
+- ✅ 18 arquivos novos + 3 modificados
+- ✅ Push concluído para `claude/resume-previous-session-UvATK`
+
+## Limitações conhecidas
+
+1. **Design file `Detalhe da Loja.html`**: não fiz fetch da URL externa (`api.anthropic.com/v1/design/...`) porque não tenho permissão pra requests arbitrárias. As 4 tabs novas foram construídas com base no escopo descrito no prompt + padrão visual do DS v3 existente.
+
+2. **Sidebar do drawer com layout 1100px**: cabe bem em desktop, pode ficar apertado em monitor < 1280px. Tem `max-w-[96vw]` como guarda-rail.
+
+3. **AI suggestions geração inicial é lenta (~5-10s)**: cache em `tasks.ai_suggestions` evita regenerar.
+
+4. **Pipeline Acompanhamento + Ritual Sexta + CRM Ryan**: features ENORMES do prompt original, **não entregues nesta sprint** — cada uma é projeto próprio. Aviso prévio na investigação Q4.
+
+5. **Build cron reminder Etapa 2**: depende do `CRON_SECRET` estar configurado no Vercel.
+

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 
