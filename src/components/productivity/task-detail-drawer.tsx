@@ -12,7 +12,7 @@
  *  - POST add_comment via store (mesma rota legacy)
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import type { ProductivityTask } from "@/types/productivity"
@@ -26,7 +26,6 @@ import { BlockAnotacoesPessoais } from "./blocks/block-anotacoes-pessoais"
 import {
   TaskPanelSidebar,
   type SidebarSection,
-  type SidebarGroup,
 } from "./blocks/task-panel-sidebar"
 
 // ── Design tokens (replicam DS do prototipo) ────────────────────────────────
