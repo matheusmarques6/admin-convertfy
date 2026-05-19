@@ -317,6 +317,16 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <User className="h-3.5 w-3.5" />
             Acesso ao Portal
+            {portalUsers.length > 0 && (
+              <span className="text-[11px] font-normal text-gray-400 dark:text-[#5C6378]">
+                · {portalUsers.length} {portalUsers.length === 1 ? "usuário" : "usuários"}
+                {portalUsers.filter((u) => !hasLoggedIn(u) && u.is_active).length > 0 && (
+                  <span className="ml-1 text-[#92400E] dark:text-[#FCD34D]">
+                    ({portalUsers.filter((u) => !hasLoggedIn(u) && u.is_active).length} convite pendente)
+                  </span>
+                )}
+              </span>
+            )}
           </CardTitle>
           <CardDescription className="text-[12px] mt-0.5">
             Gerencie os usuários que podem acessar o portal do cliente
