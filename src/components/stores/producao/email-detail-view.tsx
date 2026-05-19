@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Code as CodeIcon,
   Copy,
+  CopyPlus,
   Download,
   Eye,
   FileImage,
@@ -64,6 +65,7 @@ interface EmailDetailViewProps {
   onEmailUpdated: () => void
   onNavigate: (emailId: string) => void
   onEmailDeleted?: () => void
+  onEmailDuplicated?: (newEmailId: string) => void
 }
 
 export function EmailDetailView({
@@ -72,6 +74,7 @@ export function EmailDetailView({
   onEmailUpdated,
   onNavigate,
   onEmailDeleted,
+  onEmailDuplicated,
 }: EmailDetailViewProps) {
   const toast = useToast()
   const { data, mutate } = useSWR<{ data?: EmailDetailResponse } & EmailDetailResponse>(
@@ -311,7 +314,35 @@ export function EmailDetailView({
     }
   }
 
+  const duplicateEmail = async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/email-flows/${flow.id}/emails/${emailId}/duplicate`,
+        { method: "POST" },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao duplicar")
+      }
+      const json = await res.json()
+      const dup = json?.data?.email ?? json?.email
+      toast.toast({
+        title: "E-mail duplicado",
+        description: dup?.name ?? "Cópia criada",
+      })
+      onEmailUpdated()
+      if (dup?.id) onEmailDuplicated?.(dup.id)
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao duplicar e-mail",
+        description: (e as Error).message,
+      })
+    }
+  }
+
   const [confirmDeleteEmail, setConfirmDeleteEmail] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
 
   const copyToClipboard = async (text: string, label = "Conteúdo") => {
     try {
@@ -426,6 +457,34 @@ export function EmailDetailView({
               onClick={() => setViewMode("html")}
             />
           </div>
+          <button
+            onClick={async () => {
+              if (duplicating) return
+              setDuplicating(true)
+              try {
+                await duplicateEmail()
+              } finally {
+                setDuplicating(false)
+              }
+            }}
+            disabled={duplicating}
+            title="Duplicar e-mail"
+            style={{
+              width: 28,
+              height: 28,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "transparent",
+              color: "var(--crm-gray-500)",
+              border: "1px solid var(--crm-border)",
+              borderRadius: 6,
+              cursor: duplicating ? "default" : "pointer",
+              opacity: duplicating ? 0.6 : 1,
+            }}
+          >
+            <CopyPlus className="h-3.5 w-3.5" />
+          </button>
           {confirmDeleteEmail ? (
             <div className="inline-flex items-center gap-1">
               <button

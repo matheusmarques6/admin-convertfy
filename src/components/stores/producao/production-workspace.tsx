@@ -560,6 +560,14 @@ export function ProductionWorkspace({
                   setSelection({ kind: "none" })
                 }
               }}
+              onEmailDuplicated={async (newEmailId) => {
+                await mutate()
+                setSelection({
+                  kind: "email",
+                  flowId: currentFlow.id,
+                  emailId: newEmailId,
+                })
+              }}
             />
           )}
           {selection.kind === "none" && (
