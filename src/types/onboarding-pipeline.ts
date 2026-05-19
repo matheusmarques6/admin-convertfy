@@ -139,6 +139,7 @@ export interface OnboardingPipelineItem {
   form_submitted_at: string | null
   briefing_status: BriefingStatus
   briefing: BriefingContent | null
+  briefing_ai_original?: BriefingContent | null
   briefing_generated_at: string | null
   briefing_generated_by?: BriefingSource | null
   briefing_confirmed_at: string | null

@@ -428,10 +428,15 @@ async function saveBriefing(
 ): Promise<void> {
   const admin = createAdminClient()
   const now = new Date().toISOString()
+  // briefing_ai_original preserva a versão pura da IA (sem edições do
+  // cliente). briefing recebe o mesmo conteúdo aqui — depois confirmBriefing
+  // pode sobrescrever só briefing com as edições.
+  const aiVersion = { ...briefing, generated_at: now }
   await admin
     .from("onboardings")
     .update({
-      briefing: { ...briefing, generated_at: now },
+      briefing: aiVersion,
+      briefing_ai_original: aiVersion,
       briefing_status: "generated_pending_review",
       briefing_generated_at: now,
       briefing_generated_by: source,
