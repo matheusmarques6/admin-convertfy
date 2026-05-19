@@ -609,6 +609,56 @@ export function EmailDetailView({
             />
           </div>
 
+          {/* Bulk actions row */}
+          {activeTab === "struct" && blocksTotal > 0 && (
+            <BulkActionRow
+              total={blocksTotal}
+              applied={blocksApplied}
+              onAll={async () => {
+                await Promise.all(
+                  blocks
+                    .filter((b) => !b.applied)
+                    .map((b) => patchBlock(b.id, { applied: true })),
+                )
+              }}
+              onClear={async () => {
+                await Promise.all(
+                  blocks
+                    .filter((b) => b.applied)
+                    .map((b) => patchBlock(b.id, { applied: false })),
+                )
+              }}
+              labels={{
+                all: "Marcar todos aplicados",
+                clear: "Limpar aplicados",
+              }}
+            />
+          )}
+          {activeTab === "qa" && qaTotal > 0 && (
+            <BulkActionRow
+              total={qaTotal}
+              applied={qaDone}
+              onAll={async () => {
+                await Promise.all(
+                  qaItems
+                    .filter((q) => !q.done)
+                    .map((q) => patchQA(q.id, { done: true })),
+                )
+              }}
+              onClear={async () => {
+                await Promise.all(
+                  qaItems
+                    .filter((q) => q.done)
+                    .map((q) => patchQA(q.id, { done: false })),
+                )
+              }}
+              labels={{
+                all: "Marcar tudo concluído",
+                clear: "Limpar concluídos",
+              }}
+            />
+          )}
+
           {/* Hint banner */}
           <div
             style={{
@@ -3086,6 +3136,97 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       />
       {v.label}
     </span>
+  )
+}
+
+// ─── BulkActionRow ────────────────────────────────────────
+
+function BulkActionRow({
+  total,
+  applied,
+  onAll,
+  onClear,
+  labels,
+}: {
+  total: number
+  applied: number
+  onAll: () => Promise<void>
+  onClear: () => Promise<void>
+  labels: { all: string; clear: string }
+}) {
+  const [busy, setBusy] = useState<"all" | "clear" | null>(null)
+  const allDone = applied >= total
+  const noneDone = applied === 0
+
+  const run = async (which: "all" | "clear") => {
+    setBusy(which)
+    try {
+      if (which === "all") await onAll()
+      else await onClear()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div
+      className="flex items-center justify-between"
+      style={{
+        padding: "6px 16px",
+        background: "var(--crm-gray-50)",
+        borderBottom: "1px solid var(--crm-gray-100)",
+      }}
+    >
+      <span
+        className="crm-tnum"
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {applied} de {total}
+      </span>
+      <div className="inline-flex items-center gap-1">
+        <button
+          onClick={() => run("all")}
+          disabled={busy !== null || allDone}
+          style={{
+            height: 22,
+            padding: "0 8px",
+            background: "transparent",
+            color: allDone ? "var(--crm-gray-300)" : "var(--crm-brand)",
+            border: 0,
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: busy !== null || allDone ? "default" : "pointer",
+          }}
+        >
+          {busy === "all" ? "..." : labels.all}
+        </button>
+        <span style={{ color: "var(--crm-gray-300)", fontSize: 10 }}>·</span>
+        <button
+          onClick={() => run("clear")}
+          disabled={busy !== null || noneDone}
+          style={{
+            height: 22,
+            padding: "0 8px",
+            background: "transparent",
+            color: noneDone ? "var(--crm-gray-300)" : "var(--crm-gray-600)",
+            border: 0,
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 500,
+            cursor: busy !== null || noneDone ? "default" : "pointer",
+          }}
+        >
+          {busy === "clear" ? "..." : labels.clear}
+        </button>
+      </div>
+    </div>
   )
 }
 
