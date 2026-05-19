@@ -214,21 +214,17 @@ function KpiCol({
   sub,
   isLast,
   tooltip,
+  href,
 }: {
   label: string
   value: string
   sub?: string
   isLast?: boolean
   tooltip?: string
+  href?: string
 }) {
-  const content = (
-    <div
-      className={cn(
-        "px-5 first:pl-0",
-        !isLast && "border-r border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
-        tooltip && "cursor-help",
-      )}
-    >
+  const inner = (
+    <>
       <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
         {label}
       </p>
@@ -240,8 +236,24 @@ function KpiCol({
           {sub}
         </p>
       )}
-    </div>
+    </>
   )
+
+  const baseClass = cn(
+    "px-5 first:pl-0 block text-left",
+    !isLast && "border-r border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
+    tooltip && !href && "cursor-help",
+    href && "cursor-pointer rounded-[4px] hover:bg-[rgba(0,0,0,0.02)] dark:hover:bg-[rgba(255,255,255,0.02)] transition-colors",
+  )
+
+  const content = href ? (
+    <Link href={href} className={baseClass}>
+      {inner}
+    </Link>
+  ) : (
+    <div className={baseClass}>{inner}</div>
+  )
+
   if (!tooltip) return content
   return (
     <Tooltip>
@@ -427,7 +439,8 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
                 label="MRR"
                 value={mrr > 0 ? formatCurrency(mrr) : "—"}
                 sub={mrr > 0 ? "plano mensal" : undefined}
-                tooltip="Monthly Recurring Revenue · receita mensal contratada via plano ativo"
+                tooltip="Monthly Recurring Revenue · receita mensal contratada via plano ativo · clique para ver financeiro"
+                href={`/admin/clients/${client.id}?tab=financial`}
               />
               <KpiCol
                 label="Lojas"
@@ -437,7 +450,8 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
                     ? `${activeStores} ativa${activeStores !== 1 ? "s" : ""}${onboardingStores > 0 ? ` · ${onboardingStores} em onboarding` : ""}`
                     : "sem lojas"
                 }
-                tooltip="Total de lojas vinculadas ao cliente · ativas processam dados, em onboarding aguardam configuração"
+                tooltip="Total de lojas vinculadas ao cliente · clique para gerenciar"
+                href={`/admin/clients/${client.id}?tab=stores`}
               />
               <KpiCol
                 label="Plano"
@@ -458,14 +472,20 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
                       ? "sem termino"
                       : undefined
                 }
-                tooltip={activeContract ? `Contrato ${activeContract.plan_name} ativo${activeContract.end_date ? ` até ${formatDate(activeContract.end_date)}` : ""}` : "Sem contrato ativo"}
+                tooltip={
+                  activeContract
+                    ? `Contrato ${activeContract.plan_name} ativo${activeContract.end_date ? ` até ${formatDate(activeContract.end_date)}` : ""} · clique para ver contratos`
+                    : "Sem contrato ativo · clique para criar"
+                }
+                href={`/admin/clients/${client.id}?tab=financial&fin_view=contracts`}
               />
               <KpiCol
                 label="LTV"
                 value={ltv && ltv > 0 ? formatCurrency(ltv) : "—"}
                 sub={ltv && ltv > 0 ? `desde ${formatDate(client.created_at)}` : undefined}
                 isLast
-                tooltip="Lifetime Value · soma de tudo já recebido em faturas pagas (Asaas + manual)"
+                tooltip="Lifetime Value · soma de tudo já recebido em faturas pagas (Asaas + manual) · clique para ver financeiro"
+                href={`/admin/clients/${client.id}?tab=financial`}
               />
             </div>
           </TooltipProvider>
