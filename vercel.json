@@ -59,6 +59,10 @@
     {
       "path": "/api/cron/onboarding-form-reminder",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-acompanhamento-reset",
+      "schedule": "0 22 * * 0"
     }
   ]
 }

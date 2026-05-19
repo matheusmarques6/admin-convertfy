@@ -37,6 +37,7 @@ import {
   Sun,
   Moon,
   LifeBuoy,
+  CalendarClock,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -172,6 +173,11 @@ const OPERACIONAL_NAV: NavGroup[] = [
         name: "Onboarding",
         href: ROUTES.ADMIN.ONBOARDING_V2.LIST,
         icon: Rocket,
+      },
+      {
+        name: "Acompanhamento",
+        href: "/admin/acompanhamento",
+        icon: CalendarClock,
       },
       {
         name: "Tutorial cliente",
