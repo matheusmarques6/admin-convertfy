@@ -412,6 +412,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ActivityCategory | "all">("all")
+  const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
     async function loadData() {
@@ -462,9 +463,16 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   }, [clientId])
 
   const filteredActivities = useMemo(() => {
-    if (filter === "all") return activities
-    return activities.filter((a) => getActivityMeta(a.type, a.metadata as Record<string, unknown> | undefined).category === filter)
-  }, [activities, filter])
+    let list = activities
+    if (filter !== "all") {
+      list = list.filter((a) => getActivityMeta(a.type, a.metadata as Record<string, unknown> | undefined).category === filter)
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter((a) => a.description?.toLowerCase().includes(q))
+    }
+    return list
+  }, [activities, filter, searchQuery])
 
   // Group by month
   const groupedActivities = useMemo(() => {
@@ -577,33 +585,49 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Filtrar por tipo:</span>
-        <div className="flex items-center gap-1 flex-wrap">
-          {CATEGORY_FILTERS.map((cat) => (
-            <button
-              key={cat.value}
-              onClick={() => setFilter(cat.value)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-[11px] font-medium transition-colors",
-                filter === cat.value
-                  ? "bg-[#1F1F1F] dark:bg-[#0B0B0B] text-white border border-[#1F1F1F] dark:border-[#0B0B0B]"
-                  : "bg-white dark:bg-[#1A1D27] text-gray-700 dark:text-[#EAEDF3] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] hover:border-gray-400 dark:hover:border-[rgba(255,255,255,0.2)]",
-              )}
-            >
-              {cat.dot && <span className={cn("w-1.5 h-1.5 rounded-full", cat.dot)} />}
-              {cat.label}
-              {categoryCounts[cat.value] > 0 && (
-                <span className={cn("text-[10px]", filter === cat.value ? "text-white/60" : "text-gray-400")}>
-                  {categoryCounts[cat.value]}
-                </span>
-              )}
-            </button>
-          ))}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap flex-1">
+          <span className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Filtrar por tipo:</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {CATEGORY_FILTERS.map((cat) => (
+              <button
+                key={cat.value}
+                onClick={() => setFilter(cat.value)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-[11px] font-medium transition-colors",
+                  filter === cat.value
+                    ? "bg-[#1F1F1F] dark:bg-[#0B0B0B] text-white border border-[#1F1F1F] dark:border-[#0B0B0B]"
+                    : "bg-white dark:bg-[#1A1D27] text-gray-700 dark:text-[#EAEDF3] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] hover:border-gray-400 dark:hover:border-[rgba(255,255,255,0.2)]",
+                )}
+              >
+                {cat.dot && <span className={cn("w-1.5 h-1.5 rounded-full", cat.dot)} />}
+                {cat.label}
+                {categoryCounts[cat.value] > 0 && (
+                  <span className={cn("text-[10px]", filter === cat.value ? "text-white/60" : "text-gray-400")}>
+                    {categoryCounts[cat.value]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
-        <span className="text-[11px] text-gray-400 dark:text-[#5C6378] ml-auto">
-          {filteredActivities.length} eventos
-        </span>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Buscar evento..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={cn(
+              "h-8 w-44 rounded-[6px] px-2.5 text-[12px]",
+              "bg-white border border-[rgba(0,0,0,0.08)] text-gray-700 placeholder:text-gray-400",
+              "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-[#EAEDF3] dark:placeholder:text-[#5C6378]",
+              "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
+            )}
+          />
+          <span className="text-[11px] text-gray-400 dark:text-[#5C6378]">
+            {filteredActivities.length} eventos
+          </span>
+        </div>
       </div>
 
       {/* Timeline */}
