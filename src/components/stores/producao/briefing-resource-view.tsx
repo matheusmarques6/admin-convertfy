@@ -363,6 +363,18 @@ export function BriefingResourceView({
               onSave={(tags) => patchBriefing("briefing", { competidores: tags })}
               placeholder="Nome do competidor"
             />
+
+            {/* Politicas */}
+            <SectionLabel style={{ marginTop: 28 }}>
+              Políticas e regras
+            </SectionLabel>
+            <p style={{ fontSize: 11, color: "var(--crm-gray-500)", margin: "4px 0 12px" }}>
+              Frete, devolução, garantia, prazo de pagamento... incluir em rodapé/comunicação
+            </p>
+            <PoliciesEditor
+              items={detail.politicas ?? []}
+              onSave={(items) => patchBriefing("briefing", { politicas: items })}
+            />
           </>
         )}
       </div>
@@ -758,6 +770,187 @@ function BulletListEditor({
           outline: "none",
         }}
       />
+    </div>
+  )
+}
+
+function PoliciesEditor({
+  items,
+  onSave,
+}: {
+  items: Array<{ tipo: string; valor: string }>
+  onSave: (items: Array<{ tipo: string; valor: string }>) => Promise<void>
+}) {
+  const [draftTipo, setDraftTipo] = useState("")
+  const [draftValor, setDraftValor] = useState("")
+
+  const add = () => {
+    const tipo = draftTipo.trim()
+    const valor = draftValor.trim()
+    if (!tipo || !valor) return
+    onSave([...items, { tipo, valor }])
+    setDraftTipo("")
+    setDraftValor("")
+  }
+  const remove = (i: number) => {
+    const next = [...items]
+    next.splice(i, 1)
+    onSave(next)
+  }
+  const updateAt = (i: number, patch: { tipo?: string; valor?: string }) => {
+    const next = items.map((it, idx) => (idx === i ? { ...it, ...patch } : it))
+    onSave(next)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map((p, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2"
+          style={{
+            padding: "8px 10px",
+            background: "var(--crm-gray-50)",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 6,
+          }}
+        >
+          <input
+            type="text"
+            value={p.tipo}
+            onChange={(e) => updateAt(i, { tipo: e.target.value })}
+            placeholder="Tipo (ex: Frete)"
+            style={{
+              padding: "4px 8px",
+              background: "var(--crm-gray-0)",
+              border: "1px solid var(--crm-border)",
+              color: "var(--crm-gray-900)",
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              width: 140,
+              outline: "none",
+            }}
+          />
+          <input
+            type="text"
+            value={p.valor}
+            onChange={(e) => updateAt(i, { valor: e.target.value })}
+            placeholder="Valor (ex: Grátis acima de R$199)"
+            style={{
+              flex: 1,
+              padding: "4px 8px",
+              background: "var(--crm-gray-0)",
+              border: "1px solid var(--crm-border)",
+              color: "var(--crm-gray-700)",
+              borderRadius: 4,
+              fontSize: 12,
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={() => remove(i)}
+            aria-label="Remover"
+            style={{
+              width: 24,
+              height: 24,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "transparent",
+              border: "1px solid var(--crm-border)",
+              borderRadius: 4,
+              color: "var(--crm-gray-500)",
+              cursor: "pointer",
+              fontSize: 14,
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <div
+        className="flex items-center gap-2"
+        style={{
+          padding: "8px 10px",
+          background: "var(--crm-gray-0)",
+          border: "1px dashed var(--crm-gray-300)",
+          borderRadius: 6,
+        }}
+      >
+        <input
+          type="text"
+          value={draftTipo}
+          onChange={(e) => setDraftTipo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draftTipo.trim() && draftValor.trim()) {
+              e.preventDefault()
+              add()
+            }
+          }}
+          placeholder="Tipo (ex: Devolução)"
+          style={{
+            padding: "4px 8px",
+            background: "var(--crm-gray-0)",
+            border: "1px solid var(--crm-border)",
+            color: "var(--crm-gray-900)",
+            borderRadius: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            width: 140,
+            outline: "none",
+          }}
+        />
+        <input
+          type="text"
+          value={draftValor}
+          onChange={(e) => setDraftValor(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draftTipo.trim() && draftValor.trim()) {
+              e.preventDefault()
+              add()
+            }
+          }}
+          placeholder="Valor (ex: 30 dias após compra)"
+          style={{
+            flex: 1,
+            padding: "4px 8px",
+            background: "var(--crm-gray-0)",
+            border: "1px solid var(--crm-border)",
+            color: "var(--crm-gray-700)",
+            borderRadius: 4,
+            fontSize: 12,
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={add}
+          disabled={!draftTipo.trim() || !draftValor.trim()}
+          style={{
+            height: 24,
+            padding: "0 10px",
+            background:
+              !draftTipo.trim() || !draftValor.trim()
+                ? "var(--crm-gray-100)"
+                : "var(--crm-brand)",
+            color:
+              !draftTipo.trim() || !draftValor.trim()
+                ? "var(--crm-gray-400)"
+                : "var(--crm-brand-fg)",
+            border: 0,
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor:
+              !draftTipo.trim() || !draftValor.trim() ? "default" : "pointer",
+            flexShrink: 0,
+          }}
+        >
+          + Adicionar
+        </button>
+      </div>
     </div>
   )
 }
