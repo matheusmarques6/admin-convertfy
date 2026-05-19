@@ -21,7 +21,7 @@
  *   8. Proximos passos              — timeline 6 etapas + CSM avatar
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import {
   Loader2,
@@ -47,6 +47,9 @@ import {
   Type,
   Image as ImageIcon,
   MessageSquare,
+  Zap,
+  Megaphone,
+  FileText,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -1151,6 +1154,9 @@ function BriefingReviewInline({
   const [savedCount, setSavedCount] = useState(0)
   const [saveBarVisible, setSaveBarVisible] = useState(false)
 
+  // Modal de confirmação final
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+
   useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -1253,6 +1259,21 @@ function BriefingReviewInline({
     const t = setTimeout(() => setSaveBarVisible(false), 3500)
     return () => clearTimeout(t)
   }, [savedCount, saveBarVisible])
+
+  // Modal: lock scroll do body + Esc fecha
+  useEffect(() => {
+    if (!showConfirmModal) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowConfirmModal(false)
+    }
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [showConfirmModal])
 
   async function confirm() {
     if (!editable) return
@@ -1584,7 +1605,7 @@ function BriefingReviewInline({
         <div className="mt-7">
           <button
             type="button"
-            onClick={confirm}
+            onClick={() => setShowConfirmModal(true)}
             disabled={submitting}
             className="group relative w-full h-[60px] rounded-[14px] text-white text-[16px] font-semibold tracking-[-0.01em] inline-flex items-center justify-center gap-2.5 overflow-hidden disabled:opacity-60 transition-all duration-[400ms] hover:-translate-y-0.5"
             style={{
@@ -1650,6 +1671,229 @@ function BriefingReviewInline({
             OK
           </button>
         </div>
+      </div>
+
+      {/* Modal de confirmação final */}
+      <ConfirmBriefingModal
+        open={showConfirmModal}
+        submitting={submitting}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={() => {
+          setShowConfirmModal(false)
+          void confirm()
+        }}
+      />
+    </div>
+  )
+}
+
+// ─── Modal de confirmação do briefing ─────────────────────────────────────
+
+function ConfirmBriefingModal({
+  open,
+  submitting,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  submitting: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const confirmBtnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(() => confirmBtnRef.current?.focus(), 80)
+    return () => clearTimeout(t)
+  }, [open])
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+      aria-describedby="confirm-modal-desc"
+      aria-hidden={!open}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+      className={
+        "fixed inset-0 z-[100] flex items-center justify-center p-6 transition-opacity duration-200 ease-out " +
+        (open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")
+      }
+      style={{
+        background: "rgba(17, 24, 39, 0.45)",
+        backdropFilter: "blur(8px) saturate(120%)",
+        WebkitBackdropFilter: "blur(8px) saturate(120%)",
+      }}
+    >
+      <div
+        className={
+          "relative w-full max-w-[440px] bg-white rounded-2xl overflow-hidden transition-all duration-300 ease-out " +
+          (open ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-3")
+        }
+        style={{
+          border: "1px solid rgba(0,0,0,0.08)",
+          boxShadow:
+            "inset 0 1px 0 0 rgba(255,255,255,0.8), 0 1px 3px rgba(0,0,0,0.04), 0 24px 48px -12px rgba(0,0,0,0.18)",
+        }}
+      >
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+          className="absolute top-3.5 right-3.5 w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors z-[2]"
+        >
+          <X className="h-4 w-4" strokeWidth={2} />
+        </button>
+
+        {/* Hero icon com anéis decorativos */}
+        <div className="px-8 pt-8 flex justify-center">
+          <div
+            className="relative w-14 h-14 rounded-[14px] flex items-center justify-center"
+            style={{
+              background:
+                "linear-gradient(180deg, #EEF0FB 0%, #FFFFFF 100%)",
+              border: "1px solid #C7CDEF",
+              boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.8)",
+            }}
+          >
+            <span
+              className="absolute -inset-1.5 rounded-[18px] pointer-events-none"
+              style={{ border: "1px solid #C7CDEF", opacity: 0.5 }}
+              aria-hidden
+            />
+            <span
+              className="absolute -inset-3 rounded-[22px] pointer-events-none"
+              style={{ border: "1px solid #C7CDEF", opacity: 0.25 }}
+              aria-hidden
+            />
+            <FileText
+              className="h-6 w-6 text-brand-500 relative z-[1]"
+              strokeWidth={2}
+            />
+          </div>
+        </div>
+
+        {/* Head */}
+        <div className="px-8 pt-5 text-center">
+          <h2
+            id="confirm-modal-title"
+            className="text-[18px] font-bold tracking-tight text-slate-900 mb-2 leading-[1.3]"
+          >
+            Confirmar briefing?
+          </h2>
+          <p
+            id="confirm-modal-desc"
+            className="text-[14px] leading-relaxed text-slate-600 max-w-[340px] mx-auto"
+          >
+            Esse briefing será usado como base tanto para os{" "}
+            <b className="text-slate-900">flows</b> quanto para as{" "}
+            <b className="text-slate-900">campanhas</b> da sua loja.
+          </p>
+        </div>
+
+        {/* Uses */}
+        <div
+          className="mx-6 mt-6 p-1.5 rounded-xl flex flex-col gap-0.5"
+          style={{ background: "#F8FAFC", border: "1px solid rgba(0,0,0,0.08)" }}
+        >
+          <UseRow
+            icon={Zap}
+            title="Flows automatizados"
+            desc="Boas-vindas, carrinho abandonado, pós-compra"
+          />
+          <UseRow
+            icon={Megaphone}
+            title="Campanhas de email"
+            desc="Promocionais, sazonais, lançamentos"
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2.5 p-6 mt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 h-[42px] rounded-[10px] bg-white text-slate-700 text-[14px] font-semibold border border-slate-200 hover:bg-slate-50 hover:border-slate-300 active:translate-y-px transition-all"
+            style={{ boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.8)" }}
+          >
+            Voltar e revisar
+          </button>
+          <button
+            ref={confirmBtnRef}
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="group relative flex-1 h-[42px] rounded-[10px] text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 overflow-hidden disabled:opacity-60 hover:-translate-y-0.5 transition-all duration-200"
+            style={{
+              background: BRIEFING_GRADIENT,
+              backgroundSize: "200% 100%",
+              boxShadow:
+                "inset 0 1px 0 0 rgba(255,255,255,0.8), 0 4px 12px -4px rgba(33,55,182,0.4)",
+            }}
+          >
+            <span
+              className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-[600ms]"
+              style={{
+                background:
+                  "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 50%, transparent 70%)",
+              }}
+            />
+            {submitting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" />
+            ) : (
+              <span className="relative z-10">Sim, confirmar</span>
+            )}
+            {!submitting && (
+              <Check
+                className="h-3.5 w-3.5 relative z-10"
+                strokeWidth={2.5}
+              />
+            )}
+          </button>
+        </div>
+      </div>
+
+    </div>
+  )
+}
+
+function UseRow({
+  icon: Icon,
+  title,
+  desc,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  title: string
+  desc: string
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 p-3 bg-white rounded-lg transition-colors hover:border-slate-300"
+      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+    >
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-500"
+        style={{ background: "#EEF0FB", border: "1px solid #C7CDEF" }}
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold text-slate-900 leading-tight mb-0.5">
+          {title}
+        </p>
+        <p className="text-[11px] text-slate-500 leading-snug">{desc}</p>
+      </div>
+      <div
+        className="w-[18px] h-[18px] rounded-full flex items-center justify-center flex-shrink-0"
+        style={{
+          background: "#ECFDF5",
+          border: "1px solid #A7F3D0",
+          color: "#059669",
+        }}
+      >
+        <Check className="h-2.5 w-2.5" strokeWidth={3} />
       </div>
     </div>
   )
