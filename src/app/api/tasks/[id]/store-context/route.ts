@@ -35,14 +35,127 @@ export async function GET(
     const admin = createAdminClient()
     const { data: task, error: taskErr } = await admin
       .from("tasks")
-      .select("id, title, onboarding_id, source_type, metadata")
+      .select("id, title, onboarding_id, store_id, client_id, source_type, metadata")
       .eq("id", id)
       .maybeSingle()
 
     if (taskErr || !task) throw new AppError("Task não encontrada", 404)
 
-    if (!task.onboarding_id) {
-      // Task sem onboarding — retorna identidade básica via metadata
+    // Resolve qual loja consultar — task pode estar vinculada via:
+    //   1. tasks.onboarding_id → onboardings.store_id  (tasks de onboarding)
+    //   2. tasks.store_id direto (tasks criadas direto na página da loja)
+    //   3. nenhum dos dois — task órfã, retorna metadata
+    let resolvedStoreId: string | null = task.store_id ?? null
+    let resolvedOnboarding: {
+      id: string
+      briefing: unknown
+      briefing_status: string
+      visual_assets: unknown
+      language: string | null
+      store_id: string | null
+      client: OnboardingRow["client"]
+      store: StoreRow | null
+      deal: OnboardingRow["deal"]
+    } | null = null
+
+    if (task.onboarding_id) {
+      const { data: onbRaw, error: onbErr } = await admin
+        .from("onboardings")
+        .select(
+          `id, briefing, briefing_status, visual_assets, language, store_id,
+          client:clients!onboardings_client_id_fkey(
+            id, name,
+            owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
+          ),
+          store:client_stores(
+            id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
+            brand_thesis, brand_about, brand_pillars, brand_presence,
+            store_story, store_milestones,
+            icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
+            tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
+            cores, fontes
+          ),
+          deal:deals!onboardings_source_deal_id_fkey(id, value, plan_name)`,
+        )
+        .eq("id", task.onboarding_id)
+        .maybeSingle()
+
+      if (!onbErr && onbRaw) {
+        const onb = onbRaw as unknown as OnboardingRow
+        resolvedOnboarding = {
+          id: onb.id,
+          briefing: onb.briefing,
+          briefing_status: onb.briefing_status,
+          visual_assets: onb.visual_assets,
+          language: onb.language,
+          store_id: onb.store_id,
+          client: Array.isArray(onb.client) ? onb.client[0] : onb.client,
+          store: Array.isArray(onb.store) ? onb.store[0] : onb.store,
+          deal: Array.isArray(onb.deal) ? onb.deal[0] : onb.deal,
+        }
+        if (resolvedOnboarding.store?.id) {
+          resolvedStoreId = resolvedOnboarding.store.id
+        } else if (onb.store_id) {
+          resolvedStoreId = onb.store_id
+        }
+      }
+    }
+
+    // Se não veio loja via onboarding mas a task tem store_id direto,
+    // busca a loja avulsa.
+    if (!resolvedOnboarding?.store && resolvedStoreId) {
+      const { data: storeRow } = await admin
+        .from("client_stores")
+        .select(
+          `id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
+          client_id,
+          brand_thesis, brand_about, brand_pillars, brand_presence,
+          store_story, store_milestones,
+          icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
+          tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
+          cores, fontes`,
+        )
+        .eq("id", resolvedStoreId)
+        .maybeSingle()
+
+      if (storeRow) {
+        const store = storeRow as unknown as StoreRow & { client_id?: string }
+        // Busca o cliente da loja
+        let client: OnboardingRow["client"] = null
+        const clientId = store.client_id ?? task.client_id
+        if (clientId) {
+          const { data: clientRow } = await admin
+            .from("clients")
+            .select(
+              `id, name, owner:profiles!clients_owner_id_fkey(id, name, avatar_url)`,
+            )
+            .eq("id", clientId)
+            .maybeSingle()
+          if (clientRow) {
+            const c = clientRow as unknown as NonNullable<OnboardingRow["client"]>
+            client = {
+              id: c.id,
+              name: c.name,
+              owner: Array.isArray(c.owner) ? c.owner[0] : c.owner,
+            }
+          }
+        }
+        resolvedOnboarding = {
+          id: "",
+          briefing: null,
+          briefing_status: "",
+          visual_assets: null,
+          language: null,
+          store_id: store.id,
+          client,
+          store,
+          deal: null,
+        }
+      }
+    }
+
+    // Sem onboarding e sem store — retorna identidade básica via metadata
+    if (!resolvedOnboarding) {
       const meta = (task.metadata as Record<string, unknown>) ?? {}
       return successResponse(request, {
         identity: {
@@ -58,47 +171,14 @@ export async function GET(
         brand_brain: { source: "empty" },
         assets_visuais: { palette: [], font: null, logos: {} },
         top_products: [],
-        onboarding_id: null,
+        onboarding_id: task.onboarding_id ?? null,
         store_id: null,
       })
     }
 
-    const { data: onbRaw, error: onbErr } = await admin
-      .from("onboardings")
-      .select(
-        `id, briefing, briefing_status, visual_assets, language, store_id,
-        client:clients!onboardings_client_id_fkey(
-          id, name,
-          owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
-        ),
-        store:client_stores(
-          id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
-          brand_thesis, brand_about, brand_pillars, brand_presence,
-          store_story, store_milestones,
-          icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
-          tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
-          cores, fontes
-        ),
-        deal:deals!onboardings_source_deal_id_fkey(id, value, plan_name)`,
-      )
-      .eq("id", task.onboarding_id)
-      .maybeSingle()
-
-    if (onbErr || !onbRaw) {
-      return successResponse(request, {
-        identity: null,
-        brand_brain: { source: "empty" },
-        assets_visuais: { palette: [], font: null, logos: {} },
-        top_products: [],
-        onboarding_id: task.onboarding_id,
-        store_id: null,
-      })
-    }
-
-    const onb = onbRaw as unknown as OnboardingRow
-    const client = Array.isArray(onb.client) ? onb.client[0] : onb.client
-    const store = Array.isArray(onb.store) ? onb.store[0] : onb.store
-    const deal = Array.isArray(onb.deal) ? onb.deal[0] : onb.deal
+    const client = resolvedOnboarding.client
+    const store = resolvedOnboarding.store
+    const deal = resolvedOnboarding.deal
 
     // Top products — tabela real (n8n popula)
     const topProductsRes = store?.id
@@ -112,8 +192,8 @@ export async function GET(
           .limit(5)
       : { data: [] as Array<Record<string, unknown>> }
 
-    const briefing = (onb.briefing ?? {}) as BriefingShape
-    const visualAssets = (onb.visual_assets ?? {}) as VisualAssetsShape
+    const briefing = (resolvedOnboarding.briefing ?? {}) as BriefingShape
+    const visualAssets = (resolvedOnboarding.visual_assets ?? {}) as VisualAssetsShape
 
     return successResponse(request, {
       identity: {
@@ -126,15 +206,16 @@ export async function GET(
         platform: store?.platform ?? null,
         niche: store?.niche ?? null,
         country: store?.country ?? null,
-        language: onb.language ?? store?.language ?? "pt-BR",
+        language:
+          resolvedOnboarding.language ?? store?.language ?? "pt-BR",
         mrr: deal?.value ?? store?.mrr_value ?? null,
         plan: deal?.plan_name ?? store?.plan ?? null,
       },
       brand_brain: buildBrandBrain(store, briefing),
-      briefing_status: onb.briefing_status,
+      briefing_status: resolvedOnboarding.briefing_status,
       assets_visuais: buildAssetsVisuais(store, visualAssets),
       top_products: topProductsRes.data ?? [],
-      onboarding_id: onb.id,
+      onboarding_id: resolvedOnboarding.id || task.onboarding_id || null,
       store_id: store?.id ?? null,
     })
   } catch (error) {
