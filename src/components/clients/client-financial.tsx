@@ -942,8 +942,38 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           isAuto: false,
         })),
     ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+
+    // Se não há fatura pendente, considera próximo vencimento de assinatura ativa
+    if (allPending.length === 0) {
+      const upcomingSubs = [
+        ...subscriptions
+          .filter((s) => s.isActive && s.nextDueDate)
+          .map((s) => ({
+            id: s.id,
+            value: s.value,
+            dueDate: s.nextDueDate,
+            method: "Asaas",
+            source: "asaas" as const,
+            invoiceUrl: undefined as string | undefined,
+            isAuto: true,
+          })),
+        ...localSubscriptions
+          .filter((s) => s.status === "active" && s.next_due_date)
+          .map((s) => ({
+            id: s.id,
+            value: s.value,
+            dueDate: s.next_due_date,
+            method: s.payment_method,
+            source: "local" as const,
+            invoiceUrl: undefined as string | undefined,
+            isAuto: false,
+          })),
+      ].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      return upcomingSubs[0]
+    }
+
     return allPending[0]
-  }, [payments, localCharges])
+  }, [payments, localCharges, subscriptions, localSubscriptions])
 
   // Build year filter
   if (error && localSubscriptions.length === 0 && localCharges.length === 0) {
@@ -1103,6 +1133,18 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               </div>
             </div>
             <div className="h-[180px] -mx-2">
+              {mrrData.every((p) => p.mrr === 0) ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-sm text-gray-400 dark:text-[#5C6378]">
+                      Sem histórico de cobranças nos últimos 8 meses
+                    </p>
+                    <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
+                      O gráfico aparecerá após a primeira fatura paga.
+                    </p>
+                  </div>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={mrrData} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
                   <defs>
@@ -1144,6 +1186,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
