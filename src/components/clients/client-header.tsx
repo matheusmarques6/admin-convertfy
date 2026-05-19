@@ -442,7 +442,22 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
               <KpiCol
                 label="Plano"
                 value={planName}
-                sub={activeContract?.end_date ? `${Math.max(0, Math.ceil((new Date(activeContract.end_date).getTime() - Date.now()) / (1000*60*60*24*30)))}m restantes` : undefined}
+                sub={
+                  activeContract?.end_date
+                    ? (() => {
+                        const daysLeft = Math.ceil(
+                          (new Date(activeContract.end_date).getTime() - Date.now()) /
+                            (1000 * 60 * 60 * 24),
+                        )
+                        if (daysLeft < 0) return "expirado"
+                        if (daysLeft <= 30) return `expira em ${daysLeft} dia${daysLeft !== 1 ? "s" : ""}`
+                        const monthsLeft = Math.round(daysLeft / 30)
+                        return `${monthsLeft} ${monthsLeft !== 1 ? "meses" : "mês"} restantes`
+                      })()
+                    : activeContract
+                      ? "sem termino"
+                      : undefined
+                }
                 tooltip={activeContract ? `Contrato ${activeContract.plan_name} ativo${activeContract.end_date ? ` até ${formatDate(activeContract.end_date)}` : ""}` : "Sem contrato ativo"}
               />
               <KpiCol
