@@ -1,9 +1,12 @@
 /**
- * GET   /api/admin/email-flows/[flowId]/emails/[emailId]
+ * GET    /api/admin/email-flows/[flowId]/emails/[emailId]
  *   Retorna detalhe completo do email: blocos + HTML + QA checklist.
  *
- * PATCH /api/admin/email-flows/[flowId]/emails/[emailId]
+ * PATCH  /api/admin/email-flows/[flowId]/emails/[emailId]
  *   Atualiza envelope (subject, preheader, from), status, html.
+ *
+ * DELETE /api/admin/email-flows/[flowId]/emails/[emailId]
+ *   Remove o email (cascade em blocos + QA via FK).
  */
 
 import { NextRequest } from "next/server"
@@ -98,5 +101,28 @@ export async function PATCH(
   } catch (error) {
     log.error("Email PATCH error:", error)
     return errorResponse(request, error, "email-patch")
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ flowId: string; emailId: string }> },
+) {
+  try {
+    const { emailId } = await context.params
+    const sb = await createClient()
+    await requireAuth(sb)
+    const admin = createAdminClient()
+
+    const { error } = await admin
+      .from("email_flow_emails")
+      .delete()
+      .eq("id", emailId)
+
+    if (error) throw error
+    return successResponse(request, { ok: true })
+  } catch (error) {
+    log.error("Email DELETE error:", error)
+    return errorResponse(request, error, "email-delete")
   }
 }

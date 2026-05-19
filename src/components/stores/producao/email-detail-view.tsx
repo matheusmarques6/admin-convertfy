@@ -56,6 +56,7 @@ interface EmailDetailViewProps {
   emailId: string
   onEmailUpdated: () => void
   onNavigate: (emailId: string) => void
+  onEmailDeleted?: () => void
 }
 
 export function EmailDetailView({
@@ -63,6 +64,7 @@ export function EmailDetailView({
   emailId,
   onEmailUpdated,
   onNavigate,
+  onEmailDeleted,
 }: EmailDetailViewProps) {
   const toast = useToast()
   const { data, mutate } = useSWR<{ data?: EmailDetailResponse } & EmailDetailResponse>(
@@ -267,6 +269,30 @@ export function EmailDetailView({
     }
   }
 
+  const deleteEmail = async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/email-flows/${flow.id}/emails/${emailId}`,
+        { method: "DELETE" },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao remover")
+      }
+      toast.toast({ title: "E-mail removido" })
+      onEmailDeleted?.()
+      onEmailUpdated()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao remover e-mail",
+        description: (e as Error).message,
+      })
+    }
+  }
+
+  const [confirmDeleteEmail, setConfirmDeleteEmail] = useState(false)
+
   const copyToClipboard = async (text: string, label = "Conteúdo") => {
     try {
       await navigator.clipboard.writeText(text)
@@ -342,7 +368,7 @@ export function EmailDetailView({
             <EmailStatusBadge status={email.status} />
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {/* Mock / HTML toggle */}
           <div
             className="inline-flex items-center"
@@ -365,6 +391,64 @@ export function EmailDetailView({
               onClick={() => setViewMode("html")}
             />
           </div>
+          {confirmDeleteEmail ? (
+            <div className="inline-flex items-center gap-1">
+              <button
+                onClick={async () => {
+                  setConfirmDeleteEmail(false)
+                  await deleteEmail()
+                }}
+                style={{
+                  height: 28,
+                  padding: "0 10px",
+                  background: "var(--crm-neg)",
+                  color: "#fff",
+                  border: 0,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Confirmar exclusão
+              </button>
+              <button
+                onClick={() => setConfirmDeleteEmail(false)}
+                style={{
+                  height: 28,
+                  padding: "0 10px",
+                  background: "transparent",
+                  color: "var(--crm-gray-600)",
+                  border: "1px solid var(--crm-border)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDeleteEmail(true)}
+              title="Excluir e-mail"
+              style={{
+                width: 28,
+                height: 28,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                color: "var(--crm-gray-500)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

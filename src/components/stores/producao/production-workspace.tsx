@@ -12,11 +12,13 @@ import {
   Lock,
   Mail,
   Package,
+  Plus,
   Send,
   ShoppingCart,
   TrendingDown,
   X,
 } from "lucide-react"
+import { useToast } from "@/lib/hooks/use-toast"
 import type {
   EmailFlow,
   EmailFlowEmail,
@@ -424,6 +426,10 @@ export function ProductionWorkspace({
                 onSelectEmail={(emailId) =>
                   setSelection({ kind: "email", flowId: flow.id, emailId })
                 }
+                onCreated={(newEmailId) => {
+                  mutate()
+                  setSelection({ kind: "email", flowId: flow.id, emailId: newEmailId })
+                }}
               />
             ))}
           </div>
@@ -527,6 +533,21 @@ export function ProductionWorkspace({
                   emailId,
                 })
               }
+              onEmailDeleted={() => {
+                // Após delete, vai pro primeiro email do mesmo flow ou nenhum
+                const others = (currentFlow.emails ?? []).filter(
+                  (e) => e.id !== selection.emailId,
+                )
+                if (others.length > 0) {
+                  setSelection({
+                    kind: "email",
+                    flowId: currentFlow.id,
+                    emailId: others[0].id,
+                  })
+                } else {
+                  setSelection({ kind: "none" })
+                }
+              }}
             />
           )}
           {selection.kind === "none" && (
@@ -619,15 +640,50 @@ function FlowItem({
   flow,
   selection,
   onSelectEmail,
+  onCreated,
 }: {
   flow: EmailFlow
   selection: Selection
   onSelectEmail: (emailId: string) => void
+  onCreated: (newEmailId: string) => void
 }) {
   const FlowIcon = FLOW_ICONS[flow.flow_type] ?? Mail
   const isBlocked = flow.status === "blocked"
   const expanded = !isBlocked
   const [open, setOpen] = useState(expanded)
+  const [creating, setCreating] = useState(false)
+  const toast = useToast()
+
+  const handleCreateEmail = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (creating) return
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/admin/email-flows/${flow.id}/emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao criar email")
+      }
+      const json = await res.json()
+      const newEmail = json?.data?.email ?? json?.email
+      if (newEmail?.id) {
+        toast.toast({ title: "E-mail criado", description: newEmail.name })
+        onCreated(newEmail.id)
+      }
+    } catch (err) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao criar e-mail",
+        description: (err as Error).message,
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const emails = flow.emails ?? []
   const total = emails.length
@@ -699,6 +755,18 @@ function FlowItem({
       </button>
       {open && !isBlocked && (
         <div style={{ paddingLeft: 12 }}>
+          {emails.length === 0 && (
+            <div
+              style={{
+                padding: "6px 10px 6px 14px",
+                fontSize: 11,
+                color: "var(--crm-gray-400)",
+                fontStyle: "italic",
+              }}
+            >
+              Sem emails ainda
+            </div>
+          )}
           {emails.map((email) => {
             const isActive =
               selection.kind === "email" && selection.emailId === email.id
@@ -755,6 +823,32 @@ function FlowItem({
               </button>
             )
           })}
+          <button
+            onClick={handleCreateEmail}
+            disabled={creating}
+            className="cf-focusable w-full flex items-center gap-2 text-left"
+            style={{
+              padding: "6px 10px 6px 14px",
+              borderRadius: 6,
+              background: "transparent",
+              color: "var(--crm-gray-500)",
+              border: 0,
+              cursor: creating ? "default" : "pointer",
+              fontSize: 12,
+              fontWeight: 500,
+              fontStyle: "italic",
+              opacity: creating ? 0.6 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!creating) e.currentTarget.style.background = "var(--crm-gray-50)"
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent"
+            }}
+          >
+            <Plus className="h-3 w-3 shrink-0" />
+            <span>{creating ? "Criando..." : "Adicionar e-mail"}</span>
+          </button>
         </div>
       )}
     </div>
