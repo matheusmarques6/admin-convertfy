@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DropResult,
+} from "@hello-pangea/dnd"
+import {
   Check,
   ChevronDown,
   ChevronLeft,
@@ -13,6 +19,7 @@ import {
   Download,
   Eye,
   FileImage,
+  GripVertical,
   Image as ImageIcon,
   LayoutGrid,
   Plus,
@@ -192,15 +199,7 @@ export function EmailDetailView({
     }
   }
 
-  const moveBlock = async (blockId: string, direction: "up" | "down") => {
-    const idx = blocks.findIndex((b) => b.id === blockId)
-    if (idx === -1) return
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1
-    if (targetIdx < 0 || targetIdx >= blocks.length) return
-
-    const newOrder = [...blocks]
-    ;[newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]]
-
+  const reorderBlocks = async (newOrder: EmailBlock[]) => {
     try {
       const res = await fetch(`/api/admin/email-blocks`, {
         method: "PATCH",
@@ -223,6 +222,27 @@ export function EmailDetailView({
         description: (e as Error).message,
       })
     }
+  }
+
+  const moveBlock = async (blockId: string, direction: "up" | "down") => {
+    const idx = blocks.findIndex((b) => b.id === blockId)
+    if (idx === -1) return
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= blocks.length) return
+
+    const newOrder = [...blocks]
+    ;[newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]]
+    await reorderBlocks(newOrder)
+  }
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return
+    if (result.destination.index === result.source.index) return
+
+    const newOrder = [...blocks]
+    const [moved] = newOrder.splice(result.source.index, 1)
+    newOrder.splice(result.destination.index, 0, moved)
+    await reorderBlocks(newOrder)
   }
 
   const createQAItem = async (label: string) => {
@@ -559,22 +579,61 @@ export function EmailDetailView({
           <div className="flex-1 overflow-y-auto" style={{ padding: 12 }}>
             {activeTab === "struct" && (
               <>
-                {blocks.map((block, idx) => (
-                  <BlockCard
-                    key={block.id}
-                    block={block}
-                    isFirst={idx === 0}
-                    isLast={idx === blocks.length - 1}
-                    onToggleApplied={(applied) =>
-                      patchBlock(block.id, { applied })
-                    }
-                    onCopy={copyToClipboard}
-                    onPatch={(update) => patchBlock(block.id, update)}
-                    onDelete={() => deleteBlock(block.id)}
-                    onMoveUp={() => moveBlock(block.id, "up")}
-                    onMoveDown={() => moveBlock(block.id, "down")}
-                  />
-                ))}
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <Droppable droppableId="blocks">
+                    {(droppableProvided, droppableSnapshot) => (
+                      <div
+                        ref={droppableProvided.innerRef}
+                        {...droppableProvided.droppableProps}
+                        style={{
+                          background: droppableSnapshot.isDraggingOver
+                            ? "var(--crm-blue-50)"
+                            : "transparent",
+                          borderRadius: 8,
+                          transition: "background 120ms ease",
+                        }}
+                      >
+                        {blocks.map((block, idx) => (
+                          <Draggable
+                            key={block.id}
+                            draggableId={block.id}
+                            index={idx}
+                          >
+                            {(draggableProvided, draggableSnapshot) => (
+                              <div
+                                ref={draggableProvided.innerRef}
+                                {...draggableProvided.draggableProps}
+                                style={{
+                                  ...draggableProvided.draggableProps.style,
+                                  opacity: draggableSnapshot.isDragging ? 0.92 : 1,
+                                  boxShadow: draggableSnapshot.isDragging
+                                    ? "0 6px 16px rgba(0,0,0,0.10)"
+                                    : undefined,
+                                }}
+                              >
+                                <BlockCard
+                                  block={block}
+                                  isFirst={idx === 0}
+                                  isLast={idx === blocks.length - 1}
+                                  dragHandleProps={draggableProvided.dragHandleProps}
+                                  onToggleApplied={(applied) =>
+                                    patchBlock(block.id, { applied })
+                                  }
+                                  onCopy={copyToClipboard}
+                                  onPatch={(update) => patchBlock(block.id, update)}
+                                  onDelete={() => deleteBlock(block.id)}
+                                  onMoveUp={() => moveBlock(block.id, "up")}
+                                  onMoveDown={() => moveBlock(block.id, "down")}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {droppableProvided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
                 {blocks.length === 0 && (
                   <div
                     style={{
@@ -1617,6 +1676,7 @@ function BlockCard({
   block,
   isFirst,
   isLast,
+  dragHandleProps,
   onToggleApplied,
   onCopy,
   onPatch,
@@ -1627,6 +1687,7 @@ function BlockCard({
   block: EmailBlock
   isFirst: boolean
   isLast: boolean
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement> | null | undefined
   onToggleApplied: (applied: boolean) => Promise<void>
   onCopy: (text: string, label?: string) => void
   onPatch: (update: Record<string, unknown>) => Promise<void>
@@ -1656,6 +1717,30 @@ function BlockCard({
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex items-center gap-2 min-w-0">
+          {dragHandleProps && (
+            <span
+              {...dragHandleProps}
+              onClick={(e) => e.stopPropagation()}
+              title="Arraste pra reordenar"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 14,
+                color: "var(--crm-gray-300)",
+                cursor: "grab",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = "var(--crm-gray-500)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--crm-gray-300)")
+              }
+            >
+              <GripVertical className="h-3 w-3" />
+            </span>
+          )}
           <span
             className="crm-tnum"
             style={{
