@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
+import { useSWRConfig } from "swr"
 import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
 import { useClientPerformanceContext, PERIODS } from "@/lib/hooks/use-client-performance"
 import { toast } from "@/lib/hooks/use-toast"
@@ -412,6 +413,7 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
   const [isSavingNotes, setIsSavingNotes] = useState(false)
   const [storeMetrics, setStoreMetrics] = useState<Record<string, { revenue30d: number; health: number }>>({})
 
+  const { mutate: swrMutate } = useSWRConfig()
   const customFields = client.custom_fields as Record<string, string> | null
   const hasAsaasId = !!customFields?.asaas_customer_id
   const currentYear = useMemo(() => new Date().getFullYear(), [])
@@ -540,20 +542,31 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
         ]),
       )
       const failed = results.filter((r) => r.status === "rejected").length
+
+      // Invalida SWR cache de todas queries deste cliente (revalida sem reload)
+      await swrMutate(
+        (key) => typeof key === "string" && (
+          key.includes(`store_id=${storeIds.join(",")}`) ||
+          key.includes(`/api/integrations/`) ||
+          key.includes(`/api/clients/${client.id}`) ||
+          storeIds.some((id) => key.includes(`store_id=${id}`))
+        ),
+        undefined,
+        { revalidate: true },
+      )
+
       if (failed > 0) {
         toast({
           variant: "destructive",
           title: "Cache parcialmente limpo",
-          description: `${failed} requisição(ões) falharam. Recarregue a página em alguns segundos.`,
+          description: `${failed} requisição(ões) falharam, mas o resto foi atualizado.`,
         })
       } else {
         toast({
           title: "Cache limpo",
-          description: "Recarregando métricas...",
+          description: "Métricas recarregadas.",
         })
       }
-      // Trigger SWR refetch via window reload
-      setTimeout(() => window.location.reload(), 800)
     } catch {
       toast({ variant: "destructive", title: "Erro ao limpar cache" })
     } finally {
