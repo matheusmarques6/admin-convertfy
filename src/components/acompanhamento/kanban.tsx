@@ -230,14 +230,20 @@ export function AcompanhamentoKanban() {
                 {items.length === 0 ? (
                   <div
                     style={{
-                      padding: 16,
+                      padding: "20px 10px",
                       fontSize: 11,
                       color: C.g500,
                       textAlign: "center",
-                      fontStyle: "italic",
+                      background: "#fff",
+                      border: `1px dashed ${C.g200}`,
+                      borderRadius: 4,
+                      lineHeight: 1.5,
                     }}
                   >
                     Nenhuma loja
+                    <div style={{ fontSize: 10, color: C.g500, marginTop: 4 }}>
+                      {stage.hint}
+                    </div>
                   </div>
                 ) : (
                   items.map((state) => {

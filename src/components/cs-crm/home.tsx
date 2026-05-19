@@ -180,8 +180,22 @@ export function CSCrmHome() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
                 {items.length === 0 ? (
-                  <div style={{ padding: 16, fontSize: 11, color: C.g500, textAlign: "center", fontStyle: "italic" }}>
-                    Vazio
+                  <div
+                    style={{
+                      padding: "20px 10px",
+                      fontSize: 11,
+                      color: C.g500,
+                      textAlign: "center",
+                      background: "#fff",
+                      border: `1px dashed ${C.g200}`,
+                      borderRadius: 4,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Sem cards
+                    <div style={{ fontSize: 10, color: C.g500, marginTop: 4 }}>
+                      {col.hint}
+                    </div>
                   </div>
                 ) : (
                   items.map((card) => (
