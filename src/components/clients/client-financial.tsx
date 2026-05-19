@@ -1198,15 +1198,34 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </CardHeader>
           <CardContent>
             {nextPayment ? (
+              (() => {
+                const daysToDue = Math.ceil(
+                  (new Date(nextPayment.dueDate).getTime() - Date.now()) /
+                    (1000 * 60 * 60 * 24),
+                )
+                const isOverdue = daysToDue < 0
+                const isUrgent = daysToDue >= 0 && daysToDue <= 3
+                // Cor do calendar tile e label baseada na urgência
+                const tileBg = isOverdue
+                  ? "bg-[#FEF2F2] dark:bg-[#3B1111] border-[#FECACA] dark:border-[rgba(252,165,165,0.3)]"
+                  : isUrgent
+                    ? "bg-[#FFFBEB] dark:bg-[#3D2A0D] border-[#FDE68A] dark:border-[rgba(252,211,77,0.3)]"
+                    : "bg-[#ECFDF5] dark:bg-[#0B2C24] border-[#A7F3D0] dark:border-[rgba(110,231,183,0.3)]"
+                const tileText = isOverdue
+                  ? "text-[#991B1B] dark:text-[#FCA5A5]"
+                  : isUrgent
+                    ? "text-[#92400E] dark:text-[#FCD34D]"
+                    : "text-[#065F46] dark:text-[#6EE7B7]"
+                return (
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-[6px] bg-[#FFFBEB] dark:bg-[#3D2A0D] border border-[#FDE68A] dark:border-[rgba(252,211,77,0.3)] flex flex-col items-center justify-center shrink-0">
-                    <span className="text-[9px] font-semibold uppercase text-[#92400E] dark:text-[#FCD34D]">
+                  <div className={cn("w-12 h-12 rounded-[6px] border flex flex-col items-center justify-center shrink-0", tileBg)}>
+                    <span className={cn("text-[9px] font-semibold uppercase", tileText)}>
                       {new Date(nextPayment.dueDate)
                         .toLocaleDateString("pt-BR", { month: "short" })
                         .replace(".", "")}
                     </span>
-                    <span className="text-base font-semibold text-[#92400E] dark:text-[#FCD34D] leading-none">
+                    <span className={cn("text-base font-semibold leading-none", tileText)}>
                       {new Date(nextPayment.dueDate).getDate()}
                     </span>
                   </div>
@@ -1214,16 +1233,19 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <p className="text-[18px] font-semibold text-gray-900 dark:text-[#EAEDF3] tabular-nums">
                       {formatCurrency(nextPayment.value)}
                     </p>
-                    <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
-                      vence em{" "}
-                      {Math.max(
-                        0,
-                        Math.ceil(
-                          (new Date(nextPayment.dueDate).getTime() - Date.now()) /
-                            (1000 * 60 * 60 * 24),
-                        ),
-                      )}{" "}
-                      dias · via {nextPayment.method}
+                    <p className={cn(
+                      "text-[11px] mt-0.5",
+                      isOverdue
+                        ? "text-[#991B1B] dark:text-[#FCA5A5] font-medium"
+                        : "text-gray-500 dark:text-[#8B92A5]",
+                    )}>
+                      {isOverdue
+                        ? `Vencido há ${Math.abs(daysToDue)} dia${Math.abs(daysToDue) !== 1 ? "s" : ""}`
+                        : daysToDue === 0
+                          ? "Vence hoje"
+                          : `vence em ${daysToDue} dia${daysToDue !== 1 ? "s" : ""}`
+                      }
+                      {" · via "}{nextPayment.method}
                     </p>
                   </div>
                 </div>
@@ -1262,6 +1284,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   </Button>
                 </div>
               </div>
+                )
+              })()
             ) : (
               <div className="py-6 text-center">
                 <CheckCircle2 className="h-8 w-8 text-[#10B981] mx-auto mb-2" />
