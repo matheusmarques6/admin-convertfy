@@ -1,0 +1,321 @@
+/**
+ * Briefing Webhook Service
+ *
+ * Quando o cliente confirma o briefing no popup do form público, dispara
+ * um POST outbound pra URL configurada em N8N_BRIEFING_WEBHOOK_URL (n8n
+ * downstream pra gerar copies, automatizar flows, etc).
+ *
+ * Fire-and-forget: chamado via after() do Next 15 — falha do n8n não
+ * bloqueia a confirmação do cliente.
+ *
+ * Payload contém:
+ *   - briefing atual (com edições do cliente)
+ *   - briefing_ai_original (versão pura da IA)
+ *   - form_responses (todas as respostas do wizard)
+ *   - dados comerciais do onboarding
+ *   - client (name, email, phone, etc)
+ *   - store (incluindo Ads Analyzer: brand/icp/tone/ads_review)
+ *   - top_products (até 5)
+ */
+
+import { createAdminClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+import type { BriefingContent } from "@/types/onboarding-pipeline"
+
+const log = logger.child("BriefingWebhook")
+const TIMEOUT_MS = 15_000
+
+interface ReviewItem {
+  what: string
+  body: string
+}
+
+interface AdsReview {
+  score: number | null
+  summary: string | null
+  sub_scores: Record<string, number> | null
+  strengths: ReviewItem[] | null
+  opportunities: ReviewItem[] | null
+  risks: ReviewItem[] | null
+  reviewed_at: string | null
+}
+
+interface WebhookPayload {
+  event: "onboarding.briefing_confirmed"
+  timestamp: string
+  onboarding: Record<string, unknown>
+  briefing: BriefingContent | null
+  briefing_ai_original: BriefingContent | null
+  form_responses: Record<string, unknown> | null
+  client: Record<string, unknown> | null
+  store: Record<string, unknown> | null
+  top_products: Array<Record<string, unknown>>
+}
+
+export async function dispatchBriefingWebhook(
+  onboardingId: string,
+): Promise<void> {
+  const url = process.env.N8N_BRIEFING_WEBHOOK_URL
+  if (!url) {
+    log.warn("briefing.webhook.skip", {
+      onboardingId,
+      reason: "no_url_configured",
+    })
+    return
+  }
+
+  let payload: WebhookPayload | null = null
+  try {
+    payload = await buildPayload(onboardingId)
+  } catch (e) {
+    log.error("briefing.webhook.fatal", {
+      onboardingId,
+      error: (e as Error).message,
+    })
+    return
+  }
+  if (!payload) {
+    log.warn("briefing.webhook.skip", {
+      onboardingId,
+      reason: "onboarding_not_found",
+    })
+    return
+  }
+
+  const token = process.env.N8N_BRIEFING_WEBHOOK_TOKEN
+  if (!token) {
+    log.warn("briefing.webhook.no_token", { onboardingId })
+  }
+
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+  const t0 = Date.now()
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (token) headers.Authorization = `Bearer ${token}`
+
+    log.info("briefing.webhook.start", { onboardingId, url })
+    const resp = await fetch(url, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers,
+      body: JSON.stringify(payload),
+    })
+    const ms = Date.now() - t0
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "")
+      log.warn("briefing.webhook.error", {
+        onboardingId,
+        ms,
+        http_status: resp.status,
+        body: body.slice(0, 200),
+      })
+      return
+    }
+    log.info("briefing.webhook.ok", {
+      onboardingId,
+      ms,
+      http_status: resp.status,
+    })
+  } catch (e) {
+    const ms = Date.now() - t0
+    if (ctrl.signal.aborted) {
+      log.warn("briefing.webhook.timeout", { onboardingId, ms })
+    } else {
+      log.warn("briefing.webhook.error", {
+        onboardingId,
+        ms,
+        error_message: (e as Error).message,
+      })
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function buildPayload(
+  onboardingId: string,
+): Promise<WebhookPayload | null> {
+  const admin = createAdminClient()
+
+  const { data: onb } = await admin
+    .from("onboardings")
+    .select(
+      `
+      id, org_id, form_token, pipeline_id, current_column_id, status,
+      plan, mrr_value, vertical, language, source, source_channel,
+      client_whatsapp, subscription_id,
+      form_responses, form_submitted_at,
+      briefing, briefing_ai_original, briefing_status, briefing_generated_by,
+      briefing_started_at, briefing_generated_at, briefing_confirmed_at,
+      client_id, store_id,
+      client:clients!onboardings_client_id_fkey(
+        id, name, email, phone, company, website
+      ),
+      store:client_stores(
+        id, store_name, store_url, platform,
+        brand_thesis, brand_about, brand_pillars, brand_presence,
+        store_story, store_milestones,
+        icp_persona, icp_demographics, icp_day_in_life,
+        icp_motivations, icp_frictions,
+        tone_description, tone_do, tone_dont,
+        tone_use_words, tone_avoid_words,
+        ads_score, ads_summary, ads_sub_scores,
+        ads_strengths, ads_opportunities, ads_risks, ads_reviewed_at
+      )
+    `,
+    )
+    .eq("id", onboardingId)
+    .maybeSingle()
+
+  if (!onb) return null
+
+  const storeRow = Array.isArray(onb.store) ? onb.store[0] : onb.store
+  const clientRow = Array.isArray(onb.client) ? onb.client[0] : onb.client
+  const storeId = onb.store_id ?? storeRow?.id ?? null
+
+  const topProductsRes = storeId
+    ? await admin
+        .from("store_top_products")
+        .select(
+          "rank, title, price, currency, handle, image_url, external_id",
+        )
+        .eq("store_id", storeId)
+        .order("rank", { ascending: true })
+        .limit(5)
+    : { data: [] as Array<Record<string, unknown>> }
+
+  return {
+    event: "onboarding.briefing_confirmed",
+    timestamp: new Date().toISOString(),
+
+    onboarding: {
+      id: onb.id,
+      org_id: onb.org_id,
+      form_token: onb.form_token,
+      pipeline_id: onb.pipeline_id,
+      current_column_id: onb.current_column_id,
+      status: onb.status,
+      plan: onb.plan,
+      mrr_value: onb.mrr_value,
+      vertical: onb.vertical,
+      language: onb.language,
+      source: onb.source,
+      source_channel: onb.source_channel,
+      client_whatsapp: onb.client_whatsapp,
+      subscription_id: onb.subscription_id,
+      form_submitted_at: onb.form_submitted_at,
+      briefing_status: onb.briefing_status,
+      briefing_generated_by: onb.briefing_generated_by,
+      briefing_started_at: onb.briefing_started_at,
+      briefing_generated_at: onb.briefing_generated_at,
+      briefing_confirmed_at: onb.briefing_confirmed_at,
+    },
+
+    briefing: (onb.briefing as BriefingContent | null) ?? null,
+    briefing_ai_original:
+      (onb.briefing_ai_original as BriefingContent | null) ?? null,
+    form_responses:
+      (onb.form_responses as Record<string, unknown> | null) ?? null,
+
+    client: clientRow
+      ? {
+          id: clientRow.id,
+          name: clientRow.name,
+          email: clientRow.email,
+          phone: clientRow.phone,
+          company: clientRow.company,
+          website: clientRow.website,
+        }
+      : null,
+
+    store: storeRow
+      ? {
+          id: storeRow.id,
+          store_name: storeRow.store_name,
+          store_url: storeRow.store_url,
+          platform: storeRow.platform,
+          brand: {
+            thesis: storeRow.brand_thesis,
+            about: storeRow.brand_about,
+            pillars: storeRow.brand_pillars,
+            presence: storeRow.brand_presence,
+          },
+          history: {
+            story: storeRow.store_story,
+            milestones: storeRow.store_milestones,
+          },
+          icp: {
+            persona: storeRow.icp_persona,
+            demographics: storeRow.icp_demographics,
+            day_in_life: storeRow.icp_day_in_life,
+            motivations: storeRow.icp_motivations,
+            frictions: storeRow.icp_frictions,
+          },
+          tone: {
+            description: storeRow.tone_description,
+            do: storeRow.tone_do,
+            dont: storeRow.tone_dont,
+            use_words: storeRow.tone_use_words,
+            avoid_words: storeRow.tone_avoid_words,
+          },
+          ads_review: buildAdsReview(storeRow),
+        }
+      : null,
+
+    top_products: topProductsRes.data ?? [],
+  }
+}
+
+// Calcula score como média dos sub_scores (escala 0-10), espelhando o que
+// a UI faz. Não usa store.ads_score cru — vem em escala incompatível do
+// webhook n8n original e não bate com a média visual.
+function buildAdsReview(store: {
+  ads_score: number | null
+  ads_summary: string | null
+  ads_sub_scores: Record<string, unknown> | null
+  ads_strengths: ReviewItem[] | null
+  ads_opportunities: ReviewItem[] | null
+  ads_risks: ReviewItem[] | null
+  ads_reviewed_at: string | null
+}): AdsReview | null {
+  // Se a loja nunca rodou Ads Analyzer, retorna null pra n8n ignorar
+  if (store.ads_score === null && store.ads_sub_scores === null) {
+    return null
+  }
+
+  const sub = store.ads_sub_scores ?? {}
+  const subScoresNum: Record<string, number> = {}
+  for (const key of [
+    "strategy",
+    "creatives",
+    "targeting",
+    "diversification",
+    "tracking",
+  ]) {
+    const v = Number((sub as Record<string, unknown>)[key])
+    if (Number.isFinite(v)) subScoresNum[key] = v
+  }
+  const values = Object.values(subScoresNum).filter((v) => v > 0)
+  const score =
+    values.length > 0
+      ? Math.round(
+          Math.max(
+            0,
+            Math.min(10, values.reduce((s, v) => s + v, 0) / values.length),
+          ) * 10,
+        ) / 10
+      : null
+
+  return {
+    score,
+    summary: store.ads_summary,
+    sub_scores: Object.keys(subScoresNum).length > 0 ? subScoresNum : null,
+    strengths: store.ads_strengths,
+    opportunities: store.ads_opportunities,
+    risks: store.ads_risks,
+    reviewed_at: store.ads_reviewed_at,
+  }
+}

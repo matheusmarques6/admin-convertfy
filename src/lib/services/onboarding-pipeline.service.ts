@@ -13,9 +13,11 @@
  *    em etapa de implementacao
  */
 
+import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
+import { dispatchBriefingWebhook } from "./briefing-webhook.service"
 import type {
   BriefingContent,
   OperationalPipelineColumn,
@@ -977,6 +979,9 @@ export async function confirmBriefing(
       log.error("notifyBriefingReady failed", e)
     }
   })()
+
+  // Dispara webhook outbound pro n8n (fire-and-forget via after() do Next 15)
+  after(dispatchBriefingWebhook(onb.id))
 
   return { ok: true }
 }
