@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import {
   Area,
   AreaChart,
@@ -376,11 +377,35 @@ function getMethodIcon(type: string) {
 // ─── Main Component ────────────────────────────────────────
 
 export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  const yearParam = searchParams.get("fin_year")
+  const viewParam = searchParams.get("fin_view") as "charges" | "subscriptions" | "contracts" | null
+  const validView = viewParam && ["charges", "subscriptions", "contracts"].includes(viewParam)
+    ? viewParam
+    : "charges"
+  const currentYearStr = new Date().getFullYear().toString()
+  const initialYear = yearParam && /^20\d\d$/.test(yearParam) ? yearParam : currentYearStr
+
   const [localSubscriptions, setLocalSubscriptions] = useState<LocalSubscription[]>([])
   const [localCharges, setLocalCharges] = useState<LocalCharge[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
-  const [activeView, setActiveView] = useState<"charges" | "subscriptions" | "contracts">("charges")
+  const [selectedYear, setSelectedYear] = useState(initialYear)
+  const [activeView, setActiveView] = useState<"charges" | "subscriptions" | "contracts">(validView)
+
+  // Persiste filtros do financeiro na URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (selectedYear === currentYearStr) params.delete("fin_year")
+    else params.set("fin_year", selectedYear)
+    if (activeView === "charges") params.delete("fin_view")
+    else params.set("fin_view", activeView)
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, activeView, pathname])
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
