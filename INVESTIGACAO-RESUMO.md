@@ -503,3 +503,124 @@ Decisão do usuário: **Manter Onboarding v2** + **Tier A+B → D+C → revisão
 
 5. **Build cron reminder Etapa 2**: depende do `CRON_SECRET` estar configurado no Vercel.
 
+---
+
+# UPDATE 2 · Features grandes do prompt original também entregues · 2026-05-19
+
+Continuação do trabalho após cleanup. As 3 features que originalmente disse "são sprints próprias" foram entregues em sequência:
+
+## Entregue · Pipeline de Acompanhamento Semanal (commit `a6ad6ce`)
+
+### Migration `20260519_weekly_acompanhamento_pipeline.sql`
+- `weekly_pipeline_states` (4 stages: precisa_atencao → em_otimizacao → pronta_feedback → feedback_enviado)
+- 5 health states (rampup/healthy/attention/risk/renewal) com score 0-100
+- `weekly_pipeline_actions` (ações aprovadas, opcionalmente vinculadas a tasks)
+- Unique constraint por (store_id, week_start) WHERE is_active=true
+- RLS org-based + triggers updated_at
+
+### API routes (3 novas)
+- `GET/POST /api/acompanhamento/pipeline` — lista por semana, agrupado por stage
+- `PATCH/DELETE /api/acompanhamento/pipeline/[stateId]` — move stages com timestamps auto
+- `POST /api/acompanhamento/pipeline/[stateId]/generate-message` — Claude Sonnet 4.6 gera mensagem WhatsApp contextualizada
+
+### Cron `weekly-acompanhamento-reset`
+- Schedule: domingo 22:00 UTC
+- Auto-flag pra Etapa 1: rampup, renewal próximo, requests abertos, weekly_reports com >=3 concerns
+- Calcula health_state e health_score derivados
+- Soft-deactiva estados de semanas anteriores
+
+### UI `/admin/acompanhamento`
+- Kanban 4 colunas com cards detalhados (health, MRR, flag_reason, timestamps)
+- Drawer detalhe com Editor de mensagem WhatsApp + "✨ Gerar via IA"
+- Tag "CALL SEXTA / TIME / RYAN" por coluna
+- Botões Avançar / Voltar inline em cada card
+
+## Entregue · Ritual de Sexta (commit `11e4888`)
+
+### Migration `20260519_ritual_sessions.sql`
+- `ritual_sessions` (store_ids ordenados, current_index, recording_url, transcript, generated_tasks)
+- `ritual_store_diagnostics` (notes, approved_actions, chat_messages, skipped por loja)
+- Bucket Storage `ritual-recordings` (500MB max para Fathom MP4/MOV/audio)
+
+### API routes (4 novas)
+- `GET/POST /api/ritual/sessions` — lista semana atual + cria nova auto-populando lojas em Etapa 1 ordenadas por severity
+- `GET/PATCH /api/ritual/sessions/[sessionId]` — detalhe + update status/index/recording
+- `POST /api/ritual/sessions/[sessionId]/diagnostics` — cria/atualiza diagnostic + auto-avança pipeline_state
+- `POST /api/ritual/chat` — chat IA com Claude Sonnet 4.6 contextualizado (store+pipeline+reports+calls+briefing)
+
+### UI `/admin/ritual`
+- Página principal com card de sessão ativa + lista de lojas pré-processadas
+- Modal diagnóstico fullscreen com:
+  - Header (badge pulsante "Sessão ativa", timer real-time, "X de Y lojas")
+  - 5 abas (Funil & gargalo / 80/20 problemas / Comparativo / Campanhas / Automações)
+  - Chat IA dark panel 400px com 4 perguntas sugeridas + Enter pra enviar
+  - StoreInfoCard com health score donut
+  - Editor de notas + lista de ações aprovadas inline
+  - Footer com dots de progresso + botões (Salvar / Pular / Próxima loja)
+- Auto-save de diagnostic ao mover de loja
+- Skip prompt com razão obrigatória
+
+## Entregue · CRM Customer Success (commit `643e03c`)
+
+### API `GET /api/cs-crm/home`
+- Agrega 6 fontes em paralelo (zero schema change, reusa tabelas existentes)
+- Urgente: pipeline_states com health_state='risk'
+- Calls hoje: store_feedback_calls do dia
+- Feedbacks WhatsApp: pipeline em Etapa 3
+- Agendar calls: lojas do owner sem call nos últimos 30 dias
+- Pós-call pendente: calls dos últimos 3 dias sem action_items
+- Concluídos hoje: pipeline em Etapa 4 com feedback_sent_at hoje
+
+### UI `/admin/cs-crm`
+- Kanban 6 colunas com tags coloridos (SLA/AGENDA/RYAN/30D+/TODO/OK)
+- Cards: store_name, MRR, client, health badge, flag_reason ou AI message preview, timestamps relativos
+- Click navega pra detalhe da loja
+- Auto-refresh 60s
+- Quick links Pipeline + Ritual no header
+
+## Sidebar consolidado
+
+Section "Workflows" agora tem 5 items:
+- Pipelines CS (existente)
+- Onboarding (existente)
+- **Acompanhamento** (novo, icon CalendarClock)
+- **Ritual de Sexta** (novo, icon Sparkles)
+- **CRM CS** (novo, icon Columns3)
+- Tutorial cliente (existente)
+
+## Estatísticas finais
+
+| Feature | Migration | API routes | Componentes | Cron jobs |
+|---|---|---|---|---|
+| Tier A+B drawer | 1 | 7 | 8 + sidebar | 0 |
+| Tier D Detalhe Loja | 1 | 5 | 4 | 0 |
+| Tier C Automações | 0 | 1 + email service | 0 | 1 |
+| Pipeline Acompanhamento | 1 | 3 + cron | 1 | 1 |
+| Ritual de Sexta | 1 | 4 | 2 | 0 |
+| CRM CS | 0 | 1 | 1 | 0 |
+| **TOTAL** | **4** | **21+ services** | **16 componentes** | **2** |
+
+- **0 erros TypeScript** em todo o código novo
+- **0 warnings ESLint** após cleanup
+- **0 mock data** — toda integração via Supabase real + Anthropic SDK real
+- **4 migrations** aplicadas via MCP Supabase (idempotentes, com RLS)
+- **3 storage buckets** novos (onboarding-visual-assets, ritual-recordings + policies existentes)
+- **30 commits** progressivos com mensagens descritivas
+
+## Configuração necessária (deploy)
+
+1. **`ANTHROPIC_API_KEY`** — para AI suggestions, ritual chat, generate-message, brand brain generation
+2. **`RESEND_API_KEY`** + `RESEND_FROM_EMAIL` — para email Etapa 7
+3. **`CRON_SECRET`** — para os 2 crons novos (form-reminder daily, acompanhamento-reset weekly)
+4. **Bucket policies** — `onboarding-visual-assets` e `ritual-recordings` já criados via migration com RLS
+
+## Testes end-to-end recomendados
+
+1. **Drawer enriquecido**: ir em `/admin/onboarding` → clicar task → testar sidebar 3 grupos + 8 blocos
+2. **Detalhe loja**: `/admin/stores/[id]?tab=onboarding` → ver 4 tabs novas (Onboarding/Acompanhamento/Calls/Solicitações)
+3. **Acompanhamento**: `/admin/acompanhamento` → ver kanban 4 colunas
+4. **Ritual**: `/admin/ritual` → "Iniciar ritual" → modal com chat IA → "Próxima loja"
+5. **CRM CS**: `/admin/cs-crm` → ver 6 colunas com auto-refresh
+6. **Cron forcado**: GET `/api/cron/onboarding-form-reminder` com header Authorization: Bearer $CRON_SECRET
+7. **Cron reset**: GET `/api/cron/weekly-acompanhamento-reset` com mesmo header — popula Etapa 1 do pipeline
+
