@@ -2573,7 +2573,25 @@ function TopProductsBlock({ products }: { products: TopProduct[] }) {
 // ─── BLOCO 03 — Análise de ads (read-only) ───────────────────────────────
 
 function AdsReviewBlock({ review }: { review: AdsReview }) {
-  const score = Math.max(0, Math.min(10, review.score))
+  const subScores = review.sub_scores ?? {}
+  const subScoreEntries: Array<[string, number, string]> = [
+    ["strategy", Number(subScores.strategy ?? 0), "Estratégia"],
+    ["creatives", Number(subScores.creatives ?? 0), "Criativos"],
+    ["targeting", Number(subScores.targeting ?? 0), "Segmentação"],
+    ["diversification", Number(subScores.diversification ?? 0), "Diversificação"],
+    ["tracking", Number(subScores.tracking ?? 0), "Tracking & dados"],
+  ]
+
+  // Score geral = média das 5 sub-notas (ignora ads_score do banco que pode
+  // vir em escala incompatível do webhook do n8n).
+  const validSubs = subScoreEntries
+    .map(([, v]) => v)
+    .filter((v) => Number.isFinite(v) && v > 0)
+  const computedScore =
+    validSubs.length > 0
+      ? validSubs.reduce((s, v) => s + v, 0) / validSubs.length
+      : 0
+  const score = Math.max(0, Math.min(10, computedScore))
   const scoreColor =
     score >= 7 ? "#10B981" : score >= 4 ? "#F59E0B" : "#EF4444"
   const verdict =
@@ -2589,15 +2607,6 @@ function AdsReviewBlock({ review }: { review: AdsReview }) {
   const ARC_FRACTION = 240 / 360
   const ARC_LEN = CIRC * ARC_FRACTION
   const PROGRESS_LEN = ARC_LEN * (score / 10)
-
-  const subScores = review.sub_scores ?? {}
-  const subScoreEntries: Array<[string, number, string]> = [
-    ["strategy", subScores.strategy ?? 0, "Estratégia"],
-    ["creatives", subScores.creatives ?? 0, "Criativos"],
-    ["targeting", subScores.targeting ?? 0, "Targeting"],
-    ["diversification", subScores.diversification ?? 0, "Diversificação"],
-    ["tracking", subScores.tracking ?? 0, "Tracking"],
-  ]
 
   function formatDate(iso: string | null): string | null {
     if (!iso) return null
