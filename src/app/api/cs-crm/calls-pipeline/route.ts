@@ -39,8 +39,6 @@ export async function GET(request: NextRequest) {
     todayStart.setUTCHours(0, 0, 0, 0)
     const todayEnd = new Date(now)
     todayEnd.setUTCHours(23, 59, 59, 999)
-    const threeDaysFromNow = new Date(Date.now() + 3 * 86_400_000)
-    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86_400_000)
     const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000)
 

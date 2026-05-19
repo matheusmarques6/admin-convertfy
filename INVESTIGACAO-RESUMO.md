@@ -624,3 +624,116 @@ Section "Workflows" agora tem 5 items:
 6. **Cron forcado**: GET `/api/cron/onboarding-form-reminder` com header Authorization: Bearer $CRON_SECRET
 7. **Cron reset**: GET `/api/cron/weekly-acompanhamento-reset` com mesmo header — popula Etapa 1 do pipeline
 
+---
+
+# UPDATE 3 · WhatsApp real + Pipeline Call Mensal + Cadências · 2026-05-19
+
+Continuação do trabalho fechando o ciclo do CRM Customer Success com 3 entregas:
+
+## Entregue · WhatsApp send real (commit `a1c487b`)
+
+### Endpoint `POST /api/acompanhamento/pipeline/[stateId]/send-whatsapp`
+- Envio REAL via `sendWhatsAppMessage` (WhatsApp Cloud API v20.0 já existente)
+- Usa canal default de `crm_channels` (mesmo padrão do onboarding-whatsapp)
+- Sanitiza phone automaticamente (prefixa 55 BR)
+- Trata erros: cliente sem phone, canal sem config, falha API com message
+- Quando sucesso: auto stage 4 + feedback_sent_at + feedback_method='whatsapp' + feedback_sent_by
+
+### Integração no drawer Acompanhamento
+- Botão "✓ Enviei WhatsApp" agora chama o endpoint real
+- Fallback gracioso: alert com erro + sugere envio manual
+
+## Entregue · Pipeline Call Mensal (commit `a1c487b`)
+
+### API `GET /api/cs-crm/calls-pipeline`
+- 6 stages derivados de `store_feedback_calls` (zero schema change):
+  - `a_marcar` — sem call há 30d+ nem next_call_date
+  - `aguardando` — next_call_date 4-30d
+  - `agendadas` — next_call_date 1-3d
+  - `hoje` — next_call_date OU conducted_at hoje
+  - `pos_call_pendente` — conducted_at 1-3d sem action_items
+  - `finalizadas` — conducted_at 4-30d com action_items
+- Algoritmo: classifica cada store em UMA etapa por prioridade
+
+### UI `/admin/cs-crm/calls`
+- Toggle Kanban / Calendário
+- Kanban view: 6 colunas com cards (data + days_from_now + action_items preview)
+- Calendar view: agrupado por dia, badge HOJE destacado em brand color
+- Click navega pra detalhe loja tab=calls
+- Auto-refresh 60s
+
+## Entregue · Configuração de Cadências (commit `5199661`)
+
+### Migration `20260519_cadence_overrides.sql`
+- `store_cadence_overrides`: 1 override por loja, default global = weekly
+  - 4 frequencies: weekly / biweekly / monthly / paused
+  - Reason obrigatório quando != weekly
+- `store_cadence_history`: log automático via trigger AFTER INSERT/UPDATE
+  - Captura old_frequency, new_frequency, reason, changed_by
+
+### API `GET/POST /api/cs-crm/cadences`
+- GET: lista todas com cadência atual + stats (weekly/biweekly/monthly/paused/exceptions)
+- POST upsert: frequency=weekly remove override (volta pro padrão)
+- Frequency != weekly exige reason
+
+### UI `/admin/cs-crm/cadences`
+- 5 stat pills clicáveis com filter (Total/Semanal/Quinzenal/Mensal/Exceções)
+- Tabela 5-col: Loja+Cliente / Cadência (badge colorido) / Motivo / Configurado por / Editar
+- Modal de edição com 4 botões radio-style + textarea reason
+- Valida reason antes de salvar
+
+## Sidebar consolidado · 7 items em Workflows
+
+```
+Workflows
+├── Pipelines CS (existente)
+├── Onboarding (existente)
+├── Acompanhamento ✨ Pipeline 4 etapas
+├── Ritual de Sexta ✨ Modal diagnóstico
+├── CRM CS ✨ Kanban 6 colunas
+├── Calls Mensais ✨ Pipeline 6 etapas + Calendário
+├── Cadências ✨ Config feedback frequency
+└── Tutorial cliente (existente)
+```
+
+## Estatísticas atualizadas
+
+| Categoria | Antes | Agora |
+|---|---|---|
+| Migrations idempotentes | 4 | **6** |
+| API routes / services | 21+ | **27+** |
+| Componentes UI | 16 | **19** |
+| Crons | 2 | **2** |
+| Páginas /admin novas | 4 | **7** |
+| Sidebar items novos | 5 | **7** |
+
+- **0 erros TypeScript** após cada commit
+- **0 warnings ESLint** após cleanup inicial
+- **0 mock data** em qualquer endpoint
+
+## CRM Customer Success do Ryan · status das 5 telas
+
+| Tela | Status | Path |
+|---|---|---|
+| 1. CRM Home (kanban 6 colunas) | ✅ DONE | `/admin/cs-crm` |
+| 2. Pipeline Call Mensal (Kanban+Calendário) | ✅ DONE | `/admin/cs-crm/calls` |
+| 3. Detalhe Loja (4 tabs novas + 5 existentes) | ✅ DONE | `/admin/stores/[id]` |
+| 4. Calendário Pessoal (toggle dentro de Calls) | ✅ DONE | `/admin/cs-crm/calls` (view=calendar) |
+| 5. Configuração de Cadências | ✅ DONE | `/admin/cs-crm/cadences` |
+
+## Pipeline operacional consolidado · 4 fluxos integrados
+
+1. **Onboarding v2** (`/admin/onboarding`) → 7 etapas, novo cliente
+2. **Acompanhamento Semanal** (`/admin/acompanhamento`) → 4 etapas, ciclo semanal cliente ativo
+3. **Ritual de Sexta** (`/admin/ritual`) → modal diagnóstico com IA, ponte entre Acompanhamento Etapa 1→2
+4. **CRM CS do Ryan** (`/admin/cs-crm`) → dashboard operacional do dia a dia
+
+Cada fluxo se conecta:
+- Onboarding completa → loja entra no Acompanhamento (Etapa Ramp-up)
+- Cron domingo flagga lojas pra Acompanhamento Etapa 1
+- Ritual sexta diagnóstica Etapa 1 → ações aprovadas movem pra Etapa 2
+- Time executa → Etapa 3 com mensagem IA pronta
+- Ryan vê no CRM CS → envia via WhatsApp → Etapa 4
+- Calls Mensais cobrem revisão estratégica de longo prazo
+- Cadências definem ritmo de cada loja
+
