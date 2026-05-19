@@ -19,6 +19,7 @@ import {
   Store as StoreIcon,
   TestTube2,
   Plug,
+  RefreshCw,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -415,54 +416,64 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   const [filter, setFilter] = useState<ActivityCategory | "all">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "90d">("all")
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function loadData() {
+    const supabase = createClient()
+    const [activitiesRes, meetingsRes] = await Promise.all([
+      supabase
+        .from("activities")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("meetings")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("status", "scheduled")
+        .gt("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true })
+        .limit(3),
+    ])
+
+    const activitiesData = activitiesRes.data || []
+    setActivities(activitiesData)
+    setUpcomingMeetings(meetingsRes.data || [])
+
+    // Load owner names for activities
+    const userIds = Array.from(
+      new Set([
+        ...activitiesData.map((a) => a.user_id),
+        ...(meetingsRes.data?.map((m) => m.user_id) ?? []),
+      ].filter(Boolean)),
+    )
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", userIds)
+      const map: Record<string, string> = {}
+      for (const u of users ?? []) {
+        map[u.id] = u.name
+      }
+      setOwnerNames(map)
+    }
+  }
 
   useEffect(() => {
-    async function loadData() {
-      const supabase = createClient()
-      const [activitiesRes, meetingsRes] = await Promise.all([
-        supabase
-          .from("activities")
-          .select("*")
-          .eq("client_id", clientId)
-          .order("created_at", { ascending: false })
-          .limit(100),
-        supabase
-          .from("meetings")
-          .select("*")
-          .eq("client_id", clientId)
-          .eq("status", "scheduled")
-          .gt("scheduled_at", new Date().toISOString())
-          .order("scheduled_at", { ascending: true })
-          .limit(3),
-      ])
-
-      const activitiesData = activitiesRes.data || []
-      setActivities(activitiesData)
-      setUpcomingMeetings(meetingsRes.data || [])
-
-      // Load owner names for activities
-      const userIds = Array.from(
-        new Set([
-          ...activitiesData.map((a) => a.user_id),
-          ...(meetingsRes.data?.map((m) => m.user_id) ?? []),
-        ].filter(Boolean)),
-      )
-      if (userIds.length > 0) {
-        const { data: users } = await supabase
-          .from("profiles")
-          .select("id, name")
-          .in("id", userIds)
-        const map: Record<string, string> = {}
-        for (const u of users ?? []) {
-          map[u.id] = u.name
-        }
-        setOwnerNames(map)
-      }
-
-      setLoading(false)
-    }
-    loadData()
+    void loadData().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      await loadData()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const filteredActivities = useMemo(() => {
     let list = activities
@@ -545,6 +556,16 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="h-8 w-8"
+            aria-label="Atualizar timeline"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+          </Button>
           <Button variant="secondary" size="sm" onClick={handleExport} disabled={activities.length === 0}>
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Exportar
