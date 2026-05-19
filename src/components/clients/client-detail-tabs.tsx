@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { Store, Receipt, History, Settings as SettingsIcon, LayoutDashboard } from "lucide-react"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ClientOverview, type ClientWithRelations } from "@/components/clients/client-overview"
 import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
@@ -101,47 +102,84 @@ export function ClientDetailTabs({ client, ltv }: ClientDetailTabsProps) {
 
   return (
     <div className="mt-6">
-      <UnderlineTabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-        <UnderlineTabItem value="overview">
-          <span className="inline-flex items-center gap-1.5">
-            <LayoutDashboard className="h-3.5 w-3.5" />
-            Visão Geral
-          </span>
-        </UnderlineTabItem>
-        <UnderlineTabItem value="stores">
-          <span className="inline-flex items-center gap-1.5">
-            <Store className="h-3.5 w-3.5" />
-            Lojas
-            {storeCount > 0 && (
-              <Badge
-                variant="neutral"
-                showDot={false}
-                className="ml-1 text-[10px] px-1 py-0 h-4"
-              >
-                {storeCount}
-              </Badge>
-            )}
-          </span>
-        </UnderlineTabItem>
-        <UnderlineTabItem value="financial">
-          <span className="inline-flex items-center gap-1.5">
-            <Receipt className="h-3.5 w-3.5" />
-            Financeiro
-          </span>
-        </UnderlineTabItem>
-        <UnderlineTabItem value="timeline">
-          <span className="inline-flex items-center gap-1.5">
-            <History className="h-3.5 w-3.5" />
-            Timeline
-          </span>
-        </UnderlineTabItem>
-        <UnderlineTabItem value="config">
-          <span className="inline-flex items-center gap-1.5">
-            <SettingsIcon className="h-3.5 w-3.5" />
-            Configurações
-          </span>
-        </UnderlineTabItem>
-      </UnderlineTabs>
+      <TooltipProvider delayDuration={400}>
+        <UnderlineTabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+          <UnderlineTabItem value="overview">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <LayoutDashboard className="h-3.5 w-3.5" />
+                  Visão Geral
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                Atalho: <kbd className="font-mono">g v</kbd>
+              </TooltipContent>
+            </Tooltip>
+          </UnderlineTabItem>
+          <UnderlineTabItem value="stores">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5" />
+                  Lojas
+                  {storeCount > 0 && (
+                    <Badge
+                      variant="neutral"
+                      showDot={false}
+                      className="ml-1 text-[10px] px-1 py-0 h-4"
+                    >
+                      {storeCount}
+                    </Badge>
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                Atalho: <kbd className="font-mono">g l</kbd>
+              </TooltipContent>
+            </Tooltip>
+          </UnderlineTabItem>
+          <UnderlineTabItem value="financial">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <Receipt className="h-3.5 w-3.5" />
+                  Financeiro
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                Atalho: <kbd className="font-mono">g f</kbd>
+              </TooltipContent>
+            </Tooltip>
+          </UnderlineTabItem>
+          <UnderlineTabItem value="timeline">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <History className="h-3.5 w-3.5" />
+                  Timeline
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                Atalho: <kbd className="font-mono">g t</kbd>
+              </TooltipContent>
+            </Tooltip>
+          </UnderlineTabItem>
+          <UnderlineTabItem value="config">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <SettingsIcon className="h-3.5 w-3.5" />
+                  Configurações
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">
+                Atalho: <kbd className="font-mono">g c</kbd>
+              </TooltipContent>
+            </Tooltip>
+          </UnderlineTabItem>
+        </UnderlineTabs>
+      </TooltipProvider>
 
       {activeTab === "overview" && (
         <ClientPerformanceProvider
