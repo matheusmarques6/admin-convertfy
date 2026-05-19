@@ -46,6 +46,57 @@ export function ClientDetailTabs({ client, ltv }: ClientDetailTabsProps) {
     router.replace(url, { scroll: false })
   }, [activeTab, pathname, router, searchParams])
 
+  // Atalhos de teclado: g seguido de letra (g+v / g+l / g+f / g+t / g+c)
+  useEffect(() => {
+    let gPressed = false
+    let resetTimer: ReturnType<typeof setTimeout> | null = null
+
+    function isTypingInField(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName.toLowerCase()
+      if (tag === "input" || tag === "textarea" || tag === "select") return true
+      if (target.isContentEditable) return true
+      return false
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTypingInField(e.target)) return
+
+      if (!gPressed && e.key === "g") {
+        gPressed = true
+        if (resetTimer) clearTimeout(resetTimer)
+        resetTimer = setTimeout(() => {
+          gPressed = false
+        }, 1200)
+        return
+      }
+
+      if (gPressed) {
+        const key = e.key.toLowerCase()
+        const tabMap: Record<string, TabValue> = {
+          v: "overview",
+          l: "stores",
+          f: "financial",
+          t: "timeline",
+          c: "config",
+        }
+        if (tabMap[key]) {
+          e.preventDefault()
+          setActiveTab(tabMap[key])
+        }
+        gPressed = false
+        if (resetTimer) clearTimeout(resetTimer)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+      if (resetTimer) clearTimeout(resetTimer)
+    }
+  }, [])
+
   const storeCount = client.client_stores?.length ?? 0
 
   return (
