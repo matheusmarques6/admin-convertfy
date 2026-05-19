@@ -113,6 +113,17 @@ export const ROUTES = {
         FEEDBACK: "/admin/operacional/workflows/feedback",
         SUPORTE: "/admin/operacional/workflows/suporte",
       },
+      // ── Customer Success (rotinas semanais/mensais do CS) ─────────────
+      // URLs em /admin/<pagina> por compatibilidade com bookmarks
+      // existentes (nao quebra links). No menu agrupam sob "Customer
+      // Success" pra dar contexto visual.
+      CS: {
+        CRM: "/admin/cs-crm",
+        CALLS: "/admin/cs-crm/calls",
+        CADENCES: "/admin/cs-crm/cadences",
+        ACOMPANHAMENTO: "/admin/acompanhamento",
+        RITUAL: "/admin/ritual",
+      },
     },
 
     // ── Compartilhado (comercial e operacional acessam) ─────────────────

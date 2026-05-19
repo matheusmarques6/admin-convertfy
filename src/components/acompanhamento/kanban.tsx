@@ -3,6 +3,7 @@
 import { useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
+import { CSPageHeader } from "@/components/cs-crm/cs-page-header"
 
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json())
@@ -141,39 +142,29 @@ export function AcompanhamentoKanban() {
 
   return (
     <div style={{ padding: 24, background: C.g50, minHeight: "100vh" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.g900, margin: 0 }}>
-            Acompanhamento Semanal
-          </h1>
-          <div style={{ fontSize: 13, color: C.g500, marginTop: 4 }}>
-            Semana de{" "}
-            {new Date(payload.week_start).toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "long",
-            })}{" "}
-            · {payload.total} lojas no pipeline
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => mutate()}
-          style={{
-            padding: "6px 12px",
-            fontSize: 12,
-            fontWeight: 600,
-            border: `1px solid ${C.g200}`,
-            background: "#fff",
-            borderRadius: 4,
-            cursor: "pointer",
-            color: C.g700,
-          }}
-        >
-          Atualizar
-        </button>
-      </div>
-
+      <CSPageHeader
+        title="Acompanhamento Semanal"
+        description={`Pipeline da rotina de feedback semanal: 4 etapas que vão de "Coletar dados" até "Enviar resumo". Lojas avançam conforme a cadência configurada. Semana de ${new Date(payload.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })} · ${payload.total} lojas.`}
+        active="acomp"
+        right={
+          <button
+            type="button"
+            onClick={() => mutate()}
+            style={{
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              border: `1px solid ${C.g200}`,
+              background: "#fff",
+              borderRadius: 4,
+              cursor: "pointer",
+              color: C.g700,
+            }}
+          >
+            Atualizar
+          </button>
+        }
+      />
       {/* Kanban */}
       <div
         style={{

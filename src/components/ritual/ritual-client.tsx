@@ -3,6 +3,7 @@
 import { useState } from "react"
 import useSWR from "swr"
 import { RitualDiagnosticModal } from "./diagnostic-modal"
+import { CSPageHeader } from "@/components/cs-crm/cs-page-header"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
@@ -86,19 +87,11 @@ export function RitualClient() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: C.g900, marginBottom: 4 }}>
-        Ritual de Sexta
-      </h1>
-      <div style={{ fontSize: 13, color: C.g500, marginBottom: 24 }}>
-        {weekStart && (
-          <>
-            Semana de{" "}
-            {new Date(weekStart).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}
-            {" · "}
-          </>
-        )}
-        Análise diagnóstica das lojas que precisam atenção
-      </div>
+      <CSPageHeader
+        title="Ritual de Sexta"
+        description={`Reflexão semanal guiada por IA: o CM avalia as lojas em risco com diagnóstico estruturado e planeja ações pra semana seguinte. ${weekStart ? `Semana de ${new Date(weekStart).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}.` : ""}`}
+        active="ritual"
+      />
 
       {/* Active session card */}
       {activeSession ? (

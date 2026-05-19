@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
+import { CSPageHeader } from "./cs-page-header"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
@@ -101,59 +102,42 @@ export function CallsPipeline() {
 
   return (
     <div style={{ padding: 20, background: C.g50, minHeight: "100vh" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.g900, margin: 0 }}>
-            Pipeline de Calls Mensais
-          </h1>
-          <div style={{ fontSize: 13, color: C.g500, marginTop: 4 }}>
-            {payload.total} lojas · Auto-refresh 60s
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <div
-            style={{
-              display: "flex",
-              border: `1px solid ${C.g200}`,
-              borderRadius: 4,
-              overflow: "hidden",
-              background: "#fff",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setView("kanban")}
-              style={toggleBtn(view === "kanban")}
+      <CSPageHeader
+        title="Pipeline de Calls Mensais"
+        description={`Pipeline com 6 etapas das calls de feedback mensais: de "A marcar" até "Finalizadas". Visualização Kanban ou Calendário. ${payload.total} lojas no fluxo · Auto-refresh 60s.`}
+        active="calls"
+        right={
+          <div style={{ display: "flex", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                border: `1px solid ${C.g200}`,
+                borderRadius: 4,
+                overflow: "hidden",
+                background: "#fff",
+              }}
             >
-              Kanban
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("calendar")}
-              style={toggleBtn(view === "calendar")}
-            >
-              Calendário
+              <button
+                type="button"
+                onClick={() => setView("kanban")}
+                style={toggleBtn(view === "kanban")}
+              >
+                Kanban
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("calendar")}
+                style={toggleBtn(view === "calendar")}
+              >
+                Calendário
+              </button>
+            </div>
+            <button type="button" onClick={() => mutate()} style={btnPrimary()}>
+              Atualizar
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => router.push("/admin/cs-crm")}
-            style={btnGhost()}
-          >
-            ← CRM Home
-          </button>
-          <button type="button" onClick={() => mutate()} style={btnPrimary()}>
-            Atualizar
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {view === "kanban" ? (
         <KanbanView payload={payload} onCardClick={(item) => router.push(`/admin/stores/${item.store_id}?tab=calls`)} />
@@ -433,19 +417,6 @@ function toggleBtn(active: boolean): React.CSSProperties {
     color: active ? "#fff" : C.g700,
     background: active ? C.brand : "transparent",
     border: "none",
-    cursor: "pointer",
-  }
-}
-
-function btnGhost(): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    color: C.g700,
-    background: "#fff",
-    border: `1px solid ${C.g200}`,
-    borderRadius: 4,
     cursor: "pointer",
   }
 }

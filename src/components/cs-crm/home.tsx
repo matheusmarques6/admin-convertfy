@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
+import { CSPageHeader } from "./cs-page-header"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
@@ -113,35 +114,16 @@ export function CSCrmHome() {
 
   return (
     <div style={{ padding: 20, background: C.g50, minHeight: "100vh" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.g900, margin: 0 }}>
-            CRM Customer Success
-          </h1>
-          <div style={{ fontSize: 13, color: C.g500, marginTop: 4 }}>
-            {total} cards no painel · Auto-refresh a cada 60s
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => router.push("/admin/acompanhamento")}
-            style={btnGhost()}
-          >
-            Pipeline →
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/admin/ritual")}
-            style={btnGhost()}
-          >
-            Ritual →
-          </button>
+      <CSPageHeader
+        title="CRM Customer Success"
+        description={`Painel diário dos CMs com 6 colunas que priorizam o trabalho do dia: lojas urgentes, calls de hoje, feedbacks prontos e pós-call. ${total} cards no painel · Auto-refresh 60s.`}
+        active="crm"
+        right={
           <button type="button" onClick={() => mutate()} style={btnPrimary()}>
-            Atualizar
+            Atualizar agora
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Kanban 6 colunas */}
       <div
@@ -310,19 +292,6 @@ function KanbanCardComponent({
       </div>
     </div>
   )
-}
-
-function btnGhost(): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    color: C.g700,
-    background: "#fff",
-    border: `1px solid ${C.g200}`,
-    borderRadius: 4,
-    cursor: "pointer",
-  }
 }
 
 function btnPrimary(): React.CSSProperties {

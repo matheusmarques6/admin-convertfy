@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
+import { CSPageHeader } from "./cs-page-header"
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
@@ -81,14 +82,11 @@ export function CadencesAdmin() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.g900, margin: 0 }}>
-          Configuração de Cadências
-        </h1>
-        <div style={{ fontSize: 13, color: C.g500, marginTop: 4 }}>
-          Padrão: feedback semanal. Configure exceções com justificativa.
-        </div>
-      </div>
+      <CSPageHeader
+        title="Cadências de Feedback"
+        description="Define com que frequência cada loja recebe a call de feedback do CS. O padrão é semanal — cadências diferentes precisam de justificativa registrada. Essa configuração alimenta o Acompanhamento Semanal e o pipeline de Calls Mensais."
+        active="cadences"
+      />
 
       {/* Stats */}
       <div

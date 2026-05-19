@@ -165,38 +165,43 @@ const OPERACIONAL_NAV: NavGroup[] = [
     ],
   },
   {
-    key: "workflows",
-    label: "Workflows",
+    key: "customer-success",
+    label: "Customer Success",
     items: [
-      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      {
+        name: "CRM CS",
+        href: ROUTES.ADMIN.OPERACIONAL.CS.CRM,
+        icon: Columns3,
+      },
+      {
+        name: "Acompanhamento",
+        href: ROUTES.ADMIN.OPERACIONAL.CS.ACOMPANHAMENTO,
+        icon: CalendarClock,
+      },
+      {
+        name: "Calls Mensais",
+        href: ROUTES.ADMIN.OPERACIONAL.CS.CALLS,
+        icon: Calendar,
+      },
+      {
+        name: "Ritual de Sexta",
+        href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL,
+        icon: Sparkles,
+      },
+    ],
+  },
+  {
+    key: "onboarding",
+    label: "Onboarding",
+    items: [
       {
         name: "Onboarding",
         href: ROUTES.ADMIN.ONBOARDING_V2.LIST,
         icon: Rocket,
       },
       {
-        name: "Acompanhamento",
-        href: "/admin/acompanhamento",
-        icon: CalendarClock,
-      },
-      {
-        name: "Ritual de Sexta",
-        href: "/admin/ritual",
-        icon: Sparkles,
-      },
-      {
-        name: "CRM CS",
-        href: "/admin/cs-crm",
-        icon: Columns3,
-      },
-      {
-        name: "Calls Mensais",
-        href: "/admin/cs-crm/calls",
-        icon: Calendar,
-      },
-      {
         name: "Cadências",
-        href: "/admin/cs-crm/cadences",
+        href: ROUTES.ADMIN.OPERACIONAL.CS.CADENCES,
         icon: Settings,
       },
       {
@@ -204,6 +209,13 @@ const OPERACIONAL_NAV: NavGroup[] = [
         href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
         icon: LifeBuoy,
       },
+    ],
+  },
+  {
+    key: "pipelines",
+    label: "Pipelines",
+    items: [
+      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
     ],
   },
   {
