@@ -429,6 +429,9 @@ export function ProductionWorkspace({
           {/* Estrutura dos emails */}
           <div style={{ padding: "8px 12px 16px" }}>
             <SidebarSectionLabel>Estrutura dos emails</SidebarSectionLabel>
+            {flows.length === 0 && (
+              <InitFlowsCta storeId={storeId} onCreated={() => mutate()} />
+            )}
             {flows.map((flow) => (
               <FlowItem
                 key={flow.id}
@@ -967,6 +970,91 @@ function StoreAvatar({
       }}
     >
       {initial}
+    </div>
+  )
+}
+
+function InitFlowsCta({
+  storeId,
+  onCreated,
+}: {
+  storeId: string
+  onCreated: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+  const handle = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/init-flows`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao inicializar")
+      }
+      const json = await res.json()
+      const created = json?.data?.created ?? json?.created ?? 0
+      toast.toast({
+        title: `${created} flow(s) criados`,
+        description: "Welcome ja esta em andamento — outros vem bloqueados",
+      })
+      onCreated()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao inicializar flows",
+        description: (e as Error).message,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div
+      style={{
+        padding: "12px 10px",
+        background: "var(--crm-gray-50)",
+        border: "1px dashed var(--crm-border)",
+        borderRadius: 6,
+        textAlign: "center",
+        marginBottom: 4,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--crm-gray-600)",
+          marginBottom: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        Esta loja ainda não tem os 5 flows padrão de onboarding.
+      </div>
+      <button
+        onClick={handle}
+        disabled={busy}
+        className="cf-focusable"
+        style={{
+          width: "100%",
+          height: 28,
+          background: busy ? "var(--crm-gray-100)" : "var(--crm-brand)",
+          color: busy ? "var(--crm-gray-400)" : "var(--crm-brand-fg)",
+          border: 0,
+          borderRadius: 4,
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: busy ? "default" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+        }}
+      >
+        <Plus className="h-3 w-3" />
+        {busy ? "Criando..." : "Inicializar flows"}
+      </button>
     </div>
   )
 }
