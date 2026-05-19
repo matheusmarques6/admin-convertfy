@@ -315,8 +315,10 @@ export function ClientConfig({ client }: ClientConfigProps) {
   }
 
   async function deleteCustomField(key: string) {
-    const { [key]: _, ...rest } = customFields
-    void _
+    const rest: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(customFields)) {
+      if (k !== key) rest[k] = v
+    }
     await updateClient({ custom_fields: rest })
   }
 
