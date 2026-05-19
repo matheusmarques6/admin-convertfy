@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import Link from "next/link"
 import {
   UserPlus,
@@ -411,14 +411,61 @@ function EventItem({
 
 export function ClientTimeline({ clientId }: ClientTimelineProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+
   const [activities, setActivities] = useState<Activity[]>([])
   const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([])
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<ActivityCategory | "all">("all")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "90d">("all")
+
+  // Filtros lidos da URL (persistente entre reloads/navegações)
+  const filterParam = searchParams.get("tl_type") as ActivityCategory | "all" | null
+  const dateRangeParam = searchParams.get("tl_range") as "all" | "7d" | "30d" | "90d" | null
+  const searchParam = searchParams.get("tl_q") ?? ""
+
+  const validFilters: (ActivityCategory | "all")[] = [
+    "all",
+    "feedback",
+    "financeiro",
+    "reuniao",
+    "teste",
+    "sistema",
+    "loja",
+    "integracao",
+  ]
+  const validRanges = ["all", "7d", "30d", "90d"] as const
+  const initialFilter = filterParam && validFilters.includes(filterParam) ? filterParam : "all"
+  const initialRange = dateRangeParam && (validRanges as readonly string[]).includes(dateRangeParam)
+    ? dateRangeParam
+    : "all"
+
+  const [filter, setFilterRaw] = useState<ActivityCategory | "all">(initialFilter)
+  const [searchQuery, setSearchQueryRaw] = useState(searchParam)
+  const [dateRange, setDateRangeRaw] = useState<"all" | "7d" | "30d" | "90d">(initialRange)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Sync filtros para URL (debounced no search query)
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (filter === "all") params.delete("tl_type")
+    else params.set("tl_type", filter)
+    if (dateRange === "all") params.delete("tl_range")
+    else params.set("tl_range", dateRange)
+    const trimmed = searchQuery.trim()
+    if (!trimmed) params.delete("tl_q")
+    else params.set("tl_q", trimmed)
+
+    const qs = params.toString()
+    const url = qs ? `${pathname}?${qs}` : pathname
+    router.replace(url, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, dateRange, searchQuery, pathname])
+
+  // Setters tipados
+  const setFilter = (f: ActivityCategory | "all") => setFilterRaw(f)
+  const setDateRange = (d: "all" | "7d" | "30d" | "90d") => setDateRangeRaw(d)
+  const setSearchQuery = (q: string) => setSearchQueryRaw(q)
 
   async function loadData() {
     const supabase = createClient()
