@@ -418,6 +418,7 @@ function StoreCard({
               className="h-7 w-7 text-[#991B1B] hover:bg-[#FEF2F2]"
               onClick={onDelete}
               title="Remover loja"
+              aria-label="Remover loja"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

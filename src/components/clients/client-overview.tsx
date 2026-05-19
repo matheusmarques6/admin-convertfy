@@ -926,14 +926,23 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
         {/* Plano & Cobrança */}
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Plano & Cobrança</CardTitle>
-            {isLoadingAsaas ? (
-              <Icon icon={Loader2} customSize={14} className="animate-spin text-gray-400" />
-            ) : hasAsaasId ? (
-              <Badge variant="positive" className="text-[10px]">
-                <Icon icon={CheckCircle2} customSize={12} className="mr-1" /> Asaas
-              </Badge>
-            ) : null}
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold">Plano & Cobrança</CardTitle>
+              {isLoadingAsaas ? (
+                <Icon icon={Loader2} customSize={14} className="animate-spin text-gray-400" />
+              ) : hasAsaasId ? (
+                <Badge variant="positive" className="text-[10px]">
+                  <Icon icon={CheckCircle2} customSize={12} className="mr-1" /> Asaas
+                </Badge>
+              ) : null}
+            </div>
+            <Link
+              href={`/admin/clients/${client.id}?tab=financial`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#4E62D8] dark:text-[#7B8CEA] hover:underline"
+            >
+              Ver financeiro
+              <ArrowRight className="h-3 w-3" />
+            </Link>
           </CardHeader>
           <CardContent>
             {isLoadingAsaas ? (

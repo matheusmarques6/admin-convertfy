@@ -423,6 +423,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                         className="h-7 w-7"
                         onClick={() => openEditModal(user)}
                         title="Editar usuário"
+                        aria-label={`Editar usuário ${user.name}`}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -433,6 +434,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                             size="icon"
                             className="h-7 w-7"
                             disabled={actionLoading === user.id}
+                            aria-label={`Mais ações para ${user.name}`}
                           >
                             {actionLoading === user.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />

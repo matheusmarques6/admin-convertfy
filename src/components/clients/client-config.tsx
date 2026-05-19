@@ -129,6 +129,7 @@ function InlineEditField({
               setEditing(false)
             }}
             disabled={saving}
+            aria-label="Cancelar edição"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -138,6 +139,7 @@ function InlineEditField({
             className="h-7 w-7"
             onClick={handleSave}
             disabled={saving}
+            aria-label="Salvar"
           >
             {saving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -152,6 +154,7 @@ function InlineEditField({
           size="icon"
           className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:opacity-100"
           onClick={() => setEditing(true)}
+          aria-label={`Editar ${label.toLowerCase()}`}
         >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
@@ -232,6 +235,7 @@ function CustomFieldRow({
                 setEditing(false)
               }}
               disabled={saving}
+              aria-label="Cancelar edição"
             >
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -241,6 +245,7 @@ function CustomFieldRow({
               className="h-7 w-7"
               onClick={handleSave}
               disabled={saving}
+              aria-label="Salvar campo"
             >
               {saving ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -256,6 +261,7 @@ function CustomFieldRow({
               size="icon"
               className="h-7 w-7"
               onClick={() => setEditing(true)}
+              aria-label={`Editar ${fieldKey}`}
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -264,6 +270,7 @@ function CustomFieldRow({
               size="icon"
               className="h-7 w-7 text-[#991B1B] hover:bg-[#FEF2F2]"
               onClick={onDelete}
+              aria-label={`Excluir ${fieldKey}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
