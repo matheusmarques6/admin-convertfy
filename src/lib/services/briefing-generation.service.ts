@@ -25,10 +25,10 @@ const log = logger.child("BriefingGeneration")
 const T1_TIMEOUT_MS = 40_000
 const T2_TIMEOUT_MS = 20_000
 const ANTHROPIC_MODEL = "claude-sonnet-4-6"
-// TBD operacional: confirmar slug exato no painel OpenRouter
-// (https://openrouter.ai/models?q=sonnet). Candidatos: anthropic/claude-sonnet-4.6,
-// anthropic/claude-sonnet-4-6, anthropic/claude-sonnet-4.6-20251106.
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
+// T2 usa modelo OpenAI via OpenRouter (diversidade de provedor — se Anthropic
+// estiver instável, OpenAI assume). Slug exato do OpenRouter:
+// https://openrouter.ai/openai/gpt-5.3-chat
+const OPENROUTER_MODEL = "openai/gpt-5.3-chat"
 // 4096 dá folga pros 5 campos com 2-5 frases cada (briefing típico ~600
 // tokens, mas casos premium/longos podiam estourar 2048 antes). Custo
 // marginal mínimo — o que importa é não truncar JSON no meio.
