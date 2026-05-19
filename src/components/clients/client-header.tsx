@@ -13,6 +13,7 @@ import {
   IdCard,
   Phone,
   CalendarDays,
+  AlertTriangle,
 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
@@ -361,6 +362,14 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
                   Cliente desde {formatDate(client.created_at)}
                 </span>
               </div>
+              {healthScore < 50 && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] bg-[#FEF2F2] border border-[#FECACA] dark:bg-[#3B1111] dark:border-[rgba(252,165,165,0.3)]">
+                  <AlertTriangle className="h-3 w-3 text-[#991B1B] dark:text-[#FCA5A5]" />
+                  <span className="text-[11px] font-semibold text-[#991B1B] dark:text-[#FCA5A5]">
+                    Risco de churn · Health {healthScore}/100
+                  </span>
+                </div>
+              )}
               {client.tags && client.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {client.tags.map((tag: string) => (
