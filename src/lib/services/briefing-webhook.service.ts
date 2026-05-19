@@ -82,9 +82,9 @@ export async function dispatchBriefingWebhook(
     return
   }
 
-  const token = process.env.N8N_BRIEFING_WEBHOOK_TOKEN
-  if (!token) {
-    log.warn("briefing.webhook.no_token", { onboardingId })
+  const secret = process.env.N8N_WEBHOOK_SECRET
+  if (!secret) {
+    log.warn("briefing.webhook.no_secret", { onboardingId })
   }
 
   const ctrl = new AbortController()
@@ -94,7 +94,7 @@ export async function dispatchBriefingWebhook(
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     }
-    if (token) headers.Authorization = `Bearer ${token}`
+    if (secret) headers["x-webhook-secret"] = secret
 
     log.info("briefing.webhook.start", { onboardingId, url })
     const resp = await fetch(url, {
