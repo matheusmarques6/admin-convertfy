@@ -180,6 +180,11 @@ const OPERACIONAL_NAV: NavGroup[] = [
         icon: CalendarClock,
       },
       {
+        name: "Ritual de Sexta",
+        href: "/admin/ritual",
+        icon: Sparkles,
+      },
+      {
         name: "Tutorial cliente",
         href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
         icon: LifeBuoy,
