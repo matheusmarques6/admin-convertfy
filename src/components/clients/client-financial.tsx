@@ -774,34 +774,56 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setStatusDialogOpen(true)
   }
 
-  async function handleMarkAsPaidNextDue() {
-    const nextPayment = payments
-      .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+  async function handleMarkAsPaidNextDue(payment?: { source: "asaas" | "local"; id: string; invoiceUrl?: string }) {
+    if (!payment) {
+      const found = [
+        ...payments
+          .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
+          .map((p) => ({ source: "asaas" as const, id: p.id, invoiceUrl: p.invoiceUrl })),
+        ...localCharges
+          .filter((c) => c.status === "pending" || c.status === "overdue")
+          .map((c) => ({ source: "local" as const, id: c.id, invoiceUrl: undefined })),
+      ][0]
+      if (!found) {
+        toast({ variant: "destructive", title: "Nenhuma fatura pendente" })
+        return
+      }
+      payment = found
+    }
 
-    if (!nextPayment) {
-      toast({ variant: "destructive", title: "Nenhuma fatura pendente" })
+    // Asaas: abre URL para o cliente pagar (sem API directa para marcar como pago)
+    if (payment.source === "asaas") {
+      if (payment.invoiceUrl) {
+        window.open(payment.invoiceUrl, "_blank", "noopener,noreferrer")
+        toast({ title: "Abrindo página de pagamento" })
+      } else {
+        toast({ variant: "destructive", title: "Sem URL de pagamento" })
+      }
       return
     }
 
-    // The Asaas API doesn't allow marking as paid via API directly. Open the invoice URL.
-    if (nextPayment.invoiceUrl) {
-      window.open(nextPayment.invoiceUrl, "_blank", "noopener,noreferrer")
-      toast({ title: "Abrindo página de pagamento" })
-    } else {
-      toast({ variant: "destructive", title: "Sem URL de pagamento", description: "Use a integração Asaas para marcar manualmente." })
+    // Local: abre dialog de status com pagamento já marcado como "paid"
+    const charge = localCharges.find((c) => c.id === payment!.id)
+    if (charge) {
+      openStatusDialog(charge)
+      // Pré-seleciona status "paid"
+      setStatusForm((prev) => ({ ...prev, status: "paid" }))
     }
   }
 
-  async function handleResendLink() {
-    const nextPayment = payments
-      .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
-    if (!nextPayment?.invoiceUrl) {
+  async function handleResendLink(payment?: { invoiceUrl?: string }) {
+    let target = payment
+    if (!target) {
+      const found = payments
+        .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+      target = found ? { invoiceUrl: found.invoiceUrl } : undefined
+    }
+    if (!target?.invoiceUrl) {
       toast({ variant: "destructive", title: "Sem link disponível" })
       return
     }
-    await navigator.clipboard.writeText(nextPayment.invoiceUrl)
+    await navigator.clipboard.writeText(target.invoiceUrl)
     toast({ title: "Link copiado", description: "Cole no seu canal de comunicação." })
   }
 
@@ -1173,11 +1195,25 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 )}
 
                 <div className="flex flex-col gap-2">
-                  <Button variant="secondary" size="sm" onClick={handleResendLink} disabled={!nextPayment.invoiceUrl}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleResendLink({ invoiceUrl: nextPayment.invoiceUrl })}
+                    disabled={!nextPayment.invoiceUrl}
+                  >
                     <Send className="h-3.5 w-3.5 mr-1.5" />
                     Reenviar link
                   </Button>
-                  <Button size="sm" onClick={handleMarkAsPaidNextDue}>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      handleMarkAsPaidNextDue({
+                        source: nextPayment.source,
+                        id: nextPayment.id,
+                        invoiceUrl: nextPayment.invoiceUrl,
+                      })
+                    }
+                  >
                     <DollarSign className="h-3.5 w-3.5 mr-1.5" />
                     Marcar como pago
                   </Button>
