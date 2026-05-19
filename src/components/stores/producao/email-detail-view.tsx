@@ -356,14 +356,29 @@ export function EmailDetailView({
               style={{ color: "var(--crm-gray-300)" }}
             />
             <span
-              className="truncate"
+              className="crm-tnum"
               style={{
                 fontSize: 14,
                 fontWeight: 600,
                 color: "var(--crm-gray-900)",
+                flexShrink: 0,
               }}
             >
-              E-mail #{String(email.number).padStart(2, "0")} - {email.name}
+              E-mail #{String(email.number).padStart(2, "0")} -
+            </span>
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: "var(--crm-gray-900)",
+                minWidth: 80,
+              }}
+            >
+              <InlineEditField
+                value={email.name}
+                placeholder="Nome do e-mail"
+                onSave={(v) => patchEmail({ name: v || "Sem nome" })}
+              />
             </span>
             <EmailStatusBadge status={email.status} />
           </div>
@@ -468,6 +483,12 @@ export function EmailDetailView({
               onEditPreheader={(v) => patchEmail({ preheader: v || null })}
               onEditFromName={(v) => patchEmail({ from_name: v || null })}
               onEditFromEmail={(v) => patchEmail({ from_email: v || null })}
+              onEditDelay={(v) => {
+                const n = v ? Number(v) : null
+                return patchEmail({
+                  delay_hours: n !== null && !Number.isNaN(n) ? n : null,
+                })
+              }}
             />
           ) : (
             <EmailHtmlView
@@ -804,6 +825,7 @@ function EmailMockPreview({
   onEditPreheader,
   onEditFromName,
   onEditFromEmail,
+  onEditDelay,
 }: {
   email: EmailFlowEmail
   blocks: EmailBlock[]
@@ -812,6 +834,7 @@ function EmailMockPreview({
   onEditPreheader: (v: string) => Promise<void>
   onEditFromName: (v: string) => Promise<void>
   onEditFromEmail: (v: string) => Promise<void>
+  onEditDelay: (v: string) => Promise<void>
 }) {
   return (
     <div style={{ padding: "24px 32px 48px", maxWidth: 760, margin: "0 auto" }}>
@@ -853,12 +876,25 @@ function EmailMockPreview({
             />
           </span>
         </EnvelopeRow>
-        <EnvelopeRow label="Pré-cabeçalho" last>
+        <EnvelopeRow label="Pré-cabeçalho">
           <InlineEditField
             value={email.preheader}
             placeholder="Texto curto que aparece após o assunto"
             onSave={onEditPreheader}
           />
+        </EnvelopeRow>
+        <EnvelopeRow label="Esperar" last>
+          <span style={{ color: "var(--crm-gray-700)" }}>
+            <InlineEditField
+              type="number"
+              value={email.delay_hours}
+              placeholder="0"
+              onSave={onEditDelay}
+            />{" "}
+            <span style={{ color: "var(--crm-gray-500)" }}>
+              horas após o e-mail anterior
+            </span>
+          </span>
         </EnvelopeRow>
       </div>
 
