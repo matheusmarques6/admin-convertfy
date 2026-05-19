@@ -185,6 +185,11 @@ const OPERACIONAL_NAV: NavGroup[] = [
         icon: Sparkles,
       },
       {
+        name: "CRM CS",
+        href: "/admin/cs-crm",
+        icon: Columns3,
+      },
+      {
         name: "Tutorial cliente",
         href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
         icon: LifeBuoy,
