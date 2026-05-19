@@ -2,7 +2,22 @@
 
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
-import { Pencil, Check, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import {
+  Pencil,
+  Check,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  CalendarDays,
+  ArrowRight,
+  ShoppingCart,
+  TrendingUp,
+  Mail,
+  Users,
+  RefreshCw,
+  Sparkles,
+  ExternalLink,
+} from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -12,6 +27,7 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
+import { useClientPerformanceContext, PERIODS } from "@/lib/hooks/use-client-performance"
 import { cn } from "@/lib/utils"
 import type { Client, Contract, Meeting, User as UserType, Activity } from "@/types"
 
@@ -19,13 +35,16 @@ import type { Client, Contract, Meeting, User as UserType, Activity } from "@/ty
 
 export interface ClientWithRelations extends Client {
   owner?: UserType
+  contracts?: Contract[]
+  client_stores?: { id: string; store_name: string; platform: string; is_active: boolean }[]
 }
 
 interface ClientOverviewProps {
   client: ClientWithRelations
+  ltv?: number
 }
 
-// ─── formatRelativeTime helper ────────────────────────────
+// ─── helpers ──────────────────────────────────────────────
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)
@@ -42,23 +61,22 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
 }
 
-// ─── Activity type → dot color ────────────────────────────
-
 const activityDotColors: Record<string, string> = {
-  note_added: "bg-[#4E62D8] dark:bg-[#7B8CEA]",
-  email_sent: "bg-[#065F46] dark:bg-[#6EE7B7]",
-  whatsapp_sent: "bg-[#065F46] dark:bg-[#6EE7B7]",
-  status_changed: "bg-[#92400E] dark:bg-[#FCD34D]",
-  payment_received: "bg-[#065F46] dark:bg-[#6EE7B7]",
-  payment_overdue: "bg-[#991B1B] dark:bg-[#FCA5A5]",
-  meeting_scheduled: "bg-[#4E62D8] dark:bg-[#7B8CEA]",
-  meeting_completed: "bg-[#065F46] dark:bg-[#6EE7B7]",
-  client_created: "bg-[#4E62D8] dark:bg-[#7B8CEA]",
-  client_updated: "bg-gray-400 dark:bg-[#5C6378]",
-  report_uploaded: "bg-[#92400E] dark:bg-[#FCD34D]",
+  note_added: "bg-[#4E62D8]",
+  email_sent: "bg-[#065F46]",
+  whatsapp_sent: "bg-[#065F46]",
+  status_changed: "bg-[#92400E]",
+  payment_received: "bg-[#065F46]",
+  payment_overdue: "bg-[#991B1B]",
+  meeting_scheduled: "bg-[#4E62D8]",
+  meeting_completed: "bg-[#065F46]",
+  client_created: "bg-[#4E62D8]",
+  client_updated: "bg-gray-400",
+  report_uploaded: "bg-[#92400E]",
+  deal_created: "bg-[#4E62D8]",
+  deal_won: "bg-[#065F46]",
+  deal_lost: "bg-[#991B1B]",
 }
-
-// ─── Asaas types ──────────────────────────────────────────
 
 interface AsaasFinancialData {
   totalPaid: number
@@ -66,11 +84,307 @@ interface AsaasFinancialData {
   totalOverdue: number
   hasSubscription: boolean
   subscriptionValue?: number
+  nextDueDate?: string
 }
 
-// ─── ClientOverview (2-column layout) ─────────────────────
+// ─── Mini KPI Card ────────────────────────────────────────
 
-export function ClientOverview({ client }: ClientOverviewProps) {
+function MiniKpiCard({
+  icon: KpiIcon,
+  label,
+  value,
+  sub,
+  loading,
+}: {
+  icon: typeof ShoppingCart
+  label: string
+  value: string
+  sub?: string
+  loading?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-[8px] border bg-white dark:bg-[#1A1D27]",
+        "border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+        "p-4",
+      )}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-[#8B92A5]">
+          <KpiIcon className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      </div>
+      {loading ? (
+        <SkeletonShimmer className="h-7 w-32" />
+      ) : (
+        <p className="text-[20px] leading-tight font-semibold text-gray-900 dark:text-[#EAEDF3] tabular-nums">
+          {value}
+        </p>
+      )}
+      {sub && !loading && (
+        <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] mt-1">
+          {sub}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Performance Section (4 KPIs + Atribuição bar) ────────
+
+export function ClientOverviewPerformance({ clientName }: { clientId: string; clientName: string }) {
+  const { data, loading, error, period, setPeriod, refresh, isValidating } =
+    useClientPerformanceContext()
+
+  const storeRevenue = data?.totals.storeRevenue ?? 0
+  const attributedRevenue = data?.totals.attributedRevenue ?? data?.totals.klaviyoRevenue ?? 0
+  const recoveryRate = data?.totals.recoveryRate ?? 0
+  const totalCampaigns = (data?.totals.totalCampaigns ?? 0) + (data?.totals.totalFlows ?? 0)
+  const orders = data?.totals.storeOrders ?? 0
+  const avgOpen = data?.totals.avgOpenRate ?? 0
+  const avgClick = data?.totals.avgClickRate ?? 0
+
+  // Leads na base: usar Klaviyo (engaged + total) se disponível
+  const totalLeads = useMemo(() => {
+    if (!data?.stores) return 0
+    return data.stores.reduce((acc, s) => acc + (s.klaviyo ? (s.klaviyo as unknown as Record<string, number>).totalLeads ?? 0 : 0), 0)
+  }, [data])
+
+  return (
+    <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+      <CardHeader className="pb-3 flex flex-row items-start justify-between gap-3">
+        <div>
+          <CardTitle className="text-sm font-semibold">Performance Convertfy · últimos {periodLabel(period)}</CardTitle>
+          <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
+            Resultados consolidados de {clientName}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          <div className="inline-flex rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-0.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setPeriod(p.value)}
+                className={cn(
+                  "px-2.5 py-1 text-[11px] font-medium rounded-[4px] transition-colors",
+                  period === p.value
+                    ? "bg-[#EEF0FB] text-[#2137B6] dark:bg-[#141C3D] dark:text-[#7B8CEA]"
+                    : "text-gray-500 dark:text-[#8B92A5] hover:text-gray-900 dark:hover:text-[#EAEDF3]",
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refresh}
+            disabled={loading || isValidating}
+            className="h-7 w-7"
+            title="Atualizar"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isValidating && "animate-spin")} />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && (
+          <div className="rounded-[6px] p-3 bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-xs flex items-center gap-2">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <MiniKpiCard
+            icon={ShoppingCart}
+            label="Receita Total"
+            value={formatCurrency(storeRevenue)}
+            sub={orders > 0 ? `${orders.toLocaleString("pt-BR")} pedidos` : "sem pedidos no período"}
+            loading={loading}
+          />
+          <MiniKpiCard
+            icon={TrendingUp}
+            label="Receita Atribuída"
+            value={formatCurrency(attributedRevenue)}
+            sub={storeRevenue > 0 ? `${recoveryRate.toFixed(2)}% do total` : undefined}
+            loading={loading}
+          />
+          <MiniKpiCard
+            icon={Mail}
+            label="Campanhas & Flows"
+            value={`${data?.totals.totalCampaigns ?? 0} / ${data?.totals.totalFlows ?? 0}`}
+            sub={
+              totalCampaigns > 0
+                ? `Open ${avgOpen.toFixed(2)}% · CTR ${avgClick.toFixed(2)}%`
+                : "sem envios"
+            }
+            loading={loading}
+          />
+          <MiniKpiCard
+            icon={Users}
+            label="Leads na base"
+            value={totalLeads.toLocaleString("pt-BR")}
+            sub={totalLeads > 0 ? `${totalLeads.toLocaleString("pt-BR")} contatos` : "sem dados"}
+            loading={loading}
+          />
+        </div>
+
+        {/* Atribuição bar */}
+        {storeRevenue > 0 && (
+          <div>
+            <div className="flex items-center justify-between text-[12px] mb-1.5">
+              <span className="text-gray-500 dark:text-[#8B92A5]">
+                Atribuição Convertfy no faturamento
+              </span>
+              <span className="font-semibold text-[#2137B6] dark:text-[#7B8CEA] tabular-nums">
+                {recoveryRate.toFixed(2)}%
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[rgba(0,0,0,0.06)] dark:bg-[rgba(255,255,255,0.06)] overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#4E62D8] to-[#2137B6] rounded-full transition-all duration-700"
+                style={{ width: `${Math.min(100, recoveryRate)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-[#5C6378] mt-1 tabular-nums">
+              <span>{formatCurrency(0)}</span>
+              <span>{formatCurrency(storeRevenue)} total</span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function periodLabel(period: string): string {
+  switch (period) {
+    case "today": return "hoje"
+    case "yesterday": return "ontem"
+    case "7d": return "7 dias"
+    case "15d": return "15 dias"
+    case "30d": return "30 dias"
+    case "90d": return "90 dias"
+    case "custom": return "período"
+    default: return period
+  }
+}
+
+// ─── Linked Stores Card ───────────────────────────────────
+
+interface OverviewStore {
+  id: string
+  store_name: string
+  platform?: string | null
+  currency?: string | null
+  is_active: boolean
+  store_url?: string | null
+  health_score?: number | null
+  revenue30d?: number
+}
+
+function StoreSummaryRow({
+  store,
+  clientId,
+  onAbrir,
+}: {
+  store: OverviewStore
+  clientId: string
+  onAbrir: () => void
+}) {
+  const isOnboarding = !store.is_active
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 py-3 first:pt-0 last:pb-0",
+        "border-b last:border-b-0 border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
+      )}
+    >
+      <div className="w-9 h-9 rounded-[6px] bg-[#1F1F1F] dark:bg-[#0B0B0B] flex items-center justify-center text-white text-[11px] font-semibold shrink-0">
+        {store.store_name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+            {store.store_name}
+          </p>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-semibold rounded-[4px]",
+              isOnboarding
+                ? "bg-[#FFFBEB] text-[#92400E] border border-[#FDE68A]"
+                : "bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0]",
+            )}
+          >
+            <span className={cn("w-1 h-1 rounded-full", isOnboarding ? "bg-[#F59E0B]" : "bg-[#10B981]")} />
+            {isOnboarding ? "Onboarding" : "Ativa"}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] mt-0.5 truncate">
+          {[store.platform, store.currency].filter(Boolean).join(" · ")}
+          {store.store_url && (
+            <>
+              {" · "}
+              <a
+                href={store.store_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-[#4E62D8] dark:hover:text-[#7B8CEA] inline-flex items-center gap-0.5"
+              >
+                {store.store_url.replace(/^https?:\/\//, "")}
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </>
+          )}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
+          Receita 30D
+        </p>
+        <p className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] tabular-nums">
+          {store.revenue30d && store.revenue30d > 0 ? formatCurrency(store.revenue30d) : "—"}
+        </p>
+      </div>
+      {store.health_score != null && (
+        <div className="text-right ml-3">
+          <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
+            Saúde
+          </p>
+          <p
+            className={cn(
+              "text-sm font-semibold tabular-nums",
+              store.health_score >= 70
+                ? "text-[#065F46] dark:text-[#6EE7B7]"
+                : store.health_score >= 50
+                  ? "text-[#92400E] dark:text-[#FCD34D]"
+                  : "text-[#991B1B] dark:text-[#FCA5A5]",
+            )}
+          >
+            {store.health_score}/100
+          </p>
+        </div>
+      )}
+      <Link
+        href={`/admin/stores/${store.id}`}
+        onClick={onAbrir}
+        className="ml-3 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] text-xs font-medium text-gray-700 dark:text-[#EAEDF3] hover:bg-[#F3F4F6] dark:hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+      >
+        Abrir
+        <ArrowRight className="h-3 w-3" />
+      </Link>
+      <span className="sr-only">Cliente {clientId}</span>
+    </div>
+  )
+}
+
+// ─── ClientOverview (new design) ──────────────────────────
+
+export function ClientOverview({ client, ltv }: ClientOverviewProps) {
   const [activeContract, setActiveContract] = useState<Contract | null>(null)
   const [localTotalPaid, setLocalTotalPaid] = useState(0)
   const [localPendingAmount, setLocalPendingAmount] = useState(0)
@@ -82,18 +396,17 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   const clientCustomFields = client.custom_fields as Record<string, unknown> | null
   const [notes, setNotes] = useState((clientCustomFields?.notes as string) ?? "")
   const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [storeMetrics, setStoreMetrics] = useState<Record<string, { revenue30d: number; health: number }>>({})
 
-  // Asaas integration
   const customFields = client.custom_fields as Record<string, string> | null
   const hasAsaasId = !!customFields?.asaas_customer_id
   const currentYear = useMemo(() => new Date().getFullYear(), [])
 
   const { data: paymentsRaw, isLoading: paymentsLoading } = useAsaasPayments(
-    hasAsaasId ? client.id : null, currentYear
+    hasAsaasId ? client.id : null,
+    currentYear,
   )
-  const { data: subscriptionsRaw } = useAsaasSubscriptions(
-    hasAsaasId ? client.id : null
-  )
+  const { data: subscriptionsRaw } = useAsaasSubscriptions(hasAsaasId ? client.id : null)
 
   const paymentsData = paymentsRaw as Record<string, unknown> | undefined
   const subscriptionsData = subscriptionsRaw as Record<string, unknown> | undefined
@@ -102,13 +415,15 @@ export function ClientOverview({ client }: ClientOverviewProps) {
     if (!paymentsData) return null
     const summary = (paymentsData.summary || (paymentsData.data as Record<string, unknown>)?.summary) as Record<string, number> | undefined
     if (!summary) return null
-    const subs = (subscriptionsData?.subscriptions || (subscriptionsData?.data as Record<string, unknown>)?.subscriptions) as Array<{ isActive: boolean; value?: number }> | undefined
+    const subs = (subscriptionsData?.subscriptions || (subscriptionsData?.data as Record<string, unknown>)?.subscriptions) as Array<{ isActive: boolean; value?: number; nextDueDate?: string }> | undefined
+    const activeSub = subs?.find((s) => s.isActive)
     return {
       totalPaid: summary.paidValue || 0,
       totalPending: summary.pendingValue || 0,
       totalOverdue: summary.overdueValue || 0,
-      hasSubscription: subs?.some(s => s.isActive) || false,
-      subscriptionValue: subs?.find(s => s.isActive)?.value,
+      hasSubscription: !!activeSub,
+      subscriptionValue: activeSub?.value,
+      nextDueDate: activeSub?.nextDueDate,
     }
   }, [paymentsData, subscriptionsData])
 
@@ -118,29 +433,65 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   useEffect(() => {
     async function loadLocalData() {
       const supabase = createClient()
-      const [contractsRes, invoicesRes, meetingsRes, activitiesRes] = await Promise.all([
+      const [contractsRes, invoicesRes, meetingsRes, activitiesRes, storesRes] = await Promise.all([
         supabase.from("contracts").select("*").eq("client_id", client.id).eq("status", "active").limit(1),
         supabase.from("unified_invoices").select("amount, status").eq("client_id", client.id).limit(50),
-        supabase.from("meetings").select("*").eq("client_id", client.id).eq("status", "scheduled").gt("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }).limit(1),
-        supabase.from("activities").select("*").eq("client_id", client.id).order("created_at", { ascending: false }).limit(5),
+        supabase
+          .from("meetings")
+          .select("*")
+          .eq("client_id", client.id)
+          .eq("status", "scheduled")
+          .gt("scheduled_at", new Date().toISOString())
+          .order("scheduled_at", { ascending: true })
+          .limit(1),
+        supabase
+          .from("activities")
+          .select("*")
+          .eq("client_id", client.id)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("store_revenue_summary")
+          .select("store_id, store_total_revenue, period_label")
+          .eq("period_label", "30d")
+          .in(
+            "store_id",
+            (client.client_stores ?? []).map((s) => s.id),
+          ),
       ])
       setActiveContract(contractsRes.data?.[0] || null)
       const invoices = invoicesRes.data || []
-      setLocalTotalPaid(invoices.filter(i => i.status === "paid").reduce((sum, i) => sum + Number(i.amount), 0))
-      setLocalPendingAmount(invoices.filter(i => i.status === "pending" || i.status === "overdue").reduce((sum, i) => sum + Number(i.amount), 0))
+      setLocalTotalPaid(
+        invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + Number(i.amount), 0),
+      )
+      setLocalPendingAmount(
+        invoices
+          .filter((i) => i.status === "pending" || i.status === "overdue")
+          .reduce((sum, i) => sum + Number(i.amount), 0),
+      )
       setNextMeeting(meetingsRes.data?.[0] || null)
       setActivities(activitiesRes.data || [])
       setLocalLoading(false)
       setActivitiesLoading(false)
+
+      // Store metrics map
+      const metrics: Record<string, { revenue30d: number; health: number }> = {}
+      for (const row of storesRes.data ?? []) {
+        metrics[row.store_id] = {
+          revenue30d: Number(row.store_total_revenue ?? 0),
+          health: 0,
+        }
+      }
+      setStoreMetrics(metrics)
     }
     loadLocalData()
-  }, [client.id])
+  }, [client.id, client.client_stores])
 
   const totalPaid = asaasData?.totalPaid ?? localTotalPaid
-  const pendingAmount = asaasData ? (asaasData.totalPending + asaasData.totalOverdue) : localPendingAmount
-  const overdueAmount = asaasData?.totalOverdue || 0
+  const pendingAmount = asaasData
+    ? asaasData.totalPending + asaasData.totalOverdue
+    : localPendingAmount
 
-  // Save notes (stored in custom_fields.notes)
   async function handleSaveNotes() {
     setIsSavingNotes(true)
     try {
@@ -148,51 +499,22 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       const updatedFields = { ...(client.custom_fields ?? {}), notes }
       await supabase.from("clients").update({ custom_fields: updatedFields }).eq("id", client.id)
       setIsEditingNotes(false)
-    } catch {
-      // silently fail
     } finally {
       setIsSavingNotes(false)
     }
   }
 
-  // ─── Info fields ────────────────────────────────────────
+  // Stores list
+  const linkedStores: OverviewStore[] = (client.client_stores ?? []).map((s) => ({
+    id: s.id,
+    store_name: s.store_name,
+    platform: s.platform,
+    is_active: s.is_active,
+    health_score: undefined,
+    revenue30d: storeMetrics[s.id]?.revenue30d,
+  }))
 
-  const infoFields = [
-    { label: "Empresa", value: client.company ?? "—" },
-    { label: "Email", value: client.email, render: () => client.email ? (
-      <a href={`mailto:${client.email}`} className="text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline">
-        {client.email}
-      </a>
-    ) : "—" },
-    { label: "Telefone", value: client.phone ?? "—", render: () => client.phone ? (
-      <a href={`tel:${client.phone}`} className="text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline">
-        {client.phone}
-      </a>
-    ) : "—" },
-    { label: "Website", value: client.website, render: () => client.website ? (
-      <a href={client.website} target="_blank" rel="noopener noreferrer" className="text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline truncate block">
-        {client.website.replace(/^https?:\/\//, "")}
-      </a>
-    ) : "—" },
-    { label: "Responsável", value: client.owner?.name, render: () => client.owner ? (
-      <div className="flex items-center gap-2">
-        <Avatar className="h-5 w-5">
-          <AvatarImage src={client.owner.avatar_url} />
-          <AvatarFallback className="text-[9px]">{getInitials(client.owner.name)}</AvatarFallback>
-        </Avatar>
-        <span className="text-sm text-gray-700 dark:text-[#EAEDF3]">{client.owner.name}</span>
-      </div>
-    ) : <span className="text-sm text-gray-400 dark:text-[#5C6378]">Não atribuído</span> },
-    { label: "Cliente desde", value: formatDate(client.created_at) },
-    { label: "Próxima reunião", value: nextMeeting ? formatDate(nextMeeting.scheduled_at) : "Nenhuma agendada", render: () => localLoading ? (
-      <SkeletonShimmer className="h-4 w-28" />
-    ) : nextMeeting ? (
-      <span className="text-sm text-gray-700 dark:text-[#EAEDF3]">{formatDate(nextMeeting.scheduled_at)}</span>
-    ) : <span className="text-sm text-gray-400 dark:text-[#5C6378]">Nenhuma agendada</span> },
-    { label: "CPF/CNPJ", value: client.cpf_cnpj ?? (clientCustomFields?.cpf_cnpj as string) ?? "—" },
-  ]
-
-  // Build address string from custom_fields.address
+  // Build address string
   const addressObj = clientCustomFields?.address as Record<string, string> | undefined
   const addressParts = addressObj
     ? [
@@ -204,214 +526,81 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       ].filter(Boolean)
     : []
 
-  // Custom fields (filter internal + address + notes)
+  // Custom fields
   const displayCustomFields = client.custom_fields
-    ? Object.entries(client.custom_fields).filter(([key]) => !key.startsWith("asaas_") && key !== "cpf_cnpj" && key !== "address" && key !== "notes")
+    ? Object.entries(client.custom_fields).filter(
+        ([key]) =>
+          !key.startsWith("asaas_") &&
+          key !== "cpf_cnpj" &&
+          key !== "address" &&
+          key !== "notes",
+      )
     : []
 
   return (
-    <div className={cn(
-      "mt-6 grid gap-6",
-      "grid-cols-1 lg:grid-cols-5",
-    )}>
-      {/* Left column: Info + Financial + Notes (3/5) */}
-      <div className="lg:col-span-3 space-y-6">
-        {/* Info Card */}
-        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Informações gerais</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-              {infoFields.map((field) => (
-                <div key={field.label}>
-                  <dt className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">
-                    {field.label}
-                  </dt>
-                  <dd className="text-sm text-gray-700 dark:text-[#EAEDF3] mt-0.5">
-                    {field.render ? field.render() : field.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </CardContent>
-        </Card>
+    <div className="grid gap-5 lg:grid-cols-5">
+      {/* Left column 3/5 — Performance, Stores, Activity */}
+      <div className="lg:col-span-3 space-y-5">
+        <ClientOverviewPerformance clientId={client.id} clientName={client.name} />
 
-        {/* Address Card */}
-        {addressParts.length > 0 && (
-          <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Endereço</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-700 dark:text-[#EAEDF3] leading-relaxed">
-                {addressParts.join(" — ")}
+        {/* Lojas vinculadas */}
+        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <CardHeader className="pb-3 flex flex-row items-start justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold">
+                Lojas vinculadas{" "}
+                <span className="text-gray-400 dark:text-[#5C6378] font-normal">
+                  ({linkedStores.length})
+                </span>
+              </CardTitle>
+              <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
+                Performance e status de cada loja deste cliente
               </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Financial Summary Card */}
-        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Resumo financeiro</CardTitle>
-            {isLoadingAsaas ? (
-              <Icon icon={Loader2} size={16} className="animate-spin text-gray-400" />
-            ) : hasAsaasId ? (
-              <Badge variant="positive" className="text-[10px]">
-                <Icon icon={CheckCircle2} customSize={12} className="mr-1" /> Asaas
-              </Badge>
-            ) : (
-              <Badge variant="neutral" className="text-[10px]">Local</Badge>
-            )}
+            </div>
+            <Link
+              href={`/admin/clients/${client.id}?tab=stores`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#4E62D8] dark:text-[#7B8CEA] hover:underline"
+            >
+              Ver todas
+              <ArrowRight className="h-3 w-3" />
+            </Link>
           </CardHeader>
           <CardContent>
-            {isLoadingAsaas ? (
-              <div className="space-y-3">
-                <SkeletonShimmer className="h-5 w-32" />
-                <SkeletonShimmer className="h-5 w-24" />
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-                  <SkeletonShimmer className="h-4 w-20" />
-                  <SkeletonShimmer className="h-4 w-20" />
-                </div>
-              </div>
+            {linkedStores.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-[#5C6378] text-center py-6">
+                Nenhuma loja vinculada.
+              </p>
             ) : (
-              <div className="space-y-3">
-                {activeContract || asaasData?.hasSubscription ? (
-                  <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-                    <div>
-                      <dt className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">Plano</dt>
-                      <dd className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] mt-0.5">
-                        {activeContract?.plan_name || "Assinatura Ativa"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">Valor Mensal</dt>
-                      <dd className="text-sm font-semibold font-mono tabular-nums text-[#065F46] dark:text-[#6EE7B7] mt-0.5">
-                        {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
-                      </dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <p className="text-sm text-gray-400 dark:text-[#5C6378]">Sem contrato/assinatura ativa</p>
-                )}
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-                  <div>
-                    <p className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">Total Pago</p>
-                    <p className="text-sm font-semibold font-mono tabular-nums text-[#065F46] dark:text-[#6EE7B7] mt-0.5">
-                      {formatCurrency(totalPaid)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em]">Pendente</p>
-                    <p className="text-sm font-semibold font-mono tabular-nums text-[#92400E] dark:text-[#FCD34D] mt-0.5">
-                      {formatCurrency(pendingAmount)}
-                    </p>
-                  </div>
-                </div>
-                {overdueAmount > 0 && (
-                  <div className={cn(
-                    "flex items-center gap-2 p-3 rounded-[6px]",
-                    "bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B]",
-                    "dark:bg-[#3B1111] dark:border-[rgba(252,165,165,0.15)] dark:text-[#FCA5A5]",
-                  )}>
-                    <Icon icon={AlertCircle} size={16} />
-                    <div>
-                      <p className="text-xs font-medium">Vencido</p>
-                      <p className="text-sm font-semibold font-mono tabular-nums">{formatCurrency(overdueAmount)}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Custom Fields */}
-        {displayCustomFields.length > 0 && (
-          <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Campos personalizados</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                {displayCustomFields.map(([key, value]) => (
-                  <div key={key}>
-                    <dt className="text-[12px] font-medium text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] capitalize">
-                      {key.replace(/_/g, " ")}
-                    </dt>
-                    <dd className="text-sm text-gray-700 dark:text-[#EAEDF3] mt-0.5">
-                      {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                    </dd>
-                  </div>
+              <div>
+                {linkedStores.map((store) => (
+                  <StoreSummaryRow
+                    key={store.id}
+                    store={store}
+                    clientId={client.id}
+                    onAbrir={() => {}}
+                  />
                 ))}
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Notes Card */}
-        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Notas</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={isEditingNotes ? handleSaveNotes : () => setIsEditingNotes(true)}
-                disabled={isSavingNotes}
-              >
-                {isSavingNotes ? (
-                  <Icon icon={Loader2} size={16} className="animate-spin mr-1" />
-                ) : (
-                  <Icon icon={isEditingNotes ? Check : Pencil} size={16} className="mr-1" />
-                )}
-                {isEditingNotes ? "Salvar" : "Editar"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isEditingNotes ? (
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className={cn(
-                  "w-full min-h-[100px] rounded-[6px] px-3 py-2 text-sm resize-y",
-                  "bg-white border border-[rgba(0,0,0,0.08)] text-gray-700",
-                  "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-[#EAEDF3]",
-                  "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
-                  "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
-                  "placeholder:text-gray-400 dark:placeholder:text-[#5C6378]",
-                )}
-                placeholder="Adicionar notas sobre o cliente..."
-              />
-            ) : (
-              <p className={cn(
-                "text-sm leading-relaxed whitespace-pre-wrap",
-                notes
-                  ? "text-gray-700 dark:text-[#8B92A5]"
-                  : "text-gray-400 dark:text-[#5C6378] italic",
-              )}>
-                {notes || "Nenhuma nota adicionada."}
-              </p>
+              </div>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Right column: Recent Activities (2/5) */}
-      <div className="lg:col-span-2">
+        {/* Atividades recentes */}
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Atividades recentes</CardTitle>
-              <Link
-                href={`/admin/clients/${client.id}?tab=timeline`}
-                className="text-xs font-medium text-[#4E62D8] dark:text-[#7B8CEA] hover:underline"
-              >
-                Ver tudo →
-              </Link>
+          <CardHeader className="pb-3 flex flex-row items-start justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold">Atividade recente</CardTitle>
+              <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
+                Últimas interações do time com este cliente
+              </p>
             </div>
+            <Link
+              href={`/admin/clients/${client.id}?tab=timeline`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#4E62D8] dark:text-[#7B8CEA] hover:underline"
+            >
+              Ver timeline
+              <ArrowRight className="h-3 w-3" />
+            </Link>
           </CardHeader>
           <CardContent>
             {activitiesLoading ? (
@@ -434,18 +623,17 @@ export function ClientOverview({ client }: ClientOverviewProps) {
               <div className="space-y-0">
                 {activities.map((activity, index) => (
                   <div key={activity.id} className="flex gap-3">
-                    {/* Timeline connector */}
                     <div className="flex flex-col items-center">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full shrink-0 mt-2",
-                        activityDotColors[activity.type] ?? "bg-gray-300 dark:bg-[#5C6378]",
-                      )} />
+                      <div
+                        className={cn(
+                          "w-2 h-2 rounded-full shrink-0 mt-2",
+                          activityDotColors[activity.type] ?? "bg-gray-300",
+                        )}
+                      />
                       {index < activities.length - 1 && (
                         <div className="w-px flex-1 bg-[rgba(0,0,0,0.08)] dark:bg-[rgba(255,255,255,0.08)] min-h-[24px]" />
                       )}
                     </div>
-
-                    {/* Content */}
                     <div className="pb-4 min-w-0 flex-1">
                       <p className="text-sm text-gray-700 dark:text-[#EAEDF3] leading-snug">
                         {activity.description}
@@ -460,6 +648,293 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             )}
           </CardContent>
         </Card>
+
+        {/* Endereço */}
+        {addressParts.length > 0 && (
+          <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Endereço</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-700 dark:text-[#EAEDF3] leading-relaxed">
+                {addressParts.join(" — ")}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Notas */}
+        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold">Notas internas</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={isEditingNotes ? handleSaveNotes : () => setIsEditingNotes(true)}
+              disabled={isSavingNotes}
+            >
+              {isSavingNotes ? (
+                <Icon icon={Loader2} customSize={14} className="animate-spin mr-1" />
+              ) : (
+                <Icon icon={isEditingNotes ? Check : Pencil} customSize={14} className="mr-1" />
+              )}
+              {isEditingNotes ? "Salvar" : "Editar"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isEditingNotes ? (
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className={cn(
+                  "w-full min-h-[100px] rounded-[6px] px-3 py-2 text-sm resize-y",
+                  "bg-white border border-[rgba(0,0,0,0.08)] text-gray-700",
+                  "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)] dark:text-[#EAEDF3]",
+                  "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
+                  "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
+                  "placeholder:text-gray-400 dark:placeholder:text-[#5C6378]",
+                )}
+                placeholder="Adicionar notas sobre o cliente..."
+              />
+            ) : (
+              <p
+                className={cn(
+                  "text-sm leading-relaxed whitespace-pre-wrap",
+                  notes
+                    ? "text-gray-700 dark:text-[#EAEDF3]"
+                    : "text-gray-400 dark:text-[#5C6378] italic",
+                )}
+              >
+                {notes || "Nenhuma nota adicionada."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right column 2/5 — Sidebar */}
+      <div className="lg:col-span-2 space-y-5">
+        {/* Próxima reunião */}
+        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold">Próxima reunião</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {localLoading ? (
+              <SkeletonShimmer className="h-16 w-full" />
+            ) : nextMeeting ? (
+              <div>
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-[6px] bg-[#EEF0FB] dark:bg-[#141C3D] flex flex-col items-center justify-center shrink-0">
+                    <span className="text-[9px] font-semibold uppercase text-[#2137B6] dark:text-[#7B8CEA]">
+                      {new Date(nextMeeting.scheduled_at)
+                        .toLocaleDateString("pt-BR", { month: "short" })
+                        .replace(".", "")}
+                    </span>
+                    <span className="text-base font-semibold text-[#2137B6] dark:text-[#7B8CEA] leading-none">
+                      {new Date(nextMeeting.scheduled_at).getDate()}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+                      {nextMeeting.title}
+                    </p>
+                    <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
+                      {new Date(nextMeeting.scheduled_at).toLocaleString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    {client.owner && (
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <Avatar className="h-4 w-4">
+                          <AvatarImage src={client.owner.avatar_url} />
+                          <AvatarFallback className="text-[8px]">
+                            {getInitials(client.owner.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-[11px] text-gray-500 dark:text-[#8B92A5]">
+                          {client.owner.name.split(" ")[0]} · Google Meet
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {nextMeeting.meeting_url ? (
+                    <Button variant="primary" size="sm" className="flex-1" asChild>
+                      <a href={nextMeeting.meeting_url} target="_blank" rel="noopener noreferrer">
+                        <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                        Adicionar à agenda
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button variant="primary" size="sm" className="flex-1" asChild>
+                      <Link href={`/admin/meetings/${nextMeeting.id}`}>
+                        <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                        Ver reunião
+                      </Link>
+                    </Button>
+                  )}
+                  <Button variant="secondary" size="sm" asChild>
+                    <Link href={`/admin/meetings/new?clientId=${client.id}`}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      Reagendar
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-3">
+                <p className="text-sm text-gray-400 dark:text-[#5C6378] mb-2">
+                  Nenhuma reunião agendada
+                </p>
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href={`/admin/meetings/new?clientId=${client.id}`}>
+                    <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                    Agendar reunião
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Plano & Cobrança */}
+        <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold">Plano & Cobrança</CardTitle>
+            {isLoadingAsaas ? (
+              <Icon icon={Loader2} customSize={14} className="animate-spin text-gray-400" />
+            ) : hasAsaasId ? (
+              <Badge variant="positive" className="text-[10px]">
+                <Icon icon={CheckCircle2} customSize={12} className="mr-1" /> Asaas
+              </Badge>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {isLoadingAsaas ? (
+              <div className="space-y-3">
+                <SkeletonShimmer className="h-5 w-32" />
+                <SkeletonShimmer className="h-5 w-24" />
+                <SkeletonShimmer className="h-4 w-20" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(activeContract || asaasData?.hasSubscription || hasAsaasId) && (
+                  <div className="rounded-[6px] p-3 bg-[#ECFDF5] dark:bg-[#0B2C24] border border-[#A7F3D0] dark:border-[rgba(110,231,183,0.3)]">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[#065F46] dark:text-[#6EE7B7]" />
+                      <p className="text-[12px] font-medium text-[#065F46] dark:text-[#6EE7B7]">
+                        {asaasData?.hasSubscription ? "Assinatura ativa via Asaas" : activeContract ? "Contrato ativo" : "Cliente cadastrado no Asaas"}
+                      </p>
+                    </div>
+                    {hasAsaasId && (
+                      <p className="text-[10px] font-mono mt-1 text-[#065F46] dark:text-[#6EE7B7] truncate">
+                        {customFields?.asaas_customer_id}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <dl className="space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Plano</dt>
+                    <dd className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+                      {activeContract?.plan_name ?? (asaasData?.hasSubscription ? "Assinatura Asaas" : "—")}
+                      {activeContract?.end_date && (
+                        <span className="text-gray-400 dark:text-[#5C6378] ml-1">
+                          · {Math.max(0, Math.ceil((new Date(activeContract.end_date).getTime() - Date.now()) / (1000*60*60*24*30)))}m
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">MRR</dt>
+                    <dd className="text-[13px] font-semibold text-[#065F46] dark:text-[#6EE7B7] tabular-nums">
+                      {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Total pago</dt>
+                    <dd className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3] tabular-nums">
+                      {formatCurrency(totalPaid)}
+                    </dd>
+                  </div>
+                  {pendingAmount > 0 && (
+                    <div className="flex justify-between items-center">
+                      <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Pendente</dt>
+                      <dd className="text-[13px] font-semibold text-[#92400E] dark:text-[#FCD34D] tabular-nums">
+                        {formatCurrency(pendingAmount)}
+                      </dd>
+                    </div>
+                  )}
+                  {asaasData?.nextDueDate && (
+                    <div className="flex justify-between items-center">
+                      <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Próxima fatura</dt>
+                      <dd className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3] tabular-nums">
+                        {formatCurrency(asaasData.subscriptionValue ?? 0)}
+                        <span className="text-gray-400 dark:text-[#5C6378] ml-1">
+                          · {formatDate(asaasData.nextDueDate)}
+                        </span>
+                      </dd>
+                    </div>
+                  )}
+                  {ltv != null && ltv > 0 && (
+                    <div className="flex justify-between items-center">
+                      <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">LTV acumulado</dt>
+                      <dd className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3] tabular-nums">
+                        {formatCurrency(ltv)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Campos personalizados */}
+        {displayCustomFields.length > 0 && (
+          <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Campos personalizados</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-2.5">
+                {displayCustomFields.map(([key, value]) => (
+                  <div key={key} className="flex justify-between items-start gap-3">
+                    <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5] capitalize">
+                      {key.replace(/_/g, " ")}
+                    </dt>
+                    <dd className="text-[12px] font-medium text-gray-900 dark:text-[#EAEDF3] text-right truncate max-w-[60%]">
+                      {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                    </dd>
+                  </div>
+                ))}
+                {client.tags && client.tags.length > 0 && (
+                  <div className="flex justify-between items-start gap-3">
+                    <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Tags</dt>
+                    <dd className="text-[12px] font-medium text-gray-900 dark:text-[#EAEDF3] text-right">
+                      {client.tags.join(", ")}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Sparkles tip */}
+        <div className="rounded-[6px] p-3 bg-[#EEF0FB] dark:bg-[#141C3D] border border-[#C7CDEF] dark:border-[rgba(123,140,234,0.3)] flex items-start gap-2">
+          <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[#2137B6] dark:text-[#7B8CEA] shrink-0" />
+          <p className="text-[11px] text-[#2137B6] dark:text-[#7B8CEA] leading-snug">
+            Snapshot estratégico de {client.name.split(" ")[0]} · performance consolidada de {linkedStores.length} loja{linkedStores.length !== 1 ? "s" : ""}, atividade recente e relacionamento.
+          </p>
+        </div>
       </div>
     </div>
   )

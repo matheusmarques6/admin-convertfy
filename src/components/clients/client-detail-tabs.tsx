@@ -2,38 +2,38 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { Store, Receipt, History, Settings as SettingsIcon, LayoutDashboard } from "lucide-react"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
+import { Badge } from "@/components/ui/badge"
 import { ClientOverview, type ClientWithRelations } from "@/components/clients/client-overview"
 import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientTimeline } from "@/components/clients/client-timeline"
 import { ClientStores } from "@/components/clients/client-stores"
-import { ClientPortalUsers } from "@/components/clients/client-portal-users"
+import { ClientConfig } from "@/components/clients/client-config"
 import {
   ClientPerformanceProvider,
-  ClientPerformanceKPIs,
   ClientPerformanceTables,
 } from "@/components/clients/client-performance-review"
 
 interface ClientDetailTabsProps {
   client: ClientWithRelations
+  ltv?: number
 }
 
 const VALID_TABS = ["overview", "stores", "financial", "timeline", "config"] as const
 type TabValue = typeof VALID_TABS[number]
 
-export function ClientDetailTabs({ client }: ClientDetailTabsProps) {
+export function ClientDetailTabs({ client, ltv }: ClientDetailTabsProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
 
-  // Read initial tab from URL ?tab= param
   const tabParam = searchParams.get("tab")
   const initialTab = VALID_TABS.includes(tabParam as TabValue) ? (tabParam as TabValue) : "overview"
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab)
 
-  // Sync URL when tab changes
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString())
     if (activeTab === "overview") {
@@ -46,26 +46,59 @@ export function ClientDetailTabs({ client }: ClientDetailTabsProps) {
     router.replace(url, { scroll: false })
   }, [activeTab, pathname, router, searchParams])
 
+  const storeCount = client.client_stores?.length ?? 0
+
   return (
     <div className="mt-6">
-      {/* UnderlineTabs — DS v3.0 Rule 18 */}
       <UnderlineTabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-        <UnderlineTabItem value="overview">Visão Geral</UnderlineTabItem>
-        <UnderlineTabItem value="stores">Lojas</UnderlineTabItem>
-        <UnderlineTabItem value="financial">Financeiro</UnderlineTabItem>
-        <UnderlineTabItem value="timeline">Timeline</UnderlineTabItem>
-        <UnderlineTabItem value="config">Configurações</UnderlineTabItem>
+        <UnderlineTabItem value="overview">
+          <span className="inline-flex items-center gap-1.5">
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Visão Geral
+          </span>
+        </UnderlineTabItem>
+        <UnderlineTabItem value="stores">
+          <span className="inline-flex items-center gap-1.5">
+            <Store className="h-3.5 w-3.5" />
+            Lojas
+            {storeCount > 0 && (
+              <Badge
+                variant="neutral"
+                showDot={false}
+                className="ml-1 text-[10px] px-1 py-0 h-4"
+              >
+                {storeCount}
+              </Badge>
+            )}
+          </span>
+        </UnderlineTabItem>
+        <UnderlineTabItem value="financial">
+          <span className="inline-flex items-center gap-1.5">
+            <Receipt className="h-3.5 w-3.5" />
+            Financeiro
+          </span>
+        </UnderlineTabItem>
+        <UnderlineTabItem value="timeline">
+          <span className="inline-flex items-center gap-1.5">
+            <History className="h-3.5 w-3.5" />
+            Timeline
+          </span>
+        </UnderlineTabItem>
+        <UnderlineTabItem value="config">
+          <span className="inline-flex items-center gap-1.5">
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Configurações
+          </span>
+        </UnderlineTabItem>
       </UnderlineTabs>
 
-      {/* Tab content — lazy render */}
       {activeTab === "overview" && (
         <ClientPerformanceProvider
           clientId={client.id}
           onNavigateToStores={() => setActiveTab("stores")}
         >
-          <div className="space-y-6">
-            <ClientPerformanceKPIs />
-            <ClientOverview client={client} />
+          <div className="mt-6 space-y-5">
+            <ClientOverview client={client} ltv={ltv} />
             <ClientPerformanceTables />
           </div>
         </ClientPerformanceProvider>
@@ -78,22 +111,22 @@ export function ClientDetailTabs({ client }: ClientDetailTabsProps) {
       )}
 
       {activeTab === "financial" && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-5">
           <ClientFinancial clientId={client.id} clientName={client.name} />
           <ClientContracts clientId={client.id} />
         </div>
       )}
 
       {activeTab === "timeline" && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-5">
           <ClientTimeline clientId={client.id} />
           <ClientMeetings clientId={client.id} />
         </div>
       )}
 
       {activeTab === "config" && (
-        <div className="mt-6 space-y-6">
-          <ClientPortalUsers clientId={client.id} clientName={client.name} />
+        <div className="mt-6">
+          <ClientConfig client={client} />
         </div>
       )}
     </div>

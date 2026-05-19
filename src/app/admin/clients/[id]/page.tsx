@@ -24,7 +24,9 @@ async function getClient(id: string) {
         id,
         plan_name,
         monthly_value,
-        status
+        status,
+        start_date,
+        end_date
       ),
       client_stores (
         id,
@@ -43,13 +45,38 @@ async function getClient(id: string) {
   return client
 }
 
+async function getClientLtv(clientId: string): Promise<number> {
+  const supabase = await createClient()
+
+  // LTV = soma de tudo já pago (unified_invoices + client_charges com status paid)
+  const [invoicesRes, chargesRes] = await Promise.all([
+    supabase
+      .from("unified_invoices")
+      .select("amount")
+      .eq("client_id", clientId)
+      .eq("status", "paid"),
+    supabase
+      .from("client_charges")
+      .select("value")
+      .eq("client_id", clientId)
+      .eq("status", "paid"),
+  ])
+
+  const invoicesTotal =
+    invoicesRes.data?.reduce((sum, i) => sum + Number(i.amount ?? 0), 0) ?? 0
+  const chargesTotal =
+    chargesRes.data?.reduce((sum, c) => sum + Number(c.value ?? 0), 0) ?? 0
+
+  return invoicesTotal + chargesTotal
+}
+
 export default async function ClientPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const client = await getClient(id)
+  const [client, ltv] = await Promise.all([getClient(id), getClientLtv(id)])
 
   if (!client) {
     notFound()
@@ -57,7 +84,6 @@ export default async function ClientPage({
 
   return (
     <div className="space-y-5">
-      {/* Breadcrumbs — resolve Problema #12 */}
       <Breadcrumbs
         items={[
           { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
@@ -65,11 +91,9 @@ export default async function ClientPage({
         ]}
       />
 
-      {/* Client Header Card — resolve Problema #11 (Editar em 1 clique) */}
-      <ClientHeader client={client} />
+      <ClientHeader client={client} ltv={ltv} />
 
-      {/* Tabs — DS v3.0 Rule 18 (underline variant) */}
-      <ClientDetailTabs client={client} />
+      <ClientDetailTabs client={client} ltv={ltv} />
     </div>
   )
 }
