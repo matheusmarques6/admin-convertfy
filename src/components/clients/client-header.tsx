@@ -36,6 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "@/lib/hooks/use-toast"
 import { getInitials, formatCurrency, formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -212,17 +213,20 @@ function KpiCol({
   value,
   sub,
   isLast,
+  tooltip,
 }: {
   label: string
   value: string
   sub?: string
   isLast?: boolean
+  tooltip?: string
 }) {
-  return (
+  const content = (
     <div
       className={cn(
         "px-5 first:pl-0",
         !isLast && "border-r border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
+        tooltip && "cursor-help",
       )}
     >
       <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
@@ -237,6 +241,15 @@ function KpiCol({
         </p>
       )}
     </div>
+  )
+  if (!tooltip) return content
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[220px] text-[11px]">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -408,33 +421,39 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
             "flex flex-col lg:flex-row lg:items-center justify-between gap-5",
           )}
         >
-          <div className="flex items-stretch divide-x divide-[rgba(0,0,0,0.06)] dark:divide-[rgba(255,255,255,0.06)]">
-            <KpiCol
-              label="MRR"
-              value={mrr > 0 ? formatCurrency(mrr) : "—"}
-              sub={mrr > 0 ? "plano mensal" : undefined}
-            />
-            <KpiCol
-              label="Lojas"
-              value={totalStores.toString()}
-              sub={
-                totalStores > 0
-                  ? `${activeStores} ativa${activeStores !== 1 ? "s" : ""}${onboardingStores > 0 ? ` · ${onboardingStores} em onboarding` : ""}`
-                  : "sem lojas"
-              }
-            />
-            <KpiCol
-              label="Plano"
-              value={planName}
-              sub={activeContract?.end_date ? `${Math.max(0, Math.ceil((new Date(activeContract.end_date).getTime() - Date.now()) / (1000*60*60*24*30)))}m restantes` : undefined}
-            />
-            <KpiCol
-              label="LTV"
-              value={ltv && ltv > 0 ? formatCurrency(ltv) : "—"}
-              sub={ltv && ltv > 0 ? `desde ${formatDate(client.created_at)}` : undefined}
-              isLast
-            />
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <div className="flex items-stretch divide-x divide-[rgba(0,0,0,0.06)] dark:divide-[rgba(255,255,255,0.06)]">
+              <KpiCol
+                label="MRR"
+                value={mrr > 0 ? formatCurrency(mrr) : "—"}
+                sub={mrr > 0 ? "plano mensal" : undefined}
+                tooltip="Monthly Recurring Revenue · receita mensal contratada via plano ativo"
+              />
+              <KpiCol
+                label="Lojas"
+                value={totalStores.toString()}
+                sub={
+                  totalStores > 0
+                    ? `${activeStores} ativa${activeStores !== 1 ? "s" : ""}${onboardingStores > 0 ? ` · ${onboardingStores} em onboarding` : ""}`
+                    : "sem lojas"
+                }
+                tooltip="Total de lojas vinculadas ao cliente · ativas processam dados, em onboarding aguardam configuração"
+              />
+              <KpiCol
+                label="Plano"
+                value={planName}
+                sub={activeContract?.end_date ? `${Math.max(0, Math.ceil((new Date(activeContract.end_date).getTime() - Date.now()) / (1000*60*60*24*30)))}m restantes` : undefined}
+                tooltip={activeContract ? `Contrato ${activeContract.plan_name} ativo${activeContract.end_date ? ` até ${formatDate(activeContract.end_date)}` : ""}` : "Sem contrato ativo"}
+              />
+              <KpiCol
+                label="LTV"
+                value={ltv && ltv > 0 ? formatCurrency(ltv) : "—"}
+                sub={ltv && ltv > 0 ? `desde ${formatDate(client.created_at)}` : undefined}
+                isLast
+                tooltip="Lifetime Value · soma de tudo já recebido em faturas pagas (Asaas + manual)"
+              />
+            </div>
+          </TooltipProvider>
 
           <div className="flex items-center gap-5">
             <CsmBadge owner={client.owner} />
