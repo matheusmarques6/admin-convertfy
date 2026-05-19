@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams, usePathname } from "next/navigation"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -433,6 +434,15 @@ function StoreCard({
 
 export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+
+  const storesFilterParam = searchParams.get("stores_filter") as "all" | "active" | "onboarding" | null
+  const initialFilter =
+    storesFilterParam && ["all", "active", "onboarding"].includes(storesFilterParam)
+      ? storesFilterParam
+      : "all"
+
   const [stores, setStores] = useState<ClientStore[]>([])
   const [metricsMap, setMetricsMap] = useState<Record<string, StoreMetrics>>({})
   const [activityMap, setActivityMap] = useState<Record<string, StoreActivity>>({})
@@ -443,7 +453,17 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [deleteStore, setDeleteStore] = useState<ClientStore | null>(null)
   const [editStore, setEditStore] = useState<ClientStore | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "onboarding">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "onboarding">(initialFilter)
+
+  // Persiste filtro de lojas na URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (statusFilter === "all") params.delete("stores_filter")
+    else params.set("stores_filter", statusFilter)
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, pathname])
 
   const [form, setForm] = useState({
     name: "",
