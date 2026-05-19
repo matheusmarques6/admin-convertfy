@@ -96,6 +96,24 @@ const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string; 
   },
 }
 
+function formatClientTenure(createdAt: string): string {
+  const now = new Date()
+  const start = new Date(createdAt)
+  const diffMs = now.getTime() - start.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 1) return "novo (hoje)"
+  if (diffDays < 30) return `há ${diffDays} dia${diffDays !== 1 ? "s" : ""}`
+
+  const months = Math.floor(diffDays / 30)
+  if (months < 12) return `há ${months} ${months !== 1 ? "meses" : "mês"}`
+
+  const years = Math.floor(months / 12)
+  const remMonths = months % 12
+  if (remMonths === 0) return `há ${years} ano${years !== 1 ? "s" : ""}`
+  return `há ${years}a${years !== 1 ? "" : ""} ${remMonths}m`
+}
+
 function StatusPill({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.inactive
   return (
@@ -357,9 +375,9 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
                     {cpfCnpj}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5" title={`Cliente desde ${formatDate(client.created_at)}`}>
                   <CalendarDays className="h-3.5 w-3.5" />
-                  Cliente desde {formatDate(client.created_at)}
+                  Cliente {formatClientTenure(client.created_at)}
                 </span>
               </div>
               {healthScore < 50 && (
