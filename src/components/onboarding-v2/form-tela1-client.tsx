@@ -43,6 +43,10 @@ import {
   Target,
   FolderUp,
   FileCheck2,
+  Pencil,
+  Type,
+  Image as ImageIcon,
+  MessageSquare,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -1120,6 +1124,8 @@ function FileField({
 
 // ─── Briefing review (passo final inline) ───────────────────────────────
 
+const BRIEFING_GRADIENT = "linear-gradient(90deg, #4E62D8, #2137B6, #041366)"
+
 function BriefingReviewInline({
   token,
   onBack,
@@ -1135,6 +1141,15 @@ function BriefingReviewInline({
   const [editable, setEditable] = useState<BriefingContent | null>(null)
   const [clientAdditions, setClientAdditions] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  // Edição inline: campo ativo + valor draft + atalhos
+  const [activeField, setActiveField] = useState<string | null>(null)
+  const [draftValue, setDraftValue] = useState<string>("")
+  const [editedFields, setEditedFields] = useState<Set<string>>(new Set())
+
+  // Save bar (toast com contagem de alterações)
+  const [savedCount, setSavedCount] = useState(0)
+  const [saveBarVisible, setSaveBarVisible] = useState(false)
 
   useEffect(() => {
     let stopped = false
@@ -1177,6 +1192,67 @@ function BriefingReviewInline({
       if (timer) clearTimeout(timer)
     }
   }, [token, editable, onConfirmed])
+
+  // ── Helpers de edição ──────────────────────────────────────────────────
+  function startEdit(fieldId: string, currentValue: string) {
+    setActiveField(fieldId)
+    setDraftValue(currentValue ?? "")
+  }
+  function cancelEdit() {
+    setActiveField(null)
+    setDraftValue("")
+  }
+  function commitEdit() {
+    if (!activeField || !editable) return
+    const trimmed = draftValue.trim()
+    if (!trimmed) {
+      cancelEdit()
+      return
+    }
+    setEditable((prev) => {
+      if (!prev) return prev
+      const next = { ...prev }
+      switch (activeField) {
+        case "about_brand":
+          next.about_brand = trimmed
+          break
+        case "audience":
+          next.audience = trimmed
+          break
+        case "language_tone":
+          next.language_tone = trimmed
+          break
+        case "offers_and_differentials":
+          next.offers_and_differentials = trimmed
+          break
+        case "visual_palette":
+          next.visual_identity = { ...next.visual_identity, palette: trimmed }
+          break
+        case "visual_fonts":
+          next.visual_identity = { ...next.visual_identity, fonts: trimmed }
+          break
+        case "visual_references":
+          next.visual_identity = {
+            ...next.visual_identity,
+            references: trimmed,
+          }
+          break
+      }
+      return next
+    })
+    setEditedFields((prev) => new Set(prev).add(activeField))
+    setSavedCount((c) => c + 1)
+    setSaveBarVisible(true)
+    setActiveField(null)
+    setDraftValue("")
+  }
+
+  // Esconde save bar 3.5s após última edição
+  useEffect(() => {
+    if (!saveBarVisible) return
+    const t = setTimeout(() => setSaveBarVisible(false), 3500)
+    return () => clearTimeout(t)
+  }, [savedCount, saveBarVisible])
 
   async function confirm() {
     if (!editable) return
@@ -1258,143 +1334,529 @@ function BriefingReviewInline({
   const b = editable ?? briefing
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen relative bg-white overflow-x-hidden">
+      {/* Atmosfera: aurora suave + dot pattern com mask radial */}
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
+        <div
+          className="absolute -inset-[20%]"
+          style={{
+            background:
+              "radial-gradient(50% 40% at 25% 15%, rgba(78,98,216,0.10) 0%, transparent 60%), radial-gradient(45% 40% at 80% 25%, rgba(33,55,182,0.07) 0%, transparent 65%), radial-gradient(70% 60% at 50% 95%, rgba(199,205,239,0.30) 0%, transparent 55%)",
+            filter: "blur(40px)",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-50"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgba(78,98,216,0.10) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 55% 45% at 50% 25%, black 30%, transparent 70%)",
+            maskImage:
+              "radial-gradient(ellipse 55% 45% at 50% 25%, black 30%, transparent 70%)",
+          }}
+        />
+      </div>
+
       <SimpleHeader onBack={onBack} eyebrow="Etapa final · revise e confirme" />
-      <div className="max-w-[680px] mx-auto px-5 sm:px-8 py-8 sm:py-12 space-y-4">
-        <div className="mb-2">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-brand-500">
-              Briefing gerado por IA
+
+      <div className="relative z-10 max-w-[920px] mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-32">
+        {/* Mini hero */}
+        <div className="text-center mb-10 sm:mb-12">
+          <span
+            className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full border bg-white/60 backdrop-blur-sm text-[10.5px] font-semibold uppercase tracking-[0.06em] mb-5"
+            style={{ borderColor: "#C7CDEF" }}
+          >
+            <Sparkles
+              className="h-3 w-3 text-brand-500"
+              strokeWidth={2.4}
+            />
+            <span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, #4E62D8, #041366, #2137B6, #4E62D8)",
+                backgroundSize: "200% auto",
+              }}
+            >
+              AI · Briefing
+            </span>
+          </span>
+          <h1 className="text-[32px] sm:text-[44px] font-bold tracking-tight text-slate-900 leading-[1.05] mb-3">
+            Revise e{" "}
+            <em
+              className="not-italic bg-clip-text text-transparent"
+              style={{ backgroundImage: BRIEFING_GRADIENT }}
+            >
+              confirme
+            </em>
+          </h1>
+          <p className="text-[15px] sm:text-[16px] text-slate-500 leading-relaxed max-w-[560px] mx-auto">
+            Dá uma olhada no que a IA montou a partir das suas respostas. Clique
+            em qualquer campo pra editar.
+          </p>
+        </div>
+
+        {/* Card principal — briefing */}
+        <div
+          className="relative bg-white rounded-2xl overflow-hidden"
+          style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+        >
+          {/* highlight superior */}
+          <div
+            className="absolute top-0 left-6 right-6 h-px opacity-50 z-[3]"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, #A8B2EE, transparent)",
+            }}
+          />
+
+          {/* Header do bloco */}
+          <div
+            className="relative px-6 sm:px-9 pt-9 pb-6 text-center"
+            style={{
+              background:
+                "linear-gradient(180deg, #FCFCFD 0%, transparent 100%)",
+            }}
+          >
+            <div className="inline-flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-500 mb-3.5">
+              <span className="font-mono text-slate-400 text-[11px]">
+                01 · BRIEFING
+              </span>
+              <span>Identidade da marca</span>
+            </div>
+            <h2 className="text-[22px] sm:text-[24px] font-bold tracking-tight text-slate-900 leading-[1.15] mb-2">
+              O que conhecemos sobre a sua marca
+            </h2>
+            <p className="text-[13.5px] text-slate-500 leading-relaxed max-w-[560px] mx-auto">
+              Resumo narrativo construído a partir do questionário. Clique em
+              qualquer campo pra editar.
+            </p>
+            <div
+              className="absolute left-9 right-9 bottom-0 h-px opacity-60"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent, #E5E7EB 20%, #E5E7EB 80%, transparent)",
+              }}
+            />
+          </div>
+
+          {/* Body com fields */}
+          <div className="px-6 sm:px-9 py-6">
+            <EditableField
+              fieldId="about_brand"
+              label="Sobre a marca"
+              value={b.about_brand}
+              edited={editedFields.has("about_brand")}
+              isActive={activeField === "about_brand"}
+              draft={draftValue}
+              onDraftChange={setDraftValue}
+              onStart={startEdit}
+              onSave={commitEdit}
+              onCancel={cancelEdit}
+            />
+            <EditableField
+              fieldId="audience"
+              label="Público / Audiência"
+              value={b.audience}
+              edited={editedFields.has("audience")}
+              isActive={activeField === "audience"}
+              draft={draftValue}
+              onDraftChange={setDraftValue}
+              onStart={startEdit}
+              onSave={commitEdit}
+              onCancel={cancelEdit}
+            />
+            <EditableField
+              fieldId="language_tone"
+              label="Tom e linguagem"
+              value={b.language_tone}
+              edited={editedFields.has("language_tone")}
+              isActive={activeField === "language_tone"}
+              draft={draftValue}
+              onDraftChange={setDraftValue}
+              onStart={startEdit}
+              onSave={commitEdit}
+              onCancel={cancelEdit}
+            />
+
+            {/* Identidade visual com 3 sub-campos */}
+            <div className="relative p-4 sm:p-[18px] rounded-[10px] mt-1.5">
+              <div className="flex items-center justify-between mb-2 min-h-[22px]">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
+                  Identidade visual
+                </span>
+              </div>
+              <div
+                className="grid sm:grid-cols-3 gap-px rounded-lg overflow-hidden"
+                style={{ background: "#E5E7EB", border: "1px solid rgba(0,0,0,0.08)" }}
+              >
+                <SubFieldEditable
+                  fieldId="visual_palette"
+                  label="Paleta"
+                  icon={Palette}
+                  value={b.visual_identity?.palette ?? ""}
+                  edited={editedFields.has("visual_palette")}
+                  isActive={activeField === "visual_palette"}
+                  draft={draftValue}
+                  onDraftChange={setDraftValue}
+                  onStart={startEdit}
+                  onSave={commitEdit}
+                  onCancel={cancelEdit}
+                />
+                <SubFieldEditable
+                  fieldId="visual_fonts"
+                  label="Fontes"
+                  icon={Type}
+                  value={b.visual_identity?.fonts ?? ""}
+                  edited={editedFields.has("visual_fonts")}
+                  isActive={activeField === "visual_fonts"}
+                  draft={draftValue}
+                  onDraftChange={setDraftValue}
+                  onStart={startEdit}
+                  onSave={commitEdit}
+                  onCancel={cancelEdit}
+                />
+                <SubFieldEditable
+                  fieldId="visual_references"
+                  label="Referências"
+                  icon={ImageIcon}
+                  value={b.visual_identity?.references ?? ""}
+                  edited={editedFields.has("visual_references")}
+                  isActive={activeField === "visual_references"}
+                  draft={draftValue}
+                  onDraftChange={setDraftValue}
+                  onStart={startEdit}
+                  onSave={commitEdit}
+                  onCancel={cancelEdit}
+                />
+              </div>
+            </div>
+
+            <EditableField
+              fieldId="offers_and_differentials"
+              label="Ofertas e diferenciais"
+              value={b.offers_and_differentials}
+              edited={editedFields.has("offers_and_differentials")}
+              isActive={activeField === "offers_and_differentials"}
+              draft={draftValue}
+              onDraftChange={setDraftValue}
+              onStart={startEdit}
+              onSave={commitEdit}
+              onCancel={cancelEdit}
+            />
+          </div>
+        </div>
+
+        {/* Free input */}
+        <div
+          className="mt-5 p-6 sm:p-7 rounded-2xl bg-white"
+          style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="inline-flex items-center gap-2 text-[14px] font-semibold text-slate-900">
+              <MessageSquare
+                className="h-3.5 w-3.5 text-brand-500"
+                strokeWidth={2.2}
+              />
+              Algo que faltou ou que você quer destacar?
+            </span>
+            <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+              Opcional
             </span>
           </div>
-          <h1 className="text-[26px] sm:text-[32px] font-semibold tracking-tight text-slate-900 leading-[1.15]">
-            Revise e confirme
-          </h1>
-          <p className="text-[14px] sm:text-[15px] text-slate-500 mt-2 max-w-[58ch]">
-            Dá uma olhada no que a IA montou a partir das suas respostas. Edite
-            qualquer campo se quiser ajustar. Quando confirmar, sua loja avança
-            pra fase de design.
-          </p>
-        </div>
-
-        <BriefingEditField
-          label="Sobre a marca"
-          value={b.about_brand}
-          onChange={(v) =>
-            setEditable((s) => (s ? { ...s, about_brand: v } : s))
-          }
-          rows={4}
-        />
-        <BriefingEditField
-          label="Público / Audiência"
-          value={b.audience}
-          onChange={(v) => setEditable((s) => (s ? { ...s, audience: v } : s))}
-          rows={3}
-        />
-        <BriefingEditField
-          label="Tom e linguagem"
-          value={b.language_tone}
-          onChange={(v) =>
-            setEditable((s) => (s ? { ...s, language_tone: v } : s))
-          }
-          rows={3}
-        />
-        <div className="bg-white rounded-md border border-slate-200 p-4">
-          <p className="text-[12px] font-semibold text-slate-900 mb-2">
-            Identidade visual
-          </p>
-          <div className="space-y-2">
-            <BriefingEditSubField
-              label="Paleta"
-              value={b.visual_identity?.palette ?? ""}
-              onChange={(v) =>
-                setEditable((s) =>
-                  s
-                    ? {
-                        ...s,
-                        visual_identity: { ...s.visual_identity, palette: v },
-                      }
-                    : s,
-                )
-              }
-            />
-            <BriefingEditSubField
-              label="Fontes"
-              value={b.visual_identity?.fonts ?? ""}
-              onChange={(v) =>
-                setEditable((s) =>
-                  s
-                    ? {
-                        ...s,
-                        visual_identity: { ...s.visual_identity, fonts: v },
-                      }
-                    : s,
-                )
-              }
-            />
-            <BriefingEditSubField
-              label="Referências"
-              value={b.visual_identity?.references ?? ""}
-              onChange={(v) =>
-                setEditable((s) =>
-                  s
-                    ? {
-                        ...s,
-                        visual_identity: {
-                          ...s.visual_identity,
-                          references: v,
-                        },
-                      }
-                    : s,
-                )
-              }
-            />
-          </div>
-        </div>
-        <BriefingEditField
-          label="Ofertas e diferenciais"
-          value={b.offers_and_differentials}
-          onChange={(v) =>
-            setEditable((s) => (s ? { ...s, offers_and_differentials: v } : s))
-          }
-          rows={3}
-        />
-
-        <div className="bg-emerald-50/40 rounded-md border border-emerald-200 p-4">
-          <label className="block">
-            <p className="text-[12px] font-semibold text-emerald-700 mb-1">
-              Algo que faltou ou que você quer destacar?
-            </p>
-            <textarea
-              value={clientAdditions}
-              onChange={(e) => setClientAdditions(e.target.value)}
-              placeholder="Opcional. Esse texto vai junto pra equipe."
-              rows={3}
-              className="w-full px-3 py-2 text-[13px] rounded-md border border-emerald-200 bg-white"
-            />
-          </label>
+          <textarea
+            value={clientAdditions}
+            onChange={(e) => setClientAdditions(e.target.value)}
+            placeholder="Esse texto vai junto pra equipe — qualquer informação extra ajuda a personalizar ainda mais."
+            className="w-full min-h-[72px] px-3.5 py-3 text-[14px] leading-relaxed text-slate-900 rounded-lg bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/10 transition-all placeholder:text-slate-400 resize-y"
+          />
         </div>
 
         {error && (
-          <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-[12px] text-rose-700">
+          <div className="mt-4 rounded-lg bg-rose-50 border border-rose-200 p-3 text-[12.5px] text-rose-700">
             {error}
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={confirm}
-          disabled={submitting}
-          className="w-full inline-flex items-center justify-center gap-2 h-12 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[14.5px] font-semibold disabled:opacity-50 shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:shadow-[0_4px_14px_rgba(16,185,129,0.35)] transition-all"
-        >
-          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {submitting
-            ? "Confirmando..."
-            : "Confirmar e finalizar onboarding"}
-          {!submitting && <CheckCircle2 className="h-4 w-4" />}
-        </button>
+        {/* CTA */}
+        <div className="mt-7">
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={submitting}
+            className="group relative w-full h-[60px] rounded-[14px] text-white text-[16px] font-semibold tracking-[-0.01em] inline-flex items-center justify-center gap-2.5 overflow-hidden disabled:opacity-60 transition-all duration-[400ms] hover:-translate-y-0.5"
+            style={{
+              background: BRIEFING_GRADIENT,
+              backgroundSize: "200% 100%",
+              boxShadow:
+                "inset 0 1px 0 0 rgba(255,255,255,0.8), 0 6px 20px -6px rgba(33,55,182,0.4)",
+            }}
+          >
+            {/* shine effect ao hover */}
+            <span
+              className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700"
+              style={{
+                background:
+                  "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 50%, transparent 70%)",
+              }}
+            />
+            {submitting && (
+              <Loader2 className="h-5 w-5 animate-spin relative z-10" />
+            )}
+            <span className="relative z-10">
+              {submitting ? "Confirmando..." : "Confirmar e finalizar onboarding"}
+            </span>
+            {!submitting && (
+              <ArrowRight className="h-5 w-5 relative z-10" strokeWidth={2.5} />
+            )}
+          </button>
+          <div className="mt-3.5 text-center text-[12px] text-slate-500 inline-flex items-center justify-center gap-1.5 w-full">
+            <CheckCircle2
+              className="h-3 w-3 text-emerald-500"
+              strokeWidth={2.5}
+            />
+            Sua loja entra na fila de design em até 1 hora após confirmação.
+          </div>
+        </div>
+      </div>
+
+      {/* Save bar fixa no rodapé */}
+      <div
+        className={
+          "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-200 ease-out " +
+          (saveBarVisible
+            ? "translate-y-0 opacity-100"
+            : "translate-y-[120px] opacity-0 pointer-events-none")
+        }
+      >
+        <div className="flex items-center gap-3.5 pl-4 pr-2 py-2 bg-slate-900 text-white rounded-full shadow-[0_12px_24px_rgba(0,0,0,0.18)]">
+          <Check
+            className="h-4 w-4 text-emerald-300"
+            strokeWidth={2.6}
+          />
+          <span className="text-[13px] font-medium">
+            <span className="font-mono font-semibold text-brand-300">
+              {savedCount}
+            </span>{" "}
+            {savedCount === 1 ? "alteração salva" : "alterações salvas"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSaveBarVisible(false)}
+            className="h-8 px-3.5 text-[13px] font-semibold rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors"
+          >
+            OK
+          </button>
+        </div>
       </div>
     </div>
+  )
+}
+
+// ─── EditableField: campo de briefing com clique-pra-editar ───────────────
+
+function EditableField({
+  fieldId,
+  label,
+  value,
+  edited,
+  isActive,
+  draft,
+  onDraftChange,
+  onStart,
+  onSave,
+  onCancel,
+}: {
+  fieldId: string
+  label: string
+  value: string
+  edited: boolean
+  isActive: boolean
+  draft: string
+  onDraftChange: (v: string) => void
+  onStart: (id: string, currentValue: string) => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  if (isActive) {
+    return (
+      <article
+        className="relative p-4 sm:p-[18px] rounded-[10px] bg-white mt-1.5 first:mt-0"
+        style={{ boxShadow: "0 0 0 2px #4E62D8" }}
+      >
+        <div className="flex items-center justify-between mb-2 min-h-[22px]">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-700 inline-flex items-center gap-2">
+            {label}
+            {edited && <EditedBadge />}
+          </span>
+        </div>
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault()
+              onCancel()
+            } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault()
+              onSave()
+            }
+          }}
+          className="w-full min-h-[80px] px-3.5 py-3 rounded-lg text-[14px] leading-relaxed text-slate-900 bg-slate-50 border border-brand-200 focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/10 transition-all resize-y"
+        />
+        <div className="flex justify-end items-center gap-2 mt-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+          >
+            Cancelar
+            <kbd className="font-mono text-[10px] font-medium px-1 py-0.5 border border-slate-200 rounded text-slate-500 bg-white">
+              Esc
+            </kbd>
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[13px] font-medium text-white bg-brand-500 hover:bg-brand-600 transition-colors"
+            style={{ boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.8)" }}
+          >
+            Salvar alterações
+            <kbd className="font-mono text-[10px] font-medium px-1 py-0.5 border border-white/20 rounded text-white/75 bg-white/10">
+              ⌘↵
+            </kbd>
+          </button>
+        </div>
+      </article>
+    )
+  }
+  return (
+    <article
+      onClick={() => onStart(fieldId, value)}
+      className="group relative p-4 sm:p-[18px] rounded-[10px] mt-1.5 first:mt-0 cursor-text hover:bg-slate-50 transition-colors"
+      style={{ boxShadow: "inset 0 0 0 1px transparent" }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow =
+          "inset 0 0 0 1px rgba(0,0,0,0.08)"
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = "inset 0 0 0 1px transparent"
+      }}
+    >
+      <div className="flex items-center justify-between mb-2 min-h-[22px]">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500 inline-flex items-center gap-2 group-[.is-edited]:text-slate-700">
+          {label}
+          {edited && <EditedBadge />}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onStart(fieldId, value)
+          }}
+          className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md text-[12px] font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all"
+        >
+          <Pencil className="h-2.5 w-2.5" strokeWidth={2} />
+          Editar
+        </button>
+      </div>
+      <div className="text-[14px] leading-[1.65] text-slate-700 whitespace-pre-wrap">
+        {value}
+      </div>
+    </article>
+  )
+}
+
+function SubFieldEditable({
+  fieldId,
+  label,
+  icon: Icon,
+  value,
+  edited,
+  isActive,
+  draft,
+  onDraftChange,
+  onStart,
+  onSave,
+  onCancel,
+}: {
+  fieldId: string
+  label: string
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  value: string
+  edited: boolean
+  isActive: boolean
+  draft: string
+  onDraftChange: (v: string) => void
+  onStart: (id: string, currentValue: string) => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  if (isActive) {
+    return (
+      <div className="bg-white p-3.5 sm:p-4">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 mb-1.5">
+          <Icon className="h-2.5 w-2.5 text-brand-400" strokeWidth={2} />
+          {label}
+          {edited && <EditedBadge />}
+        </div>
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onBlur={() => onSave()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault()
+              onCancel()
+            } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault()
+              onSave()
+            }
+          }}
+          rows={3}
+          className="w-full min-h-[60px] px-3 py-2 rounded-lg text-[13px] leading-relaxed text-slate-900 bg-slate-50 border border-brand-200 focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-500/10 transition-all resize-y"
+        />
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onStart(fieldId, value)}
+      className="text-left w-full bg-white p-3.5 sm:p-4 cursor-text hover:bg-slate-50 transition-colors"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 mb-1">
+        <Icon className="h-2.5 w-2.5 text-brand-400" strokeWidth={2} />
+        {label}
+        {edited && <EditedBadge />}
+      </div>
+      <div className="text-[13px] leading-[1.55] text-slate-700">
+        {value || (
+          <span className="text-slate-400 italic">Clique pra preencher</span>
+        )}
+      </div>
+    </button>
+  )
+}
+
+function EditedBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-md text-[10px] font-semibold text-brand-700 border"
+      style={{
+        background: "#EEF0FB",
+        borderColor: "#C7CDEF",
+        letterSpacing: 0,
+        textTransform: "none",
+      }}
+    >
+      <Check className="h-2 w-2" strokeWidth={3} />
+      Editado
+    </span>
   )
 }
 
@@ -1438,56 +1900,6 @@ function SimpleHeader({
         </div>
       )}
     </header>
-  )
-}
-
-function BriefingEditField({
-  label,
-  value,
-  onChange,
-  rows,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  rows?: number
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-slate-300 transition-colors">
-      <label className="block">
-        <p className="text-[13px] font-semibold text-slate-900 mb-2">{label}</p>
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={rows ?? 3}
-          className="w-full px-4 py-3 text-[14px] text-slate-900 rounded-xl border border-slate-200 bg-white hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all resize-none"
-        />
-      </label>
-    </div>
-  )
-}
-
-function BriefingEditSubField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <label className="block">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 mb-1.5">
-        {label}
-      </p>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-10 px-3.5 text-[13.5px] text-slate-900 rounded-lg border border-slate-200 bg-white hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-      />
-    </label>
   )
 }
 
