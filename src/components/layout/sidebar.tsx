@@ -190,6 +190,11 @@ const OPERACIONAL_NAV: NavGroup[] = [
         icon: Columns3,
       },
       {
+        name: "Calls Mensais",
+        href: "/admin/cs-crm/calls",
+        icon: Calendar,
+      },
+      {
         name: "Tutorial cliente",
         href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
         icon: LifeBuoy,

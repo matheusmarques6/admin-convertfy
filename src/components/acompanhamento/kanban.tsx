@@ -451,12 +451,29 @@ function StateDrawer({
   }
 
   async function markSent(method: "whatsapp" | "email" | "call") {
-    await fetch(`/api/acompanhamento/pipeline/${state.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ current_stage: 4, feedback_method: method }),
-    })
+    if (method === "whatsapp") {
+      // Tenta enviar real via WhatsApp Cloud API. Se sucesso, backend
+      // já marca stage 4 + feedback_sent_at automaticamente.
+      const r = await fetch(`/api/acompanhamento/pipeline/${state.id}/send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      })
+      if (!r.ok) {
+        const json = await r.json().catch(() => ({}))
+        alert(
+          json.error?.message ??
+            "Falha ao enviar WhatsApp. Marcando como enviado manualmente.",
+        )
+      }
+    } else {
+      await fetch(`/api/acompanhamento/pipeline/${state.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ current_stage: 4, feedback_method: method }),
+      })
+    }
     onUpdate()
   }
 
