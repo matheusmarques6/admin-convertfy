@@ -22,12 +22,20 @@ import { TabContexto } from "./tab-contexto"
 import { TabRelatorio } from "./tab-relatorio"
 import { TabPerformance } from "./tab-performance"
 import { TabSetup } from "./tab-setup"
+import TabOnboardingStatus from "./tab-onboarding-status"
+import TabAcompanhamento from "./tab-acompanhamento"
+import TabCalls from "./tab-calls"
+import TabSolicitacoes from "./tab-solicitacoes"
 import { C, TNUM } from "./_primitives"
 
 const TABS = [
   { key: "visao", label: "Visão Geral" },
+  { key: "onboarding", label: "Onboarding" },
   { key: "performance", label: "Performance" },
   { key: "relatorio", label: "Relatório", hint: "cliente" },
+  { key: "acompanhamento", label: "Acompanhamento" },
+  { key: "calls", label: "Calls" },
+  { key: "solicitacoes", label: "Solicitações", showSolicitacoesCount: true },
   { key: "contexto", label: "Contexto" },
   { key: "atividade", label: "Atividade", showCount: true },
   { key: "setup", label: "Setup" },
@@ -203,8 +211,12 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
       {/* Tab content */}
       <div className="pt-6">
         {activeTab === "visao" && <TabVisao storeId={store.id} />}
+        {activeTab === "onboarding" && <TabOnboardingStatus storeId={store.id} />}
         {activeTab === "performance" && <TabPerformance storeId={store.id} />}
         {activeTab === "relatorio" && <TabRelatorio storeId={store.id} />}
+        {activeTab === "acompanhamento" && <TabAcompanhamento storeId={store.id} />}
+        {activeTab === "calls" && <TabCalls storeId={store.id} />}
+        {activeTab === "solicitacoes" && <TabSolicitacoes storeId={store.id} />}
         {activeTab === "contexto" && <TabContexto storeId={store.id} />}
         {activeTab === "atividade" && <TabAtividade storeId={store.id} />}
         {activeTab === "setup" && <TabSetup storeId={store.id} />}

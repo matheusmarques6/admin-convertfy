@@ -1721,6 +1721,7 @@ export function TaskDetailDrawer({
           )}
 
           {/* Entregaveis — sempre visivel (botao + Entregavel mesmo lista vazia) */}
+          <div id="task-section-entregaveis" />
           <Section
             title={`Entregáveis · ${deliverables.filter((d) => deliverableStatus(d).label === "Pronto").length}/${deliverables.length}`}
             action={
@@ -1948,6 +1949,7 @@ export function TaskDetailDrawer({
           )}
 
           {/* Comentarios */}
+          <div id="task-section-comentarios" />
           <Section title={`Comentários · ${taskComments.length}`}>
             {taskComments.length === 0 && (
               <div
