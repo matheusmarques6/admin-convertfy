@@ -86,7 +86,7 @@ export function EmailDetailView({
   const blocks = email?.blocks ?? []
   const qaItems = email?.qa_items ?? []
 
-  const [viewMode, setViewMode] = useState<"mock" | "html">("mock")
+  const [viewMode, setViewMode] = useState<"mock" | "render" | "html">("mock")
   const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
   const [width, setWidth] = useState<number>(600)
 
@@ -435,7 +435,7 @@ export function EmailDetailView({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Mock / HTML toggle */}
+          {/* Mock / Render / HTML toggle */}
           <div
             className="inline-flex items-center"
             style={{
@@ -449,6 +449,12 @@ export function EmailDetailView({
               label="Mock"
               active={viewMode === "mock"}
               onClick={() => setViewMode("mock")}
+            />
+            <ModePillBtn
+              icon={<Eye className="h-3 w-3" />}
+              label="Render"
+              active={viewMode === "render"}
+              onClick={() => setViewMode("render")}
             />
             <ModePillBtn
               icon={<CodeIcon className="h-3 w-3" />}
@@ -553,7 +559,7 @@ export function EmailDetailView({
           className="flex-1 overflow-y-auto"
           style={{ background: "var(--crm-gray-50)" }}
         >
-          {viewMode === "mock" ? (
+          {viewMode === "mock" && (
             <EmailMockPreview
               email={email}
               blocks={blocks}
@@ -569,7 +575,15 @@ export function EmailDetailView({
                 })
               }}
             />
-          ) : (
+          )}
+          {viewMode === "render" && (
+            <EmailRenderPreview
+              email={email}
+              html={generateHtml(email, blocks)}
+              width={width}
+            />
+          )}
+          {viewMode === "html" && (
             <EmailHtmlView
               email={email}
               html={generateHtml(email, blocks)}
@@ -1502,6 +1516,80 @@ function RenderFooter({ content }: { content: Record<string, unknown> }) {
 }
 
 // ─── HTML view ────────────────────────────────────────────
+
+function EmailRenderPreview({
+  email,
+  html,
+  width,
+}: {
+  email: EmailFlowEmail
+  html: string
+  width: number
+}) {
+  return (
+    <div style={{ padding: "24px 32px 48px", maxWidth: 1000, margin: "0 auto" }}>
+      <SectionLabel>Pré-visualização real (iframe sandbox)</SectionLabel>
+      <div
+        style={{
+          background: "var(--crm-gray-0)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 10,
+          padding: "14px 18px",
+          marginBottom: 16,
+          fontSize: 12,
+          color: "var(--crm-gray-500)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <span>
+          <b style={{ color: "var(--crm-gray-900)" }}>{email.subject || "Sem assunto"}</b>
+          {email.preheader && (
+            <>
+              {" — "}
+              <span style={{ color: "var(--crm-gray-500)" }}>
+                {email.preheader}
+              </span>
+            </>
+          )}
+        </span>
+        <span
+          className="crm-tnum"
+          style={{ fontSize: 11, color: "var(--crm-gray-400)" }}
+        >
+          {width}px · render real
+        </span>
+      </div>
+      <div
+        style={{
+          width,
+          maxWidth: "100%",
+          margin: "0 auto",
+          background: "#fff",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 10,
+          overflow: "hidden",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        }}
+      >
+        <iframe
+          title="email-render-preview"
+          srcDoc={html}
+          sandbox=""
+          style={{
+            width: "100%",
+            minHeight: 600,
+            border: 0,
+            display: "block",
+            background: "#fff",
+          }}
+        />
+      </div>
+    </div>
+  )
+}
 
 function EmailHtmlView({
   email,
