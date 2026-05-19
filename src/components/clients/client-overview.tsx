@@ -1043,7 +1043,6 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
           </Card>
         )}
 
-        {/* Sparkles tip */}
       </div>
     </div>
     </div>
