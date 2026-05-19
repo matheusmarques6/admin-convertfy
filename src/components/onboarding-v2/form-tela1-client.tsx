@@ -2247,7 +2247,7 @@ function SubFieldEditable({
         {label}
         {edited && <EditedBadge />}
       </div>
-      <div className="text-[13px] leading-[1.55] text-slate-700">
+      <div className="text-[13px] leading-[1.55] text-slate-700 whitespace-pre-wrap">
         {value || (
           <span className="text-slate-400 italic">Clique pra preencher</span>
         )}

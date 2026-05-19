@@ -29,7 +29,10 @@ const ANTHROPIC_MODEL = "claude-sonnet-4-6"
 // (https://openrouter.ai/models?q=sonnet). Candidatos: anthropic/claude-sonnet-4.6,
 // anthropic/claude-sonnet-4-6, anthropic/claude-sonnet-4.6-20251106.
 const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
-const MAX_TOKENS = 2048
+// 4096 dá folga pros 5 campos com 2-5 frases cada (briefing típico ~600
+// tokens, mas casos premium/longos podiam estourar 2048 antes). Custo
+// marginal mínimo — o que importa é não truncar JSON no meio.
+const MAX_TOKENS = 4096
 const TEMPERATURE = 0.3
 
 const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marketing). Sua tarefa: a partir das respostas do formulário de onboarding de uma loja, gerar um BRIEFING estruturado em JSON com a forma:
@@ -80,9 +83,9 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
       timeout_ms: T1_TIMEOUT_MS,
     })
     const t1Start = Date.now()
-    const briefing = await tryAnthropic(prompt, T1_TIMEOUT_MS)
+    const { briefing, meta } = await tryAnthropic(prompt, T1_TIMEOUT_MS)
     const t1Ms = Date.now() - t1Start
-    log.info("anthropic.try.ok", { onboardingId, ms: t1Ms })
+    log.info("anthropic.try.ok", { onboardingId, ms: t1Ms, ...meta })
     await saveBriefing(ctx, briefing, "anthropic_sonnet")
     log.info("briefing.cascade.done", {
       onboardingId,
@@ -114,9 +117,9 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
         timeout_ms: T2_TIMEOUT_MS,
       })
       const t2Start = Date.now()
-      const briefing = await tryOpenRouter(prompt, T2_TIMEOUT_MS)
+      const { briefing, meta } = await tryOpenRouter(prompt, T2_TIMEOUT_MS)
       const t2Ms = Date.now() - t2Start
-      log.info("openrouter.try.ok", { onboardingId, ms: t2Ms })
+      log.info("openrouter.try.ok", { onboardingId, ms: t2Ms, ...meta })
       await saveBriefing(ctx, briefing, "openrouter_sonnet")
       log.info("briefing.cascade.done", {
         onboardingId,
@@ -194,10 +197,19 @@ function buildPrompt(ctx: Ctx): { system: string; user: string } {
 
 // ── Step 1: Anthropic SDK ───────────────────────────────────────────────
 
+interface TryResult {
+  briefing: BriefingContent
+  meta: {
+    stop_reason?: string | null
+    input_tokens?: number
+    output_tokens?: number
+  }
+}
+
 async function tryAnthropic(
   prompt: { system: string; user: string },
   timeoutMs: number,
-): Promise<BriefingContent> {
+): Promise<TryResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY ausente")
 
@@ -218,8 +230,20 @@ async function tryAnthropic(
     const text =
       resp.content[0]?.type === "text" ? resp.content[0].text : ""
     const parsed = parseBriefingJson(text)
-    if (!parsed) throw new Error("Resposta da IA invalida (JSON nao encontrado)")
-    return parsed
+    if (!parsed) {
+      // stop_reason='max_tokens' indica truncamento — campo crítico no log
+      throw new Error(
+        `Resposta Anthropic invalida (stop_reason=${resp.stop_reason ?? "unknown"})`,
+      )
+    }
+    return {
+      briefing: parsed,
+      meta: {
+        stop_reason: resp.stop_reason,
+        input_tokens: resp.usage?.input_tokens,
+        output_tokens: resp.usage?.output_tokens,
+      },
+    }
   } catch (e) {
     // AbortError → padroniza pra "timeout"
     if (
@@ -240,7 +264,7 @@ async function tryAnthropic(
 async function tryOpenRouter(
   prompt: { system: string; user: string },
   timeoutMs: number,
-): Promise<BriefingContent> {
+): Promise<TryResult> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error("OPENROUTER_API_KEY ausente")
 
@@ -274,12 +298,28 @@ async function tryOpenRouter(
       throw new Error(`OpenRouter HTTP ${resp.status}: ${body.slice(0, 200)}`)
     }
     const data = (await resp.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
+      choices?: Array<{
+        message?: { content?: string }
+        finish_reason?: string
+      }>
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
     }
-    const text = data.choices?.[0]?.message?.content ?? ""
+    const choice = data.choices?.[0]
+    const text = choice?.message?.content ?? ""
     const parsed = parseBriefingJson(text)
-    if (!parsed) throw new Error("Resposta OpenRouter invalida (JSON nao encontrado)")
-    return parsed
+    if (!parsed) {
+      throw new Error(
+        `Resposta OpenRouter invalida (finish_reason=${choice?.finish_reason ?? "unknown"})`,
+      )
+    }
+    return {
+      briefing: parsed,
+      meta: {
+        stop_reason: choice?.finish_reason,
+        input_tokens: data.usage?.prompt_tokens,
+        output_tokens: data.usage?.completion_tokens,
+      },
+    }
   } catch (e) {
     if (
       ctrl.signal.aborted ||
@@ -353,11 +393,32 @@ function pick(fr: FormResponses, key: string, fallback: string): string {
 function parseBriefingJson(text: string): BriefingContent | null {
   const match = text.match(/\{[\s\S]*\}/)
   if (!match) return null
+  let raw: unknown
   try {
-    return JSON.parse(match[0]) as BriefingContent
+    raw = JSON.parse(match[0])
   } catch {
     return null
   }
+  // Validação rigorosa: rejeita briefings parciais (campos faltando ou
+  // vazios) pra forçar fallback na próxima tentativa da cascata, em vez
+  // de salvar um JSON incompleto silenciosamente.
+  if (!raw || typeof raw !== "object") return null
+  const b = raw as Record<string, unknown>
+  const stringFields = [
+    "about_brand",
+    "audience",
+    "language_tone",
+    "offers_and_differentials",
+  ] as const
+  for (const f of stringFields) {
+    if (typeof b[f] !== "string" || !(b[f] as string).trim()) return null
+  }
+  const vi = b.visual_identity as Record<string, unknown> | undefined
+  if (!vi || typeof vi !== "object") return null
+  for (const sub of ["palette", "fonts", "references"] as const) {
+    if (typeof vi[sub] !== "string" || !(vi[sub] as string).trim()) return null
+  }
+  return raw as BriefingContent
 }
 
 async function saveBriefing(
