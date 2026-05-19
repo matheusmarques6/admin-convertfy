@@ -856,9 +856,32 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
-                      {nextMeeting.title}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+                        {nextMeeting.title}
+                      </p>
+                      {(() => {
+                        const days = Math.ceil(
+                          (new Date(nextMeeting.scheduled_at).getTime() - Date.now()) /
+                            (1000 * 60 * 60 * 24),
+                        )
+                        if (days < 0) return null
+                        return (
+                          <span
+                            className={cn(
+                              "shrink-0 text-[10px] font-medium px-1.5 py-0 rounded-[4px] border",
+                              days === 0
+                                ? "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA] dark:bg-[#3B1111] dark:text-[#FCA5A5] dark:border-[rgba(252,165,165,0.3)]"
+                                : days <= 3
+                                  ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A] dark:bg-[#3D2A0D] dark:text-[#FCD34D] dark:border-[rgba(252,211,77,0.3)]"
+                                  : "bg-[#EEF0FB] text-[#2137B6] border-[#C7CDEF] dark:bg-[#141C3D] dark:text-[#7B8CEA] dark:border-[rgba(123,140,234,0.3)]",
+                            )}
+                          >
+                            {days === 0 ? "hoje" : days === 1 ? "amanhã" : `em ${days}d`}
+                          </span>
+                        )
+                      })()}
+                    </div>
                     <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
                       {new Date(nextMeeting.scheduled_at).toLocaleString("pt-BR", {
                         day: "2-digit",
