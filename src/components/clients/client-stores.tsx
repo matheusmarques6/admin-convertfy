@@ -76,12 +76,39 @@ interface StoreMetrics {
   flows?: number
 }
 
+interface StoreActivity {
+  type: string
+  description?: string
+  created_at: string
+}
+
 interface ClientStoresProps {
   clientId: string
   clientName: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────
+
+function storeActivityLabel(activity: StoreActivity): string {
+  switch (activity.type) {
+    case "note_added":
+      return "Feedback semanal"
+    case "meeting_scheduled":
+      return "Reunião agendada"
+    case "meeting_completed":
+      return "Reunião realizada"
+    case "report_uploaded":
+      return "Relatório enviado"
+    case "payment_received":
+      return "Pagamento recebido"
+    case "client_updated":
+      return "Configuração atualizada"
+    case "email_sent":
+      return "Email enviado"
+    default:
+      return activity.description?.slice(0, 24) ?? "Atividade"
+  }
+}
 
 function storeActivityRelative(dateString: string): string {
   const date = new Date(dateString)
@@ -133,12 +160,14 @@ function IntegrationPill({
 function StoreCard({
   store,
   metrics,
+  lastActivity,
   onEdit,
   onDelete,
   loading,
 }: {
   store: ClientStore
   metrics?: StoreMetrics
+  lastActivity?: StoreActivity
   onEdit: () => void
   onDelete: () => void
   loading?: boolean
@@ -343,7 +372,11 @@ function StoreCard({
         <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] bg-[#FAFBFC] dark:bg-[#161922] flex items-center justify-between gap-3">
           <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate flex items-center gap-1.5">
             <Clock className="h-3 w-3 shrink-0" />
-            {isOnboarding ? (
+            {lastActivity ? (
+              <>
+                {storeActivityLabel(lastActivity)} · {storeActivityRelative(lastActivity.created_at)}
+              </>
+            ) : isOnboarding ? (
               <>
                 Aguardando briefing · {storeActivityRelative(store.created_at)}
               </>
@@ -401,6 +434,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const router = useRouter()
   const [stores, setStores] = useState<ClientStore[]>([])
   const [metricsMap, setMetricsMap] = useState<Record<string, StoreMetrics>>({})
+  const [activityMap, setActivityMap] = useState<Record<string, StoreActivity>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isMetricsLoading, setIsMetricsLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -457,16 +491,35 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     setIsMetricsLoading(true)
     try {
       const supabase = createBrowserClient()
-      const { data } = await supabase
-        .from("store_revenue_summary")
-        .select(
-          "store_id, store_total_revenue, store_orders, klaviyo_total_revenue, total_leads, total_campaigns, total_flows, period_label",
-        )
-        .in("store_id", storeIds)
-        .eq("period_label", "30d")
+      const [revenueRes, activitiesRes] = await Promise.all([
+        supabase
+          .from("store_revenue_summary")
+          .select(
+            "store_id, store_total_revenue, store_orders, klaviyo_total_revenue, total_leads, total_campaigns, total_flows, period_label",
+          )
+          .in("store_id", storeIds)
+          .eq("period_label", "30d"),
+        supabase
+          .from("activities")
+          .select("type, description, created_at, metadata")
+          .in(
+            "type",
+            [
+              "note_added",
+              "meeting_scheduled",
+              "meeting_completed",
+              "report_uploaded",
+              "payment_received",
+              "client_updated",
+              "email_sent",
+            ],
+          )
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ])
 
       const map: Record<string, StoreMetrics> = {}
-      for (const row of data ?? []) {
+      for (const row of revenueRes.data ?? []) {
         map[row.store_id] = {
           revenue30d: Number(row.store_total_revenue ?? 0),
           orders30d: Number(row.store_orders ?? 0),
@@ -477,6 +530,21 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         }
       }
       setMetricsMap(map)
+
+      // Map activities by store_id from metadata
+      const actMap: Record<string, StoreActivity> = {}
+      for (const a of activitiesRes.data ?? []) {
+        const meta = a.metadata as Record<string, unknown> | undefined
+        const storeId = meta?.store_id as string | undefined
+        if (storeId && storeIds.includes(storeId) && !actMap[storeId]) {
+          actMap[storeId] = {
+            type: a.type,
+            description: a.description,
+            created_at: a.created_at,
+          }
+        }
+      }
+      setActivityMap(actMap)
     } catch (err) {
       console.error("Error loading store metrics:", err)
     } finally {
@@ -708,6 +776,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
               key={store.id}
               store={store}
               metrics={metricsMap[store.id]}
+              lastActivity={activityMap[store.id]}
               loading={isMetricsLoading}
               onEdit={() => openDialog(store)}
               onDelete={() => setDeleteStore(store)}
