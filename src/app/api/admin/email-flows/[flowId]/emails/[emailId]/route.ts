@@ -82,7 +82,7 @@ export async function PATCH(
   context: { params: Promise<{ flowId: string; emailId: string }> },
 ) {
   try {
-    const { emailId } = await context.params
+    const { flowId, emailId } = await context.params
     const sb = await createClient()
     await requireAuth(sb)
     const admin = createAdminClient()
@@ -97,10 +97,68 @@ export async function PATCH(
 
     if (error) throw error
 
+    // Auto-promote flow status quando status do email muda
+    if (parsed.status) {
+      await syncFlowStatusFromEmails(admin, flowId)
+    }
+
     return successResponse(request, { ok: true })
   } catch (error) {
     log.error("Email PATCH error:", error)
     return errorResponse(request, error, "email-patch")
+  }
+}
+
+/**
+ * Recalcula flow.status com base nos status dos emails:
+ *  - Se TODOS os emails sao "live" -> flow "live"
+ *  - Se TODOS sao "approved" ou "live" -> flow "approved"
+ *  - Se TODOS sao "ready+" -> flow "ready_for_review"
+ *  - Se algum esta em progresso -> flow "in_progress"
+ *  - Sem emails ou todos draft -> NAO altera (preserva blocked manual)
+ *
+ * NAO sobrescreve flow.status === "blocked" (decisao manual do user).
+ */
+async function syncFlowStatusFromEmails(
+  admin: ReturnType<typeof createAdminClient>,
+  flowId: string,
+) {
+  const { data: flow } = await admin
+    .from("email_flows")
+    .select("status")
+    .eq("id", flowId)
+    .single()
+  if (!flow || flow.status === "blocked") return
+
+  const { data: emails } = await admin
+    .from("email_flow_emails")
+    .select("status")
+    .eq("flow_id", flowId)
+  if (!emails || emails.length === 0) return
+
+  const statuses = emails.map((e) => e.status as string)
+  let nextStatus: string
+  if (statuses.every((s) => s === "live")) {
+    nextStatus = "live"
+  } else if (statuses.every((s) => s === "approved" || s === "live")) {
+    nextStatus = "approved"
+  } else if (
+    statuses.every(
+      (s) => s === "ready" || s === "approved" || s === "live",
+    )
+  ) {
+    nextStatus = "ready_for_review"
+  } else if (statuses.some((s) => s !== "draft")) {
+    nextStatus = "in_progress"
+  } else {
+    return // todos draft, preserva o atual
+  }
+
+  if (nextStatus !== flow.status) {
+    await admin
+      .from("email_flows")
+      .update({ status: nextStatus })
+      .eq("id", flowId)
   }
 }
 
