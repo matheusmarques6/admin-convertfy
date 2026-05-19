@@ -2,6 +2,9 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TasksStoreContext")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -17,11 +20,11 @@ export async function OPTIONS(request: NextRequest) {
  *                    logos ficam em onboardings.visual_assets.logos (escopo separado)
  *  - top_products:   store_top_products (capturado pelo n8n, read-only)
  *
- * source do brand_brain indica a origem dos campos preenchidos:
- *   "curated" = todos vêm de client_stores (time já curou)
- *   "briefing" = todos vêm do briefing IA do form
- *   "mixed"   = combinação dos dois
- *   "empty"   = nenhum dos dois preenchido
+ * Faz SELECTs separados em vez de joins aninhados pra evitar problemas
+ * de inferência de FK do Supabase. Cadeia de resolução:
+ *   1. task.onboarding_id → onboardings.store_id (tasks de onboarding)
+ *   2. task.store_id direto (tasks criadas direto na página da loja)
+ *   3. nenhum dos dois → metadata fallback
  */
 export async function GET(
   request: NextRequest,
@@ -35,127 +38,46 @@ export async function GET(
     const admin = createAdminClient()
     const { data: task, error: taskErr } = await admin
       .from("tasks")
-      .select("id, title, onboarding_id, store_id, client_id, source_type, metadata")
+      .select(
+        "id, title, onboarding_id, store_id, client_id, source_type, metadata",
+      )
       .eq("id", id)
       .maybeSingle()
 
     if (taskErr || !task) throw new AppError("Task não encontrada", 404)
 
-    // Resolve qual loja consultar — task pode estar vinculada via:
-    //   1. tasks.onboarding_id → onboardings.store_id  (tasks de onboarding)
-    //   2. tasks.store_id direto (tasks criadas direto na página da loja)
-    //   3. nenhum dos dois — task órfã, retorna metadata
-    let resolvedStoreId: string | null = task.store_id ?? null
-    let resolvedOnboarding: {
-      id: string
-      briefing: unknown
-      briefing_status: string
-      visual_assets: unknown
-      language: string | null
-      store_id: string | null
-      client: OnboardingRow["client"]
-      store: StoreRow | null
-      deal: OnboardingRow["deal"]
-    } | null = null
+    // Resolve store_id + client_id + dados do onboarding (se houver)
+    let storeId: string | null = task.store_id ?? null
+    let clientId: string | null = task.client_id ?? null
+    let onboarding: OnboardingRow | null = null
 
     if (task.onboarding_id) {
-      const { data: onbRaw, error: onbErr } = await admin
+      const { data: onbRow } = await admin
         .from("onboardings")
         .select(
-          `id, briefing, briefing_status, visual_assets, language, store_id,
-          client:clients!onboardings_client_id_fkey(
-            id, name,
-            owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
-          ),
-          store:client_stores(
-            id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
-            brand_thesis, brand_about, brand_pillars, brand_presence,
-            store_story, store_milestones,
-            icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
-            tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
-            cores, fontes
-          ),
-          deal:deals!onboardings_source_deal_id_fkey(id, value, plan_name)`,
+          "id, briefing, briefing_status, visual_assets, language, store_id, client_id, source_deal_id",
         )
         .eq("id", task.onboarding_id)
         .maybeSingle()
-
-      if (!onbErr && onbRaw) {
-        const onb = onbRaw as unknown as OnboardingRow
-        resolvedOnboarding = {
-          id: onb.id,
-          briefing: onb.briefing,
-          briefing_status: onb.briefing_status,
-          visual_assets: onb.visual_assets,
-          language: onb.language,
-          store_id: onb.store_id,
-          client: Array.isArray(onb.client) ? onb.client[0] : onb.client,
-          store: Array.isArray(onb.store) ? onb.store[0] : onb.store,
-          deal: Array.isArray(onb.deal) ? onb.deal[0] : onb.deal,
-        }
-        if (resolvedOnboarding.store?.id) {
-          resolvedStoreId = resolvedOnboarding.store.id
-        } else if (onb.store_id) {
-          resolvedStoreId = onb.store_id
-        }
+      if (onbRow) {
+        onboarding = onbRow as OnboardingRow
+        storeId = storeId ?? onbRow.store_id ?? null
+        clientId = clientId ?? onbRow.client_id ?? null
       }
     }
 
-    // Se não veio loja via onboarding mas a task tem store_id direto,
-    // busca a loja avulsa.
-    if (!resolvedOnboarding?.store && resolvedStoreId) {
-      const { data: storeRow } = await admin
-        .from("client_stores")
-        .select(
-          `id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
-          client_id,
-          brand_thesis, brand_about, brand_pillars, brand_presence,
-          store_story, store_milestones,
-          icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
-          tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
-          cores, fontes`,
-        )
-        .eq("id", resolvedStoreId)
-        .maybeSingle()
+    log.info("resolve", {
+      task_id: id,
+      task_onboarding_id: task.onboarding_id ?? null,
+      task_store_id: task.store_id ?? null,
+      task_client_id: task.client_id ?? null,
+      resolved_store_id: storeId,
+      resolved_client_id: clientId,
+      has_onboarding: !!onboarding,
+    })
 
-      if (storeRow) {
-        const store = storeRow as unknown as StoreRow & { client_id?: string }
-        // Busca o cliente da loja
-        let client: OnboardingRow["client"] = null
-        const clientId = store.client_id ?? task.client_id
-        if (clientId) {
-          const { data: clientRow } = await admin
-            .from("clients")
-            .select(
-              `id, name, owner:profiles!clients_owner_id_fkey(id, name, avatar_url)`,
-            )
-            .eq("id", clientId)
-            .maybeSingle()
-          if (clientRow) {
-            const c = clientRow as unknown as NonNullable<OnboardingRow["client"]>
-            client = {
-              id: c.id,
-              name: c.name,
-              owner: Array.isArray(c.owner) ? c.owner[0] : c.owner,
-            }
-          }
-        }
-        resolvedOnboarding = {
-          id: "",
-          briefing: null,
-          briefing_status: "",
-          visual_assets: null,
-          language: null,
-          store_id: store.id,
-          client,
-          store,
-          deal: null,
-        }
-      }
-    }
-
-    // Sem onboarding e sem store — retorna identidade básica via metadata
-    if (!resolvedOnboarding) {
+    // Sem loja resolvida — retorna identidade básica via metadata
+    if (!storeId) {
       const meta = (task.metadata as Record<string, unknown>) ?? {}
       return successResponse(request, {
         identity: {
@@ -176,47 +98,99 @@ export async function GET(
       })
     }
 
-    const client = resolvedOnboarding.client
-    const store = resolvedOnboarding.store
-    const deal = resolvedOnboarding.deal
+    // Busca dados da loja, cliente, deal e top products em paralelo
+    const [storeRes, clientRes, dealRes, topProductsRes] = await Promise.all([
+      admin
+        .from("client_stores")
+        .select(
+          `id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
+          brand_thesis, brand_about, brand_pillars, brand_presence,
+          store_story, store_milestones,
+          icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
+          tone_description, tone_do, tone_dont, tone_use_words, tone_avoid_words,
+          cores, fontes`,
+        )
+        .eq("id", storeId)
+        .maybeSingle(),
+      clientId
+        ? admin
+            .from("clients")
+            .select("id, name, owner_id")
+            .eq("id", clientId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      onboarding?.source_deal_id
+        ? admin
+            .from("deals")
+            .select("id, value, plan_name")
+            .eq("id", onboarding.source_deal_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      admin
+        .from("store_top_products")
+        .select(
+          "rank, title, price, currency, handle, image_url, external_id",
+        )
+        .eq("store_id", storeId)
+        .order("rank", { ascending: true })
+        .limit(5),
+    ])
 
-    // Top products — tabela real (n8n popula)
-    const topProductsRes = store?.id
-      ? await admin
-          .from("store_top_products")
-          .select(
-            "rank, title, price, currency, handle, image_url, external_id",
-          )
-          .eq("store_id", store.id)
-          .order("rank", { ascending: true })
-          .limit(5)
-      : { data: [] as Array<Record<string, unknown>> }
+    const store = storeRes.data as StoreRow | null
+    const clientRow = clientRes.data as
+      | { id: string; name: string; owner_id: string | null }
+      | null
+    const deal = dealRes.data as
+      | { id: string; value: number | null; plan_name: string | null }
+      | null
 
-    const briefing = (resolvedOnboarding.briefing ?? {}) as BriefingShape
-    const visualAssets = (resolvedOnboarding.visual_assets ?? {}) as VisualAssetsShape
+    // Owner do cliente (CS responsável) — busca depois pra não atrelar ao client query
+    let ownerInfo: { id: string; name: string; avatar_url: string | null } | null =
+      null
+    if (clientRow?.owner_id) {
+      const { data: ownerRow } = await admin
+        .from("profiles")
+        .select("id, name, avatar_url")
+        .eq("id", clientRow.owner_id)
+        .maybeSingle()
+      if (ownerRow) {
+        ownerInfo = ownerRow as unknown as {
+          id: string
+          name: string
+          avatar_url: string | null
+        }
+      }
+    }
+
+    if (!store) {
+      log.warn("store.not_found", { task_id: id, store_id: storeId })
+    }
+
+    const briefing = (onboarding?.briefing ?? {}) as BriefingShape
+    const visualAssets = (onboarding?.visual_assets ?? {}) as VisualAssetsShape
 
     return successResponse(request, {
       identity: {
-        store_id: store?.id,
+        store_id: store?.id ?? storeId,
         store_name: store?.store_name ?? null,
         store_url: store?.store_url ?? null,
-        client_id: client?.id,
-        client_name: client?.name ?? null,
-        client_owner: client?.owner ?? null,
+        client_id: clientRow?.id,
+        client_name: clientRow?.name ?? null,
+        client_owner: ownerInfo,
         platform: store?.platform ?? null,
         niche: store?.niche ?? null,
         country: store?.country ?? null,
         language:
-          resolvedOnboarding.language ?? store?.language ?? "pt-BR",
+          onboarding?.language ?? store?.language ?? "pt-BR",
         mrr: deal?.value ?? store?.mrr_value ?? null,
         plan: deal?.plan_name ?? store?.plan ?? null,
       },
       brand_brain: buildBrandBrain(store, briefing),
-      briefing_status: resolvedOnboarding.briefing_status,
+      briefing_status: onboarding?.briefing_status,
       assets_visuais: buildAssetsVisuais(store, visualAssets),
       top_products: topProductsRes.data ?? [],
-      onboarding_id: resolvedOnboarding.id || task.onboarding_id || null,
-      store_id: store?.id ?? null,
+      onboarding_id: onboarding?.id ?? task.onboarding_id ?? null,
+      store_id: storeId,
     })
   } catch (error) {
     return errorResponse(request, error, "TasksStoreContext")
@@ -239,6 +213,17 @@ interface VisualAssetsShape {
   logos?: Record<string, unknown>
   font?: { family?: string; fallback?: string }
   top_products?: Array<{ name: string; image_url?: string; url?: string }>
+}
+
+interface OnboardingRow {
+  id: string
+  briefing: unknown
+  briefing_status: string
+  visual_assets: unknown
+  language: string | null
+  store_id: string | null
+  client_id: string | null
+  source_deal_id: string | null
 }
 
 interface StoreRow {
@@ -269,18 +254,6 @@ interface StoreRow {
   tone_avoid_words: string[] | null
   cores: Array<{ name: string; hex: string; use?: string }> | null
   fontes: { titulo?: string; corpo?: string } | null
-}
-
-interface OnboardingRow {
-  id: string
-  briefing: unknown
-  briefing_status: string
-  visual_assets: unknown
-  language: string | null
-  store_id: string | null
-  client: { id: string; name: string; owner: { id: string; name: string; avatar_url: string | null } | null } | null
-  store: StoreRow | null
-  deal: { id: string; value: number | null; plan_name: string | null } | null
 }
 
 // ─── Builders ────────────────────────────────────────────────────────────
