@@ -134,6 +134,7 @@ export const PERIODS = [
   { value: "7d", label: "7 dias" },
   { value: "15d", label: "15 dias" },
   { value: "30d", label: "30 dias" },
+  { value: "90d", label: "90 dias" },
 ]
 
 export function useClientPerformance(clientId: string): ClientPerformanceState {

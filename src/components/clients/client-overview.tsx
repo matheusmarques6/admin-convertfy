@@ -880,14 +880,14 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
                     </Button>
                   ) : (
                     <Button variant="primary" size="sm" className="flex-1" asChild>
-                      <Link href={`/admin/meetings/${nextMeeting.id}`}>
+                      <Link href={`/admin/meetings?meetingId=${nextMeeting.id}`}>
                         <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
                         Ver reunião
                       </Link>
                     </Button>
                   )}
                   <Button variant="secondary" size="sm" asChild>
-                    <Link href={`/admin/meetings/new?clientId=${client.id}`}>
+                    <Link href={`/admin/meetings?meetingId=${nextMeeting.id}`}>
                       <Pencil className="h-3.5 w-3.5 mr-1.5" />
                       Reagendar
                     </Link>
