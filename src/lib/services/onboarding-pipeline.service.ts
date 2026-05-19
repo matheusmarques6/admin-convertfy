@@ -590,6 +590,19 @@ export async function advanceColumn(
       payload: { onboarding_id: opts.onboardingId },
       metadata: { org_id: onb.org_id },
     })
+
+    // Email "Conta ativa" pro cliente (Etapa 7 — Resend, fire-and-forget)
+    void (async () => {
+      try {
+        const { sendAccountActiveEmail } = await import(
+          "@/lib/services/onboarding-email.service"
+        )
+        await sendAccountActiveEmail(opts.onboardingId)
+      } catch (e) {
+        log.error("sendAccountActiveEmail failed", e)
+      }
+    })()
+
     return { ok: true }
   }
 
