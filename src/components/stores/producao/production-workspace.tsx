@@ -430,6 +430,7 @@ export function ProductionWorkspace({
                   mutate()
                   setSelection({ kind: "email", flowId: flow.id, emailId: newEmailId })
                 }}
+                onFlowChanged={() => mutate()}
               />
             ))}
           </div>
@@ -641,18 +642,48 @@ function FlowItem({
   selection,
   onSelectEmail,
   onCreated,
+  onFlowChanged,
 }: {
   flow: EmailFlow
   selection: Selection
   onSelectEmail: (emailId: string) => void
   onCreated: (newEmailId: string) => void
+  onFlowChanged: () => void
 }) {
   const FlowIcon = FLOW_ICONS[flow.flow_type] ?? Mail
   const isBlocked = flow.status === "blocked"
   const expanded = !isBlocked
   const [open, setOpen] = useState(expanded)
   const [creating, setCreating] = useState(false)
+  const [unblocking, setUnblocking] = useState(false)
   const toast = useToast()
+
+  const handleUnblock = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (unblocking) return
+    setUnblocking(true)
+    try {
+      const res = await fetch(`/api/admin/email-flows/${flow.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao desbloquear")
+      }
+      toast.toast({ title: "Flow desbloqueado", description: flow.name })
+      onFlowChanged()
+    } catch (err) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao desbloquear",
+        description: (err as Error).message,
+      })
+    } finally {
+      setUnblocking(false)
+    }
+  }
 
   const handleCreateEmail = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -693,16 +724,22 @@ function FlowItem({
 
   return (
     <div style={{ marginBottom: 2 }}>
-      <button
+      <div
+        role={isBlocked ? undefined : "button"}
+        tabIndex={isBlocked ? -1 : 0}
         onClick={() => !isBlocked && setOpen((v) => !v)}
-        disabled={isBlocked}
+        onKeyDown={(e) => {
+          if (!isBlocked && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault()
+            setOpen((v) => !v)
+          }
+        }}
         className="cf-focusable w-full flex items-center gap-2 text-left"
         style={{
           padding: "7px 10px",
           borderRadius: 6,
           background: "transparent",
           color: isBlocked ? "var(--crm-gray-400)" : "var(--crm-gray-700)",
-          border: 0,
           cursor: isBlocked ? "default" : "pointer",
           fontSize: 13,
           fontWeight: 500,
@@ -731,15 +768,22 @@ function FlowItem({
         <FlowIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 truncate">{flow.name}</span>
         {isBlocked ? (
-          <span
+          <button
+            onClick={handleUnblock}
+            disabled={unblocking}
+            title="Desbloquear flow"
             style={{
               fontSize: 10,
-              color: "var(--crm-gray-400)",
-              fontStyle: "italic",
+              color: unblocking ? "var(--crm-gray-300)" : "var(--crm-brand)",
+              fontWeight: 600,
+              background: "transparent",
+              border: 0,
+              cursor: unblocking ? "default" : "pointer",
+              padding: "0 4px",
             }}
           >
-            (bloqueado)
-          </span>
+            {unblocking ? "..." : "Desbloquear"}
+          </button>
         ) : total > 0 ? (
           <span
             className="crm-tnum"
@@ -752,7 +796,7 @@ function FlowItem({
             {ready}/{total}
           </span>
         ) : null}
-      </button>
+      </div>
       {open && !isBlocked && (
         <div style={{ paddingLeft: 12 }}>
           {emails.length === 0 && (
