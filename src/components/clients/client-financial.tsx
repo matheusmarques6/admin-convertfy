@@ -763,10 +763,10 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     })
   }
 
-  function openStatusDialog(charge: LocalCharge) {
+  function openStatusDialog(charge: LocalCharge, initialStatus?: LocalCharge["status"]) {
     setSelectedCharge(charge)
     setStatusForm({
-      status: charge.status,
+      status: initialStatus ?? charge.status,
       actualPaymentMethod: charge.actual_payment_method || "",
       paymentDate: charge.payment_date || new Date().toISOString().split("T")[0],
       notes: charge.notes || "",
@@ -805,9 +805,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     // Local: abre dialog de status com pagamento já marcado como "paid"
     const charge = localCharges.find((c) => c.id === payment!.id)
     if (charge) {
-      openStatusDialog(charge)
-      // Pré-seleciona status "paid"
-      setStatusForm((prev) => ({ ...prev, status: "paid" }))
+      openStatusDialog(charge, "paid")
     }
   }
 
@@ -1432,7 +1430,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Mais ações">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -1495,7 +1493,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Mais ações">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -1576,7 +1574,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         </Badge>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -1640,7 +1638,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <Badge variant={sub.isActive ? "positive" : "neutral"}>{sub.statusLabel}</Badge>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Mais ações">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
