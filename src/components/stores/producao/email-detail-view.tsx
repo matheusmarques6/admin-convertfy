@@ -105,6 +105,39 @@ export function EmailDetailView({
       ? emails[currentIdx + 1]
       : null
 
+  // Atalhos: J = email anterior, K = proximo, [ / ] = tab Struct/QA
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const target = ev.target as HTMLElement | null
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      )
+        return
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return
+      if (ev.key === "j" || ev.key === "J") {
+        if (prevEmail) {
+          ev.preventDefault()
+          onNavigate(prevEmail.id)
+        }
+      } else if (ev.key === "k" || ev.key === "K") {
+        if (nextEmail) {
+          ev.preventDefault()
+          onNavigate(nextEmail.id)
+        }
+      } else if (ev.key === "[") {
+        ev.preventDefault()
+        setActiveTab("struct")
+      } else if (ev.key === "]") {
+        ev.preventDefault()
+        setActiveTab("qa")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [prevEmail, nextEmail, onNavigate])
+
   const blocksTotal = blocks.length
   const blocksApplied = blocks.filter((b) => b.applied).length
   const qaTotal = qaItems.length
@@ -866,6 +899,7 @@ export function EmailDetailView({
         >
           <ChevronLeft className="h-3 w-3" />
           Anterior
+          <KbdHint>J</KbdHint>
         </button>
         <div className="flex items-center gap-1">
           {emails.map((e, i) => {
@@ -941,12 +975,44 @@ export function EmailDetailView({
               cursor: nextEmail ? "pointer" : "default",
             }}
           >
+            <KbdHint inverted={!!nextEmail}>K</KbdHint>
             Próximo
             <ChevronRight className="h-3 w-3" />
           </button>
         </div>
       </div>
     </>
+  )
+}
+
+function KbdHint({
+  children,
+  inverted,
+}: {
+  children: React.ReactNode
+  inverted?: boolean
+}) {
+  return (
+    <span
+      className="crm-tnum"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 16,
+        height: 16,
+        padding: "0 4px",
+        marginLeft: 4,
+        borderRadius: 3,
+        background: inverted ? "rgba(255,255,255,0.18)" : "var(--crm-gray-100)",
+        color: inverted ? "#fff" : "var(--crm-gray-500)",
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+      }}
+    >
+      {children}
+    </span>
   )
 }
 
