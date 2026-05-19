@@ -16,6 +16,9 @@ import {
   Plus,
   Smartphone,
   ArrowRight,
+  Store as StoreIcon,
+  TestTube2,
+  Plug,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,7 +45,67 @@ interface ActivityMeta {
   iconColor: string
 }
 
-type ActivityCategory = "feedback" | "financeiro" | "reuniao" | "teste" | "sistema" | "loja"
+type ActivityCategory = "feedback" | "financeiro" | "reuniao" | "teste" | "sistema" | "loja" | "integracao"
+
+// Preset visuals per category (used for metadata.kind sobrescritas)
+const CATEGORY_VISUAL: Record<ActivityCategory, { icon: typeof Edit; label: string; badgeBg: string; badgeText: string; iconBg: string; iconColor: string }> = {
+  feedback: {
+    icon: MessageSquare,
+    label: "FEEDBACK",
+    badgeBg: "bg-[#EEF0FB] dark:bg-[#141C3D]",
+    badgeText: "text-[#2137B6] dark:text-[#7B8CEA]",
+    iconBg: "bg-[#EEF0FB] dark:bg-[#141C3D]",
+    iconColor: "text-[#2137B6] dark:text-[#7B8CEA]",
+  },
+  financeiro: {
+    icon: DollarSign,
+    label: "FINANCEIRO",
+    badgeBg: "bg-[#ECFDF5] dark:bg-[#0B2C24]",
+    badgeText: "text-[#065F46] dark:text-[#6EE7B7]",
+    iconBg: "bg-[#ECFDF5] dark:bg-[#0B2C24]",
+    iconColor: "text-[#065F46] dark:text-[#6EE7B7]",
+  },
+  reuniao: {
+    icon: Calendar,
+    label: "REUNIÃO",
+    badgeBg: "bg-[#FFFBEB] dark:bg-[#3D2A0D]",
+    badgeText: "text-[#92400E] dark:text-[#FCD34D]",
+    iconBg: "bg-[#FFFBEB] dark:bg-[#3D2A0D]",
+    iconColor: "text-[#92400E] dark:text-[#FCD34D]",
+  },
+  teste: {
+    icon: TestTube2,
+    label: "TESTE A/B",
+    badgeBg: "bg-[#F3E8FF] dark:bg-[#2D1B4E]",
+    badgeText: "text-[#6B21A8] dark:text-[#C4B5FD]",
+    iconBg: "bg-[#F3E8FF] dark:bg-[#2D1B4E]",
+    iconColor: "text-[#6B21A8] dark:text-[#C4B5FD]",
+  },
+  loja: {
+    icon: StoreIcon,
+    label: "LOJA",
+    badgeBg: "bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.04)]",
+    badgeText: "text-gray-700 dark:text-[#EAEDF3]",
+    iconBg: "bg-[#1F1F1F] dark:bg-[#0B0B0B]",
+    iconColor: "text-white",
+  },
+  integracao: {
+    icon: Plug,
+    label: "INTEGRAÇÃO",
+    badgeBg: "bg-[#ECFDF5] dark:bg-[#0B2C24]",
+    badgeText: "text-[#065F46] dark:text-[#6EE7B7]",
+    iconBg: "bg-[#ECFDF5] dark:bg-[#0B2C24]",
+    iconColor: "text-[#065F46] dark:text-[#6EE7B7]",
+  },
+  sistema: {
+    icon: Edit,
+    label: "SISTEMA",
+    badgeBg: "bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.04)]",
+    badgeText: "text-gray-600 dark:text-[#8B92A5]",
+    iconBg: "bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.04)]",
+    iconColor: "text-gray-500 dark:text-[#5C6378]",
+  },
+}
 
 const ACTIVITY_META: Record<string, ActivityMeta> = {
   note_added: {
@@ -155,7 +218,22 @@ const ACTIVITY_META: Record<string, ActivityMeta> = {
   },
 }
 
-function getActivityMeta(type: string): ActivityMeta {
+function getActivityMeta(type: string, metadata?: Record<string, unknown>): ActivityMeta {
+  // metadata.kind sobrescreve categoria + visual (ex: kind="loja_criada" → categoria "loja")
+  const kind = metadata?.kind as ActivityCategory | undefined
+  if (kind && CATEGORY_VISUAL[kind]) {
+    const visual = CATEGORY_VISUAL[kind]
+    return {
+      icon: visual.icon,
+      label: (metadata?.label as string) ?? visual.label,
+      category: kind,
+      badgeBg: visual.badgeBg,
+      badgeText: visual.badgeText,
+      iconBg: visual.iconBg,
+      iconColor: visual.iconColor,
+    }
+  }
+
   return (
     ACTIVITY_META[type] ?? {
       icon: Edit,
@@ -175,6 +253,8 @@ const CATEGORY_FILTERS: { value: ActivityCategory | "all"; label: string; dot?: 
   { value: "financeiro", label: "Financeiro", dot: "bg-[#10B981]" },
   { value: "reuniao", label: "Reuniões", dot: "bg-[#F59E0B]" },
   { value: "teste", label: "Testes & Entregas", dot: "bg-[#7C3AED]" },
+  { value: "loja", label: "Lojas", dot: "bg-gray-700" },
+  { value: "integracao", label: "Integrações", dot: "bg-[#065F46]" },
   { value: "sistema", label: "Sistema", dot: "bg-gray-400" },
 ]
 
@@ -239,11 +319,11 @@ function EventItem({
   activity: Activity
   ownerName?: string
 }) {
-  const meta = getActivityMeta(activity.type)
+  const metadata = activity.metadata as Record<string, unknown> | undefined
+  const meta = getActivityMeta(activity.type, metadata)
   const Icon = meta.icon
   const date = new Date(activity.created_at)
 
-  const metadata = activity.metadata as Record<string, unknown> | undefined
   const tags = (metadata?.tags as string[] | undefined) ?? []
 
   return (
@@ -383,7 +463,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
 
   const filteredActivities = useMemo(() => {
     if (filter === "all") return activities
-    return activities.filter((a) => getActivityMeta(a.type).category === filter)
+    return activities.filter((a) => getActivityMeta(a.type, a.metadata as Record<string, unknown> | undefined).category === filter)
   }, [activities, filter])
 
   // Group by month
@@ -403,7 +483,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
     const counts: Record<string, number> = { all: activities.length }
     for (const cat of CATEGORY_FILTERS) {
       if (cat.value === "all") continue
-      counts[cat.value] = activities.filter((a) => getActivityMeta(a.type).category === cat.value).length
+      counts[cat.value] = activities.filter((a) => getActivityMeta(a.type, a.metadata as Record<string, unknown> | undefined).category === cat.value).length
     }
     return counts
   }, [activities])
@@ -413,7 +493,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
     for (const a of activities) {
       const author = ownerNames[a.user_id] ?? ""
       csv.push(
-        `${new Date(a.created_at).toLocaleString("pt-BR")};${getActivityMeta(a.type).label};${a.description.replace(/;/g, ",")};${author}`,
+        `${new Date(a.created_at).toLocaleString("pt-BR")};${getActivityMeta(a.type, a.metadata as Record<string, unknown> | undefined).label};${a.description.replace(/;/g, ",")};${author}`,
       )
     }
     const blob = new Blob([csv.join("\n")], { type: "text/csv;charset=utf-8" })

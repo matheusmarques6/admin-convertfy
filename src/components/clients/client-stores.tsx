@@ -15,7 +15,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Filter,
-  CheckCircle2,
+  Clock,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -79,6 +79,24 @@ interface StoreMetrics {
 interface ClientStoresProps {
   clientId: string
   clientName: string
+}
+
+// ─── Helpers ──────────────────────────────────────────────
+
+function storeActivityRelative(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMin < 1) return "agora mesmo"
+  if (diffMin < 60) return `há ${diffMin}min`
+  if (diffHours < 24) return `há ${diffHours}h`
+  if (diffDays < 30) return `há ${diffDays} dia${diffDays !== 1 ? "s" : ""}`
+  const diffMonths = Math.floor(diffDays / 30)
+  return `há ${diffMonths} ${diffMonths !== 1 ? "meses" : "mês"}`
 }
 
 // ─── Integration pill ─────────────────────────────────────
@@ -323,15 +341,18 @@ function StoreCard({
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] bg-[#FAFBFC] dark:bg-[#161922] flex items-center justify-between gap-3">
-          <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate flex items-center gap-1">
-            {connectedCount >= 2 ? (
+          <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate flex items-center gap-1.5">
+            <Clock className="h-3 w-3 shrink-0" />
+            {isOnboarding ? (
               <>
-                <CheckCircle2 className="h-3 w-3 text-[#065F46] dark:text-[#6EE7B7] shrink-0" />
-                Integrações ativas
+                Aguardando briefing · {storeActivityRelative(store.created_at)}
+              </>
+            ) : connectedCount >= 2 ? (
+              <>
+                Sincronização ativa · {storeActivityRelative(store.created_at)}
               </>
             ) : (
               <>
-                <AlertTriangle className="h-3 w-3 text-[#F59E0B] shrink-0" />
                 Aguardando configuração
               </>
             )}

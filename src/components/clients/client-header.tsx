@@ -431,7 +431,7 @@ export function ClientHeader({ client, ltv }: ClientHeaderProps) {
             <KpiCol
               label="LTV"
               value={ltv && ltv > 0 ? formatCurrency(ltv) : "—"}
-              sub={ltv && ltv > 0 ? "total acumulado" : undefined}
+              sub={ltv && ltv > 0 ? `desde ${formatDate(client.created_at)}` : undefined}
               isLast
             />
           </div>

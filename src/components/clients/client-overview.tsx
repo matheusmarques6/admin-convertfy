@@ -15,8 +15,9 @@ import {
   Mail,
   Users,
   RefreshCw,
-  Sparkles,
   ExternalLink,
+  FileText,
+  Eraser,
 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +29,7 @@ import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
 import { useClientPerformanceContext, PERIODS } from "@/lib/hooks/use-client-performance"
+import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import type { Client, Contract, Meeting, User as UserType, Activity } from "@/types"
 
@@ -134,7 +136,7 @@ function MiniKpiCard({
 
 // ─── Performance Section (4 KPIs + Atribuição bar) ────────
 
-export function ClientOverviewPerformance({ clientName }: { clientId: string; clientName: string }) {
+export function ClientOverviewPerformance({ activeStoresCount }: { clientId: string; clientName: string; activeStoresCount?: number }) {
   const { data, loading, error, period, setPeriod, refresh, isValidating } =
     useClientPerformanceContext()
 
@@ -158,7 +160,9 @@ export function ClientOverviewPerformance({ clientName }: { clientId: string; cl
         <div>
           <CardTitle className="text-sm font-semibold">Performance Convertfy · últimos {periodLabel(period)}</CardTitle>
           <p className="text-[12px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
-            Resultados consolidados de {clientName}
+            {activeStoresCount != null && activeStoresCount > 0
+              ? `Resultados consolidados das ${activeStoresCount} loja${activeStoresCount !== 1 ? "s" : ""} ativa${activeStoresCount !== 1 ? "s" : ""}`
+              : "Sem lojas ativas no período"}
           </p>
         </div>
         <div className="flex items-center gap-1 flex-wrap">
@@ -251,8 +255,8 @@ export function ClientOverviewPerformance({ clientName }: { clientId: string; cl
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-[#5C6378] mt-1 tabular-nums">
-              <span>{formatCurrency(0)}</span>
-              <span>{formatCurrency(storeRevenue)} total</span>
+              <span>R$ 0</span>
+              <span>{formatRevenueShort(storeRevenue)} total</span>
             </div>
           </div>
         )}
@@ -272,6 +276,13 @@ function periodLabel(period: string): string {
     case "custom": return "período"
     default: return period
   }
+}
+
+// R$ 1.449k em vez de R$ 1.449.000
+function formatRevenueShort(value: number): string {
+  if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
+  if (value >= 1_000) return `R$ ${(value / 1_000).toFixed(0)}k`
+  return `R$ ${value.toFixed(0)}`
 }
 
 // ─── Linked Stores Card ───────────────────────────────────
@@ -388,11 +399,14 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
   const [activeContract, setActiveContract] = useState<Contract | null>(null)
   const [localTotalPaid, setLocalTotalPaid] = useState(0)
   const [localPendingAmount, setLocalPendingAmount] = useState(0)
+  const [activeSubsCount, setActiveSubsCount] = useState(0)
   const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null)
   const [localLoading, setLocalLoading] = useState(true)
   const [activities, setActivities] = useState<Activity[]>([])
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [isClearingCache, setIsClearingCache] = useState(false)
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const clientCustomFields = client.custom_fields as Record<string, unknown> | null
   const [notes, setNotes] = useState((clientCustomFields?.notes as string) ?? "")
   const [isSavingNotes, setIsSavingNotes] = useState(false)
@@ -433,7 +447,7 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
   useEffect(() => {
     async function loadLocalData() {
       const supabase = createClient()
-      const [contractsRes, invoicesRes, meetingsRes, activitiesRes, storesRes] = await Promise.all([
+      const [contractsRes, invoicesRes, meetingsRes, activitiesRes, storesRes, subsRes] = await Promise.all([
         supabase.from("contracts").select("*").eq("client_id", client.id).eq("status", "active").limit(1),
         supabase.from("unified_invoices").select("amount, status").eq("client_id", client.id).limit(50),
         supabase
@@ -458,6 +472,11 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
             "store_id",
             (client.client_stores ?? []).map((s) => s.id),
           ),
+        supabase
+          .from("client_subscriptions")
+          .select("id, status")
+          .eq("client_id", client.id)
+          .eq("status", "active"),
       ])
       setActiveContract(contractsRes.data?.[0] || null)
       const invoices = invoicesRes.data || []
@@ -471,6 +490,7 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
       )
       setNextMeeting(meetingsRes.data?.[0] || null)
       setActivities(activitiesRes.data || [])
+      setActiveSubsCount(subsRes.data?.length ?? 0)
       setLocalLoading(false)
       setActivitiesLoading(false)
 
@@ -502,6 +522,49 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
     } finally {
       setIsSavingNotes(false)
     }
+  }
+
+  async function handleClearCache() {
+    setIsClearingCache(true)
+    try {
+      // Invalida cache de relatórios das lojas (cache 35min do Omnisend)
+      const storeIds = (client.client_stores ?? []).map((s) => s.id)
+      const results = await Promise.allSettled(
+        storeIds.flatMap((id) => [
+          fetch(`/api/integrations/email-platform/report?store_id=${id}&period=30d&force_refresh=true`, {
+            cache: "no-store",
+          }),
+          fetch(`/api/integrations/shopify/report?store_id=${id}&period=30d&force_refresh=true`, {
+            cache: "no-store",
+          }),
+        ]),
+      )
+      const failed = results.filter((r) => r.status === "rejected").length
+      if (failed > 0) {
+        toast({
+          variant: "destructive",
+          title: "Cache parcialmente limpo",
+          description: `${failed} requisição(ões) falharam. Recarregue a página em alguns segundos.`,
+        })
+      } else {
+        toast({
+          title: "Cache limpo",
+          description: "Recarregando métricas...",
+        })
+      }
+      // Trigger SWR refetch via window reload
+      setTimeout(() => window.location.reload(), 800)
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao limpar cache" })
+    } finally {
+      setIsClearingCache(false)
+    }
+  }
+
+  function handleGenerateReport() {
+    setIsGeneratingReport(true)
+    // Redirect to report builder with client preselected
+    window.location.href = `/admin/reports/new?clientId=${client.id}`
   }
 
   // Stores list
@@ -538,10 +601,54 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
     : []
 
   return (
+    <div className="space-y-5">
+      {/* Page header */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-[18px] font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Visão Geral
+          </h2>
+          <p className="text-[13px] text-gray-500 dark:text-[#8B92A5] mt-0.5">
+            Snapshot estratégico de {client.name.split(" ")[0]} · performance consolidada de {linkedStores.length} loja{linkedStores.length !== 1 ? "s" : ""}, atividade recente e relacionamento.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleClearCache}
+            disabled={isClearingCache}
+          >
+            {isClearingCache ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Eraser className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Limpar cache
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleGenerateReport}
+            disabled={isGeneratingReport}
+          >
+            {isGeneratingReport ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <FileText className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Gerar relatório
+          </Button>
+        </div>
+      </div>
+
     <div className="grid gap-5 lg:grid-cols-5">
       {/* Left column 3/5 — Performance, Stores, Activity */}
       <div className="lg:col-span-3 space-y-5">
-        <ClientOverviewPerformance clientId={client.id} clientName={client.name} />
+        <ClientOverviewPerformance
+          clientId={client.id}
+          clientName={client.name}
+          activeStoresCount={(client.client_stores ?? []).filter((s) => s.is_active).length}
+        />
 
         {/* Lojas vinculadas */}
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
@@ -883,6 +990,14 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
                       </dd>
                     </div>
                   )}
+                  {activeSubsCount > 0 && (
+                    <div className="flex justify-between items-center">
+                      <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">Assinaturas</dt>
+                      <dd className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3]">
+                        {activeSubsCount} ativa{activeSubsCount !== 1 ? "s" : ""}
+                      </dd>
+                    </div>
+                  )}
                   {ltv != null && ltv > 0 && (
                     <div className="flex justify-between items-center">
                       <dt className="text-[12px] text-gray-500 dark:text-[#8B92A5]">LTV acumulado</dt>
@@ -929,13 +1044,8 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
         )}
 
         {/* Sparkles tip */}
-        <div className="rounded-[6px] p-3 bg-[#EEF0FB] dark:bg-[#141C3D] border border-[#C7CDEF] dark:border-[rgba(123,140,234,0.3)] flex items-start gap-2">
-          <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[#2137B6] dark:text-[#7B8CEA] shrink-0" />
-          <p className="text-[11px] text-[#2137B6] dark:text-[#7B8CEA] leading-snug">
-            Snapshot estratégico de {client.name.split(" ")[0]} · performance consolidada de {linkedStores.length} loja{linkedStores.length !== 1 ? "s" : ""}, atividade recente e relacionamento.
-          </p>
-        </div>
       </div>
+    </div>
     </div>
   )
 }
