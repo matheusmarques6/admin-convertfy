@@ -60,7 +60,7 @@ export async function POST(
     const { data: onb } = await admin
       .from("onboardings")
       .select(
-        "id, briefing_status, briefing_confirmed_by_client, briefing_started_at",
+        "id, briefing_status, briefing_confirmed_by_client, briefing_started_at, form_responses",
       )
       .eq("form_token", token)
       .maybeSingle()
@@ -80,6 +80,13 @@ export async function POST(
       )
     }
 
+    // Compara form_responses antigo vs novo. Se idênticos, não regenera
+    // (evita tokens + 30s+ de espera por nada quando cliente clica next
+    // sem ter alterado nada).
+    const responsesChanged =
+      JSON.stringify(onb.form_responses ?? {}) !==
+      JSON.stringify(body.responses)
+
     await admin
       .from("onboardings")
       .update({
@@ -98,11 +105,22 @@ export async function POST(
       Date.now() - new Date(onb.briefing_started_at).getTime() >
         BRIEFING_STUCK_THRESHOLD_MS
 
-    // Dispara generateBriefing somente se nao esta gerando OU ja gerado
-    // (evita spam e re-geracoes desnecessarias) — a menos que esteja stuck
+    // Dispara generateBriefing somente se:
+    //   - está stuck (libera retry), OU
+    //   - status não bloqueia (≠ generating/approved) E
+    //   - houve mudança real nas respostas (evita regeneração inútil)
+    // Exceção: se briefing nunca foi gerado (status=not_started/
+    // form_partially_filled), sempre tenta — primeira geração precisa rodar.
+    const isFirstGeneration = [
+      "not_started",
+      "form_partially_filled",
+    ].includes(onb.briefing_status as string)
+    const statusAllowsGeneration = !["generating", "approved"].includes(
+      onb.briefing_status as string,
+    )
     const shouldGenerate =
       isStuck ||
-      !["generating", "approved"].includes(onb.briefing_status as string)
+      (statusAllowsGeneration && (isFirstGeneration || responsesChanged))
 
     if (shouldGenerate) {
       // after() do Next 15: garante que a Promise termina antes da function

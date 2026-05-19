@@ -1196,6 +1196,11 @@ function BriefingReviewInline({
   const [pollStartedAt, setPollStartedAt] = useState<number | null>(null)
   const [timedOut, setTimedOut] = useState(false)
   const [retrying, setRetrying] = useState(false)
+
+  // Track do generated_at da última versão renderizada. Quando muda,
+  // detectamos que o briefing foi regenerado (cliente voltou e alterou
+  // respostas) e refrescamos editable + resetamos edições stale.
+  const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null)
   // Budget server-side: T1 40s + T2 20s + T3 ~0s = 60s.
   // Cliente espera 75s (buffer pra rede / 1 ciclo de poll).
   const POLL_TIMEOUT_MS = 75_000
@@ -1216,9 +1221,17 @@ function BriefingReviewInline({
         setStatus(j.status)
         if (j.briefing) {
           setBriefing(j.briefing)
-          if (!editable) {
+          const incomingGeneratedAt: string | null = j.generated_at ?? null
+          // Briefing novo? (primeira vez OU regenerado com generated_at diferente)
+          const isNewBriefing =
+            !editable ||
+            (incomingGeneratedAt !== null &&
+              incomingGeneratedAt !== lastGeneratedAt)
+          if (isNewBriefing) {
             setEditable(j.briefing)
             setClientAdditions(j.briefing.client_additions ?? "")
+            setEditedFields(new Set())
+            setLastGeneratedAt(incomingGeneratedAt)
           }
         }
         if (j.confirmed) {
@@ -1254,7 +1267,7 @@ function BriefingReviewInline({
       stopped = true
       if (timer) clearTimeout(timer)
     }
-  }, [token, editable, onConfirmed, pollStartedAt])
+  }, [token, editable, onConfirmed, pollStartedAt, lastGeneratedAt])
 
   async function handleRetry() {
     setRetrying(true)

@@ -12,7 +12,9 @@ export async function GET(
     const admin = createAdminClient()
     const { data: onb } = await admin
       .from("onboardings")
-      .select("id, briefing_status, briefing, briefing_confirmed_by_client")
+      .select(
+        "id, briefing_status, briefing, briefing_confirmed_by_client, briefing_generated_at",
+      )
       .eq("form_token", token)
       .maybeSingle()
     if (!onb)
@@ -22,6 +24,7 @@ export async function GET(
       status: onb.briefing_status,
       briefing: onb.briefing,
       confirmed: onb.briefing_confirmed_by_client,
+      generated_at: onb.briefing_generated_at,
     })
   } catch (e) {
     return NextResponse.json(
