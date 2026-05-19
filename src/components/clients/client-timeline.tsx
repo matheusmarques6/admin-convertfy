@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   UserPlus,
@@ -409,6 +410,7 @@ function EventItem({
 // ─── Main Component ────────────────────────────────────────
 
 export function ClientTimeline({ clientId }: ClientTimelineProps) {
+  const router = useRouter()
   const [activities, setActivities] = useState<Activity[]>([])
   const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([])
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({})
@@ -470,6 +472,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
     setRefreshing(true)
     try {
       await loadData()
+      router.refresh()
     } finally {
       setRefreshing(false)
     }
