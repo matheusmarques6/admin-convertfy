@@ -286,25 +286,36 @@ export function ProductionWorkspace({
           </Link>
           <ChevronRight className="h-3 w-3" style={{ color: "var(--crm-gray-300)" }} />
           <span style={{ color: "var(--crm-gray-700)", fontWeight: 500 }}>
-            Preview em produção
+            Workspace de produção
             {currentFlow ? ` · ${currentFlow.name}` : ""}
           </span>
-          <span
-            className="inline-flex items-center"
-            style={{
-              marginLeft: 12,
-              height: 22,
-              padding: "0 8px",
-              borderRadius: 4,
-              background: "var(--crm-warn-bg)",
-              border: "1px solid var(--crm-warn-border)",
-              color: "var(--crm-warn)",
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            Task atribuída a você
-          </span>
+          {currentFlow?.assignee?.name && (
+            <span
+              className="inline-flex items-center gap-1.5"
+              style={{
+                marginLeft: 12,
+                height: 22,
+                padding: "0 8px",
+                borderRadius: 4,
+                background: "var(--crm-blue-50)",
+                border: "1px solid var(--crm-blue-100)",
+                color: "var(--crm-brand)",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+              title={`Responsável pelo flow: ${currentFlow.assignee.name}`}
+            >
+              <span
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: "var(--crm-brand)",
+                }}
+              />
+              {currentFlow.assignee.name}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {lastUpdateMin && (
