@@ -4,9 +4,14 @@
  * Gera o briefing a partir das respostas do formulario via Claude
  * (Anthropic SDK) e persiste em `onboardings.briefing`.
  *
- * Marca status como "generating" antes da chamada e "generated_pending_review"
- * quando salva. Se a IA falhar, volta pra "not_started" com mensagem de erro
- * em `briefing.error`.
+ * Fluxo:
+ *   1. UPDATE briefing_status='generating' + briefing_started_at=now()
+ *   2. Chama Anthropic Haiku 4.5 (claude-haiku-4-5-20251001)
+ *   3. UPDATE briefing + briefing_status='generated_pending_review'
+ *
+ * Recovery: se a chamada morrer no meio (function freezing serverless,
+ * 5xx Anthropic, timeout), briefing_started_at permite que o handler de
+ * submit-data detecte "stuck" e libere retry no proximo next().
  */
 
 import Anthropic from "@anthropic-ai/sdk"
@@ -15,6 +20,10 @@ import { logger } from "@/lib/logger"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
 const log = logger.child("BriefingGeneration")
+
+const MODEL = "claude-haiku-4-5-20251001"
+const MAX_TOKENS = 2048
+const TEMPERATURE = 0.3
 
 const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marketing). Sua tarefa: a partir das respostas do formulário de onboarding de uma loja, gerar um BRIEFING estruturado em JSON com a forma:
 
@@ -33,6 +42,7 @@ const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marke
 Cada campo deve ter 2-5 frases em português, direto e prático. Use os dados das respostas. Se algum dado faltar, use bom senso. NÃO inclua nenhum texto fora do JSON.`
 
 export async function generateBriefing(onboardingId: string): Promise<void> {
+  const t0 = Date.now()
   const admin = createAdminClient()
   const { data: onb } = await admin
     .from("onboardings")
@@ -48,7 +58,10 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
 
   await admin
     .from("onboardings")
-    .update({ briefing_status: "generating" })
+    .update({
+      briefing_status: "generating",
+      briefing_started_at: new Date().toISOString(),
+    })
     .eq("id", onboardingId)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -62,11 +75,21 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
     const client = new Anthropic({ apiKey })
     const userPrompt = `Respostas do formulario:\n${JSON.stringify(onb.form_responses, null, 2)}\n\nLoja:\n${JSON.stringify(onb.store, null, 2)}\n\nCliente:\n${JSON.stringify(onb.client, null, 2)}\n\nGere o briefing em JSON.`
 
+    log.info("anthropic.call.start", { onboardingId, model: MODEL })
+    const tAnthropicStart = Date.now()
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      temperature: TEMPERATURE,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
+    })
+    const anthropicMs = Date.now() - tAnthropicStart
+    log.info("anthropic.call.end", {
+      onboardingId,
+      anthropic_ms: anthropicMs,
+      input_tokens: response.usage?.input_tokens,
+      output_tokens: response.usage?.output_tokens,
     })
 
     const text =
@@ -80,7 +103,11 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
     }
 
     const briefing = JSON.parse(jsonMatch[0]) as BriefingContent
-    await saveBriefing(onboardingId, briefing)
+    await saveBriefing(onboardingId, onb.org_id, briefing)
+    log.info("briefing.generated.ok", {
+      onboardingId,
+      total_ms: Date.now() - t0,
+    })
   } catch (e) {
     log.error("Geracao do briefing falhou", e)
     await markBriefingFailed(onboardingId, (e as Error).message)
@@ -96,6 +123,7 @@ async function markBriefingFailed(
     .from("onboardings")
     .update({
       briefing_status: "not_started",
+      briefing_started_at: null,
       briefing: { error: reason } as unknown as BriefingContent,
     })
     .eq("id", onboardingId)
@@ -103,6 +131,7 @@ async function markBriefingFailed(
 
 async function saveBriefing(
   onboardingId: string,
+  orgId: string,
   briefing: BriefingContent,
 ): Promise<void> {
   const admin = createAdminClient()
@@ -116,11 +145,6 @@ async function saveBriefing(
     })
     .eq("id", onboardingId)
 
-  const { data: onb } = await admin
-    .from("onboardings")
-    .select("org_id")
-    .eq("id", onboardingId)
-    .maybeSingle()
   await admin.from("events").insert({
     event_type: "onboarding.briefing_generated",
     entity_type: "onboarding",
@@ -128,6 +152,6 @@ async function saveBriefing(
     actor_id: null,
     actor_type: "system",
     payload: { onboarding_id: onboardingId },
-    metadata: { org_id: onb?.org_id },
+    metadata: { org_id: orgId },
   })
 }

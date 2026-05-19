@@ -1157,6 +1157,13 @@ function BriefingReviewInline({
   // Modal de confirmação final
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
+  // Detecção de geração travada (>60s sem resposta)
+  const [pollStartedAt, setPollStartedAt] = useState<number | null>(null)
+  const [timedOut, setTimedOut] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const POLL_TIMEOUT_MS = 60_000
+  const POLL_INTERVAL_MS = 2_000
+
   useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -1181,12 +1188,25 @@ function BriefingReviewInline({
           onConfirmed()
           return
         }
-        if (
-          ["generating", "form_partially_filled", "not_started"].includes(
-            j.status,
-          )
-        ) {
-          timer = setTimeout(poll, 4000)
+        const isWaiting = [
+          "generating",
+          "form_partially_filled",
+          "not_started",
+        ].includes(j.status)
+        if (isWaiting) {
+          // Marca início da espera na primeira iteração desse status
+          if (pollStartedAt === null) {
+            setPollStartedAt(Date.now())
+          } else if (Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
+            // Passou de 60s — provavelmente travou. Para o polling
+            // e mostra UI de retry.
+            setTimedOut(true)
+            return
+          }
+          timer = setTimeout(poll, POLL_INTERVAL_MS)
+        } else {
+          // Status saiu da espera (generated_pending_review/approved)
+          if (pollStartedAt !== null) setPollStartedAt(null)
         }
       } catch (e) {
         if (!stopped) setError((e as Error).message)
@@ -1197,7 +1217,28 @@ function BriefingReviewInline({
       stopped = true
       if (timer) clearTimeout(timer)
     }
-  }, [token, editable, onConfirmed])
+  }, [token, editable, onConfirmed, pollStartedAt])
+
+  async function handleRetry() {
+    setRetrying(true)
+    setTimedOut(false)
+    setError(null)
+    setPollStartedAt(Date.now())
+    try {
+      const res = await fetch(`/api/forms/${token}/retry-briefing`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setError(j.error ?? "Falha ao tentar novamente")
+        setTimedOut(true)
+        return
+      }
+      setStatus("generating")
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   // ── Helpers de edição ──────────────────────────────────────────────────
   function startEdit(fieldId: string, currentValue: string) {
@@ -1306,47 +1347,92 @@ function BriefingReviewInline({
   ) {
     return (
       <div className="min-h-screen bg-white">
-        <SimpleHeader onBack={onBack} eyebrow="Etapa final · gerando briefing" />
+        <SimpleHeader
+          onBack={onBack}
+          eyebrow={
+            timedOut ? "Etapa final · demorou demais" : "Etapa final · gerando briefing"
+          }
+        />
         <div className="max-w-[680px] mx-auto px-5 sm:px-8 py-10 sm:py-16">
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-brand-50/40 to-white p-8 sm:p-10 text-center">
+          <div
+            className={
+              "rounded-2xl border p-8 sm:p-10 text-center " +
+              (timedOut
+                ? "border-amber-200 bg-gradient-to-b from-amber-50/60 to-white"
+                : "border-slate-200 bg-gradient-to-b from-brand-50/40 to-white")
+            }
+          >
             <div className="relative mx-auto w-16 h-16 mb-5">
-              <div
-                className="absolute inset-0 rounded-2xl animate-ping opacity-70"
-                style={{ background: "#4E62D8" }}
-              />
+              {!timedOut && (
+                <div
+                  className="absolute inset-0 rounded-2xl animate-ping opacity-70"
+                  style={{ background: "#4E62D8" }}
+                />
+              )}
               <div
                 className="relative flex items-center justify-center h-16 w-16 rounded-2xl text-white shadow-lg"
                 style={{
-                  background:
-                    "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+                  background: timedOut
+                    ? "linear-gradient(135deg, #F59E0B 0%, #D97706 100%)"
+                    : "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
                 }}
               >
-                <Sparkles className="h-7 w-7" strokeWidth={2} />
+                {timedOut ? (
+                  <AlertTriangle className="h-7 w-7" strokeWidth={2} />
+                ) : (
+                  <Sparkles className="h-7 w-7" strokeWidth={2} />
+                )}
               </div>
             </div>
             <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-slate-900 mb-2">
-              Estamos montando seu briefing
+              {timedOut
+                ? "A IA demorou mais que o esperado"
+                : "Estamos montando seu briefing"}
             </h1>
             <p className="text-[14px] text-slate-600 leading-relaxed max-w-md mx-auto">
-              A IA está estruturando suas respostas. Costuma levar entre 30
-              segundos e 2 minutos. Esta página atualiza sozinha.
+              {timedOut
+                ? "Algo travou na geração. Clique em tentar novamente — costuma resolver na segunda tentativa."
+                : "A IA está estruturando suas respostas. Costuma levar entre 5 e 30 segundos. Esta página atualiza sozinha."}
             </p>
             {error && (
               <p className="mt-5 text-[12.5px] text-rose-600">{error}</p>
             )}
-          </div>
-          <div className="mt-5 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse"
+            {timedOut && (
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={retrying}
+                className="mt-6 inline-flex items-center gap-2 h-11 px-5 rounded-xl text-white text-[14px] font-semibold disabled:opacity-60 transition-all hover:-translate-y-0.5"
+                style={{
+                  background: BRIEFING_GRADIENT,
+                  backgroundSize: "200% 100%",
+                  boxShadow:
+                    "inset 0 1px 0 0 rgba(255,255,255,0.8), 0 4px 12px -4px rgba(33,55,182,0.4)",
+                }}
               >
-                <div className="h-3 w-32 bg-slate-100 rounded mb-2.5" />
-                <div className="h-3 w-full bg-slate-100 rounded" />
-                <div className="h-3 w-3/4 bg-slate-100 rounded mt-1.5" />
-              </div>
-            ))}
+                {retrying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" strokeWidth={2.4} />
+                )}
+                {retrying ? "Reiniciando..." : "Tentar novamente"}
+              </button>
+            )}
           </div>
+          {!timedOut && (
+            <div className="mt-5 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse"
+                >
+                  <div className="h-3 w-32 bg-slate-100 rounded mb-2.5" />
+                  <div className="h-3 w-full bg-slate-100 rounded" />
+                  <div className="h-3 w-3/4 bg-slate-100 rounded mt-1.5" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )

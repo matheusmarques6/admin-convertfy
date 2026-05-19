@@ -2,15 +2,23 @@
  * POST /api/forms/[token]/submit-data
  *
  * Endpoint público (sem auth). Recebe respostas da Tela 1 e dispara
- * geração de briefing assíncrona via n8n ou fallback Claude.
+ * geração de briefing via Claude.
+ *
+ * Uso de `after()` (Next 15) pra garantir que generateBriefing termina
+ * em ambiente serverless — o void cru morre quando a function congela.
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { generateBriefing } from "@/lib/services/briefing-generation.service"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
+
+// Briefing parado em "generating" por mais que isso é considerado stuck
+// (function morreu / Anthropic 5xx). Libera retry no próximo submit-data.
+const BRIEFING_STUCK_THRESHOLD_MS = 90_000
 
 export async function POST(
   request: NextRequest,
@@ -51,7 +59,9 @@ export async function POST(
 
     const { data: onb } = await admin
       .from("onboardings")
-      .select("id, briefing_status, briefing_confirmed_by_client")
+      .select(
+        "id, briefing_status, briefing_confirmed_by_client, briefing_started_at",
+      )
       .eq("form_token", token)
       .maybeSingle()
 
@@ -79,20 +89,33 @@ export async function POST(
       })
       .eq("id", onb.id)
 
+    // Detecta geração stuck: status="generating" mas briefing_started_at
+    // foi há muito tempo (function morreu, Anthropic não respondeu).
+    // Trata como se status fosse "not_started" — libera re-disparo.
+    const isStuck =
+      onb.briefing_status === "generating" &&
+      onb.briefing_started_at &&
+      Date.now() - new Date(onb.briefing_started_at).getTime() >
+        BRIEFING_STUCK_THRESHOLD_MS
+
     // Dispara generateBriefing somente se nao esta gerando OU ja gerado
-    // (evita spam e re-geracoes desnecessarias)
-    const shouldGenerate = !["generating", "approved"].includes(
-      onb.briefing_status as string,
-    )
+    // (evita spam e re-geracoes desnecessarias) — a menos que esteja stuck
+    const shouldGenerate =
+      isStuck ||
+      !["generating", "approved"].includes(onb.briefing_status as string)
+
     if (shouldGenerate) {
-      // Fire-and-forget — não aguarda a IA terminar.
-      void generateBriefing(onb.id)
+      // after() do Next 15: garante que a Promise termina antes da function
+      // congelar em ambiente serverless. Substitui o "void" cru que era
+      // descartado pelo runtime.
+      after(generateBriefing(onb.id))
     }
 
     return NextResponse.json({
       success: true,
       onboarding_id: onb.id,
       regenerating: shouldGenerate,
+      recovered_from_stuck: isStuck,
     })
   } catch (e) {
     return NextResponse.json(
