@@ -174,6 +174,26 @@ export function ProductionWorkspace({
     return { ready, total: all.length }
   }, [flows])
 
+  // Busca/filtro de emails na sidebar
+  const [search, setSearch] = useState("")
+  const filteredFlows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return flows
+    return flows
+      .map((f) => {
+        const flowMatches = f.name.toLowerCase().includes(q)
+        const matchingEmails = (f.emails ?? []).filter((e) =>
+          [e.name, e.subject, e.preheader]
+            .filter(Boolean)
+            .some((s) => s!.toLowerCase().includes(q)),
+        )
+        if (flowMatches) return f
+        if (matchingEmails.length > 0) return { ...f, emails: matchingEmails }
+        return null
+      })
+      .filter((f): f is EmailFlow => f !== null)
+  }, [flows, search])
+
   // Find current email pra topbar (antes dos early returns pra manter hooks order)
   const currentEmail = useMemo(
     () =>
@@ -432,7 +452,27 @@ export function ProductionWorkspace({
             {flows.length === 0 && (
               <InitFlowsCta storeId={storeId} onCreated={() => mutate()} />
             )}
-            {flows.map((flow) => (
+            {flows.length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar email..."
+                  style={{
+                    width: "100%",
+                    padding: "5px 10px",
+                    background: "var(--crm-gray-50)",
+                    border: "1px solid var(--crm-border)",
+                    borderRadius: 4,
+                    fontSize: 11.5,
+                    color: "var(--crm-gray-800)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+            {filteredFlows.map((flow) => (
               <FlowItem
                 key={flow.id}
                 flow={flow}
