@@ -303,7 +303,16 @@ function StoreCard({
               </p>
               {recoveryRate != null ? (
                 <>
-                  <p className="text-sm font-semibold text-[#2137B6] dark:text-[#7B8CEA] tabular-nums mt-0.5">
+                  <p
+                    className={cn(
+                      "text-sm font-semibold tabular-nums mt-0.5",
+                      recoveryRate >= 20
+                        ? "text-[#065F46] dark:text-[#6EE7B7]"
+                        : recoveryRate >= 10
+                          ? "text-[#92400E] dark:text-[#FCD34D]"
+                          : "text-[#991B1B] dark:text-[#FCA5A5]",
+                    )}
+                  >
                     {recoveryRate.toFixed(1)}%
                   </p>
                   <p className="text-[10px] text-gray-400 dark:text-[#5C6378]">via Convertfy</p>
