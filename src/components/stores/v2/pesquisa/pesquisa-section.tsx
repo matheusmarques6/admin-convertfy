@@ -118,6 +118,30 @@ const PILLARS = [
   { id: "review-anuncios", label: "Review dos Anúncios" },
 ] as const
 
+// Score geral = média das 5 sub-notas (0-10 cada). ads_score do banco vem
+// em escala incompatível do webhook n8n — usa só como fallback se não tiver
+// sub_scores. Resultado fica clampado em 0-10.
+function computeAdsScore(
+  subScores: PesquisaData["ads_sub_scores"],
+  fallback: number,
+): number {
+  if (!subScores) return Math.max(0, Math.min(10, Number(fallback) || 0))
+  const values = [
+    subScores.strategy,
+    subScores.creatives,
+    subScores.targeting,
+    subScores.diversification,
+    subScores.tracking,
+  ]
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0)
+  if (values.length === 0) {
+    return Math.max(0, Math.min(10, Number(fallback) || 0))
+  }
+  const avg = values.reduce((s, v) => s + v, 0) / values.length
+  return Math.max(0, Math.min(10, avg))
+}
+
 export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectionProps) {
   const [data, setData] = useState<PesquisaData>(initialData ?? {})
   const [openEditor, setOpenEditor] = useState<null | "marca" | "loja" | "icp" | "tom">(null)
@@ -469,7 +493,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               {data.ads_score != null ? (
                 <>
                   <div className="flex flex-col items-center mb-3">
-                    <ScoreGauge score={Number(data.ads_score)} />
+                    <ScoreGauge score={computeAdsScore(data.ads_sub_scores, data.ads_score)} />
                     <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 mt-1">
                       Score geral
                     </div>
