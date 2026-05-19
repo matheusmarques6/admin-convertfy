@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import {
   Pencil,
@@ -140,6 +141,29 @@ function MiniKpiCard({
 export function ClientOverviewPerformance({ activeStoresCount }: { clientId: string; clientName: string; activeStoresCount?: number }) {
   const { data, loading, error, period, setPeriod, refresh, isValidating } =
     useClientPerformanceContext()
+
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  // Inicializa periodo da URL se existir
+  useEffect(() => {
+    const p = searchParams.get("perf_period")
+    if (p && PERIODS.some((per) => per.value === p) && p !== period) {
+      setPeriod(p)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persiste periodo na URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (period === "30d") params.delete("perf_period")
+    else params.set("perf_period", period)
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, pathname])
 
   const storeRevenue = data?.totals.storeRevenue ?? 0
   const attributedRevenue = data?.totals.attributedRevenue ?? data?.totals.klaviyoRevenue ?? 0
