@@ -394,6 +394,128 @@ function StoreSummaryRow({
   )
 }
 
+// ─── NextStepCard: sugestao baseada no estado do cliente ──
+
+function NextStepCard({
+  client,
+  activeContract,
+  nextMeeting,
+  pendingAmount,
+  hasOnboardingStore,
+}: {
+  client: ClientWithRelations
+  activeContract: Contract | null
+  nextMeeting: Meeting | null
+  pendingAmount: number
+  hasOnboardingStore: boolean
+}) {
+  const suggestions: { icon: typeof CalendarDays; label: string; description: string; href: string; tone: "critical" | "warning" | "info" | "positive" }[] = []
+  const healthScore = client.health_score ?? 50
+
+  if (pendingAmount > 0) {
+    suggestions.push({
+      icon: AlertCircle,
+      label: "Cobrar fatura pendente",
+      description: `Há ${formatCurrency(pendingAmount)} em aberto. Reenvie o link ou marque como pago.`,
+      href: `/admin/clients/${client.id}?tab=financial`,
+      tone: "critical",
+    })
+  }
+
+  if (hasOnboardingStore) {
+    suggestions.push({
+      icon: ExternalLink,
+      label: "Concluir onboarding da loja",
+      description: "Há ao menos 1 loja em onboarding aguardando configuração de integrações.",
+      href: `/admin/clients/${client.id}?tab=stores&stores_filter=onboarding`,
+      tone: "warning",
+    })
+  }
+
+  if (!activeContract) {
+    suggestions.push({
+      icon: Pencil,
+      label: "Criar contrato",
+      description: "Cliente sem contrato ativo. Crie um para começar a cobrar.",
+      href: `/admin/clients/${client.id}?tab=financial&fin_view=contracts`,
+      tone: "warning",
+    })
+  }
+
+  if (!nextMeeting) {
+    suggestions.push({
+      icon: CalendarDays,
+      label: "Agendar próxima reunião",
+      description: "Sem reunião agendada. Marque uma check-in periódica.",
+      href: `/admin/meetings/new?clientId=${client.id}`,
+      tone: "info",
+    })
+  }
+
+  if (healthScore < 50) {
+    suggestions.push({
+      icon: AlertCircle,
+      label: "Investigar risco de churn",
+      description: `Health score em ${healthScore}/100. Revise métricas e abra um plano de retenção.`,
+      href: `/admin/clients/${client.id}?tab=overview`,
+      tone: "critical",
+    })
+  }
+
+  // Se está tudo certo, sugere otimização
+  if (suggestions.length === 0) {
+    suggestions.push({
+      icon: CheckCircle2,
+      label: "Tudo em dia",
+      description: "Sem ações urgentes. Bora gerar um relatório de performance?",
+      href: `/admin/reports/new?clientId=${client.id}`,
+      tone: "positive",
+    })
+  }
+
+  const next = suggestions[0]
+  const toneClasses = {
+    critical: "bg-[#FEF2F2] dark:bg-[#3B1111] border-[#FECACA] dark:border-[rgba(252,165,165,0.3)] text-[#991B1B] dark:text-[#FCA5A5]",
+    warning: "bg-[#FFFBEB] dark:bg-[#3D2A0D] border-[#FDE68A] dark:border-[rgba(252,211,77,0.3)] text-[#92400E] dark:text-[#FCD34D]",
+    info: "bg-[#EEF0FB] dark:bg-[#141C3D] border-[#C7CDEF] dark:border-[rgba(123,140,234,0.3)] text-[#2137B6] dark:text-[#7B8CEA]",
+    positive: "bg-[#ECFDF5] dark:bg-[#0B2C24] border-[#A7F3D0] dark:border-[rgba(110,231,183,0.3)] text-[#065F46] dark:text-[#6EE7B7]",
+  }[next.tone]
+  const NextIcon = next.icon
+
+  return (
+    <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+      <CardHeader className="pb-3 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm font-semibold">Próximo passo sugerido</CardTitle>
+        {suggestions.length > 1 && (
+          <span className="text-[10px] text-gray-400 dark:text-[#5C6378]">
+            +{suggestions.length - 1} {suggestions.length - 1 > 1 ? "sugestões" : "sugestão"}
+          </span>
+        )}
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={next.href}
+          className={cn(
+            "block rounded-[6px] border p-3 transition-colors hover:brightness-95",
+            toneClasses,
+          )}
+        >
+          <div className="flex items-start gap-2.5">
+            <NextIcon className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold leading-tight">{next.label}</p>
+              <p className="text-[11px] mt-1 leading-snug opacity-90">
+                {next.description}
+              </p>
+            </div>
+            <ArrowRight className="h-3.5 w-3.5 mt-1 shrink-0" />
+          </div>
+        </Link>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── ClientOverview (new design) ──────────────────────────
 
 export function ClientOverview({ client, ltv }: ClientOverviewProps) {
@@ -834,6 +956,15 @@ export function ClientOverview({ client, ltv }: ClientOverviewProps) {
 
       {/* Right column 2/5 — Sidebar */}
       <div className="lg:col-span-2 space-y-5">
+        {/* Próximo passo sugerido */}
+        <NextStepCard
+          client={client}
+          activeContract={activeContract}
+          nextMeeting={nextMeeting}
+          pendingAmount={pendingAmount}
+          hasOnboardingStore={(client.client_stores ?? []).some((s) => !s.is_active)}
+        />
+
         {/* Próxima reunião */}
         <Card className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
           <CardHeader className="pb-3">
