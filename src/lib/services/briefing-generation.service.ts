@@ -1,27 +1,34 @@
 /**
- * Briefing Generation Service
+ * Briefing Generation Service — cascata de fallback 3 tentativas.
  *
- * Gera o briefing a partir das respostas do formulario via Claude
- * (Anthropic SDK) e persiste em `onboardings.briefing`.
+ * T1 (40s): Anthropic SDK direto, Claude Sonnet 4.6
+ * T2 (20s): OpenRouter (OpenAI-compatible), Claude Sonnet 4.6
+ * T3 (~0s): template determinístico baseado em form_responses
  *
- * Fluxo:
- *   1. UPDATE briefing_status='generating' + briefing_started_at=now()
- *   2. Chama Anthropic Haiku 4.5 (claude-haiku-4-5-20251001)
- *   3. UPDATE briefing + briefing_status='generated_pending_review'
+ * Budget total worst-case: ≤60s até saveBriefing. Cliente faz polling
+ * com timeout 75s — nunca deve ver "demorou demais".
  *
- * Recovery: se a chamada morrer no meio (function freezing serverless,
- * 5xx Anthropic, timeout), briefing_started_at permite que o handler de
- * submit-data detecte "stuck" e libere retry no proximo next().
+ * Recovery: briefing_started_at permite detectar geracoes stuck.
+ * briefing_generated_by registra qual etapa produziu o briefing.
  */
 
 import Anthropic from "@anthropic-ai/sdk"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import type { BriefingContent } from "@/types/onboarding-pipeline"
+import type {
+  BriefingContent,
+  BriefingSource,
+} from "@/types/onboarding-pipeline"
 
 const log = logger.child("BriefingGeneration")
 
-const MODEL = "claude-haiku-4-5-20251001"
+const T1_TIMEOUT_MS = 40_000
+const T2_TIMEOUT_MS = 20_000
+const ANTHROPIC_MODEL = "claude-sonnet-4-6"
+// TBD operacional: confirmar slug exato no painel OpenRouter
+// (https://openrouter.ai/models?q=sonnet). Candidatos: anthropic/claude-sonnet-4.6,
+// anthropic/claude-sonnet-4-6, anthropic/claude-sonnet-4.6-20251106.
+const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
 const MAX_TOKENS = 2048
 const TEMPERATURE = 0.3
 
@@ -41,8 +48,115 @@ const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marke
 
 Cada campo deve ter 2-5 frases em português, direto e prático. Use os dados das respostas. Se algum dado faltar, use bom senso. NÃO inclua nenhum texto fora do JSON.`
 
+type FormResponses = Record<string, unknown>
+
+interface Ctx {
+  onboardingId: string
+  orgId: string
+  formResponses: FormResponses
+  store: { store_name?: string; store_url?: string; platform?: string } | null
+  client: { name?: string } | null
+}
+
 export async function generateBriefing(onboardingId: string): Promise<void> {
   const t0 = Date.now()
+  log.info("briefing.cascade.start", { onboardingId })
+
+  const ctx = await loadContext(onboardingId)
+  if (!ctx) {
+    log.warn("Onboarding nao encontrado pra gerar briefing", { onboardingId })
+    return
+  }
+
+  await markGenerating(onboardingId)
+
+  const prompt = buildPrompt(ctx)
+
+  // ── T1: Anthropic SDK direto ──────────────────────────────────────────
+  try {
+    log.info("anthropic.try.start", {
+      onboardingId,
+      model: ANTHROPIC_MODEL,
+      timeout_ms: T1_TIMEOUT_MS,
+    })
+    const t1Start = Date.now()
+    const briefing = await tryAnthropic(prompt, T1_TIMEOUT_MS)
+    const t1Ms = Date.now() - t1Start
+    log.info("anthropic.try.ok", { onboardingId, ms: t1Ms })
+    await saveBriefing(ctx, briefing, "anthropic_sonnet")
+    log.info("briefing.cascade.done", {
+      onboardingId,
+      source: "anthropic_sonnet",
+      total_ms: Date.now() - t0,
+    })
+    return
+  } catch (e) {
+    const err = e as Error
+    if (err.message === "timeout") {
+      log.warn("anthropic.try.timeout", { onboardingId, ms: T1_TIMEOUT_MS })
+    } else {
+      log.warn("anthropic.try.error", {
+        onboardingId,
+        error_message: err.message,
+      })
+    }
+    // Continua pro T2
+  }
+
+  // ── T2: OpenRouter ────────────────────────────────────────────────────
+  if (!process.env.OPENROUTER_API_KEY) {
+    log.warn("openrouter.skip.no_api_key", { onboardingId })
+  } else {
+    try {
+      log.info("openrouter.try.start", {
+        onboardingId,
+        model: OPENROUTER_MODEL,
+        timeout_ms: T2_TIMEOUT_MS,
+      })
+      const t2Start = Date.now()
+      const briefing = await tryOpenRouter(prompt, T2_TIMEOUT_MS)
+      const t2Ms = Date.now() - t2Start
+      log.info("openrouter.try.ok", { onboardingId, ms: t2Ms })
+      await saveBriefing(ctx, briefing, "openrouter_sonnet")
+      log.info("briefing.cascade.done", {
+        onboardingId,
+        source: "openrouter_sonnet",
+        total_ms: Date.now() - t0,
+      })
+      return
+    } catch (e) {
+      const err = e as Error
+      if (err.message === "timeout") {
+        log.warn("openrouter.try.timeout", { onboardingId, ms: T2_TIMEOUT_MS })
+      } else {
+        log.warn("openrouter.try.error", {
+          onboardingId,
+          error_message: err.message,
+        })
+      }
+      // Continua pro T3
+    }
+  }
+
+  // ── T3: template determinístico (sempre roda) ─────────────────────────
+  log.warn("raw_template.fallback", { onboardingId })
+  try {
+    const briefing = buildRawTemplate(ctx.formResponses)
+    await saveBriefing(ctx, briefing, "raw_template")
+    log.info("briefing.cascade.done", {
+      onboardingId,
+      source: "raw_template",
+      total_ms: Date.now() - t0,
+    })
+  } catch (e) {
+    log.error("briefing.cascade.fatal", e)
+    await markBriefingFailed(onboardingId, (e as Error).message)
+  }
+}
+
+// ── Step 0: contexto ────────────────────────────────────────────────────
+
+async function loadContext(onboardingId: string): Promise<Ctx | null> {
   const admin = createAdminClient()
   const { data: onb } = await admin
     .from("onboardings")
@@ -51,11 +165,19 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
     )
     .eq("id", onboardingId)
     .maybeSingle()
-  if (!onb) {
-    log.warn("Onboarding nao encontrado pra gerar briefing", { onboardingId })
-    return
-  }
+  if (!onb) return null
 
+  return {
+    onboardingId,
+    orgId: onb.org_id,
+    formResponses: (onb.form_responses ?? {}) as FormResponses,
+    store: Array.isArray(onb.store) ? onb.store[0] : onb.store,
+    client: Array.isArray(onb.client) ? onb.client[0] : onb.client,
+  }
+}
+
+async function markGenerating(onboardingId: string): Promise<void> {
+  const admin = createAdminClient()
   await admin
     .from("onboardings")
     .update({
@@ -63,55 +185,207 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
       briefing_started_at: new Date().toISOString(),
     })
     .eq("id", onboardingId)
+}
 
+function buildPrompt(ctx: Ctx): { system: string; user: string } {
+  const user = `Respostas do formulario:\n${JSON.stringify(ctx.formResponses, null, 2)}\n\nLoja:\n${JSON.stringify(ctx.store, null, 2)}\n\nCliente:\n${JSON.stringify(ctx.client, null, 2)}\n\nGere o briefing em JSON.`
+  return { system: SYSTEM_PROMPT, user }
+}
+
+// ── Step 1: Anthropic SDK ───────────────────────────────────────────────
+
+async function tryAnthropic(
+  prompt: { system: string; user: string },
+  timeoutMs: number,
+): Promise<BriefingContent> {
   const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    log.error("ANTHROPIC_API_KEY nao configurada — briefing nao pode ser gerado")
-    await markBriefingFailed(onboardingId, "API key da IA nao configurada")
-    return
-  }
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY ausente")
 
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const client = new Anthropic({ apiKey })
-    const userPrompt = `Respostas do formulario:\n${JSON.stringify(onb.form_responses, null, 2)}\n\nLoja:\n${JSON.stringify(onb.store, null, 2)}\n\nCliente:\n${JSON.stringify(onb.client, null, 2)}\n\nGere o briefing em JSON.`
-
-    log.info("anthropic.call.start", { onboardingId, model: MODEL })
-    const tAnthropicStart = Date.now()
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: TEMPERATURE,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    })
-    const anthropicMs = Date.now() - tAnthropicStart
-    log.info("anthropic.call.end", {
-      onboardingId,
-      anthropic_ms: anthropicMs,
-      input_tokens: response.usage?.input_tokens,
-      output_tokens: response.usage?.output_tokens,
-    })
-
+    const resp = await client.messages.create(
+      {
+        model: ANTHROPIC_MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: TEMPERATURE,
+        system: prompt.system,
+        messages: [{ role: "user", content: prompt.user }],
+      },
+      { signal: ctrl.signal },
+    )
     const text =
-      response.content[0]?.type === "text" ? response.content[0].text : ""
-
-    // Extrai JSON do response (Claude as vezes envolve em ```json)
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      await markBriefingFailed(onboardingId, "Resposta da IA invalida")
-      return
-    }
-
-    const briefing = JSON.parse(jsonMatch[0]) as BriefingContent
-    await saveBriefing(onboardingId, onb.org_id, briefing)
-    log.info("briefing.generated.ok", {
-      onboardingId,
-      total_ms: Date.now() - t0,
-    })
+      resp.content[0]?.type === "text" ? resp.content[0].text : ""
+    const parsed = parseBriefingJson(text)
+    if (!parsed) throw new Error("Resposta da IA invalida (JSON nao encontrado)")
+    return parsed
   } catch (e) {
-    log.error("Geracao do briefing falhou", e)
-    await markBriefingFailed(onboardingId, (e as Error).message)
+    // AbortError → padroniza pra "timeout"
+    if (
+      ctrl.signal.aborted ||
+      (e as Error)?.name === "AbortError" ||
+      (e as { type?: string })?.type === "aborted"
+    ) {
+      throw new Error("timeout")
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+// ── Step 2: OpenRouter (fetch nativo) ───────────────────────────────────
+
+async function tryOpenRouter(
+  prompt: { system: string; user: string },
+  timeoutMs: number,
+): Promise<BriefingContent> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY ausente")
+
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const resp = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://admin.convertfy.com.br",
+          "X-Title": "Convertfy Admin — Briefing Onboarding",
+        },
+        body: JSON.stringify({
+          model: OPENROUTER_MODEL,
+          max_tokens: MAX_TOKENS,
+          temperature: TEMPERATURE,
+          messages: [
+            { role: "system", content: prompt.system },
+            { role: "user", content: prompt.user },
+          ],
+        }),
+      },
+    )
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "")
+      throw new Error(`OpenRouter HTTP ${resp.status}: ${body.slice(0, 200)}`)
+    }
+    const data = (await resp.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    const text = data.choices?.[0]?.message?.content ?? ""
+    const parsed = parseBriefingJson(text)
+    if (!parsed) throw new Error("Resposta OpenRouter invalida (JSON nao encontrado)")
+    return parsed
+  } catch (e) {
+    if (
+      ctrl.signal.aborted ||
+      (e as Error)?.name === "AbortError"
+    ) {
+      throw new Error("timeout")
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// ── Step 3: template determinístico ─────────────────────────────────────
+
+function buildRawTemplate(fr: FormResponses): BriefingContent {
+  const storeName = pick(fr, "store_name", "A loja")
+  const vertical = pick(fr, "vertical", "e-commerce")
+  const positioning = pick(fr, "positioning", "a definir")
+  const mainProducts = pick(fr, "main_products", "a confirmar com o cliente")
+  const platform = pick(fr, "platform_ecommerce", "plataforma própria")
+
+  const primaryPersona = pick(
+    fr,
+    "primary_persona",
+    "a aprofundar com o cliente",
+  )
+  const mainMotivator = pick(fr, "main_motivator", "a investigar")
+  const priceVsQuality = pick(
+    fr,
+    "price_vs_quality",
+    "equilibrada entre preço e qualidade",
+  )
+
+  const toneOfVoice = pick(fr, "tone_of_voice", "casual e amigável")
+
+  const shippingType = pick(fr, "shipping_type", "a confirmar")
+  const ticketAvg = pick(fr, "ticket_avg", "a confirmar")
+  const mainObjection = pick(fr, "main_objection", "a investigar")
+  const mainGoal = pick(
+    fr,
+    "main_goal",
+    "construir base e relacionamento",
+  )
+
+  const hasDesignRefs = !!pick(fr, "design_refs_url", "")
+
+  return {
+    about_brand: `${storeName} atua no segmento de ${vertical} com posicionamento ${positioning}. Principais produtos: ${mainProducts}. Operação rodando em ${platform}.`,
+    audience: `Público principal: ${primaryPersona}. Principal motivador de compra: ${mainMotivator}. Sensibilidade: ${priceVsQuality}.`,
+    language_tone: `Tom de voz declarado: ${toneOfVoice}. Aderente ao posicionamento ${positioning}. Comunicação deve respeitar essa diretriz em todos os disparos.`,
+    visual_identity: {
+      palette: "A definir com base no manual da marca enviado pelo cliente.",
+      fonts:
+        "A definir — usar fontes do manual da marca quando disponível. Fallback: Inter / Helvetica / sans-serif.",
+      references: hasDesignRefs
+        ? "Cliente enviou referências visuais — ver materiais anexados ao onboarding."
+        : "Pendente envio do cliente. Solicitar referências e/ou manual da marca.",
+    },
+    offers_and_differentials: `Frete: ${shippingType}. Ticket médio: ${ticketAvg}. Principal objeção a contornar nos disparos: ${mainObjection}. Objetivo prioritário nos próximos 90 dias: ${mainGoal}.`,
+  }
+}
+
+function pick(fr: FormResponses, key: string, fallback: string): string {
+  const v = fr?.[key]
+  return typeof v === "string" && v.trim() ? v.trim() : fallback
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+function parseBriefingJson(text: string): BriefingContent | null {
+  const match = text.match(/\{[\s\S]*\}/)
+  if (!match) return null
+  try {
+    return JSON.parse(match[0]) as BriefingContent
+  } catch {
+    return null
+  }
+}
+
+async function saveBriefing(
+  ctx: Ctx,
+  briefing: BriefingContent,
+  source: BriefingSource,
+): Promise<void> {
+  const admin = createAdminClient()
+  const now = new Date().toISOString()
+  await admin
+    .from("onboardings")
+    .update({
+      briefing: { ...briefing, generated_at: now },
+      briefing_status: "generated_pending_review",
+      briefing_generated_at: now,
+      briefing_generated_by: source,
+    })
+    .eq("id", ctx.onboardingId)
+
+  await admin.from("events").insert({
+    event_type: "onboarding.briefing_generated",
+    entity_type: "onboarding",
+    entity_id: ctx.onboardingId,
+    actor_id: null,
+    actor_type: "system",
+    payload: { onboarding_id: ctx.onboardingId, source },
+    metadata: { org_id: ctx.orgId },
+  })
 }
 
 async function markBriefingFailed(
@@ -127,31 +401,4 @@ async function markBriefingFailed(
       briefing: { error: reason } as unknown as BriefingContent,
     })
     .eq("id", onboardingId)
-}
-
-async function saveBriefing(
-  onboardingId: string,
-  orgId: string,
-  briefing: BriefingContent,
-): Promise<void> {
-  const admin = createAdminClient()
-  const now = new Date().toISOString()
-  await admin
-    .from("onboardings")
-    .update({
-      briefing: { ...briefing, generated_at: now },
-      briefing_status: "generated_pending_review",
-      briefing_generated_at: now,
-    })
-    .eq("id", onboardingId)
-
-  await admin.from("events").insert({
-    event_type: "onboarding.briefing_generated",
-    entity_type: "onboarding",
-    entity_id: onboardingId,
-    actor_id: null,
-    actor_type: "system",
-    payload: { onboarding_id: onboardingId },
-    metadata: { org_id: orgId },
-  })
 }

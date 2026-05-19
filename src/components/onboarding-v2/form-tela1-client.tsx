@@ -50,6 +50,12 @@ import {
   Zap,
   Megaphone,
   FileText,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  TrendingUp,
+  ShieldAlert,
+  Calendar,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -1129,6 +1135,31 @@ function FileField({
 
 const BRIEFING_GRADIENT = "linear-gradient(90deg, #4E62D8, #2137B6, #041366)"
 
+interface TopProduct {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  image_url: string | null
+  external_id: string | null
+}
+
+interface AdsReview {
+  score: number
+  summary: string | null
+  sub_scores: Record<string, number> | null
+  strengths: Array<{ what: string; body: string }> | null
+  opportunities: Array<{ what: string; body: string }> | null
+  risks: Array<{ what: string; body: string }> | null
+  reviewed_at: string | null
+}
+
+interface StoreContext {
+  top_products: TopProduct[] | null
+  ads_review: AdsReview | null
+}
+
 function BriefingReviewInline({
   token,
   onBack,
@@ -1157,11 +1188,17 @@ function BriefingReviewInline({
   // Modal de confirmação final
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
+  // Contexto adicional da loja (BLOCO 02 Top produtos + BLOCO 03 Ads).
+  // Não entra no prompt da IA — só renderiza na página se existir.
+  const [storeContext, setStoreContext] = useState<StoreContext | null>(null)
+
   // Detecção de geração travada (>60s sem resposta)
   const [pollStartedAt, setPollStartedAt] = useState<number | null>(null)
   const [timedOut, setTimedOut] = useState(false)
   const [retrying, setRetrying] = useState(false)
-  const POLL_TIMEOUT_MS = 60_000
+  // Budget server-side: T1 40s + T2 20s + T3 ~0s = 60s.
+  // Cliente espera 75s (buffer pra rede / 1 ciclo de poll).
+  const POLL_TIMEOUT_MS = 75_000
   const POLL_INTERVAL_MS = 2_000
 
   useEffect(() => {
@@ -1300,6 +1337,29 @@ function BriefingReviewInline({
     const t = setTimeout(() => setSaveBarVisible(false), 3500)
     return () => clearTimeout(t)
   }, [savedCount, saveBarVisible])
+
+  // Busca contexto da loja (top produtos + análise de ads) uma vez no mount.
+  // Falha silenciosa: blocos somem se endpoint não responder ou loja não tiver dados.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/forms/${token}/store-context`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        if (data.has_top_products || data.has_ads_review) {
+          setStoreContext({
+            top_products: data.has_top_products ? data.top_products : null,
+            ads_review: data.has_ads_review ? data.ads_review : null,
+          })
+        }
+      })
+      .catch(() => {
+        /* silencioso — esconde blocos se falhar */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   // Modal: lock scroll do body + Esc fecha
   useEffect(() => {
@@ -1655,6 +1715,16 @@ function BriefingReviewInline({
             />
           </div>
         </div>
+
+        {/* BLOCO 02 — Top produtos (esconde se loja não tem dados) */}
+        {storeContext?.top_products && storeContext.top_products.length > 0 && (
+          <TopProductsBlock products={storeContext.top_products} />
+        )}
+
+        {/* BLOCO 03 — Análise de ads (esconde se loja não tem dados) */}
+        {storeContext?.ads_review && (
+          <AdsReviewBlock review={storeContext.ads_review} />
+        )}
 
         {/* Free input */}
         <div
@@ -2345,6 +2415,424 @@ function NextStepsScreen({ storeName }: { storeName: string }) {
           Convertfy · Agência especialista em e-mail marketing pra e-commerce
         </p>
       </div>
+    </div>
+  )
+}
+
+// ─── BLOCO 02 — Top produtos (read-only) ─────────────────────────────────
+
+function TopProductsBlock({ products }: { products: TopProduct[] }) {
+  const scrollerRef = useRef<HTMLDivElement>(null)
+
+  function scroll(dir: "prev" | "next") {
+    const el = scrollerRef.current
+    if (!el) return
+    const card = el.querySelector<HTMLElement>("[data-card]")
+    const step = card ? card.offsetWidth + 12 : 220
+    el.scrollBy({ left: dir === "next" ? step : -step, behavior: "smooth" })
+  }
+
+  function formatPrice(price: number | null, currency: string | null): string {
+    if (price === null || price === undefined) return "—"
+    const code = currency || "BRL"
+    try {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: 2,
+      }).format(price)
+    } catch {
+      return `${code} ${price.toFixed(2)}`
+    }
+  }
+
+  return (
+    <div
+      className="mt-5 relative bg-white rounded-2xl overflow-hidden"
+      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+    >
+      <div
+        className="absolute top-0 left-6 right-6 h-px opacity-50 z-[3]"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, #A8B2EE, transparent)",
+        }}
+      />
+
+      <div
+        className="relative px-6 sm:px-9 pt-7 pb-5 text-center"
+        style={{
+          background:
+            "linear-gradient(180deg, #FCFCFD 0%, transparent 100%)",
+        }}
+      >
+        <div className="inline-flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-500 mb-3">
+          <span className="font-mono text-slate-400 text-[11px]">
+            02 · DADOS DA LOJA
+          </span>
+          <span>Top produtos</span>
+        </div>
+        <h2 className="text-[20px] sm:text-[22px] font-bold tracking-tight text-slate-900 leading-[1.2] mb-1.5">
+          Os {products.length} produtos mais vendidos
+        </h2>
+        <p className="text-[13px] text-slate-500 leading-relaxed max-w-[520px] mx-auto">
+          Capturados diretamente da sua loja. Usaremos como referência pra
+          campanhas e flows de produto.
+        </p>
+        <div
+          className="absolute left-9 right-9 bottom-0 h-px opacity-60"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, #E5E7EB 20%, #E5E7EB 80%, transparent)",
+          }}
+        />
+      </div>
+
+      <div className="relative px-4 sm:px-6 py-5">
+        {products.length > 2 && (
+          <>
+            <button
+              type="button"
+              onClick={() => scroll("prev")}
+              aria-label="Anterior"
+              className="hidden sm:flex absolute left-1 top-1/2 -translate-y-1/2 z-[2] h-9 w-9 items-center justify-center rounded-full bg-white border border-slate-200 text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition-all"
+            >
+              <ChevronLeft className="h-4 w-4" strokeWidth={2.4} />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll("next")}
+              aria-label="Próximo"
+              className="hidden sm:flex absolute right-1 top-1/2 -translate-y-1/2 z-[2] h-9 w-9 items-center justify-center rounded-full bg-white border border-slate-200 text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition-all"
+            >
+              <ChevronRight className="h-4 w-4" strokeWidth={2.4} />
+            </button>
+          </>
+        )}
+
+        <div
+          ref={scrollerRef}
+          className="flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 px-1"
+          style={{ scrollbarWidth: "thin" }}
+        >
+          {products.map((p) => (
+            <article
+              key={p.rank}
+              data-card
+              className="snap-start shrink-0 w-[200px] sm:w-[220px] rounded-xl overflow-hidden bg-white relative flex flex-col"
+              style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+            >
+              <div
+                className="absolute top-2.5 left-2.5 z-[2] inline-flex items-center justify-center h-6 min-w-[26px] px-1.5 rounded-full text-[11px] font-bold tabular-nums text-white"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #4E62D8 0%, #2137B6 100%)",
+                  boxShadow: "0 2px 6px rgba(33,55,182,0.35)",
+                }}
+              >
+                #{p.rank}
+              </div>
+              <div
+                className="aspect-square w-full flex items-center justify-center"
+                style={{ background: "#F8FAFC" }}
+              >
+                {p.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.image_url}
+                    alt={p.title}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <Package
+                    className="h-10 w-10 text-slate-300"
+                    strokeWidth={1.5}
+                  />
+                )}
+              </div>
+              <div className="p-3.5 flex flex-col gap-1.5 flex-1">
+                <p
+                  className="text-[13px] font-semibold text-slate-900 leading-tight line-clamp-2 min-h-[34px]"
+                  title={p.title}
+                >
+                  {p.title}
+                </p>
+                <p className="text-[13px] font-mono font-semibold text-brand-600 tabular-nums">
+                  {formatPrice(p.price, p.currency)}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── BLOCO 03 — Análise de ads (read-only) ───────────────────────────────
+
+function AdsReviewBlock({ review }: { review: AdsReview }) {
+  const score = Math.max(0, Math.min(10, review.score))
+  const scoreColor =
+    score >= 7 ? "#10B981" : score >= 4 ? "#F59E0B" : "#EF4444"
+  const verdict =
+    score >= 7
+      ? "Operação saudável"
+      : score >= 4
+      ? "Atenção em pontos críticos"
+      : "Riscos altos — ação imediata"
+
+  // Gauge: arco de 240° (de 150° a 30°, sentido horário).
+  const RADIUS = 64
+  const CIRC = 2 * Math.PI * RADIUS
+  const ARC_FRACTION = 240 / 360
+  const ARC_LEN = CIRC * ARC_FRACTION
+  const PROGRESS_LEN = ARC_LEN * (score / 10)
+
+  const subScores = review.sub_scores ?? {}
+  const subScoreEntries: Array<[string, number, string]> = [
+    ["strategy", subScores.strategy ?? 0, "Estratégia"],
+    ["creatives", subScores.creatives ?? 0, "Criativos"],
+    ["targeting", subScores.targeting ?? 0, "Targeting"],
+    ["diversification", subScores.diversification ?? 0, "Diversificação"],
+    ["tracking", subScores.tracking ?? 0, "Tracking"],
+  ]
+
+  function formatDate(iso: string | null): string | null {
+    if (!iso) return null
+    try {
+      const d = new Date(iso)
+      return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(d)
+    } catch {
+      return null
+    }
+  }
+
+  const reviewedAt = formatDate(review.reviewed_at)
+
+  return (
+    <div
+      className="mt-5 relative bg-white rounded-2xl overflow-hidden"
+      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+    >
+      <div
+        className="absolute top-0 left-6 right-6 h-px opacity-50 z-[3]"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, #A8B2EE, transparent)",
+        }}
+      />
+
+      <div
+        className="relative px-6 sm:px-9 pt-7 pb-5 text-center"
+        style={{
+          background:
+            "linear-gradient(180deg, #FCFCFD 0%, transparent 100%)",
+        }}
+      >
+        <div className="inline-flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-500 mb-3">
+          <span className="font-mono text-slate-400 text-[11px]">
+            03 · MÍDIA PAGA
+          </span>
+          <span>Análise de ads</span>
+        </div>
+        <h2 className="text-[20px] sm:text-[22px] font-bold tracking-tight text-slate-900 leading-[1.2] mb-1.5">
+          Diagnóstico da sua operação de tráfego
+        </h2>
+        {reviewedAt && (
+          <p className="inline-flex items-center gap-1.5 text-[12px] text-slate-500 mt-0.5">
+            <Calendar className="h-3 w-3" strokeWidth={2} />
+            Avaliada em {reviewedAt}
+          </p>
+        )}
+        <div
+          className="absolute left-9 right-9 bottom-0 h-px opacity-60"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, #E5E7EB 20%, #E5E7EB 80%, transparent)",
+          }}
+        />
+      </div>
+
+      <div className="px-6 sm:px-9 py-6 grid sm:grid-cols-[180px_1fr] gap-6 sm:gap-8 items-center">
+        {/* Score gauge */}
+        <div className="flex flex-col items-center">
+          <div className="relative w-[160px] h-[160px]">
+            <svg
+              viewBox="0 0 160 160"
+              className="w-full h-full -rotate-[210deg]"
+              aria-hidden
+            >
+              <circle
+                cx="80"
+                cy="80"
+                r={RADIUS}
+                fill="none"
+                stroke="#F1F5F9"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={`${ARC_LEN} ${CIRC}`}
+              />
+              <circle
+                cx="80"
+                cy="80"
+                r={RADIUS}
+                fill="none"
+                stroke={scoreColor}
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={`${PROGRESS_LEN} ${CIRC}`}
+                style={{ transition: "stroke-dasharray 800ms ease-out" }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span
+                className="text-[44px] font-bold tabular-nums leading-none"
+                style={{ color: scoreColor }}
+              >
+                {score.toFixed(1)}
+              </span>
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mt-1">
+                de 10.0
+              </span>
+            </div>
+          </div>
+          <p
+            className="mt-3 text-[12.5px] font-semibold text-center"
+            style={{ color: scoreColor }}
+          >
+            {verdict}
+          </p>
+        </div>
+
+        {/* Summary + sub-scores */}
+        <div>
+          {review.summary && (
+            <p className="text-[13.5px] text-slate-600 leading-relaxed mb-4">
+              {review.summary}
+            </p>
+          )}
+          <div className="space-y-2.5">
+            {subScoreEntries.map(([key, val, label]) => {
+              const pct = Math.max(0, Math.min(100, (val / 10) * 100))
+              const barColor =
+                val >= 7 ? "#10B981" : val >= 4 ? "#F59E0B" : "#EF4444"
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-medium text-slate-700">
+                      {label}
+                    </span>
+                    <span
+                      className="text-[12px] font-mono font-semibold tabular-nums"
+                      style={{ color: barColor }}
+                    >
+                      {val.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${pct}%`, background: barColor }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 3 cards: strengths / opportunities / risks */}
+      <div
+        className="px-6 sm:px-9 pb-6 pt-2 grid sm:grid-cols-3 gap-3"
+        style={{ borderTop: "1px solid #F1F5F9" }}
+      >
+        <IssueCard
+          title="Pontos fortes"
+          icon={CheckCircle2}
+          color="emerald"
+          items={review.strengths ?? []}
+        />
+        <IssueCard
+          title="Oportunidades"
+          icon={TrendingUp}
+          color="brand"
+          items={review.opportunities ?? []}
+        />
+        <IssueCard
+          title="Riscos críticos"
+          icon={ShieldAlert}
+          color="rose"
+          items={review.risks ?? []}
+        />
+      </div>
+    </div>
+  )
+}
+
+function IssueCard({
+  title,
+  icon: Icon,
+  color,
+  items,
+}: {
+  title: string
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  color: "emerald" | "brand" | "rose"
+  items: Array<{ what: string; body: string }>
+}) {
+  const palette: Record<typeof color, { bg: string; fg: string; bd: string }> =
+    {
+      emerald: { bg: "#ECFDF5", fg: "#047857", bd: "#A7F3D0" },
+      brand: { bg: "#EEF0FB", fg: "#2137B6", bd: "#C7CDEF" },
+      rose: { bg: "#FFF1F2", fg: "#BE123C", bd: "#FECDD3" },
+    }
+  const c = palette[color]
+  const visible = items.slice(0, 3)
+  const extra = items.length - visible.length
+
+  return (
+    <div
+      className="rounded-xl p-4 flex flex-col gap-2.5"
+      style={{ background: c.bg, border: `1px solid ${c.bd}` }}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4" strokeWidth={2.2} />
+        <span
+          className="text-[12px] font-semibold uppercase tracking-wide"
+          style={{ color: c.fg }}
+        >
+          {title}
+        </span>
+      </div>
+      {visible.length === 0 ? (
+        <p className="text-[12.5px] text-slate-500 italic">Nada listado.</p>
+      ) : (
+        <ul className="space-y-2">
+          {visible.map((it, i) => (
+            <li key={i} className="text-[12.5px] leading-snug">
+              <p className="font-semibold text-slate-900">{it.what}</p>
+              {it.body && (
+                <p className="text-slate-600 mt-0.5 line-clamp-2">{it.body}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {extra > 0 && (
+        <p
+          className="text-[11.5px] font-semibold mt-1"
+          style={{ color: c.fg }}
+        >
+          + {extra} {extra === 1 ? "item" : "itens"}
+        </p>
+      )}
     </div>
   )
 }

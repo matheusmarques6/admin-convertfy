@@ -17,6 +17,10 @@ export type BriefingStatus =
   | "generated_pending_review"
   | "approved"
   | "needs_review"
+export type BriefingSource =
+  | "anthropic_sonnet"
+  | "openrouter_sonnet"
+  | "raw_template"
 export type DeliverableFieldType =
   | "url"
   | "upload"
@@ -136,6 +140,7 @@ export interface OnboardingPipelineItem {
   briefing_status: BriefingStatus
   briefing: BriefingContent | null
   briefing_generated_at: string | null
+  briefing_generated_by?: BriefingSource | null
   briefing_confirmed_at: string | null
   briefing_confirmed_by_client: boolean
   tutorial_token: string | null
