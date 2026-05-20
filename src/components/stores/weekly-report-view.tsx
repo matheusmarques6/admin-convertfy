@@ -12,6 +12,10 @@ import {
   CheckCircle2,
   RefreshCw,
   Loader2,
+  Pencil,
+  X,
+  ShoppingBag,
+  Save,
 } from "lucide-react"
 import type { WeeklyReport } from "@/types/weekly-report"
 
@@ -72,6 +76,8 @@ export function WeeklyReportView({ storeId, initialWeek }: Props) {
   const [aiLoading, setAiLoading] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [reviewing, setReviewing] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setAiSummary("")
@@ -91,6 +97,22 @@ export function WeeklyReportView({ storeId, initialWeek }: Props) {
       await mutate()
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  const handleSaveEdits = async (
+    edits: Parameters<
+      typeof saveWeeklyReportEdits
+    >[2],
+  ) => {
+    if (!report) return
+    setSaving(true)
+    try {
+      await saveWeeklyReportEdits(storeId, week, edits)
+      await mutate()
+      setEditing(false)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -223,6 +245,35 @@ Estrutura: contexto rapido, 2-3 pontos para parabenizar, 2-3 pontos de atencao, 
             )}
             Recalcular
           </button>
+          {report && (
+            <button
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              className={
+                "inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] text-[12px] font-medium border " +
+                (editing
+                  ? "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700"
+                  : "border-black/[0.08] dark:border-white/[0.10] hover:bg-slate-50 dark:hover:bg-white/[0.04]")
+              }
+              title={
+                editing
+                  ? "Sair do modo de edicao (descarta alteracoes nao salvas)"
+                  : "Editar dados manualmente"
+              }
+            >
+              {editing ? (
+                <>
+                  <X className="h-3.5 w-3.5" />
+                  Cancelar edicao
+                </>
+              ) : (
+                <>
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </>
+              )}
+            </button>
+          )}
           {report && !report.is_reviewed && (
             <button
               type="button"
@@ -264,9 +315,54 @@ Estrutura: contexto rapido, 2-3 pontos para parabenizar, 2-3 pontos de atencao, 
         </div>
       )}
 
-      {report && <ReportBody report={report} onAI={generateAiBriefing} aiSummary={aiSummary} aiLoading={aiLoading} />}
+      {report && (
+        <ReportBody
+          report={report}
+          onAI={generateAiBriefing}
+          aiSummary={aiSummary}
+          aiLoading={aiLoading}
+          editing={editing}
+          saving={saving}
+          onSave={handleSaveEdits}
+        />
+      )}
     </div>
   )
+}
+
+// ── Helper: salva edicao no backend ─────────────────────────────
+interface ReportEdits {
+  metrics_overrides?: {
+    revenue?: { current?: number; previous?: number }
+    campaigns_sent?: number
+    opens?: { current?: number; rate?: number }
+    clicks?: { current?: number; rate?: number }
+    paid_orders?: {
+      count?: number
+      value?: number
+      previous_count?: number
+      previous_value?: number
+    }
+  }
+  highlights?: string[]
+  concerns?: string[]
+  suggestions?: string[]
+}
+
+async function saveWeeklyReportEdits(
+  storeId: string,
+  week: string,
+  edits: ReportEdits,
+): Promise<void> {
+  const res = await fetch(`/api/stores/${storeId}/weekly-report`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ week, ...edits }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+  }
 }
 
 function ReportBody({
@@ -274,11 +370,17 @@ function ReportBody({
   onAI,
   aiSummary,
   aiLoading,
+  editing,
+  saving,
+  onSave,
 }: {
   report: WeeklyReport
   onAI: () => void
   aiSummary: string
   aiLoading: boolean
+  editing: boolean
+  saving: boolean
+  onSave: (edits: ReportEdits) => Promise<void>
 }) {
   const m = report.metrics
 
@@ -291,33 +393,159 @@ function ReportBody({
     [m],
   )
 
+  // ── Edit state (so usado quando editing=true) ──
+  const [editRevenue, setEditRevenue] = useState<string>("")
+  const [editCampaigns, setEditCampaigns] = useState<string>("")
+  const [editOpenRate, setEditOpenRate] = useState<string>("")
+  const [editClickRate, setEditClickRate] = useState<string>("")
+  const [editPaidCount, setEditPaidCount] = useState<string>("")
+  const [editPaidValue, setEditPaidValue] = useState<string>("")
+  const [editHighlights, setEditHighlights] = useState<string>("")
+  const [editConcerns, setEditConcerns] = useState<string>("")
+  const [editSuggestions, setEditSuggestions] = useState<string>("")
+
+  useEffect(() => {
+    if (!editing) return
+    setEditRevenue(String(m.revenue.current))
+    setEditCampaigns(String(m.campaigns_sent))
+    setEditOpenRate((m.opens.rate * 100).toFixed(2))
+    setEditClickRate((m.clicks.rate * 100).toFixed(2))
+    setEditPaidCount(String(m.paid_orders?.count ?? 0))
+    setEditPaidValue(String(m.paid_orders?.value ?? 0))
+    setEditHighlights(report.highlights.join("\n"))
+    setEditConcerns(report.concerns.join("\n"))
+    setEditSuggestions(report.suggestions.join("\n"))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
+  async function submitEdits() {
+    const num = (s: string): number | undefined => {
+      const v = parseFloat(s.replace(",", "."))
+      return Number.isFinite(v) ? v : undefined
+    }
+    const intnum = (s: string): number | undefined => {
+      const v = parseInt(s, 10)
+      return Number.isFinite(v) ? v : undefined
+    }
+    const splitLines = (s: string): string[] =>
+      s.split("\n").map((l) => l.trim()).filter(Boolean)
+
+    const overrides: ReportEdits["metrics_overrides"] = {}
+    const rev = num(editRevenue)
+    if (rev !== undefined && rev !== m.revenue.current) {
+      overrides.revenue = { current: rev }
+    }
+    const camp = intnum(editCampaigns)
+    if (camp !== undefined && camp !== m.campaigns_sent) {
+      overrides.campaigns_sent = camp
+    }
+    const orate = num(editOpenRate)
+    if (orate !== undefined) {
+      const v = +(orate / 100).toFixed(4)
+      if (Math.abs(v - m.opens.rate) > 0.0001) {
+        overrides.opens = { rate: v }
+      }
+    }
+    const crate = num(editClickRate)
+    if (crate !== undefined) {
+      const v = +(crate / 100).toFixed(4)
+      if (Math.abs(v - m.clicks.rate) > 0.0001) {
+        overrides.clicks = { rate: v }
+      }
+    }
+    const pcount = intnum(editPaidCount)
+    const pvalue = num(editPaidValue)
+    if (
+      pcount !== undefined &&
+      pvalue !== undefined &&
+      (pcount !== (m.paid_orders?.count ?? 0) ||
+        pvalue !== (m.paid_orders?.value ?? 0))
+    ) {
+      overrides.paid_orders = { count: pcount, value: pvalue }
+    }
+
+    await onSave({
+      metrics_overrides: Object.keys(overrides).length ? overrides : undefined,
+      highlights: splitLines(editHighlights),
+      concerns: splitLines(editConcerns),
+      suggestions: splitLines(editSuggestions),
+    })
+  }
+
   return (
     <>
+      {editing && (
+        <div className="rounded-[8px] border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center justify-between gap-3">
+          <div className="text-[12.5px] text-amber-900 dark:text-amber-200">
+            <b>Modo edição</b> · ajuste qualquer campo abaixo. Os valores
+            sobrescrevem o auto-gerado e ficam marcados como manuais.
+          </div>
+          <button
+            type="button"
+            onClick={submitEdits}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] text-[12px] font-semibold bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            Salvar edições
+          </button>
+        </div>
+      )}
+
       {/* KPIs grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <KpiCard
           label="Receita"
           value={fmtBRL(m.revenue.current)}
           changePct={m.revenue.change_pct}
+          editing={editing}
+          editValue={editRevenue}
+          onEdit={setEditRevenue}
+          editPrefix="R$ "
         />
         <KpiCard
           label="Campanhas enviadas"
           value={String(m.campaigns_sent)}
           neutral
+          editing={editing}
+          editValue={editCampaigns}
+          onEdit={setEditCampaigns}
         />
         <KpiCard
           label="Taxa de abertura"
           value={`${(m.opens.rate * 100).toFixed(1)}%`}
           changePct={openRatePts}
           unit="pp"
+          editing={editing}
+          editValue={editOpenRate}
+          onEdit={setEditOpenRate}
+          editSuffix="%"
         />
         <KpiCard
           label="Taxa de clique"
           value={`${(m.clicks.rate * 100).toFixed(1)}%`}
           changePct={clickRatePts}
           unit="pp"
+          editing={editing}
+          editValue={editClickRate}
+          onEdit={setEditClickRate}
+          editSuffix="%"
         />
       </div>
+
+      {/* Pedidos pagos */}
+      <PaidOrdersSection
+        report={report}
+        editing={editing}
+        editCount={editPaidCount}
+        editValue={editPaidValue}
+        onEditCount={setEditPaidCount}
+        onEditValue={setEditPaidValue}
+      />
 
       {/* Top flows */}
       <section className="rounded-[8px] border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161922] overflow-hidden">
@@ -371,18 +599,27 @@ function ReportBody({
           tone="success"
           items={report.highlights}
           emptyText="Sem destaques."
+          editing={editing}
+          editValue={editHighlights}
+          onEdit={setEditHighlights}
         />
         <InsightCard
           title="Pontos de atenção"
           tone="warn"
           items={report.concerns}
           emptyText="Sem pontos de atenção."
+          editing={editing}
+          editValue={editConcerns}
+          onEdit={setEditConcerns}
         />
         <InsightCard
           title="Sugestões para call"
           tone="info"
           items={report.suggestions}
           emptyText="Sem sugestões."
+          editing={editing}
+          editValue={editSuggestions}
+          onEdit={setEditSuggestions}
         />
       </div>
 
@@ -432,12 +669,22 @@ function KpiCard({
   changePct,
   unit,
   neutral,
+  editing,
+  editValue,
+  onEdit,
+  editPrefix,
+  editSuffix,
 }: {
   label: string
   value: string
   changePct?: number
   unit?: "%" | "pp"
   neutral?: boolean
+  editing?: boolean
+  editValue?: string
+  onEdit?: (v: string) => void
+  editPrefix?: string
+  editSuffix?: string
 }) {
   const positive = changePct != null && changePct > 0
   const negative = changePct != null && changePct < 0
@@ -451,14 +698,44 @@ function KpiCard({
         : "text-slate-500 dark:text-white/55"
 
   return (
-    <div className="rounded-[8px] border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161922] p-3.5">
+    <div
+      className={
+        "rounded-[8px] border bg-white dark:bg-[#161922] p-3.5 " +
+        (editing
+          ? "border-amber-300 dark:border-amber-700"
+          : "border-black/[0.06] dark:border-white/[0.08]")
+      }
+    >
       <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 dark:text-white/45">
         {label}
       </p>
-      <p className="mt-1.5 text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
-        {value}
-      </p>
-      {!neutral && changePct != null && (
+      {editing && onEdit ? (
+        <div className="mt-1.5 inline-flex items-center gap-1 text-[16px] font-semibold tabular-nums">
+          {editPrefix && (
+            <span className="text-slate-500 dark:text-white/55">
+              {editPrefix}
+            </span>
+          )}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={editValue ?? ""}
+            onChange={(e) => onEdit(e.target.value)}
+            className="w-full text-[20px] font-semibold tracking-tight bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-[4px] px-2 py-0.5 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"
+            style={{ minWidth: 0 }}
+          />
+          {editSuffix && (
+            <span className="text-slate-500 dark:text-white/55">
+              {editSuffix}
+            </span>
+          )}
+        </div>
+      ) : (
+        <p className="mt-1.5 text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
+          {value}
+        </p>
+      )}
+      {!neutral && changePct != null && !editing && (
         <div
           className={
             "mt-1 inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums " +
@@ -475,16 +752,163 @@ function KpiCard({
   )
 }
 
+function PaidOrdersSection({
+  report,
+  editing,
+  editCount,
+  editValue,
+  onEditCount,
+  onEditValue,
+}: {
+  report: WeeklyReport
+  editing: boolean
+  editCount: string
+  editValue: string
+  onEditCount: (v: string) => void
+  onEditValue: (v: string) => void
+}) {
+  const po = report.metrics.paid_orders
+  const count = po?.count ?? 0
+  const value = po?.value ?? 0
+  const prevCount = po?.previous_count ?? 0
+  const source = po?.source ?? "none"
+
+  const countDelta = prevCount > 0 ? Math.round(((count - prevCount) / prevCount) * 100) : 0
+
+  const sourceLabel = {
+    tracking: { label: "Automático (Shopify)", color: "emerald" },
+    manual: { label: "Manual", color: "amber" },
+    estimated: { label: "Estimado", color: "blue" },
+    none: { label: "Sem fonte automática", color: "slate" },
+  }[source]
+
+  const avgTicket = count > 0 ? value / count : 0
+
+  return (
+    <section
+      className={
+        "rounded-[8px] border bg-white dark:bg-[#161922] overflow-hidden " +
+        (editing
+          ? "border-amber-300 dark:border-amber-700"
+          : "border-black/[0.06] dark:border-white/[0.08]")
+      }
+    >
+      <div className="px-4 py-3 border-b border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+            <ShoppingBag className="h-3.5 w-3.5" />
+          </span>
+          <div>
+            <h2 className="text-[13px] font-semibold text-slate-900 dark:text-white">
+              Pedidos pagos
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-white/55">
+              Total de pedidos com status <code>paid</code> no período
+            </p>
+          </div>
+        </div>
+        <span
+          className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-[4px] bg-${sourceLabel.color}-50 dark:bg-${sourceLabel.color}-900/20 text-${sourceLabel.color}-700 dark:text-${sourceLabel.color}-300`}
+        >
+          {sourceLabel.label}
+        </span>
+      </div>
+      <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 dark:text-white/45">
+            Quantidade
+          </p>
+          {editing ? (
+            <input
+              type="number"
+              min={0}
+              value={editCount}
+              onChange={(e) => onEditCount(e.target.value)}
+              className="mt-1.5 w-full text-[22px] font-semibold tracking-tight bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-[4px] px-2 py-0.5 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-400 tabular-nums"
+            />
+          ) : (
+            <p className="mt-1.5 text-[22px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
+              {count}
+            </p>
+          )}
+          {!editing && countDelta !== 0 && (
+            <p
+              className={
+                "mt-1 text-[11px] font-semibold tabular-nums " +
+                (countDelta > 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-red-600 dark:text-red-400")
+              }
+            >
+              {countDelta > 0 ? "+" : ""}
+              {countDelta}% vs semana anterior
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 dark:text-white/45">
+            Receita total
+          </p>
+          {editing ? (
+            <div className="mt-1.5 inline-flex items-center gap-1 w-full">
+              <span className="text-slate-500 dark:text-white/55">R$</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={editValue}
+                onChange={(e) => onEditValue(e.target.value)}
+                className="flex-1 text-[22px] font-semibold tracking-tight bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-[4px] px-2 py-0.5 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-400 tabular-nums"
+              />
+            </div>
+          ) : (
+            <p className="mt-1.5 text-[22px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
+              {fmtBRL(value)}
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 dark:text-white/45">
+            Ticket médio
+          </p>
+          <p className="mt-1.5 text-[22px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
+            {count > 0 ? fmtBRL(avgTicket) : "—"}
+          </p>
+          {!editing && (
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
+              {prevCount > 0
+                ? `${prevCount} pedidos · ${fmtBRL(po?.previous_value ?? 0)} na semana anterior`
+                : "Sem comparativo da semana anterior"}
+            </p>
+          )}
+        </div>
+      </div>
+      {source === "none" && !editing && (
+        <div className="px-4 py-2.5 border-t border-black/[0.04] dark:border-white/[0.06] text-[11.5px] text-slate-500 dark:text-white/55 bg-slate-50/60 dark:bg-white/[0.02]">
+          Sem integração de tracking Shopify pra essa loja. Use{" "}
+          <b>Editar</b> pra preencher manualmente.
+        </div>
+      )}
+    </section>
+  )
+}
+
 function InsightCard({
   title,
   tone,
   items,
   emptyText,
+  editing,
+  editValue,
+  onEdit,
 }: {
   title: string
   tone: "success" | "warn" | "info"
   items: string[]
   emptyText: string
+  editing?: boolean
+  editValue?: string
+  onEdit?: (v: string) => void
 }) {
   const toneClass =
     tone === "success"
@@ -505,7 +929,15 @@ function InsightCard({
       <p className={`text-[12px] uppercase tracking-wide font-semibold ${titleColor}`}>
         {title}
       </p>
-      {items.length === 0 ? (
+      {editing && onEdit ? (
+        <textarea
+          value={editValue ?? ""}
+          onChange={(e) => onEdit(e.target.value)}
+          placeholder="1 item por linha"
+          rows={Math.max(4, items.length + 1)}
+          className="mt-2 w-full bg-white/70 dark:bg-black/20 border border-amber-300 dark:border-amber-700 rounded-[4px] px-2 py-1.5 text-[12.5px] leading-relaxed text-slate-800 dark:text-white/85 outline-none focus:ring-2 focus:ring-amber-400 resize-y font-mono"
+        />
+      ) : items.length === 0 ? (
         <p className="mt-2 text-[12px] text-slate-500 dark:text-white/45">
           {emptyText}
         </p>

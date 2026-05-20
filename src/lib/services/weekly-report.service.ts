@@ -78,6 +78,55 @@ async function aggregateCampaignMetrics(
   }
 }
 
+interface PaidOrdersAgg {
+  count: number
+  value: number
+  source: "tracking" | "none"
+}
+
+/**
+ * Agrega pedidos pagos do periodo. Fonte automatica: tracking_orders
+ * via tracking_stores.client_store_id. Se a loja nao tem modulo de
+ * tracking ativo, retorna 0/0 + source="none" (CM preenche manual).
+ */
+async function aggregatePaidOrders(
+  storeId: string,
+  start: Date,
+  end: Date,
+): Promise<PaidOrdersAgg> {
+  const admin = createAdminClient()
+
+  const { data: trackingStore } = await admin
+    .from("tracking_stores")
+    .select("id")
+    .eq("client_store_id", storeId)
+    .maybeSingle()
+
+  if (!trackingStore?.id) {
+    return { count: 0, value: 0, source: "none" }
+  }
+
+  const { data: orders, error } = await admin
+    .from("tracking_orders")
+    .select("total_price, financial_status, order_created_at")
+    .eq("tracking_store_id", trackingStore.id)
+    .eq("financial_status", "paid")
+    .gte("order_created_at", start.toISOString())
+    .lt("order_created_at", end.toISOString())
+
+  if (error || !orders) return { count: 0, value: 0, source: "none" }
+
+  const value = orders.reduce(
+    (s, o) => s + Number(o.total_price ?? 0),
+    0,
+  )
+  return {
+    count: orders.length,
+    value,
+    source: "tracking",
+  }
+}
+
 async function aggregateTopFlows(
   storeId: string,
   start: Date,
@@ -181,6 +230,47 @@ function deriveInsights(metrics: WeeklyReportMetrics): {
   return { highlights, concerns, suggestions }
 }
 
+/**
+ * Aplica metrics_overrides sobre metrics auto-gerado. Override marcado
+ * como source="manual" quando ha sobrescrita de paid_orders. Recalcula
+ * change_pct se revenue.current foi sobrescrito.
+ */
+export function applyMetricsOverrides(
+  metrics: WeeklyReportMetrics,
+  overrides: WeeklyReport["metrics_overrides"] | null | undefined,
+): WeeklyReportMetrics {
+  if (!overrides) return metrics
+
+  const out: WeeklyReportMetrics = JSON.parse(JSON.stringify(metrics))
+
+  if (overrides.revenue) {
+    Object.assign(out.revenue, overrides.revenue)
+    out.revenue.change_pct = pct(out.revenue.current, out.revenue.previous)
+  }
+  if (typeof overrides.campaigns_sent === "number") {
+    out.campaigns_sent = overrides.campaigns_sent
+  }
+  if (overrides.opens) {
+    Object.assign(out.opens, overrides.opens)
+  }
+  if (overrides.clicks) {
+    Object.assign(out.clicks, overrides.clicks)
+  }
+  if (overrides.paid_orders) {
+    out.paid_orders = {
+      count: out.paid_orders?.count ?? 0,
+      value: out.paid_orders?.value ?? 0,
+      previous_count: out.paid_orders?.previous_count ?? 0,
+      previous_value: out.paid_orders?.previous_value ?? 0,
+      source: "manual",
+      ...overrides.paid_orders,
+    }
+    // Garante source=manual quando ha override
+    out.paid_orders.source = "manual"
+  }
+  return out
+}
+
 interface GenerateOptions {
   /** Forçar regenerar mesmo que ja exista relatorio salvo. */
   force?: boolean
@@ -219,10 +309,12 @@ export async function generateWeeklyReport(
   const prevStart = addDays(weekStart, -7)
   const prevEnd = weekStart
 
-  const [curr, prev, flows] = await Promise.all([
+  const [curr, prev, flows, paidCurr, paidPrev] = await Promise.all([
     aggregateCampaignMetrics(storeId, weekStart, weekEnd),
     aggregateCampaignMetrics(storeId, prevStart, prevEnd),
     aggregateTopFlows(storeId, weekStart, weekEnd),
+    aggregatePaidOrders(storeId, weekStart, weekEnd),
+    aggregatePaidOrders(storeId, prevStart, prevEnd),
   ])
 
   const metrics: WeeklyReportMetrics = {
@@ -245,6 +337,13 @@ export async function generateWeeklyReport(
       rate_previous: prev.click_rate,
     },
     flows,
+    paid_orders: {
+      count: paidCurr.count,
+      value: paidCurr.value,
+      previous_count: paidPrev.count,
+      previous_value: paidPrev.value,
+      source: paidCurr.source,
+    },
   }
 
   const { highlights, concerns, suggestions } = deriveInsights(metrics)
