@@ -60,6 +60,8 @@ const patchSchema = z.object({
   figma_onboarding_url: z.string().nullable().optional(),
   figma_emails_url: z.string().nullable().optional(),
   drive_folder_url: z.string().nullable().optional(),
+  brand_manual_url: z.string().nullable().optional(),
+  research_doc_url: z.string().nullable().optional(),
   // Pesquisa & Diagnóstico · 1. Perfil da Marca
   brand_thesis: z.string().nullable().optional(),
   brand_about: z.string().nullable().optional(),
