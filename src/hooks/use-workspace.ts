@@ -96,6 +96,16 @@ const OPERACIONAL_PREFIXES = [
   "/admin/campaigns",
   "/admin/insights",
   "/admin/list-hygiene",
+  // ── Customer Success (rotinas semanais/mensais do CS) ────────────
+  // Por compatibilidade com bookmarks ja existentes, estas paginas
+  // moram em /admin/<slug> (em vez de /admin/operacional/<slug>),
+  // mas pertencem ao workspace OPERACIONAL no menu lateral.
+  // Sem isso, clicar em "Acompanhamento", "CRM CS" ou "Ritual de
+  // Sexta" trocava pra workspace Geral por inferencia de pathname.
+  "/admin/acompanhamento",
+  "/admin/ritual",
+  "/admin/cs-crm",
+  "/admin/onboarding-help",
 ]
 
 export function detectWorkspace(pathname: string): WorkspaceKey {

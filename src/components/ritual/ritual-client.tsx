@@ -16,15 +16,19 @@ const C = {
   brand50: "#EEF0FB",
   g100: "#F3F4F6",
   g200: "#E5E7EB",
+  g300: "#D1D5DB",
   g500: "#6B7280",
   g700: "#374151",
   g900: "#111827",
   pos: "#065F46",
   posBg: "#ECFDF5",
+  posBorder: "#A7F3D0",
   warn: "#92400E",
   warnBg: "#FFFBEB",
+  warnBorder: "#FDE68A",
   neg: "#991B1B",
   negBg: "#FEF2F2",
+  negBorder: "#FECACA",
   purple: "#7C3AED",
   purpleBg: "#F3E8FF",
 }
@@ -65,13 +69,47 @@ export function RitualClient() {
   const activeSession = sessions.find((s) => s.status === "in_progress")
 
   // Lojas em Etapa 1 (preview)
-  const { data: pipelineData } = useSWR<{
+  const { data: pipelineData, mutate: mutatePipeline } = useSWR<{
     data?: {
       by_stage: Record<number, Array<{ id: string; store_id: string; health_state: string; flag_reason: string | null; store: { store_name: string; mrr_value: number | null; client: { name: string } | null } }>>
     }
   }>("/api/acompanhamento/pipeline", fetcherWithError, {
     shouldRetryOnError: false,
   })
+
+  // Estado pra "Sinalizar lojas agora" (dispara mesmo flagging do cron)
+  const [flagging, setFlagging] = useState(false)
+  const [flagMessage, setFlagMessage] = useState<string | null>(null)
+
+  async function flagNow(force: boolean) {
+    if (flagging) return
+    setFlagging(true)
+    setFlagMessage(null)
+    try {
+      const res = await fetch("/api/admin/acompanhamento/flag-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ force }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        throw new Error(body?.error?.message || body?.error || "Falha ao sinalizar lojas")
+      }
+      const d = body.data ?? body
+      setFlagMessage(
+        d.flagged > 0
+          ? `${d.flagged} loja(s) sinalizadas · ${d.skipped} sem critério` +
+              (d.errors > 0 ? ` · ${d.errors} erro(s)` : "")
+          : `Nenhuma loja tem critério pra ser sinalizada agora (${d.total_stores} avaliadas). Use "Forçar todas" pra demo.`,
+      )
+      await Promise.all([mutatePipeline(), mutateSessions()])
+    } catch (e) {
+      setFlagMessage(`Erro: ${(e as Error).message}`)
+    } finally {
+      setFlagging(false)
+    }
+  }
 
   const stage1 = pipelineData?.data?.by_stage?.[1] ?? []
 
@@ -184,35 +222,108 @@ export function RitualClient() {
             alignItems: "center",
           }}
         >
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.g900, marginBottom: 4 }}>
               {stage1.length} lojas aguardando diagnóstico
             </div>
             <div style={{ fontSize: 12, color: C.g500 }}>
               {stage1.length > 0
                 ? "Clique pra iniciar a sessão e discutir uma por uma com a IA."
-                : "Nenhuma loja flagged essa semana. O cron domingo 22h preenche automaticamente."}
+                : "Nenhuma loja flagged essa semana. O cron domingo 22h roda automaticamente — ou dispare manualmente abaixo."}
             </div>
+            {flagMessage && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  background: flagMessage.startsWith("Erro")
+                    ? C.negBg
+                    : flagMessage.startsWith("Nenhuma")
+                      ? C.warnBg
+                      : C.posBg,
+                  color: flagMessage.startsWith("Erro")
+                    ? C.neg
+                    : flagMessage.startsWith("Nenhuma")
+                      ? C.warn
+                      : C.pos,
+                  border: `1px solid ${
+                    flagMessage.startsWith("Erro")
+                      ? C.negBorder
+                      : flagMessage.startsWith("Nenhuma")
+                        ? C.warnBorder
+                        : C.posBorder
+                  }`,
+                  borderRadius: 4,
+                  fontSize: 11.5,
+                  fontWeight: 500,
+                  lineHeight: 1.4,
+                }}
+              >
+                {flagMessage}
+              </div>
+            )}
           </div>
-          {stage1.length > 0 && (
-            <button
-              type="button"
-              onClick={startRitual}
-              disabled={creating}
-              style={{
-                padding: "10px 24px",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#fff",
-                background: C.brand,
-                border: "none",
-                borderRadius: 6,
-                cursor: creating ? "wait" : "pointer",
-              }}
-            >
-              {creating ? "Iniciando..." : "▶ Iniciar ritual"}
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            {stage1.length === 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => flagNow(false)}
+                  disabled={flagging}
+                  title="Roda mesma lógica do cron de domingo 22h: flag só lojas com critério (risk/attention/rampup/renewal)"
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: C.brand,
+                    background: "#fff",
+                    border: `1px solid ${C.brand}`,
+                    borderRadius: 6,
+                    cursor: flagging ? "wait" : "pointer",
+                  }}
+                >
+                  {flagging ? "Sinalizando..." : "⚡ Sinalizar agora"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => flagNow(true)}
+                  disabled={flagging}
+                  title="Modo demo: flagga TODAS as lojas (mesmo healthy) pra você poder testar o ritual"
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: C.g700,
+                    background: "transparent",
+                    border: `1px dashed ${C.g300}`,
+                    borderRadius: 6,
+                    cursor: flagging ? "wait" : "pointer",
+                  }}
+                >
+                  Forçar todas (demo)
+                </button>
+              </>
+            )}
+            {stage1.length > 0 && (
+              <button
+                type="button"
+                onClick={startRitual}
+                disabled={creating}
+                style={{
+                  padding: "10px 24px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#fff",
+                  background: C.brand,
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: creating ? "wait" : "pointer",
+                }}
+              >
+                {creating ? "Iniciando..." : "▶ Iniciar ritual"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
