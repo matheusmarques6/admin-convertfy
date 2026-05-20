@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { notificationService } from "@/lib/services/notification.service"
 import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
+import { onboardingMirrorService } from "@/lib/services/onboarding-mirror.service"
 import { logger } from "@/lib/logger"
 import type { ClientOnboarding, PhaseTransitionTrigger } from "@/types/onboarding"
 
@@ -157,6 +158,15 @@ export class OnboardingPhaseService {
 
     switch (toPhase) {
       case "pending_approval": {
+        // Espelha form_responses → client_stores + store_brand_identity
+        // (idempotente, só preenche colunas vazias).
+        if (onboarding.store_id) {
+          try {
+            await onboardingMirrorService.syncStoreFromOnboarding(onboarding.store_id)
+          } catch (err) {
+            log.error("Mirror falhou (non-blocking)", err)
+          }
+        }
         // Notify approvers (users with onboarding_approve feature)
         await this.notifyApprovers(onboarding)
         await this.notifyClient(onboarding, "form_submitted",
