@@ -4,9 +4,12 @@ import { useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import { CSPageHeader } from "@/components/cs-crm/cs-page-header"
+import {
+  CSErrorState,
+  CSLoadingState,
+  fetcherWithError,
+} from "@/components/cs-crm/cs-states"
 
-const fetcher = (url: string) =>
-  fetch(url, { credentials: "include" }).then((r) => r.json())
 
 const C = {
   brand: "#2137B6",
@@ -92,14 +95,17 @@ function timeAgo(iso: string): string {
 }
 
 export function AcompanhamentoKanban() {
-  const { data, mutate, isLoading } = useSWR<{
+  const { data, error, mutate, isLoading } = useSWR<{
     data?: {
       week_start: string
       total: number
       by_stage: Record<number, PipelineState[]>
       stage_counts: Record<number, number>
     }
-  }>("/api/acompanhamento/pipeline", fetcher, { revalidateOnFocus: false })
+  }>("/api/acompanhamento/pipeline", fetcherWithError, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  })
 
   const payload = data?.data
   const router = useRouter()
@@ -125,17 +131,27 @@ export function AcompanhamentoKanban() {
   }
 
   if (isLoading) {
-    return (
-      <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>
-        Carregando pipeline de acompanhamento...
-      </div>
-    )
+    return <CSLoadingState label="Carregando pipeline de acompanhamento..." />
   }
 
-  if (!payload) {
+  if (error || !payload) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>
-        Erro ao carregar.
+      <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
+        <CSPageHeader
+          title="Acompanhamento Semanal"
+          description="Pipeline da rotina de feedback semanal."
+          active="acomp"
+        />
+        <CSErrorState
+          error={error}
+          onRetry={() => mutate()}
+          title="Não foi possível carregar o pipeline"
+          hint={
+            !error
+              ? "A resposta do servidor veio vazia. Verifique se a migration weekly_pipeline_states foi aplicada."
+              : undefined
+          }
+        />
       </div>
     )
   }

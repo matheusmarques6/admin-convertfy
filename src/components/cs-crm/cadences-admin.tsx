@@ -3,8 +3,7 @@
 import { useState } from "react"
 import useSWR from "swr"
 import { CSPageHeader } from "./cs-page-header"
-
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
+import { CSErrorState, CSLoadingState, fetcherWithError } from "./cs-states"
 
 const C = {
   brand: "#2137B6",
@@ -65,13 +64,32 @@ function moneyBRL(n: number | null): string {
 }
 
 export function CadencesAdmin() {
-  const { data, mutate, isLoading } = useSWR<{ data?: CadenceData }>("/api/cs-crm/cadences", fetcher)
+  const { data, error, mutate, isLoading } = useSWR<{ data?: CadenceData }>(
+    "/api/cs-crm/cadences",
+    fetcherWithError,
+    { shouldRetryOnError: false },
+  )
   const [filter, setFilter] = useState<"all" | "exceptions" | CadenceItem["frequency"]>("all")
   const [editingStore, setEditingStore] = useState<CadenceItem | null>(null)
 
   const payload = data?.data
-  if (isLoading) return <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>Carregando...</div>
-  if (!payload) return <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>Erro</div>
+  if (isLoading) return <CSLoadingState label="Carregando cadências..." />
+  if (error || !payload) {
+    return (
+      <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
+        <CSPageHeader
+          title="Cadências de Feedback"
+          description="Define com que frequência cada loja recebe a call de feedback do CS."
+          active="cadences"
+        />
+        <CSErrorState
+          error={error}
+          onRetry={() => mutate()}
+          title="Não foi possível carregar as cadências"
+        />
+      </div>
+    )
+  }
 
   const filtered =
     filter === "all"

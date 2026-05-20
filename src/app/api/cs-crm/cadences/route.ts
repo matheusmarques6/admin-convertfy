@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const { data: storesRaw } = await admin
       .from("client_stores")
       .select(
-        "id, store_name, mrr_value, is_active, " +
+        "id, store_name, mrr_cents, is_active, " +
           "client:clients!client_stores_client_id_fkey(id, name, owner:profiles!clients_owner_id_fkey(id, name))",
       )
       .eq("org_id", member.org_id)
@@ -57,14 +57,17 @@ export async function GET(request: NextRequest) {
       const sx = s as unknown as {
         id: string
         store_name: string
-        mrr_value: number | null
+        mrr_cents: number | null
         client: { id: string; name: string; owner: { id: string; name: string } | null } | null
       }
       const override = overrideMap.get(sx.id)
       return {
         store_id: sx.id,
         store_name: sx.store_name,
-        mrr_value: sx.mrr_value,
+        mrr_value:
+          sx.mrr_cents && sx.mrr_cents > 0
+            ? Math.round(sx.mrr_cents / 100)
+            : null,
         client_name: sx.client?.name ?? null,
         owner_name: sx.client?.owner?.name ?? null,
         frequency: override?.frequency ?? "weekly",

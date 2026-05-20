@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import { CSPageHeader } from "./cs-page-header"
+import { CSErrorState, CSLoadingState, fetcherWithError } from "./cs-states"
 
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
 const C = {
   brand: "#2137B6",
@@ -91,10 +91,10 @@ function timeAgo(iso: string | null | undefined): string {
 
 export function CSCrmHome() {
   const router = useRouter()
-  const { data, isLoading, mutate } = useSWR<{ data?: CSCrmData }>(
+  const { data, error, isLoading, mutate } = useSWR<{ data?: CSCrmData }>(
     "/api/cs-crm/home",
-    fetcher,
-    { refreshInterval: 60_000 },
+    fetcherWithError,
+    { refreshInterval: 60_000, shouldRetryOnError: false },
   )
 
   const payload = data?.data
@@ -107,8 +107,23 @@ export function CSCrmHome() {
     (payload?.concluidos_hoje.length ?? 0)
 
   if (isLoading) {
+    return <CSLoadingState label="Carregando CRM..." />
+  }
+
+  if (error) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>Carregando CRM...</div>
+      <div style={{ padding: 20, background: C.g50, minHeight: "100vh" }}>
+        <CSPageHeader
+          title="CRM Customer Success"
+          description="Painel diário dos CMs."
+          active="crm"
+        />
+        <CSErrorState
+          error={error}
+          onRetry={() => mutate()}
+          title="Não foi possível carregar o CRM CS"
+        />
+      </div>
     )
   }
 

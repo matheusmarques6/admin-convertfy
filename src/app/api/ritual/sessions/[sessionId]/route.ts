@@ -26,12 +26,24 @@ export async function GET(
     if (error || !session) throw new AppError("Sessão não encontrada", 404)
 
     // Diagnósticos associados
-    const { data: diagnostics } = await admin
+    const { data: diagnosticsRaw } = await admin
       .from("ritual_store_diagnostics")
-      .select("*, store:client_stores(id, store_name, store_url, niche, mrr_value, client:clients!client_stores_client_id_fkey(name))")
+      .select("*, store:client_stores(id, store_name, store_url, niche, mrr_cents, client:clients!client_stores_client_id_fkey(name))")
       .eq("ritual_session_id", sessionId)
 
-    return successResponse(request, { session, diagnostics: diagnostics ?? [] })
+    // Converte mrr_cents -> mrr_value (reais) pra contrato com o front
+    const diagnostics = (diagnosticsRaw ?? []).map((d) => {
+      const r = d as Record<string, unknown>
+      const s = r.store as { mrr_cents?: number | null } | null
+      if (s && typeof s === "object") {
+        const cents = s.mrr_cents ?? 0
+        ;(s as Record<string, unknown>).mrr_value =
+          cents > 0 ? Math.round(cents / 100) : null
+      }
+      return d
+    })
+
+    return successResponse(request, { session, diagnostics })
   } catch (error) {
     return errorResponse(request, error, "RitualSession")
   }

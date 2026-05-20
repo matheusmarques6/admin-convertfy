@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         "id, store_id, current_stage, health_state, health_score, flag_reason, " +
           "approved_actions, ai_message, feedback_sent_at, feedback_method, " +
           "flagged_at, approved_at, ai_message_generated_at, " +
-          "store:client_stores(id, store_name, store_url, platform, niche, country, mrr_value, " +
+          "store:client_stores(id, store_name, store_url, platform, niche, country, mrr_cents, " +
           "client:clients!client_stores_client_id_fkey(id, name, owner:profiles!clients_owner_id_fkey(id, name, avatar_url)))",
       )
       .eq("org_id", member.org_id)
@@ -78,9 +78,21 @@ export async function GET(request: NextRequest) {
       store: unknown
     }>
 
+    // Converte mrr_cents (BIGINT em centavos) -> mrr_value (number em reais)
+    // pra manter o contrato com o front sem mudar o componente.
+    const normalized = rows.map((r) => {
+      const s = r.store as { mrr_cents?: number | null } | null
+      if (s && typeof s === "object") {
+        const cents = s.mrr_cents ?? 0
+        ;(s as Record<string, unknown>).mrr_value =
+          cents > 0 ? Math.round(cents / 100) : null
+      }
+      return r
+    })
+
     // Agrupa por stage
-    const byStage: Record<number, typeof rows> = { 1: [], 2: [], 3: [], 4: [] }
-    for (const row of rows) {
+    const byStage: Record<number, typeof normalized> = { 1: [], 2: [], 3: [], 4: [] }
+    for (const row of normalized) {
       byStage[row.current_stage]?.push(row)
     }
 

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       .from("weekly_pipeline_states")
       .select(
         "id, store_id, ai_message, flag_reason, health_state, health_score, " +
-          "store:client_stores(id, store_name, mrr_value, client:clients!client_stores_client_id_fkey(id, name))",
+          "store:client_stores(id, store_name, mrr_cents, client:clients!client_stores_client_id_fkey(id, name))",
       )
       .eq("org_id", member.org_id)
       .eq("current_stage", 3)
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       .from("store_feedback_calls")
       .select(
         "id, conducted_at, store_id, next_call_date, " +
-          "store:client_stores(id, store_name, mrr_value, client:clients!client_stores_client_id_fkey(id, name))",
+          "store:client_stores(id, store_name, mrr_cents, client:clients!client_stores_client_id_fkey(id, name))",
       )
       .gte("conducted_at", todayStart.toISOString())
       .lte("conducted_at", todayEnd.toISOString())
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     const { data: storesNeedingCall } = await admin
       .from("client_stores")
       .select(
-        "id, store_name, mrr_value, " +
+        "id, store_name, mrr_cents, " +
           "client:clients!client_stores_client_id_fkey(id, name, owner_id), " +
           "calls:store_feedback_calls(conducted_at, next_call_date)",
       )
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
       .from("weekly_pipeline_states")
       .select(
         "id, store_id, health_state, health_score, flag_reason, " +
-          "store:client_stores(id, store_name, mrr_value, client:clients!client_stores_client_id_fkey(id, name))",
+          "store:client_stores(id, store_name, mrr_cents, client:clients!client_stores_client_id_fkey(id, name))",
       )
       .eq("org_id", member.org_id)
       .eq("health_state", "risk")
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       .from("store_feedback_calls")
       .select(
         "id, conducted_at, action_items, store_id, " +
-          "store:client_stores(id, store_name, mrr_value, client:clients!client_stores_client_id_fkey(id, name))",
+          "store:client_stores(id, store_name, mrr_cents, client:clients!client_stores_client_id_fkey(id, name))",
       )
       .gte("conducted_at", threeDaysAgo)
       .lte("conducted_at", todayEnd.toISOString())
@@ -114,19 +114,44 @@ export async function GET(request: NextRequest) {
       .from("weekly_pipeline_states")
       .select(
         "id, store_id, feedback_sent_at, feedback_method, " +
-          "store:client_stores(id, store_name, mrr_value, client:clients!client_stores_client_id_fkey(id, name))",
+          "store:client_stores(id, store_name, mrr_cents, client:clients!client_stores_client_id_fkey(id, name))",
       )
       .eq("org_id", member.org_id)
       .eq("current_stage", 4)
       .gte("feedback_sent_at", todayStart.toISOString())
 
+    // Converte mrr_cents (BIGINT centavos) -> mrr_value (reais) em cada card
+    // pra manter contrato com o front sem refatorar componentes.
+    const withMrr = <T>(rows: T[] | null | undefined): T[] => {
+      return (rows ?? []).map((row) => {
+        const r = row as Record<string, unknown>
+        const s = r.store as { mrr_cents?: number | null } | null
+        if (s && typeof s === "object") {
+          const cents = s.mrr_cents ?? 0
+          ;(s as Record<string, unknown>).mrr_value =
+            cents > 0 ? Math.round(cents / 100) : null
+        }
+        return row
+      })
+    }
+    const withMrrStore = <T extends { mrr_cents?: number | null }>(
+      rows: T[] | null | undefined,
+    ): T[] => {
+      return (rows ?? []).map((row) => {
+        const cents = row.mrr_cents ?? 0
+        ;(row as Record<string, unknown>).mrr_value =
+          cents > 0 ? Math.round(cents / 100) : null
+        return row
+      })
+    }
+
     return successResponse(request, {
-      urgente: urgentsRaw ?? [],
-      calls_hoje: callsTodayRaw ?? [],
-      feedbacks: feedbacksRaw ?? [],
-      agendar_call: needingCall.slice(0, 20),
-      pos_call_pendente: postCallRaw ?? [],
-      concluidos_hoje: completedTodayRaw ?? [],
+      urgente: withMrr(urgentsRaw),
+      calls_hoje: withMrr(callsTodayRaw),
+      feedbacks: withMrr(feedbacksRaw),
+      agendar_call: withMrrStore(needingCall as Array<{ mrr_cents?: number | null }>).slice(0, 20),
+      pos_call_pendente: withMrr(postCallRaw),
+      concluidos_hoje: withMrr(completedTodayRaw),
     })
   } catch (error) {
     return errorResponse(request, error, "CSCRMHome")

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     const { data: storeRaw } = await admin
       .from("client_stores")
       .select(
-        "id, store_name, niche, country, mrr_value, created_at, " +
+        "id, store_name, niche, country, mrr_cents, created_at, " +
           "client:clients!client_stores_client_id_fkey(name)",
       )
       .eq("id", body.store_id)
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       store_name: string
       niche: string | null
       country: string | null
-      mrr_value: number | null
+      mrr_cents: number | null
       created_at: string
       client: { name: string } | { name: string }[] | null
     }
@@ -123,7 +123,10 @@ export async function POST(request: NextRequest) {
         nome: store.store_name,
         nicho: store.niche,
         pais: store.country,
-        mrr: store.mrr_value,
+        mrr:
+          store.mrr_cents && store.mrr_cents > 0
+            ? Math.round(store.mrr_cents / 100)
+            : null,
         dias_na_convertfy: ageDays,
       },
       cliente: store.client,

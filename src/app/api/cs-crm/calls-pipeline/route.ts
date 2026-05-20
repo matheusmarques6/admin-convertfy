@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const { data: storesRaw } = await admin
       .from("client_stores")
       .select(
-        "id, store_name, mrr_value, " +
+        "id, store_name, mrr_cents, " +
           "client:clients!client_stores_client_id_fkey(id, name, owner_id)",
       )
       .eq("is_active", true)
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const stores = (storesRaw ?? []) as unknown as Array<{
       id: string
       store_name: string
-      mrr_value: number | null
+      mrr_cents: number | null
       client: { id: string; name: string; owner_id: string | null } | null
     }>
 
@@ -123,7 +123,10 @@ export async function GET(request: NextRequest) {
         id: store.id,
         store_id: store.id,
         store_name: store.store_name,
-        mrr_value: store.mrr_value,
+        mrr_value:
+          store.mrr_cents && store.mrr_cents > 0
+            ? Math.round(store.mrr_cents / 100)
+            : null,
         client_name: store.client?.name ?? null,
         call_id: null,
         conducted_at: null,

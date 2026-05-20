@@ -4,8 +4,12 @@ import { useState } from "react"
 import useSWR from "swr"
 import { RitualDiagnosticModal } from "./diagnostic-modal"
 import { CSPageHeader } from "@/components/cs-crm/cs-page-header"
+import {
+  CSErrorState,
+  CSLoadingState,
+  fetcherWithError,
+} from "@/components/cs-crm/cs-states"
 
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
 const C = {
   brand: "#2137B6",
@@ -46,9 +50,14 @@ const HEALTH_TONE: Record<string, { color: string; bg: string; label: string }> 
 }
 
 export function RitualClient() {
-  const { data: sessionsData, mutate: mutateSessions } = useSWR<{
+  const {
+    data: sessionsData,
+    error: sessionsError,
+    mutate: mutateSessions,
+    isLoading: sessionsLoading,
+  } = useSWR<{
     data?: { sessions: RitualSession[]; week_start: string }
-  }>("/api/ritual/sessions", fetcher)
+  }>("/api/ritual/sessions", fetcherWithError, { shouldRetryOnError: false })
 
   const sessions = sessionsData?.data?.sessions ?? []
   const weekStart = sessionsData?.data?.week_start
@@ -60,7 +69,9 @@ export function RitualClient() {
     data?: {
       by_stage: Record<number, Array<{ id: string; store_id: string; health_state: string; flag_reason: string | null; store: { store_name: string; mrr_value: number | null; client: { name: string } | null } }>>
     }
-  }>("/api/acompanhamento/pipeline", fetcher)
+  }>("/api/acompanhamento/pipeline", fetcherWithError, {
+    shouldRetryOnError: false,
+  })
 
   const stage1 = pipelineData?.data?.by_stage?.[1] ?? []
 
@@ -83,6 +94,27 @@ export function RitualClient() {
     } finally {
       setCreating(false)
     }
+  }
+
+  if (sessionsLoading) {
+    return <CSLoadingState label="Carregando ritual..." />
+  }
+
+  if (sessionsError) {
+    return (
+      <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
+        <CSPageHeader
+          title="Ritual de Sexta"
+          description="Reflexão semanal guiada por IA."
+          active="ritual"
+        />
+        <CSErrorState
+          error={sessionsError}
+          onRetry={() => mutateSessions()}
+          title="Não foi possível carregar o ritual"
+        />
+      </div>
+    )
   }
 
   return (

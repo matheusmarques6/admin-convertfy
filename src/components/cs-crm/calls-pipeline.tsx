@@ -4,8 +4,8 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import { CSPageHeader } from "./cs-page-header"
+import { CSErrorState, CSLoadingState, fetcherWithError } from "./cs-states"
 
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
 const C = {
   brand: "#2137B6",
@@ -85,19 +85,32 @@ function daysFromNow(iso: string | null): string {
 export function CallsPipeline() {
   const router = useRouter()
   const [view, setView] = useState<"kanban" | "calendar">("kanban")
-  const { data, isLoading, mutate } = useSWR<{ data?: PipelineData }>(
+  const { data, error, isLoading, mutate } = useSWR<{ data?: PipelineData }>(
     "/api/cs-crm/calls-pipeline",
-    fetcher,
-    { refreshInterval: 60_000 },
+    fetcherWithError,
+    { refreshInterval: 60_000, shouldRetryOnError: false },
   )
 
   const payload = data?.data
 
   if (isLoading) {
-    return <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>Carregando...</div>
+    return <CSLoadingState label="Carregando pipeline de calls..." />
   }
-  if (!payload) {
-    return <div style={{ padding: 40, textAlign: "center", color: C.g500 }}>Erro ao carregar.</div>
+  if (error || !payload) {
+    return (
+      <div style={{ padding: 20, background: C.g50, minHeight: "100vh" }}>
+        <CSPageHeader
+          title="Pipeline de Calls Mensais"
+          description="Pipeline com 6 etapas das calls de feedback mensais."
+          active="calls"
+        />
+        <CSErrorState
+          error={error}
+          onRetry={() => mutate()}
+          title="Não foi possível carregar o pipeline de calls"
+        />
+      </div>
+    )
   }
 
   return (
