@@ -1,11 +1,6 @@
-import { CSCrmHome } from "@/components/cs-crm/home"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "CRM CS · Convertfy Admin",
-}
-
-export const dynamic = "force-dynamic"
-
-export default function CSCrmPage() {
-  return <CSCrmHome />
+/** Redirect de compat: URL canonica eh /admin/operacional/cs-crm. */
+export default function CSCrmLegacyRedirect() {
+  redirect("/admin/operacional/cs-crm")
 }

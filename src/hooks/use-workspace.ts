@@ -85,27 +85,20 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
 const COMERCIAL_PREFIXES = ["/admin/comercial"]
 
 const OPERACIONAL_PREFIXES = [
-  // Tudo consolidado em /admin/operacional/* (portugues). Os 4
-  // workflows Monday-style (Onboarding, Acompanhamento, Feedback,
-  // Suporte) vivem em /admin/operacional/workflows/[slug].
+  // Tudo sob /admin/operacional/* (canonico). As paginas Customer
+  // Success (CRM CS, Acompanhamento, Calls Mensais, Ritual, Cadencias)
+  // moram em /admin/operacional/cs-crm, /acompanhamento e /ritual.
+  // URLs antigas /admin/cs-crm etc respondem com redirect 308 — mas
+  // como o navegador segue o redirect, o pathname final ja eh canonico.
   "/admin/operacional",
   "/admin/clients",
   "/admin/stores",
   "/admin/onboarding",
+  "/admin/onboarding-help",
   "/admin/health",
   "/admin/campaigns",
   "/admin/insights",
   "/admin/list-hygiene",
-  // ── Customer Success (rotinas semanais/mensais do CS) ────────────
-  // Por compatibilidade com bookmarks ja existentes, estas paginas
-  // moram em /admin/<slug> (em vez de /admin/operacional/<slug>),
-  // mas pertencem ao workspace OPERACIONAL no menu lateral.
-  // Sem isso, clicar em "Acompanhamento", "CRM CS" ou "Ritual de
-  // Sexta" trocava pra workspace Geral por inferencia de pathname.
-  "/admin/acompanhamento",
-  "/admin/ritual",
-  "/admin/cs-crm",
-  "/admin/onboarding-help",
 ]
 
 export function detectWorkspace(pathname: string): WorkspaceKey {

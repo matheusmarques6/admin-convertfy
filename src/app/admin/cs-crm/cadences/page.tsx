@@ -1,11 +1,6 @@
-import { CadencesAdmin } from "@/components/cs-crm/cadences-admin"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Configuração de Cadências · Convertfy Admin",
-}
-
-export const dynamic = "force-dynamic"
-
-export default function CadencesPage() {
-  return <CadencesAdmin />
+/** Redirect de compat: URL canonica eh /admin/operacional/cs-crm/cadences. */
+export default function CadencesLegacyRedirect() {
+  redirect("/admin/operacional/cs-crm/cadences")
 }

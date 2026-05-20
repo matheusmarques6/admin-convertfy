@@ -1,11 +1,6 @@
-import { AcompanhamentoKanban } from "@/components/acompanhamento/kanban"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Acompanhamento Semanal · Convertfy Admin",
-}
-
-export const dynamic = "force-dynamic"
-
-export default function AcompanhamentoPage() {
-  return <AcompanhamentoKanban />
+/** Redirect de compat: URL canonica eh /admin/operacional/acompanhamento. */
+export default function AcompanhamentoLegacyRedirect() {
+  redirect("/admin/operacional/acompanhamento")
 }

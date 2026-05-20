@@ -29,11 +29,11 @@ const C = {
 }
 
 const CS_PAGES = [
-  { key: "crm", label: "CRM CS", href: "/admin/cs-crm" },
-  { key: "acomp", label: "Acompanhamento", href: "/admin/acompanhamento" },
-  { key: "calls", label: "Calls Mensais", href: "/admin/cs-crm/calls" },
-  { key: "ritual", label: "Ritual de Sexta", href: "/admin/ritual" },
-  { key: "cadences", label: "Cadências", href: "/admin/cs-crm/cadences" },
+  { key: "crm", label: "CRM CS", href: "/admin/operacional/cs-crm" },
+  { key: "acomp", label: "Acompanhamento", href: "/admin/operacional/acompanhamento" },
+  { key: "calls", label: "Calls Mensais", href: "/admin/operacional/cs-crm/calls" },
+  { key: "ritual", label: "Ritual de Sexta", href: "/admin/operacional/ritual" },
+  { key: "cadences", label: "Cadências", href: "/admin/operacional/cs-crm/cadences" },
 ] as const
 
 interface CSPageHeaderProps {

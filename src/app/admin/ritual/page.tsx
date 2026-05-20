@@ -1,11 +1,6 @@
-import { RitualClient } from "@/components/ritual/ritual-client"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Ritual de Sexta · Convertfy Admin",
-}
-
-export const dynamic = "force-dynamic"
-
-export default function RitualPage() {
-  return <RitualClient />
+/** Redirect de compat: URL canonica eh /admin/operacional/ritual. */
+export default function RitualLegacyRedirect() {
+  redirect("/admin/operacional/ritual")
 }

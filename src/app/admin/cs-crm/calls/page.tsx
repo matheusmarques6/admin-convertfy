@@ -1,11 +1,6 @@
-import { CallsPipeline } from "@/components/cs-crm/calls-pipeline"
+import { redirect } from "next/navigation"
 
-export const metadata = {
-  title: "Pipeline de Calls Mensais · Convertfy Admin",
-}
-
-export const dynamic = "force-dynamic"
-
-export default function CallsPipelinePage() {
-  return <CallsPipeline />
+/** Redirect de compat: URL canonica eh /admin/operacional/cs-crm/calls. */
+export default function CallsLegacyRedirect() {
+  redirect("/admin/operacional/cs-crm/calls")
 }

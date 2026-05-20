@@ -114,15 +114,15 @@ export const ROUTES = {
         SUPORTE: "/admin/operacional/workflows/suporte",
       },
       // ── Customer Success (rotinas semanais/mensais do CS) ─────────────
-      // URLs em /admin/<pagina> por compatibilidade com bookmarks
-      // existentes (nao quebra links). No menu agrupam sob "Customer
-      // Success" pra dar contexto visual.
+      // URLs canonicas sob /admin/operacional/* — mesmo padrao de tudo
+      // mais do workspace operacional. As URLs antigas /admin/<pagina>
+      // continuam respondendo via redirect 308 pra nao quebrar bookmarks.
       CS: {
-        CRM: "/admin/cs-crm",
-        CALLS: "/admin/cs-crm/calls",
-        CADENCES: "/admin/cs-crm/cadences",
-        ACOMPANHAMENTO: "/admin/acompanhamento",
-        RITUAL: "/admin/ritual",
+        CRM: "/admin/operacional/cs-crm",
+        CALLS: "/admin/operacional/cs-crm/calls",
+        CADENCES: "/admin/operacional/cs-crm/cadences",
+        ACOMPANHAMENTO: "/admin/operacional/acompanhamento",
+        RITUAL: "/admin/operacional/ritual",
       },
     },
 
