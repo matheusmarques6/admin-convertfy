@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react"
-import { Edit2, Plus, ExternalLink, FileText, Upload, Download } from "lucide-react"
+import { Edit2, Plus, ExternalLink, FileText, Upload, Download, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PesquisaSection, type PesquisaData } from "./pesquisa/pesquisa-section"
 
@@ -94,6 +94,8 @@ export function TabContexto({ storeId }: { storeId: string }) {
   const [brandIdentity, setBrandIdentity] = useState<BrandIdentity | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
   const reload = async () => {
     try {
@@ -141,6 +143,30 @@ export function TabContexto({ storeId }: { storeId: string }) {
     }
   }
 
+  const syncFromOnboarding = async () => {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/sync-from-onboarding`, {
+        method: "POST",
+      })
+      const j = await res.json()
+      const r = j.data ?? j
+      const count = Array.isArray(r.mirrored) ? r.mirrored.length : 0
+      setSyncMsg(
+        count > 0
+          ? `${count} campo(s) preenchido(s) do formulário do cliente.`
+          : "Nenhum campo novo a preencher (edições manuais preservadas).",
+      )
+      await reload()
+    } catch {
+      setSyncMsg("Falha ao sincronizar.")
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMsg(null), 4000)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Anchors */}
@@ -153,7 +179,30 @@ export function TabContexto({ storeId }: { storeId: string }) {
       </div>
 
       {/* MARCA */}
-      <Section id="marca" title="Marca & Identidade visual" onEdit={() => setEditing(editing === "marca" ? null : "marca")}>
+      <Section
+        id="marca"
+        title="Marca & Identidade visual"
+        actions={
+          <div className="flex items-center gap-3">
+            {syncMsg && <span className="text-[11px] text-slate-500">{syncMsg}</span>}
+            <button
+              onClick={syncFromOnboarding}
+              disabled={syncing}
+              title="Importa respostas do formulário do cliente — só preenche campos vazios"
+              className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-600 hover:text-brand-600 disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
+              {syncing ? "Sincronizando…" : "Sincronizar do formulário"}
+            </button>
+            <button
+              onClick={() => setEditing(editing === "marca" ? null : "marca")}
+              className="inline-flex items-center gap-1 text-[11.5px] font-medium text-brand-600 hover:underline"
+            >
+              <Edit2 className="h-3 w-3" /> Editar
+            </button>
+          </div>
+        }
+      >
         {editing === "marca" ? (
           <EditMarca ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
         ) : (
