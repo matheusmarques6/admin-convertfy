@@ -1,24 +1,22 @@
 /**
- * Espelha respostas do formulário de onboarding (`onboardings.form_responses`
- * + `store_onboarding_data`) para os campos lidos pela aba Contexto
- * (`client_stores.*` + `store_brand_identity`).
+ * Espelha respostas do formulário de onboarding (`onboardings.form_responses`,
+ * fonte primária; `store_onboarding_data`, fallback legacy) para os campos
+ * lidos pela aba Contexto (`client_stores.*` + `store_brand_identity`).
  *
- * Idempotente: só preenche colunas vazias em `client_stores` — edições
- * manuais no admin nunca são sobrescritas. Para a logo, só cria uma versão
- * em `store_brand_identity` quando ainda não há nenhuma.
+ * Dois modos:
+ *  - `fill-empty` (default): só preenche colunas vazias. Edições manuais no
+ *    admin são preservadas. Usado no trigger automático de `pending_approval`.
+ *  - `overwrite`: substitui valores divergentes. Usado quando o admin clica
+ *    "Sincronizar do formulário" explicitamente.
  *
- * Disparado automaticamente na transição `pending_approval` do onboarding
- * e via POST /api/admin/stores/[id]/sync-from-onboarding pelo admin.
+ * Em ambos os modos, a logo cria uma nova versão em `store_brand_identity`
+ * quando a URL do form é diferente da última versão (preservando histórico).
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingMirror")
-
-// ── Mapeamento de enums (Form v2 → client_stores) ─────────────────────
-// Form coleta 5 opções de tom; a tela tem 4 chips. Inspirador→afetivo,
-// Técnico→formal. Aspiracional→premium, Nicho→medio.
 
 const TOM_MAP: Record<string, "formal" | "casual" | "afetivo" | "divertido"> = {
   "formal": "formal",
@@ -41,6 +39,18 @@ const POSICIONAMENTO_MAP: Record<string, "popular" | "medio" | "premium"> = {
   "nicho": "medio",
 }
 
+// Faixas do form -> ponto médio em centavos. Aproximação intencional;
+// o admin pode refinar manualmente na aba Operação.
+const TICKET_RANGE_MAP: Record<string, number> = {
+  "< r$ 100": 5000,
+  "r$ 100 - 250": 17500,
+  "r$ 250 - 500": 37500,
+  "r$ 500 - 1.000": 75000,
+  "r$ 500 - 1000": 75000,
+  "> r$ 1.000": 150000,
+  "> r$ 1000": 150000,
+}
+
 function mapTom(value: unknown): "formal" | "casual" | "afetivo" | "divertido" | null {
   if (typeof value !== "string") return null
   return TOM_MAP[value.trim().toLowerCase()] ?? null
@@ -51,53 +61,76 @@ function mapPosicionamento(value: unknown): "popular" | "medio" | "premium" | nu
   return POSICIONAMENTO_MAP[value.trim().toLowerCase()] ?? null
 }
 
+function mapTicketRange(value: unknown): number | null {
+  if (typeof value !== "string") return null
+  return TICKET_RANGE_MAP[value.trim().toLowerCase()] ?? null
+}
+
+function pickString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 interface FormResponses {
-  primary_persona?: string
-  tone_of_voice?: string
-  positioning?: string
-  price_vs_quality?: string
+  primary_persona?: unknown
+  tone_of_voice?: unknown
+  positioning?: unknown
+  price_vs_quality?: unknown
+  vertical?: unknown
+  ticket_avg?: unknown
+  obs?: unknown
+  logo_url?: unknown
+  brand_manual_url?: unknown
   [k: string]: unknown
 }
+
+export type MirrorMode = "fill-empty" | "overwrite"
 
 export interface MirrorResult {
   ok: boolean
   storeId: string
-  mirrored: string[]   // nomes das colunas/recursos que foram preenchidos
-  skipped: string[]    // nomes que foram pulados (já tinham valor manual)
-  reason?: string      // motivo de bail-out (sem onboarding, etc)
+  mode: MirrorMode
+  mirrored: string[]    // colunas que estavam vazias e foram preenchidas
+  overwritten: string[] // colunas com valor antigo substituído (só em overwrite)
+  skipped: string[]     // colunas puladas (já com valor, modo fill-empty)
+  reason?: string       // motivo de bail-out
 }
 
 export const onboardingMirrorService = {
-  async syncStoreFromOnboarding(storeId: string): Promise<MirrorResult> {
+  async syncStoreFromOnboarding(
+    storeId: string,
+    opts: { mode?: MirrorMode } = {},
+  ): Promise<MirrorResult> {
+    const mode: MirrorMode = opts.mode ?? "fill-empty"
     const admin = createAdminClient()
     const result: MirrorResult = {
       ok: true,
       storeId,
+      mode,
       mirrored: [],
+      overwritten: [],
       skipped: [],
     }
 
-    // 1. Onboarding mais recente da loja (com form_responses)
     const { data: onb } = await admin
       .from("onboardings")
-      .select("id, form_responses, briefing")
+      .select("id, form_responses")
       .eq("store_id", storeId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    // 2. store_onboarding_data (logo_url, brand_manual_url)
     const { data: sod } = await admin
       .from("store_onboarding_data")
       .select("logo_url, brand_manual_url")
       .eq("store_id", storeId)
       .maybeSingle()
 
-    // 3. client_stores atual (pra checar quais colunas já têm valor)
     const { data: cs } = await admin
       .from("client_stores")
       .select(
-        "id, persona, tom_de_voz, posicionamento_preco, brand_manual_url",
+        "id, niche, persona, tom_de_voz, posicionamento_preco, ticket_medio_cents, additional_notes, brand_manual_url",
       )
       .eq("id", storeId)
       .maybeSingle()
@@ -109,43 +142,80 @@ export const onboardingMirrorService = {
     }
 
     const fr = (onb?.form_responses ?? {}) as FormResponses
+    const hasFormData = onb && fr && Object.keys(fr).length > 0
+    if (!hasFormData && !sod) {
+      result.ok = false
+      result.reason = "Nenhum onboarding com respostas para esta loja"
+      return result
+    }
 
-    // ── Patch em client_stores (só campos vazios) ─────────────────────
+    // ── Coleta valores candidatos do form (com fallback legacy onde aplicável) ─
+
+    type Candidate = { column: string; next: unknown; current: unknown }
+    const candidates: Candidate[] = []
+
+    candidates.push({
+      column: "niche",
+      next: pickString(fr.vertical),
+      current: cs.niche,
+    })
+
+    candidates.push({
+      column: "persona",
+      next: pickString(fr.primary_persona),
+      current: cs.persona,
+    })
+
+    candidates.push({
+      column: "tom_de_voz",
+      next: mapTom(fr.tone_of_voice),
+      current: cs.tom_de_voz,
+    })
+
+    candidates.push({
+      column: "posicionamento_preco",
+      next: mapPosicionamento(fr.positioning) ?? mapPosicionamento(fr.price_vs_quality),
+      current: cs.posicionamento_preco,
+    })
+
+    candidates.push({
+      column: "ticket_medio_cents",
+      next: mapTicketRange(fr.ticket_avg),
+      current: cs.ticket_medio_cents,
+    })
+
+    candidates.push({
+      column: "additional_notes",
+      next: pickString(fr.obs),
+      current: cs.additional_notes,
+    })
+
+    const brandManualFromForm = pickString(fr.brand_manual_url)
+    const brandManualFromSod = pickString(sod?.brand_manual_url)
+    candidates.push({
+      column: "brand_manual_url",
+      next: brandManualFromForm ?? brandManualFromSod,
+      current: cs.brand_manual_url,
+    })
+
+    // ── Decide patch baseado no modo ────────────────────────────────────
+
     const patch: Record<string, unknown> = {}
 
-    if (!cs.persona && typeof fr.primary_persona === "string" && fr.primary_persona.trim()) {
-      patch.persona = fr.primary_persona.trim()
-      result.mirrored.push("client_stores.persona")
-    } else if (cs.persona) {
-      result.skipped.push("client_stores.persona")
-    }
+    for (const c of candidates) {
+      if (c.next === null || c.next === undefined) continue
+      const isEmpty = c.current === null || c.current === undefined || c.current === ""
+      const isDifferent = c.current !== c.next
 
-    if (!cs.tom_de_voz) {
-      const mapped = mapTom(fr.tone_of_voice)
-      if (mapped) {
-        patch.tom_de_voz = mapped
-        result.mirrored.push("client_stores.tom_de_voz")
+      if (isEmpty) {
+        patch[c.column] = c.next
+        result.mirrored.push(`client_stores.${c.column}`)
+      } else if (mode === "overwrite" && isDifferent) {
+        patch[c.column] = c.next
+        result.overwritten.push(`client_stores.${c.column}`)
+      } else if (!isEmpty) {
+        result.skipped.push(`client_stores.${c.column}`)
       }
-    } else {
-      result.skipped.push("client_stores.tom_de_voz")
-    }
-
-    if (!cs.posicionamento_preco) {
-      // Prioriza `positioning` (mais específico); fallback pra `price_vs_quality`
-      const mapped = mapPosicionamento(fr.positioning) ?? mapPosicionamento(fr.price_vs_quality)
-      if (mapped) {
-        patch.posicionamento_preco = mapped
-        result.mirrored.push("client_stores.posicionamento_preco")
-      }
-    } else {
-      result.skipped.push("client_stores.posicionamento_preco")
-    }
-
-    if (!cs.brand_manual_url && sod?.brand_manual_url) {
-      patch.brand_manual_url = sod.brand_manual_url
-      result.mirrored.push("client_stores.brand_manual_url")
-    } else if (cs.brand_manual_url) {
-      result.skipped.push("client_stores.brand_manual_url")
     }
 
     if (Object.keys(patch).length > 0) {
@@ -161,8 +231,13 @@ export const onboardingMirrorService = {
       }
     }
 
-    // ── store_brand_identity (criar versão se ainda não houver) ───────
-    if (sod?.logo_url) {
+    // ── store_brand_identity ────────────────────────────────────────────
+
+    const logoFromForm = pickString(fr.logo_url)
+    const logoFromSod = pickString(sod?.logo_url)
+    const logoUrl = logoFromForm ?? logoFromSod
+
+    if (logoUrl) {
       const { data: existing } = await admin
         .from("store_brand_identity")
         .select("id, version, logo_main_png, logo_main_svg")
@@ -171,15 +246,21 @@ export const onboardingMirrorService = {
         .limit(1)
         .maybeSingle()
 
-      const hasLogo = !!(existing?.logo_main_png || existing?.logo_main_svg)
-      if (!hasLogo) {
-        const isSvg = /\.svg(\?|$)/i.test(sod.logo_url)
+      const currentLogo = existing?.logo_main_svg || existing?.logo_main_png || null
+      const hasLogo = !!currentLogo
+      const isSvg = /\.svg(\?|$)/i.test(logoUrl)
+      const slotLabel = isSvg ? "logo_main_svg" : "logo_main_png"
+
+      const shouldInsert =
+        !hasLogo || (mode === "overwrite" && currentLogo !== logoUrl)
+
+      if (shouldInsert) {
         const insertRow: Record<string, unknown> = {
           store_id: storeId,
           version: (existing?.version ?? 0) + 1,
           source: "ai_capture",
-          logo_main_svg: isSvg ? sod.logo_url : null,
-          logo_main_png: isSvg ? null : sod.logo_url,
+          logo_main_svg: isSvg ? logoUrl : null,
+          logo_main_png: isSvg ? null : logoUrl,
           colors_primary: [],
           colors_secondary: [],
           voice: [],
@@ -191,8 +272,10 @@ export const onboardingMirrorService = {
           .insert(insertRow)
         if (biErr) {
           log.error("Falha ao espelhar store_brand_identity", { error: biErr.message, storeId })
+        } else if (hasLogo) {
+          result.overwritten.push(`store_brand_identity.${slotLabel}`)
         } else {
-          result.mirrored.push(isSvg ? "store_brand_identity.logo_main_svg" : "store_brand_identity.logo_main_png")
+          result.mirrored.push(`store_brand_identity.${slotLabel}`)
         }
       } else {
         result.skipped.push("store_brand_identity.logo_main")
@@ -201,7 +284,9 @@ export const onboardingMirrorService = {
 
     log.info("Espelhamento concluído", {
       storeId,
+      mode,
       mirrored: result.mirrored.length,
+      overwritten: result.overwritten.length,
       skipped: result.skipped.length,
     })
 

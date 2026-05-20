@@ -152,18 +152,26 @@ export function TabContexto({ storeId }: { storeId: string }) {
       })
       const j = await res.json()
       const r = j.data ?? j
-      const count = Array.isArray(r.mirrored) ? r.mirrored.length : 0
-      setSyncMsg(
-        count > 0
-          ? `${count} campo(s) preenchido(s) do formulário do cliente.`
-          : "Nenhum campo novo a preencher (edições manuais preservadas).",
-      )
+      if (r?.ok === false) {
+        setSyncMsg(r.reason ?? "Não foi possível sincronizar.")
+      } else {
+        const filled = Array.isArray(r.mirrored) ? r.mirrored.length : 0
+        const updated = Array.isArray(r.overwritten) ? r.overwritten.length : 0
+        if (filled === 0 && updated === 0) {
+          setSyncMsg("Nenhuma diferença em relação ao formulário.")
+        } else {
+          const parts: string[] = []
+          if (filled > 0) parts.push(`${filled} preenchido(s)`)
+          if (updated > 0) parts.push(`${updated} atualizado(s)`)
+          setSyncMsg(parts.join(" · "))
+        }
+      }
       await reload()
     } catch {
       setSyncMsg("Falha ao sincronizar.")
     } finally {
       setSyncing(false)
-      setTimeout(() => setSyncMsg(null), 4000)
+      setTimeout(() => setSyncMsg(null), 5000)
     }
   }
 

@@ -162,7 +162,10 @@ export class OnboardingPhaseService {
         // (idempotente, só preenche colunas vazias).
         if (onboarding.store_id) {
           try {
-            await onboardingMirrorService.syncStoreFromOnboarding(onboarding.store_id)
+            await onboardingMirrorService.syncStoreFromOnboarding(
+              onboarding.store_id,
+              { mode: "fill-empty" },
+            )
           } catch (err) {
             log.error("Mirror falhou (non-blocking)", err)
           }
