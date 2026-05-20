@@ -2,11 +2,12 @@
 
 /**
  * Aba Contexto — consolida marca, briefing, operação, lista & engajamento,
- * concorrência. Persiste em client_stores (+ client_competitors).
+ * concorrência. Persiste em client_stores (+ client_competitors +
+ * store_brand_identity para assets de logo/cores/fontes).
  */
 
 import { useEffect, useState } from "react"
-import { Edit2, Plus, ExternalLink } from "lucide-react"
+import { Edit2, Plus, ExternalLink, FileText, Upload, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PesquisaSection, type PesquisaData } from "./pesquisa/pesquisa-section"
 
@@ -20,6 +21,8 @@ interface StoreContext {
   hashtags?: string[] | null
   cores?: Array<{ name: string; hex: string; use?: string }> | null
   fontes?: { titulo?: string; corpo?: string } | null
+  brand_manual_url?: string | null
+  research_doc_url?: string | null
   ticket_medio_cents?: number | null
   taxa_conversao?: number | null
   faturamento_medio_cents?: number | null
@@ -67,6 +70,19 @@ interface StoreLite {
   client_id?: string | null
 }
 
+interface BrandIdentity {
+  id: string
+  version: number
+  logo_main_svg: string | null
+  logo_main_png: string | null
+  logo_alt_svg: string | null
+  logo_alt_png: string | null
+  logo_monogram_svg: string | null
+  logo_monogram_png: string | null
+  logo_reverse_svg: string | null
+  logo_reverse_png: string | null
+}
+
 const TOM_OPTS = ["formal", "casual", "afetivo", "divertido"] as const
 const PRECO_OPTS = ["popular", "medio", "premium"] as const
 
@@ -75,21 +91,33 @@ export function TabContexto({ storeId }: { storeId: string }) {
   const [, setStoreLite] = useState<StoreLite>({})
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
+  const [brandIdentity, setBrandIdentity] = useState<BrandIdentity | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const reload = async () => {
     try {
-      const [cs, comps, tp] = await Promise.all([
+      const [cs, comps, tp, bi] = await Promise.all([
         fetch(`/api/client-stores/${storeId}`).then((r) => r.json()),
         fetch(`/api/admin/stores/${storeId}/competitors`).then((r) => r.json()),
         fetch(`/api/admin/stores/${storeId}/top-products?limit=5`).then((r) => r.json()),
+        fetch(`/api/admin/stores/${storeId}/brand-identity`).then((r) => r.json()).catch(() => ({})),
       ])
       const storeObj = (cs.data?.store ?? cs.store ?? cs) as Record<string, unknown>
       setCtx(storeObj as StoreContext)
       setStoreLite({ client_id: (storeObj.client_id as string | null) ?? null })
       setCompetitors((comps.data?.competitors ?? comps.competitors ?? []) as Competitor[])
       setTopProducts((tp.products ?? tp.data?.products ?? []) as TopProduct[])
+      setBrandIdentity((bi.data?.identity ?? bi.identity ?? null) as BrandIdentity | null)
+    } catch {
+      // noop
+    }
+  }
+
+  const reloadBrandIdentity = async () => {
+    try {
+      const bi = await fetch(`/api/admin/stores/${storeId}/brand-identity`).then((r) => r.json())
+      setBrandIdentity((bi.data?.identity ?? bi.identity ?? null) as BrandIdentity | null)
     } catch {
       // noop
     }
@@ -129,84 +157,164 @@ export function TabContexto({ storeId }: { storeId: string }) {
         {editing === "marca" ? (
           <EditMarca ctx={ctx} onSave={patch} saving={saving} onCancel={() => setEditing(null)} />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
-              <Field label="Nicho" value={ctx.niche} />
-              <Field label="Slogan" value={ctx.slogan} fallback="—" />
-              <Field label="Diferencial declarado" value={ctx.diferencial} fallback="—" />
-              <Field label="Persona-alvo" value={ctx.persona} fallback="—" />
-              <div className="col-span-1 md:col-span-2">
-                <FieldLabel label="Tom de voz" />
-                <div className="flex flex-wrap gap-1.5">
-                  {TOM_OPTS.map((o) => (
-                    <span key={o} className={cn(
-                      "px-2.5 py-1 rounded-full text-[11px] font-medium",
-                      ctx.tom_de_voz === o ? "bg-brand-50 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-400 border border-transparent",
-                    )}>
-                      {o.charAt(0).toUpperCase() + o.slice(1)}
-                    </span>
-                  ))}
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+            {/* Coluna esquerda — Posicionamento & voz */}
+            <div>
+              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Posicionamento &amp; voz
               </div>
-              <div className="col-span-1 md:col-span-2">
-                <FieldLabel label="Posicionamento de preço" />
-                <div className="flex flex-wrap gap-1.5">
-                  {PRECO_OPTS.map((o) => (
-                    <span key={o} className={cn(
-                      "px-2.5 py-1 rounded-full text-[11px] font-medium",
-                      ctx.posicionamento_preco === o ? "bg-brand-50 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-400 border border-transparent",
-                    )}>
-                      {o.charAt(0).toUpperCase() + o.slice(1)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="col-span-1 md:col-span-2">
-                <FieldLabel label="Hashtags" />
-                <div className="flex flex-wrap gap-1.5">
-                  {ctx.hashtags && ctx.hashtags.length > 0 ? (
-                    ctx.hashtags.map((h) => (
-                      <span key={h} className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-mono">
-                        {h.startsWith("#") ? h : `#${h}`}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                <Field label="Nicho" value={ctx.niche} />
+                <Field label="Slogan" value={ctx.slogan} fallback="—" />
+                <Field label="Diferencial declarado" value={ctx.diferencial} fallback="—" />
+                <Field label="Persona-alvo" value={ctx.persona} fallback="—" />
+                <div className="col-span-1 md:col-span-2">
+                  <FieldLabel label="Tom de voz" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {TOM_OPTS.map((o) => (
+                      <span key={o} className={cn(
+                        "px-2.5 py-1 rounded-full text-[11px] font-medium",
+                        ctx.tom_de_voz === o ? "bg-brand-50 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-400 border border-transparent",
+                      )}>
+                        {o.charAt(0).toUpperCase() + o.slice(1)}
                       </span>
-                    ))
-                  ) : (
-                    <span className="text-[11.5px] text-slate-400 italic">Sem hashtags</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <FieldLabel label="Posicionamento de preço" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRECO_OPTS.map((o) => (
+                      <span key={o} className={cn(
+                        "px-2.5 py-1 rounded-full text-[11px] font-medium",
+                        ctx.posicionamento_preco === o ? "bg-brand-50 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-400 border border-transparent",
+                      )}>
+                        {o.charAt(0).toUpperCase() + o.slice(1)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <FieldLabel label="Hashtags" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {ctx.hashtags && ctx.hashtags.length > 0 ? (
+                      ctx.hashtags.map((h) => (
+                        <span key={h} className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-mono">
+                          {h.startsWith("#") ? h : `#${h}`}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[11.5px] text-slate-400 italic">Sem hashtags</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Coluna direita — Logo & arquivos */}
+            <LogoArquivos
+              storeId={storeId}
+              identity={brandIdentity}
+              brandManualUrl={ctx.brand_manual_url ?? null}
+              onChanged={reloadBrandIdentity}
+              onManualSaved={(url) => patch({ brand_manual_url: url })}
+            />
+          </div>
+        )}
+
+        {editing !== "marca" && (
+          <>
+            {/* Paleta de cores — linhas com nome + hex + uso */}
+            <div className="mt-6 pt-5 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="flex items-baseline justify-between mb-3">
+                <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Paleta de cores
+                </div>
+                <div className="text-[10.5px] text-slate-400">Como aplicada no site da loja</div>
+              </div>
+              {ctx.cores && ctx.cores.length > 0 ? (
+                <div className="space-y-1.5">
+                  {ctx.cores.map((c, i) => (
+                    <div key={i} className="flex items-center gap-3 py-1">
+                      <div
+                        className="w-7 h-7 rounded-md border shrink-0"
+                        style={{ background: c.hex, borderColor: "rgba(0,0,0,0.08)" }}
+                      />
+                      <div className="min-w-0 flex-1 grid grid-cols-[1fr_auto_2fr] gap-3 items-baseline">
+                        <span className="text-[12.5px] font-medium text-slate-900 truncate">
+                          {c.name || "—"}
+                        </span>
+                        <span className="text-[11.5px] font-mono text-slate-500 tabular-nums">
+                          {c.hex}
+                        </span>
+                        <span className="text-[11.5px] text-slate-500 truncate">
+                          {c.use || ""}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11.5px] text-slate-400 italic">Sem paleta cadastrada</div>
+              )}
+            </div>
+
+            {/* Tipografia — preview ao vivo nas fontes reais */}
+            <div className="mt-5 pt-5 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Tipografia
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <div className="text-[10.5px] text-slate-400 mb-1.5">Títulos / hero</div>
+                  <div className="text-[11.5px] font-medium text-slate-700 mb-1">
+                    {ctx.fontes?.titulo || <span className="italic text-slate-400">Não definido</span>}
+                  </div>
+                  {ctx.fontes?.titulo && (
+                    <div
+                      className="text-slate-900 leading-tight"
+                      style={{ fontFamily: `'${ctx.fontes.titulo}', serif`, fontSize: 22, fontWeight: 600 }}
+                    >
+                      {ctx.slogan || "Vista o que você acredita"}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-[10.5px] text-slate-400 mb-1.5">Corpo de texto</div>
+                  <div className="text-[11.5px] font-medium text-slate-700 mb-1">
+                    {ctx.fontes?.corpo || <span className="italic text-slate-400">Não definido</span>}
+                  </div>
+                  {ctx.fontes?.corpo && (
+                    <div
+                      className="text-slate-700 leading-relaxed"
+                      style={{ fontFamily: `'${ctx.fontes.corpo}', sans-serif`, fontSize: 13 }}
+                    >
+                      {ctx.diferencial || "Camisetas com design clean e acessível."}
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Paleta + Tipografia mini */}
-            <div className="flex flex-col gap-3">
-              <div>
-                <FieldLabel label="Paleta de cores" />
-                {ctx.cores && ctx.cores.length > 0 ? (
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {ctx.cores.slice(0, 5).map((c, i) => (
-                      <div key={i} className="text-center">
-                        <div className="w-full aspect-square rounded-md mb-1 border" style={{ background: c.hex, borderColor: "rgba(0,0,0,0.06)" }} />
-                        <div className="text-[9px] font-mono text-slate-500 truncate">{c.hex}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-[11.5px] text-slate-400 italic">Sem paleta cadastrada</div>
+            {/* CTA — Documento de pesquisa */}
+            {(ctx.research_doc_url || ctx.brand_manual_url) && (
+              <div className="mt-5 pt-5 border-t flex flex-wrap gap-2" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                {ctx.research_doc_url && (
+                  <a
+                    href={ctx.research_doc_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-[12px] font-medium text-slate-700 hover:bg-slate-50"
+                    style={{ borderColor: "rgba(0,0,0,0.10)" }}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Documento de pesquisa
+                    <ExternalLink className="h-3 w-3 text-slate-400" />
+                  </a>
                 )}
               </div>
-              <div>
-                <FieldLabel label="Tipografia" />
-                {ctx.fontes && (ctx.fontes.titulo || ctx.fontes.corpo) ? (
-                  <div className="space-y-1">
-                    {ctx.fontes.titulo && <div className="text-[12px] text-slate-700"><span className="text-slate-400">Títulos:</span> {ctx.fontes.titulo}</div>}
-                    {ctx.fontes.corpo && <div className="text-[12px] text-slate-700"><span className="text-slate-400">Corpo:</span> {ctx.fontes.corpo}</div>}
-                  </div>
-                ) : (
-                  <div className="text-[11.5px] text-slate-400 italic">Sem tipografia cadastrada</div>
-                )}
-              </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </Section>
 
@@ -512,6 +620,230 @@ function TopProdutosGrid({ products }: { products: TopProduct[] }) {
   )
 }
 
+function LogoArquivos({
+  storeId,
+  identity,
+  brandManualUrl,
+  onChanged,
+  onManualSaved,
+}: {
+  storeId: string
+  identity: BrandIdentity | null
+  brandManualUrl: string | null
+  onChanged: () => void
+  onManualSaved: (url: string) => void
+}) {
+  const [uploading, setUploading] = useState<string | null>(null)
+
+  const mainPreview = identity?.logo_main_svg || identity?.logo_main_png || null
+  const monogramPreview =
+    identity?.logo_monogram_svg || identity?.logo_monogram_png || null
+
+  const upload = async (slot: string, file: File) => {
+    setUploading(slot)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("slot", slot)
+      const res = await fetch(`/api/admin/stores/${storeId}/brand-identity/upload`, {
+        method: "POST",
+        body: fd,
+      })
+      const j = await res.json()
+      const url = j.data?.url ?? j.url
+      if (!url) throw new Error("Upload sem URL")
+
+      if (slot === "brand_manual") {
+        onManualSaved(url)
+        return
+      }
+      // Persistir o campo no store_brand_identity via PATCH
+      await fetch(`/api/admin/stores/${storeId}/brand-identity`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [slot]: url }),
+      })
+      onChanged()
+    } catch (err) {
+      console.error("Upload falhou", err)
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-[9.5px] font-semibold text-slate-500 uppercase tracking-wider">
+        Logo &amp; arquivos
+      </div>
+
+      {/* Previews — logo principal + monograma */}
+      <div className="grid grid-cols-2 gap-2">
+        <LogoSlot
+          label="Principal"
+          preview={mainPreview}
+          uploading={uploading?.startsWith("logo_main")}
+          onUpload={(file) => {
+            const slot = file.type === "image/svg+xml" ? "logo_main_svg" : "logo_main_png"
+            upload(slot, file)
+          }}
+          accept="image/png,image/svg+xml"
+        />
+        <LogoSlot
+          label="Monograma"
+          preview={monogramPreview}
+          uploading={uploading?.startsWith("logo_monogram")}
+          onUpload={(file) => {
+            const slot = file.type === "image/svg+xml" ? "logo_monogram_svg" : "logo_monogram_png"
+            upload(slot, file)
+          }}
+          accept="image/png,image/svg+xml"
+        />
+      </div>
+
+      {/* Downloads — PNG, SVG, Manual */}
+      <div className="grid grid-cols-3 gap-2">
+        <DownloadCard
+          label="PNG"
+          url={identity?.logo_main_png ?? null}
+          uploading={uploading === "logo_main_png"}
+          onUpload={(file) => upload("logo_main_png", file)}
+          accept="image/png"
+        />
+        <DownloadCard
+          label="SVG"
+          url={identity?.logo_main_svg ?? null}
+          uploading={uploading === "logo_main_svg"}
+          onUpload={(file) => upload("logo_main_svg", file)}
+          accept="image/svg+xml"
+        />
+        <DownloadCard
+          label="Manual"
+          url={brandManualUrl}
+          uploading={uploading === "brand_manual"}
+          onUpload={(file) => upload("brand_manual", file)}
+          accept="application/pdf"
+        />
+      </div>
+    </div>
+  )
+}
+
+function LogoSlot({
+  label,
+  preview,
+  uploading,
+  onUpload,
+  accept,
+}: {
+  label: string
+  preview: string | null
+  uploading?: boolean
+  onUpload: (file: File) => void
+  accept: string
+}) {
+  return (
+    <label
+      className="relative aspect-square rounded-md border-2 border-dashed bg-slate-50 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors overflow-hidden"
+      style={{ borderColor: "rgba(0,0,0,0.10)" }}
+    >
+      {preview ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={preview} alt={label} className="max-w-[70%] max-h-[70%] object-contain" />
+      ) : (
+        <div className="text-center px-2">
+          <Upload className="h-4 w-4 text-slate-400 mx-auto mb-1" />
+          <div className="text-[10px] text-slate-500">{label}</div>
+        </div>
+      )}
+      {uploading && (
+        <div className="absolute inset-0 bg-white/80 flex items-center justify-center text-[10.5px] text-slate-600">
+          Enviando…
+        </div>
+      )}
+      <input
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onUpload(f)
+          e.target.value = ""
+        }}
+      />
+    </label>
+  )
+}
+
+function DownloadCard({
+  label,
+  url,
+  uploading,
+  onUpload,
+  accept,
+}: {
+  label: string
+  url: string | null
+  uploading?: boolean
+  onUpload: (file: File) => void
+  accept: string
+}) {
+  if (url) {
+    return (
+      <a
+        href={url}
+        download
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-col items-center justify-center gap-1 h-16 rounded-md border bg-white hover:bg-slate-50 transition-colors"
+        style={{ borderColor: "rgba(0,0,0,0.10)" }}
+      >
+        <Download className="h-3.5 w-3.5 text-slate-500" />
+        <span className="text-[10.5px] font-medium text-slate-700">{label}</span>
+      </a>
+    )
+  }
+  return (
+    <label
+      className="flex flex-col items-center justify-center gap-1 h-16 rounded-md border-2 border-dashed bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors"
+      style={{ borderColor: "rgba(0,0,0,0.10)" }}
+    >
+      {uploading ? (
+        <span className="text-[10px] text-slate-500">Enviando…</span>
+      ) : (
+        <>
+          <Upload className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-[10.5px] font-medium text-slate-500">{label}</span>
+        </>
+      )}
+      <input
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onUpload(f)
+          e.target.value = ""
+        }}
+      />
+    </label>
+  )
+}
+
+const FONT_OPTS = [
+  "Playfair Display",
+  "Montserrat",
+  "Inter",
+  "Poppins",
+  "Roboto",
+  "Open Sans",
+  "Lato",
+  "Raleway",
+  "DM Sans",
+  "Cormorant Garamond",
+  "Libre Baskerville",
+] as const
+
 function EditMarca({ ctx, onSave, saving, onCancel }: { ctx: StoreContext; onSave: (u: Partial<StoreContext>) => void; saving: boolean; onCancel: () => void }) {
   const [niche, setNiche] = useState(ctx.niche ?? "")
   const [slogan, setSlogan] = useState(ctx.slogan ?? "")
@@ -520,6 +852,18 @@ function EditMarca({ ctx, onSave, saving, onCancel }: { ctx: StoreContext; onSav
   const [tom, setTom] = useState(ctx.tom_de_voz ?? "")
   const [preco, setPreco] = useState(ctx.posicionamento_preco ?? "")
   const [hashtagsStr, setHashtagsStr] = useState((ctx.hashtags ?? []).join(", "))
+  const [cores, setCores] = useState<Array<{ name: string; hex: string; use?: string }>>(
+    ctx.cores ?? [],
+  )
+  const [fonteTitulo, setFonteTitulo] = useState(ctx.fontes?.titulo ?? "")
+  const [fonteCorpo, setFonteCorpo] = useState(ctx.fontes?.corpo ?? "")
+  const [researchDocUrl, setResearchDocUrl] = useState(ctx.research_doc_url ?? "")
+
+  const addCor = () => setCores([...cores, { name: "", hex: "#000000", use: "" }])
+  const removeCor = (i: number) => setCores(cores.filter((_, j) => j !== i))
+  const updateCor = (i: number, patch: Partial<{ name: string; hex: string; use: string }>) => {
+    setCores(cores.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -550,6 +894,102 @@ function EditMarca({ ctx, onSave, saving, onCancel }: { ctx: StoreContext; onSav
       <div className="md:col-span-2">
         <Input label="Hashtags (vírgulas)" value={hashtagsStr} onChange={setHashtagsStr} />
       </div>
+
+      {/* Paleta de cores editável */}
+      <div className="md:col-span-2">
+        <div className="flex items-center justify-between mb-2">
+          <FieldLabel label="Paleta de cores" />
+          <button
+            onClick={addCor}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
+          >
+            <Plus className="h-3 w-3" /> Adicionar cor
+          </button>
+        </div>
+        <div className="space-y-2">
+          {cores.length === 0 && (
+            <div className="text-[11.5px] text-slate-400 italic">Nenhuma cor cadastrada.</div>
+          )}
+          {cores.map((c, i) => (
+            <div key={i} className="grid grid-cols-[40px_1fr_120px_1fr_28px] gap-2 items-center">
+              <input
+                type="color"
+                value={c.hex}
+                onChange={(e) => updateCor(i, { hex: e.target.value })}
+                className="h-9 w-10 rounded-md border cursor-pointer p-0.5"
+                style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              />
+              <input
+                value={c.name}
+                onChange={(e) => updateCor(i, { name: e.target.value })}
+                placeholder="Nome (ex: Pure Black)"
+                className="h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
+                style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              />
+              <input
+                value={c.hex}
+                onChange={(e) => updateCor(i, { hex: e.target.value })}
+                placeholder="#000000"
+                className="h-9 px-3 rounded-md border text-[12px] font-mono outline-none focus:border-brand-500"
+                style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              />
+              <input
+                value={c.use ?? ""}
+                onChange={(e) => updateCor(i, { use: e.target.value })}
+                placeholder="Uso (ex: logo, hero overlay)"
+                className="h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
+                style={{ borderColor: "rgba(0,0,0,0.10)" }}
+              />
+              <button
+                onClick={() => removeCor(i)}
+                className="h-9 w-7 rounded-md text-slate-400 hover:text-red-600 hover:bg-slate-100 text-[16px] leading-none"
+                aria-label="Remover cor"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tipografia */}
+      <div>
+        <FieldLabel label="Fonte de títulos" />
+        <input
+          list="font-titulo-opts"
+          value={fonteTitulo}
+          onChange={(e) => setFonteTitulo(e.target.value)}
+          placeholder="ex: Playfair Display"
+          className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
+          style={{ borderColor: "rgba(0,0,0,0.10)" }}
+        />
+        <datalist id="font-titulo-opts">
+          {FONT_OPTS.map((f) => <option key={f} value={f} />)}
+        </datalist>
+      </div>
+      <div>
+        <FieldLabel label="Fonte de corpo" />
+        <input
+          list="font-corpo-opts"
+          value={fonteCorpo}
+          onChange={(e) => setFonteCorpo(e.target.value)}
+          placeholder="ex: Montserrat"
+          className="w-full h-9 px-3 rounded-md border text-[13px] outline-none focus:border-brand-500"
+          style={{ borderColor: "rgba(0,0,0,0.10)" }}
+        />
+        <datalist id="font-corpo-opts">
+          {FONT_OPTS.map((f) => <option key={f} value={f} />)}
+        </datalist>
+      </div>
+
+      <div className="md:col-span-2">
+        <Input
+          label="URL do documento de pesquisa"
+          value={researchDocUrl}
+          onChange={setResearchDocUrl}
+        />
+      </div>
+
       <div className="md:col-span-2 flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="h-9 px-4 rounded-md text-[12.5px] font-medium text-slate-700 hover:bg-slate-100">Cancelar</button>
         <button
@@ -561,6 +1001,9 @@ function EditMarca({ ctx, onSave, saving, onCancel }: { ctx: StoreContext; onSav
             tom_de_voz: (tom as "formal" | "casual" | "afetivo" | "divertido") || null,
             posicionamento_preco: (preco as "popular" | "medio" | "premium") || null,
             hashtags: hashtagsStr.split(",").map((t) => t.trim()).filter(Boolean),
+            cores: cores.filter((c) => c.hex),
+            fontes: (fonteTitulo || fonteCorpo) ? { titulo: fonteTitulo || undefined, corpo: fonteCorpo || undefined } : null,
+            research_doc_url: researchDocUrl || null,
           })}
           disabled={saving}
           className="h-9 px-4 rounded-md text-[12.5px] font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50"
