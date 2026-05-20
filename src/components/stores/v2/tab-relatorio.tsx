@@ -25,6 +25,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Plus, X, Zap, Filter, Calendar, Check, Edit3, Send, Layers, Trash2, Loader2,
 } from "lucide-react"
@@ -397,7 +398,15 @@ function formatCompact(value: number): string {
 
 // ─── GenerateModal (refinado, matching prototype) ─────
 
+interface DuplicateConflict {
+  existing_report_id: string
+  existing_status: string
+  existing_generated_at: string
+  month_label: string
+}
+
 function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClose: () => void; onCreated: () => void }) {
+  const router = useRouter()
   const now = new Date()
   const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
@@ -408,6 +417,7 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
   const [aiFilled, setAiFilled] = useState(true)
   const [proximos, setProximos] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [duplicateConflict, setDuplicateConflict] = useState<DuplicateConflict | null>(null)
   const [sections, setSections] = useState({
     resumo: true, financeiro: true, email_perf: true, top_campanhas: true,
     top_flows: true, trabalho: true, proximos: true,
@@ -431,7 +441,7 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
 
   const sectionsCount = Object.values(sections).filter(Boolean).length
 
-  const handleSubmit = async () => {
+  const doSubmit = async (replace = false) => {
     if (!periodStart || !periodEnd) {
       alert("Selecione o período (início e fim) antes de gerar o relatório.")
       return
@@ -445,28 +455,50 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
         sections,
         ai_filled: aiFilled,
       }
-      // Só envia proximos_passos se houver texto — evita null/empty na payload
       const trimmed = proximos.trim()
       if (trimmed) payload.proximos_passos = trimmed
+      if (replace) payload.replace = true
 
       const res = await fetch(`/api/admin/stores/${storeId}/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
+      const j = await res.json().catch(() => ({}))
+
       if (res.ok) {
+        setDuplicateConflict(null)
         onCreated()
         onClose()
-      } else {
-        const j = await res.json().catch(() => ({}))
-        const msg = j?.error?.message ?? j?.message ?? `Falha ao gerar (HTTP ${res.status})`
-        alert(msg)
+        return
       }
+
+      // 409 com payload rico -> oferece dialog "Abrir" / "Sobrescrever" / "Cancelar"
+      if (res.status === 409 && j?.existing_report_id) {
+        setDuplicateConflict({
+          existing_report_id: j.existing_report_id,
+          existing_status: j.existing_status,
+          existing_generated_at: j.existing_generated_at,
+          month_label: j.month_label,
+        })
+        return
+      }
+
+      const msg = j?.error?.message ?? j?.error ?? j?.message ?? `Falha ao gerar (HTTP ${res.status})`
+      alert(typeof msg === "string" ? msg : "Falha ao gerar relatório")
     } catch (err) {
       alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = () => doSubmit(false)
+  const handleOverwrite = () => doSubmit(true)
+  const handleOpenExisting = () => {
+    if (!duplicateConflict) return
+    router.push(`/admin/report-jobs/${duplicateConflict.existing_report_id}`)
+    onClose()
   }
 
   return (
@@ -475,6 +507,15 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
       style={{ background: "rgba(11, 14, 24, 0.5)", backdropFilter: "blur(2px)" }}
       onClick={onClose}
     >
+      {duplicateConflict && (
+        <DuplicateReportDialog
+          conflict={duplicateConflict}
+          submitting={submitting}
+          onOpenExisting={handleOpenExisting}
+          onOverwrite={handleOverwrite}
+          onCancel={() => setDuplicateConflict(null)}
+        />
+      )}
       <div
         onClick={(e) => e.stopPropagation()}
         className="rounded-[14px] flex flex-col overflow-hidden"
@@ -729,5 +770,177 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
         }}
       />
     </button>
+  )
+}
+
+// ─── DuplicateReportDialog ────────────────────────────────────
+// Aparece quando POST /reports retorna 409 (mes ja tem relatorio).
+// Oferece 3 acoes em vez de bloquear o user com alert tecnico.
+
+function DuplicateReportDialog({
+  conflict,
+  submitting,
+  onOpenExisting,
+  onOverwrite,
+  onCancel,
+}: {
+  conflict: {
+    existing_report_id: string
+    existing_status: string
+    existing_generated_at: string
+    month_label: string
+  }
+  submitting: boolean
+  onOpenExisting: () => void
+  onOverwrite: () => void
+  onCancel: () => void
+}) {
+  const statusLabel = {
+    draft: "Em rascunho",
+    ready: "Pronto",
+    sent: "Enviado",
+    archived: "Arquivado",
+  }[conflict.existing_status] ?? conflict.existing_status
+
+  const generatedAt = conflict.existing_generated_at
+    ? new Date(conflict.existing_generated_at).toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—"
+
+  return (
+    <div
+      className="fixed inset-0 z-[1100] flex items-center justify-center p-6"
+      style={{ background: "rgba(11, 14, 24, 0.7)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
+      <div
+        className="rounded-[12px] overflow-hidden"
+        style={{
+          width: 480,
+          maxWidth: "92vw",
+          background: C.white,
+          boxShadow: "0 16px 40px rgba(0,0,0,0.3)",
+        }}
+      >
+        <div style={{ padding: "20px 24px 16px" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 8px",
+              borderRadius: 4,
+              background: "rgba(245, 158, 11, 0.12)",
+              color: "#92400E",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            Relatório duplicado
+          </div>
+          <h2
+            style={{
+              fontSize: 17,
+              fontWeight: 600,
+              color: C.g900,
+              margin: 0,
+              marginBottom: 6,
+            }}
+          >
+            Já existe um relatório de {conflict.month_label}
+          </h2>
+          <p
+            style={{
+              fontSize: 13,
+              color: C.g500,
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            Status: <b>{statusLabel}</b> · Gerado em {generatedAt}
+          </p>
+          <p
+            style={{
+              fontSize: 12.5,
+              color: C.g500,
+              margin: "12px 0 0",
+              lineHeight: 1.5,
+            }}
+          >
+            Você pode <b>abrir o existente</b> pra continuar editando, ou{" "}
+            <b>sobrescrever</b> com um relatório novo (o atual será apagado).
+          </p>
+        </div>
+        <div
+          style={{
+            padding: "12px 24px 20px",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            style={{
+              padding: "8px 14px",
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: C.g500,
+              background: "transparent",
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              cursor: submitting ? "wait" : "pointer",
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onOverwrite}
+            disabled={submitting}
+            style={{
+              padding: "8px 14px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "#92400E",
+              background: "rgba(245, 158, 11, 0.12)",
+              border: `1px solid rgba(245, 158, 11, 0.4)`,
+              borderRadius: 6,
+              cursor: submitting ? "wait" : "pointer",
+            }}
+          >
+            {submitting ? "Sobrescrevendo..." : "Sobrescrever"}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenExisting}
+            disabled={submitting}
+            style={{
+              padding: "8px 16px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: C.white,
+              background: C.brand,
+              border: "none",
+              borderRadius: 6,
+              cursor: submitting ? "wait" : "pointer",
+            }}
+          >
+            Abrir existente →
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

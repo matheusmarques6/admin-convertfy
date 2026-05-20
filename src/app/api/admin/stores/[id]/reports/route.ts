@@ -9,7 +9,7 @@
  *  - tone: editorial | corporate | casual
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
@@ -47,6 +47,9 @@ const createSchema = z.object({
   // sem disparar 400 Zod (era a causa principal do bug "Gerar falhou").
   proximos_passos: z.string().nullable().optional(),
   ai_filled: z.boolean().default(true),
+  // "replace": deleta o relatorio existente (mesmo store_id+month_label) antes
+  // de criar o novo. UI envia quando user escolhe "Sobrescrever" no dialog 409.
+  replace: z.boolean().optional(),
 })
 
 const MONTH_LABELS = [
@@ -453,6 +456,45 @@ export async function POST(
       insights: {},
     }
 
+    // Pre-flight: existe relatorio do mesmo mes?
+    const { data: existing } = await admin
+      .from("client_monthly_reports")
+      .select("id, status, generated_at")
+      .eq("store_id", storeId)
+      .eq("month_label", monthLabel)
+      .maybeSingle()
+
+    if (existing && !body.replace) {
+      // Payload rico pra UI oferecer "Abrir" / "Sobrescrever" / "Cancelar".
+      // Nao uso errorResponse aqui porque preciso enviar existing_report_id
+      // junto do erro (estrutura nao-padrao).
+      return NextResponse.json(
+        {
+          error: `Já existe um relatório para ${monthLabel}.`,
+          code: "duplicate-month",
+          existing_report_id: existing.id,
+          existing_status: existing.status,
+          existing_generated_at: existing.generated_at,
+          month_label: monthLabel,
+        },
+        { status: 409 },
+      )
+    }
+
+    // Se replace=true e existe, deleta o antigo antes do insert.
+    if (existing && body.replace) {
+      const { error: delErr } = await admin
+        .from("client_monthly_reports")
+        .delete()
+        .eq("id", existing.id)
+      if (delErr) {
+        throw new AppError(
+          `Erro ao remover relatorio anterior: ${delErr.message}`,
+          500,
+        )
+      }
+    }
+
     const { data, error } = await admin
       .from("client_monthly_reports")
       .insert({
@@ -471,12 +513,16 @@ export async function POST(
       .select("id")
       .single()
     if (error) {
-      // Unique (store_id, month_label) violation: surface 409 com msg clara
-      // ao inves de 500 generico.
+      // 23505 nao deveria mais acontecer porque ja fizemos pre-check acima,
+      // mas mantemos o fallback caso haja race (2 POSTs simultaneos).
       if (error.code === "23505") {
-        throw new AppError(
-          `Já existe um relatório para ${monthLabel}. Abra o relatório existente ou ajuste o período.`,
-          409,
+        return NextResponse.json(
+          {
+            error: `Já existe um relatório para ${monthLabel}.`,
+            code: "duplicate-month-race",
+            month_label: monthLabel,
+          },
+          { status: 409 },
         )
       }
       throw new AppError(`Erro ao salvar relatório: ${error.message}`, 500)
