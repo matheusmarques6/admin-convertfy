@@ -30,6 +30,9 @@ interface StoreRow {
   store_name: string
   created_at: string
   contract_end_date: string | null
+  health_score: number | null
+  nps_last_score: number | null
+  nps_last_at: string | null
 }
 
 export function thisMonday(): string {
@@ -85,7 +88,9 @@ export async function flagStoresForWeek({
   // 2. Pega lojas ativas (filtradas por org se aplicavel)
   let storesQuery = admin
     .from("client_stores")
-    .select("id, org_id, store_name, created_at, contract_end_date")
+    .select(
+      "id, org_id, store_name, created_at, contract_end_date, health_score, nps_last_score, nps_last_at",
+    )
     .eq("is_active", true)
     .limit(500)
   if (orgId) storesQuery = storesQuery.eq("org_id", orgId)
@@ -158,7 +163,7 @@ export async function flagStoresForWeek({
     // 4) Weekly report — concerns vs highlights
     const { data: latestReport } = await admin
       .from("weekly_reports")
-      .select("highlights, concerns, metrics")
+      .select("highlights, concerns, metrics, week_start")
       .eq("store_id", store.id)
       .order("week_start", { ascending: false })
       .limit(1)
@@ -179,6 +184,95 @@ export async function flagStoresForWeek({
         healthState = healthState === "rampup" ? "rampup" : "attention"
         healthScore = Math.min(healthScore, 60)
         reasons.push(`Sem destaques + ${concernsCount} alertas`)
+      }
+
+      // 4b) Report antigo (> 14 dias) = sinal de gap de cobertura
+      const reportAgeDays = Math.floor(
+        (Date.now() - new Date(latestReport.week_start).getTime()) / 86_400_000,
+      )
+      if (reportAgeDays > 14) {
+        if (healthState === "healthy") {
+          healthState = "attention"
+          healthScore = Math.min(healthScore, 65)
+        }
+        reasons.push(`Último report há ${reportAgeDays}d`)
+      }
+    } else {
+      // Sem nenhum report -> precisa atenção (loja sem cobertura)
+      if (healthState === "healthy") {
+        healthState = "attention"
+        healthScore = Math.min(healthScore, 60)
+      }
+      reasons.push("Nenhum relatório semanal gerado ainda")
+    }
+
+    // 5) Última call de feedback há > 30 dias (CSM sem contato com cliente)
+    const { data: lastCall } = await admin
+      .from("store_feedback_calls")
+      .select("conducted_at")
+      .eq("store_id", store.id)
+      .order("conducted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (lastCall?.conducted_at) {
+      const callAgeDays = Math.floor(
+        (Date.now() - new Date(lastCall.conducted_at).getTime()) / 86_400_000,
+      )
+      if (callAgeDays > 30) {
+        if (healthState === "healthy") {
+          healthState = "attention"
+          healthScore = Math.min(healthScore, 65)
+        }
+        reasons.push(`Sem call de feedback há ${callAgeDays}d`)
+      }
+    } else {
+      // Nunca teve call — relevante pra lojas com > 30d
+      if (ageDays > 30) {
+        if (healthState === "healthy") {
+          healthState = "attention"
+          healthScore = Math.min(healthScore, 60)
+        }
+        reasons.push("Sem histórico de calls de feedback")
+      }
+    }
+
+    // 6) Health score baixo em client_stores
+    if (store.health_score !== null && store.health_score !== undefined) {
+      if (store.health_score < 50) {
+        healthState = "risk"
+        healthScore = Math.min(healthScore, store.health_score)
+        reasons.push(`Health score baixo (${store.health_score}/100)`)
+      } else if (store.health_score < 70 && healthState === "healthy") {
+        healthState = "attention"
+        healthScore = Math.min(healthScore, store.health_score)
+        reasons.push(`Health score em atenção (${store.health_score}/100)`)
+      }
+    }
+
+    // 7) NPS baixo (detrator/passivo) nos últimos 90 dias
+    if (
+      store.nps_last_score !== null &&
+      store.nps_last_score !== undefined &&
+      store.nps_last_at
+    ) {
+      const npsAgeDays = Math.floor(
+        (Date.now() - new Date(store.nps_last_at).getTime()) / 86_400_000,
+      )
+      if (npsAgeDays <= 90 && store.nps_last_score <= 6) {
+        // Detrator (0-6)
+        healthState = "risk"
+        healthScore = Math.min(healthScore, 45)
+        reasons.push(`NPS detrator (${store.nps_last_score}/10)`)
+      } else if (
+        npsAgeDays <= 90 &&
+        store.nps_last_score <= 8 &&
+        healthState === "healthy"
+      ) {
+        // Passivo (7-8)
+        healthState = "attention"
+        healthScore = Math.min(healthScore, 65)
+        reasons.push(`NPS passivo (${store.nps_last_score}/10)`)
       }
     }
 
