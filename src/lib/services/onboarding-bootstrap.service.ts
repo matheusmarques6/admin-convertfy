@@ -109,20 +109,27 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    name: "Preview - Designer cria primeira versao",
+    name: "Preview - Designer cria pilotos",
     slug: "preview_producao",
     position: 3,
     color: "#A855F7",
     default_assignee_role: "designer",
     sla_hours: 48,
     checklist_template: [
-      chk("preview_study", "Estudar Brand Brain + referencias do cliente", 1, { slug: "preview_study" }),
-      chk("preview_email_welcome", "Criar email-piloto 1: Welcome (boas-vindas)", 2, { slug: "preview_email_welcome" }),
-      chk("preview_email_carrinho", "Criar email-piloto 2: Carrinho abandonado", 3, { slug: "preview_email_carrinho" }),
-      chk("preview_email_pos_compra", "Criar email-piloto 3: Pos-compra (engajamento)", 4, { slug: "preview_email_pos_compra" }),
+      chk("preview_brand_brain", "Estudar Brand Brain + referencias do cliente", 1, { slug: "preview_brand_brain" }),
+      chk("preview_email_welcome", "Criar email-piloto: Welcome (boas-vindas)", 2, { slug: "preview_email_welcome" }),
+      chk("preview_email_carrinho_1", "Criar email-piloto: Carrinho abandonado (parte 1)", 3, { slug: "preview_email_carrinho_1" }),
+      chk("preview_email_carrinho_2", "Criar email-piloto: Carrinho abandonado (parte 2)", 4, { slug: "preview_email_carrinho_2" }),
+      chk("preview_email_pos_compra", "Criar email-piloto: Pos-compra (engajamento)", 5, { slug: "preview_email_pos_compra" }),
     ],
     deliverables_template: [
-      { slug: "preview_file", label: "Preview com os e-mails (PNG ou PDF)", type: "upload", required: true },
+      // 4 uploads required (1 por piloto). Brand Brain e estudo, nao tem upload.
+      // Cada upload e referenciado por slug pelo pre-fill service que copia
+      // o file_url pro sub_item correspondente na Etapa 05 ao avancar de 04->05.
+      { slug: "piloto_welcome_files", label: "Piloto Welcome - arquivos (PNG/PDF/Figma)", type: "upload", required: true },
+      { slug: "piloto_carrinho_1_files", label: "Piloto Carrinho abandonado (parte 1) - arquivos", type: "upload", required: true },
+      { slug: "piloto_carrinho_2_files", label: "Piloto Carrinho abandonado (parte 2) - arquivos", type: "upload", required: true },
+      { slug: "piloto_pos_compra_files", label: "Piloto Pos-compra - arquivos", type: "upload", required: true },
       { slug: "language", label: "Idioma de entrega", type: "select", required: true, options: ["pt-BR", "en-US", "es", "fr"] },
       // Opcional — preserva interpolacao {{figma_link}} no template WhatsApp
       // da Etapa 04 e em qualquer relatorio que filtre por esse slug.
@@ -133,7 +140,7 @@ const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "completed",
         action: "create_task",
-        params: { title: "Enviar preview pro cliente", assignee_role: "estrategista" },
+        params: { title: "Enviar pilotos pro cliente", assignee_role: "estrategista" },
       },
       { trigger: "completed", action: "advance_to_next", params: {} },
     ],
@@ -146,8 +153,9 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "estrategista",
     sla_hours: 48,
     checklist_template: [
-      chk("aprovacao_enviar", "Enviar preview ao cliente via WhatsApp com mensagem padrao", 1, { slug: "aprovacao_enviar" }),
-      chk("aprovacao_feedback", "Coletar feedback do cliente (aprovado ou ajustes)", 2, { slug: "aprovacao_feedback" }),
+      chk("aprovacao_enviar", "Enviar pilotos ao cliente via WhatsApp", 1, { slug: "aprovacao_enviar" }),
+      chk("aprovacao_coleta_inicial", "Coleta inicial de feedback", 2, { slug: "aprovacao_coleta_inicial" }),
+      chk("aprovacao_confirmacao_final", "Confirmacao final de aprovacao", 3, { slug: "aprovacao_confirmacao_final" }),
     ],
     deliverables_template: [
       {
@@ -188,7 +196,9 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    // Etapa 05 nao foi reespecificada pelo usuario — preservada conforme PRD original.
+    // Etapa 05 — 1 task por flow + sub_items listando os emails de cada flow.
+    // Emails marcados com from_preview vem pre-completos do piloto aprovado
+    // na Etapa 03 (copiados pelo onboarding-pre-fill.service ao avancar 04->05).
     name: "Emails finais em producao",
     slug: "emails_finais",
     position: 5,
@@ -196,17 +206,125 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "designer",
     sla_hours: 60,
     checklist_template: [
-      chk("emails_finais_lido", "Preview aprovado lido como referencia", 1, { slug: "emails_finais_lido" }),
-      chk("emails_finais_copies", "Copies dos demais emails revisadas", 2, { slug: "emails_finais_copies" }),
-      chk("emails_finais_paleta", "Paleta e identidade visual replicadas", 3, { slug: "emails_finais_paleta" }),
-      chk("emails_finais_mobile", "Mobile e desktop checados em todos", 4, { slug: "emails_finais_mobile" }),
-      chk("emails_finais_links", "Links e CTAs corretos", 5, { slug: "emails_finais_links" }),
-      chk("emails_finais_spell", "Spell check completo", 6, { slug: "emails_finais_spell" }),
-      chk("emails_finais_export", "Todos os emails exportados (PDF + PNGs)", 7, { slug: "emails_finais_export" }),
+      {
+        id: "flow_welcome",
+        slug: "flow_welcome",
+        label: "Welcome Flow (8 emails)",
+        order: 1,
+        sub_items: [
+          { slug: "welcome_email_1", label: "Email 1 - Boas-vindas", from_preview: "piloto_welcome_files" },
+          { slug: "welcome_email_2", label: "Email 2" },
+          { slug: "welcome_email_3", label: "Email 3" },
+          { slug: "welcome_email_4", label: "Email 4" },
+          { slug: "welcome_email_5", label: "Email 5" },
+          { slug: "welcome_email_6", label: "Email 6" },
+          { slug: "welcome_email_7", label: "Email 7" },
+          { slug: "welcome_email_8", label: "Email 8" },
+        ],
+      },
+      {
+        id: "flow_site_abandoned",
+        slug: "flow_site_abandoned",
+        label: "Site Abandoned (1 email)",
+        order: 2,
+        sub_items: [
+          { slug: "site_abandoned_email_1", label: "Email unico" },
+        ],
+      },
+      {
+        id: "flow_browse_abandoned",
+        slug: "flow_browse_abandoned",
+        label: "Browse Abandoned (5 emails)",
+        order: 3,
+        sub_items: [
+          { slug: "browse_abandoned_email_1", label: "Email 1" },
+          { slug: "browse_abandoned_email_2", label: "Email 2" },
+          { slug: "browse_abandoned_email_3", label: "Email 3" },
+          { slug: "browse_abandoned_email_4", label: "Email 4" },
+          { slug: "browse_abandoned_email_5", label: "Email 5" },
+        ],
+      },
+      {
+        id: "flow_carrinho_abandonado",
+        slug: "flow_carrinho_abandonado",
+        label: "Carrinho Abandonado (8 emails)",
+        order: 4,
+        sub_items: [
+          { slug: "carrinho_email_1", label: "Email 1 - Parte 1", from_preview: "piloto_carrinho_1_files" },
+          { slug: "carrinho_email_2", label: "Email 2 - Parte 2", from_preview: "piloto_carrinho_2_files" },
+          { slug: "carrinho_email_3", label: "Email 3" },
+          { slug: "carrinho_email_4", label: "Email 4" },
+          { slug: "carrinho_email_5", label: "Email 5" },
+          { slug: "carrinho_email_6", label: "Email 6" },
+          { slug: "carrinho_email_7", label: "Email 7" },
+          { slug: "carrinho_email_8", label: "Email 8" },
+        ],
+      },
+      {
+        id: "flow_upsell",
+        slug: "flow_upsell",
+        label: "Upsell (4 emails)",
+        order: 5,
+        sub_items: [
+          { slug: "upsell_email_1", label: "Email 1 - Pos-compra", from_preview: "piloto_pos_compra_files" },
+          { slug: "upsell_email_2", label: "Email 2" },
+          { slug: "upsell_email_3", label: "Email 3" },
+          { slug: "upsell_email_4", label: "Email 4" },
+        ],
+      },
+      {
+        id: "flow_winback",
+        slug: "flow_winback",
+        label: "Winback (3 emails)",
+        order: 6,
+        sub_items: [
+          { slug: "winback_email_1", label: "Email 1" },
+          { slug: "winback_email_2", label: "Email 2" },
+          { slug: "winback_email_3", label: "Email 3" },
+        ],
+      },
+      {
+        id: "flow_etapas_envio",
+        slug: "flow_etapas_envio",
+        label: "Etapas de Envio (3 emails)",
+        order: 7,
+        sub_items: [
+          { slug: "envio_email_1", label: "Email 1" },
+          { slug: "envio_email_2", label: "Email 2" },
+          { slug: "envio_email_3", label: "Email 3" },
+        ],
+      },
+      {
+        id: "flow_atraso_entrega",
+        slug: "flow_atraso_entrega",
+        label: "Atraso na entrega (1 email)",
+        order: 8,
+        sub_items: [
+          { slug: "atraso_entrega_email_1", label: "Email unico" },
+        ],
+      },
+      {
+        id: "flow_pedido_enviado",
+        slug: "flow_pedido_enviado",
+        label: "Pedido Enviado (1 email)",
+        order: 9,
+        sub_items: [
+          { slug: "pedido_enviado_email_1", label: "Email unico" },
+        ],
+      },
     ],
     deliverables_template: [
-      { slug: "figma_full_link", label: "Figma completo com todos os emails", type: "url", required: true },
-      { slug: "emails_pdf", label: "PDF agrupado", type: "upload", required: true },
+      // 1 export por flow (Figma + PDF agrupado). Required pra fechar a etapa.
+      { slug: "export_welcome", label: "Welcome Flow - Figma + PDF", type: "upload", required: true },
+      { slug: "export_site_abandoned", label: "Site Abandoned - Figma + PDF", type: "upload", required: true },
+      { slug: "export_browse_abandoned", label: "Browse Abandoned - Figma + PDF", type: "upload", required: true },
+      { slug: "export_carrinho_abandonado", label: "Carrinho Abandonado - Figma + PDF", type: "upload", required: true },
+      { slug: "export_upsell", label: "Upsell - Figma + PDF", type: "upload", required: true },
+      { slug: "export_winback", label: "Winback - Figma + PDF", type: "upload", required: true },
+      { slug: "export_etapas_envio", label: "Etapas de Envio - Figma + PDF", type: "upload", required: true },
+      { slug: "export_atraso_entrega", label: "Atraso na entrega - Figma + PDF", type: "upload", required: true },
+      { slug: "export_pedido_enviado", label: "Pedido Enviado - Figma + PDF", type: "upload", required: true },
+      { slug: "figma_full_link", label: "Figma master (todos os flows)", type: "url", required: false },
       { slug: "designer_notes", label: "Notas do designer", type: "textarea", required: false },
     ],
     whatsapp_template: null,
@@ -279,10 +397,12 @@ const SEED_COLUMNS: ColumnSeed[] = [
       chk("ativo_call_30d", "Agendar primeira call mensal de alinhamento (em 30d)", 3, { slug: "ativo_call_30d" }),
     ],
     deliverables_template: [
-      // Preservados — usuario nao especificou deliverables para esta etapa.
-      { slug: "delivery_screenshot", label: "Print da mensagem de entrega", type: "upload", required: true },
-      { slug: "first_checkin_date", label: "Data do primeiro check-in", type: "date", required: true },
-      { slug: "client_confirmed", label: "Cliente confirmou", type: "checkbox", required: true },
+      // Manuais e opcionais — fechamento por mudanca de status manual.
+      // Antes existiam required (delivery_screenshot, first_checkin_date,
+      // client_confirmed); removidos pra permitir handoff flexivel pelo
+      // estrategista sem bloqueios.
+      { slug: "delivery_screenshot", label: "Print da mensagem de entrega (opcional)", type: "upload", required: false },
+      { slug: "first_checkin_date", label: "Data do primeiro check-in (opcional)", type: "date", required: false },
     ],
     whatsapp_template:
       "{{client_name}}, comunicamos: sua maquina de email marketing da {{store_name}} esta oficialmente ATIVA.\n\nWelcome flow rodando, dominio verificado, tudo testado e aprovado.\n\nA partir de agora, acompanhamos resultados mensalmente. Ja agendei nossa primeira call.\n\nVamos pra cima!",
