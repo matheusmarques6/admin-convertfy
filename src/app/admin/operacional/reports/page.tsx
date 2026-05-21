@@ -3,133 +3,188 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import {
-  ResponsiveContainer,
-  LineChart,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  AreaChart,
-  Area,
 } from "recharts"
-import { Download, BarChart3 } from "lucide-react"
+import {
+  AlertTriangle,
+  BarChart3,
+  Download,
+  Heart,
+  Inbox,
+  Smile,
+  TrendingUp,
+  Users,
+} from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 
+/**
+ * Reports de Customer Success — versao dedicada (sem ruido de sales).
+ *
+ * Consome /api/crm/reports/timeseries (mesma fonte) mas filtra pra
+ * mostrar apenas campos CS-relevantes:
+ *   - MRR carteira ativa (evolucao)
+ *   - Lojas ativas / em risco / criticas (evolucao + composicao)
+ *   - Health score medio
+ *   - NPS (score + respostas)
+ *   - Inbox CS (aberto + pending)
+ *
+ * KPIs do topo mostram valor atual + delta vs primeiro dia da janela.
+ */
+
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+interface OrgSnapshot {
+  day: string
+  active_stores_count: number
+  total_mrr_cents: number
+  avg_health_score: number | null
+  critical_health_count: number
+  warning_health_count: number
+  healthy_count: number
+  nps_score: number | null
+  nps_responses_30d: number
+  inbox_open_threads: number
+  inbox_pending_threads: number
+}
 
 interface ReportData {
   window_days: number
-  org_snapshots: Array<{
-    day: string
-    sales_pipeline_value: number
-    sales_won_value_30d: number
-    sales_won_count_30d: number
-    sales_win_rate_30d: number | null
-    sales_avg_cycle_days_30d: number | null
-    avg_health_score: number | null
-    nps_score: number | null
-    total_mrr_cents: number
-    active_stores_count: number
-    inbox_open_threads: number
-    critical_health_count: number
-  }>
-  funnel_snapshots: Array<{
-    day: string
-    new_count: number
-    qualified_count: number
-    converted_count: number
-    lost_count: number
-    created_today: number
-  }>
+  org_snapshots: OrgSnapshot[]
 }
 
-const fmtBRL = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
+const fmtBRL = (cents: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(cents / 100)
 
-// Wrappers que aceitam o tipo aberto do recharts v3 (ValueType =
-// number | string | undefined) e normalizam pra number antes de formatar.
 const fmtBRLTooltip = (v: unknown): string => {
   const n = typeof v === "number" ? v : Number(v) || 0
-  return fmtBRL(n)
+  // tooltip recebe valor em reais (ja convertido na serie)
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(n)
 }
-const fmtBRLAxis = (v: unknown): string => {
-  const n = typeof v === "number" ? v : Number(v) || 0
-  return fmtBRL(n)
-}
+const fmtBRLAxis = fmtBRLTooltip
 
-export default function ReportsPage() {
+export default function CsReportsPage() {
   const [days, setDays] = useState(30)
-  const { data, isLoading } = useSWR<ReportData>(
-    `/api/crm/reports/timeseries?days=${days}`,
-    fetcher,
+  const { data, isLoading } = useSWR<{
+    org_snapshots: OrgSnapshot[]
+    data?: ReportData
+  }>(`/api/crm/reports/timeseries?days=${days}`, fetcher)
+
+  const snaps: OrgSnapshot[] = useMemo(
+    () => data?.data?.org_snapshots ?? data?.org_snapshots ?? [],
+    [data],
   )
+  const hasData = snaps.length > 0
 
-  const d = data
-
-  const orgSeries = useMemo(() => {
-    return (d?.org_snapshots || []).map((s) => ({
-      day: s.day.slice(5), // MM-DD
-      pipeline: Number(s.sales_pipeline_value) || 0,
-      won_30d: Number(s.sales_won_value_30d) || 0,
-      win_rate: Number(s.sales_win_rate_30d) || 0,
-      cycle: Number(s.sales_avg_cycle_days_30d) || 0,
+  const series = useMemo(() => {
+    return snaps.map((s) => ({
+      day: s.day.slice(5),
       mrr: (Number(s.total_mrr_cents) || 0) / 100,
+      stores: s.active_stores_count,
+      healthy: s.healthy_count,
+      warning: s.warning_health_count,
+      critical: s.critical_health_count,
       health: Number(s.avg_health_score) || 0,
       nps: Number(s.nps_score) || 0,
-      stores: s.active_stores_count,
-      inbox: s.inbox_open_threads,
-      critical: s.critical_health_count,
+      nps_resp: s.nps_responses_30d,
+      inbox_open: s.inbox_open_threads,
+      inbox_pending: s.inbox_pending_threads,
     }))
-  }, [d])
+  }, [snaps])
 
-  const funnelSeries = useMemo(() => {
-    return (d?.funnel_snapshots || []).map((s) => ({
-      day: s.day.slice(5),
-      new: s.new_count,
-      qualified: s.qualified_count,
-      converted: s.converted_count,
-      lost: s.lost_count,
-      created: s.created_today,
-    }))
-  }, [d])
+  const kpis = useMemo(() => {
+    if (snaps.length === 0) return null
+    const last = snaps[snaps.length - 1]
+    const first = snaps[0]
+    const deltaPct = (now: number, prev: number) => {
+      if (prev === 0) return null
+      return ((now - prev) / prev) * 100
+    }
+    return {
+      mrr: last.total_mrr_cents,
+      mrr_delta: deltaPct(last.total_mrr_cents, first.total_mrr_cents),
+      stores: last.active_stores_count,
+      stores_delta: deltaPct(last.active_stores_count, first.active_stores_count),
+      health: last.avg_health_score,
+      health_delta:
+        last.avg_health_score != null && first.avg_health_score != null
+          ? last.avg_health_score - first.avg_health_score
+          : null,
+      nps: last.nps_score,
+      nps_delta:
+        last.nps_score != null && first.nps_score != null
+          ? last.nps_score - first.nps_score
+          : null,
+      critical: last.critical_health_count,
+      warning: last.warning_health_count,
+      inbox_open: last.inbox_open_threads,
+    }
+  }, [snaps])
 
   const exportCsv = () => {
-    if (!d) return
+    if (!hasData) return
     const rows = [
-      ["day", "pipeline_value", "won_30d", "win_rate", "avg_cycle", "mrr", "avg_health", "nps", "active_stores", "inbox_open"],
-      ...d.org_snapshots.map((s) => [
+      [
+        "day",
+        "mrr_reais",
+        "active_stores",
+        "healthy",
+        "warning",
+        "critical",
+        "avg_health",
+        "nps",
+        "nps_responses_30d",
+        "inbox_open",
+        "inbox_pending",
+      ],
+      ...snaps.map((s) => [
         s.day,
-        s.sales_pipeline_value,
-        s.sales_won_value_30d,
-        s.sales_win_rate_30d,
-        s.sales_avg_cycle_days_30d,
-        s.total_mrr_cents / 100,
-        s.avg_health_score,
-        s.nps_score,
+        (s.total_mrr_cents || 0) / 100,
         s.active_stores_count,
+        s.healthy_count,
+        s.warning_health_count,
+        s.critical_health_count,
+        s.avg_health_score ?? "",
+        s.nps_score ?? "",
+        s.nps_responses_30d ?? "",
         s.inbox_open_threads,
+        s.inbox_pending_threads,
       ]),
     ]
-    const csv = rows.map((r) => r.map((v) => (v == null ? "" : String(v))).join(",")).join("\n")
+    const csv = rows
+      .map((r) => r.map((v) => (v == null ? "" : String(v))).join(","))
+      .join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `crm-report-${days}d-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `cs-report-${days}d-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const hasData = (d?.org_snapshots?.length || 0) > 0
-
   return (
     <CrmPageShell
-      title="Reports CRM"
-      subtitle={`Snapshot-first BI · janela ${days}d · cron diario as 06h UTC`}
+      title="Reports de Customer Success"
+      subtitle={`Saúde da carteira · janela ${days}d · snapshot diário 06h UTC`}
       actions={
         <>
           <select
@@ -163,31 +218,101 @@ export default function ReportsPage() {
       <div className="p-6 space-y-6">
         {isLoading ? (
           <PageSkeleton variant="chart" showHeader={false} className="px-0 py-0" />
-        ) : !hasData ? (
+        ) : !hasData || !kpis ? (
           <CrmEmptyState
             icon={<BarChart3 className="h-5 w-5" />}
-            title="Nenhum snapshot disponivel"
-            description="O cron de snapshots roda diariamente as 06h UTC. Apos a primeira execucao, os reports comecam a aparecer aqui."
+            title="Nenhum snapshot disponível"
+            description="O cron de snapshots roda diariamente às 06h UTC. Após a primeira execução, os reports começam a aparecer aqui."
           />
         ) : (
           <>
-            {/* Pipeline value over time */}
-            <ChartCard title="Pipeline value vs Ganhos 30d (Sales)">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Kpi
+                icon={<TrendingUp className="h-4 w-4" />}
+                label="MRR carteira"
+                value={fmtBRL(kpis.mrr)}
+                delta={kpis.mrr_delta}
+                deltaSuffix="%"
+                color="success"
+              />
+              <Kpi
+                icon={<Users className="h-4 w-4" />}
+                label="Lojas ativas"
+                value={String(kpis.stores)}
+                delta={kpis.stores_delta}
+                deltaSuffix="%"
+              />
+              <Kpi
+                icon={<Heart className="h-4 w-4" />}
+                label="Health médio"
+                value={kpis.health != null ? kpis.health.toFixed(0) : "—"}
+                delta={kpis.health_delta}
+                deltaSuffix=" pts"
+              />
+              <Kpi
+                icon={<Smile className="h-4 w-4" />}
+                label="NPS"
+                value={
+                  kpis.nps != null
+                    ? `${kpis.nps > 0 ? "+" : ""}${kpis.nps.toFixed(0)}`
+                    : "—"
+                }
+                delta={kpis.nps_delta}
+                deltaSuffix=" pts"
+              />
+            </div>
+
+            {(kpis.critical > 0 || kpis.warning > 0) && (
+              <div
+                className="crm-card flex items-center gap-3"
+                style={{
+                  borderColor: kpis.critical > 0 ? "#FECACA" : "#FDE68A",
+                  background: kpis.critical > 0 ? "#FEF2F2" : "#FFFBEB",
+                }}
+              >
+                <AlertTriangle
+                  className="h-4 w-4"
+                  style={{ color: kpis.critical > 0 ? "#991B1B" : "#92400E" }}
+                />
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: kpis.critical > 0 ? "#991B1B" : "#92400E",
+                    fontWeight: 500,
+                  }}
+                >
+                  {kpis.critical > 0 && (
+                    <>
+                      <strong>{kpis.critical}</strong> loja
+                      {kpis.critical === 1 ? "" : "s"} crítica
+                      {kpis.critical === 1 ? "" : "s"} (health &lt; 50)
+                    </>
+                  )}
+                  {kpis.critical > 0 && kpis.warning > 0 && " · "}
+                  {kpis.warning > 0 && (
+                    <>
+                      <strong>{kpis.warning}</strong> em atenção
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
+
+            <ChartCard title="MRR carteira ativa">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={orgSeries}>
+                <AreaChart data={series}>
                   <defs>
-                    <linearGradient id="g-pipeline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--crm-accent)" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="var(--crm-accent)" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="g-won" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="g-cs-mrr" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--crm-success-fg)" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="var(--crm-success-fg)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                   <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRLAxis} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }}
+                    tickFormatter={fmtBRLAxis}
+                  />
                   <Tooltip
                     contentStyle={{
                       fontSize: 12,
@@ -197,21 +322,35 @@ export default function ReportsPage() {
                     }}
                     formatter={fmtBRLTooltip}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="pipeline" name="Pipeline" stroke="var(--crm-accent)" fill="url(#g-pipeline)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="won_30d" name="Ganhos 30d" stroke="var(--crm-success-fg)" fill="url(#g-won)" strokeWidth={2} />
+                  <Area
+                    type="monotone"
+                    dataKey="mrr"
+                    name="MRR"
+                    stroke="var(--crm-success-fg)"
+                    fill="url(#g-cs-mrr)"
+                    strokeWidth={2}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </ChartCard>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <ChartCard title="Win rate (%) e ciclo medio (dias)">
+              <ChartCard title="Health score médio + NPS">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={orgSeries}>
+                  <LineChart data={series}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }}
+                      domain={[0, 100]}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }}
+                      domain={[-100, 100]}
+                    />
                     <Tooltip
                       contentStyle={{
                         fontSize: 12,
@@ -221,18 +360,37 @@ export default function ReportsPage() {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line yAxisId="left" type="monotone" dataKey="win_rate" name="Win rate %" stroke="var(--crm-success-fg)" strokeWidth={2} dot={false} />
-                    <Line yAxisId="right" type="monotone" dataKey="cycle" name="Ciclo (dias)" stroke="var(--crm-warning-fg)" strokeWidth={2} dot={false} />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="health"
+                      name="Health médio"
+                      stroke="#10B981"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="nps"
+                      name="NPS"
+                      stroke="var(--crm-info-fg)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <ChartCard title="Health score medio e NPS">
+              <ChartCard title="Composição da carteira (saúde)">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={orgSeries}>
+                  <AreaChart data={series} stackOffset="expand">
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }}
+                      tickFormatter={(v) => `${Math.round((v as number) * 100)}%`}
+                    />
                     <Tooltip
                       contentStyle={{
                         fontSize: 12,
@@ -242,41 +400,40 @@ export default function ReportsPage() {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="health" name="Health" stroke="var(--crm-accent)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="nps" name="NPS" stroke="var(--crm-info-fg)" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="MRR carteira ativa">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={orgSeries}>
-                    <defs>
-                      <linearGradient id="g-mrr" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--crm-success-fg)" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="var(--crm-success-fg)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
-                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} tickFormatter={fmtBRLAxis} />
-                    <Tooltip
-                      contentStyle={{
-                        fontSize: 12,
-                        borderRadius: 4,
-                        border: "1px solid var(--crm-gray-200)",
-                        background: "var(--crm-gray-0)",
-                      }}
-                      formatter={fmtBRLTooltip}
+                    <Area
+                      type="monotone"
+                      dataKey="healthy"
+                      name="Saudáveis"
+                      stackId="1"
+                      stroke="#10B981"
+                      fill="#10B981"
+                      fillOpacity={0.7}
                     />
-                    <Area type="monotone" dataKey="mrr" name="MRR" stroke="var(--crm-success-fg)" fill="url(#g-mrr)" strokeWidth={2} />
+                    <Area
+                      type="monotone"
+                      dataKey="warning"
+                      name="Em atenção"
+                      stackId="1"
+                      stroke="#F59E0B"
+                      fill="#F59E0B"
+                      fillOpacity={0.7}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="critical"
+                      name="Críticas"
+                      stackId="1"
+                      stroke="#EF4444"
+                      fill="#EF4444"
+                      fillOpacity={0.7}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <ChartCard title="Lojas e inbox aberto">
+              <ChartCard title="Lojas ativas vs em risco">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={orgSeries}>
+                  <LineChart data={series}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
                     <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
@@ -289,43 +446,142 @@ export default function ReportsPage() {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="stores" name="Lojas ativas" stroke="var(--crm-gray-700)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="critical" name="Em risco" stroke="var(--crm-danger-fg)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="inbox" name="Inbox aberto" stroke="var(--crm-info-fg)" strokeWidth={2} dot={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="stores"
+                      name="Lojas ativas"
+                      stroke="var(--crm-gray-700)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="critical"
+                      name="Em risco (crítica)"
+                      stroke="#EF4444"
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard
+                title={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Inbox className="h-3.5 w-3.5" />
+                    Inbox de atendimento
+                  </span>
+                }
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={series}>
+                    <defs>
+                      <linearGradient id="g-inbox-open" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--crm-info-fg)" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="var(--crm-info-fg)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 4,
+                        border: "1px solid var(--crm-gray-200)",
+                        background: "var(--crm-gray-0)",
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area
+                      type="monotone"
+                      dataKey="inbox_open"
+                      name="Threads abertos"
+                      stroke="var(--crm-info-fg)"
+                      fill="url(#g-inbox-open)"
+                      strokeWidth={2}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="inbox_pending"
+                      name="Pendentes resposta"
+                      stroke="var(--crm-warning-fg)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               </ChartCard>
             </div>
-
-            {/* Funnel */}
-            {funnelSeries.length > 0 && (
-              <ChartCard title="Funil de leads (snapshot diario)">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={funnelSeries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--crm-gray-200)" />
-                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--crm-gray-500)" }} />
-                    <Tooltip
-                      contentStyle={{
-                        fontSize: 12,
-                        borderRadius: 4,
-                        border: "1px solid var(--crm-gray-200)",
-                        background: "var(--crm-gray-0)",
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="new" name="Novos" stroke="var(--crm-info-fg)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="qualified" name="Qualificados" stroke="var(--crm-warning-fg)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="converted" name="Convertidos" stroke="var(--crm-success-fg)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="lost" name="Perdidos" stroke="var(--crm-danger-fg)" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartCard>
-            )}
           </>
         )}
       </div>
     </CrmPageShell>
+  )
+}
+
+function Kpi({
+  icon,
+  label,
+  value,
+  delta,
+  deltaSuffix,
+  color,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  delta?: number | null
+  deltaSuffix?: string
+  color?: "success" | "default"
+}) {
+  const valueColor =
+    color === "success" ? "var(--crm-success-fg)" : "var(--crm-gray-900)"
+  const deltaPositive = delta != null && delta >= 0
+  return (
+    <div className="crm-card flex flex-col gap-1.5">
+      <div
+        className="flex items-center gap-2"
+        style={{
+          fontSize: "var(--crm-text-xs)",
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          fontWeight: "var(--crm-weight-medium)",
+        }}
+      >
+        {icon}
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: "var(--crm-text-2xl)",
+          fontWeight: "var(--crm-weight-medium)",
+          color: valueColor,
+          fontFamily: "var(--crm-font-mono)",
+          lineHeight: "var(--crm-leading-tight)",
+        }}
+      >
+        {value}
+      </div>
+      {delta != null && (
+        <div
+          style={{
+            fontSize: "var(--crm-text-xs)",
+            color: deltaPositive ? "var(--crm-success-fg)" : "var(--crm-danger-fg)",
+            fontFamily: "var(--crm-font-mono)",
+          }}
+        >
+          {deltaPositive ? "+" : ""}
+          {delta.toFixed(1)}
+          {deltaSuffix ?? ""}
+          <span style={{ color: "var(--crm-gray-500)", marginLeft: 4 }}>
+            no período
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -334,8 +590,9 @@ function ChartCard({
   children,
   size = "md",
 }: {
-  title: string
+  title: React.ReactNode
   children: React.ReactNode
+  /** sm = 180/200, md = 200/240, lg = 220/280 */
   size?: "sm" | "md" | "lg"
 }) {
   const heightClass =
