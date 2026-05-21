@@ -8,6 +8,14 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+
+// Cache em memoria de quando rodou ensureOnboardingBootstrap por org.
+// Garante que checklist_template/deliverables_template das colunas estao
+// sincronizados com o SEED atual sem precisar do operador rodar manutencao
+// manualmente. TTL curto pra cobrir deploys.
+const TEMPLATE_SYNC_TTL_MS = 5 * 60 * 1000
+const lastTemplateSyncByOrg = new Map<string, number>()
 
 // Sem cache: tasks/goals/habits mudam constantemente e o fetchData precisa
 // ler estado fresco apos cada mutation. Sem isso, o Next cacheia e o
@@ -30,6 +38,22 @@ export async function GET(request: NextRequest) {
       .single()
 
     const orgId = orgMember?.org_id
+
+    // Lazy re-sync dos templates de coluna do pipeline de onboarding.
+    // Garante que mudancas no SEED_COLUMNS (ex: allow_other no language)
+    // se propagam pro banco sem precisar de ensureOnboardingBootstrap
+    // explicito. Cacheado por org com TTL de 5 min pra nao pesar.
+    if (orgId) {
+      const last = lastTemplateSyncByOrg.get(orgId) ?? 0
+      if (Date.now() - last > TEMPLATE_SYNC_TTL_MS) {
+        try {
+          await ensureOnboardingBootstrap(orgId, user.id)
+          lastTemplateSyncByOrg.set(orgId, Date.now())
+        } catch (e) {
+          console.warn("[productivity GET] ensureOnboardingBootstrap failed", e)
+        }
+      }
+    }
 
     // Fetch all data in parallel
     const [
