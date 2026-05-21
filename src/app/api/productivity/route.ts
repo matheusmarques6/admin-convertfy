@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
           `id, current_version, current_column_id, plan, mrr_value,
            client:clients!onboardings_client_id_fkey(id, name, company),
            store:client_stores(id, store_name),
-           current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role)`,
+           current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role, deliverables_template)`,
         )
         .eq("org_id", orgId)
         .eq("status", "in_progress")
@@ -214,7 +214,33 @@ export async function GET(request: NextRequest) {
             slug: string
             color: string
             default_assignee_role: string | null
+            deliverables_template?: Array<{
+              slug: string
+              label: string
+              type: string
+              required?: boolean
+              options?: string[]
+              validation?: string
+              placeholder?: string
+              helpText?: string
+            }>
           } | null
+          // Indexa template por field_slug pra enriquecer cada task_deliverable
+          // com options/validation/etc (nao guardado no row do banco).
+          const tplBySlug = new Map<string, {
+            options?: string[]
+            validation?: string
+            placeholder?: string
+            helpText?: string
+          }>()
+          for (const f of col?.deliverables_template ?? []) {
+            tplBySlug.set(f.slug, {
+              options: f.options,
+              validation: f.validation,
+              placeholder: f.placeholder,
+              helpText: f.helpText,
+            })
+          }
 
           const tasksInOnb = (onbTasks ?? [])
             .filter(
@@ -290,7 +316,15 @@ export async function GET(request: NextRequest) {
                 stage_color: col?.color ?? null,
                 stage_role: col?.default_assignee_role ?? null,
               },
-              deliverables: delvByTask.get(t.id as string) ?? [],
+              deliverables: (delvByTask.get(t.id as string) ?? []).map(
+                (d) => {
+                  const enriched = {
+                    ...d,
+                    ...(tplBySlug.get(d.field_slug as string) ?? {}),
+                  }
+                  return enriched
+                },
+              ),
               checklist: chkByTask.get(t.id as string) ?? [],
               task_comments: cmtByTask.get(t.id as string) ?? [],
               attachments,

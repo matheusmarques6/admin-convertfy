@@ -27,6 +27,7 @@ import {
   TaskPanelSidebar,
   type SidebarSection,
 } from "./blocks/task-panel-sidebar"
+import { DeliverableEditModal } from "./deliverable-edit-modal"
 
 // ── Design tokens (replicam DS do prototipo) ────────────────────────────────
 const C = {
@@ -107,9 +108,13 @@ type Deliverable = {
   id: string
   field_label: string
   field_slug: string
+  field_type?: string
+  required?: boolean
+  options?: string[]
   value: string | null
   file_url: string | null
   file_name: string | null
+  file_size_bytes?: number | null
   filled_at: string | null
   metadata: Record<string, unknown> | null
 }
@@ -506,38 +511,38 @@ function deliverableStatus(d: Deliverable): {
   dot: string
   bg: string
 } {
-  const metaStatus = (d.metadata?.status as string) ?? null
-  const status = metaStatus ?? (d.filled_at ? "done" : "todo")
-  if (status === "done" || status === "ready" || status === "pronto") {
+  // Status deriva PURAMENTE do preenchimento:
+  //  - vazio → "A fazer"
+  //  - preenchido (value ou file_url) → "Pronto"
+  // Antes existia cycle manual via metadata.status — removido pra eliminar
+  // dessync entre "status manual" e "tem conteudo de fato".
+  const hasContent = !!d.value || !!d.file_url
+  if (hasContent) {
     return { label: "Pronto", color: C.greenText, dot: C.green, bg: C.greenBg }
-  }
-  if (status === "in_progress" || status === "em_producao") {
-    return { label: "Em produção", color: C.brandBlue, dot: C.brandBlue, bg: C.brandBlue50 }
   }
   return { label: "A fazer", color: "#4B5563", dot: "#9CA3AF", bg: "#F3F4F6" }
 }
-function DeliverableRow({ d, onCycle }: { d: Deliverable; onCycle: () => void }) {
+function DeliverableRow({ d, onClick }: { d: Deliverable; onClick: () => void }) {
   const st = deliverableStatus(d)
-  // Card NAO cicla no click — so o pill direito cicla quando clicado.
-  // Evita ciclar acidentalmente ao tentar visualizar o entregavel.
   return (
-    <div
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 bg-white border rounded-[7px] hover:bg-gray-50/60 transition-colors"
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 bg-white border rounded-[7px] hover:bg-gray-50 hover:border-gray-300 transition-colors cursor-pointer text-left"
       style={{ borderColor: "rgba(0,0,0,0.06)" }}
+      title="Clique pra preencher o entregavel"
     >
       <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: st.dot }} />
       <span className="flex-1 text-[12.5px] font-medium text-gray-900 truncate -tracking-[0.005em]">
         {d.field_label}
+        {d.required && <span className="text-red-500 ml-1">*</span>}
       </span>
-      <button
-        onClick={onCycle}
-        className="text-[10px] font-semibold rounded-full px-2 py-0.5 transition-opacity hover:opacity-80 cursor-pointer"
+      <span
+        className="text-[10px] font-semibold rounded-full px-2 py-0.5"
         style={{ color: st.color, background: st.bg }}
-        title="Clique pra mudar status"
       >
         {st.label}
-      </button>
-    </div>
+      </span>
+    </button>
   )
 }
 
@@ -730,6 +735,7 @@ export function TaskDetailDrawer({
   const [linkLabel, setLinkLabel] = useState("")
   const [addingDeliv, setAddingDeliv] = useState(false)
   const [delivLabel, setDelivLabel] = useState("")
+  const [editingDeliv, setEditingDeliv] = useState<Deliverable | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const [history, setHistory] = useState<Array<Record<string, unknown>> | null>(null)
@@ -882,23 +888,8 @@ export function TaskDetailDrawer({
     setComment("")
   }
 
-  const cycleDeliverable = async (d: Deliverable) => {
-    const cur = deliverableStatus(d).label
-    const next = cur === "A fazer" ? "in_progress" : cur === "Em produção" ? "done" : "todo"
-    try {
-      await fetch(`/api/tasks/${task.id}/deliverables/${d.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          metadata: { ...(d.metadata ?? {}), status: next },
-          filled_at: next === "done" ? new Date().toISOString() : null,
-        }),
-      })
-      fetchData()
-    } catch {
-      /* noop */
-    }
-  }
+  // cycleDeliverable removido — agora o click no card abre modal de
+  // preenchimento (DeliverableEditModal) e o status deriva do conteudo.
 
   const addDeliverable = async () => {
     const label = delivLabel.trim()
@@ -1740,7 +1731,11 @@ export function TaskDetailDrawer({
             )}
             <div className="flex flex-col gap-1.5">
               {deliverables.map((d) => (
-                <DeliverableRow key={d.id} d={d} onCycle={() => cycleDeliverable(d)} />
+                <DeliverableRow
+                  key={d.id}
+                  d={d}
+                  onClick={() => setEditingDeliv(d)}
+                />
               ))}
               {addingDeliv && (
                 <div
@@ -2056,6 +2051,18 @@ export function TaskDetailDrawer({
             <div className="text-[11px] text-white/70 mt-0.5">{showToast}</div>
           </div>
         </div>
+      )}
+
+      {editingDeliv && (
+        <DeliverableEditModal
+          taskId={task.id}
+          deliverable={editingDeliv}
+          onboardingId={task.onboarding_id ?? null}
+          onClose={() => setEditingDeliv(null)}
+          onSaved={() => {
+            fetchData()
+          }}
+        />
       )}
     </>
   )
