@@ -94,8 +94,11 @@ export const ROUTES = {
       ROOT: "/admin/operacional",
       DASHBOARD: "/admin/operacional/dashboard",
       PIPELINES: "/admin/operacional/pipelines",
+      PIPELINES_ADMIN: "/admin/operacional/pipelines/admin",
       PIPELINE_DETAIL: (id: string) => `/admin/operacional/pipelines/${id}` as const,
       DEAL_DETAIL: (id: string) => `/admin/operacional/deals/${id}` as const,
+      DEAL_DETAIL_FULL: (id: string) =>
+        `/admin/operacional/deals/${id}/detail` as const,
       AUTOMACOES: {
         LIST: "/admin/operacional/automacoes",
         DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,

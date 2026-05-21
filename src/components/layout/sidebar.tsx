@@ -216,6 +216,7 @@ const OPERACIONAL_NAV: NavGroup[] = [
     label: "Pipelines",
     items: [
       { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      { name: "Configurar pipelines", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN, icon: Settings },
     ],
   },
   {
