@@ -63,7 +63,9 @@ interface FlagStoresOptions {
   orgId?: string
   /**
    * Se true, força flag em TODAS as lojas mesmo as healthy (pra demo/teste).
-   * Default false (skip lojas sem motivo, como o cron real).
+   * Default true: o ritual cobre o portfolio inteiro — saudaveis entram com
+   * health_state="healthy" e ficam disponiveis pra pular Etapa 1→3 no front.
+   * Lojas com motivo ainda recebem flag_reason explicando entrada.
    */
   force?: boolean
 }
@@ -72,7 +74,7 @@ export async function flagStoresForWeek({
   admin,
   week,
   orgId,
-  force = false,
+  force = true,
 }: FlagStoresOptions): Promise<FlagResult> {
   const targetWeek = week ?? thisMonday()
 
@@ -283,9 +285,8 @@ export async function flagStoresForWeek({
     }
 
     if (force && reasons.length === 0) {
-      reasons.push("Sinalizado manualmente (modo demo)")
-      healthState = "attention"
-      healthScore = 70
+      // Loja sem motivo entra na fila com estado correto, sem virar attention
+      reasons.push("Performance estável · sem ações pendentes")
     }
 
     const { error } = await admin
