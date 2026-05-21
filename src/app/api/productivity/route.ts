@@ -216,12 +216,32 @@ export async function GET(request: NextRequest) {
             default_assignee_role: string | null
           } | null
 
-          const tasksInOnb = (onbTasks ?? []).filter(
-            (t) =>
-              t.onboarding_id === onb.id &&
-              (t.version ?? 1) === (onb.current_version ?? 1) &&
-              t.operational_column_id === onb.current_column_id,
-          )
+          const tasksInOnb = (onbTasks ?? [])
+            .filter(
+              (t) =>
+                t.onboarding_id === onb.id &&
+                (t.version ?? 1) === (onb.current_version ?? 1) &&
+                t.operational_column_id === onb.current_column_id,
+            )
+            .sort((a, b) => {
+              // Ordena por metadata.item_position (gravado pelo instantiator
+              // a partir do checklist_template.order). Antes vinha por
+              // created_at, que pra tasks criadas em batch nao preserva ordem.
+              const ma = (a.metadata ?? {}) as Record<string, unknown>
+              const mb = (b.metadata ?? {}) as Record<string, unknown>
+              const ap =
+                typeof ma.item_position === "number"
+                  ? ma.item_position
+                  : Number.POSITIVE_INFINITY
+              const bp =
+                typeof mb.item_position === "number"
+                  ? mb.item_position
+                  : Number.POSITIVE_INFINITY
+              if (ap !== bp) return ap - bp
+              const ac = (a.created_at as string | null) ?? ""
+              const bc = (b.created_at as string | null) ?? ""
+              return ac.localeCompare(bc)
+            })
 
           // Mapeia tasks pro shape esperado pelo store (productivity_tasks-like)
           const priorityMap: Record<string, number> = {
