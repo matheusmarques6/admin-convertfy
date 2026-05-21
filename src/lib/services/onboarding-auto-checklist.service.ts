@@ -1,9 +1,12 @@
 /**
- * AUTO·CLIENTE — marcacao automatica de task_checklists.
+ * AUTO·CLIENTE — marcacao automatica de tasks de onboarding.
  *
- * Items do checklist com `auto_complete_on` populado sao marcados como
- * is_completed=true quando o evento correspondente dispara, sem acao
- * manual do CS/designer/ops.
+ * Tasks com `auto_complete_on` populado sao marcadas como status='completed'
+ * quando o evento correspondente dispara, sem acao manual do CS/designer/ops.
+ *
+ * Modelo novo (refator "1 task por checklist item"): cada item do
+ * checklist_template do SEED vira 1 task individual. Esse service atua
+ * direto em `tasks.status` (nao mais em task_checklists.is_completed).
  *
  * Eventos suportados:
  *   - form_section_completed  → cliente completou X secoes do wizard
@@ -23,30 +26,31 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingAutoChecklist")
 
-type ChecklistRow = {
+type TaskRow = {
   id: string
-  task_id: string
+  status: string
   slug: string | null
-  is_completed: boolean
   auto_complete_on: Record<string, unknown> | null
+  onboarding_id: string | null
+  operational_column_id: string | null
 }
 
 /**
- * Busca task_checklists elegiveis: items de qualquer task do onboarding
- * na versao atual, ainda nao completados, com auto_complete_on populado.
+ * Busca tasks elegiveis: tasks do onboarding na versao atual, ainda nao
+ * completadas, com auto_complete_on populado e event correspondente.
  *
- * Importante: nao filtra por current_column_id — confirmBriefing avanca a
- * coluna antes de chamar o auto-complete, entao items de cliente_formulario
- * ja teriam ficado fora. Como os slugs no SEED sao globalmente unicos
- * (entrada_*, form_*, preview_*, etc), o filtro por event + version basta.
+ * Importante: nao filtra por current_column_id — confirmBriefing avanca
+ * a coluna antes de chamar o auto-complete, entao tasks da coluna anterior
+ * (cliente_formulario) ja teriam ficado fora. Como os slugs no SEED sao
+ * globalmente unicos (entrada_*, form_*, preview_*, etc), o filtro por
+ * event + version basta.
  */
-async function fetchEligibleChecklists(
+async function fetchEligibleTasks(
   onboardingId: string,
   event: string,
-): Promise<ChecklistRow[]> {
+): Promise<TaskRow[]> {
   const admin = createAdminClient()
 
-  // Filtra por version pra nao marcar items de versoes antigas em go-backs.
   const { data: onb } = await admin
     .from("onboardings")
     .select("current_version")
@@ -56,36 +60,29 @@ async function fetchEligibleChecklists(
 
   const { data: tasks } = await admin
     .from("tasks")
-    .select("id")
+    .select("id, status, slug, auto_complete_on, onboarding_id, operational_column_id")
     .eq("onboarding_id", onboardingId)
     .eq("version", onb.current_version)
-  const taskIds = (tasks ?? []).map((t) => t.id)
-  if (taskIds.length === 0) return []
-
-  const { data: items } = await admin
-    .from("task_checklists")
-    .select("id, task_id, slug, is_completed, auto_complete_on")
-    .in("task_id", taskIds)
-    .eq("is_completed", false)
+    .neq("status", "completed")
     .not("auto_complete_on", "is", null)
 
-  return ((items ?? []) as ChecklistRow[]).filter(
-    (i) => (i.auto_complete_on as { event?: string } | null)?.event === event,
+  return ((tasks ?? []) as TaskRow[]).filter(
+    (t) => (t.auto_complete_on as { event?: string } | null)?.event === event,
   )
 }
 
-async function markCompleted(checklistIds: string[]): Promise<void> {
-  if (checklistIds.length === 0) return
+async function markTasksCompleted(taskIds: string[]): Promise<void> {
+  if (taskIds.length === 0) return
   const admin = createAdminClient()
   const { error } = await admin
-    .from("task_checklists")
-    .update({ is_completed: true, completed_at: new Date().toISOString() })
-    .in("id", checklistIds)
+    .from("tasks")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .in("id", taskIds)
   if (error) log.warn("Marcacao auto falhou", { code: error.code, msg: error.message })
 }
 
 /**
- * Trigger: cliente completou secoes do wizard. Marca items cujo
+ * Trigger: cliente completou secoes do wizard. Marca tasks cujo
  * auto_complete_on.sections seja subconjunto das sections completadas.
  */
 export async function autoCompleteChecklistsForFormSections(
@@ -94,21 +91,22 @@ export async function autoCompleteChecklistsForFormSections(
 ): Promise<void> {
   try {
     if (sectionsCompleted.length === 0) return
-    const items = await fetchEligibleChecklists(onboardingId, "form_section_completed")
+    const tasks = await fetchEligibleTasks(onboardingId, "form_section_completed")
     const completedSet = new Set(sectionsCompleted)
 
     const toComplete: string[] = []
-    for (const item of items) {
-      const required = (item.auto_complete_on as { sections?: string[] } | null)?.sections ?? []
+    for (const task of tasks) {
+      const required =
+        (task.auto_complete_on as { sections?: string[] } | null)?.sections ?? []
       if (required.length === 0) continue
       // Todas as secoes necessarias precisam estar completadas
       const allDone = required.every((s) => completedSet.has(s))
-      if (allDone) toComplete.push(item.id)
+      if (allDone) toComplete.push(task.id)
     }
 
-    await markCompleted(toComplete)
+    await markTasksCompleted(toComplete)
     if (toComplete.length > 0) {
-      log.info("AUTO·CLIENTE marcou items via form_section_completed", {
+      log.info("AUTO·CLIENTE marcou tasks via form_section_completed", {
         onboardingId,
         sectionsCompleted,
         marked: toComplete.length,
@@ -120,25 +118,26 @@ export async function autoCompleteChecklistsForFormSections(
 }
 
 /**
- * Trigger: cliente confirmou o briefing inline. Marca items com
- * auto_complete_on.event = "briefing_approved".
+ * Trigger: cliente confirmou o briefing inline. Marca tasks com
+ * auto_complete_on.event = "briefing_approved" + popula deliverables
+ * auto-preenchiveis da Etapa 02.
  */
 export async function autoCompleteOnBriefingApproved(
   onboardingId: string,
 ): Promise<void> {
   try {
-    const items = await fetchEligibleChecklists(onboardingId, "briefing_approved")
-    const ids = items.map((i) => i.id)
-    await markCompleted(ids)
+    const tasks = await fetchEligibleTasks(onboardingId, "briefing_approved")
+    const ids = tasks.map((t) => t.id)
+    await markTasksCompleted(ids)
     if (ids.length > 0) {
-      log.info("AUTO·CLIENTE marcou items via briefing_approved", {
+      log.info("AUTO·CLIENTE marcou tasks via briefing_approved", {
         onboardingId,
         marked: ids.length,
       })
     }
 
-    // Tambem auto-marca o deliverable "brand_brain_generated" (checkbox required)
-    // da Etapa 02 — quando o briefing e aprovado, a Sintese estruturada existe.
+    // Auto-marca os deliverables "brand_brain_generated" e
+    // "form_100_percent_filled" (checkbox required) da Etapa 02.
     await autoFillBriefingDeliverables(onboardingId)
   } catch (e) {
     log.error("autoCompleteOnBriefingApproved falhou", e)
@@ -146,7 +145,7 @@ export async function autoCompleteOnBriefingApproved(
 }
 
 /**
- * Trigger: email automatico foi disparado. Marca items com
+ * Trigger: email automatico foi disparado. Marca tasks com
  * auto_complete_on.event = "email_sent" e template_slug correspondente.
  */
 export async function autoCompleteOnEmailSent(
@@ -154,16 +153,16 @@ export async function autoCompleteOnEmailSent(
   templateSlug: string,
 ): Promise<void> {
   try {
-    const items = await fetchEligibleChecklists(onboardingId, "email_sent")
-    const matching = items.filter(
-      (i) =>
-        (i.auto_complete_on as { template_slug?: string } | null)?.template_slug ===
+    const tasks = await fetchEligibleTasks(onboardingId, "email_sent")
+    const matching = tasks.filter(
+      (t) =>
+        (t.auto_complete_on as { template_slug?: string } | null)?.template_slug ===
         templateSlug,
     )
-    const ids = matching.map((i) => i.id)
-    await markCompleted(ids)
+    const ids = matching.map((t) => t.id)
+    await markTasksCompleted(ids)
     if (ids.length > 0) {
-      log.info("AUTO·CLIENTE marcou items via email_sent", {
+      log.info("AUTO·CLIENTE marcou tasks via email_sent", {
         onboardingId,
         templateSlug,
         marked: ids.length,
@@ -178,6 +177,10 @@ export async function autoCompleteOnEmailSent(
  * Marca deliverables especificos como filled quando o briefing e aprovado:
  *   - brand_brain_generated (checkbox)
  *   - form_100_percent_filled (checkbox) — todas as secoes completadas
+ *
+ * Busca qualquer task da versao atual (sem filtrar por coluna porque o
+ * confirmBriefing avanca antes desse callback). field_slugs sao unicos da
+ * Etapa 02, sem risco de match cruzado.
  */
 async function autoFillBriefingDeliverables(
   onboardingId: string,
@@ -190,10 +193,6 @@ async function autoFillBriefingDeliverables(
     .maybeSingle()
   if (!onb) return
 
-  // Mesmo motivo de fetchEligibleChecklists: confirmBriefing pode ter
-  // avancado a coluna ja. Busca em qualquer task da versao atual; os
-  // field_slugs (brand_brain_generated, form_100_percent_filled) so
-  // existem na Etapa 02, entao nao ha risco de marcar errado.
   const { data: tasks } = await admin
     .from("tasks")
     .select("id")
