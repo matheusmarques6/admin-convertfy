@@ -42,7 +42,7 @@ export async function POST(
     const { data: task, error: fetchErr } = await admin
       .from("tasks")
       .select(
-        "id, org_id, source_type, source_id, onboarding_id, operational_column_id, assignee_id, assignee_role, status, version",
+        "id, org_id, source_type, source_id, onboarding_id, operational_column_id, assignee_id, assignee_role, status, version, metadata",
       )
       .eq("id", id)
       .eq("org_id", orgMember.org_id)
@@ -59,6 +59,26 @@ export async function POST(
     const isRoleTask = !task.assignee_id && task.assignee_role === role
     if (!isElevated && !isOwnTask && !isRoleTask) {
       throw new AppError("Sem permissao pra concluir essa task", 403)
+    }
+
+    // Bloqueio: se task tem sub_items, todos precisam estar completos
+    // antes de marcar a task pai. Designer ainda pode usar Forcar avanco
+    // no Kanban se precisar pular (registra override).
+    const meta = (task.metadata ?? {}) as Record<string, unknown> & {
+      sub_items?: Array<{ slug: string; label: string; completed?: boolean }>
+    }
+    const subItems = Array.isArray(meta.sub_items) ? meta.sub_items : []
+    if (subItems.length > 0) {
+      const pending = subItems.filter((s) => !s.completed)
+      if (pending.length > 0) {
+        const count = pending.length
+        const sample = pending.slice(0, 3).map((s) => s.label).join(", ")
+        const more = count > 3 ? ` e mais ${count - 3}` : ""
+        throw new AppError(
+          `${count} sub-item${count > 1 ? "s" : ""} pendente${count > 1 ? "s" : ""} (${sample}${more}). Marque todos ou use Forcar avanco no Kanban.`,
+          409,
+        )
+      }
     }
 
     // Update: marca completed + claim se era do role.
