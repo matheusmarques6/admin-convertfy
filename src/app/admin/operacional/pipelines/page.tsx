@@ -123,6 +123,54 @@ export default function CsPipelinesHubPage() {
   )
 
   const [newDialogOpen, setNewDialogOpen] = useState(false)
+  const [syncing, setSyncing] = useState<"health" | "carteira" | null>(null)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+
+  async function runHealthSync() {
+    if (syncing) return
+    setSyncing("health")
+    setSyncMessage(null)
+    try {
+      const r = await fetch("/api/admin/crm-health/compute-now", {
+        method: "POST",
+        credentials: "include",
+      })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body?.error?.message || "Falha no recalculo")
+      const res = body.data ?? body
+      setSyncMessage(
+        `Health recalculado · ${res.ok}/${res.total} lojas · ${res.alerts_created ?? 0} novo(s) alerta(s) crítico(s). Carteira sincronizada automaticamente.`,
+      )
+      await mutatePipelines()
+    } catch (e) {
+      setSyncMessage(`Erro: ${(e as Error).message}`)
+    } finally {
+      setSyncing(null)
+    }
+  }
+
+  async function runCarteiraSync() {
+    if (syncing) return
+    setSyncing("carteira")
+    setSyncMessage(null)
+    try {
+      const r = await fetch("/api/admin/cs-carteira/sync-now", {
+        method: "POST",
+        credentials: "include",
+      })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body?.error?.message || "Falha no sync")
+      const res = body.data ?? body
+      setSyncMessage(
+        `Carteira sincronizada · ${res.ok}/${res.total} lojas classificadas (use o pipeline Gestão de Carteira pra ver).`,
+      )
+      await mutatePipelines()
+    } catch (e) {
+      setSyncMessage(`Erro: ${(e as Error).message}`)
+    } finally {
+      setSyncing(null)
+    }
+  }
 
   const isEmpty = pipelines.length === 0
 
@@ -172,6 +220,56 @@ export default function CsPipelinesHubPage() {
             gap: 8,
           }}
         >
+          <button
+            type="button"
+            onClick={runCarteiraSync}
+            disabled={syncing !== null}
+            title="Analisa cada loja e classifica em Saudavel/Atencao/Risco/Churn no pipeline Gestao de Carteira"
+            className="cf-focusable inline-flex items-center gap-1.5 rounded-[6px]"
+            style={{
+              height: 32,
+              padding: "0 12px",
+              background: "#fff",
+              color: "var(--crm-gray-700)",
+              border: "1px solid var(--crm-border)",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: syncing ? "wait" : "pointer",
+              opacity: syncing ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw
+              className={
+                "h-3.5 w-3.5" + (syncing === "carteira" ? " animate-spin" : "")
+              }
+            />
+            {syncing === "carteira" ? "Analisando..." : "Sincronizar carteira"}
+          </button>
+          <button
+            type="button"
+            onClick={runHealthSync}
+            disabled={syncing !== null}
+            title="Recalcula health score de todas lojas e ja sincroniza carteira + alertas"
+            className="cf-focusable inline-flex items-center gap-1.5 rounded-[6px]"
+            style={{
+              height: 32,
+              padding: "0 12px",
+              background: "#fff",
+              color: "var(--crm-gray-700)",
+              border: "1px solid var(--crm-border)",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: syncing ? "wait" : "pointer",
+              opacity: syncing ? 0.6 : 1,
+            }}
+          >
+            <Zap
+              className={
+                "h-3.5 w-3.5" + (syncing === "health" ? " animate-pulse" : "")
+              }
+            />
+            {syncing === "health" ? "Recalculando..." : "Recalcular health"}
+          </button>
           <Link
             href={ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN}
             className="cf-focusable inline-flex items-center gap-1.5 rounded-[6px]"
@@ -210,6 +308,26 @@ export default function CsPipelinesHubPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
+        {syncMessage && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "10px 14px",
+              background: syncMessage.startsWith("Erro")
+                ? "#FEF2F2"
+                : "#ECFDF5",
+              color: syncMessage.startsWith("Erro") ? "#991B1B" : "#065F46",
+              border: `1px solid ${syncMessage.startsWith("Erro") ? "#FECACA" : "#A7F3D0"}`,
+              borderRadius: 6,
+              fontSize: 12.5,
+              fontWeight: 500,
+              maxWidth: 1280,
+              margin: "0 auto 16px",
+            }}
+          >
+            {syncMessage}
+          </div>
+        )}
         {isEmpty ? (
           <CsPipelinesEmptyHero onCreate={() => setNewDialogOpen(true)} />
         ) : (
