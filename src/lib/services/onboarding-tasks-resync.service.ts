@@ -1,0 +1,311 @@
+/**
+ * Reconciliacao destrutiva de tasks legadas com o template atual.
+ *
+ * Diferente do migrateLegacyTasksAddSubItems (que so adiciona sub_items),
+ * este servico:
+ *  - DELETA tasks da current_version cujo slug nao existe mais no
+ *    checklist_template da coluna (mesmo se status=completed).
+ *  - CRIA tasks faltantes (slug existe no template mas nao tem task).
+ *  - MANTEM tasks cujo slug bate (preserva status, assignee, completed_at).
+ *  - Sub_items: pra tasks mantidas, se o template tem sub_items e o
+ *    metadata da task ainda nao, adiciona (chamando reuso do migrate).
+ *
+ * Escopo: SO mexe em onboardings status=in_progress, SO toca current_version,
+ * SO toca tasks com operational_column_id (tasks de onboarding). Versoes
+ * antigas (historico de reworks) ficam intocadas.
+ *
+ * Resultado por onboarding: tasks alinhadas 100% com o template atual.
+ *
+ * AVISO: destrutivo. Apaga task_deliverables linkados via FK cascade
+ * (config do schema). Task_overrides apontando pras tasks deletadas
+ * sobrevivem (FK ON DELETE SET NULL).
+ */
+
+import { createAdminClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+import type { ChecklistItem } from "@/types/onboarding-pipeline"
+
+const log = logger.child("OnboardingTasksResync")
+
+export interface ResyncStats {
+  onboardings_scanned: number
+  tasks_deleted: number
+  tasks_created: number
+  tasks_kept: number
+  sub_items_added: number
+  errors: Array<{ onboarding_id: string; column_id: string; error: string }>
+}
+
+interface OnboardingRow {
+  id: string
+  org_id: string
+  current_version: number | null
+}
+
+interface ColumnRow {
+  id: string
+  slug: string
+  name: string
+  color: string
+  default_assignee_role: string | null
+  sla_hours: number | null
+  checklist_template: ChecklistItem[] | null
+  deliverables_template: Array<{
+    slug: string
+    label: string
+    type: string
+    required: boolean
+  }> | null
+}
+
+export async function resyncAllOnboardingTasks(): Promise<ResyncStats> {
+  const admin = createAdminClient()
+  const stats: ResyncStats = {
+    onboardings_scanned: 0,
+    tasks_deleted: 0,
+    tasks_created: 0,
+    tasks_kept: 0,
+    sub_items_added: 0,
+    errors: [],
+  }
+
+  // 1) Carrega TODAS as colunas com templates indexadas por id
+  const { data: cols } = await admin
+    .from("operational_pipeline_columns")
+    .select(
+      "id, slug, name, color, default_assignee_role, sla_hours, checklist_template, deliverables_template",
+    )
+  const colById = new Map<string, ColumnRow>()
+  for (const c of (cols ?? []) as ColumnRow[]) colById.set(c.id, c)
+
+  // 2) Onboardings em progresso
+  const { data: onbs } = await admin
+    .from("onboardings")
+    .select("id, org_id, current_version")
+    .eq("status", "in_progress")
+  const onbList = (onbs ?? []) as OnboardingRow[]
+
+  for (const onb of onbList) {
+    stats.onboardings_scanned++
+    const currentVersion = onb.current_version ?? 1
+
+    // 3) Pra cada coluna, reconcilia tasks da current_version
+    for (const col of colById.values()) {
+      try {
+        await reconcileColumnForOnboarding({
+          admin,
+          onboarding: onb,
+          column: col,
+          version: currentVersion,
+          stats,
+        })
+      } catch (e) {
+        stats.errors.push({
+          onboarding_id: onb.id,
+          column_id: col.id,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+  }
+
+  log.info("Resync concluido", {
+    ...stats,
+    errors_count: stats.errors.length,
+  })
+  return stats
+}
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+interface ReconcileOpts {
+  admin: AdminClient
+  onboarding: OnboardingRow
+  column: ColumnRow
+  version: number
+  stats: ResyncStats
+}
+
+async function reconcileColumnForOnboarding(opts: ReconcileOpts): Promise<void> {
+  const { admin, onboarding, column, version, stats } = opts
+
+  const template = column.checklist_template ?? []
+  const templateBySlug = new Map<string, ChecklistItem>()
+  for (const item of template) {
+    if (item.slug) templateBySlug.set(item.slug, item)
+  }
+
+  // Tasks atuais dessa coluna+versao
+  const { data: tasks } = await admin
+    .from("tasks")
+    .select("id, slug, status, metadata, assignee_id, completed_at")
+    .eq("onboarding_id", onboarding.id)
+    .eq("operational_column_id", column.id)
+    .eq("version", version)
+
+  const taskList = (tasks ?? []) as Array<{
+    id: string
+    slug: string | null
+    status: string
+    metadata: Record<string, unknown> | null
+    assignee_id: string | null
+    completed_at: string | null
+  }>
+
+  const taskBySlug = new Map<string, (typeof taskList)[number]>()
+  for (const t of taskList) {
+    if (t.slug) taskBySlug.set(t.slug, t)
+  }
+
+  // Se a coluna nao tem tasks instanciadas (onboarding nem chegou nessa
+  // etapa ainda) e template tambem nao tem itens, skip.
+  if (taskList.length === 0 && template.length === 0) return
+
+  // Se taskList.length === 0 mas template existe, NAO instanciamos aqui
+  // — onboardings ainda nao chegaram nessa coluna naturalmente.
+  // O resync so atua em colunas que ja foram visitadas.
+  if (taskList.length === 0) return
+
+  // 1) DELETE: tasks com slug que sumiu do template (ou sem slug em meio
+  //    a um template com slugs).
+  const toDelete = taskList.filter((t) => {
+    if (!t.slug) return template.length > 0
+    return !templateBySlug.has(t.slug)
+  })
+  if (toDelete.length > 0) {
+    const ids = toDelete.map((t) => t.id)
+    const { error: delErr } = await admin.from("tasks").delete().in("id", ids)
+    if (delErr) throw delErr
+    stats.tasks_deleted += toDelete.length
+  }
+
+  // 2) CREATE: slugs do template sem task correspondente.
+  const missing = Array.from(templateBySlug.entries()).filter(
+    ([slug]) => !taskBySlug.has(slug),
+  )
+  if (missing.length > 0) {
+    const now = Date.now()
+    const sourceMeta: Record<string, unknown> = {
+      stage_name: column.name,
+      stage_color: column.color,
+      stage_slug: column.slug,
+      onboarding_id: onboarding.id,
+    }
+
+    const rows = missing.map(([slug, item], idx) => {
+      const subItems = item.sub_items
+      const slaHours = item.sla_hours ?? column.sla_hours ?? 24
+      return {
+        org_id: onboarding.org_id,
+        title: item.label,
+        description: item.description ?? null,
+        status: "pending" as const,
+        priority: "medium" as const,
+        type: "onboarding" as const,
+        source_type: "onboarding",
+        source_id: onboarding.id,
+        source_metadata: sourceMeta,
+        onboarding_id: onboarding.id,
+        operational_column_id: column.id,
+        assignee_role:
+          item.assignee_role ?? column.default_assignee_role ?? null,
+        version,
+        due_date: new Date(now + slaHours * 3_600_000).toISOString(),
+        sla_hours: slaHours,
+        slug,
+        auto_complete_on: item.auto_complete_on ?? null,
+        metadata: {
+          column_slug: column.slug,
+          column_name: column.name,
+          item_position: item.order ?? idx,
+          // Anchor recalculado depois (a coluna pode ja ter anchor preservada).
+          is_column_anchor: false,
+          ...(subItems && subItems.length > 0
+            ? {
+                sub_items: subItems.map((si) => ({
+                  ...si,
+                  completed: si.completed ?? false,
+                })),
+              }
+            : {}),
+        },
+      }
+    })
+    const { error: insErr } = await admin.from("tasks").insert(rows)
+    if (insErr) throw insErr
+    stats.tasks_created += rows.length
+  }
+
+  // 3) MANTÊM + adiciona sub_items quando o template tem mas a task nao
+  for (const t of taskList) {
+    if (!t.slug || !templateBySlug.has(t.slug)) continue // ja foi deletada
+    stats.tasks_kept++
+    const item = templateBySlug.get(t.slug)
+    if (!item || !item.sub_items || item.sub_items.length === 0) continue
+    const meta = (t.metadata ?? {}) as Record<string, unknown> & {
+      sub_items?: Array<{ slug: string; completed?: boolean }>
+    }
+    if (Array.isArray(meta.sub_items) && meta.sub_items.length > 0) continue
+    const newSubItems = item.sub_items.map((s) => ({
+      ...s,
+      completed: false,
+    }))
+    await admin
+      .from("tasks")
+      .update({ metadata: { ...meta, sub_items: newSubItems } })
+      .eq("id", t.id)
+    stats.sub_items_added++
+  }
+
+  // 4) Reconcilia anchor (primeira task por item_position vira anchor pra
+  //    receber deliverables). Se a coluna tem tasks novas, pode ser que
+  //    a anchor anterior foi deletada — precisamos garantir 1 anchor.
+  const { data: remainingTasks } = await admin
+    .from("tasks")
+    .select("id, metadata, created_at")
+    .eq("onboarding_id", onboarding.id)
+    .eq("operational_column_id", column.id)
+    .eq("version", version)
+    .order("created_at", { ascending: true })
+
+  const remaining = (remainingTasks ?? []) as Array<{
+    id: string
+    metadata: Record<string, unknown> | null
+  }>
+  if (remaining.length === 0) return
+
+  const hasAnchor = remaining.some(
+    (t) => (t.metadata as { is_column_anchor?: boolean })?.is_column_anchor,
+  )
+  if (!hasAnchor) {
+    // Promove primeira como anchor
+    const first = remaining[0]
+    const meta = (first.metadata ?? {}) as Record<string, unknown>
+    await admin
+      .from("tasks")
+      .update({ metadata: { ...meta, is_column_anchor: true } })
+      .eq("id", first.id)
+
+    // 5) Garante que deliverables_template tem rows em task_deliverables na anchor.
+    const fields = column.deliverables_template ?? []
+    if (fields.length > 0) {
+      const { data: existingDelivs } = await admin
+        .from("task_deliverables")
+        .select("field_slug")
+        .eq("task_id", first.id)
+      const have = new Set((existingDelivs ?? []).map((d) => d.field_slug as string))
+      const toCreate = fields
+        .filter((f) => !have.has(f.slug))
+        .map((f) => ({
+          task_id: first.id,
+          field_slug: f.slug,
+          field_label: f.label,
+          field_type: f.type,
+          required: f.required,
+        }))
+      if (toCreate.length > 0) {
+        await admin.from("task_deliverables").insert(toCreate)
+      }
+    }
+  }
+}
