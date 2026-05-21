@@ -1358,26 +1358,58 @@ function BriefingReviewInline({
     return () => clearTimeout(t)
   }, [savedCount, saveBarVisible])
 
-  // Busca contexto da loja (top produtos + análise de ads) uma vez no mount.
-  // Falha silenciosa: blocos somem se endpoint não responder ou loja não tiver dados.
+  // Busca contexto da loja (top produtos + análise de ads) com polling.
+  // Se faltar ads OU catálogo no primeiro fetch, dispara o workflow n8n
+  // "Analisador de ADS" — n8n processa async e popula os dados via
+  // /api/webhooks/n8n/ads-analyzer/*. Polling continua até ter ambos OU
+  // timeout (3min). Falha silenciosa: blocos somem se nada chegar.
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/forms/${token}/store-context`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let triggered = false
+    const STORE_CTX_POLL_MS = 5_000
+    const STORE_CTX_TIMEOUT_MS = 180_000
+    const startedAt = Date.now()
+
+    async function pollStoreContext() {
+      try {
+        const res = await fetch(`/api/forms/${token}/store-context`)
+        if (cancelled) return
+        const data = res.ok ? await res.json() : null
         if (cancelled || !data) return
+
         if (data.has_top_products || data.has_ads_review) {
           setStoreContext({
             top_products: data.has_top_products ? data.top_products : null,
             ads_review: data.has_ads_review ? data.ads_review : null,
           })
         }
-      })
-      .catch(() => {
+
+        // Dispara o trigger apenas uma vez, no primeiro fetch que detectar
+        // dados faltantes. n8n é idempotente — sobrescreve dados anteriores.
+        if (!triggered && (!data.has_ads_review || !data.has_top_products)) {
+          triggered = true
+          fetch(`/api/forms/${token}/trigger-ads-analyzer`, {
+            method: "POST",
+          }).catch(() => {
+            /* silencioso — polling continua mesmo se trigger falhar */
+          })
+        }
+
+        const complete = data.has_ads_review && data.has_top_products
+        const expired = Date.now() - startedAt > STORE_CTX_TIMEOUT_MS
+        if (!complete && !expired) {
+          timer = setTimeout(pollStoreContext, STORE_CTX_POLL_MS)
+        }
+      } catch {
         /* silencioso — esconde blocos se falhar */
-      })
+      }
+    }
+
+    void pollStoreContext()
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [token])
 
