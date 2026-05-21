@@ -749,9 +749,19 @@ function ChecklistTab({
   }
 
   const sorted = [...tasks].sort((a, b) => {
-    const ao = ((a.metadata as Record<string, unknown> | undefined)?.checklist_item_id as string) ?? ""
-    const bo = ((b.metadata as Record<string, unknown> | undefined)?.checklist_item_id as string) ?? ""
-    return ao.localeCompare(bo)
+    // Ordena por metadata.item_position (preservado do checklist_template).
+    // Antes usava checklist_item_id (campo que nunca existiu) e ordem ficava
+    // aleatoria. Fallback pra created_at quando item_position ausente.
+    const ma = (a.metadata as Record<string, unknown> | undefined) ?? {}
+    const mb = (b.metadata as Record<string, unknown> | undefined) ?? {}
+    const ap =
+      typeof ma.item_position === "number" ? ma.item_position : Number.POSITIVE_INFINITY
+    const bp =
+      typeof mb.item_position === "number" ? mb.item_position : Number.POSITIVE_INFINITY
+    if (ap !== bp) return ap - bp
+    const ac = (a as { created_at?: string }).created_at ?? ""
+    const bc = (b as { created_at?: string }).created_at ?? ""
+    return ac.localeCompare(bc)
   })
   const total = sorted.length
   const completed = sorted.filter((t) => t.status === "completed").length
