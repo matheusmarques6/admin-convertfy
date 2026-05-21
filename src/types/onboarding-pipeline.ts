@@ -33,6 +33,11 @@ export type DeliverableFieldType =
 export type FeedbackSeverity = "small" | "medium" | "rework_part" | "rework_all"
 export type VersionStatus = "in_progress" | "approved" | "rejected_by_client"
 
+export type ChecklistAutoCompleteEvent =
+  | { event: "form_section_completed"; sections: string[] }
+  | { event: "briefing_approved" }
+  | { event: "email_sent"; template_slug: string }
+
 export interface ChecklistItem {
   id: string
   label: string
@@ -43,6 +48,10 @@ export interface ChecklistItem {
   sla_hours?: number
   /** Descricao opcional pra task */
   description?: string
+  /** Identificador estavel pra mapear template → task_checklists (sobrevive re-seeds). */
+  slug?: string
+  /** Quando preenchido, backend marca is_completed=true ao detectar o evento. */
+  auto_complete_on?: ChecklistAutoCompleteEvent
 }
 
 export interface DeliverableField {
@@ -144,6 +153,8 @@ export interface OnboardingPipelineItem {
   briefing_generated_by?: BriefingSource | null
   briefing_confirmed_at: string | null
   briefing_confirmed_by_client: boolean
+  /** Slugs das secoes do wizard publico ja completadas pelo cliente (set-union). */
+  form_sections_completed?: string[]
   tutorial_token: string | null
   entered_at: string
   last_column_change_at: string

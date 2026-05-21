@@ -429,6 +429,8 @@ async function instantiateTaskForColumn(
     assignee_role?: string | null
     sla_hours?: number
     description?: string
+    slug?: string
+    auto_complete_on?: Record<string, unknown>
   }
   const checklist = (col.checklist_template ?? []) as ChecklistRow[]
 
@@ -489,7 +491,9 @@ async function instantiateTaskForColumn(
 
   if (!insertedTask) return
 
-  // Popula task_checklists com os items do template (preserva order/position)
+  // Popula task_checklists com os items do template (preserva order/position).
+  // Copia slug + auto_complete_on para habilitar AUTO·CLIENTE (marcacao
+  // automatica via onboarding-auto-checklist.service.ts).
   if (checklist.length > 0) {
     const chkRows = checklist
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -498,6 +502,8 @@ async function instantiateTaskForColumn(
         title: c.label,
         position: c.order ?? idx,
         is_completed: false,
+        slug: c.slug ?? null,
+        auto_complete_on: c.auto_complete_on ?? null,
       }))
     await admin.from("task_checklists").insert(chkRows)
   }
@@ -977,6 +983,19 @@ export async function confirmBriefing(
       await notifyBriefingReady({ onboardingId: onb.id, orgId: onb.org_id })
     } catch (e) {
       log.error("notifyBriefingReady failed", e)
+    }
+  })()
+
+  // AUTO·CLIENTE: marca items "Brand Brain gerado pela IA" + deliverable
+  // "form_100_percent_filled" automaticamente (fire-and-forget).
+  void (async () => {
+    try {
+      const { autoCompleteOnBriefingApproved } = await import(
+        "@/lib/services/onboarding-auto-checklist.service"
+      )
+      await autoCompleteOnBriefingApproved(onb.id)
+    } catch (e) {
+      log.error("autoCompleteOnBriefingApproved failed", e)
     }
   })()
 

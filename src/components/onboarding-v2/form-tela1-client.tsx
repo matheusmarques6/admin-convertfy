@@ -402,11 +402,16 @@ export function FormTela1Client({ token }: { token: string }) {
     return null
   }
 
-  async function saveCurrentResponses() {
+  async function saveCurrentResponses(completedSectionSlug?: string) {
     await fetch(`/api/forms/${token}/submit-data`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ responses: values }),
+      body: JSON.stringify({
+        responses: values,
+        // Slug da secao que o cliente acabou de finalizar — backend usa pra
+        // marcar items AUTO·CLIENTE do checklist da Etapa 02.
+        ...(completedSectionSlug ? { completed_section_slug: completedSectionSlug } : {}),
+      }),
     })
   }
 
@@ -419,10 +424,12 @@ export function FormTela1Client({ token }: { token: string }) {
     }
     setError(null)
 
+    const finishingSlug = isReviewStep ? undefined : SECTIONS[stepIdx]?.id
+
     if (stepIdx === SECTIONS.length - 1) {
       setSubmitting(true)
       try {
-        await saveCurrentResponses()
+        await saveCurrentResponses(finishingSlug)
         setStepIdx(SECTIONS.length)
       } finally {
         setSubmitting(false)
@@ -430,7 +437,7 @@ export function FormTela1Client({ token }: { token: string }) {
       return
     }
 
-    void saveCurrentResponses()
+    void saveCurrentResponses(finishingSlug)
     setStepIdx(stepIdx + 1)
     window.scrollTo({ top: 0, behavior: "smooth" })
   }

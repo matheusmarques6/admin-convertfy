@@ -12,6 +12,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { generateBriefing } from "@/lib/services/briefing-generation.service"
+import { autoCompleteChecklistsForFormSections } from "@/lib/services/onboarding-auto-checklist.service"
+
+// Slugs validos das secoes do wizard (form-tela1-client.tsx SECTIONS).
+// Usados pra normalizar form_sections_completed e evitar lixo no JSONB.
+const VALID_SECTION_SLUGS = new Set([
+  "empresa",
+  "loja",
+  "marca",
+  "cliente",
+  "objetivos",
+  "materiais",
+])
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -35,7 +47,10 @@ export async function POST(
         { status: 413 },
       )
     }
-    let body: { responses?: Record<string, unknown> }
+    let body: {
+      responses?: Record<string, unknown>
+      completed_section_slug?: string
+    }
     try {
       body = JSON.parse(raw)
     } catch {
@@ -44,6 +59,18 @@ export async function POST(
     if (!body.responses || typeof body.responses !== "object") {
       return NextResponse.json(
         { error: "responses obrigatorio (objeto)" },
+        { status: 400 },
+      )
+    }
+    // completed_section_slug e opcional (frontend pode nao enviar em submits
+    // legados). So validamos quando vier.
+    if (
+      body.completed_section_slug !== undefined &&
+      (typeof body.completed_section_slug !== "string" ||
+        !VALID_SECTION_SLUGS.has(body.completed_section_slug))
+    ) {
+      return NextResponse.json(
+        { error: "completed_section_slug invalido" },
         { status: 400 },
       )
     }
@@ -60,7 +87,7 @@ export async function POST(
     const { data: onb } = await admin
       .from("onboardings")
       .select(
-        "id, briefing_status, briefing_confirmed_by_client, briefing_started_at, form_responses",
+        "id, briefing_status, briefing_confirmed_by_client, briefing_started_at, form_responses, form_sections_completed",
       )
       .eq("form_token", token)
       .maybeSingle()
@@ -87,14 +114,33 @@ export async function POST(
       JSON.stringify(onb.form_responses ?? {}) !==
       JSON.stringify(body.responses)
 
+    // Set-union de form_sections_completed (idempotente: re-submeter mesma
+    // secao nao duplica). Apenas atualiza quando completed_section_slug e
+    // novo, evitando UPDATE desnecessario.
+    const existingSections = (onb.form_sections_completed ?? []) as string[]
+    let updatedSections = existingSections
+    if (
+      body.completed_section_slug &&
+      !existingSections.includes(body.completed_section_slug)
+    ) {
+      updatedSections = [...existingSections, body.completed_section_slug]
+    }
+
     await admin
       .from("onboardings")
       .update({
         form_responses: body.responses,
         form_submitted_at: new Date().toISOString(),
         briefing_status: "form_partially_filled",
+        form_sections_completed: updatedSections,
       })
       .eq("id", onb.id)
+
+    // Fire-and-forget: marca task_checklists com auto_complete_on que
+    // batem com as secoes completadas (AUTO·CLIENTE da Etapa 02).
+    if (body.completed_section_slug) {
+      after(autoCompleteChecklistsForFormSections(onb.id, updatedSections))
+    }
 
     // Detecta geração stuck: status="generating" mas briefing_started_at
     // foi há muito tempo (function morreu, Anthropic não respondeu).

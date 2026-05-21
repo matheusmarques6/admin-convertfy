@@ -12,6 +12,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
   AutomationRule,
+  ChecklistAutoCompleteEvent,
   ChecklistItem,
   DeliverableField,
 } from "@/types/onboarding-pipeline"
@@ -33,8 +34,13 @@ interface ColumnSeed {
   automation_rules: AutomationRule[]
 }
 
-function chk(id: string, label: string, order: number): ChecklistItem {
-  return { id, label, order }
+function chk(
+  id: string,
+  label: string,
+  order: number,
+  extras?: { slug?: string; auto_complete_on?: ChecklistAutoCompleteEvent },
+): ChecklistItem {
+  return { id, label, order, ...extras }
 }
 
 const SEED_COLUMNS: ColumnSeed[] = [
@@ -47,17 +53,13 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "cs",
     sla_hours: 2,
     checklist_template: [
-      chk("c1", "Cliente cadastrado no admin com dados basicos", 1),
-      chk("c2", "Loja vinculada ao cliente (URL e plataforma)", 2),
-      chk("c3", "Grupo WhatsApp criado com cliente + time", 3),
-      chk("c4", "Mensagem de boas-vindas enviada no grupo", 4),
-      chk("c5", "Link unico do formulario enviado ao cliente", 5),
-      chk("c6", "Instrucoes pra cliente criar conta Klaviyo/Omnisend", 6),
-      chk("c7", "Link de pagamento Asaas gerado e enviado", 7),
+      chk("entrada_whatsapp_group", "Criar grupo no WhatsApp com cliente + time", 1, { slug: "entrada_whatsapp_group" }),
+      chk("entrada_welcome", "Dar boas vindas ao cliente e apresentar o time", 2, { slug: "entrada_welcome" }),
+      chk("entrada_asaas", "Enviar instrucoes de pagamento do Asaas", 3, { slug: "entrada_asaas" }),
+      chk("entrada_form_link", "Gerar link unico do formulario e enviar ao cliente", 4, { slug: "entrada_form_link" }),
     ],
     deliverables_template: [
-      { slug: "whatsapp_group_screenshot", label: "Print do grupo WhatsApp", type: "upload", required: false },
-      { slug: "contract_status", label: "Status do contrato", type: "select", required: true, options: ["pending", "sent", "signed"] },
+      { slug: "whatsapp_group_screenshot", label: "Print do grupo WhatsApp", type: "upload", required: true },
     ],
     whatsapp_template:
       "Ola {{client_name}}! Seja muito bem-vindo a Convertfy.\n\nEsse e nosso grupo oficial pra acompanhar todo o processo da {{store_name}}.\n\nPrimeiro passo: responda esse formulario (5 minutos):\n{{form_url}}\n\nA IA gera um briefing direto no proprio formulario pra voce revisar.",
@@ -66,24 +68,34 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    name: "Cliente preenchendo formulario",
+    name: "Formulario - Cliente preenche briefing",
     slug: "cliente_formulario",
     position: 2,
     color: "#6366F1",
     default_assignee_role: "cs",
     sla_hours: 72,
     checklist_template: [
-      chk("c1", "Formulario enviado ao cliente", 1),
-      chk("c2", "Cliente abriu o link", 2),
-      chk("c3", "Cliente preencheu Tela 1 (dados da loja)", 3),
-      chk("c4", "IA gerou briefing inline", 4),
-      chk("c5", "Cliente revisou e confirmou o briefing", 5),
-      chk("c6", "Dominio confirmado pelo cliente", 6),
+      chk("form_marca", "Cliente preencheu secao \"Sobre a marca\"", 1, {
+        slug: "form_marca",
+        auto_complete_on: { event: "form_section_completed", sections: ["marca"] },
+      }),
+      chk("form_produtos_publico", "Cliente preencheu secao \"Produtos e publico\"", 2, {
+        slug: "form_produtos_publico",
+        auto_complete_on: { event: "form_section_completed", sections: ["loja", "cliente"] },
+      }),
+      chk("form_acessos", "Cliente enviou acessos (Klaviyo/Omnisend + Shopify)", 3, {
+        slug: "form_acessos",
+        // Manual: wizard nao tem secao de acessos hoje. CS marca quando recebe.
+      }),
+      chk("form_referencias", "Cliente enviou referencias visuais (logo, paleta, exemplos)", 4, {
+        slug: "form_referencias",
+        auto_complete_on: { event: "form_section_completed", sections: ["materiais"] },
+      }),
     ],
     deliverables_template: [
-      { slug: "form_responses", label: "Respostas do formulario", type: "textarea", required: true },
-      { slug: "briefing_approved", label: "Briefing aprovado pelo cliente", type: "checkbox", required: true },
-      { slug: "store_url_confirmed", label: "URL da loja confirmada", type: "url", required: true },
+      { slug: "form_100_percent_filled", label: "Formulario 100% preenchido", type: "checkbox", required: true },
+      { slug: "shopify_partner_access_validated", label: "Acessos validados (Solicitar acesso como partner na Shopify)", type: "checkbox", required: true },
+      { slug: "brand_brain_generated", label: "Brand Brain gerado pela IA - Sintese estruturada do briefing pro time usar", type: "checkbox", required: true },
     ],
     whatsapp_template: null,
     automation_rules: [
@@ -97,27 +109,24 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    name: "Preview em producao",
+    name: "Preview - Designer cria primeira versao",
     slug: "preview_producao",
     position: 3,
     color: "#A855F7",
     default_assignee_role: "designer",
     sla_hours: 48,
     checklist_template: [
-      chk("c1", "Briefing aprovado lido e validado", 1),
-      chk("c2", "Copy do email de preview revisada", 2),
-      chk("c3", "Paleta da marca aplicada", 3),
-      chk("c4", "Mobile e desktop renderizados e checados", 4),
-      chk("c5", "Links e CTAs apontando pra URLs corretas", 5),
-      chk("c6", "Spell check completo", 6),
-      chk("c7", "Preview exportado em PDF e PNG", 7),
+      chk("preview_study", "Estudar Brand Brain + referencias do cliente", 1, { slug: "preview_study" }),
+      chk("preview_email_welcome", "Criar email-piloto 1: Welcome (boas-vindas)", 2, { slug: "preview_email_welcome" }),
+      chk("preview_email_carrinho", "Criar email-piloto 2: Carrinho abandonado", 3, { slug: "preview_email_carrinho" }),
+      chk("preview_email_pos_compra", "Criar email-piloto 3: Pos-compra (engajamento)", 4, { slug: "preview_email_pos_compra" }),
     ],
     deliverables_template: [
-      { slug: "figma_link", label: "Link do Figma", type: "url", required: true, validation: "figma" },
-      { slug: "preview_pdf", label: "Preview em PDF", type: "upload", required: true },
-      { slug: "preview_png", label: "Preview em PNG", type: "upload", required: false },
-      { slug: "language", label: "Idioma da entrega", type: "select", required: true, options: ["pt-BR", "en-US", "es", "fr"] },
-      { slug: "designer_notes", label: "Notas do designer", type: "textarea", required: false },
+      { slug: "preview_file", label: "Preview com os e-mails (PNG ou PDF)", type: "upload", required: true },
+      { slug: "language", label: "Idioma de entrega", type: "select", required: true, options: ["pt-BR", "en-US", "es", "fr"] },
+      // Opcional — preserva interpolacao {{figma_link}} no template WhatsApp
+      // da Etapa 04 e em qualquer relatorio que filtre por esse slug.
+      { slug: "figma_link", label: "Link do Figma (opcional)", type: "url", required: false, validation: "figma" },
     ],
     whatsapp_template: null,
     automation_rules: [
@@ -137,19 +146,19 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "estrategista",
     sla_hours: 48,
     checklist_template: [
-      chk("c1", "Preview enviado ao cliente no grupo WhatsApp", 1),
-      chk("c2", "Cliente confirmou recebimento", 2),
-      chk("c3", "Cliente respondeu (aprovou ou pediu ajustes)", 3),
-      chk("c4", "Resposta documentada de forma estruturada", 4),
+      chk("aprovacao_enviar", "Enviar preview ao cliente via WhatsApp com mensagem padrao", 1, { slug: "aprovacao_enviar" }),
+      chk("aprovacao_feedback", "Coletar feedback do cliente (aprovado ou ajustes)", 2, { slug: "aprovacao_feedback" }),
     ],
     deliverables_template: [
       {
-        slug: "client_response_status",
-        label: "Status da resposta",
+        slug: "client_approval_record",
+        label: "Registro de aprovacao do cliente",
         type: "select",
         required: true,
         options: ["aprovado", "ajustes_solicitados", "sem_resposta"],
       },
+      // Mantidos como opcionais — alimentam a automation_rule go_back_to(increment_version)
+      // que persiste severity em onboarding_versions. Remover quebraria o fluxo de rework.
       { slug: "client_feedback", label: "Feedback estruturado (se ajustes)", type: "textarea", required: false },
       {
         slug: "feedback_severity",
@@ -158,7 +167,6 @@ const SEED_COLUMNS: ColumnSeed[] = [
         required: false,
         options: ["small", "medium", "rework_part", "rework_all"],
       },
-      { slug: "whatsapp_response_screenshot", label: "Print da resposta no WhatsApp", type: "upload", required: false },
     ],
     whatsapp_template:
       "Oi {{client_name}}! Acabamos o preview do welcome flow da {{store_name}}. Esse e o template base que guia os outros emails:\n\nFigma: {{figma_link}}\n\nOlha com calma e me da retorno. Se tiver ajuste, manda detalhado.",
@@ -166,13 +174,13 @@ const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "completed",
         action: "advance_to_next",
-        params: { only_if: { client_response_status: "aprovado" } },
+        params: { only_if: { client_approval_record: "aprovado" } },
       },
       {
         trigger: "completed",
         action: "go_back_to",
         params: {
-          only_if: { client_response_status: "ajustes_solicitados" },
+          only_if: { client_approval_record: "ajustes_solicitados" },
           target_slug: "preview_producao",
           increment_version: true,
         },
@@ -180,6 +188,7 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
+    // Etapa 05 nao foi reespecificada pelo usuario — preservada conforme PRD original.
     name: "Emails finais em producao",
     slug: "emails_finais",
     position: 5,
@@ -187,13 +196,13 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "designer",
     sla_hours: 60,
     checklist_template: [
-      chk("c1", "Preview aprovado lido como referencia", 1),
-      chk("c2", "Copies dos demais emails revisadas", 2),
-      chk("c3", "Paleta e identidade visual replicadas", 3),
-      chk("c4", "Mobile e desktop checados em todos", 4),
-      chk("c5", "Links e CTAs corretos", 5),
-      chk("c6", "Spell check completo", 6),
-      chk("c7", "Todos os emails exportados (PDF + PNGs)", 7),
+      chk("emails_finais_lido", "Preview aprovado lido como referencia", 1, { slug: "emails_finais_lido" }),
+      chk("emails_finais_copies", "Copies dos demais emails revisadas", 2, { slug: "emails_finais_copies" }),
+      chk("emails_finais_paleta", "Paleta e identidade visual replicadas", 3, { slug: "emails_finais_paleta" }),
+      chk("emails_finais_mobile", "Mobile e desktop checados em todos", 4, { slug: "emails_finais_mobile" }),
+      chk("emails_finais_links", "Links e CTAs corretos", 5, { slug: "emails_finais_links" }),
+      chk("emails_finais_spell", "Spell check completo", 6, { slug: "emails_finais_spell" }),
+      chk("emails_finais_export", "Todos os emails exportados (PDF + PNGs)", 7, { slug: "emails_finais_export" }),
     ],
     deliverables_template: [
       { slug: "figma_full_link", label: "Figma completo com todos os emails", type: "url", required: true },
@@ -212,31 +221,31 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    name: "Implementacao",
+    name: "Implementacao na Omnisend",
     slug: "implementacao",
     position: 6,
     color: "#FBBF24",
     default_assignee_role: "ops",
     sla_hours: 36,
     checklist_template: [
-      chk("c1", "Acesso a Klaviyo/Omnisend recebido e validado", 1),
-      chk("c2", "Tutorial publico enviado ao cliente", 2),
-      chk("c3", "DNS configurado (SPF, DKIM, DMARC verificados)", 3),
-      chk("c4", "Dominio verificado na plataforma", 4),
-      chk("c5", "Todos os emails criados na plataforma", 5),
-      chk("c6", "UTMs aplicadas em todos os CTAs", 6),
-      chk("c7", "Teste de envio realizado", 7),
+      chk("impl_acesso_instrucoes", "Enviar instrucoes pra cliente criar conta Klaviyo/Omnisend", 1, { slug: "impl_acesso_instrucoes" }),
+      chk("impl_dns", "Ensinar a configurar dominio + DKIM/SPF", 2, { slug: "impl_dns" }),
+      chk("impl_welcome", "Configurar a automacao de Welcome Flow e subir os e-mails", 3, { slug: "impl_welcome" }),
+      chk("impl_carrinho", "Configurar a automacao de Carrinho/checkout abandonado Flow e subir os e-mails", 4, { slug: "impl_carrinho" }),
+      chk("impl_site_abandonado", "Configurar a automacao de Site abandonado Flow e subir os e-mails", 5, { slug: "impl_site_abandonado" }),
+      chk("impl_browse_abandonado", "Configurar a automacao de Browse abandonado Flow e subir os e-mails", 6, { slug: "impl_browse_abandonado" }),
+      chk("impl_post_purchase", "Configurar a automacao de Post Purchase e subir os e-mails", 7, { slug: "impl_post_purchase" }),
+      chk("impl_winback", "Configurar a automacao de Winback e subir os e-mails", 8, { slug: "impl_winback" }),
+      chk("impl_pedido_pago", "Configurar a automacao de Pedido pago e subir os e-mails", 9, { slug: "impl_pedido_pago" }),
+      chk("impl_popup", "Implementar popup", 10, { slug: "impl_popup" }),
+      chk("impl_teste_e2e", "Teste end-to-end (assinar lista + simular abandono)", 11, { slug: "impl_teste_e2e" }),
     ],
     deliverables_template: [
-      { slug: "tutorial_link", label: "Link do tutorial publico", type: "url", required: true, helpText: "Auto-gerado" },
-      { slug: "platform_credentials_received", label: "Credenciais recebidas", type: "checkbox", required: true },
-      { slug: "flow_link", label: "Link do flow na plataforma", type: "url", required: true },
-      { slug: "config_screenshot", label: "Print da config final", type: "upload", required: true },
-      { slug: "test_log", label: "Log do teste de envio", type: "textarea", required: true },
-      { slug: "dns_spf", label: "SPF validado", type: "checkbox", required: true },
-      { slug: "dns_dkim", label: "DKIM validado", type: "checkbox", required: true },
-      { slug: "dns_dmarc", label: "DMARC validado", type: "checkbox", required: true },
-      { slug: "spam_score", label: "Resultado do teste de spam (0-10)", type: "numeric", required: false },
+      { slug: "e2e_test_screenshot", label: "Teste end-to-end registrado (Print do email recebido na inbox de teste)", type: "upload", required: true },
+      { slug: "active_automations_screenshot", label: "Print das automacoes ativas com data", type: "upload", required: true },
+      // Read-only auto-populado pela automation generate_tutorial_token da Etapa 05.
+      // Nao required (nao bloqueia avanco); fica visivel pro ops e cliente.
+      { slug: "tutorial_link", label: "Link do tutorial publico", type: "url", required: false, helpText: "Auto-gerado pela Etapa 05" },
     ],
     whatsapp_template:
       "Oi {{client_name}}! Aqui e da equipe de implementacao da Convertfy. Vou cuidar da parte tecnica agora.\n\nCriei esse tutorial completo pra voce, com video e passo a passo:\n\n{{tutorial_link}}\n\nLa tem como criar conta na {{platform_name}}, compartilhar acesso e configurar DNS. Quando concluir, finalizo a config na plataforma.",
@@ -250,7 +259,7 @@ const SEED_COLUMNS: ColumnSeed[] = [
     ],
   },
   {
-    name: "Cliente ativo",
+    name: "Cliente ativo - Handoff pro time de Acompanhamento",
     slug: "cliente_ativo",
     position: 7,
     color: "#22C55E",
@@ -258,19 +267,25 @@ const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "estrategista",
     sla_hours: 8,
     checklist_template: [
-      chk("c1", "Mensagem de entrega final enviada", 1),
-      chk("c2", "Cliente confirmou recebimento", 2),
-      chk("c3", "Primeiro check-in semanal agendado", 3),
-      chk("c4", "Onboarding marcado como completo", 4),
-      chk("c5", "Status da loja atualizado pra ativa", 5),
+      chk("ativo_email_conta", "Email automatico \"Conta ativa\" enviado ao cliente", 1, {
+        slug: "ativo_email_conta",
+        auto_complete_on: { event: "email_sent", template_slug: "conta_ativa" },
+      }),
+      // TODO(sprint-futura): integrar com modulo de Acompanhamento criando
+      // weekly_reports row vazio (state=ramp-up) via fire-and-forget quando
+      // este item for marcado. Hoje fica manual — estrategista vai em
+      // /admin/stores/[id]/acompanhamento e cria/edita o registro.
+      chk("ativo_acompanhamento_record", "Criar registro inicial no Acompanhamento (estado: Ramp-up)", 2, { slug: "ativo_acompanhamento_record" }),
+      chk("ativo_call_30d", "Agendar primeira call mensal de alinhamento (em 30d)", 3, { slug: "ativo_call_30d" }),
     ],
     deliverables_template: [
+      // Preservados — usuario nao especificou deliverables para esta etapa.
       { slug: "delivery_screenshot", label: "Print da mensagem de entrega", type: "upload", required: true },
       { slug: "first_checkin_date", label: "Data do primeiro check-in", type: "date", required: true },
       { slug: "client_confirmed", label: "Cliente confirmou", type: "checkbox", required: true },
     ],
     whatsapp_template:
-      "{{client_name}}, comunicamos: sua maquina de email marketing da {{store_name}} esta oficialmente ATIVA.\n\nWelcome flow rodando, dominio verificado, tudo testado e aprovado.\n\nA partir de agora, acompanhamos resultados semanalmente. Ja agendei nosso primeiro check-in.\n\nVamos pra cima!",
+      "{{client_name}}, comunicamos: sua maquina de email marketing da {{store_name}} esta oficialmente ATIVA.\n\nWelcome flow rodando, dominio verificado, tudo testado e aprovado.\n\nA partir de agora, acompanhamos resultados mensalmente. Ja agendei nossa primeira call.\n\nVamos pra cima!",
     automation_rules: [
       { trigger: "completed", action: "send_notification", params: { to_role: "owner", message: "Loja {{store_name}} ATIVA" } },
     ],
@@ -417,6 +432,33 @@ export async function ensureOnboardingBootstrap(
       .from("operational_pipeline_columns")
       .insert(colsToInsert)
     if (colsErr) log.warn("Insert colunas falhou", { code: colsErr.code, msg: colsErr.message })
+  }
+
+  // 2b. Re-sync de templates pra colunas que ja existiam.
+  // Necessario porque hoje nao ha UI pra editar colunas — todas vem do SEED.
+  // Atualiza name, templates e automation_rules em cada deploy, garantindo
+  // que mudancas no SEED_COLUMNS propaguem pra orgs antigas. Nao toca em
+  // tasks/checklists ja instanciadas (essas usam snapshot do template).
+  for (const seed of SEED_COLUMNS) {
+    if (!existingSlugs.has(seed.slug)) continue
+    const { error: upErr } = await admin
+      .from("operational_pipeline_columns")
+      .update({
+        name: seed.name,
+        position: seed.position,
+        color: seed.color,
+        is_initial: seed.is_initial ?? false,
+        is_final: seed.is_final ?? false,
+        checklist_template: seed.checklist_template,
+        deliverables_template: seed.deliverables_template,
+        whatsapp_template: seed.whatsapp_template,
+        default_assignee_role: seed.default_assignee_role,
+        sla_hours: seed.sla_hours,
+        automation_rules: seed.automation_rules,
+      })
+      .eq("pipeline_id", pipelineId)
+      .eq("slug", seed.slug)
+    if (upErr) log.warn("Re-sync coluna falhou", { slug: seed.slug, code: upErr.code, msg: upErr.message })
   }
 
   // Re-fetch para mapear slug → id
