@@ -29,7 +29,7 @@ const C = {
 }
 
 const CS_PAGES = [
-  { key: "crm", label: "CRM CS", href: "/admin/operacional/cs-crm" },
+  { key: "pipelines", label: "Pipelines CS", href: "/admin/operacional/pipelines" },
   { key: "acomp", label: "Acompanhamento", href: "/admin/operacional/acompanhamento" },
   { key: "calls", label: "Calls Mensais", href: "/admin/operacional/cs-crm/calls" },
   { key: "ritual", label: "Ritual de Sexta", href: "/admin/operacional/ritual" },
