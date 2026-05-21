@@ -37,7 +37,6 @@ import {
   Sun,
   Moon,
   LifeBuoy,
-  CalendarClock,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -172,16 +171,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
         name: "Formulários CS",
         href: ROUTES.ADMIN.OPERACIONAL.FORMS,
         icon: FileText,
-      },
-      {
-        name: "Acompanhamento",
-        href: ROUTES.ADMIN.OPERACIONAL.CS.ACOMPANHAMENTO,
-        icon: CalendarClock,
-      },
-      {
-        name: "Calls Mensais",
-        href: ROUTES.ADMIN.OPERACIONAL.CS.CALLS,
-        icon: Calendar,
       },
       {
         name: "Ritual de Sexta",

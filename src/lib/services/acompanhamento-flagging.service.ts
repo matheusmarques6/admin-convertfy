@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
+import { getCsPipeline } from "@/lib/cs-pipelines"
 
 const log = logger.child("AcompanhamentoFlagging")
 
@@ -307,6 +308,30 @@ export async function flagStoresForWeek({
         { onConflict: "store_id,week_start", ignoreDuplicates: false },
       )
 
+    if (!error) {
+      // Dual-write: tambem cria/atualiza deal no pipeline CS
+      // "Acompanhamento Semanal" pra UX nova (PipelineBoardView).
+      // Idempotente — busca deal existente por (pipeline_id, store_id,
+      // week_start em custom_fields) e move stage se necessario.
+      await syncFlaggingToDeal({
+        admin,
+        storeId: store.id,
+        orgId: store.org_id,
+        storeName: store.store_name,
+        mrrCents: null,
+        week: targetWeek,
+        healthState,
+        healthScore,
+        flagReason: reasons.join(" · "),
+        flaggedBy: force ? "manual" : "system",
+      }).catch((err) => {
+        log.warn("Falha sync acompanhamento->deal (nao bloqueia)", {
+          storeId: store.id,
+          err: err instanceof Error ? err.message : String(err),
+        })
+      })
+    }
+
     if (error) {
       log.error("Erro upsert weekly_pipeline_states", {
         storeId: store.id,
@@ -335,4 +360,93 @@ export async function flagStoresForWeek({
     skipped,
     errors,
   }
+}
+
+/**
+ * Sincroniza um flagging com o pipeline CS "Acompanhamento Semanal".
+ * Cria deal novo se nao existe pra essa (store, week_start). Move
+ * stage se ja existe e current_stage mudou.
+ *
+ * Idempotente. Falha nao bloqueia o flagging principal (weekly_pipeline_states).
+ */
+async function syncFlaggingToDeal(args: {
+  admin: SupabaseClient
+  storeId: string
+  orgId: string
+  storeName: string
+  mrrCents: number | null
+  week: string
+  healthState: string
+  healthScore: number
+  flagReason: string
+  flaggedBy: string
+}): Promise<void> {
+  const pipeline = await getCsPipeline("acompanhamento")
+  if (!pipeline) return // seed nao aplicado, skip silenciosamente
+
+  const stage = pipeline.stages.find((s) => s.order === 1)
+  if (!stage) return
+
+  // Busca dados extras da store (client_id, mrr, owner)
+  const { data: storeFull } = await args.admin
+    .from("client_stores")
+    .select("client_id, mrr_cents, client:clients(owner_id)")
+    .eq("id", args.storeId)
+    .maybeSingle()
+  if (!storeFull?.client_id) return
+
+  const owner = Array.isArray(storeFull.client)
+    ? storeFull.client[0]
+    : storeFull.client
+  const mrrCents = storeFull.mrr_cents ?? 0
+
+  // Existe deal aberto pra (pipeline, store, week_start)?
+  const { data: existing } = await args.admin
+    .from("deals")
+    .select("id")
+    .eq("pipeline_id", pipeline.id)
+    .eq("store_id", args.storeId)
+    .eq("status", "open")
+    .contains("custom_fields", { week_start: args.week })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    // Atualiza custom_fields (mantem stage atual do deal — CS pode ter
+    // movido manualmente; nao reverte).
+    await args.admin
+      .from("deals")
+      .update({
+        custom_fields: {
+          week_start: args.week,
+          health_state: args.healthState,
+          health_score: args.healthScore,
+          flag_reason: args.flagReason,
+          flagged_by: args.flaggedBy,
+        },
+      })
+      .eq("id", existing.id)
+    return
+  }
+
+  // Insert deal novo
+  await args.admin.from("deals").insert({
+    pipeline_id: pipeline.id,
+    stage_id: stage.id,
+    title: args.storeName,
+    status: "open",
+    source: args.flaggedBy === "manual" ? "manual_flag" : "cron_flag",
+    store_id: args.storeId,
+    client_id: storeFull.client_id,
+    owner_id: owner?.owner_id ?? null,
+    currency: "BRL",
+    value: mrrCents / 100,
+    custom_fields: {
+      week_start: args.week,
+      health_state: args.healthState,
+      health_score: args.healthScore,
+      flag_reason: args.flagReason,
+      flagged_by: args.flaggedBy,
+    },
+  })
 }
