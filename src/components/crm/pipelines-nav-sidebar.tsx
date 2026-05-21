@@ -119,8 +119,28 @@ export function PipelinesNavSidebar({ scope }: PipelinesNavSidebarProps) {
       })
       byCat.set(k, arr)
     }
-    // Ordem dos grupos: "Comerciais" primeiro (scope=sales), depois outros, "Sem categoria" por ultimo
-    const order = ["Comerciais", "Operacoes", "Operações", "Producao", "Produção"]
+    // Ordem dos grupos: lifecycle-based pra CS, scope=sales primeiro pra
+    // comercial. "Configuracao" fica antes de "Sem categoria" no fim.
+    const order = [
+      // Comercial (scope=sales)
+      "Comerciais",
+      // CS lifecycle
+      "Onboarding",
+      "Saude",
+      "Engajamento",
+      "Atendimento",
+      "Renovacao",
+      // Legados
+      "Operacoes",
+      "Operações",
+      "Producao",
+      "Produção",
+      "Calls",
+      "Acompanhamento",
+      // Settings por ultimo
+      "Configuracao",
+      "Configuração",
+    ]
     const sorted = Array.from(byCat.entries()).sort(([a], [b]) => {
       if (a === "Sem categoria") return 1
       if (b === "Sem categoria") return -1

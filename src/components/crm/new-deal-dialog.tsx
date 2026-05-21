@@ -43,6 +43,22 @@ interface ClientLite {
   company: string | null
 }
 
+interface StoreLite {
+  id: string
+  store_name: string
+  store_url: string | null
+  platform: string | null
+  mrr_cents: number | null
+  health_score: number | null
+  client: {
+    id: string
+    name: string
+    company: string | null
+    email: string | null
+    phone: string | null
+  } | null
+}
+
 export function NewDealDialog({
   open,
   onClose,
@@ -58,6 +74,9 @@ export function NewDealDialog({
   const [value, setValue] = useState<string>("")
   const [clientId, setClientId] = useState<string>("")
   const [clientSearch, setClientSearch] = useState("")
+  const [storeId, setStoreId] = useState<string>("")
+  const [storeSearch, setStoreSearch] = useState("")
+  const [storeLabel, setStoreLabel] = useState("")
   const [phone, setPhone] = useState("")
   const [source, setSource] = useState("")
   const [sourceType, setSourceType] = useState("")
@@ -76,6 +95,20 @@ export function NewDealDialog({
   )
   const clientOptions = clientsData?.clients || []
 
+  // Search stores — quando aberto e nao tem store selecionada, traz lista
+  // (com ou sem query, ate 20 resultados). Selecao auto-preenche
+  // title + client_id + phone.
+  const { data: storesData } = useSWR<{
+    stores: StoreLite[]
+    data?: { stores: StoreLite[] }
+  }>(
+    open && !storeId
+      ? `/api/client-stores/search?q=${encodeURIComponent(storeSearch)}&limit=20`
+      : null,
+    fetcher,
+  )
+  const storeOptions = storesData?.data?.stores ?? storesData?.stores ?? []
+
   // Reset SO quando o dialog abre. Antes incluia [defaultStageId, stages]
   // como deps, mas como o parent recriava 'stages' a cada render, o effect
   // re-disparava no meio da interacao e zerava tags/phone/notes selecionados.
@@ -89,6 +122,9 @@ export function NewDealDialog({
     setValue("")
     setClientId("")
     setClientSearch("")
+    setStoreId("")
+    setStoreSearch("")
+    setStoreLabel("")
     setPhone("")
     setSource("")
     setSourceType("")
@@ -98,6 +134,29 @@ export function NewDealDialog({
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  const selectStore = (s: StoreLite) => {
+    setStoreId(s.id)
+    setStoreLabel(s.store_name)
+    setStoreSearch("")
+    // Autopreenche titulo + cliente + phone se vazios
+    if (!title.trim()) setTitle(s.store_name)
+    if (s.client) {
+      setClientId(s.client.id)
+      setClientSearch(s.client.name)
+      if (!phone.trim() && s.client.phone) setPhone(s.client.phone)
+    }
+    // Valor sugerido = MRR mensal (cents -> reais -> string em centavos)
+    if (!value && s.mrr_cents && s.mrr_cents > 0) {
+      setValue(String(s.mrr_cents))
+    }
+  }
+
+  const clearStore = () => {
+    setStoreId("")
+    setStoreLabel("")
+    setStoreSearch("")
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -120,6 +179,7 @@ export function NewDealDialog({
         title: title.trim(),
         value: numericValue,
         client_id: clientId || null,
+        store_id: storeId || null,
         source: source || sourceType || null,
         source_type: sourceType || null,
         source_referrer: sourceReferrer.trim() || null,
@@ -263,7 +323,153 @@ export function NewDealDialog({
                 </Field>
               </div>
 
-              <Field label="Cliente">
+              <Field label="Loja existente (autopreenche título, cliente e telefone)">
+                {storeId ? (
+                  <div
+                    className="flex items-center justify-between gap-2"
+                    style={{
+                      padding: "8px 10px",
+                      background: "var(--crm-gray-50)",
+                      border: "1px solid var(--crm-gray-200)",
+                      borderRadius: "var(--crm-radius-md)",
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "var(--crm-gray-900)",
+                        }}
+                      >
+                        {storeLabel}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--crm-gray-500)",
+                        }}
+                      >
+                        Loja vinculada ao deal · trocar abaixo
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearStore}
+                      className="flex items-center justify-center cf-focusable"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "var(--crm-radius-sm)",
+                        color: "var(--crm-gray-500)",
+                        background: "transparent",
+                        border: 0,
+                      }}
+                      aria-label="Remover loja"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      className="crm-input w-full"
+                      placeholder="Buscar loja por nome ou URL..."
+                      value={storeSearch}
+                      onChange={(e) => setStoreSearch(e.target.value)}
+                    />
+                    {storeOptions.length > 0 && (
+                      <div
+                        className="mt-1"
+                        style={{
+                          border: "1px solid var(--crm-gray-200)",
+                          borderRadius: "var(--crm-radius-md)",
+                          maxHeight: 200,
+                          overflowY: "auto",
+                          background: "var(--crm-gray-0)",
+                        }}
+                      >
+                        {storeOptions.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className="block w-full text-left hover:bg-[color:var(--crm-gray-50)]"
+                            style={{
+                              padding: "8px 10px",
+                              fontSize: "var(--crm-text-base)",
+                              color: "var(--crm-gray-800)",
+                              borderBottom: "1px solid var(--crm-gray-100)",
+                            }}
+                            onClick={() => selectStore(s)}
+                          >
+                            <div
+                              style={{
+                                fontWeight: "var(--crm-weight-medium)",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span>{s.store_name}</span>
+                              {s.health_score != null && (
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    padding: "1px 5px",
+                                    borderRadius: 3,
+                                    color:
+                                      s.health_score < 50
+                                        ? "#991B1B"
+                                        : s.health_score < 70
+                                          ? "#92400E"
+                                          : "#065F46",
+                                    background:
+                                      s.health_score < 50
+                                        ? "#FEF2F2"
+                                        : s.health_score < 70
+                                          ? "#FFFBEB"
+                                          : "#ECFDF5",
+                                  }}
+                                >
+                                  health {s.health_score}
+                                </span>
+                              )}
+                            </div>
+                            {s.client?.name && (
+                              <div
+                                style={{
+                                  fontSize: "var(--crm-text-xs)",
+                                  color: "var(--crm-gray-500)",
+                                  marginTop: 1,
+                                }}
+                              >
+                                {s.client.name}
+                                {s.mrr_cents && s.mrr_cents > 0
+                                  ? ` · MRR R$ ${(s.mrr_cents / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+                                  : ""}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {storeSearch.length >= 2 && storeOptions.length === 0 && (
+                      <p
+                        style={{
+                          fontSize: "var(--crm-text-xs)",
+                          color: "var(--crm-gray-500)",
+                          marginTop: 4,
+                        }}
+                      >
+                        Nenhuma loja encontrada com &quot;{storeSearch}&quot;.
+                      </p>
+                    )}
+                  </>
+                )}
+              </Field>
+
+              <Field label="Cliente (opcional, sem loja)">
                 <input
                   className="crm-input w-full"
                   placeholder="Buscar cliente existente..."
@@ -271,6 +477,11 @@ export function NewDealDialog({
                   onChange={(e) => {
                     setClientSearch(e.target.value)
                     if (e.target.value === "") setClientId("")
+                  }}
+                  disabled={storeId !== ""}
+                  style={{
+                    opacity: storeId ? 0.5 : 1,
+                    cursor: storeId ? "not-allowed" : undefined,
                   }}
                 />
                 {clientOptions.length > 0 && clientSearch && !clientId && (
