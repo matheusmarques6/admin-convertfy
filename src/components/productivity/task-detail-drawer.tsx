@@ -111,6 +111,8 @@ type Deliverable = {
   field_type?: string
   required?: boolean
   options?: string[]
+  allow_other?: boolean
+  default_value?: string | null
   value: string | null
   file_url: string | null
   file_name: string | null

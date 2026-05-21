@@ -88,6 +88,12 @@ export interface DeliverableField {
   options?: string[]
   placeholder?: string
   helpText?: string
+  /**
+   * Quando true, select/multi_checkbox mostra opcao "Outros" que abre
+   * input de texto livre. O valor digitado e salvo como string custom
+   * (pra select) ou anexado no array (pra multi_checkbox).
+   */
+  allow_other?: boolean
 }
 
 export interface AutomationRule {

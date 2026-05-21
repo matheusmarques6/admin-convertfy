@@ -24,6 +24,10 @@ export interface DeliverableEditTarget {
   field_type?: string
   required?: boolean
   options?: string[]
+  /** Quando true, mostra opcao "Outros" no select e abre input de texto livre. */
+  allow_other?: boolean
+  /** Valor default derivado do contexto (ex: language da loja). Usado quando value vazio. */
+  default_value?: string | null
   value: string | null
   file_url: string | null
   file_name: string | null
@@ -48,7 +52,10 @@ export function DeliverableEditModal({
   onSaved,
 }: DeliverableEditModalProps) {
   const type = deliverable.field_type ?? "textarea"
-  const [value, setValue] = useState<string>(deliverable.value ?? "")
+  // Inicializa value: se nao tem valor salvo mas tem default_value (ex:
+  // idioma da loja injetado pelo productivity API), usa o default.
+  const initialValue = deliverable.value ?? deliverable.default_value ?? ""
+  const [value, setValue] = useState<string>(initialValue)
   const [multi, setMulti] = useState<string[]>(() => {
     if (type !== "multi_checkbox") return []
     try {
@@ -57,6 +64,17 @@ export function DeliverableEditModal({
       return []
     }
   })
+  // Pra select com allow_other: se o value atual NAO esta nas options,
+  // significa que e um valor "Outros" customizado. Detecta no mount.
+  const isCustomValue =
+    type === "select" &&
+    deliverable.allow_other === true &&
+    initialValue !== "" &&
+    !(deliverable.options ?? []).includes(initialValue)
+  const [otherMode, setOtherMode] = useState<boolean>(isCustomValue)
+  const [otherText, setOtherText] = useState<string>(
+    isCustomValue ? initialValue : "",
+  )
   const [fileUrl, setFileUrl] = useState<string | null>(deliverable.file_url)
   const [fileName, setFileName] = useState<string | null>(deliverable.file_name)
   const [fileSize, setFileSize] = useState<number | null>(
@@ -124,6 +142,9 @@ export function DeliverableEditModal({
         body.value = multi.length > 0 ? JSON.stringify(multi) : null
       } else if (type === "checkbox") {
         body.value = value === "true" ? "true" : null
+      } else if (type === "select" && otherMode) {
+        // Select em modo "Outros" — salva o texto digitado como valor custom.
+        body.value = otherText.trim() === "" ? null : otherText.trim()
       } else {
         body.value = value.trim() === "" ? null : value
       }
@@ -207,19 +228,44 @@ export function DeliverableEditModal({
           )}
 
           {type === "select" && (
-            <select
-              autoFocus
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className="w-full px-3 py-2 rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] focus:outline-none focus:border-brand-400"
-            >
-              <option value="">Selecione...</option>
-              {(deliverable.options ?? []).map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <select
+                autoFocus
+                value={otherMode ? "__other__" : value}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v === "__other__") {
+                    setOtherMode(true)
+                    setValue("")
+                  } else {
+                    setOtherMode(false)
+                    setOtherText("")
+                    setValue(v)
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] focus:outline-none focus:border-brand-400"
+              >
+                <option value="">Selecione...</option>
+                {(deliverable.options ?? []).map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+                {deliverable.allow_other && (
+                  <option value="__other__">Outros (digitar)</option>
+                )}
+              </select>
+              {otherMode && (
+                <input
+                  type="text"
+                  autoFocus
+                  value={otherText}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  placeholder="Digite o valor"
+                  className="w-full px-3 py-2 rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] focus:outline-none focus:border-brand-400"
+                />
+              )}
+            </div>
           )}
 
           {type === "multi_checkbox" && (

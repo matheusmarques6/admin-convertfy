@@ -130,7 +130,10 @@ const SEED_COLUMNS: ColumnSeed[] = [
       { slug: "piloto_carrinho_1_files", label: "Piloto Carrinho abandonado (parte 1) - arquivos", type: "upload", required: true },
       { slug: "piloto_carrinho_2_files", label: "Piloto Carrinho abandonado (parte 2) - arquivos", type: "upload", required: true },
       { slug: "piloto_pos_compra_files", label: "Piloto Pos-compra - arquivos", type: "upload", required: true },
-      { slug: "language", label: "Idioma de entrega", type: "select", required: true, options: ["pt-BR", "en-US", "es", "fr"] },
+      // allow_other: usuario pode escolher um idioma fora da lista (UI mostra
+      // "Outros" e abre input de texto). default_value e injetado em runtime
+      // pelo productivity API com client_stores.language.
+      { slug: "language", label: "Idioma de entrega", type: "select", required: true, options: ["pt-BR", "en-US", "es", "fr"], allow_other: true },
       // Opcional — preserva interpolacao {{figma_link}} no template WhatsApp
       // da Etapa 04 e em qualquer relatorio que filtre por esse slug.
       { slug: "figma_link", label: "Link do Figma (opcional)", type: "url", required: false, validation: "figma" },

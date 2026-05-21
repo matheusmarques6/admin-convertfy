@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
         .select(
           `id, current_version, current_column_id, plan, mrr_value,
            client:clients!onboardings_client_id_fkey(id, name, company),
-           store:client_stores(id, store_name),
+           store:client_stores(id, store_name, language),
            current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role, deliverables_template)`,
         )
         .eq("org_id", orgId)
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
           ) as { id: string; name: string; company: string | null } | null
           const store = (
             Array.isArray(onb.store) ? onb.store[0] : onb.store
-          ) as { id: string; store_name: string } | null
+          ) as { id: string; store_name: string; language?: string | null } | null
           const col = (
             Array.isArray(onb.current_column)
               ? onb.current_column[0]
@@ -232,14 +232,28 @@ export async function GET(request: NextRequest) {
             validation?: string
             placeholder?: string
             helpText?: string
+            allow_other?: boolean
           }>()
-          for (const f of col?.deliverables_template ?? []) {
+          for (const f of (col?.deliverables_template ?? []) as Array<{
+            slug: string
+            options?: string[]
+            validation?: string
+            placeholder?: string
+            helpText?: string
+            allow_other?: boolean
+          }>) {
             tplBySlug.set(f.slug, {
               options: f.options,
               validation: f.validation,
               placeholder: f.placeholder,
               helpText: f.helpText,
+              allow_other: f.allow_other,
             })
+          }
+          // Defaults derivados do contexto da loja/onboarding (usado pra
+          // pre-selecionar valores quando o entregavel ainda esta vazio).
+          const contextDefaults: Record<string, string | null> = {
+            language: store?.language ?? null,
           }
 
           const tasksInOnb = (onbTasks ?? [])
@@ -318,9 +332,11 @@ export async function GET(request: NextRequest) {
               },
               deliverables: (delvByTask.get(t.id as string) ?? []).map(
                 (d) => {
+                  const slug = d.field_slug as string
                   const enriched = {
                     ...d,
-                    ...(tplBySlug.get(d.field_slug as string) ?? {}),
+                    ...(tplBySlug.get(slug) ?? {}),
+                    default_value: contextDefaults[slug] ?? null,
                   }
                   return enriched
                 },
