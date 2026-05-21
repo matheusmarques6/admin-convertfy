@@ -23,6 +23,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import type { ChecklistItem } from "@/types/onboarding-pipeline"
 
 const log = logger.child("OnboardingTasksResync")
@@ -67,6 +68,25 @@ export async function resyncAllOnboardingTasks(): Promise<ResyncStats> {
     tasks_kept: 0,
     sub_items_added: 0,
     errors: [],
+  }
+
+  // 0) Re-sync dos templates de coluna por org. ensureOnboardingBootstrap
+  //    atualiza checklist_template, deliverables_template, automation_rules
+  //    de cada coluna com o SEED atual. Sem isso, a reconciliacao usaria o
+  //    template antigo do banco.
+  const { data: activeOrgsRows } = await admin
+    .from("onboardings")
+    .select("org_id")
+    .eq("status", "in_progress")
+  const activeOrgs = Array.from(
+    new Set((activeOrgsRows ?? []).map((r) => r.org_id as string)),
+  )
+  for (const orgId of activeOrgs) {
+    try {
+      await ensureOnboardingBootstrap(orgId, null)
+    } catch (e) {
+      log.warn("Re-sync de templates falhou pra org", { orgId, error: e })
+    }
   }
 
   // 1) Carrega TODAS as colunas com templates indexadas por id
