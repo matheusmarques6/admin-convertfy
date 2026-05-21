@@ -796,9 +796,34 @@ async function validateColumnCompletion(
         error: `${count} tarefa${plural} pendente${plural} nesta etapa. Conclua todas ou use Forcar avanco.`,
       }
     }
+
+    // Etapa 05 (e qualquer outra com sub_items): exige que TODOS os sub_items
+    // estejam completos. Designer pode marcar task pai como completed, mas
+    // se algum email do flow nao foi entregue, bloqueia avanco (a menos que
+    // use Forcar avanco). Override registra os sub_items pulados.
+    const subPending: { task_id: string; slug: string; label: string }[] = []
+    for (const t of taskList) {
+      const meta = (t.metadata ?? {}) as Record<string, unknown>
+      const subItems = Array.isArray(meta.sub_items)
+        ? (meta.sub_items as Array<{ slug: string; label: string; completed?: boolean }>)
+        : []
+      for (const s of subItems) {
+        if (!s.completed) subPending.push({ task_id: t.id, slug: s.slug, label: s.label })
+      }
+    }
+    if (subPending.length > 0) {
+      const count = subPending.length
+      const sample = subPending.slice(0, 3).map((s) => s.label).join(", ")
+      const more = count > 3 ? ` e mais ${count - 3}` : ""
+      return {
+        ok: false,
+        error: `${count} email${count > 1 ? "s" : ""} pendente${count > 1 ? "s" : ""} no checklist (${sample}${more}).`,
+      }
+    }
   }
 
   // Valida deliverables required
+  let approvalRecord: string | null = null
   if (taskIds.length > 0) {
     const { data: delivs } = await admin
       .from("task_deliverables")
@@ -814,6 +839,24 @@ async function validateColumnCompletion(
       return {
         ok: false,
         error: `Entregaveis pendentes: ${missingDeliv.map((d) => d.field_label).join(", ")}`,
+      }
+    }
+    // Captura valor de client_approval_record pra validacao especifica da Etapa 04.
+    const approvalDeliv = (delivs ?? []).find(
+      (d) => d.field_slug === "client_approval_record",
+    )
+    approvalRecord = approvalDeliv?.value ?? null
+  }
+
+  // Regra especifica Etapa 04 (preview_aprovacao):
+  // - Avancar so funciona se client_approval_record === "aprovado".
+  // - Outros valores ("ajustes_solicitados", "sem_resposta") exigem usar
+  //   o botao Voltar (que chama goBackToColumn com severity).
+  if (col.slug === "preview_aprovacao" && approvalRecord) {
+    if (approvalRecord !== "aprovado") {
+      return {
+        ok: false,
+        error: `Aprovacao registrada como "${approvalRecord}". Use o botao Voltar pra retornar ao Preview com feedback.`,
       }
     }
   }
@@ -865,13 +908,45 @@ export async function goBackToColumn(
 
   const nextVersion = (onb.current_version ?? 1) + 1
 
-  // Marca versao atual como rejeitada
+  // Snapshot dos deliverables da coluna alvo da versao atual ANTES de avancar.
+  // Persiste em onboarding_versions.deliverables_snapshot pra historico e pra
+  // permitir re-aproveitamento na nova versao (rework parcial).
+  const { data: previousTasks } = await admin
+    .from("tasks")
+    .select("id")
+    .eq("onboarding_id", opts.onboardingId)
+    .eq("operational_column_id", targetCol.id)
+    .eq("version", onb.current_version ?? 1)
+  const previousTaskIds = (previousTasks ?? []).map((t) => t.id)
+  let previousDeliverables: Array<{
+    field_slug: string
+    field_label: string
+    field_type: string
+    required: boolean
+    value: string | null
+    file_url: string | null
+    file_name: string | null
+    file_size_bytes: number | null
+    metadata: Record<string, unknown> | null
+  }> = []
+  if (previousTaskIds.length > 0) {
+    const { data: delivs } = await admin
+      .from("task_deliverables")
+      .select(
+        "field_slug, field_label, field_type, required, value, file_url, file_name, file_size_bytes, metadata",
+      )
+      .in("task_id", previousTaskIds)
+    previousDeliverables = delivs ?? []
+  }
+
+  // Marca versao atual como rejeitada + persiste snapshot
   await admin
     .from("onboarding_versions")
     .update({
       status: "rejected_by_client",
       client_feedback: opts.feedback,
       feedback_severity: opts.severity,
+      deliverables_snapshot: previousDeliverables,
       completed_at: new Date().toISOString(),
     })
     .eq("onboarding_id", opts.onboardingId)
@@ -898,6 +973,45 @@ export async function goBackToColumn(
 
   // Cria nova task pra refazer
   await instantiateTaskForColumn(opts.onboardingId, targetCol.id, opts.actorId)
+
+  // Preservacao de trabalho: em rework parcial (small/medium/rework_part),
+  // copia os deliverables da versao anterior pras tasks recem-instanciadas.
+  // Em rework_all, designer comeca do zero (sem copia).
+  const preserveDeliverables =
+    opts.severity !== "rework_all" && previousDeliverables.length > 0
+  if (preserveDeliverables) {
+    const { data: newAnchorTasks } = await admin
+      .from("tasks")
+      .select("id, metadata")
+      .eq("onboarding_id", opts.onboardingId)
+      .eq("operational_column_id", targetCol.id)
+      .eq("version", nextVersion)
+      .order("created_at", { ascending: true })
+      .limit(1)
+    const newAnchorId = newAnchorTasks?.[0]?.id
+    if (newAnchorId) {
+      // Atualiza os deliverables da nova task anchor com os valores da snapshot
+      // (deliverables ja foram criados pelo instantiate com required + labels;
+      //  aqui so populamos os valores preenchidos).
+      for (const prev of previousDeliverables) {
+        const hasValue = !!prev.value || !!prev.file_url
+        if (!hasValue) continue
+        await admin
+          .from("task_deliverables")
+          .update({
+            value: prev.value,
+            file_url: prev.file_url,
+            file_name: prev.file_name,
+            file_size_bytes: prev.file_size_bytes,
+            metadata: prev.metadata ?? {},
+            filled_at: new Date().toISOString(),
+            filled_by: opts.actorId,
+          })
+          .eq("task_id", newAnchorId)
+          .eq("field_slug", prev.field_slug)
+      }
+    }
+  }
 
   await admin.from("events").insert({
     event_type: "onboarding.preview_rejected",

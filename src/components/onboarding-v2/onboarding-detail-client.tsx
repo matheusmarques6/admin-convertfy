@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
+import { SubItemsList, type SubItem } from "@/components/onboarding-v2/sub-items-list"
 import { ROUTES } from "@/lib/routes"
 import type {
   OnboardingPipelineItem,
@@ -773,16 +774,30 @@ function ChecklistTab({
         />
       </div>
       <div className="space-y-1.5">
-        {sorted.map((t) => (
-          <TaskRow
-            key={t.id}
-            task={t as unknown as TaskRowData}
-            onComplete={completeTask}
-            onDelete={deleteTask}
-            showSource={false}
-            compact={false}
-          />
-        ))}
+        {sorted.map((t) => {
+          const meta = (t.metadata ?? {}) as Record<string, unknown>
+          const subItems = Array.isArray(meta.sub_items)
+            ? (meta.sub_items as SubItem[])
+            : null
+          return (
+            <div key={t.id}>
+              <TaskRow
+                task={t as unknown as TaskRowData}
+                onComplete={completeTask}
+                onDelete={deleteTask}
+                showSource={false}
+                compact={false}
+              />
+              {subItems && subItems.length > 0 && (
+                <SubItemsList
+                  taskId={t.id}
+                  items={subItems}
+                  onMutate={onMutate}
+                />
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
