@@ -88,6 +88,7 @@ const createDealSchema = z.object({
   owner_id: uuid().optional(),
   referrer_partner_id: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export async function POST(request: NextRequest) {

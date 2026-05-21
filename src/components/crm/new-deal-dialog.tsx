@@ -58,6 +58,7 @@ export function NewDealDialog({
   const [value, setValue] = useState<string>("")
   const [clientId, setClientId] = useState<string>("")
   const [clientSearch, setClientSearch] = useState("")
+  const [phone, setPhone] = useState("")
   const [source, setSource] = useState("")
   const [sourceType, setSourceType] = useState("")
   const [sourceReferrer, setSourceReferrer] = useState("")
@@ -75,21 +76,28 @@ export function NewDealDialog({
   )
   const clientOptions = clientsData?.clients || []
 
+  // Reset SO quando o dialog abre. Antes incluia [defaultStageId, stages]
+  // como deps, mas como o parent recriava 'stages' a cada render, o effect
+  // re-disparava no meio da interacao e zerava tags/phone/notes selecionados.
+  // Bug: usuario clicava em tag -> setTags atualizava -> parent re-renderizava
+  // (novo stages array) -> effect rodava -> tags voltava pra []. Fix: depende
+  // apenas de `open`, captura defaults dos props no momento da abertura.
   useEffect(() => {
-    if (open) {
-      setTitle("")
-      setStageId(defaultStageId || stages[0]?.id || "")
-      setValue("")
-      setClientId("")
-      setClientSearch("")
-      setSource("")
-      setSourceType("")
-      setSourceReferrer("")
-      setTags([])
-      setNotes("")
-      setError(null)
-    }
-  }, [open, defaultStageId, stages])
+    if (!open) return
+    setTitle("")
+    setStageId(defaultStageId || stages[0]?.id || "")
+    setValue("")
+    setClientId("")
+    setClientSearch("")
+    setPhone("")
+    setSource("")
+    setSourceType("")
+    setSourceReferrer("")
+    setTags([])
+    setNotes("")
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -117,6 +125,11 @@ export function NewDealDialog({
         source_referrer: sourceReferrer.trim() || null,
         tags: tagList,
         notes: notes || null,
+      }
+      // Phone vai em custom_fields.contact_phone (deals nao tem coluna
+      // dedicada pra phone — eh atributo de contato/lead, nao de deal).
+      if (phone.trim()) {
+        body.custom_fields = { contact_phone: phone.trim() }
       }
       if (user?.id) body.owner_id = user.id
 
@@ -296,6 +309,17 @@ export function NewDealDialog({
                     ))}
                   </div>
                 )}
+              </Field>
+
+              <Field label="Telefone / WhatsApp do contato">
+                <input
+                  className="crm-input w-full"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="(11) 99999-9999"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
               </Field>
 
               {/* Tipo de origem (categoria) + Quem indicou/canal especifico */}
