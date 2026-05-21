@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { User, Settings2, Users, Palette, Plug, Sparkles } from "lucide-react"
+import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
@@ -52,6 +52,13 @@ const SETTINGS_SECTIONS: SettingSection[] = [
     description: "Prompts reutilizáveis com variáveis pra o assistente Claude",
     icon: Sparkles,
     href: "/admin/settings/ai-templates",
+    adminOnly: true,
+  },
+  {
+    title: "Manutenção",
+    description: "Reconciliar tasks legadas e outras ações administrativas",
+    icon: Wrench,
+    href: "/admin/settings/manutencao",
     adminOnly: true,
   },
 ]
