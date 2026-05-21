@@ -26,6 +26,7 @@ import TabOnboardingStatus from "./tab-onboarding-status"
 import TabAcompanhamento from "./tab-acompanhamento"
 import TabCalls from "./tab-calls"
 import TabSolicitacoes from "./tab-solicitacoes"
+import TabAlertas from "./tab-alertas"
 import { C, TNUM } from "./_primitives"
 
 const TABS = [
@@ -33,6 +34,7 @@ const TABS = [
   { key: "onboarding", label: "Onboarding" },
   { key: "performance", label: "Performance" },
   { key: "relatorio", label: "Relatório", hint: "cliente" },
+  { key: "alertas", label: "Alertas", showAlertsCount: true },
   { key: "acompanhamento", label: "Acompanhamento" },
   { key: "calls", label: "Calls" },
   { key: "solicitacoes", label: "Solicitações", showSolicitacoesCount: true },
@@ -214,6 +216,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         {activeTab === "onboarding" && <TabOnboardingStatus storeId={store.id} />}
         {activeTab === "performance" && <TabPerformance storeId={store.id} />}
         {activeTab === "relatorio" && <TabRelatorio storeId={store.id} />}
+        {activeTab === "alertas" && <TabAlertas storeId={store.id} />}
         {activeTab === "acompanhamento" && <TabAcompanhamento storeId={store.id} />}
         {activeTab === "calls" && <TabCalls storeId={store.id} />}
         {activeTab === "solicitacoes" && <TabSolicitacoes storeId={store.id} />}

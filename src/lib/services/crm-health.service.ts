@@ -80,7 +80,7 @@ function computeRevenueScore(currentMonth: number, previousMonth: number): numbe
   return 10
 }
 
-export async function computeStoreHealth(storeId: string, orgId: string): Promise<StoreHealthResult | null> {
+export async function computeStoreHealth(storeId: string, _orgId: string): Promise<StoreHealthResult | null> {
   const admin = createAdminClient()
 
   type StoreNps = { id: string; store_name: string; nps_last_score: number | null }
@@ -218,11 +218,11 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
     components,
   })
 
-  // Auto-cria lead CS health_alert quando score cai pra critico (<50)
-  // e nao ha lead aberto pra essa loja ainda. Evita duplicacao com
-  // dedup por scope+category+store_id+status nao terminal.
+  // Auto-cria store_alert health_critical quando score cai pra <50 e
+  // nao ha alerta ativo pra essa loja ainda. Idempotente (dedup por
+  // store_id+type+status='active').
   if (score < 50) {
-    await maybeCreateHealthAlertLead(storeId, orgId, score, components)
+    await maybeCreateHealthAlert(storeId, score, components)
   }
 
   log.info("[CrmHealth] computed", { store_id: storeId, score, components })
@@ -231,73 +231,71 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
 }
 
 /**
- * Cria lead CS health_alert se nao houver um aberto pra essa store.
- * Usado pelo computeStoreHealth quando score cai abaixo de 50.
- * Idempotente — se ja existe lead com status in (new, qualified) pra
- * essa store na categoria health_alert, retorna sem criar.
+ * Cria store_alert health_critical se nao houver um ativo pra essa loja.
+ * Substituiu o antigo fluxo que criava crm_leads scope=cs (redundante
+ * com clients/client_stores). Alerta vive na loja, visivel na aba
+ * "Alertas" do detalhe da loja.
  */
-async function maybeCreateHealthAlertLead(
+async function maybeCreateHealthAlert(
   storeId: string,
-  orgId: string,
   score: number,
   components: HealthComponents,
 ): Promise<void> {
   const admin = createAdminClient()
 
-  // Ja existe lead aberto pra essa loja?
+  // Ja existe alerta ativo pra essa loja nesse tipo?
   const { data: existing } = await admin
-    .from("crm_leads")
+    .from("store_alerts")
     .select("id")
     .eq("store_id", storeId)
-    .eq("scope", "cs")
-    .eq("category", "health_alert")
-    .in("status", ["new", "qualified"])
+    .eq("type", "health_critical")
+    .eq("status", "active")
     .limit(1)
     .maybeSingle()
 
   if (existing) return
 
-  // Busca dados da loja+cliente pra preencher o lead
+  // Busca client_id da loja (FK requerida em store_alerts)
   const { data: store } = await admin
     .from("client_stores")
-    .select(
-      "store_name, client:clients(id, name, email, phone, owner_id)",
-    )
+    .select("client_id, store_name")
     .eq("id", storeId)
     .maybeSingle()
 
-  if (!store) return
+  if (!store?.client_id) return
 
-  const client = Array.isArray(store.client) ? store.client[0] : store.client
   const componentsSummary = Object.entries(components)
     .filter(([, v]) => (v as number) < 50)
     .map(([k, v]) => `${k}:${v}`)
     .join(" · ")
 
-  const { error } = await admin.from("crm_leads").insert({
-    org_id: orgId,
-    name: store.store_name,
-    email: client?.email ?? null,
-    phone: client?.phone ?? null,
-    company: client?.name ?? null,
-    source: "cron:health-compute",
-    status: "new",
-    scope: "cs",
-    category: "health_alert",
+  const severity = score < 30 ? "critical" : "warning"
+
+  const { error } = await admin.from("store_alerts").insert({
     store_id: storeId,
-    assigned_to: client?.owner_id ?? null,
-    notes: `Health score caiu pra ${score}/100. Sinais fracos: ${componentsSummary || "geral"}.`,
-    ai_qualification_score: 100 - score, // urgencia inversa ao health
-    ai_qualification_reason: `Auto-flag por health critico (${score}<50)`,
+    client_id: store.client_id,
+    type: "health_critical",
+    severity,
+    title: `Health score critico: ${score}/100`,
+    message: `Sinais fracos: ${componentsSummary || "geral"}. Acionar CSM pra diagnostico.`,
+    status: "active",
+    metadata: {
+      score,
+      components,
+      source: "cron:health-compute",
+    },
   })
 
   if (error) {
-    log.warn("[CrmHealth] Falha criando health_alert lead", {
+    log.warn("[CrmHealth] Falha criando health_critical alert", {
       store_id: storeId,
       error: error.message,
     })
   } else {
-    log.info("[CrmHealth] health_alert lead criado", { store_id: storeId, score })
+    log.info("[CrmHealth] health_critical alert criado", {
+      store_id: storeId,
+      score,
+    })
   }
 }
 

@@ -165,15 +165,13 @@ export async function POST(
       leadData.source = `form:${slug}`
     }
 
-    // Form CS gera lead com scope=cs e categoria feedback_followup.
-    // Forms 'either' tambem viram CS quando o submission entra (deduzimos
-    // que se a pessoa esta respondendo NPS/health, é cliente existente).
+    // Form CS: tenta resolver cliente existente por email. Se achar, cria
+    // store_alert (feedback_received) na loja, sem criar lead novo (alerta
+    // vive na loja). Se NAO achar cliente, cai pro fluxo sales padrao
+    // (cria lead) — pode ser triagem manual depois.
     const isCsForm = form.scope === "cs" || form.scope === "either"
-    const leadScope: "sales" | "cs" = isCsForm ? "cs" : "sales"
-    const leadCategory: string | null = isCsForm ? "feedback_followup" : null
-
-    // Tenta resolver store_id buscando por email do cliente (so pra CS).
-    let resolvedStoreId: string | null = null
+    let matchedStoreId: string | null = null
+    let matchedClientId: string | null = null
     if (isCsForm && leadData.email) {
       const { data: clientMatch } = await admin
         .from("clients")
@@ -182,71 +180,102 @@ export async function POST(
         .eq("org_id", form.org_id)
         .maybeSingle()
       if (clientMatch) {
+        matchedClientId = clientMatch.id
         const stores = (clientMatch.stores ?? []) as Array<{
           id: string
           is_active: boolean
         }>
         const activeStore = stores.find((s) => s.is_active) ?? stores[0]
-        if (activeStore) resolvedStoreId = activeStore.id
+        if (activeStore) matchedStoreId = activeStore.id
       }
     }
 
-    // 5. Dedup por email (se existir email).
+    // Se eh form CS E achou cliente existente, cria APENAS alerta na loja
+    // (sem lead). O dado do feedback fica no crm_form_submissions (passo 7)
+    // que ja eh persistido em todos os casos.
+    const isCsAlert = isCsForm && matchedStoreId && matchedClientId
     let leadId: string | null = null
-    if (leadData.email) {
-      const { data: existing } = await admin
-        .from("crm_leads")
-        .select("id")
-        .eq("email", leadData.email)
-        .eq("scope", leadScope) // dedup separado por scope
-        .maybeSingle()
-      if (existing) leadId = existing.id
-    }
 
-    if (!leadId) {
-      const { data: lead, error: lErr } = await admin
-        .from("crm_leads")
-        .insert({
-          name: leadData.name,
-          email: leadData.email ?? null,
-          phone: leadData.phone ?? null,
-          company: leadData.company ?? null,
-          source: leadData.source,
-          status: "new",
-          scope: leadScope,
-          category: leadCategory,
-          store_id: resolvedStoreId,
-          created_by: form.created_by, // pode ser null se form orfao
-          utm: {
-            source: parsed.utm_source ?? null,
-            medium: parsed.utm_medium ?? null,
-            campaign: parsed.utm_campaign ?? null,
-            term: parsed.utm_term ?? null,
-            content: parsed.utm_content ?? null,
-            referrer: parsed.referrer ?? null,
-          },
-          custom_fields: Object.keys(customFieldsData).length > 0 ? customFieldsData : {},
+    if (isCsAlert) {
+      const { error: alertErr } = await admin.from("store_alerts").insert({
+        store_id: matchedStoreId,
+        client_id: matchedClientId,
+        type: "feedback_received",
+        severity: "info",
+        title: `Resposta recebida: ${form.name}`,
+        message: `Cliente respondeu o formulario "${form.name}". Triar resposta e tomar acao se necessario.`,
+        status: "active",
+        metadata: {
+          form_id: form.id,
+          form_slug: slug,
+          form_name: form.name,
+          submitted_by_email: leadData.email,
+          source: "form_submit",
+        },
+      })
+      if (alertErr) {
+        log.warn("[FormSubmit] Falha criando feedback_received alert", {
+          store_id: matchedStoreId,
+          error: alertErr.message,
         })
-        .select("id")
-        .single()
-      if (lErr) throw lErr
-      leadId = lead.id
-    } else if (Object.keys(customFieldsData).length > 0) {
-      // Lead deduplicado por email — faz merge dos custom fields existentes
-      // com os novos (novos sobrescrevem em caso de conflito).
-      const { data: existing } = await admin
-        .from("crm_leads")
-        .select("custom_fields")
-        .eq("id", leadId)
-        .single()
-      const merged = {
-        ...((existing?.custom_fields as Record<string, unknown> | null) ?? {}),
-        ...customFieldsData,
       }
-      await admin
-        .from("crm_leads")
-        .update({ custom_fields: merged })
-        .eq("id", leadId)
+    } else {
+      // Fluxo sales/anonimo: cria lead como antes.
+      // 5. Dedup por email.
+      if (leadData.email) {
+        const { data: existing } = await admin
+          .from("crm_leads")
+          .select("id")
+          .eq("email", leadData.email)
+          .maybeSingle()
+        if (existing) leadId = existing.id
+      }
+
+      if (!leadId) {
+        const { data: lead, error: lErr } = await admin
+          .from("crm_leads")
+          .insert({
+            name: leadData.name,
+            email: leadData.email ?? null,
+            phone: leadData.phone ?? null,
+            company: leadData.company ?? null,
+            source: leadData.source,
+            status: "new",
+            created_by: form.created_by,
+            utm: {
+              source: parsed.utm_source ?? null,
+              medium: parsed.utm_medium ?? null,
+              campaign: parsed.utm_campaign ?? null,
+              term: parsed.utm_term ?? null,
+              content: parsed.utm_content ?? null,
+              referrer: parsed.referrer ?? null,
+            },
+            custom_fields:
+              Object.keys(customFieldsData).length > 0
+                ? customFieldsData
+                : {},
+          })
+          .select("id")
+          .single()
+        if (lErr) throw lErr
+        leadId = lead.id
+      } else if (Object.keys(customFieldsData).length > 0) {
+        // Lead deduplicado por email — faz merge dos custom fields existentes
+        // com os novos (novos sobrescrevem em caso de conflito).
+        const { data: existing } = await admin
+          .from("crm_leads")
+          .select("custom_fields")
+          .eq("id", leadId)
+          .single()
+        const merged = {
+          ...((existing?.custom_fields as Record<string, unknown> | null) ?? {}),
+          ...customFieldsData,
+        }
+        await admin
+          .from("crm_leads")
+          .update({ custom_fields: merged })
+          .eq("id", leadId)
+      }
     }
 
     // 6. Se form tem pipeline_id, cria deal.

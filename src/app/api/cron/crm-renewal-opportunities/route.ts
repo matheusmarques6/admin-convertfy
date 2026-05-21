@@ -70,31 +70,16 @@ async function detectRenewalOpportunities(): Promise<RenewalResult> {
   // Lojas ativas com contract_end_date na janela [hoje, hoje+60d]
   type StoreRow = {
     id: string
+    client_id: string
     org_id: string
     store_name: string
     contract_end_date: string
     mrr_cents: number | null
-    client: {
-      id: string
-      name: string
-      email: string | null
-      phone: string | null
-      owner_id: string | null
-    } | Array<{
-      id: string
-      name: string
-      email: string | null
-      phone: string | null
-      owner_id: string | null
-    }> | null
   }
 
   const { data: storesRaw, error } = await admin
     .from("client_stores")
-    .select(
-      `id, org_id, store_name, contract_end_date, mrr_cents,
-       client:clients(id, name, email, phone, owner_id)`,
-    )
+    .select("id, client_id, org_id, store_name, contract_end_date, mrr_cents")
     .eq("is_active", true)
     .not("contract_end_date", "is", null)
     .gte("contract_end_date", todayISO)
@@ -112,18 +97,23 @@ async function detectRenewalOpportunities(): Promise<RenewalResult> {
 
   for (const store of stores) {
     try {
-      // Ja existe lead aberto pra essa loja na categoria?
+      // Ja existe alert ativo pra essa loja?
       const { data: existing } = await admin
-        .from("crm_leads")
+        .from("store_alerts")
         .select("id")
         .eq("store_id", store.id)
-        .eq("scope", "cs")
-        .eq("category", "renewal_opportunity")
-        .in("status", ["new", "qualified"])
+        .eq("type", "renewal_due")
+        .eq("status", "active")
         .limit(1)
         .maybeSingle()
 
       if (existing) {
+        skipped += 1
+        continue
+      }
+
+      if (!store.client_id) {
+        // FK requerida em store_alerts
         skipped += 1
         continue
       }
@@ -133,36 +123,36 @@ async function detectRenewalOpportunities(): Promise<RenewalResult> {
           86_400_000,
       )
 
-      const client = Array.isArray(store.client) ? store.client[0] : store.client
+      // Severidade pela urgencia: <=7d critical, <=30d warning, resto info
+      const severity =
+        daysToEnd <= 7
+          ? "critical"
+          : daysToEnd <= 30
+            ? "warning"
+            : "info"
 
-      // ai_qualification_score: urgencia = janela menor -> mais urgente
-      // 60d = 50 pts, 30d = 75 pts, 7d = 95 pts
-      const urgencyScore = Math.min(
-        100,
-        Math.round(((RENEWAL_WINDOW_DAYS - daysToEnd) / RENEWAL_WINDOW_DAYS) * 100),
-      )
+      const mrrLabel = store.mrr_cents
+        ? `R$ ${(store.mrr_cents / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+        : "—"
 
-      const { error: insertErr } = await admin.from("crm_leads").insert({
-        org_id: store.org_id,
-        name: store.store_name,
-        email: client?.email ?? null,
-        phone: client?.phone ?? null,
-        company: client?.name ?? null,
-        source: "cron:renewal-opportunities",
-        status: "new",
-        scope: "cs",
-        category: "renewal_opportunity",
+      const { error: insertErr } = await admin.from("store_alerts").insert({
         store_id: store.id,
-        assigned_to: client?.owner_id ?? null,
-        notes: `Contrato vence em ${daysToEnd} dia${daysToEnd === 1 ? "" : "s"} (${store.contract_end_date}). MRR ${
-          store.mrr_cents ? `R$ ${(store.mrr_cents / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"
-        }. Acionar renovacao antes do vencimento.`,
-        ai_qualification_score: urgencyScore,
-        ai_qualification_reason: `Auto-flag por contract_end_date em ${daysToEnd}d`,
+        client_id: store.client_id,
+        type: "renewal_due",
+        severity,
+        title: `Renovacao em ${daysToEnd} dia${daysToEnd === 1 ? "" : "s"}`,
+        message: `Contrato vence em ${store.contract_end_date}. MRR ${mrrLabel}. Acionar renovacao antes do vencimento.`,
+        status: "active",
+        metadata: {
+          contract_end_date: store.contract_end_date,
+          days_to_end: daysToEnd,
+          mrr_cents: store.mrr_cents,
+          source: "cron:renewal-opportunities",
+        },
       })
 
       if (insertErr) {
-        log.warn("Erro criando renewal_opportunity lead", {
+        log.warn("Erro criando renewal_due alert", {
           store_id: store.id,
           error: insertErr.message,
         })

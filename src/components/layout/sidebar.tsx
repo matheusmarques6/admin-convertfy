@@ -169,11 +169,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
     label: "Customer Success",
     items: [
       {
-        name: "Leads CS",
-        href: ROUTES.ADMIN.OPERACIONAL.LEADS,
-        icon: UserPlus,
-      },
-      {
         name: "Formulários CS",
         href: ROUTES.ADMIN.OPERACIONAL.FORMS,
         icon: FileText,

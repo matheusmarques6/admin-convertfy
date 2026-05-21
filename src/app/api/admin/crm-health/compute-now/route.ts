@@ -60,26 +60,24 @@ export async function POST(request: NextRequest) {
 
     for (const s of list) {
       try {
-        // Conta leads health_alert ativos ANTES de computar
+        // Conta store_alerts health_critical ativos ANTES de computar
         const { count: beforeCount } = await admin
-          .from("crm_leads")
+          .from("store_alerts")
           .select("id", { count: "exact", head: true })
           .eq("store_id", s.id)
-          .eq("scope", "cs")
-          .eq("category", "health_alert")
-          .in("status", ["new", "qualified"])
+          .eq("type", "health_critical")
+          .eq("status", "active")
 
         const result = await computeStoreHealth(s.id, s.org_id as string)
         if (result) {
           ok += 1
-          // Conta DEPOIS pra ver se foi criado lead novo
+          // Conta DEPOIS pra ver se foi criado alerta novo
           const { count: afterCount } = await admin
-            .from("crm_leads")
+            .from("store_alerts")
             .select("id", { count: "exact", head: true })
             .eq("store_id", s.id)
-            .eq("scope", "cs")
-            .eq("category", "health_alert")
-            .in("status", ["new", "qualified"])
+            .eq("type", "health_critical")
+            .eq("status", "active")
           if ((afterCount ?? 0) > (beforeCount ?? 0)) {
             alertsCreated += 1
           }

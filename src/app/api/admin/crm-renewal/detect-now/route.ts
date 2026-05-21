@@ -51,34 +51,16 @@ export async function POST(request: NextRequest) {
 
     type StoreRow = {
       id: string
+      client_id: string
       org_id: string
       store_name: string
       contract_end_date: string
       mrr_cents: number | null
-      client:
-        | {
-            id: string
-            name: string
-            email: string | null
-            phone: string | null
-            owner_id: string | null
-          }
-        | Array<{
-            id: string
-            name: string
-            email: string | null
-            phone: string | null
-            owner_id: string | null
-          }>
-        | null
     }
 
     const { data: storesRaw, error } = await admin
       .from("client_stores")
-      .select(
-        `id, org_id, store_name, contract_end_date, mrr_cents,
-         client:clients(id, name, email, phone, owner_id)`,
-      )
+      .select("id, client_id, org_id, store_name, contract_end_date, mrr_cents")
       .eq("org_id", member.org_id)
       .eq("is_active", true)
       .not("contract_end_date", "is", null)
@@ -96,16 +78,20 @@ export async function POST(request: NextRequest) {
     for (const store of stores) {
       try {
         const { data: existing } = await admin
-          .from("crm_leads")
+          .from("store_alerts")
           .select("id")
           .eq("store_id", store.id)
-          .eq("scope", "cs")
-          .eq("category", "renewal_opportunity")
-          .in("status", ["new", "qualified"])
+          .eq("type", "renewal_due")
+          .eq("status", "active")
           .limit(1)
           .maybeSingle()
 
         if (existing) {
+          skipped += 1
+          continue
+        }
+
+        if (!store.client_id) {
           skipped += 1
           continue
         }
@@ -115,38 +101,31 @@ export async function POST(request: NextRequest) {
             86_400_000,
         )
 
-        const client = Array.isArray(store.client) ? store.client[0] : store.client
+        const severity =
+          daysToEnd <= 7 ? "critical" : daysToEnd <= 30 ? "warning" : "info"
 
-        const urgencyScore = Math.min(
-          100,
-          Math.round(
-            ((RENEWAL_WINDOW_DAYS - daysToEnd) / RENEWAL_WINDOW_DAYS) * 100,
-          ),
-        )
+        const mrrLabel = store.mrr_cents
+          ? `R$ ${(store.mrr_cents / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+          : "—"
 
-        const { error: insertErr } = await admin.from("crm_leads").insert({
-          org_id: store.org_id,
-          name: store.store_name,
-          email: client?.email ?? null,
-          phone: client?.phone ?? null,
-          company: client?.name ?? null,
-          source: "manual:renewal-detect",
-          status: "new",
-          scope: "cs",
-          category: "renewal_opportunity",
+        const { error: insertErr } = await admin.from("store_alerts").insert({
           store_id: store.id,
-          assigned_to: client?.owner_id ?? null,
-          notes: `Contrato vence em ${daysToEnd} dia${daysToEnd === 1 ? "" : "s"} (${store.contract_end_date}). MRR ${
-            store.mrr_cents
-              ? `R$ ${(store.mrr_cents / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-              : "—"
-          }. Acionar renovacao antes do vencimento.`,
-          ai_qualification_score: urgencyScore,
-          ai_qualification_reason: `Auto-flag por contract_end_date em ${daysToEnd}d`,
+          client_id: store.client_id,
+          type: "renewal_due",
+          severity,
+          title: `Renovacao em ${daysToEnd} dia${daysToEnd === 1 ? "" : "s"}`,
+          message: `Contrato vence em ${store.contract_end_date}. MRR ${mrrLabel}. Acionar renovacao antes do vencimento.`,
+          status: "active",
+          metadata: {
+            contract_end_date: store.contract_end_date,
+            days_to_end: daysToEnd,
+            mrr_cents: store.mrr_cents,
+            source: "manual:renewal-detect",
+          },
         })
 
         if (insertErr) {
-          log.warn("Erro criando renewal lead", {
+          log.warn("Erro criando renewal_due alert", {
             store_id: store.id,
             error: insertErr.message,
           })
