@@ -52,6 +52,31 @@ export interface ChecklistItem {
   slug?: string
   /** Quando preenchido, backend marca is_completed=true ao detectar o evento. */
   auto_complete_on?: ChecklistAutoCompleteEvent
+  /** Sub-checklist interno (usado na Etapa 05: 1 task por flow, N emails dentro). */
+  sub_items?: SubChecklistItem[]
+}
+
+/**
+ * Sub-item de checklist (emails dentro de um flow na Etapa 05).
+ * Armazenado em tasks.metadata.sub_items quando a task e instanciada.
+ */
+export interface SubChecklistItem {
+  slug: string
+  label: string
+  /**
+   * Slug do deliverable da Etapa 03 (piloto) que pre-preenche este item.
+   * Quando definido, o pre-fill service marca completed=true e linka o
+   * deliverable_id do piloto. UI mostra badge "vindo do piloto".
+   */
+  from_preview?: string
+  /** Pre-marcado como completo (apos pre-fill 03->05). */
+  completed?: boolean
+  /** ID do task_deliverable da Etapa 03 que originou este sub_item. */
+  preview_deliverable_id?: string | null
+  /** URL do arquivo herdado do piloto (atalho de UI). */
+  preview_file_url?: string | null
+  completed_at?: string | null
+  completed_by?: string | null
 }
 
 export interface DeliverableField {

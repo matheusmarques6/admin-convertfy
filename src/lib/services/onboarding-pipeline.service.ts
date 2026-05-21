@@ -422,6 +422,16 @@ async function instantiateTaskForColumn(
     onboarding_id: onboardingId,
   }
 
+  type SubChecklistRow = {
+    slug: string
+    label: string
+    from_preview?: string
+    completed?: boolean
+    preview_deliverable_id?: string | null
+    preview_file_url?: string | null
+    completed_at?: string | null
+    completed_by?: string | null
+  }
   type ChecklistRow = {
     id: string
     label: string
@@ -431,6 +441,7 @@ async function instantiateTaskForColumn(
     description?: string
     slug?: string
     auto_complete_on?: Record<string, unknown>
+    sub_items?: SubChecklistRow[]
   }
   const checklist = (col.checklist_template ?? []) as ChecklistRow[]
 
@@ -494,6 +505,12 @@ async function instantiateTaskForColumn(
       column_name: col.name,
       item_position: item.order ?? idx,
       is_column_anchor: idx === 0,
+      // sub_items propagados quando o template define (Etapa 05: emails por flow).
+      // Cada sub_item carrega state proprio (completed, preview_file_url, etc).
+      // Pre-fill 03->05 atualiza esse array via onboarding-pre-fill.service.
+      ...(item.sub_items && item.sub_items.length > 0
+        ? { sub_items: item.sub_items.map((si) => ({ ...si, completed: si.completed ?? false })) }
+        : {}),
     },
   }))
 
@@ -651,6 +668,19 @@ export async function advanceColumn(
   // Casos especiais — automacoes inline
   if (nextCol.slug === "implementacao") {
     await generateTutorialTokenIfMissing(opts.onboardingId)
+  }
+
+  // Pre-fill 03->05: copia uploads dos pilotos pros sub_items da Etapa 05.
+  // Roda depois do instantiate porque depende das tasks da Etapa 05 existirem.
+  if (nextCol.slug === "emails_finais") {
+    try {
+      const { applyPreFillFromPreview } = await import(
+        "@/lib/services/onboarding-pre-fill.service"
+      )
+      await applyPreFillFromPreview(opts.onboardingId, opts.actorId)
+    } catch (e) {
+      log.error("applyPreFillFromPreview failed", e)
+    }
   }
 
   // WhatsApp automatico da nova coluna (fire-and-forget)
