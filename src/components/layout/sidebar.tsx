@@ -174,6 +174,16 @@ const OPERACIONAL_NAV: NavGroup[] = [
         icon: Columns3,
       },
       {
+        name: "Leads CS",
+        href: ROUTES.ADMIN.OPERACIONAL.LEADS,
+        icon: UserPlus,
+      },
+      {
+        name: "Formulários CS",
+        href: ROUTES.ADMIN.OPERACIONAL.FORMS,
+        icon: FileText,
+      },
+      {
         name: "Acompanhamento",
         href: ROUTES.ADMIN.OPERACIONAL.CS.ACOMPANHAMENTO,
         icon: CalendarClock,

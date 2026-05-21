@@ -26,12 +26,14 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
 
-    const status = request.nextUrl.searchParams.get("status")
+    const sp = request.nextUrl.searchParams
+    const status = sp.get("status")
+    const scope = sp.get("scope") // sales | cs
 
     let q = admin
       .from("crm_forms")
       .select(
-        `id, name, slug, description, status, theme, pipeline_id, stage_id,
+        `id, name, slug, description, status, scope, theme, pipeline_id, stage_id,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name)`,
@@ -40,6 +42,10 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (status) q = q.eq("status", status)
+    if (scope) {
+      // 'either' aparece em ambas as listagens
+      q = q.in("scope", [scope, "either"])
+    }
 
     const { data, error } = await q
     if (error) throw error
@@ -90,6 +96,7 @@ const createFormSchema = z.object({
   success_message: z.string().nullable().optional(),
   redirect_url: z.string().url().nullable().optional().or(z.literal("")),
   fields: z.array(fieldSchema).optional().default([]),
+  scope: z.enum(["sales", "cs", "either"]).optional().default("sales"),
 })
 
 export async function POST(request: NextRequest) {

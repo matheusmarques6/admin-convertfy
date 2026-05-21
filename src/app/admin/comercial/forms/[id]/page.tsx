@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import useSWR from "swr"
 import {
   ArrowLeft,
@@ -364,6 +365,13 @@ export default function FormEditorPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  // Detecta se acessou via /admin/operacional ou /admin/comercial pra
+  // que o link "Voltar" aponte pra listagem certa.
+  const pathname = usePathname()
+  const isCsArea = pathname?.startsWith("/admin/operacional") ?? false
+  const formsListHref = isCsArea
+    ? ROUTES.ADMIN.OPERACIONAL.FORMS
+    : ROUTES.ADMIN.COMERCIAL.FORMS
   // revalidateOnFocus: false evita que SWR sobrescreva edicoes do user
   // quando ele troca de aba e volta. Idem dedupe alto pra nao refazer
   // requests enquanto digita.
@@ -600,7 +608,7 @@ export default function FormEditorPage({
         <div className="shrink-0 px-5 pt-5 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="flex items-center justify-between gap-2 mb-3">
             <Link
-              href={ROUTES.ADMIN.COMERCIAL.FORMS}
+              href={formsListHref}
               className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />

@@ -18,6 +18,14 @@ interface Props {
   open: boolean
   onClose: () => void
   onCreated: (formId: string) => void
+  /**
+   * Escopo do form. Define quais pipelines aparecem no seletor e em
+   * qual area o form sera listado.
+   *   - "sales" (default): pipelines de vendas, listado em /comercial/forms
+   *   - "cs": pipelines de CS, listado em /operacional/forms
+   *   - "either": form generico, aparece nas duas listagens
+   */
+  scope?: "sales" | "cs" | "either"
 }
 
 function slugify(text: string): string {
@@ -31,9 +39,13 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "")
 }
 
-export function NewFormDialog({ open, onClose, onCreated }: Props) {
+export function NewFormDialog({ open, onClose, onCreated, scope = "sales" }: Props) {
+  // Quando scope='either', mostra ambos os tipos de pipeline (sales+cs).
+  // Pra simplificar, default 'cs' nesse caso (mais comum em forms genericos
+  // criados a partir do CS). Usuario pode trocar manualmente.
+  const pipelineScope = scope === "either" ? "cs" : scope
   const { data: pipelinesData } = useSWR<{ pipelines: PipelineLite[] }>(
-    open ? "/api/crm/pipelines?scope=sales" : null,
+    open ? `/api/crm/pipelines?scope=${pipelineScope}` : null,
     fetcher,
   )
   const pipelines = useMemo(() => pipelinesData?.pipelines ?? [], [pipelinesData])
@@ -99,6 +111,7 @@ export function NewFormDialog({ open, onClose, onCreated }: Props) {
           description: description.trim() || null,
           pipeline_id: pipelineId || null,
           stage_id: stageId || null,
+          scope,
           // Fields padrão pra começar.
           fields: [
             {

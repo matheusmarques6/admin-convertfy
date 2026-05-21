@@ -8,15 +8,53 @@ interface NewLeadDialogProps {
   open: boolean
   onClose: () => void
   onCreated?: (leadId: string) => void
+  /**
+   * Detecta automaticamente o scope pela URL (/admin/operacional/* = cs).
+   * Pode ser sobrescrito explicitamente. Quando scope='cs', o seletor de
+   * categoria CS aparece (health_alert | renewal_opportunity | ...).
+   */
+  scope?: "sales" | "cs"
+  /** Pre-seleciona uma categoria (uso: criar lead a partir de uma loja flagged). */
+  defaultCategory?:
+    | "health_alert"
+    | "renewal_opportunity"
+    | "feedback_followup"
+    | "churn_recovery"
 }
 
-export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) {
+const CS_CATEGORIES: Array<{
+  value: NonNullable<NewLeadDialogProps["defaultCategory"]>
+  label: string
+}> = [
+  { value: "health_alert", label: "Alerta de saúde" },
+  { value: "renewal_opportunity", label: "Renovação / Upsell" },
+  { value: "feedback_followup", label: "Feedback / NPS" },
+  { value: "churn_recovery", label: "Win-back" },
+]
+
+export function NewLeadDialog({
+  open,
+  onClose,
+  onCreated,
+  scope: scopeProp,
+  defaultCategory,
+}: NewLeadDialogProps) {
+  // Detecta scope pela URL se nao foi passado explicito.
+  const scope =
+    scopeProp ??
+    (typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/admin/operacional")
+      ? "cs"
+      : "sales")
+  const isCs = scope === "cs"
+
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [company, setCompany] = useState("")
   const [source, setSource] = useState("")
   const [notes, setNotes] = useState("")
+  const [category, setCategory] = useState<string>(defaultCategory ?? "health_alert")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,9 +66,10 @@ export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) 
       setCompany("")
       setSource("")
       setNotes("")
+      setCategory(defaultCategory ?? "health_alert")
       setError(null)
     }
-  }, [open])
+  }, [open, defaultCategory])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,6 +87,8 @@ export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) 
           company: company || null,
           source: source || null,
           notes: notes || null,
+          scope,
+          ...(isCs ? { category } : {}),
         }),
       })
       const json = await res.json()
@@ -95,7 +136,7 @@ export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) 
                   color: "var(--crm-gray-900)",
                 }}
               >
-                Novo lead
+                {isCs ? "Novo lead de CS" : "Novo lead"}
               </DialogPrimitive.Title>
               <button
                 type="button"
@@ -109,12 +150,27 @@ export function NewLeadDialog({ open, onClose, onCreated }: NewLeadDialogProps) 
             </div>
 
             <div className="space-y-3 px-5 py-4">
+              {isCs && (
+                <Field label="Categoria">
+                  <select
+                    className="crm-input w-full"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
+                    {CS_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Nome *">
                 <input
                   className="crm-input w-full"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Maria Silva"
+                  placeholder={isCs ? "Loja ou cliente" : "Maria Silva"}
                   autoFocus
                   required
                 />

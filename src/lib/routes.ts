@@ -99,6 +99,10 @@ export const ROUTES = {
       DEAL_DETAIL: (id: string) => `/admin/operacional/deals/${id}` as const,
       DEAL_DETAIL_FULL: (id: string) =>
         `/admin/operacional/deals/${id}/detail` as const,
+      LEADS: "/admin/operacional/leads",
+      LEAD_DETAIL: (id: string) => `/admin/operacional/leads/${id}` as const,
+      FORMS: "/admin/operacional/forms",
+      FORM_DETAIL: (id: string) => `/admin/operacional/forms/${id}` as const,
       AUTOMACOES: {
         LIST: "/admin/operacional/automacoes",
         DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,

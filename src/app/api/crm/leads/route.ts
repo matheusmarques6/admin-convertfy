@@ -35,15 +35,19 @@ export async function GET(request: NextRequest) {
     const assigned_to = sp.get("assigned_to")
     const search = sp.get("search")
     const source = sp.get("source")
+    const scope = sp.get("scope") // sales | cs
+    const category = sp.get("category") // health_alert | renewal_opportunity | feedback_followup | churn_recovery
+    const store_id = sp.get("store_id")
     const limit = Math.min(parseInt(sp.get("limit") || "100", 10), 500)
     const offset = parseInt(sp.get("offset") || "0", 10)
 
     let q = admin
       .from("crm_leads")
       .select(`
-        id, name, email, phone, company, role, source, status,
+        id, name, email, phone, company, role, source, status, scope, category, store_id,
         ai_qualification_score, assigned_to, tags, last_contacted_at, created_at, updated_at,
-        assignee:profiles!crm_leads_assigned_to_fkey (id, name, avatar_url)
+        assignee:profiles!crm_leads_assigned_to_fkey (id, name, avatar_url),
+        store:client_stores (id, store_name, health_score, mrr_cents)
       `, { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
@@ -52,6 +56,9 @@ export async function GET(request: NextRequest) {
     if (status) q = q.eq("status", status)
     if (assigned_to) q = q.eq("assigned_to", assigned_to)
     if (source) q = q.eq("source", source)
+    if (scope) q = q.eq("scope", scope)
+    if (category) q = q.eq("category", category)
+    if (store_id) q = q.eq("store_id", store_id)
     if (search) {
       q = q.or(`name.ilike.%${search}%,email.ilike.%${search}%,company.ilike.%${search}%,phone.ilike.%${search}%`)
     }
@@ -77,6 +84,17 @@ const createLeadSchema = z.object({
   notes: z.string().nullable().optional(),
   assigned_to: uuid().nullable().optional(),
   tags: z.array(z.string()).optional().default([]),
+  scope: z.enum(["sales", "cs"]).optional().default("sales"),
+  category: z
+    .enum([
+      "health_alert",
+      "renewal_opportunity",
+      "feedback_followup",
+      "churn_recovery",
+    ])
+    .nullable()
+    .optional(),
+  store_id: uuid().nullable().optional(),
 })
 
 export async function POST(request: NextRequest) {
