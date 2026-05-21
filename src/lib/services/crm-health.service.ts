@@ -13,6 +13,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { syncCarteiraDeal } from "./cs-pipelines-sync.service"
 
 const log = logger.child("CrmHealthService")
 
@@ -224,6 +225,17 @@ export async function computeStoreHealth(storeId: string, _orgId: string): Promi
   if (score < 50) {
     await maybeCreateHealthAlert(storeId, score, components)
   }
+
+  // Sincroniza com o pipeline "Gestao de Carteira" (state-board CS):
+  // move o deal entre Saudavel/Atencao/Risco conforme novo score, ou
+  // pra Churn se a loja virou inativa. NAO mexe em deals em stages
+  // manuais (Em recuperacao / Churn iminente).
+  syncCarteiraDeal({ storeId, healthScore: score }).catch((err) => {
+    log.warn("syncCarteiraDeal falhou (nao bloqueia)", {
+      storeId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+  })
 
   log.info("[CrmHealth] computed", { store_id: storeId, score, components })
 

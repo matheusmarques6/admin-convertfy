@@ -163,6 +163,132 @@ export async function syncCallToDeal(args: CallSyncInput): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// GESTAO DE CARTEIRA
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Stages automaticos (gerenciados por health_score) vs manuais (CSM decide).
+ * order 1-3 (Saudavel/Atencao/Risco) e order 6 (Churn p/ is_active=false)
+ * sao auto-movidos pelo cron. Order 4 (Em recuperacao) e 5 (Churn iminente)
+ * sao manuais — o sync NAO mexe neles.
+ */
+const CARTEIRA_AUTO_ORDERS = new Set([1, 2, 3, 6])
+
+function mapScoreToOrder(score: number | null, isActive: boolean): number {
+  if (!isActive) return 6 // Churn
+  const s = score ?? 50
+  if (s >= 80) return 1 // Saudavel
+  if (s >= 60) return 2 // Atencao
+  return 3 // Risco
+}
+
+/**
+ * Sincroniza um store com seu deal no pipeline "Gestao de Carteira".
+ * Cria deal se nao existe; move entre stages auto-managed conforme
+ * health_score. Respeita moves manuais (Em recuperacao / Churn iminente):
+ * deal nesses stages nao e movido automaticamente.
+ *
+ * Chamado por:
+ * - crm-health.service apos computar score (cron diario 5h UTC)
+ * - admin endpoint de resync manual
+ */
+export async function syncCarteiraDeal(args: {
+  storeId: string
+  healthScore: number | null
+}): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    const pipeline = await getCsPipeline("carteira")
+    if (!pipeline) return
+
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("id, client_id, store_name, mrr_cents, is_active, client:clients(owner_id)")
+      .eq("id", args.storeId)
+      .maybeSingle()
+    if (!store) return
+
+    const targetOrder = mapScoreToOrder(args.healthScore, store.is_active ?? true)
+    const targetStage = pipeline.stages.find((s) => s.order === targetOrder)
+    if (!targetStage) return
+
+    // Existe deal pra essa store?
+    const { data: existing } = await admin
+      .from("deals")
+      .select("id, stage_id, status, custom_fields")
+      .eq("pipeline_id", pipeline.id)
+      .eq("store_id", args.storeId)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      // Determina o order atual do deal
+      const currentStage = pipeline.stages.find((s) => s.id === existing.stage_id)
+      const currentOrder = currentStage?.order
+
+      // Se o deal esta em stage MANUAL (4 ou 5), nao mexe
+      if (currentOrder && !CARTEIRA_AUTO_ORDERS.has(currentOrder)) return
+
+      // Mesma stage? Atualiza so o custom_fields
+      if (existing.stage_id === targetStage.id) {
+        await admin
+          .from("deals")
+          .update({
+            custom_fields: {
+              ...((existing.custom_fields as Record<string, unknown> | null) ?? {}),
+              health_score: args.healthScore,
+              last_sync: new Date().toISOString(),
+            },
+          })
+          .eq("id", existing.id)
+        return
+      }
+
+      // Move stage
+      await admin
+        .from("deals")
+        .update({
+          stage_id: targetStage.id,
+          status: (targetOrder === 6 ? "lost" : "open") as "lost" | "open",
+          custom_fields: {
+            ...((existing.custom_fields as Record<string, unknown> | null) ?? {}),
+            health_score: args.healthScore,
+            last_sync: new Date().toISOString(),
+            previous_stage_order: currentOrder ?? null,
+          },
+        })
+        .eq("id", existing.id)
+      return
+    }
+
+    // Cria deal novo
+    const owner = Array.isArray(store.client) ? store.client[0] : store.client
+    await admin.from("deals").insert({
+      pipeline_id: pipeline.id,
+      stage_id: targetStage.id,
+      title: store.store_name,
+      status: targetOrder === 6 ? "lost" : "open",
+      source: "carteira_sync",
+      store_id: args.storeId,
+      client_id: store.client_id,
+      owner_id: owner?.owner_id ?? null,
+      currency: "BRL",
+      value: (store.mrr_cents ?? 0) / 100,
+      custom_fields: {
+        health_score: args.healthScore,
+        auto_managed: true,
+        last_sync: new Date().toISOString(),
+      },
+    })
+  } catch (err) {
+    log.warn("syncCarteiraDeal falhou", {
+      storeId: args.storeId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // CADENCIAS CS
 // ─────────────────────────────────────────────────────────────
 

@@ -15,11 +15,13 @@ export type CsPipelineKey =
   | "acompanhamento"
   | "calls"
   | "cadencias"
+  | "carteira"
 
 const WELL_KNOWN_NAMES: Record<CsPipelineKey, string> = {
   acompanhamento: "Acompanhamento Semanal",
   calls: "Calls Mensais",
   cadencias: "Cadencias CS",
+  carteira: "Gestao de Carteira",
 }
 
 interface CsPipelineInfo {
