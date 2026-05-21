@@ -16,6 +16,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
+import { syncCadenceMove } from "@/lib/services/cs-pipelines-sync.service"
 
 const log = logger.child("CrmDealMove")
 
@@ -35,7 +36,7 @@ export async function POST(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     const body = await request.json()
@@ -148,6 +149,17 @@ export async function POST(
         }).catch((err) => log.error("[Deals] dispatch error", err))
       }
     }
+
+    // Sync cadencias: se deal for do pipeline "Cadencias CS",
+    // atualiza store_cadence_overrides (drag entre frequencias).
+    // Fire-and-forget — falha nao bloqueia o move.
+    syncCadenceMove({
+      dealId: id,
+      newStageId: parsed.stage_id,
+      movedBy: user.id,
+    }).catch(() => {
+      /* logado no service */
+    })
 
     return successResponse(request, { deal })
   } catch (error) {

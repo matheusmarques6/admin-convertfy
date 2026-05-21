@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { syncCallToDeal } from "@/lib/services/cs-pipelines-sync.service"
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -93,6 +94,24 @@ export async function POST(
       .single()
 
     if (error) throw new AppError(error.message, 500)
+
+    // Sync: cria/atualiza deal correspondente no pipeline "Calls Mensais"
+    // (fire-and-forget — falha nao bloqueia criacao da call)
+    syncCallToDeal({
+      callId: created.id,
+      storeId: id,
+      clientId: store.client_id,
+      conductedBy: user.id,
+      conductedAt: created.conducted_at,
+      nextCallDate: created.next_call_date,
+      notes: created.notes,
+      actionItems: created.action_items,
+      durationMinutes: created.duration_minutes,
+      resultPercentage: created.result_percentage,
+    }).catch(() => {
+      /* logado no service */
+    })
+
     return successResponse(request, { call: created })
   } catch (error) {
     return errorResponse(request, error, "StoreCalls")
