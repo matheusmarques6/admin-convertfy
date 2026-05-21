@@ -62,7 +62,7 @@ export async function POST(
     const { data: form, error: fErr } = await admin
       .from("crm_forms")
       .select(
-        "id, org_id, pipeline_id, stage_id, success_message, redirect_url, created_by, name",
+        "id, org_id, pipeline_id, stage_id, success_message, redirect_url, created_by, name, scope",
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -165,6 +165,32 @@ export async function POST(
       leadData.source = `form:${slug}`
     }
 
+    // Form CS gera lead com scope=cs e categoria feedback_followup.
+    // Forms 'either' tambem viram CS quando o submission entra (deduzimos
+    // que se a pessoa esta respondendo NPS/health, é cliente existente).
+    const isCsForm = form.scope === "cs" || form.scope === "either"
+    const leadScope: "sales" | "cs" = isCsForm ? "cs" : "sales"
+    const leadCategory: string | null = isCsForm ? "feedback_followup" : null
+
+    // Tenta resolver store_id buscando por email do cliente (so pra CS).
+    let resolvedStoreId: string | null = null
+    if (isCsForm && leadData.email) {
+      const { data: clientMatch } = await admin
+        .from("clients")
+        .select("id, stores:client_stores(id, is_active)")
+        .eq("email", leadData.email)
+        .eq("org_id", form.org_id)
+        .maybeSingle()
+      if (clientMatch) {
+        const stores = (clientMatch.stores ?? []) as Array<{
+          id: string
+          is_active: boolean
+        }>
+        const activeStore = stores.find((s) => s.is_active) ?? stores[0]
+        if (activeStore) resolvedStoreId = activeStore.id
+      }
+    }
+
     // 5. Dedup por email (se existir email).
     let leadId: string | null = null
     if (leadData.email) {
@@ -172,6 +198,7 @@ export async function POST(
         .from("crm_leads")
         .select("id")
         .eq("email", leadData.email)
+        .eq("scope", leadScope) // dedup separado por scope
         .maybeSingle()
       if (existing) leadId = existing.id
     }
@@ -186,6 +213,9 @@ export async function POST(
           company: leadData.company ?? null,
           source: leadData.source,
           status: "new",
+          scope: leadScope,
+          category: leadCategory,
+          store_id: resolvedStoreId,
           created_by: form.created_by, // pode ser null se form orfao
           utm: {
             source: parsed.utm_source ?? null,

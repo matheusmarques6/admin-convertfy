@@ -80,7 +80,7 @@ function computeRevenueScore(currentMonth: number, previousMonth: number): numbe
   return 10
 }
 
-export async function computeStoreHealth(storeId: string, _orgId: string): Promise<StoreHealthResult | null> {
+export async function computeStoreHealth(storeId: string, orgId: string): Promise<StoreHealthResult | null> {
   const admin = createAdminClient()
 
   type StoreNps = { id: string; store_name: string; nps_last_score: number | null }
@@ -218,9 +218,87 @@ export async function computeStoreHealth(storeId: string, _orgId: string): Promi
     components,
   })
 
+  // Auto-cria lead CS health_alert quando score cai pra critico (<50)
+  // e nao ha lead aberto pra essa loja ainda. Evita duplicacao com
+  // dedup por scope+category+store_id+status nao terminal.
+  if (score < 50) {
+    await maybeCreateHealthAlertLead(storeId, orgId, score, components)
+  }
+
   log.info("[CrmHealth] computed", { store_id: storeId, score, components })
 
   return { store_id: storeId, health_score: score, components }
+}
+
+/**
+ * Cria lead CS health_alert se nao houver um aberto pra essa store.
+ * Usado pelo computeStoreHealth quando score cai abaixo de 50.
+ * Idempotente — se ja existe lead com status in (new, qualified) pra
+ * essa store na categoria health_alert, retorna sem criar.
+ */
+async function maybeCreateHealthAlertLead(
+  storeId: string,
+  orgId: string,
+  score: number,
+  components: HealthComponents,
+): Promise<void> {
+  const admin = createAdminClient()
+
+  // Ja existe lead aberto pra essa loja?
+  const { data: existing } = await admin
+    .from("crm_leads")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("scope", "cs")
+    .eq("category", "health_alert")
+    .in("status", ["new", "qualified"])
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) return
+
+  // Busca dados da loja+cliente pra preencher o lead
+  const { data: store } = await admin
+    .from("client_stores")
+    .select(
+      "store_name, client:clients(id, name, email, phone, owner_id)",
+    )
+    .eq("id", storeId)
+    .maybeSingle()
+
+  if (!store) return
+
+  const client = Array.isArray(store.client) ? store.client[0] : store.client
+  const componentsSummary = Object.entries(components)
+    .filter(([, v]) => (v as number) < 50)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(" · ")
+
+  const { error } = await admin.from("crm_leads").insert({
+    org_id: orgId,
+    name: store.store_name,
+    email: client?.email ?? null,
+    phone: client?.phone ?? null,
+    company: client?.name ?? null,
+    source: "cron:health-compute",
+    status: "new",
+    scope: "cs",
+    category: "health_alert",
+    store_id: storeId,
+    assigned_to: client?.owner_id ?? null,
+    notes: `Health score caiu pra ${score}/100. Sinais fracos: ${componentsSummary || "geral"}.`,
+    ai_qualification_score: 100 - score, // urgencia inversa ao health
+    ai_qualification_reason: `Auto-flag por health critico (${score}<50)`,
+  })
+
+  if (error) {
+    log.warn("[CrmHealth] Falha criando health_alert lead", {
+      store_id: storeId,
+      error: error.message,
+    })
+  } else {
+    log.info("[CrmHealth] health_alert lead criado", { store_id: storeId, score })
+  }
 }
 
 export async function computeAllStoresHealth(): Promise<{ total: number; ok: number; errors: number }> {
