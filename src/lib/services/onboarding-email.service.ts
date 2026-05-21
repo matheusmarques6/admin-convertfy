@@ -146,6 +146,17 @@ export async function sendAccountActiveEmail(onboardingId: string): Promise<void
       to: ctx.clientEmail,
       messageId: result.id,
     })
+
+    // AUTO·CLIENTE: marca item "Email automatico Conta ativa enviado ao cliente"
+    // da Etapa 07 (fire-and-forget). Import dinamico pra evitar ciclo.
+    try {
+      const { autoCompleteOnEmailSent } = await import(
+        "./onboarding-auto-checklist.service"
+      )
+      await autoCompleteOnEmailSent(onboardingId, "conta_ativa")
+    } catch (autoErr) {
+      log.warn("autoCompleteOnEmailSent falhou (Etapa 7)", autoErr)
+    }
   } catch (e) {
     log.error("Falha ao enviar email Etapa 7", e)
     // Nao re-throw — falha de email nao deve bloquear avanço do onboarding
