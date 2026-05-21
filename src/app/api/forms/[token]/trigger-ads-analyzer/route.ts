@@ -28,7 +28,7 @@ export async function POST(
 
     const { data: onb } = await admin
       .from("onboardings")
-      .select("store_id")
+      .select("store_id, client_id, form_responses")
       .eq("form_token", token)
       .maybeSingle()
     if (!onb || !onb.store_id) {
@@ -49,6 +49,39 @@ export async function POST(
         { error: "Loja não encontrada" },
         { status: 404 },
       )
+    }
+
+    // URL é obrigatória pro workflow do n8n (scrappeia a loja). Cascata:
+    // client_stores.store_url → form_responses.store_url → clients.website.
+    let storeUrl: string | null =
+      typeof store.store_url === "string" && store.store_url.trim()
+        ? store.store_url.trim()
+        : null
+
+    if (!storeUrl) {
+      const responses = onb.form_responses as Record<string, unknown> | null
+      const fromForm = responses?.store_url
+      if (typeof fromForm === "string" && fromForm.trim()) {
+        storeUrl = fromForm.trim()
+      }
+    }
+
+    if (!storeUrl && onb.client_id) {
+      const { data: client } = await admin
+        .from("clients")
+        .select("website")
+        .eq("id", onb.client_id)
+        .maybeSingle()
+      if (client?.website && typeof client.website === "string") {
+        storeUrl = client.website.trim() || null
+      }
+    }
+
+    if (!storeUrl) {
+      return NextResponse.json({
+        triggered: false,
+        reason: "missing_store_url",
+      })
     }
 
     const { count: topProductsCount } = await admin
@@ -73,7 +106,7 @@ export async function POST(
       store_id: store.id,
       client_id: store.client_id,
       store_name: store.store_name,
-      store_url: store.store_url,
+      store_url: storeUrl,
       platform: store.platform,
     })
 
