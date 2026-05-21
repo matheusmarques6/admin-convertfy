@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import { PipelineBoardView } from "@/components/crm/pipeline-board-view"
-import { CsPipelineActions } from "@/components/crm/cs-pipeline-actions"
+import { CsPipelineAutoSync } from "@/components/crm/cs-pipeline-auto-sync"
 
 export default async function CsPipelineDetailPage({
   params,
@@ -9,13 +9,12 @@ export default async function CsPipelineDetailPage({
 }) {
   const { id } = await params
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <CsPipelineActions pipelineId={id} />
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <Suspense fallback={null}>
-          <PipelineBoardView pipelineId={id} scope="cs" />
-        </Suspense>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      {/* Auto-sync silencioso pros pipelines CS canonicos (ex: Gestao
+          de Carteira). Sem output visual — popula o pipeline em
+          background na primeira vez que esta vazio. */}
+      <CsPipelineAutoSync pipelineId={id} />
+      <PipelineBoardView pipelineId={id} scope="cs" />
+    </Suspense>
   )
 }
