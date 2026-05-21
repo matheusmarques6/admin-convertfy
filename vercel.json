@@ -37,6 +37,10 @@
       "schedule": "0 5 * * *"
     },
     {
+      "path": "/api/cron/crm-renewal-opportunities",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/crm-snapshot",
       "schedule": "0 6 * * *"
     },

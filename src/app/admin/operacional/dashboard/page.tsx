@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import useSWR from "swr"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
@@ -10,9 +10,11 @@ import {
   AlertTriangle,
   Heart,
   HeartHandshake,
+  RefreshCw,
   Smile,
   TrendingUp,
   Users,
+  Zap,
 } from "lucide-react"
 
 /**
@@ -74,13 +76,63 @@ const fmtBRL = (cents: number) =>
   }).format(cents / 100)
 
 export default function CsDashboardPage() {
-  const { data, isLoading } = useSWR<CsDashboardData>(
+  const { data, isLoading, mutate } = useSWR<CsDashboardData>(
     "/api/crm/dashboard/cs",
     fetcher,
     { revalidateOnFocus: false },
   )
 
   const d = data
+
+  const [runningHealth, setRunningHealth] = useState(false)
+  const [runningRenewal, setRunningRenewal] = useState(false)
+  const [runMessage, setRunMessage] = useState<string | null>(null)
+
+  async function runHealthNow() {
+    if (runningHealth) return
+    setRunningHealth(true)
+    setRunMessage(null)
+    try {
+      const r = await fetch("/api/admin/crm-health/compute-now", {
+        method: "POST",
+        credentials: "include",
+      })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body?.error?.message || "Falha no recalculo")
+      const res = body.data ?? body
+      setRunMessage(
+        `Health recalculado: ${res.ok}/${res.total} OK · ${res.alerts_created} novo(s) alerta(s) CS`,
+      )
+      await mutate()
+    } catch (e) {
+      setRunMessage(`Erro: ${(e as Error).message}`)
+    } finally {
+      setRunningHealth(false)
+    }
+  }
+
+  async function runRenewalNow() {
+    if (runningRenewal) return
+    setRunningRenewal(true)
+    setRunMessage(null)
+    try {
+      const r = await fetch("/api/admin/crm-renewal/detect-now", {
+        method: "POST",
+        credentials: "include",
+      })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body?.error?.message || "Falha na deteccao")
+      const res = body.data ?? body
+      setRunMessage(
+        `Renovacoes: ${res.scanned} loja(s) na janela · ${res.created} novo(s) lead(s) · ${res.skipped} ja flaggadas`,
+      )
+      await mutate()
+    } catch (e) {
+      setRunMessage(`Erro: ${(e as Error).message}`)
+    } finally {
+      setRunningRenewal(false)
+    }
+  }
 
   const healthPct = useMemo(() => {
     if (!d) return null
@@ -108,8 +160,82 @@ export default function CsDashboardPage() {
     <CrmPageShell
       title="Dashboard de Customer Success"
       subtitle="Saúde da carteira ativa, MRR, NPS e pipelines em andamento"
+      actions={
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--crm-space-2)",
+          }}
+        >
+          <button
+            onClick={runHealthNow}
+            disabled={runningHealth || runningRenewal}
+            title="Recalcula health score de todas as lojas e cria leads CS pra criticas (<50). Cron real roda 5h UTC."
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              background: "#fff",
+              border: "1px solid var(--crm-border)",
+              color: "var(--crm-gray-700)",
+              cursor: runningHealth ? "wait" : "pointer",
+              opacity: runningHealth || runningRenewal ? 0.6 : 1,
+            }}
+          >
+            <Zap className="h-3.5 w-3.5" />
+            {runningHealth ? "Recalculando..." : "Recalcular health"}
+          </button>
+          <button
+            onClick={runRenewalNow}
+            disabled={runningHealth || runningRenewal}
+            title="Detecta lojas com contract_end_date em ate 60d e cria leads renewal_opportunity. Cron real roda 7h UTC."
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              background: "#fff",
+              border: "1px solid var(--crm-border)",
+              color: "var(--crm-gray-700)",
+              cursor: runningRenewal ? "wait" : "pointer",
+              opacity: runningHealth || runningRenewal ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {runningRenewal ? "Detectando..." : "Detectar renovações"}
+          </button>
+        </div>
+      }
     >
       <div className="p-6">
+        {runMessage && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "8px 12px",
+              background: runMessage.startsWith("Erro")
+                ? "#FEF2F2"
+                : "#ECFDF5",
+              color: runMessage.startsWith("Erro") ? "#991B1B" : "#065F46",
+              border: `1px solid ${runMessage.startsWith("Erro") ? "#FECACA" : "#A7F3D0"}`,
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+          >
+            {runMessage}
+          </div>
+        )}
         {isLoading || !d ? (
           <PageSkeleton variant="metrics" showHeader={false} className="px-0 py-0" />
         ) : d.total_stores === 0 ? (
