@@ -164,7 +164,7 @@ SELECT
     ELSE v_acomp_stage_4
   END,
   cs.store_name,
-  CASE WHEN wps.current_stage = 4 THEN 'won' ELSE 'open' END,
+  (CASE WHEN wps.current_stage = 4 THEN 'won' ELSE 'open' END)::deal_status,
   COALESCE(wps.flagged_by, 'system'),
   ROW_NUMBER() OVER (PARTITION BY wps.current_stage ORDER BY wps.flagged_at) * 10,
   wps.store_id,
@@ -214,10 +214,10 @@ SELECT
   END,
   COALESCE(cs.store_name, '(loja removida)') || ' — Call ' ||
     COALESCE(TO_CHAR(sfc.conducted_at, 'DD/MM/YYYY'), TO_CHAR(sfc.next_call_date, 'DD/MM/YYYY'), 'a marcar'),
-  CASE
+  (CASE
     WHEN sfc.conducted_at IS NOT NULL AND sfc.notes IS NOT NULL AND sfc.notes <> '' THEN 'won'
     ELSE 'open'
-  END,
+  END)::deal_status,
   'feedback_call',
   ROW_NUMBER() OVER (
     PARTITION BY (CASE
@@ -274,7 +274,7 @@ SELECT
     ELSE v_cad_monthly
   END,
   cs.store_name,
-  'open',
+  'open'::deal_status,
   'cadence_config',
   ROW_NUMBER() OVER (
     PARTITION BY COALESCE(sco.frequency, 'monthly')
