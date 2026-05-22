@@ -4,17 +4,38 @@ import { useState } from "react"
 import { FileText, Sparkles } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
-import type { StoreBriefing, BriefingMarca, BriefingDetail } from "@/types/email-workspace"
+import type { StoreBriefing, BriefingDetail } from "@/types/email-workspace"
+
+// Subset de client_stores lido pela tab Marca. Fonte canônica dos campos
+// de marca (slogan via brand_thesis, atributos do tom via tone_use_words).
+// Persistência via PATCH /api/admin/stores/[id]/context.
+export interface BriefingStoreContext {
+  id: string
+  store_name: string
+  store_url: string | null
+  platform: string | null
+  niche: string | null
+  created_at: string | null
+  slogan: string | null
+  diferencial: string | null
+  persona: string | null
+  posicionamento_preco: "popular" | "medio" | "premium" | null
+  hashtags: string[] | null
+  brand_thesis: string | null
+  tone_use_words: string[] | null
+}
 
 interface BriefingResourceViewProps {
   storeId: string
   briefing: StoreBriefing | null
+  store: BriefingStoreContext
   onChanged: () => void
 }
 
 export function BriefingResourceView({
   storeId,
   briefing,
+  store,
   onChanged,
 }: BriefingResourceViewProps) {
   const toast = useToast()
@@ -83,8 +104,25 @@ export function BriefingResourceView({
 
   const lastUpdate = briefing ? formatRelativeTime(briefing.created_at) : null
 
-  const marca: BriefingMarca = briefing?.marca ?? {}
   const detail: BriefingDetail = briefing?.briefing ?? {}
+
+  // Persiste campo da tab Marca diretamente em client_stores via /context.
+  // Fonte canônica — substitui o antigo patchBriefing("marca", …) que
+  // escrevia em store_briefings.marca (jsonb versionado).
+  const patchContext = async (
+    update: Partial<BriefingStoreContext>,
+  ): Promise<void> => {
+    const res = await fetch(`/api/admin/stores/${storeId}/context`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || "Falha ao salvar")
+    }
+    onChanged()
+  }
 
   return (
     <div
@@ -196,11 +234,24 @@ export function BriefingResourceView({
       </div>
 
       {/* Content */}
-      <div style={{ padding: "24px 32px 48px" }}>
+      <div
+        style={{
+          padding: "24px 32px 48px",
+          // Grid 2-col só na tab Marca (mockup tem aside direita).
+          // Tab Briefing fica full-width.
+          display: activeTab === "marca" ? "grid" : "block",
+          gridTemplateColumns:
+            activeTab === "marca" ? "minmax(0, 1fr) 280px" : undefined,
+          gap: activeTab === "marca" ? 32 : 0,
+          alignItems: "start",
+        }}
+      >
         {activeTab === "marca" && (
           <>
-            {/* Slogan card — sempre aparece pra permitir adicionar */}
-            {(briefing || marca.slogan !== undefined) && (
+            <div style={{ minWidth: 0 }}>
+              {/* Slogan card — fonte: client_stores.brand_thesis (Perfil da
+                  Marca da Pesquisa & Diagnóstico). Fallback pro slogan
+                  legado caso brand_thesis esteja vazio. */}
               <div
                 style={{
                   padding: "32px 32px",
@@ -233,71 +284,101 @@ export function BriefingResourceView({
                 >
                   &ldquo;
                   <InlineEditField
-                    value={marca.slogan ?? null}
+                    value={store.brand_thesis ?? store.slogan ?? null}
                     placeholder="Slogan da marca"
-                    onSave={(v) => patchBriefing("marca", { slogan: v || null })}
-                    displayStyle={{ fontSize: 24, fontWeight: 600, fontStyle: "italic" }}
+                    onSave={(v) =>
+                      patchContext({ brand_thesis: v || null })
+                    }
+                    displayStyle={{
+                      fontSize: 24,
+                      fontWeight: 600,
+                      fontStyle: "italic",
+                    }}
                   />
                   &rdquo;
                 </div>
               </div>
-            )}
 
-            {/* Posicionamento */}
-            <RowField
-              label="Nicho"
-              value={marca.nicho}
-              placeholder="Ex: E-commerce de calçados esportivos · vôlei e basquete"
-              onSave={(v) => patchBriefing("marca", { nicho: v })}
-            />
-            <RowField
-              label="Diferencial declarado"
-              value={marca.diferencial}
-              placeholder="O que distingue essa loja..."
-              onSave={(v) => patchBriefing("marca", { diferencial: v })}
-              textarea
-            />
-            <RowField
-              label="Persona-alvo"
-              value={marca.persona}
-              placeholder="Descreva o público-alvo..."
-              onSave={(v) => patchBriefing("marca", { persona: v })}
-              textarea
-            />
+              {/* Posicionamento */}
+              <RowField
+                label="Nicho"
+                value={store.niche}
+                placeholder="Ex: E-commerce de calçados esportivos · vôlei e basquete"
+                onSave={(v) => patchContext({ niche: v })}
+              />
+              <RowField
+                label="Diferencial declarado"
+                value={store.diferencial}
+                placeholder="O que distingue essa loja..."
+                onSave={(v) => patchContext({ diferencial: v })}
+                textarea
+              />
+              <RowField
+                label="Persona-alvo"
+                value={store.persona}
+                placeholder="Descreva o público-alvo..."
+                onSave={(v) => patchContext({ persona: v })}
+                textarea
+              />
 
-            {/* Tom de voz */}
-            <SectionLabel style={{ marginTop: 28 }}>Tom de voz</SectionLabel>
-            <p style={{ fontSize: 11, color: "var(--crm-gray-500)", margin: "4px 0 12px" }}>
-              Atributos do tom da marca
-            </p>
-            <ToneSelector
-              tom={marca.tom_voz}
-              onSave={(v) => patchBriefing("marca", { tom_voz: v })}
-            />
+              {/* Tom de voz — chips abertos sobre client_stores.tone_use_words.
+                  Mesmo campo usado pela Pesquisa & Diagnóstico, pilar 4. */}
+              <SectionLabel style={{ marginTop: 28 }}>Tom de voz</SectionLabel>
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "var(--crm-gray-500)",
+                  margin: "4px 0 12px",
+                }}
+              >
+                Atributos do tom da marca
+              </p>
+              <TagListEditor
+                tags={store.tone_use_words ?? []}
+                placeholder="+ atributo"
+                onSave={(tags) => patchContext({ tone_use_words: tags })}
+              />
 
-            <div
-              className="flex items-center gap-2"
-              style={{ marginTop: 24, fontSize: 13 }}
-            >
-              <span style={{ color: "var(--crm-gray-500)" }}>
-                Posicionamento de preço
-              </span>
-              <PositioningSelector
-                pos={marca.posicionamento}
-                onSave={(v) => patchBriefing("marca", { posicionamento: v })}
+              <div
+                className="flex items-center gap-2"
+                style={{ marginTop: 24, fontSize: 13 }}
+              >
+                <span style={{ color: "var(--crm-gray-500)" }}>
+                  Posicionamento de preço
+                </span>
+                <PositioningSelector
+                  pos={store.posicionamento_preco ?? undefined}
+                  onSave={(v) =>
+                    patchContext({
+                      posicionamento_preco:
+                        v as "popular" | "medio" | "premium",
+                    })
+                  }
+                />
+              </div>
+
+              {/* Hashtags */}
+              <SectionLabel style={{ marginTop: 28 }}>
+                Hashtags da marca
+              </SectionLabel>
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "var(--crm-gray-500)",
+                  margin: "4px 0 12px",
+                }}
+              >
+                Usadas em campanhas e UGC
+              </p>
+              <TagListEditor
+                tags={store.hashtags ?? []}
+                prefix="#"
+                onSave={(tags) => patchContext({ hashtags: tags })}
               />
             </div>
 
-            {/* Hashtags */}
-            <SectionLabel style={{ marginTop: 28 }}>Hashtags da marca</SectionLabel>
-            <p style={{ fontSize: 11, color: "var(--crm-gray-500)", margin: "4px 0 12px" }}>
-              Usadas em campanhas e UGC
-            </p>
-            <TagListEditor
-              tags={marca.hashtags ?? []}
-              prefix="#"
-              onSave={(tags) => patchBriefing("marca", { hashtags: tags })}
-            />
+            {/* Aside direita: Quick facts + Sobre o briefing */}
+            <QuickFactsAside store={store} />
           </>
         )}
 
@@ -498,45 +579,6 @@ function RowField({
           }}
         />
       </div>
-    </div>
-  )
-}
-
-const TONS = ["formal", "casual", "afetivo", "divertido"] as const
-
-function ToneSelector({
-  tom,
-  onSave,
-}: {
-  tom: string | undefined
-  onSave: (v: string) => Promise<void>
-}) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {TONS.map((t) => {
-        const active = tom === t
-        return (
-          <button
-            key={t}
-            onClick={() => onSave(t)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              background: active ? "var(--crm-blue-50)" : "var(--crm-gray-0)",
-              border: active
-                ? "1px solid var(--crm-blue-100)"
-                : "1px solid var(--crm-border)",
-              color: active ? "var(--crm-brand)" : "var(--crm-gray-700)",
-              fontSize: 12.5,
-              fontWeight: active ? 600 : 500,
-              cursor: "pointer",
-              textTransform: "capitalize",
-            }}
-          >
-            {t}
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -951,6 +993,136 @@ function PoliciesEditor({
           + Adicionar
         </button>
       </div>
+    </div>
+  )
+}
+
+function QuickFactsAside({ store }: { store: BriefingStoreContext }) {
+  const entradaEm = store.created_at
+    ? new Date(store.created_at).toLocaleDateString("pt-BR")
+    : null
+  const urlDisplay = store.store_url
+    ? store.store_url.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    : null
+  const platformDisplay = store.platform
+    ? store.platform.charAt(0).toUpperCase() + store.platform.slice(1)
+    : null
+
+  return (
+    <aside
+      style={{
+        position: "sticky",
+        top: 140,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          padding: "14px 16px",
+          background: "var(--crm-gray-0)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 8,
+        }}
+      >
+        <h4
+          style={{
+            margin: "0 0 10px",
+            fontSize: 10.5,
+            fontWeight: 700,
+            color: "var(--crm-gray-500)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          Quick facts
+        </h4>
+        <QuickFactRow label="Plataforma" value={platformDisplay} />
+        <QuickFactRow label="URL" value={urlDisplay} mono />
+        <QuickFactRow label="Entrou em" value={entradaEm} />
+        <QuickFactRow label="Segmento" value={store.niche} last />
+      </div>
+      <div
+        style={{
+          padding: "12px 14px",
+          background: "var(--crm-gray-50)",
+          border: "1px solid var(--crm-gray-100)",
+          borderRadius: 8,
+        }}
+      >
+        <h4
+          style={{
+            margin: "0 0 4px",
+            fontSize: 11.5,
+            fontWeight: 600,
+            color: "var(--crm-gray-700)",
+          }}
+        >
+          Sobre o briefing
+        </h4>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 11.5,
+            color: "var(--crm-gray-500)",
+            lineHeight: 1.45,
+          }}
+        >
+          Informações organizadas a partir do formulário de onboarding, do
+          site, e de mídias sociais.
+        </p>
+      </div>
+    </aside>
+  )
+}
+
+function QuickFactRow({
+  label,
+  value,
+  mono,
+  last,
+}: {
+  label: string
+  value: string | null | undefined
+  mono?: boolean
+  last?: boolean
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 10,
+        padding: "7px 0",
+        borderBottom: last ? "0" : "1px solid var(--crm-gray-100)",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11.5,
+          color: "var(--crm-gray-500)",
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: value ? "var(--crm-gray-900)" : "var(--crm-gray-400)",
+          fontWeight: 500,
+          fontFamily: mono ? "var(--crm-font-mono, monospace)" : undefined,
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={value ?? undefined}
+      >
+        {value ?? "—"}
+      </span>
     </div>
   )
 }
