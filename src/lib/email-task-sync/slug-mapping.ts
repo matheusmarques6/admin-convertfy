@@ -1,0 +1,167 @@
+/**
+ * Mapa task.slug -> workspace target (mode + flow + email).
+ * Fonte da verdade para roteamento entre o drawer de task e o
+ * production-workspace. Sincronizado com onboarding-bootstrap.service
+ * via test de contrato em __tests__/slug-mapping.test.ts.
+ */
+
+import type { FlowType } from "@/types/email-workspace"
+
+export type WorkspaceMode = "preview" | "full"
+
+export interface EmailTarget {
+  kind: "email"
+  mode: WorkspaceMode
+  flowType: FlowType
+  emailNumber: number
+}
+
+export interface EmailListSubItem {
+  slug: string
+  emailNumber: number
+}
+
+export interface EmailListTarget {
+  kind: "email-list"
+  mode: WorkspaceMode
+  flowType: FlowType
+  subItems: EmailListSubItem[]
+}
+
+export interface CheckboxOnlyTarget {
+  kind: "checkbox-only"
+  resource?: "brand" | "briefing"
+}
+
+export type TaskWorkspaceTarget =
+  | EmailTarget
+  | EmailListTarget
+  | CheckboxOnlyTarget
+
+const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1)
+
+const subItems = (
+  prefix: string,
+  count: number,
+): EmailListSubItem[] =>
+  range(count).map((n) => ({ slug: `${prefix}_${n}`, emailNumber: n }))
+
+export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
+  // Etapa 3 — Designer cria pilotos
+  preview_brand_brain: { kind: "checkbox-only", resource: "briefing" },
+  preview_email_welcome: {
+    kind: "email",
+    mode: "preview",
+    flowType: "welcome",
+    emailNumber: 1,
+  },
+  preview_email_carrinho_1: {
+    kind: "email",
+    mode: "preview",
+    flowType: "abandoned_cart",
+    emailNumber: 1,
+  },
+  preview_email_carrinho_2: {
+    kind: "email",
+    mode: "preview",
+    flowType: "abandoned_cart",
+    emailNumber: 2,
+  },
+  preview_email_pos_compra: {
+    kind: "email",
+    mode: "preview",
+    flowType: "post_purchase",
+    emailNumber: 1,
+  },
+
+  // Etapa 5 — Emails finais (1 task por flow, sub_items = emails individuais)
+  flow_welcome: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "welcome",
+    subItems: subItems("welcome_email", 8),
+  },
+  flow_carrinho_abandonado: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "abandoned_cart",
+    subItems: subItems("carrinho_email", 8),
+  },
+  flow_browse_abandoned: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "browse_abandonment",
+    subItems: subItems("browse_abandoned_email", 5),
+  },
+  flow_upsell: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "post_purchase",
+    subItems: subItems("upsell_email", 4),
+  },
+  flow_winback: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "win_back",
+    subItems: subItems("winback_email", 3),
+  },
+
+  // Fase 2 — sem FlowType correspondente no enum email_flows ainda
+  flow_site_abandoned: null,
+  flow_etapas_envio: null,
+  flow_atraso_entrega: null,
+  flow_pedido_enviado: null,
+}
+
+export function resolveTaskWorkspaceTarget(
+  slug: string | null | undefined,
+): TaskWorkspaceTarget | null {
+  if (!slug) return null
+  return TASK_SLUG_MAP[slug] ?? null
+}
+
+/**
+ * Para tasks 1:N (`flow_*`), resolve o target de um sub_item específico.
+ * Ex: parent=`flow_welcome`, sub=`welcome_email_3` -> { welcome, #3 }.
+ */
+export function resolveSubItemEmailTarget(
+  parentSlug: string,
+  subItemSlug: string,
+): EmailTarget | null {
+  const target = resolveTaskWorkspaceTarget(parentSlug)
+  if (!target || target.kind !== "email-list") return null
+  const sub = target.subItems.find((s) => s.slug === subItemSlug)
+  if (!sub) return null
+  return {
+    kind: "email",
+    mode: target.mode,
+    flowType: target.flowType,
+    emailNumber: sub.emailNumber,
+  }
+}
+
+/**
+ * Caminho reverso: encontra qual task.slug é dona de um email
+ * (flowType + emailNumber), prioridade preview > full. Usado pelo sync
+ * para subir o status da task quando email muda no workspace.
+ */
+export function resolveSlugForEmail(
+  flowType: FlowType,
+  emailNumber: number,
+): { parentSlug: string; subItemSlug?: string } | null {
+  for (const [slug, target] of Object.entries(TASK_SLUG_MAP)) {
+    if (!target) continue
+    if (
+      target.kind === "email" &&
+      target.flowType === flowType &&
+      target.emailNumber === emailNumber
+    ) {
+      return { parentSlug: slug }
+    }
+    if (target.kind === "email-list" && target.flowType === flowType) {
+      const sub = target.subItems.find((s) => s.emailNumber === emailNumber)
+      if (sub) return { parentSlug: slug, subItemSlug: sub.slug }
+    }
+  }
+  return null
+}

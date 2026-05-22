@@ -43,7 +43,7 @@ function chk(
   return { id, label, order, ...extras }
 }
 
-const SEED_COLUMNS: ColumnSeed[] = [
+export const SEED_COLUMNS: ColumnSeed[] = [
   {
     name: "Entrada",
     slug: "entrada",
