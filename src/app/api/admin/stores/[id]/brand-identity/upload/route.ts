@@ -106,10 +106,68 @@ export async function POST(
       .from("onboarding-visual-assets")
       .createSignedUrl(path, 60 * 60 * 24 * 7)
 
+    const signedUrl = signed?.signedUrl ?? null
+
+    // Persiste a URL no slot correspondente de store_brand_identity. Sem
+    // isso, o arquivo fica no Storage mas a UI continua mostrando vazio.
+    // Slots de logo viram coluna direta; brand_manual nao tem coluna —
+    // soltamos no metadata via cliente (out of scope deste endpoint).
+    if (
+      slot !== "brand_manual" &&
+      VALID_SLOTS.includes(slot as (typeof VALID_SLOTS)[number]) &&
+      signedUrl
+    ) {
+      // Busca a versao mais recente — se nao existir, cria v=1 zerada.
+      const { data: current } = await admin
+        .from("store_brand_identity")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const nextVersion = (current?.version ?? 0) + 1
+      const merged: Record<string, unknown> = {
+        store_id: storeId,
+        version: nextVersion,
+        source: "edited",
+        logo_main_svg: current?.logo_main_svg ?? null,
+        logo_main_png: current?.logo_main_png ?? null,
+        logo_alt_svg: current?.logo_alt_svg ?? null,
+        logo_alt_png: current?.logo_alt_png ?? null,
+        logo_monogram_svg: current?.logo_monogram_svg ?? null,
+        logo_monogram_png: current?.logo_monogram_png ?? null,
+        logo_reverse_svg: current?.logo_reverse_svg ?? null,
+        logo_reverse_png: current?.logo_reverse_png ?? null,
+        colors_primary: current?.colors_primary ?? [],
+        colors_secondary: current?.colors_secondary ?? [],
+        font_heading: current?.font_heading ?? null,
+        font_heading_weight: current?.font_heading_weight ?? null,
+        font_body: current?.font_body ?? null,
+        font_body_weight: current?.font_body_weight ?? null,
+        voice: current?.voice ?? [],
+        trust_icons: current?.trust_icons ?? [],
+        top_products: current?.top_products ?? [],
+      }
+      merged[slot] = signedUrl
+
+      const { error: insErr } = await admin
+        .from("store_brand_identity")
+        .insert(merged)
+
+      if (insErr) {
+        log.error("[Upload] erro ao gravar slot em store_brand_identity", insErr)
+        throw new AppError(
+          `Upload feito mas falhou ao salvar no banco: ${insErr.message}`,
+          500,
+        )
+      }
+    }
+
     return successResponse(request, {
       slot,
       path,
-      url: signed?.signedUrl ?? null,
+      url: signedUrl,
       size: file.size,
       filename: file.name,
       mime_type: file.type,
