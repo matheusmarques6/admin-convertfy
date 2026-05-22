@@ -455,9 +455,11 @@ export function FormTela1Client({ token }: { token: string }) {
     try {
       const fd = new FormData()
       fd.append("file", file)
-      fd.append("scope", "deliverable")
-      fd.append("ref_id", ctx.id)
-      const res = await fetch("/api/upload/onboarding", {
+      fd.append("field_key", qKey)
+      // Endpoint publico — sem requireAuth, valida via form_token na URL.
+      // O /api/upload/onboarding antigo exigia auth e quebrava o cliente
+      // externo (resposta 401 "Nao autorizado" durante o preenchimento).
+      const res = await fetch(`/api/forms/${token}/upload`, {
         method: "POST",
         body: fd,
       })
