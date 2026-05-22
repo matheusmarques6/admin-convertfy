@@ -29,6 +29,11 @@ import type {
 import { EmailDetailView } from "./email-detail-view"
 import { BrandResourceView } from "./brand-resource-view"
 import { BriefingResourceView } from "./briefing-resource-view"
+import { filterFlowsByMode } from "./filter-flows-by-mode"
+import type {
+  WorkspaceMode,
+  AllowedEmailRef,
+} from "./production-workspace-types"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -53,11 +58,22 @@ interface WorkspaceResponse {
   flows: EmailFlow[]
 }
 
+export type { WorkspaceMode, AllowedEmailRef }
+
 interface ProductionWorkspaceProps {
   storeId: string
   initialResource: string | null
   initialFlow: string | null
   initialEmail: string | null
+  /** "preview" filtra a sidebar pros emails-piloto definidos em allowedEmails. */
+  mode?: WorkspaceMode
+  /** Em modo preview, restringe quais emails aparecem na sidebar. */
+  allowedEmails?: AllowedEmailRef[]
+  /**
+   * Quando embedded em modal, sobrescreve o botão de fechar (que por
+   * default navega pra /admin/stores/[id]). Se passar, o X chama isso.
+   */
+  onClose?: () => void
 }
 
 // Tipo da seleção atual
@@ -80,6 +96,9 @@ export function ProductionWorkspace({
   initialResource,
   initialFlow,
   initialEmail,
+  mode = "full",
+  allowedEmails,
+  onClose,
 }: ProductionWorkspaceProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -93,7 +112,10 @@ export function ProductionWorkspace({
   const store = resp?.store
   const brand = resp?.brand ?? null
   const briefing = resp?.briefing ?? null
-  const flows = useMemo(() => resp?.flows ?? [], [resp?.flows])
+  const flows = useMemo<EmailFlow[]>(
+    () => filterFlowsByMode(resp?.flows ?? [], mode, allowedEmails),
+    [resp?.flows, mode, allowedEmails],
+  )
 
   // ── Selection state (sincronizado com URL) ─────────────
   const [selection, setSelection] = useState<Selection>(() => {
@@ -106,9 +128,28 @@ export function ProductionWorkspace({
     return { kind: "none" }
   })
 
-  // Auto-select primeiro item disponível quando carrega
+  // Auto-select primeiro item disponível quando carrega.
+  // Em modo preview, prioriza email (motivo de abrir o workspace) sobre recursos.
   useEffect(() => {
     if (!resp || selection.kind !== "none") return
+    if (mode === "preview") {
+      const firstFlowWithEmails = flows.find(
+        (f) => (f.emails ?? []).length > 0,
+      )
+      if (firstFlowWithEmails) {
+        setSelection({
+          kind: "email",
+          flowId: firstFlowWithEmails.id,
+          emailId: firstFlowWithEmails.emails![0].id,
+        })
+        return
+      }
+      if (briefing) {
+        setSelection({ kind: "resource", resource: "briefing" })
+        return
+      }
+      return
+    }
     if (brand) {
       setSelection({ kind: "resource", resource: "brand" })
       return
@@ -125,7 +166,7 @@ export function ProductionWorkspace({
         emailId: welcome.emails[0].id,
       })
     }
-  }, [resp, selection.kind, brand, briefing, flows])
+  }, [resp, selection.kind, brand, briefing, flows, mode])
 
   // Sincroniza URL quando selection muda
   useEffect(() => {
@@ -306,7 +347,7 @@ export function ProductionWorkspace({
           </Link>
           <ChevronRight className="h-3 w-3" style={{ color: "var(--crm-gray-300)" }} />
           <span style={{ color: "var(--crm-gray-700)", fontWeight: 500 }}>
-            Workspace de produção
+            {mode === "preview" ? "Produção piloto" : "Workspace de produção"}
             {currentFlow ? ` · ${currentFlow.name}` : ""}
           </span>
           {currentFlow?.assignee?.name && (
@@ -349,7 +390,11 @@ export function ProductionWorkspace({
             </span>
           )}
           <button
-            onClick={() => router.push(`/admin/stores/${storeId}`)}
+            onClick={
+              onClose
+                ? onClose
+                : () => router.push(`/admin/stores/${storeId}`)
+            }
             className="cf-focusable flex items-center justify-center"
             style={{
               width: 28,
@@ -361,7 +406,7 @@ export function ProductionWorkspace({
               borderRadius: 4,
             }}
             aria-label="Fechar"
-            title="Fechar workspace"
+            title={onClose ? "Voltar para a tarefa" : "Fechar workspace"}
           >
             <X className="h-4 w-4" />
           </button>
