@@ -17,6 +17,8 @@ interface TaskWorkspaceModalProps {
   allowedEmails?: AllowedEmailRef[]
   initialFlowId: string | null
   initialEmailId: string | null
+  /** "brand" | "briefing" pra abrir num recurso de consulta. */
+  initialResource?: "brand" | "briefing" | null
 }
 
 export function TaskWorkspaceModal({
@@ -28,6 +30,7 @@ export function TaskWorkspaceModal({
   allowedEmails,
   initialFlowId,
   initialEmailId,
+  initialResource = null,
 }: TaskWorkspaceModalProps) {
   // Fecha no ESC
   useEffect(() => {
@@ -77,7 +80,7 @@ export function TaskWorkspaceModal({
           storeId={storeId}
           mode={mode}
           allowedEmails={allowedEmails}
-          initialResource={null}
+          initialResource={initialResource}
           initialFlow={initialFlowId}
           initialEmail={initialEmailId}
           onClose={handleClose}

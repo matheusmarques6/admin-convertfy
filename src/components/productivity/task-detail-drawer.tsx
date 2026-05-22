@@ -318,66 +318,6 @@ const FLOW_LABELS: Record<ProductivityTask["status"], string> = {
   review: "Em revisão",
   done: "Concluída",
 }
-function BrandBrainStudyCard({
-  storeId,
-  resource,
-  taskStatus,
-  onMarkStudied,
-}: {
-  storeId: string | null
-  resource: "brand" | "briefing" | undefined
-  taskStatus: ProductivityTask["status"]
-  onMarkStudied: () => void
-}) {
-  const done = taskStatus === "done"
-  const linkHref = storeId
-    ? `/admin/stores/${storeId}/producao?resource=${resource ?? "briefing"}`
-    : null
-  return (
-    <div
-      className="mt-2.5 rounded-[10px] p-3 border"
-      style={{
-        background: done ? C.greenBg : "#FCFCFD",
-        borderColor: done ? C.greenBorder : "rgba(0,0,0,0.06)",
-      }}
-    >
-      <div className="text-[12px] font-semibold text-gray-900 mb-1">
-        Material de consulta
-      </div>
-      <div className="text-[11px] text-gray-600 mb-2.5 leading-snug">
-        Consulte o Brand Brain do cliente antes de produzir os pilotos. Depois,
-        marque a tarefa como estudada.
-      </div>
-      <div className="flex gap-2">
-        {linkHref && (
-          <a
-            href={linkHref}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-semibold border transition-all hover:bg-gray-50"
-            style={{
-              borderColor: "rgba(0,0,0,0.08)",
-              background: "#FFFFFF",
-              color: "#374151",
-            }}
-          >
-            Ver Brand Brain
-          </a>
-        )}
-        {!done && (
-          <button
-            onClick={onMarkStudied}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-semibold text-white transition-all"
-            style={{ background: C.green }}
-          >
-            Marquei como estudado
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 function GuidedActionBar({
   task,
   onAdvance,
@@ -813,10 +753,10 @@ export function TaskDetailDrawer({
     allowedEmails?: AllowedEmailRef[]
     flowId: string | null
     emailId: string | null
+    resource: "brand" | "briefing" | null
   } | null>(null)
   const [workspaceTarget, setWorkspaceTarget] =
     useState<TaskWorkspaceTarget | null>(null)
-  const [workspaceStoreId, setWorkspaceStoreId] = useState<string | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [timerSec, setTimerSec] = useState(0)
   const [comment, setComment] = useState("")
@@ -961,7 +901,6 @@ export function TaskDetailDrawer({
         }
         if (!cancelled && payload.target) {
           setWorkspaceTarget(payload.target)
-          if (payload.storeId) setWorkspaceStoreId(payload.storeId)
         }
       } catch (err) {
         console.warn("[drawer] /workspace-target falhou:", err)
@@ -1016,16 +955,16 @@ export function TaskDetailDrawer({
         emailId: string | null
       }
       setWorkspaceTarget(payload.target)
-      setWorkspaceStoreId(payload.storeId)
-      if (payload.target.kind === "checkbox-only") {
-        return payload.target
-      }
       setWorkspaceModal({
         storeId: payload.storeId,
         mode: payload.target.kind === "email" ? "preview" : "full",
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,
+        resource:
+          payload.target.kind === "checkbox-only"
+            ? (payload.target.resource ?? "briefing")
+            : null,
       })
       return payload.target
     } catch (err) {
@@ -1038,7 +977,7 @@ export function TaskDetailDrawer({
 
   // Abre modal sem mudar status (botão "Abrir workspace" quando task já está progress)
   const reopenWorkspaceForTask = async () => {
-    if (!workspaceTarget || workspaceTarget.kind === "checkbox-only") return
+    if (!workspaceTarget) return
     try {
       const r = await fetch(`/api/tasks/${task.id}/workspace-target`)
       if (!r.ok) return
@@ -1055,6 +994,10 @@ export function TaskDetailDrawer({
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,
+        resource:
+          payload.target.kind === "checkbox-only"
+            ? (payload.target.resource ?? "briefing")
+            : null,
       })
     } catch (err) {
       console.error("[drawer] reopenWorkspaceForTask failed", err)
@@ -1066,14 +1009,11 @@ export function TaskDetailDrawer({
     // Esse é o único path responsável por status — robusto e testado.
     await updateTaskField({ status: next }, { status: next })
 
-    // EM PARALELO: se subindo pending→progress e há target de workspace,
-    // abre o modal apontando pro flow/email correto. Falha do /start
-    // não afeta o status (já foi mudado acima).
-    if (next === "progress" && task.status === "pending" && workspaceTarget) {
-      const target = await openWorkspaceForTask()
-      if (target?.kind === "checkbox-only") {
-        setShowToast("Tarefa iniciada. Consulte o Brand Brain abaixo.")
-      }
+    // pending → progress: SEMPRE tenta abrir o modal. /start é idempotente
+    // e retorna 422 silenciosamente pra tasks sem workspace (drawer
+    // continua funcionando normal nesse caso, sem modal).
+    if (next === "progress" && task.status === "pending") {
+      await openWorkspaceForTask()
     }
 
     if (next === "progress" && !running) setRunning(true)
@@ -1543,7 +1483,6 @@ export function TaskDetailDrawer({
           <div className="mb-4">
             <GuidedActionBar task={task} onAdvance={handleAdvance} />
             {workspaceTarget &&
-              workspaceTarget.kind !== "checkbox-only" &&
               (task.status === "progress" || task.status === "review") && (
                 <button
                   type="button"
@@ -1556,20 +1495,12 @@ export function TaskDetailDrawer({
                     color: "#374151",
                   }}
                 >
-                  {I.eye({ size: 13, strokeWidth: 2 })} Abrir workspace de
-                  produção
+                  {I.eye({ size: 13, strokeWidth: 2 })}{" "}
+                  {workspaceTarget.kind === "checkbox-only"
+                    ? "Abrir Brand Brain"
+                    : "Abrir workspace de produção"}
                 </button>
               )}
-            {workspaceTarget?.kind === "checkbox-only" && (
-              <BrandBrainStudyCard
-                storeId={workspaceStoreId}
-                resource={workspaceTarget.resource}
-                taskStatus={task.status}
-                onMarkStudied={() =>
-                  handleAdvance("done" as ProductivityTask["status"])
-                }
-              />
-            )}
           </div>
 
           <div className="flex flex-col">
@@ -2323,6 +2254,7 @@ export function TaskDetailDrawer({
           allowedEmails={workspaceModal.allowedEmails}
           initialFlowId={workspaceModal.flowId}
           initialEmailId={workspaceModal.emailId}
+          initialResource={workspaceModal.resource}
         />
       )}
     </>
