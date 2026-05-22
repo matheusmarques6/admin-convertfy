@@ -104,11 +104,12 @@ function initStoreDraft(s: StoreSummary | null | undefined): EditableStore {
 }
 
 // Retorna patch ou null se nada mudou. Compara JSON pra arrays/strings.
+// Quando original = null (primeira edicao da loja), o PATCH ainda funciona
+// — o endpoint cria v=1 a partir do payload.
 function diffBrand(
   original: StoreBrandIdentity | null,
   draft: EditableBrand,
 ): Record<string, unknown> | null {
-  if (!original) return null
   const orig = initBrandDraft(original)
   const patch: Record<string, unknown> = {}
   for (const k of Object.keys(draft) as (keyof EditableBrand)[]) {
@@ -301,7 +302,6 @@ export function BrandResourceView({
   }
 
   const saveEdits = async () => {
-    if (!brand) return
     setSavingEdits(true)
     try {
       const calls: Promise<Response>[] = []
@@ -561,7 +561,6 @@ export function BrandResourceView({
           {mode === "view" && (
             <button
               onClick={enterEditMode}
-              disabled={!brand}
               className="cf-focusable inline-flex items-center gap-1.5"
               style={{
                 height: 32,
@@ -572,8 +571,8 @@ export function BrandResourceView({
                 borderRadius: 6,
                 fontSize: 12,
                 fontWeight: 600,
-                cursor: !brand ? "default" : "pointer",
-                opacity: !brand ? 0.55 : 1,
+                cursor: "pointer",
+                opacity: 1,
               }}
             >
               <Pencil className="h-3 w-3" />
@@ -702,10 +701,7 @@ export function BrandResourceView({
 
       {/* Body */}
       <div style={{ padding: "32px 32px 48px" }}>
-        {!brand ? (
-          <EmptyState onCapture={handleAiCapture} generating={generating} />
-        ) : (
-          <>
+        <>
             {/* Logos */}
             <SectionTitle title="Logo" subtitle="Versões oficiais da marca · clique em baixar para o SVG" />
             <div
@@ -718,8 +714,8 @@ export function BrandResourceView({
               <LogoCard
                 title="Wordmark"
                 subtitle="Versão principal"
-                svg={brand.logo_main_svg}
-                png={brand.logo_main_png}
+                svg={brand?.logo_main_svg ?? null}
+                png={brand?.logo_main_png ?? null}
                 bg="#FFFFFF"
                 editing={mode === "edit"}
                 uploadingSvg={uploadingSlot === "logo_main_svg"}
@@ -743,8 +739,8 @@ export function BrandResourceView({
               <LogoCard
                 title="Wordmark · azul"
                 subtitle="Versão em destaque"
-                svg={brand.logo_alt_svg}
-                png={brand.logo_alt_png}
+                svg={brand?.logo_alt_svg ?? null}
+                png={brand?.logo_alt_png ?? null}
                 bg="#FFFFFF"
                 editing={mode === "edit"}
                 uploadingSvg={uploadingSlot === "logo_alt_svg"}
@@ -757,7 +753,7 @@ export function BrandResourceView({
                       fontSize: 28,
                       fontWeight: 900,
                       letterSpacing: "-0.02em",
-                      color: brand.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
+                      color: brand?.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
                       textTransform: "uppercase",
                     }}
                   >
@@ -768,8 +764,8 @@ export function BrandResourceView({
               <LogoCard
                 title={`Monograma · ${monogramLetter}`}
                 subtitle="Avatar · favicon · selo"
-                svg={brand.logo_monogram_svg}
-                png={brand.logo_monogram_png}
+                svg={brand?.logo_monogram_svg ?? null}
+                png={brand?.logo_monogram_png ?? null}
                 bg="#FFFFFF"
                 editing={mode === "edit"}
                 uploadingSvg={uploadingSlot === "logo_monogram_svg"}
@@ -782,7 +778,7 @@ export function BrandResourceView({
                       width: 64,
                       height: 64,
                       background:
-                        brand.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
+                        brand?.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
                       color: "#fff",
                       fontSize: 36,
                       fontWeight: 900,
@@ -799,8 +795,8 @@ export function BrandResourceView({
               <LogoCard
                 title="Versão reversa"
                 subtitle="Pra fundos escuros"
-                svg={brand.logo_reverse_svg}
-                png={brand.logo_reverse_png}
+                svg={brand?.logo_reverse_svg ?? null}
+                png={brand?.logo_reverse_png ?? null}
                 bg="#0F0F0F"
                 editing={mode === "edit"}
                 uploadingSvg={uploadingSlot === "logo_reverse_svg"}
@@ -826,7 +822,7 @@ export function BrandResourceView({
             {/* Cores principais */}
             <SectionTitle title="Cores principais" style={{ marginTop: 40 }} />
             <ColorGrid
-              colors={mode === "edit" ? brandDraft.colors_primary : (brand.colors_primary ?? [])}
+              colors={mode === "edit" ? brandDraft.colors_primary : (brand?.colors_primary ?? [])}
               editing={mode === "edit"}
               variant="large"
               onChange={(next) =>
@@ -836,7 +832,7 @@ export function BrandResourceView({
             />
 
             {/* Cores secundárias */}
-            {(mode === "edit" || (brand.colors_secondary && brand.colors_secondary.length > 0)) && (
+            {(mode === "edit" || (brand?.colors_secondary && brand?.colors_secondary.length > 0)) && (
               <>
                 <SectionTitle
                   title="Cores secundárias"
@@ -847,7 +843,7 @@ export function BrandResourceView({
                   colors={
                     mode === "edit"
                       ? brandDraft.colors_secondary
-                      : (brand.colors_secondary ?? [])
+                      : (brand?.colors_secondary ?? [])
                   }
                   editing={mode === "edit"}
                   variant="small"
@@ -860,8 +856,7 @@ export function BrandResourceView({
             )}
 
             {/* Tipografia */}
-            {(mode === "edit" || brand.font_heading || brand.font_body) && (
-              <>
+            <>
                 <SectionTitle title="Tipografia" style={{ marginTop: 40 }} />
                 <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 16 }}>
                   {mode === "edit" ? (
@@ -878,16 +873,16 @@ export function BrandResourceView({
                       }
                       big
                     />
+                  ) : brand?.font_heading ? (
+                    <FontPreview
+                      label="Display · headlines"
+                      family={brand.font_heading}
+                      weight={brand.font_heading_weight}
+                      sample="Aa"
+                      big
+                    />
                   ) : (
-                    brand.font_heading && (
-                      <FontPreview
-                        label="Display · headlines"
-                        family={brand.font_heading}
-                        weight={brand.font_heading_weight}
-                        sample="Aa"
-                        big
-                      />
-                    )
+                    <FontPlaceholder label="Display · headlines" big />
                   )}
                   {mode === "edit" ? (
                     <FontPreviewEdit
@@ -902,56 +897,58 @@ export function BrandResourceView({
                         }))
                       }
                     />
+                  ) : brand?.font_body ? (
+                    <FontPreview
+                      label="Corpo · body"
+                      family={brand.font_body}
+                      weight={brand.font_body_weight}
+                      sample="Aa"
+                    />
                   ) : (
-                    brand.font_body && (
-                      <FontPreview
-                        label="Corpo · body"
-                        family={brand.font_body}
-                        weight={brand.font_body_weight}
-                        sample="Aa"
-                      />
-                    )
+                    <FontPlaceholder label="Corpo · body" />
                   )}
                 </div>
               </>
-            )}
 
             {/* Tom de voz */}
-            {(mode === "edit" || (brand.voice && brand.voice.length > 0)) && (
-              <>
-                <SectionTitle
-                  title="Tom de voz"
-                  subtitle="Atributos que orientam a copy"
-                  style={{ marginTop: 40 }}
+            <SectionTitle
+              title="Tom de voz"
+              subtitle="Atributos que orientam a copy"
+              style={{ marginTop: 40 }}
+            />
+            {mode === "edit" ? (
+              <VoiceEditor
+                voice={brandDraft.voice}
+                onChange={(next) =>
+                  setBrandDraft((d) => ({ ...d, voice: next }))
+                }
+              />
+            ) : (brand?.voice ?? []).length > 0 ? (
+              <div className="flex flex-wrap gap-2" style={{ marginTop: 16 }}>
+                {brand?.voice.map((v) => (
+                  <span
+                    key={v}
+                    style={{
+                      padding: "6px 14px",
+                      background: "var(--crm-blue-50)",
+                      border: "1px solid var(--crm-blue-100)",
+                      color: "var(--crm-brand)",
+                      borderRadius: 999,
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {v}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: 16 }}>
+                <SectionPlaceholder
+                  minHeight={50}
+                  label="Sem atributos de tom de voz"
                 />
-                {mode === "edit" ? (
-                  <VoiceEditor
-                    voice={brandDraft.voice}
-                    onChange={(next) =>
-                      setBrandDraft((d) => ({ ...d, voice: next }))
-                    }
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-2" style={{ marginTop: 16 }}>
-                    {brand.voice.map((v) => (
-                      <span
-                        key={v}
-                        style={{
-                          padding: "6px 14px",
-                          background: "var(--crm-blue-50)",
-                          border: "1px solid var(--crm-blue-100)",
-                          color: "var(--crm-brand)",
-                          borderRadius: 999,
-                          fontSize: 13,
-                          fontWeight: 500,
-                        }}
-                      >
-                        {v}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </>
+              </div>
             )}
 
             {/* Top 5 produtos mais vendidos */}
@@ -995,14 +992,20 @@ export function BrandResourceView({
             )}
 
             {/* Selos de confiança */}
-            {(mode === "edit" ||
-              (brand.trust_icons && brand.trust_icons.length > 0)) && (
-              <>
+            <>
                 <SectionTitle
                   title="Selos de confiança"
                   subtitle="Bloco visual pronto pra usar nos emails"
                   style={{ marginTop: 40 }}
                 />
+                {mode !== "edit" && (brand?.trust_icons ?? []).length === 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <SectionPlaceholder
+                      minHeight={80}
+                      label="Sem selos de confiança"
+                    />
+                  </div>
+                )}
                 <div
                   className="grid"
                   style={{
@@ -1012,7 +1015,7 @@ export function BrandResourceView({
                     gap: 10,
                   }}
                 >
-                  {(mode === "edit" ? brandDraft.trust_icons : brand.trust_icons).map(
+                  {(mode === "edit" ? brandDraft.trust_icons : brand?.trust_icons ?? []).map(
                     (ic, i) =>
                       mode === "edit" ? (
                         <TrustIconCardEdit
@@ -1077,9 +1080,7 @@ export function BrandResourceView({
                   )}
                 </div>
               </>
-            )}
           </>
-        )}
       </div>
 
       {mode === "edit" && (
@@ -1725,81 +1726,6 @@ function TopProductCard({ product }: { product: TopProduct }) {
   )
 }
 
-function EmptyState({
-  onCapture,
-  generating,
-}: {
-  onCapture: () => void
-  generating: boolean
-}) {
-  return (
-    <div
-      className="text-center mx-auto"
-      style={{
-        maxWidth: 480,
-        padding: "60px 40px",
-        background: "var(--crm-gray-0)",
-        border: "1px solid var(--crm-border)",
-        borderRadius: 14,
-      }}
-    >
-      <div
-        className="mx-auto flex items-center justify-center"
-        style={{
-          width: 56,
-          height: 56,
-          marginBottom: 16,
-          borderRadius: 14,
-          background: "var(--crm-blue-50)",
-          color: "var(--crm-brand)",
-        }}
-      >
-        <Sparkles className="h-6 w-6" />
-      </div>
-      <h2
-        style={{
-          margin: "0 0 6px",
-          fontSize: 18,
-          fontWeight: 600,
-          color: "var(--crm-gray-900)",
-        }}
-      >
-        Identidade visual ainda não capturada
-      </h2>
-      <p
-        style={{
-          margin: "0 0 20px",
-          fontSize: 13,
-          color: "var(--crm-gray-500)",
-          lineHeight: 1.5,
-        }}
-      >
-        Use a IA pra extrair logo, paleta de cores e tipografia diretamente do
-        site da loja em poucos segundos. Depois você refina manualmente.
-      </p>
-      <button
-        onClick={onCapture}
-        disabled={generating}
-        className="inline-flex items-center gap-1.5"
-        style={{
-          height: 36,
-          padding: "0 16px",
-          background: "var(--crm-brand)",
-          color: "var(--crm-brand-fg)",
-          border: 0,
-          borderRadius: 6,
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: generating ? "default" : "pointer",
-          opacity: generating ? 0.6 : 1,
-        }}
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {generating ? "Capturando..." : "Capturar identidade visual com IA agora"}
-      </button>
-    </div>
-  )
-}
 
 function SectionTitle({
   title,
@@ -2011,6 +1937,84 @@ function DownloadBtn({ url, label }: { url: string | null; label: string }) {
   )
 }
 
+function FontPlaceholder({ label, big }: { label: string; big?: boolean }) {
+  return (
+    <div
+      style={{
+        background: "var(--crm-gray-50)",
+        border: "1px dashed var(--crm-border)",
+        borderRadius: 10,
+        padding: "16px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        minHeight: big ? 130 : 110,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </div>
+      <div className="flex items-center justify-between flex-1 gap-3">
+        <div
+          style={{
+            fontSize: big ? 56 : 36,
+            fontWeight: big ? 900 : 400,
+            color: "var(--crm-gray-300)",
+            lineHeight: 1,
+          }}
+        >
+          Aa
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--crm-gray-400)",
+            fontStyle: "italic",
+          }}
+        >
+          Sem fonte definida
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SectionPlaceholder({
+  minHeight,
+  label,
+}: {
+  minHeight: number
+  label: string
+}) {
+  return (
+    <div
+      style={{
+        minHeight,
+        background: "var(--crm-gray-50)",
+        border: "1px dashed var(--crm-border)",
+        borderRadius: 10,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--crm-gray-400)",
+        fontSize: 12,
+        fontWeight: 500,
+        gridColumn: "1 / -1",
+      }}
+    >
+      {label}
+    </div>
+  )
+}
+
 function ColorGrid({
   colors,
   editing,
@@ -2033,6 +2037,12 @@ function ColorGrid({
         marginTop: 16,
       }}
     >
+      {!editing && colors.length === 0 && (
+        <SectionPlaceholder
+          minHeight={variant === "small" ? 90 : 150}
+          label="Sem cores definidas"
+        />
+      )}
       {colors.map((c, i) =>
         editing ? (
           <ColorSwatchEdit
