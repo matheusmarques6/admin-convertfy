@@ -1933,29 +1933,7 @@ export function TaskDetailDrawer({
             </Section>
           )}
 
-          {/* ── CONTEXTO apos o body da task ── */}
-          {isOnboarding && (
-            <div id="task-section-visao-geral" className="px-5 pt-5">
-              <BlockIdentidadeLoja taskId={task.id} />
-            </div>
-          )}
-          {isOnboarding && (
-            <div id="task-section-sobre-cliente" className="px-5 pt-3">
-              {/* Placeholder reservado para ancorar a navegação */}
-            </div>
-          )}
-          {isOnboarding && (
-            <div id="task-section-brand-brain" className="px-5 pt-3">
-              <BlockBrandBrain taskId={task.id} />
-            </div>
-          )}
-          {isOnboarding && (
-            <div id="task-section-assets-visuais" className="px-5 pt-3 pb-3">
-              <BlockAssetsVisuais taskId={task.id} />
-            </div>
-          )}
-
-          {/* Comentarios */}
+          {/* Comentarios — logo apos Anexos & Links, encerra o body da task */}
           <div id="task-section-comentarios" />
           <Section title={`Comentários · ${taskComments.length}`}>
             {taskComments.length === 0 && (
@@ -2024,6 +2002,28 @@ export function TaskDetailDrawer({
             </div>
           </Section>
         </div>
+
+        {/* ── CONTEXTO apos Comentarios ── */}
+        {isOnboarding && (
+          <div id="task-section-visao-geral" className="px-5 pt-5">
+            <BlockIdentidadeLoja taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-sobre-cliente" className="px-5 pt-3">
+            {/* Placeholder reservado para ancorar a navegação */}
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-brand-brain" className="px-5 pt-3">
+            <BlockBrandBrain taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-assets-visuais" className="px-5 pt-3 pb-3">
+            <BlockAssetsVisuais taskId={task.id} />
+          </div>
+        )}
 
         {/* Blocos finais (acompanhamento: anotacoes + historico, so em onboarding).
             Sugestoes IA foi movido pra cima junto com Criterios (grupo Execucao). */}
