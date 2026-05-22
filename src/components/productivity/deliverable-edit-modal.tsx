@@ -16,6 +16,14 @@
 
 import { useState, useEffect } from "react"
 import { X, Upload, Loader2, FileText, Trash2, ExternalLink } from "lucide-react"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+} from "@/components/ui/select"
 
 export interface DeliverableEditTarget {
   id: string
@@ -229,11 +237,9 @@ export function DeliverableEditModal({
 
           {type === "select" && (
             <div className="space-y-2">
-              <select
-                autoFocus
-                value={otherMode ? "__other__" : value}
-                onChange={(e) => {
-                  const v = e.target.value
+              <Select
+                value={otherMode ? "__other__" : value || undefined}
+                onValueChange={(v) => {
                   if (v === "__other__") {
                     setOtherMode(true)
                     setValue("")
@@ -243,18 +249,24 @@ export function DeliverableEditModal({
                     setValue(v)
                   }
                 }}
-                className="w-full px-3 py-2 rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] focus:outline-none focus:border-brand-400"
               >
-                <option value="">Selecione...</option>
-                {(deliverable.options ?? []).map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-                {deliverable.allow_other && (
-                  <option value="__other__">Outros (digitar)</option>
-                )}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(deliverable.options ?? []).map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                  {deliverable.allow_other && (
+                    <>
+                      <SelectSeparator />
+                      <SelectItem value="__other__">Outros (digitar)</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
               {otherMode && (
                 <input
                   type="text"
@@ -262,7 +274,7 @@ export function DeliverableEditModal({
                   value={otherText}
                   onChange={(e) => setOtherText(e.target.value)}
                   placeholder="Digite o valor"
-                  className="w-full px-3 py-2 rounded-[5px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27] text-[13px] focus:outline-none focus:border-brand-400"
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 />
               )}
             </div>
