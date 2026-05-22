@@ -14,6 +14,10 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import {
+  approveTaskOnEmailApproved,
+  finishTaskOnEmailReady,
+} from "@/lib/services/email-task-sync.service"
 
 const log = logger.child("EmailDetail")
 
@@ -100,6 +104,18 @@ export async function PATCH(
     // Auto-promote flow status quando status do email muda
     if (parsed.status) {
       await syncFlowStatusFromEmails(admin, flowId)
+
+      // Best-effort: sync com a task de onboarding correspondente.
+      // Falhas não derrubam o PATCH (decoupling).
+      if (parsed.status === "ready") {
+        await finishTaskOnEmailReady({ flowId, emailId }).catch((err) =>
+          log.error("sync task→review failed", { emailId, err }),
+        )
+      } else if (parsed.status === "approved") {
+        await approveTaskOnEmailApproved({ flowId, emailId }).catch((err) =>
+          log.error("sync task→completed failed", { emailId, err }),
+        )
+      }
     }
 
     return successResponse(request, { ok: true })
