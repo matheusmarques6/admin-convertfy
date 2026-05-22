@@ -71,7 +71,15 @@ const BRAND_IDENTITY_SCHEMA = {
       },
     },
     font_heading: { type: ["string", "null"] },
+    font_heading_weight: {
+      type: ["string", "null"],
+      description: "Peso da fonte de headlines, ex: 'Black 900', 'Bold 700'.",
+    },
     font_body: { type: ["string", "null"] },
+    font_body_weight: {
+      type: ["string", "null"],
+      description: "Peso da fonte de body, ex: 'Regular 400 / Medium 500'.",
+    },
     voice: {
       type: "array",
       minItems: 3,
@@ -131,7 +139,9 @@ export async function POST(
         colors_primary: identity.colors_primary,
         colors_secondary: identity.colors_secondary ?? [],
         font_heading: identity.font_heading ?? null,
+        font_heading_weight: identity.font_heading_weight ?? null,
         font_body: identity.font_body ?? null,
+        font_body_weight: identity.font_body_weight ?? null,
         voice: identity.voice ?? [],
         trust_icons: identity.trust_icons ?? [],
         top_products: [],
@@ -160,7 +170,9 @@ interface CapturedIdentity {
   colors_primary: Array<{ hex: string; name: string; role: string }>
   colors_secondary?: Array<{ hex: string; name: string; role?: string }>
   font_heading?: string | null
+  font_heading_weight?: string | null
   font_body?: string | null
+  font_body_weight?: string | null
   voice?: string[]
   trust_icons?: Array<{
     icon_type: string
@@ -283,7 +295,9 @@ function generateFallbackIdentity(store: {
       { hex: "#999999", name: "Gray 50", role: "Secundario" },
     ],
     font_heading: "Inter",
+    font_heading_weight: "Black 900",
     font_body: "Inter",
+    font_body_weight: "Regular 400 / Medium 500",
     voice: ["Direto", "Confiante", "Próximo"],
     trust_icons: [
       {

@@ -22,7 +22,9 @@ export interface StoreBrandIdentity {
   colors_primary: BrandColor[]
   colors_secondary: BrandColor[]
   font_heading: string | null
+  font_heading_weight: string | null
   font_body: string | null
+  font_body_weight: string | null
   voice: string[]
   trust_icons: TrustIcon[]
   top_products: TopProduct[]

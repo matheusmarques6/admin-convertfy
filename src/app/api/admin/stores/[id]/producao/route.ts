@@ -62,6 +62,22 @@ export async function GET(
       .limit(1)
       .maybeSingle()
 
+    // Top products sincronizados (webhook N8N). Substitui o snapshot estatico
+    // em store_brand_identity.top_products na nova UI de Identidade Visual.
+    const { data: topProducts } = await admin
+      .from("store_top_products")
+      .select("rank, title, price, currency, handle, image_url, captured_at")
+      .eq("store_id", storeId)
+      .order("rank", { ascending: true })
+      .limit(5)
+
+    const topProductsSync = (topProducts ?? []).length
+      ? {
+          captured_at: (topProducts ?? [])[0]?.captured_at ?? null,
+          items: topProducts ?? [],
+        }
+      : null
+
     // Flows + emails (em uma query so via subquery)
     const { data: flows } = await admin
       .from("email_flows")
@@ -91,6 +107,7 @@ export async function GET(
       brand,
       briefing,
       flows: flowsOrdered,
+      top_products_sync: topProductsSync,
     })
   } catch (error) {
     log.error("Producao GET error:", error)

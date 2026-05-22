@@ -50,6 +50,7 @@
     "date-fns": "^3.6.0",
     "framer-motion": "^12.34.1",
     "html2pdf.js": "^0.10.3",
+    "jszip": "^3.10.1",
     "libphonenumber-js": "^1.12.39",
     "lucide-react": "^0.561.0",
     "next": "15.5.14",
