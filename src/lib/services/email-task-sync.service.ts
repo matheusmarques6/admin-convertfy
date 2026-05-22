@@ -41,6 +41,70 @@ const FLOW_POSITION: Record<FlowType, number> = {
   custom: 99,
 }
 
+// ── resolve (read-only) ─────────────────────────────────────────────────
+
+export interface ResolvedTarget {
+  ok: true
+  target: TaskWorkspaceTarget
+  storeId: string
+  flowId?: string
+  emailId?: string
+}
+
+export interface ResolveFailure {
+  ok: false
+  reason: "task_not_found" | "no_workspace_target" | "no_store_id"
+}
+
+/**
+ * Read-only: resolve qual workspace abrir pra uma task. Não cria flow/email.
+ * Retorna IDs apenas se já existirem no banco.
+ */
+export async function resolveTaskWorkspace(
+  taskId: string,
+): Promise<ResolvedTarget | ResolveFailure> {
+  const admin = createAdminClient()
+
+  const { data: task } = await admin
+    .from("tasks")
+    .select("id, slug, onboarding_id, store_id")
+    .eq("id", taskId)
+    .maybeSingle()
+  if (!task) return { ok: false, reason: "task_not_found" }
+
+  const target = resolveTaskWorkspaceTarget(task.slug as string | null)
+  if (!target) return { ok: false, reason: "no_workspace_target" }
+
+  const storeId = await resolveStoreId(admin, task)
+  if (!storeId) return { ok: false, reason: "no_store_id" }
+
+  if (target.kind === "checkbox-only") {
+    return { ok: true, target, storeId }
+  }
+
+  const { data: flow } = await admin
+    .from("email_flows")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("flow_type", target.flowType)
+    .maybeSingle()
+
+  const flowId = flow?.id as string | undefined
+  if (!flowId) return { ok: true, target, storeId }
+
+  if (target.kind === "email") {
+    const { data: email } = await admin
+      .from("email_flow_emails")
+      .select("id")
+      .eq("flow_id", flowId)
+      .eq("number", target.emailNumber)
+      .maybeSingle()
+    return { ok: true, target, storeId, flowId, emailId: email?.id as string | undefined }
+  }
+
+  return { ok: true, target, storeId, flowId }
+}
+
 // ── start ───────────────────────────────────────────────────────────────
 
 export interface StartTaskResult {
