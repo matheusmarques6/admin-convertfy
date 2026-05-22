@@ -415,6 +415,42 @@ export function FormTela1Client({ token }: { token: string }) {
     })
   }
 
+  // Autosave debounced — salva o draft 1.5s apos a ultima alteracao em
+  // `values`. Sem completedSectionSlug (so persiste responses, nao avanca
+  // checklist). Evita perda de dados se cliente recarrega na metade de uma
+  // secao (especialmente Materiais, ultima secao, onde uploads podem
+  // demorar).
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    "idle" | "saving" | "saved"
+  >("idle")
+  useEffect(() => {
+    // Skip antes do primeiro load (ctx null) ou apos enviar
+    if (!ctx || submitted || loading) return
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      setAutosaveStatus("saving")
+      fetch(`/api/forms/${token}/submit-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ responses: values }),
+      })
+        .then(() => {
+          setAutosaveStatus("saved")
+          // Volta pra idle apos 2s pra nao ficar permanente na UI
+          setTimeout(() => setAutosaveStatus("idle"), 2000)
+        })
+        .catch(() => {
+          // Silencioso — proximo "Proximo" tenta de novo
+          setAutosaveStatus("idle")
+        })
+    }, 1500)
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, ctx, submitted, loading, token])
+
   async function next() {
     const err = validateCurrentSection()
     if (err) {
@@ -542,6 +578,7 @@ export function FormTela1Client({ token }: { token: string }) {
         stepIdx={stepIdx}
         totalSteps={totalSteps}
         sections={sectionsForSidebar}
+        autosaveStatus={autosaveStatus}
         onSelectStep={(i) => {
           if (i <= stepIdx) {
             setStepIdx(i)
@@ -719,6 +756,7 @@ function FormShell({
   totalSteps,
   sections,
   onSelectStep,
+  autosaveStatus,
   children,
 }: {
   progress: number
@@ -726,6 +764,7 @@ function FormShell({
   totalSteps: number
   sections: SidebarSection[]
   onSelectStep: (i: number) => void
+  autosaveStatus: "idle" | "saving" | "saved"
   children: React.ReactNode
 }) {
   return (
@@ -827,9 +866,12 @@ function FormShell({
               className="object-contain"
               style={{ height: 24, width: "auto" }}
             />
-            <span className="text-[11px] font-mono text-slate-500 tabular-nums">
-              {stepIdx + 1}/{totalSteps}
-            </span>
+            <div className="flex items-center gap-2">
+              <AutosaveBadge status={autosaveStatus} />
+              <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                {stepIdx + 1}/{totalSteps}
+              </span>
+            </div>
           </div>
           <div className="h-1 bg-slate-100">
             <div
@@ -843,14 +885,20 @@ function FormShell({
         </header>
 
         {/* Desktop progress bar fina no topo */}
-        <div className="hidden lg:block h-[3px] bg-slate-100">
-          <div
-            className="h-full transition-all duration-300"
-            style={{
-              width: `${progress}%`,
-              background: "linear-gradient(90deg, #4E62D8 0%, #2137B6 100%)",
-            }}
-          />
+        <div className="hidden lg:block relative">
+          <div className="h-[3px] bg-slate-100">
+            <div
+              className="h-full transition-all duration-300"
+              style={{
+                width: `${progress}%`,
+                background: "linear-gradient(90deg, #4E62D8 0%, #2137B6 100%)",
+              }}
+            />
+          </div>
+          {/* Autosave badge fixo no canto superior direito (desktop) */}
+          <div className="absolute top-3 right-6">
+            <AutosaveBadge status={autosaveStatus} />
+          </div>
         </div>
 
         {/* Content area */}
@@ -2310,6 +2358,45 @@ function EditedBadge() {
     >
       <Check className="h-2 w-2" strokeWidth={3} />
       Editado
+    </span>
+  )
+}
+
+// ─── AutosaveBadge: feedback visual sutil do autosave ───────────────────
+// 'idle' = nada / 'saving' = spinner verde / 'saved' = check verde
+function AutosaveBadge({
+  status,
+}: {
+  status: "idle" | "saving" | "saved"
+}) {
+  if (status === "idle") return null
+  return (
+    <span
+      className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-md text-[10px] font-medium"
+      style={{
+        background: "#ECFDF5",
+        color: "#065F46",
+        border: "1px solid #A7F3D0",
+        letterSpacing: 0,
+        textTransform: "none",
+      }}
+      aria-live="polite"
+    >
+      {status === "saving" ? (
+        <>
+          <span
+            className="h-1.5 w-1.5 rounded-full animate-pulse"
+            style={{ background: "#10B981" }}
+            aria-hidden
+          />
+          Salvando…
+        </>
+      ) : (
+        <>
+          <Check className="h-2 w-2" strokeWidth={3} />
+          Salvo
+        </>
+      )}
     </span>
   )
 }
