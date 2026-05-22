@@ -14,6 +14,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import {
   resolveTaskWorkspaceTarget,
+  resolveTaskWorkspaceTargetByTitle,
   resolveSlugForEmail,
   type TaskWorkspaceTarget,
 } from "@/lib/email-task-sync/slug-mapping"
@@ -67,12 +68,14 @@ export async function resolveTaskWorkspace(
 
   const { data: task } = await admin
     .from("tasks")
-    .select("id, slug, onboarding_id, store_id")
+    .select("id, slug, title, onboarding_id, store_id")
     .eq("id", taskId)
     .maybeSingle()
   if (!task) return { ok: false, reason: "task_not_found" }
 
-  const target = resolveTaskWorkspaceTarget(task.slug as string | null)
+  const target =
+    resolveTaskWorkspaceTarget(task.slug as string | null) ??
+    resolveTaskWorkspaceTargetByTitle(task.title as string | null)
   if (!target) return { ok: false, reason: "no_workspace_target" }
 
   const storeId = await resolveStoreId(admin, task)
@@ -131,14 +134,16 @@ export async function startTaskEmailProduction(
 
   const { data: task, error: taskErr } = await admin
     .from("tasks")
-    .select("id, slug, status, onboarding_id, store_id")
+    .select("id, slug, title, status, onboarding_id, store_id")
     .eq("id", taskId)
     .maybeSingle()
   if (taskErr || !task) {
     return { ok: false, reason: "task_not_found" }
   }
 
-  const target = resolveTaskWorkspaceTarget(task.slug as string | null)
+  const target =
+    resolveTaskWorkspaceTarget(task.slug as string | null) ??
+    resolveTaskWorkspaceTargetByTitle(task.title as string | null)
   if (!target) {
     return { ok: false, reason: "no_workspace_target" }
   }

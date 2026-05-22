@@ -3,7 +3,10 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
-import { resolveTaskWorkspaceTarget } from "@/lib/email-task-sync/slug-mapping"
+import {
+  resolveTaskWorkspaceTarget,
+  resolveTaskWorkspaceTargetByTitle,
+} from "@/lib/email-task-sync/slug-mapping"
 
 const log = logger.child("Tasks")
 
@@ -18,11 +21,13 @@ async function guardEmailProductionCompletion(
 ): Promise<string | null> {
   const { data: task } = await admin
     .from("tasks")
-    .select("slug, store_id, onboarding_id")
+    .select("slug, title, store_id, onboarding_id")
     .eq("id", taskId)
     .maybeSingle()
   if (!task) return null
-  const target = resolveTaskWorkspaceTarget(task.slug as string | null)
+  const target =
+    resolveTaskWorkspaceTarget(task.slug as string | null) ??
+    resolveTaskWorkspaceTargetByTitle(task.title as string | null)
   if (!target || target.kind === "checkbox-only") return null
 
   // Resolve storeId

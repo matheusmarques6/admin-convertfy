@@ -3,6 +3,7 @@ import { SEED_COLUMNS } from "@/lib/services/onboarding-bootstrap.service"
 import {
   TASK_SLUG_MAP,
   resolveTaskWorkspaceTarget,
+  resolveTaskWorkspaceTargetByTitle,
   resolveSubItemEmailTarget,
   resolveSlugForEmail,
 } from "./slug-mapping"
@@ -175,5 +176,70 @@ describe("resolveSlugForEmail (caminho reverso)", () => {
 
   it("retorna null para combinação não mapeada", () => {
     expect(resolveSlugForEmail("custom", 1)).toBeNull()
+  })
+})
+
+describe("resolveTaskWorkspaceTargetByTitle (fallback p/ tasks legadas)", () => {
+  it("identifica Brand Brain pelo título", () => {
+    expect(
+      resolveTaskWorkspaceTargetByTitle(
+        "Estudar Brand Brain + referencias do cliente",
+      ),
+    ).toEqual({ kind: "checkbox-only", resource: "briefing" })
+  })
+
+  it("identifica email-piloto Welcome (label novo do seed)", () => {
+    const t = resolveTaskWorkspaceTargetByTitle(
+      "Criar email-piloto 1: Welcome (boas-vindas)",
+    )
+    expect(t).toMatchObject({ kind: "email", flowType: "welcome", emailNumber: 1 })
+  })
+
+  it("identifica email-piloto Welcome (label antigo do seed)", () => {
+    const t = resolveTaskWorkspaceTargetByTitle(
+      "Criar email-piloto: Welcome (boas-vindas)",
+    )
+    expect(t).toMatchObject({ kind: "email", flowType: "welcome", emailNumber: 1 })
+  })
+
+  it("identifica email-piloto Carrinho pelo número (variação nova com 1 carrinho só)", () => {
+    const t = resolveTaskWorkspaceTargetByTitle(
+      "Criar email-piloto 2: Carrinho abandonado",
+    )
+    expect(t).toMatchObject({
+      kind: "email",
+      flowType: "abandoned_cart",
+      emailNumber: 1,
+    })
+  })
+
+  it("identifica Carrinho parte 2 (variação antiga)", () => {
+    const t = resolveTaskWorkspaceTargetByTitle(
+      "Criar email-piloto: Carrinho abandonado (parte 2)",
+    )
+    expect(t).toMatchObject({
+      kind: "email",
+      flowType: "abandoned_cart",
+      emailNumber: 2,
+    })
+  })
+
+  it("identifica Pós-compra (ambas variações)", () => {
+    expect(
+      resolveTaskWorkspaceTargetByTitle(
+        "Criar email-piloto 3: Pos-compra (engajamento)",
+      ),
+    ).toMatchObject({ kind: "email", flowType: "post_purchase", emailNumber: 1 })
+    expect(
+      resolveTaskWorkspaceTargetByTitle(
+        "Criar email-piloto: Pos-compra (engajamento)",
+      ),
+    ).toMatchObject({ kind: "email", flowType: "post_purchase", emailNumber: 1 })
+  })
+
+  it("retorna null pra título não-relacionado", () => {
+    expect(resolveTaskWorkspaceTargetByTitle("Configurar Klaviyo")).toBeNull()
+    expect(resolveTaskWorkspaceTargetByTitle("")).toBeNull()
+    expect(resolveTaskWorkspaceTargetByTitle(null)).toBeNull()
   })
 })

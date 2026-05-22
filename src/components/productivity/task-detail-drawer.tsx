@@ -943,7 +943,17 @@ export function TaskDetailDrawer({
     ;(async () => {
       try {
         const r = await fetch(`/api/tasks/${task.id}/workspace-target`)
-        if (!r.ok) return
+        if (!r.ok) {
+          if (r.status !== 422 && r.status !== 404) {
+            console.warn(
+              "[drawer] /workspace-target retornou",
+              r.status,
+              "para task",
+              task.id,
+            )
+          }
+          return
+        }
         const json = await r.json()
         const payload = (json?.data ?? json) as {
           target?: TaskWorkspaceTarget
@@ -953,8 +963,8 @@ export function TaskDetailDrawer({
           setWorkspaceTarget(payload.target)
           if (payload.storeId) setWorkspaceStoreId(payload.storeId)
         }
-      } catch {
-        /* silencioso: drawer continua funcionando sem o target */
+      } catch (err) {
+        console.warn("[drawer] /workspace-target falhou:", err)
       }
     })()
     return () => {
@@ -978,13 +988,24 @@ export function TaskDetailDrawer({
     return undefined
   }
 
-  // Chama /start e abre o modal apontando pro flow/email correto.
+  // Resolve target via /start (idempotente: garante flow+email no DB).
+  // NÃO toca em task.status — a transição de status é feita pelo caminho
+  // padrão (updateTaskField), garantindo consistência mesmo se /start
+  // falhar ou retornar 422 (slug não-mapeado).
   const openWorkspaceForTask = async (): Promise<TaskWorkspaceTarget | null> => {
     setWorkspaceLoading(true)
     try {
       const r = await fetch(`/api/tasks/${task.id}/start`, { method: "POST" })
       if (!r.ok) {
-        setShowToast("Não consegui abrir o workspace. Tenta de novo?")
+        // 422 = slug não mapeado pra workspace. É esperado pra tasks que
+        // não são de produção de email. Silencioso pra não confundir.
+        if (r.status !== 422) {
+          console.warn(
+            "[drawer] /start retornou",
+            r.status,
+            "— prossegue sem abrir modal",
+          )
+        }
         return null
       }
       const json = await r.json()
@@ -1009,7 +1030,6 @@ export function TaskDetailDrawer({
       return payload.target
     } catch (err) {
       console.error("[drawer] openWorkspaceForTask failed", err)
-      setShowToast("Erro ao abrir o workspace.")
       return null
     } finally {
       setWorkspaceLoading(false)
@@ -1042,30 +1062,20 @@ export function TaskDetailDrawer({
   }
 
   const handleAdvance = async (next: ProductivityTask["status"]) => {
-    // pending → progress: se task tem target de email, usa /start (que
-    // sobe status no servidor + retorna IDs do flow/email pra abrir
-    // modal). Caso contrário, fluxo legado.
+    // SEMPRE atualiza status via caminho legado (PUT /api/tasks/[id]).
+    // Esse é o único path responsável por status — robusto e testado.
+    await updateTaskField({ status: next }, { status: next })
+
+    // EM PARALELO: se subindo pending→progress e há target de workspace,
+    // abre o modal apontando pro flow/email correto. Falha do /start
+    // não afeta o status (já foi mudado acima).
     if (next === "progress" && task.status === "pending" && workspaceTarget) {
       const target = await openWorkspaceForTask()
-      // Optimistic UI local (servidor já fez o update)
-      const optimistic: Partial<ProductivityTask> = { status: "progress" }
-      const updateTasks = (tasks: ProductivityTask[]) =>
-        tasks.map((t) => (t.id === task.id ? { ...t, ...optimistic } : t))
-      const state = useProductivityStore.getState()
-      useProductivityStore.setState({
-        tasks: updateTasks(state.tasks),
-        groups: state.groups.map((g) => ({ ...g, items: updateTasks(g.items) })),
-      })
-      fetchData()
-      if (!running) setRunning(true)
       if (target?.kind === "checkbox-only") {
         setShowToast("Tarefa iniciada. Consulte o Brand Brain abaixo.")
       }
-      return
     }
 
-    // Optimistic UI primeiro pro botao nao 'piscar'
-    await updateTaskField({ status: next }, { status: next })
     if (next === "progress" && !running) setRunning(true)
     if (next === "done") {
       setRunning(false)

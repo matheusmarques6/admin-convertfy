@@ -121,6 +121,48 @@ export function resolveTaskWorkspaceTarget(
 }
 
 /**
+ * Fallback: tasks legadas podem ter sido criadas com `slug=NULL` ou um
+ * slug diferente do mapa atual. Tenta inferir o target a partir do
+ * título da task (matching case-insensitive). Usado SÓ quando o slug
+ * não resolve. Não substitui o mapping primário — é defensivo.
+ */
+const TITLE_FALLBACK_RULES: Array<{
+  match: RegExp
+  target: TaskWorkspaceTarget
+}> = [
+  {
+    match: /brand\s*brain.*refer/i,
+    target: { kind: "checkbox-only", resource: "briefing" },
+  },
+  {
+    match: /(email[-\s]?piloto.*welcome|piloto.*boas[-\s]vindas|email-piloto\s*1[:\s])/i,
+    target: { kind: "email", mode: "preview", flowType: "welcome", emailNumber: 1 },
+  },
+  {
+    match: /(email[-\s]?piloto\s*2[:\s].*carrinho|piloto.*carrinho.*parte\s*1)/i,
+    target: { kind: "email", mode: "preview", flowType: "abandoned_cart", emailNumber: 1 },
+  },
+  {
+    match: /piloto.*carrinho.*parte\s*2/i,
+    target: { kind: "email", mode: "preview", flowType: "abandoned_cart", emailNumber: 2 },
+  },
+  {
+    match: /(email[-\s]?piloto\s*3[:\s].*pos|piloto.*pos[-\s]compra)/i,
+    target: { kind: "email", mode: "preview", flowType: "post_purchase", emailNumber: 1 },
+  },
+]
+
+export function resolveTaskWorkspaceTargetByTitle(
+  title: string | null | undefined,
+): TaskWorkspaceTarget | null {
+  if (!title) return null
+  for (const rule of TITLE_FALLBACK_RULES) {
+    if (rule.match.test(title)) return rule.target
+  }
+  return null
+}
+
+/**
  * Para tasks 1:N (`flow_*`), resolve o target de um sub_item específico.
  * Ex: parent=`flow_welcome`, sub=`welcome_email_3` -> { welcome, #3 }.
  */
