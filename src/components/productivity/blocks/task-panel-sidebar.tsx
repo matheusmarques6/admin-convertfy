@@ -9,7 +9,6 @@ export type SidebarSection =
   | "assets-visuais"
   | "criterios"
   | "checklist"
-  | "sugestoes-ia"
   | "entregaveis"
   | "comentarios"
   | "historico"
@@ -68,14 +67,6 @@ const ICONS: Record<SidebarSection, React.ReactNode> = {
       <circle cx="19.5" cy="12" r="1.5" fill="currentColor" />
       <circle cx="19.5" cy="18" r="1.5" fill="currentColor" />
     </>
-  ),
-  "sugestoes-ia": (
-    <path
-      d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
   ),
   entregaveis: (
     <>

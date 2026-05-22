@@ -20,7 +20,6 @@ import { BlockIdentidadeLoja } from "./blocks/block-identidade-loja"
 import { BlockBrandBrain } from "./blocks/block-brand-brain"
 import { BlockAssetsVisuais } from "./blocks/block-assets-visuais"
 import { BlockCriteriosAceitacao } from "./blocks/block-criterios-aceitacao"
-import { BlockSugestoesIA } from "./blocks/block-sugestoes-ia"
 import { BlockTimelineUnificada } from "./blocks/block-timeline-unificada"
 import { BlockAnotacoesPessoais } from "./blocks/block-anotacoes-pessoais"
 import {
@@ -1273,7 +1272,6 @@ export function TaskDetailDrawer({
                   items: [
                     { id: "criterios", label: "Critérios" },
                     { id: "checklist", label: "Checklist interno" },
-                    { id: "sugestoes-ia", label: "Sugestões da IA", badge: { value: "IA", tone: "purple" } },
                     { id: "entregaveis", label: "Entregáveis" },
                   ],
                 },
@@ -1313,11 +1311,6 @@ export function TaskDetailDrawer({
         {isOnboarding && (
           <div id="task-section-criterios" className="px-5 pt-5">
             <BlockCriteriosAceitacao taskId={task.id} />
-          </div>
-        )}
-        {isOnboarding && (
-          <div id="task-section-sugestoes-ia" className="px-5 pt-3">
-            <BlockSugestoesIA taskId={task.id} />
           </div>
         )}
         {/* Body da task (title/status/properties/descricao/checklist/entregaveis/anexos)
