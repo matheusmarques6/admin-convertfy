@@ -143,7 +143,9 @@ export async function POST(
         font_body: identity.font_body ?? null,
         font_body_weight: identity.font_body_weight ?? null,
         voice: identity.voice ?? [],
-        trust_icons: identity.trust_icons ?? [],
+        // trust_icons agora sao PNGs uploadados manualmente pelo designer.
+        // IA nao consegue gerar imagens, entao sempre [] na captura.
+        trust_icons: [],
         top_products: [],
         source: "ai_capture",
         created_by: user.id,
@@ -174,12 +176,6 @@ interface CapturedIdentity {
   font_body?: string | null
   font_body_weight?: string | null
   voice?: string[]
-  trust_icons?: Array<{
-    icon_type: string
-    title: string
-    subtitle: string
-    is_existing: boolean
-  }>
   _source: "ai" | "fallback"
 }
 
@@ -299,26 +295,6 @@ function generateFallbackIdentity(store: {
     font_body: "Inter",
     font_body_weight: "Regular 400 / Medium 500",
     voice: ["Direto", "Confiante", "Próximo"],
-    trust_icons: [
-      {
-        icon_type: "truck",
-        title: "FRETE GRÁTIS",
-        subtitle: "em todo Brasil",
-        is_existing: false,
-      },
-      {
-        icon_type: "shield",
-        title: "COMPRA SEGURA",
-        subtitle: "criptografia SSL",
-        is_existing: false,
-      },
-      {
-        icon_type: "refresh",
-        title: "TROCA FÁCIL",
-        subtitle: "em até 30 dias",
-        is_existing: false,
-      },
-    ],
     _source: "fallback",
   }
 }

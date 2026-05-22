@@ -36,8 +36,10 @@ const patchSchema = z.object({
   font_heading_weight: z.string().nullable().optional(),
   font_body: z.string().nullable().optional(),
   font_body_weight: z.string().nullable().optional(),
-  voice: z.array(z.unknown()).optional(),
-  trust_icons: z.array(z.unknown()).optional(),
+  voice: z.array(z.string()).optional(),
+  trust_icons: z
+    .array(z.object({ image_url: z.string().min(1) }))
+    .optional(),
 })
 
 export async function GET(

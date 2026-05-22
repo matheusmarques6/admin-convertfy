@@ -40,10 +40,7 @@ export interface BrandColor {
 }
 
 export interface TrustIcon {
-  icon_type: "truck" | "seal" | "shield" | "star" | "card" | "refresh" | "trophy" | "heart" | "lock" | "gift"
-  title: string
-  subtitle: string
-  is_existing: boolean
+  image_url: string
 }
 
 export interface TopProduct {

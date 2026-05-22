@@ -2,22 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 import {
-  Award,
   Check,
-  CreditCard,
   Download,
   ExternalLink,
-  Gift,
   Heart,
-  Lock,
   Pencil,
   Plus,
-  RefreshCw,
-  ShieldCheck,
   Sparkles,
-  Star,
-  Trophy,
-  Truck,
   Upload,
   X,
 } from "lucide-react"
@@ -140,19 +131,6 @@ function diffStore(
 ): Record<string, unknown> | null {
   if ((original?.niche ?? null) === (draft.niche ?? null)) return null
   return { niche: draft.niche }
-}
-
-const TRUST_ICON_MAP: Record<TrustIcon["icon_type"], typeof Truck> = {
-  truck: Truck,
-  seal: Award,
-  shield: ShieldCheck,
-  star: Star,
-  card: CreditCard,
-  refresh: RefreshCw,
-  trophy: Trophy,
-  heart: Heart,
-  lock: Lock,
-  gift: Gift,
 }
 
 interface BrandResourceViewProps {
@@ -284,6 +262,70 @@ export function BrandResourceView({
     } finally {
       uploadingRef.current = null
       setUploadingSlot(null)
+    }
+  }
+
+  // Upload de selo de confianca (PNG). Diferente do logo: NAO faz commit
+  // no banco — retorna a URL assinada e adiciona/atualiza no brandDraft.
+  // Persistencia acontece no Save geral. idx="new" = append, numero = replace
+  // naquele indice.
+  const [uploadingTrustSealIdx, setUploadingTrustSealIdx] = useState<
+    number | "new" | null
+  >(null)
+
+  const uploadTrustSeal = async (file: File, idx: number | "new") => {
+    if (uploadingTrustSealIdx !== null) return
+    if (file.type !== "image/png") {
+      toast.toast({
+        variant: "destructive",
+        title: "Formato invalido",
+        description: "Apenas PNG e aceito.",
+      })
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.toast({
+        variant: "destructive",
+        title: "Arquivo muito grande",
+        description: "Limite de 2MB por selo.",
+      })
+      return
+    }
+    setUploadingTrustSealIdx(idx)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const r = await fetch(
+        `/api/admin/stores/${storeId}/brand-identity/trust-seal-upload`,
+        { method: "POST", body: fd },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message || "Falha no upload")
+      }
+      const json = await r.json()
+      const url = (json?.data?.url ?? json?.url) as string | null
+      if (!url) throw new Error("URL ausente na resposta")
+
+      setBrandDraft((d) => {
+        if (idx === "new") {
+          return { ...d, trust_icons: [...d.trust_icons, { image_url: url }] }
+        }
+        return {
+          ...d,
+          trust_icons: d.trust_icons.map((x, i) =>
+            i === idx ? { image_url: url } : x,
+          ),
+        }
+      })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao enviar selo",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setUploadingTrustSealIdx(null)
     }
   }
 
@@ -1021,14 +1063,8 @@ export function BrandResourceView({
                         <TrustIconCardEdit
                           key={i}
                           icon={ic}
-                          onChange={(next) =>
-                            setBrandDraft((d) => ({
-                              ...d,
-                              trust_icons: d.trust_icons.map((x, idx) =>
-                                idx === i ? next : x,
-                              ),
-                            }))
-                          }
+                          uploading={uploadingTrustSealIdx === i}
+                          onReplace={(file) => uploadTrustSeal(file, i)}
                           onRemove={() =>
                             setBrandDraft((d) => ({
                               ...d,
@@ -1043,21 +1079,7 @@ export function BrandResourceView({
                       ),
                   )}
                   {mode === "edit" && (
-                    <button
-                      onClick={() =>
-                        setBrandDraft((d) => ({
-                          ...d,
-                          trust_icons: [
-                            ...d.trust_icons,
-                            {
-                              icon_type: "shield",
-                              title: "Novo selo",
-                              subtitle: "",
-                              is_existing: true,
-                            },
-                          ],
-                        }))
-                      }
+                    <label
                       className="cf-focusable"
                       style={{
                         background: "var(--crm-gray-50)",
@@ -1066,17 +1088,37 @@ export function BrandResourceView({
                         color: "var(--crm-gray-500)",
                         fontSize: 12,
                         fontWeight: 600,
-                        cursor: "pointer",
-                        minHeight: 70,
+                        cursor: uploadingTrustSealIdx === "new" ? "default" : "pointer",
+                        minHeight: 120,
+                        aspectRatio: "1 / 1",
                         display: "flex",
+                        flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
                         gap: 6,
+                        opacity: uploadingTrustSealIdx === "new" ? 0.6 : 1,
                       }}
                     >
-                      <Plus className="h-4 w-4" />
-                      Adicionar selo
-                    </button>
+                      {uploadingTrustSealIdx === "new" ? (
+                        <span>Enviando...</span>
+                      ) : (
+                        <>
+                          <Plus className="h-5 w-5" />
+                          <span>Adicionar selo PNG</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,image/png"
+                        style={{ display: "none" }}
+                        disabled={uploadingTrustSealIdx !== null}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) uploadTrustSeal(f, "new")
+                          e.currentTarget.value = ""
+                        }}
+                      />
+                    </label>
                   )}
                 </div>
               </>
@@ -1374,37 +1416,25 @@ function VoiceEditor({
 
 function TrustIconCardEdit({
   icon,
-  onChange,
+  uploading,
+  onReplace,
   onRemove,
 }: {
   icon: TrustIcon
-  onChange: (next: TrustIcon) => void
+  uploading?: boolean
+  onReplace: (file: File) => void
   onRemove: () => void
 }) {
-  const Icon = TRUST_ICON_MAP[icon.icon_type] ?? Award
-  const iconOptions: TrustIcon["icon_type"][] = [
-    "truck",
-    "seal",
-    "shield",
-    "star",
-    "card",
-    "refresh",
-    "trophy",
-    "heart",
-    "lock",
-    "gift",
-  ]
   return (
     <div
       style={{
-        padding: "10px 12px",
         background: "var(--crm-gray-0)",
         border: "1px solid var(--crm-border)",
         borderRadius: 8,
+        overflow: "hidden",
+        position: "relative",
         display: "flex",
         flexDirection: "column",
-        gap: 6,
-        position: "relative",
       }}
     >
       <button
@@ -1412,155 +1442,110 @@ function TrustIconCardEdit({
         title="Remover selo"
         style={{
           position: "absolute",
-          top: 4,
-          right: 4,
-          width: 20,
-          height: 20,
-          borderRadius: 4,
-          background: "transparent",
-          color: "var(--crm-gray-400)",
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          background: "rgba(0,0,0,0.55)",
+          color: "#fff",
           border: 0,
           cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 2,
         }}
       >
         <X className="h-3 w-3" />
       </button>
-      <div className="flex items-center gap-2">
-        <span
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: "var(--crm-blue-50)",
-            color: "var(--crm-brand)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon className="h-4 w-4" />
-        </span>
-        <select
-          value={icon.icon_type}
-          onChange={(e) =>
-            onChange({ ...icon, icon_type: e.target.value as TrustIcon["icon_type"] })
-          }
-          style={{
-            flex: 1,
-            padding: "4px 6px",
-            fontSize: 11,
-            color: "var(--crm-gray-700)",
-            background: "var(--crm-gray-50)",
-            border: "1px solid var(--crm-border)",
-            borderRadius: 4,
-          }}
-        >
-          {iconOptions.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
+      <div
+        style={{
+          aspectRatio: "1 / 1",
+          background: "var(--crm-gray-50)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 12,
+          opacity: uploading ? 0.6 : 1,
+        }}
+      >
+        {icon.image_url ? (
+          <img
+            src={icon.image_url}
+            alt=""
+            style={{
+              maxWidth: "100%",
+              maxHeight: "100%",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--crm-gray-400)" }}>
+            Sem imagem
+          </span>
+        )}
       </div>
-      <input
-        value={icon.title}
-        onChange={(e) => onChange({ ...icon, title: e.target.value })}
-        placeholder="Título (ex: ENVIO GRATUITO)"
+      <label
         style={{
-          padding: "4px 8px",
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--crm-gray-900)",
-          background: "var(--crm-gray-50)",
-          border: "1px solid var(--crm-border)",
-          borderRadius: 4,
-        }}
-      />
-      <input
-        value={icon.subtitle ?? ""}
-        onChange={(e) => onChange({ ...icon, subtitle: e.target.value })}
-        placeholder="Subtítulo"
-        style={{
-          padding: "4px 8px",
+          padding: "8px 12px",
+          background: "var(--crm-gray-0)",
+          borderTop: "1px solid var(--crm-gray-100)",
           fontSize: 11,
-          color: "var(--crm-gray-500)",
-          background: "var(--crm-gray-50)",
-          border: "1px solid var(--crm-border)",
-          borderRadius: 4,
+          fontWeight: 600,
+          color: "var(--crm-gray-700)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: uploading ? "default" : "pointer",
+          justifyContent: "center",
         }}
-      />
+      >
+        <Upload className="h-3 w-3" />
+        {uploading ? "Enviando..." : "Substituir PNG"}
+        <input
+          type="file"
+          accept=".png,image/png"
+          style={{ display: "none" }}
+          disabled={uploading}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) onReplace(f)
+            e.currentTarget.value = ""
+          }}
+        />
+      </label>
     </div>
   )
 }
 
 function TrustIconCard({ icon }: { icon: TrustIcon }) {
-  const Icon = TRUST_ICON_MAP[icon.icon_type] ?? Award
+  if (!icon.image_url) return null
   return (
     <div
       style={{
-        padding: "12px 14px",
-        background: "var(--crm-gray-0)",
+        background: "var(--crm-gray-50)",
         border: "1px solid var(--crm-border)",
         borderRadius: 8,
+        overflow: "hidden",
+        aspectRatio: "1 / 1",
         display: "flex",
-        gap: 10,
         alignItems: "center",
+        justifyContent: "center",
+        padding: 12,
       }}
     >
-      <span
+      <img
+        src={icon.image_url}
+        alt=""
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: icon.is_existing
-            ? "var(--crm-pos-bg)"
-            : "var(--crm-blue-50)",
-          color: icon.is_existing ? "var(--crm-pos)" : "var(--crm-brand)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
+          maxWidth: "100%",
+          maxHeight: "100%",
+          objectFit: "contain",
+          display: "block",
         }}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div
-          className="truncate"
-          style={{
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "var(--crm-gray-900)",
-          }}
-        >
-          {icon.title}
-        </div>
-        {icon.subtitle && (
-          <div
-            className="truncate"
-            style={{
-              fontSize: 11,
-              color: "var(--crm-gray-500)",
-              marginTop: 1,
-            }}
-          >
-            {icon.subtitle}
-          </div>
-        )}
-        {!icon.is_existing && (
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--crm-warn)",
-              marginTop: 3,
-              fontWeight: 500,
-            }}
-          >
-            Sugerido (não confirmado)
-          </div>
-        )}
-      </div>
+      />
     </div>
   )
 }
