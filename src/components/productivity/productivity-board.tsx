@@ -32,6 +32,36 @@ export function ProductivityBoard() {
   const searchParams = useSearchParams()
   const viewMode = searchParams.get("view") === "mine" ? "mine" : "all"
 
+  // Persiste a task selecionada na URL (?task=<id>) — assim, ao recarregar
+  // a pagina com um drawer aberto, ele reabre na mesma task. Tasks novas
+  // selecionadas (selectTask) NAO escrevem URL aqui — esse efeito so
+  // restaura o estado inicial.
+  const urlTaskId = searchParams.get("task")
+  useEffect(() => {
+    if (urlTaskId && urlTaskId !== selectedTaskId && isLoaded) {
+      selectTask(urlTaskId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlTaskId, isLoaded])
+
+  // Sincroniza task -> URL (push silencioso)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (selectedTaskId) {
+      if (url.searchParams.get("task") !== selectedTaskId) {
+        url.searchParams.set("task", selectedTaskId)
+        window.history.replaceState({}, "", url.toString())
+      }
+    } else if (url.searchParams.has("task")) {
+      url.searchParams.delete("task")
+      // Limpa tambem state de workspace embarcado
+      url.searchParams.delete("ws")
+      url.searchParams.delete("ws-resource")
+      window.history.replaceState({}, "", url.toString())
+    }
+  }, [selectedTaskId])
+
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTaskName, setNewTaskName] = useState("")
   const [newTaskPriority, setNewTaskPriority] = useState(3)

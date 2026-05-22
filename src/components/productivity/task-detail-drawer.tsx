@@ -874,6 +874,65 @@ export function TaskDetailDrawer({
     fetchData()
   }
 
+  // Persiste o modal de workspace na URL (?ws=brand|briefing|email).
+  // Permite recarregar a pagina e continuar com o modal aberto no mesmo
+  // recurso. Sync e bidirecional via history.replaceState — sem rerender.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (workspaceModal) {
+      const wsValue = workspaceModal.resource ?? "email"
+      if (url.searchParams.get("ws") !== wsValue) {
+        url.searchParams.set("ws", wsValue)
+        window.history.replaceState({}, "", url.toString())
+      }
+    } else if (url.searchParams.has("ws")) {
+      url.searchParams.delete("ws")
+      window.history.replaceState({}, "", url.toString())
+    }
+  }, [workspaceModal])
+
+  // Restaura modal a partir da URL ao montar (?ws=brand|briefing|email).
+  // Roda 1x apos workspaceTarget estar carregado pra ter storeId e shape
+  // do target prontos.
+  useEffect(() => {
+    if (workspaceModal) return
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const ws = params.get("ws")
+    if (!ws) return
+    // Carrega target read-only e abre o modal sem alterar status.
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/tasks/${task.id}/workspace-target`)
+        if (!r.ok) return
+        const json = await r.json()
+        const payload = (json?.data ?? json) as {
+          target: TaskWorkspaceTarget
+          storeId: string
+          flowId: string | null
+          emailId: string | null
+        }
+        setWorkspaceModal({
+          storeId: payload.storeId,
+          mode: payload.target.kind === "email" ? "preview" : "full",
+          allowedEmails: buildAllowedEmails(payload.target),
+          flowId: payload.flowId,
+          emailId: payload.emailId,
+          resource:
+            ws === "brand" || ws === "briefing"
+              ? ws
+              : payload.target.kind === "checkbox-only"
+                ? (payload.target.resource ?? "briefing")
+                : null,
+        })
+      } catch {
+        /* silencioso */
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id])
+
   // Descobre se a task tem workspace target (read-only). Roda ao montar
   // pra pré-popular o bloco especial de preview_brand_brain e o botão
   // "Abrir workspace" quando task já estiver em progresso.

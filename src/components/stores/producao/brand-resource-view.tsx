@@ -1803,13 +1803,14 @@ function LogoCard({
         style={{
           height: 160,
           background: bg,
-          backgroundImage: svg ? `url(${svg})` : undefined,
+          backgroundImage: (svg ?? png) ? `url(${svg ?? png})` : undefined,
           backgroundSize: "contain",
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center",
+          padding: 16,
         }}
       >
-        {svg ? null : preview}
+        {(svg ?? png) ? null : preview}
       </div>
       <div
         className="flex items-center justify-between"
