@@ -44,6 +44,16 @@ const fetcher = async (url: string) => {
   return json
 }
 
+interface TopProductSyncItem {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  image_url: string | null
+  captured_at?: string | null
+}
+
 interface WorkspaceResponse {
   store: {
     id: string
@@ -56,6 +66,10 @@ interface WorkspaceResponse {
   brand: StoreBrandIdentity | null
   briefing: StoreBriefing | null
   flows: EmailFlow[]
+  top_products_sync: {
+    captured_at: string | null
+    items: TopProductSyncItem[]
+  } | null
 }
 
 export type { WorkspaceMode, AllowedEmailRef }
@@ -112,6 +126,7 @@ export function ProductionWorkspace({
   const store = resp?.store
   const brand = resp?.brand ?? null
   const briefing = resp?.briefing ?? null
+  const topProductsSync = resp?.top_products_sync ?? null
   const flows = useMemo<EmailFlow[]>(
     () => filterFlowsByMode(resp?.flows ?? [], mode, allowedEmails),
     [resp?.flows, mode, allowedEmails],
@@ -609,6 +624,15 @@ export function ProductionWorkspace({
               storeId={storeId}
               storeName={store.store_name}
               brand={brand}
+              briefing={briefing}
+              store={{
+                id: store.id,
+                store_name: store.store_name,
+                store_url: store.store_url,
+                platform: store.platform,
+                niche: store.niche,
+              }}
+              topProductsSync={topProductsSync}
               onChanged={() => mutate()}
             />
           )}

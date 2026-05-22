@@ -5,6 +5,7 @@ import {
   Award,
   CreditCard,
   Download,
+  ExternalLink,
   Gift,
   Heart,
   Lock,
@@ -18,10 +19,34 @@ import {
 import { useToast } from "@/lib/hooks/use-toast"
 import type {
   StoreBrandIdentity,
+  StoreBriefing,
   BrandColor,
   TrustIcon,
   TopProduct,
 } from "@/types/email-workspace"
+
+export interface TopProductSyncItem {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  image_url: string | null
+  captured_at?: string | null
+}
+
+export interface TopProductsSync {
+  captured_at: string | null
+  items: TopProductSyncItem[]
+}
+
+export interface StoreSummary {
+  id: string
+  store_name: string
+  store_url: string | null
+  platform: string | null
+  niche: string | null
+}
 
 const TRUST_ICON_MAP: Record<TrustIcon["icon_type"], typeof Truck> = {
   truck: Truck,
@@ -40,6 +65,9 @@ interface BrandResourceViewProps {
   storeId: string
   storeName: string
   brand: StoreBrandIdentity | null
+  briefing?: StoreBriefing | null
+  store?: StoreSummary | null
+  topProductsSync?: TopProductsSync | null
   onChanged: () => void
 }
 
@@ -47,12 +75,16 @@ export function BrandResourceView({
   storeId,
   storeName,
   brand,
+  briefing,
+  store,
+  topProductsSync,
   onChanged,
 }: BrandResourceViewProps) {
   const wordmark = storeName.toUpperCase()
   const monogramLetter = storeName.charAt(0).toUpperCase() || "?"
   const toast = useToast()
   const [generating, setGenerating] = useState(false)
+  const [downloadingZip, setDownloadingZip] = useState(false)
 
   const handleAiCapture = async () => {
     setGenerating(true)
@@ -83,6 +115,71 @@ export function BrandResourceView({
   const lastUpdate = brand
     ? formatRelativeTime(brand.created_at)
     : null
+
+  const handleDownloadZip = async () => {
+    if (!brand) return
+    setDownloadingZip(true)
+    try {
+      const res = await fetch(
+        `/api/admin/stores/${storeId}/brand-identity/download-zip`,
+      )
+      if (!res.ok) {
+        throw new Error(`Falha ao baixar (HTTP ${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const disposition = res.headers.get("Content-Disposition") ?? ""
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      a.download = match?.[1] ?? "brand-assets.zip"
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao baixar",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setDownloadingZip(false)
+    }
+  }
+
+  // Resolvers de campos do bloco "Sobre a loja" — combinam briefing (que
+  // tende a ser a fonte de verdade pos-briefing) com client_stores como
+  // fallback.
+  const slogan =
+    briefing?.marca?.slogan ?? null
+  const niche = store?.niche ?? briefing?.marca?.nicho ?? null
+  const platform = store?.platform ?? null
+  const storeUrl = store?.store_url ?? null
+  const posicionamentoRaw = briefing?.marca?.posicionamento ?? null
+  const posicionamento =
+    posicionamentoRaw === "popular"
+      ? "Popular"
+      : posicionamentoRaw === "medio"
+        ? "Médio"
+        : posicionamentoRaw === "premium"
+          ? "Premium"
+          : posicionamentoRaw
+            ? String(posicionamentoRaw).charAt(0).toUpperCase() +
+              String(posicionamentoRaw).slice(1)
+            : null
+
+  // Top products: prioriza sync de store_top_products; fallback pro snapshot
+  // em brand.top_products quando o webhook ainda nao rodou.
+  const syncedTopProducts =
+    topProductsSync?.items && topProductsSync.items.length > 0
+      ? topProductsSync.items
+      : null
+  const fallbackTopProducts =
+    !syncedTopProducts && brand?.top_products && brand.top_products.length > 0
+      ? brand.top_products
+      : null
+  const topProductsCapturedAt = topProductsSync?.captured_at ?? null
 
   return (
     <div
@@ -131,16 +228,7 @@ export function BrandResourceView({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              // Download all assets — simplificado: abre cada SVG em nova aba
-              const urls = [
-                brand?.logo_main_svg,
-                brand?.logo_alt_svg,
-                brand?.logo_monogram_svg,
-                brand?.logo_reverse_svg,
-              ].filter(Boolean) as string[]
-              urls.forEach((u) => window.open(u, "_blank"))
-            }}
+            onClick={handleDownloadZip}
             className="cf-focusable inline-flex items-center gap-1.5"
             style={{
               height: 32,
@@ -151,12 +239,14 @@ export function BrandResourceView({
               color: "var(--crm-gray-700)",
               fontSize: 12,
               fontWeight: 500,
-              cursor: "pointer",
+              cursor: !brand || downloadingZip ? "default" : "pointer",
+              opacity: !brand || downloadingZip ? 0.55 : 1,
             }}
-            disabled={!brand}
+            disabled={!brand || downloadingZip}
+            title="Baixa todos os logos como ZIP"
           >
             <Download className="h-3 w-3" />
-            Baixar tudo
+            {downloadingZip ? "Preparando..." : "Baixar tudo"}
           </button>
           <button
             onClick={handleAiCapture}
@@ -181,43 +271,55 @@ export function BrandResourceView({
         </div>
       </div>
 
-      {/* Hero */}
-      {brand && (
+      {/* Bloco "Sobre a loja" */}
+      <div
+        style={{
+          padding: "24px 32px",
+          background: "var(--crm-gray-0)",
+          borderBottom: "1px solid var(--crm-border)",
+        }}
+      >
         <div
           style={{
-            padding: "32px 48px 40px",
-            background:
-              "linear-gradient(135deg, var(--crm-blue-50) 0%, var(--crm-gray-0) 100%)",
-            borderBottom: "1px solid var(--crm-border)",
+            fontSize: 22,
+            fontWeight: 700,
+            color: "var(--crm-gray-900)",
+            letterSpacing: "-0.02em",
+            lineHeight: 1.1,
           }}
         >
-          <h1
+          {storeName}
+        </div>
+        {slogan && (
+          <div
             style={{
-              margin: 0,
-              fontSize: 56,
-              fontWeight: 900,
-              color: "var(--crm-gray-900)",
-              letterSpacing: "-0.04em",
-              lineHeight: 1,
-              textTransform: "uppercase",
+              marginTop: 4,
+              fontSize: 13.5,
+              color: "var(--crm-gray-600)",
+              fontStyle: "italic",
             }}
           >
-            {/* Nome da loja em destaque, simulando logo principal */}
-            {brand.logo_main_svg ? null : wordmark}
-          </h1>
-          {brand.voice && brand.voice.length > 0 && (
-            <p
-              style={{
-                marginTop: 12,
-                fontSize: 14,
-                color: "var(--crm-gray-600)",
-              }}
-            >
-              {brand.voice.join(" · ")}
-            </p>
-          )}
+            {slogan}
+          </div>
+        )}
+        <div
+          className="grid"
+          style={{
+            marginTop: 16,
+            gap: 14,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          <StoreField label="Segmento" value={niche} />
+          <StoreField label="Plataforma" value={platform} />
+          <StoreField
+            label="URL"
+            value={storeUrl}
+            href={storeUrl ? normalizeUrl(storeUrl) : null}
+          />
+          <StoreField label="Posicionamento" value={posicionamento} />
         </div>
-      )}
+      </div>
 
       {/* Body */}
       <div style={{ padding: "32px 32px 48px" }}>
@@ -361,17 +463,19 @@ export function BrandResourceView({
                 <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 16 }}>
                   {brand.font_heading && (
                     <FontPreview
-                      label="Heading"
+                      label="Display · headlines"
                       family={brand.font_heading}
-                      sample="The quick brown fox"
+                      weight={brand.font_heading_weight}
+                      sample="Aa"
                       big
                     />
                   )}
                   {brand.font_body && (
                     <FontPreview
-                      label="Body"
+                      label="Corpo · body"
                       family={brand.font_body}
-                      sample="The quick brown fox jumps over the lazy dog."
+                      weight={brand.font_body_weight}
+                      sample="Aa"
                     />
                   )}
                 </div>
@@ -381,7 +485,11 @@ export function BrandResourceView({
             {/* Tom de voz */}
             {brand.voice && brand.voice.length > 0 && (
               <>
-                <SectionTitle title="Tom de voz" style={{ marginTop: 40 }} />
+                <SectionTitle
+                  title="Tom de voz"
+                  subtitle="Atributos que orientam a copy"
+                  style={{ marginTop: 40 }}
+                />
                 <div className="flex flex-wrap gap-2" style={{ marginTop: 16 }}>
                   {brand.voice.map((v) => (
                     <span
@@ -403,12 +511,20 @@ export function BrandResourceView({
               </>
             )}
 
-            {/* Selos de confiança */}
-            {brand.trust_icons && brand.trust_icons.length > 0 && (
+            {/* Top 5 produtos mais vendidos */}
+            {(syncedTopProducts || fallbackTopProducts) && (
               <>
                 <SectionTitle
-                  title="Selos de confiança"
-                  subtitle="Use estes selos no rodapé ou na hero dos e-mails"
+                  title="Top 5 produtos mais vendidos"
+                  subtitle={
+                    syncedTopProducts
+                      ? `Últimos 90 dias · sincronizado do ${platform ?? "Shopify"}${
+                          topProductsCapturedAt
+                            ? ` ${formatRelativeTime(topProductsCapturedAt)}`
+                            : ""
+                        }`
+                      : "Top produtos captados da loja"
+                  }
                   style={{ marginTop: 40 }}
                 />
                 <div
@@ -416,7 +532,39 @@ export function BrandResourceView({
                   style={{
                     marginTop: 16,
                     gridTemplateColumns:
-                      "repeat(auto-fill, minmax(180px, 1fr))",
+                      "repeat(auto-fill, minmax(200px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  {syncedTopProducts
+                    ? syncedTopProducts.map((p) => (
+                        <TopProductSyncCard
+                          key={p.rank}
+                          item={p}
+                          fallbackCurrency={null}
+                        />
+                      ))
+                    : fallbackTopProducts!.map((p, i) => (
+                        <TopProductCard key={p.id ?? i} product={p} />
+                      ))}
+                </div>
+              </>
+            )}
+
+            {/* Selos de confiança */}
+            {brand.trust_icons && brand.trust_icons.length > 0 && (
+              <>
+                <SectionTitle
+                  title="Selos de confiança"
+                  subtitle="Bloco visual pronto pra usar nos emails"
+                  style={{ marginTop: 40 }}
+                />
+                <div
+                  className="grid"
+                  style={{
+                    marginTop: 16,
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(220px, 1fr))",
                     gap: 10,
                   }}
                 >
@@ -426,35 +574,69 @@ export function BrandResourceView({
                 </div>
               </>
             )}
-
-            {/* Produtos em destaque */}
-            {brand.top_products && brand.top_products.length > 0 && (
-              <>
-                <SectionTitle
-                  title="Produtos em destaque"
-                  subtitle="Top produtos captados da loja — use no bloco Produtos dos e-mails"
-                  style={{ marginTop: 40 }}
-                />
-                <div
-                  className="grid"
-                  style={{
-                    marginTop: 16,
-                    gridTemplateColumns:
-                      "repeat(auto-fill, minmax(180px, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  {brand.top_products.map((p, i) => (
-                    <TopProductCard key={p.id ?? i} product={p} />
-                  ))}
-                </div>
-              </>
-            )}
           </>
         )}
       </div>
     </div>
   )
+}
+
+function StoreField({
+  label,
+  value,
+  href,
+}: {
+  label: string
+  value: string | null
+  href?: string | null
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            fontSize: 13,
+            color: "var(--crm-brand)",
+            fontWeight: 500,
+            textDecoration: "none",
+          }}
+        >
+          {value ?? "—"}
+        </a>
+      ) : (
+        <div
+          style={{
+            fontSize: 13,
+            color: value ? "var(--crm-gray-900)" : "var(--crm-gray-400)",
+            fontWeight: 500,
+          }}
+        >
+          {value ?? "—"}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function normalizeUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return "#"
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
 
 function TrustIconCard({ icon }: { icon: TrustIcon }) {
@@ -525,6 +707,104 @@ function TrustIconCard({ icon }: { icon: TrustIcon }) {
         )}
       </div>
     </div>
+  )
+}
+
+function TopProductSyncCard({
+  item,
+  fallbackCurrency,
+}: {
+  item: TopProductSyncItem
+  fallbackCurrency: string | null
+}) {
+  const currency = item.currency || fallbackCurrency || "BRL"
+  const priceText =
+    typeof item.price === "number"
+      ? new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency,
+        }).format(item.price)
+      : null
+  const handleUrl = item.handle
+    ? item.handle.startsWith("http")
+      ? item.handle
+      : null
+    : null
+  const Wrapper = handleUrl ? "a" : "div"
+  return (
+    <Wrapper
+      {...(handleUrl
+        ? { href: handleUrl, target: "_blank", rel: "noreferrer" }
+        : {})}
+      style={{
+        display: "block",
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 10,
+        overflow: "hidden",
+        color: "inherit",
+        textDecoration: "none",
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          left: 8,
+          width: 24,
+          height: 24,
+          borderRadius: 999,
+          background: "rgba(15,15,15,0.8)",
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 11,
+          fontWeight: 700,
+          zIndex: 1,
+        }}
+      >
+        #{item.rank}
+      </div>
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "1 / 1",
+          background: "var(--crm-gray-100)",
+          backgroundImage: item.image_url ? `url(${item.image_url})` : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      />
+      <div style={{ padding: "10px 12px" }}>
+        <div
+          className="truncate"
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: "var(--crm-gray-900)",
+            lineHeight: 1.25,
+          }}
+          title={item.title}
+        >
+          {item.title}
+        </div>
+        {priceText && (
+          <div
+            className="crm-tnum"
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--crm-brand)",
+            }}
+          >
+            {priceText}
+          </div>
+        )}
+      </div>
+    </Wrapper>
   )
 }
 
@@ -864,14 +1144,19 @@ function ColorSwatch({
 function FontPreview({
   label,
   family,
+  weight,
   sample,
   big,
 }: {
   label: string
   family: string
+  weight?: string | null
   sample: string
   big?: boolean
 }) {
+  const googleFontsUrl = `https://fonts.google.com/specimen/${encodeURIComponent(
+    family.replace(/\s+/g, "+"),
+  )}`
   return (
     <div
       style={{
@@ -879,42 +1164,78 @@ function FontPreview({
         border: "1px solid var(--crm-border)",
         borderRadius: 10,
         padding: "16px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
       }}
     >
-      <div className="flex items-baseline justify-between">
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 600,
-            color: "var(--crm-gray-500)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          {label}
-        </span>
-        <span
-          style={{
-            fontSize: 12,
-            color: "var(--crm-gray-700)",
-            fontWeight: 500,
-          }}
-        >
-          {family}
-        </span>
-      </div>
       <div
         style={{
-          marginTop: 12,
-          fontSize: big ? 36 : 18,
-          fontWeight: big ? 700 : 400,
-          color: "var(--crm-gray-900)",
-          fontFamily: `'${family}', sans-serif`,
-          lineHeight: 1.2,
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
         }}
       >
-        {sample}
+        {label}
       </div>
+      <div className="flex items-center justify-between gap-3">
+        <div
+          style={{
+            fontSize: big ? 56 : 36,
+            fontWeight: big ? 900 : 400,
+            color: "var(--crm-gray-900)",
+            fontFamily: `'${family}', sans-serif`,
+            lineHeight: 1,
+          }}
+        >
+          {sample}
+        </div>
+        <div className="text-right" style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13.5,
+              fontWeight: 600,
+              color: "var(--crm-gray-900)",
+            }}
+          >
+            {family}
+          </div>
+          {weight && (
+            <div
+              style={{
+                fontSize: 11.5,
+                color: "var(--crm-gray-500)",
+                marginTop: 2,
+              }}
+            >
+              {weight}
+            </div>
+          )}
+        </div>
+      </div>
+      <a
+        href={googleFontsUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5"
+        style={{
+          alignSelf: "flex-start",
+          height: 26,
+          padding: "0 10px",
+          background: "var(--crm-gray-50, #FCFCFD)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 4,
+          color: "var(--crm-gray-700)",
+          fontSize: 11,
+          fontWeight: 600,
+          textDecoration: "none",
+        }}
+      >
+        <ExternalLink className="h-2.5 w-2.5" />
+        Ver Google Fonts
+      </a>
     </div>
   )
 }
