@@ -1309,7 +1309,7 @@ export function TaskDetailDrawer({
             />
           )}
         <div className={isOnboarding ? "flex-1 overflow-y-auto" : "contents"}>
-        {/* ── EXECUCAO no topo ── */}
+        {/* ── EXECUCAO no topo (Criterios + Sugestoes IA antes do body) ── */}
         {isOnboarding && (
           <div id="task-section-criterios" className="px-5 pt-5">
             <BlockCriteriosAceitacao taskId={task.id} />
@@ -1320,30 +1320,10 @@ export function TaskDetailDrawer({
             <BlockSugestoesIA taskId={task.id} />
           </div>
         )}
-        {/* Checklist e Entregaveis continuam no body principal (envolvidos
-            com title/status/properties), porque a separacao quebraria layout. */}
-
-        {/* ── CONTEXTO logo apos execucao ── */}
-        {isOnboarding && (
-          <div id="task-section-visao-geral" className="px-5 pt-3">
-            <BlockIdentidadeLoja taskId={task.id} />
-          </div>
-        )}
-        {isOnboarding && (
-          <div id="task-section-sobre-cliente" className="px-5 pt-3">
-            {/* Placeholder reservado para ancorar a navegação */}
-          </div>
-        )}
-        {isOnboarding && (
-          <div id="task-section-brand-brain" className="px-5 pt-3">
-            <BlockBrandBrain taskId={task.id} />
-          </div>
-        )}
-        {isOnboarding && (
-          <div id="task-section-assets-visuais" className="px-5 pt-3">
-            <BlockAssetsVisuais taskId={task.id} />
-          </div>
-        )}
+        {/* Body da task (title/status/properties/descricao/checklist/entregaveis/anexos)
+            renderiza logo abaixo. CONTEXTO (visao-geral/sobre-cliente/brand-brain/
+            assets-visuais) foi movido pra DEPOIS do body — vide bloco mais abaixo
+            antes de Comentarios. */}
 
         {/* Title + status + properties */}
         <div id="task-section-checklist" className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
@@ -1951,6 +1931,28 @@ export function TaskDetailDrawer({
                 </div>
               )}
             </Section>
+          )}
+
+          {/* ── CONTEXTO apos o body da task ── */}
+          {isOnboarding && (
+            <div id="task-section-visao-geral" className="px-5 pt-5">
+              <BlockIdentidadeLoja taskId={task.id} />
+            </div>
+          )}
+          {isOnboarding && (
+            <div id="task-section-sobre-cliente" className="px-5 pt-3">
+              {/* Placeholder reservado para ancorar a navegação */}
+            </div>
+          )}
+          {isOnboarding && (
+            <div id="task-section-brand-brain" className="px-5 pt-3">
+              <BlockBrandBrain taskId={task.id} />
+            </div>
+          )}
+          {isOnboarding && (
+            <div id="task-section-assets-visuais" className="px-5 pt-3 pb-3">
+              <BlockAssetsVisuais taskId={task.id} />
+            </div>
           )}
 
           {/* Comentarios */}
