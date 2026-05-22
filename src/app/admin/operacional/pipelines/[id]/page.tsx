@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import { PipelineBoardView } from "@/components/crm/pipeline-board-view"
+import { CarteiraSyncButton } from "@/components/crm/carteira-sync-button"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { syncCarteiraDeal } from "@/lib/services/cs-pipelines-sync.service"
 import { logger } from "@/lib/logger"
@@ -12,16 +13,12 @@ export const dynamic = "force-dynamic"
  * Detalhe de um pipeline CS — renderiza o PipelineBoardView padrao
  * (UX identica a qualquer outro pipeline).
  *
- * Hook server-side: antes de renderizar, se o pipeline e "Gestao de
- * Carteira" e esta vazio, popula em paralelo (chama syncCarteiraDeal
- * pra cada loja ativa do org). Isso garante que ao abrir pela primeira
- * vez, a tela ja apresenta as lojas distribuidas nos stages, sem
- * client-side magic ou banners visuais. Cron diario 5h UTC mantem
- * atualizado dali pra frente.
- *
- * Custo: 1 count query + (se vazio) N iteracoes paralelas de
- * syncCarteiraDeal (1 read + 1 write por loja). Pra 97 lojas, ~3-5s
- * na primeira abertura. Subsequentes: so a count query (rapida).
+ * Particularidades por pipeline:
+ *  - "Gestao de Carteira": tenta popular server-side antes do render
+ *    (se vazio, sincroniza todas as lojas do org). Tambem injeta o
+ *    botao manual "Sincronizar carteira" no header via headerExtras —
+ *    fallback caso o auto-populate falhe (deploy delay, erro de
+ *    permissao, etc).
  */
 export default async function CsPipelineDetailPage({
   params,
@@ -38,7 +35,11 @@ export default async function CsPipelineDetailPage({
 
   return (
     <Suspense fallback={null}>
-      <PipelineBoardView pipelineId={id} scope="cs" />
+      <PipelineBoardView
+        pipelineId={id}
+        scope="cs"
+        headerExtras={<CarteiraSyncButton pipelineId={id} />}
+      />
     </Suspense>
   )
 }
@@ -46,7 +47,6 @@ export default async function CsPipelineDetailPage({
 async function maybePopulateGestaoCarteira(pipelineId: string): Promise<void> {
   const admin = createAdminClient()
 
-  // Confirma que e o pipeline canonico "Gestao de Carteira"
   const { data: pipeline } = await admin
     .from("pipelines")
     .select("id, name, scope")
@@ -56,7 +56,6 @@ async function maybePopulateGestaoCarteira(pipelineId: string): Promise<void> {
     return
   }
 
-  // Ja tem deals? Skip
   const { count } = await admin
     .from("deals")
     .select("id", { count: "exact", head: true })
@@ -65,7 +64,6 @@ async function maybePopulateGestaoCarteira(pipelineId: string): Promise<void> {
 
   if ((count ?? 0) > 0) return
 
-  // Resolve org_id do user logado
   const sb = await createClient()
   const {
     data: { user },
@@ -82,7 +80,6 @@ async function maybePopulateGestaoCarteira(pipelineId: string): Promise<void> {
     .maybeSingle()
   if (!member?.org_id) return
 
-  // Itera lojas e classifica
   const { data: stores } = await admin
     .from("client_stores")
     .select("id, health_score")
@@ -96,7 +93,6 @@ async function maybePopulateGestaoCarteira(pipelineId: string): Promise<void> {
     store_count: stores.length,
   })
 
-  // Paralelo em batches de 10 pra nao saturar conexoes
   const BATCH = 10
   for (let i = 0; i < stores.length; i += BATCH) {
     const batch = stores.slice(i, i + BATCH)

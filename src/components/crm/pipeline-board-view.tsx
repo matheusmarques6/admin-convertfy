@@ -69,9 +69,19 @@ interface PipelineDetailResponse {
 interface PipelineBoardViewProps {
   pipelineId: string
   scope: "sales" | "cs"
+  /**
+   * Acoes customizadas renderizadas no header da pipeline, ANTES do
+   * botao "+ Novo deal". Util pra adicionar acoes especificas por
+   * pipeline (ex: "Sincronizar carteira" so na Gestao de Carteira).
+   */
+  headerExtras?: React.ReactNode
 }
 
-export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardViewProps) {
+export function PipelineBoardView({
+  pipelineId,
+  scope: _scope,
+  headerExtras,
+}: PipelineBoardViewProps) {
   const { data, isLoading, mutate } = useSWR<PipelineDetailResponse>(
     `/api/crm/pipelines/${pipelineId}`,
     fetcher,
@@ -491,6 +501,7 @@ export function PipelineBoardView({ pipelineId, scope: _scope }: PipelineBoardVi
 
               {/* Actions */}
               <div className="flex items-center gap-2 shrink-0">
+                {headerExtras}
                 <button
                   onClick={() => setNewDealStageId(pipeline?.stages?.[0]?.id || null)}
                   disabled={!pipeline}
