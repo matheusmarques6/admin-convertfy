@@ -61,6 +61,15 @@ interface WorkspaceResponse {
     store_url: string | null
     platform: string | null
     niche: string | null
+    created_at: string | null
+    // Campos de marca canônicos em client_stores (lidos pela tab Marca).
+    slogan: string | null
+    diferencial: string | null
+    persona: string | null
+    posicionamento_preco: "popular" | "medio" | "premium" | null
+    hashtags: string[] | null
+    brand_thesis: string | null
+    tone_use_words: string[] | null
     clients?: { id: string; name: string }
   }
   brand: StoreBrandIdentity | null
@@ -640,6 +649,7 @@ export function ProductionWorkspace({
             <BriefingResourceView
               storeId={storeId}
               briefing={briefing}
+              store={store}
               onChanged={() => mutate()}
             />
           )}

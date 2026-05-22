@@ -29,6 +29,8 @@ export async function GET(
       .select(`
         id, store_name, store_url, platform, niche, country, language,
         is_active, created_at, client_id,
+        slogan, diferencial, persona, posicionamento_preco, hashtags,
+        brand_thesis, tone_use_words,
         clients (id, name, owner_id,
           owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
         )
