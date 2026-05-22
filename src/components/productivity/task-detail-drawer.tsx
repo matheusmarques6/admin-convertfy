@@ -1269,21 +1269,21 @@ export function TaskDetailDrawer({
               }}
               groups={[
                 {
-                  label: "Contexto",
-                  items: [
-                    { id: "visao-geral", label: "Visão geral" },
-                    { id: "sobre-cliente", label: "Sobre o cliente" },
-                    { id: "brand-brain", label: "Brand Brain", badge: { value: "IA", tone: "purple" } },
-                    { id: "assets-visuais", label: "Assets visuais" },
-                  ],
-                },
-                {
                   label: "Execução",
                   items: [
                     { id: "criterios", label: "Critérios" },
                     { id: "checklist", label: "Checklist interno" },
                     { id: "sugestoes-ia", label: "Sugestões da IA", badge: { value: "IA", tone: "purple" } },
                     { id: "entregaveis", label: "Entregáveis" },
+                  ],
+                },
+                {
+                  label: "Contexto",
+                  items: [
+                    { id: "visao-geral", label: "Visão geral" },
+                    { id: "sobre-cliente", label: "Sobre o cliente" },
+                    { id: "brand-brain", label: "Brand Brain", badge: { value: "IA", tone: "purple" } },
+                    { id: "assets-visuais", label: "Assets visuais" },
                   ],
                 },
                 {
@@ -1309,9 +1309,23 @@ export function TaskDetailDrawer({
             />
           )}
         <div className={isOnboarding ? "flex-1 overflow-y-auto" : "contents"}>
-        {/* Identidade da loja (novo bloco no topo, só em onboarding) */}
+        {/* ── EXECUCAO no topo ── */}
         {isOnboarding && (
-          <div id="task-section-visao-geral" className="px-5 pt-5">
+          <div id="task-section-criterios" className="px-5 pt-5">
+            <BlockCriteriosAceitacao taskId={task.id} />
+          </div>
+        )}
+        {isOnboarding && (
+          <div id="task-section-sugestoes-ia" className="px-5 pt-3">
+            <BlockSugestoesIA taskId={task.id} />
+          </div>
+        )}
+        {/* Checklist e Entregaveis continuam no body principal (envolvidos
+            com title/status/properties), porque a separacao quebraria layout. */}
+
+        {/* ── CONTEXTO logo apos execucao ── */}
+        {isOnboarding && (
+          <div id="task-section-visao-geral" className="px-5 pt-3">
             <BlockIdentidadeLoja taskId={task.id} />
           </div>
         )}
@@ -1328,11 +1342,6 @@ export function TaskDetailDrawer({
         {isOnboarding && (
           <div id="task-section-assets-visuais" className="px-5 pt-3">
             <BlockAssetsVisuais taskId={task.id} />
-          </div>
-        )}
-        {isOnboarding && (
-          <div id="task-section-criterios" className="px-5 pt-3">
-            <BlockCriteriosAceitacao taskId={task.id} />
           </div>
         )}
 
@@ -2014,12 +2023,10 @@ export function TaskDetailDrawer({
           </Section>
         </div>
 
-        {/* Blocos finais (sugestões IA, anotações, histórico — só em onboarding) */}
+        {/* Blocos finais (acompanhamento: anotacoes + historico, so em onboarding).
+            Sugestoes IA foi movido pra cima junto com Criterios (grupo Execucao). */}
         {isOnboarding && (
           <>
-            <div id="task-section-sugestoes-ia" className="px-5 pt-3 pb-3">
-              <BlockSugestoesIA taskId={task.id} />
-            </div>
             <div id="task-section-anotacoes" className="px-5 pt-3 pb-3">
               <BlockAnotacoesPessoais taskId={task.id} />
             </div>
