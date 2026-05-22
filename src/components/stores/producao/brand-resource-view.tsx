@@ -217,6 +217,35 @@ export function BrandResourceView({
     setMode("edit")
   }
 
+  const hasUnsavedChanges =
+    !!diffBrand(brand, brandDraft) ||
+    !!diffBriefing(briefing, briefingDraft) ||
+    !!diffStore(store, storeDraft)
+
+  // ESC sai do modo edit (com confirmacao se ha mudancas).
+  useEffect(() => {
+    if (mode !== "edit") return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        cancelEditMode()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, hasUnsavedChanges])
+
+  // Avisa antes de sair do app com mudancas nao salvas
+  useEffect(() => {
+    if (mode !== "edit" || !hasUnsavedChanges) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [mode, hasUnsavedChanges])
+
   // Upload de logo: envia direto pro endpoint /brand-identity/upload (que
   // armazena no Supabase Storage e devolve a URL assinada). NÃO mexe no
   // draft — o /upload já cria uma nova versão de store_brand_identity
@@ -258,6 +287,13 @@ export function BrandResourceView({
   }
 
   const cancelEditMode = () => {
+    if (
+      hasUnsavedChanges &&
+      typeof window !== "undefined" &&
+      !window.confirm("Descartar alteracoes nao salvas?")
+    ) {
+      return
+    }
     setBrandDraft(initBrandDraft(brand))
     setBriefingDraft(initBriefingDraft(briefing))
     setStoreDraft(initStoreDraft(store))
@@ -496,6 +532,7 @@ export function BrandResourceView({
             }}
             disabled={!brand || downloadingZip}
             title="Baixa todos os logos como ZIP"
+            aria-label="Baixar todos os logos da identidade visual como ZIP"
           >
             <Download className="h-3 w-3" />
             {downloadingZip ? "Preparando..." : "Baixar tudo"}
@@ -516,6 +553,7 @@ export function BrandResourceView({
                 opacity: generating ? 0.6 : 1,
               }}
               title={generating ? "Capturando..." : brand ? "Recapturar com IA" : "Capturar com IA"}
+              aria-label={generating ? "Capturando identidade com IA" : brand ? "Recapturar identidade visual com IA" : "Capturar identidade visual com IA"}
             >
               <Sparkles className="h-3.5 w-3.5" />
             </button>
