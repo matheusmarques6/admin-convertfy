@@ -378,7 +378,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM email_blocks eb WHERE eb.email_id = e1.id
 );
 
--- Email #2 - História da marca: Hero + Texto + Cupom + Produtos + Rodapé
+-- Email #2 - História da marca: Hero + Texto + Cupom + Produtos (footer inserido logo abaixo)
 WITH e2 AS (
   SELECT efe.id, cs.store_name FROM email_flow_emails efe
   JOIN email_flows ef ON ef.id = efe.flow_id
@@ -414,8 +414,27 @@ CROSS JOIN (VALUES
       jsonb_build_object('name', 'Modelo Black',      'price', '69,95', 'image_url', '', 'cta_text', 'BUY NOW'),
       jsonb_build_object('name', 'Modelo Galaxy',     'price', '49,95', 'image_url', '', 'cta_text', 'BUY NOW')
     )
-  )::text),
-  ('footer', 5, 'Rodapé', jsonb_build_object(
+  )::text)
+) AS b(block_type, position, label, content)
+WHERE NOT EXISTS (
+  SELECT 1 FROM email_blocks eb WHERE eb.email_id = e2.id AND eb.position = b.position::int
+);
+
+-- Footer do email #2 — separado porque o copyright usa store_name (CTE), e VALUES
+-- literal nao consegue referenciar colunas do FROM (nao funciona nem com LATERAL).
+WITH e2 AS (
+  SELECT efe.id, cs.store_name FROM email_flow_emails efe
+  JOIN email_flows ef ON ef.id = efe.flow_id
+  JOIN client_stores cs ON cs.id = ef.store_id
+  WHERE ef.flow_type = 'welcome' AND efe.number = 2
+)
+INSERT INTO email_blocks (email_id, block_type, position, label, content)
+SELECT
+  e2.id,
+  'footer',
+  5,
+  'Rodapé',
+  jsonb_build_object(
     'columns', jsonb_build_array(
       jsonb_build_object('links', jsonb_build_array(
         jsonb_build_object('label', 'LANÇAMENTOS', 'url', '#'),
@@ -425,10 +444,10 @@ CROSS JOIN (VALUES
       ))
     ),
     'copyright', '© 2026 ' || UPPER(e2.store_name) || ' · TODOS OS DIREITOS RESERVADOS'
-  )::text)
-) AS b(block_type, position, label, content)
+  )
+FROM e2
 WHERE NOT EXISTS (
-  SELECT 1 FROM email_blocks eb WHERE eb.email_id = e2.id
+  SELECT 1 FROM email_blocks eb WHERE eb.email_id = e2.id AND eb.position = 5
 );
 
 -- Email #3 - Tênis favoritos: Hero + Produtos + Rodapé
