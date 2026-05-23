@@ -318,6 +318,12 @@ export function BriefingResourceView({
                       padding: 2px 4px;
                       gap: 0;
                     }
+                    /* truncate (overflow:hidden) do span interno corta o
+                       lean das letras italic — slogan eh texto curto, libera. */
+                    .slogan-quote :global(.inline-edit-read .truncate) {
+                      overflow: visible;
+                      text-overflow: clip;
+                    }
                     .slogan-quote :global(.inline-edit-read svg) {
                       width: 0;
                       margin-left: 0;
