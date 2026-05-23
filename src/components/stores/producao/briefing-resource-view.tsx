@@ -16,6 +16,7 @@ export interface BriefingStoreContext {
   platform: string | null
   niche: string | null
   created_at: string | null
+  // Marca (tab Marca)
   slogan: string | null
   diferencial: string | null
   persona: string | null
@@ -23,6 +24,20 @@ export interface BriefingStoreContext {
   hashtags: string[] | null
   brand_thesis: string | null
   tone_use_words: string[] | null
+  // Briefing — campos auxiliares usados como fallback de leitura na tab
+  // Briefing (estratégia + restrições). Esses vêm da Pesquisa &
+  // Diagnóstico (pilares 1 e 4) e do Contexto/Logística da loja.
+  brand_about: string | null
+  brand_pillars:
+    | Array<{ number: string; label: string; text: string }>
+    | null
+  tone_avoid_words: string[] | null
+  tone_do: string[] | null
+  tone_dont: string[] | null
+  devolucao_politica: string | null
+  frete_cobertura: string | null
+  frete_prazo: string | null
+  frete_gratis_acima_cents: number | null
 }
 
 interface BriefingResourceViewProps {
@@ -131,6 +146,58 @@ export function BriefingResourceView({
       : marca.tom_voz
         ? [marca.tom_voz]
         : []
+
+  // ─── Tab Briefing: fallback chain ───────────────────────────
+  // Fontes secundárias vêm da Pesquisa & Diagnóstico (pilares 1/4)
+  // e dos campos de logística (frete/devolução). Edição continua
+  // gravando em store_briefings.briefing (jsonb versionado) via
+  // patchBriefing; fallback é só pra display quando jsonb vazio.
+  const conceitoValue = detail.conceito ?? store.brand_about ?? null
+
+  const sensibilidadeValue =
+    detail.sensibilidade ??
+    (store.tone_avoid_words && store.tone_avoid_words.length > 0
+      ? store.tone_avoid_words.join(", ")
+      : null)
+
+  // Diferenciais: prioriza array nativo do briefing; depois pillars
+  // (mapeia pillar.text); depois tone_do[]; depois single diferencial.
+  const diferenciaisValue: string[] =
+    detail.diferenciais && detail.diferenciais.length > 0
+      ? detail.diferenciais
+      : store.brand_pillars && store.brand_pillars.length > 0
+        ? store.brand_pillars.map((p) =>
+            p.label && p.text ? `${p.label}: ${p.text}` : p.text || p.label,
+          )
+        : store.tone_do && store.tone_do.length > 0
+          ? store.tone_do
+          : store.diferencial
+            ? [store.diferencial]
+            : []
+
+  const restricoesValue: string[] =
+    detail.restricoes && detail.restricoes.length > 0
+      ? detail.restricoes
+      : store.tone_dont ?? []
+
+  // Políticas: jsonb [{tipo, valor}]. Fallback derivado de campos de
+  // logística (devolução, frete, frete grátis acima de X).
+  const politicasValue: Array<{ tipo: string; valor: string }> = (() => {
+    if (detail.politicas && detail.politicas.length > 0) return detail.politicas
+    const derived: Array<{ tipo: string; valor: string }> = []
+    if (store.devolucao_politica)
+      derived.push({ tipo: "Devolução", valor: store.devolucao_politica })
+    if (store.frete_prazo)
+      derived.push({ tipo: "Prazo de frete", valor: store.frete_prazo })
+    if (store.frete_cobertura)
+      derived.push({ tipo: "Cobertura de frete", valor: store.frete_cobertura })
+    if (store.frete_gratis_acima_cents != null)
+      derived.push({
+        tipo: "Frete grátis",
+        valor: `Acima de R$ ${(store.frete_gratis_acima_cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      })
+    return derived
+  })()
 
   // Persiste campo da tab Marca diretamente em client_stores via /context.
   // Fonte canônica — substitui o antigo patchBriefing("marca", …) que
@@ -468,14 +535,14 @@ export function BriefingResourceView({
             />
             <RowField
               label="Conceito atual"
-              value={detail.conceito}
+              value={conceitoValue}
               placeholder="Conceito visual / campanha em vigor..."
               onSave={(v) => patchBriefing("briefing", { conceito: v })}
               textarea
             />
             <RowField
               label="Sensibilidades"
-              value={detail.sensibilidade}
+              value={sensibilidadeValue}
               placeholder="Temas, palavras, abordagens a evitar..."
               onSave={(v) => patchBriefing("briefing", { sensibilidade: v })}
               textarea
@@ -489,7 +556,7 @@ export function BriefingResourceView({
               Pontos fortes pra explorar nas campanhas
             </p>
             <BulletListEditor
-              items={detail.diferenciais ?? []}
+              items={diferenciaisValue}
               tone="pos"
               onSave={(items) => patchBriefing("briefing", { diferenciais: items })}
               placeholder="ex: Frete grátis em todo Brasil"
@@ -501,7 +568,7 @@ export function BriefingResourceView({
               Limites que o time precisa respeitar
             </p>
             <BulletListEditor
-              items={detail.restricoes ?? []}
+              items={restricoesValue}
               tone="warn"
               onSave={(items) => patchBriefing("briefing", { restricoes: items })}
               placeholder="ex: Não usar fotos de outras marcas"
@@ -523,7 +590,7 @@ export function BriefingResourceView({
               Frete, devolução, garantia, prazo de pagamento... incluir em rodapé/comunicação
             </p>
             <PoliciesEditor
-              items={detail.politicas ?? []}
+              items={politicasValue}
               onSave={(items) => patchBriefing("briefing", { politicas: items })}
             />
           </>

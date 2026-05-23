@@ -69,7 +69,18 @@ interface WorkspaceResponse {
     posicionamento_preco: "popular" | "medio" | "premium" | null
     hashtags: string[] | null
     brand_thesis: string | null
+    brand_about: string | null
+    brand_pillars:
+      | Array<{ number: string; label: string; text: string }>
+      | null
     tone_use_words: string[] | null
+    tone_avoid_words: string[] | null
+    tone_do: string[] | null
+    tone_dont: string[] | null
+    devolucao_politica: string | null
+    frete_cobertura: string | null
+    frete_prazo: string | null
+    frete_gratis_acima_cents: number | null
     clients?: { id: string; name: string }
   }
   brand: StoreBrandIdentity | null

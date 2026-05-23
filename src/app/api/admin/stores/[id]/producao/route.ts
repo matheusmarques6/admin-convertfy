@@ -30,7 +30,10 @@ export async function GET(
         id, store_name, store_url, platform, niche, country, language,
         is_active, created_at, client_id,
         slogan, diferencial, persona, posicionamento_preco, hashtags,
-        brand_thesis, tone_use_words,
+        brand_thesis, brand_about, brand_pillars,
+        tone_use_words, tone_avoid_words, tone_do, tone_dont,
+        devolucao_politica, frete_cobertura, frete_prazo,
+        frete_gratis_acima_cents,
         clients (id, name, owner_id,
           owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
         )
