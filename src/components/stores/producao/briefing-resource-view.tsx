@@ -274,6 +274,7 @@ export function BriefingResourceView({
                   SLOGAN
                 </div>
                 <div
+                  className="slogan-quote"
                   style={{
                     fontSize: 24,
                     fontWeight: 600,
@@ -282,7 +283,6 @@ export function BriefingResourceView({
                     lineHeight: 1.3,
                   }}
                 >
-                  &ldquo;
                   <InlineEditField
                     value={store.brand_thesis ?? store.slogan ?? null}
                     placeholder="Slogan da marca"
@@ -295,7 +295,45 @@ export function BriefingResourceView({
                       fontStyle: "italic",
                     }}
                   />
-                  &rdquo;
+                  {/* Aspas curvas como pseudo-elementos pra não interferir
+                      no flex baseline do InlineEditField (o ícone Edit2
+                      interno ocupa largura quando visível). */}
+                  <style jsx>{`
+                    .slogan-quote::before,
+                    .slogan-quote::after {
+                      color: var(--crm-gray-400);
+                      font-style: italic;
+                    }
+                    .slogan-quote::before {
+                      content: "\\201C";
+                      margin-right: 2px;
+                    }
+                    .slogan-quote::after {
+                      content: "\\201D";
+                      margin-left: 2px;
+                    }
+                    .slogan-quote :global(.inline-edit-read) {
+                      margin-left: 0;
+                      margin-right: 0;
+                      padding: 2px 4px;
+                      gap: 0;
+                    }
+                    .slogan-quote :global(.inline-edit-read svg) {
+                      width: 0;
+                      margin-left: 0;
+                      opacity: 0;
+                      overflow: hidden;
+                      transition:
+                        width 120ms ease,
+                        margin-left 120ms ease,
+                        opacity 120ms ease;
+                    }
+                    .slogan-quote:hover :global(.inline-edit-read svg) {
+                      width: 12px;
+                      margin-left: 6px;
+                      opacity: 0.6;
+                    }
+                  `}</style>
                 </div>
               </div>
 
