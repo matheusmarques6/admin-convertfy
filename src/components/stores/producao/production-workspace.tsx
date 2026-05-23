@@ -97,6 +97,16 @@ interface ProductionWorkspaceProps {
    * default navega pra /admin/stores/[id]). Se passar, o X chama isso.
    */
   onClose?: () => void
+  /**
+   * Quando o workspace é aberto a partir de uma task, contexto pra exibir
+   * o badge "Task atribuída a você" no topbar. `assigneeId` é o profile_id
+   * do responsável; comparado com `currentUserId` pra decidir se mostra.
+   */
+  taskContext?: {
+    taskTitle: string
+    assigneeId: string | null
+    currentUserId: string | null
+  }
 }
 
 // Tipo da seleção atual
@@ -122,6 +132,7 @@ export function ProductionWorkspace({
   mode = "full",
   allowedEmails,
   onClose,
+  taskContext,
 }: ProductionWorkspaceProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -401,6 +412,36 @@ export function ProductionWorkspace({
               {currentFlow.assignee.name}
             </span>
           )}
+          {taskContext &&
+            taskContext.assigneeId &&
+            taskContext.currentUserId &&
+            taskContext.assigneeId === taskContext.currentUserId && (
+              <span
+                className="inline-flex items-center gap-1.5"
+                style={{
+                  marginLeft: 8,
+                  height: 22,
+                  padding: "0 8px",
+                  borderRadius: 4,
+                  background: "var(--crm-blue-50)",
+                  border: "1px solid var(--crm-blue-100)",
+                  color: "var(--crm-brand)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+                title={taskContext.taskTitle}
+              >
+                <span
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: "var(--crm-brand)",
+                  }}
+                />
+                Task atribuída a você
+              </span>
+            )}
         </div>
         <div className="flex items-center gap-3">
           {lastUpdateMin && (
@@ -792,7 +833,9 @@ function FlowItem({
   onFlowChanged: () => void
 }) {
   const FlowIcon = FLOW_ICONS[flow.flow_type] ?? Mail
-  const isBlocked = flow.status === "blocked"
+  const isRealBlocked = flow.status === "blocked"
+  const isPreviewLocked = flow.preview_locked === true
+  const isBlocked = isRealBlocked || isPreviewLocked
   const expanded = !isBlocked
   const [open, setOpen] = useState(expanded)
   const [creating, setCreating] = useState(false)
@@ -904,11 +947,16 @@ function FlowItem({
           <Lock
             className="h-3 w-3 shrink-0"
             style={{ color: "var(--crm-gray-400)" }}
+            aria-label={
+              isPreviewLocked
+                ? "Disponível apenas na produção completa"
+                : "Flow bloqueado"
+            }
           />
         )}
         <FlowIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 truncate">{flow.name}</span>
-        {isBlocked ? (
+        {isRealBlocked && !isPreviewLocked ? (
           <button
             onClick={handleUnblock}
             disabled={unblocking}
@@ -925,7 +973,7 @@ function FlowItem({
           >
             {unblocking ? "..." : "Desbloquear"}
           </button>
-        ) : total > 0 ? (
+        ) : !isBlocked && total > 0 ? (
           <span
             className="crm-tnum"
             style={{

@@ -67,11 +67,20 @@ describe("filterFlowsByMode", () => {
     expect(filterFlowsByMode(flows, "preview", [])).toEqual(flows)
   })
 
-  it("modo preview filtra flow_types não listados", () => {
+  it("modo preview mantém todos flow_types e marca não-pilotos como preview_locked", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 1 },
     ])
-    expect(result.map((f) => f.flow_type)).toEqual(["welcome"])
+    expect(result.map((f) => f.flow_type)).toEqual([
+      "welcome",
+      "abandoned_cart",
+      "post_purchase",
+    ])
+    const welcome = result.find((f) => f.flow_type === "welcome")!
+    expect(welcome.preview_locked).toBeUndefined()
+    expect(welcome.emails).toHaveLength(1)
+    expect(result.find((f) => f.flow_type === "abandoned_cart")?.preview_locked).toBe(true)
+    expect(result.find((f) => f.flow_type === "post_purchase")?.preview_locked).toBe(true)
   })
 
   it("modo preview filtra emails dentro do flow", () => {
@@ -80,19 +89,25 @@ describe("filterFlowsByMode", () => {
       { flowType: "abandoned_cart", number: 1 },
       { flowType: "abandoned_cart", number: 2 },
     ])
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(3)
     const welcome = result.find((f) => f.flow_type === "welcome")
     expect(welcome?.emails).toHaveLength(1)
     expect(welcome?.emails?.[0].number).toBe(1)
+    expect(welcome?.preview_locked).toBeUndefined()
     const cart = result.find((f) => f.flow_type === "abandoned_cart")
     expect(cart?.emails).toHaveLength(2)
+    expect(cart?.preview_locked).toBeUndefined()
+    expect(result.find((f) => f.flow_type === "post_purchase")?.preview_locked).toBe(true)
   })
 
-  it("descarta flow sem nenhum email permitido", () => {
+  it("marca flow como preview_locked quando nenhum email bate", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 99 },
     ])
-    expect(result).toEqual([])
+    expect(result).toHaveLength(3)
+    const welcome = result.find((f) => f.flow_type === "welcome")!
+    expect(welcome.preview_locked).toBe(true)
+    expect(welcome.emails).toEqual([])
   })
 
   it("simula os 4 pilotos da etapa 3", () => {
@@ -106,5 +121,17 @@ describe("filterFlowsByMode", () => {
     expect(result.find((f) => f.flow_type === "welcome")?.emails).toHaveLength(1)
     expect(result.find((f) => f.flow_type === "abandoned_cart")?.emails).toHaveLength(2)
     expect(result.find((f) => f.flow_type === "post_purchase")?.emails).toHaveLength(1)
+    expect(result.every((f) => !f.preview_locked)).toBe(true)
+  })
+
+  it("preserva ordem original dos flows em modo preview", () => {
+    const result = filterFlowsByMode(flows, "preview", [
+      { flowType: "post_purchase", number: 1 },
+    ])
+    expect(result.map((f) => f.flow_type)).toEqual([
+      "welcome",
+      "abandoned_cart",
+      "post_purchase",
+    ])
   })
 })

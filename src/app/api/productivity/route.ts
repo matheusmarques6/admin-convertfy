@@ -526,7 +526,11 @@ export async function GET(request: NextRequest) {
         sessions: focusSessions,
       },
       weeklyBars,
-      profile: profileRes.data || { name: "Usuario", avatar_url: null },
+      profile: {
+        id: user.id,
+        name: profileRes.data?.name ?? "Usuario",
+        avatar_url: profileRes.data?.avatar_url ?? null,
+      },
     })
   } catch (error) {
     return errorResponse(request, error, "ProductivityAPI")

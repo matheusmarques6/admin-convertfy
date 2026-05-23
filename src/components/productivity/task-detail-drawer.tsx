@@ -2314,6 +2314,12 @@ export function TaskDetailDrawer({
           initialFlowId={workspaceModal.flowId}
           initialEmailId={workspaceModal.emailId}
           initialResource={workspaceModal.resource}
+          taskContext={{
+            taskTitle: task.name,
+            assigneeId:
+              memberList.find((m) => m.initials === task.people[0])?.id ?? null,
+            currentUserId: profile?.id ?? null,
+          }}
         />
       )}
     </>

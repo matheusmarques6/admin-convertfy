@@ -120,6 +120,12 @@ export interface EmailFlow {
   // Joins (opcional, em queries com select)
   emails?: EmailFlowEmail[]
   assignee?: { id: string; name: string; avatar_url: string | null } | null
+  /**
+   * Marcado pelo client (filterFlowsByMode) quando, em modo preview, o flow
+   * não tem nenhum email-piloto liberado. UI renderiza como bloqueado visual
+   * sem oferecer "Desbloquear" (não é bloqueio real do contrato).
+   */
+  preview_locked?: boolean
 }
 
 export interface EmailFlowEmail {
