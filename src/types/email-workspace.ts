@@ -144,6 +144,11 @@ export interface EmailFlowEmail {
   klaviyo_message_id: string | null
   created_at: string
   updated_at: string
+  /**
+   * Marcado em runtime (modo preview) quando o email nao esta na lista de
+   * pilotos. UI renderiza com cadeado e desabilita selecao. Nunca persistido.
+   */
+  preview_locked?: boolean
   // Joins
   blocks?: EmailBlock[]
   qa_items?: EmailQAItem[]

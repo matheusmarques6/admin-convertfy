@@ -67,7 +67,7 @@ describe("filterFlowsByMode", () => {
     expect(filterFlowsByMode(flows, "preview", [])).toEqual(flows)
   })
 
-  it("modo preview mantém todos flow_types e marca não-pilotos como preview_locked", () => {
+  it("preview mantem todos os flows e todos os emails", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 1 },
     ])
@@ -76,52 +76,58 @@ describe("filterFlowsByMode", () => {
       "abandoned_cart",
       "post_purchase",
     ])
-    const welcome = result.find((f) => f.flow_type === "welcome")!
-    expect(welcome.preview_locked).toBeUndefined()
-    expect(welcome.emails).toHaveLength(1)
-    expect(result.find((f) => f.flow_type === "abandoned_cart")?.preview_locked).toBe(true)
-    expect(result.find((f) => f.flow_type === "post_purchase")?.preview_locked).toBe(true)
+    for (const f of result) {
+      expect(f.preview_locked).toBeUndefined()
+      expect(f.emails?.length).toBe(flows.find((x) => x.flow_type === f.flow_type)?.emails?.length)
+    }
   })
 
-  it("modo preview filtra emails dentro do flow", () => {
+  it("preview marca emails fora da lista como preview_locked", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 1 },
       { flowType: "abandoned_cart", number: 1 },
       { flowType: "abandoned_cart", number: 2 },
     ])
-    expect(result).toHaveLength(3)
-    const welcome = result.find((f) => f.flow_type === "welcome")
-    expect(welcome?.emails).toHaveLength(1)
-    expect(welcome?.emails?.[0].number).toBe(1)
-    expect(welcome?.preview_locked).toBeUndefined()
-    const cart = result.find((f) => f.flow_type === "abandoned_cart")
-    expect(cart?.emails).toHaveLength(2)
-    expect(cart?.preview_locked).toBeUndefined()
-    expect(result.find((f) => f.flow_type === "post_purchase")?.preview_locked).toBe(true)
+    const welcome = result.find((f) => f.flow_type === "welcome")!
+    expect(welcome.emails?.map((e) => ({ n: e.number, locked: e.preview_locked }))).toEqual([
+      { n: 1, locked: false },
+      { n: 2, locked: true },
+      { n: 3, locked: true },
+    ])
+    const cart = result.find((f) => f.flow_type === "abandoned_cart")!
+    expect(cart.emails?.every((e) => e.preview_locked === false)).toBe(true)
+    const post = result.find((f) => f.flow_type === "post_purchase")!
+    expect(post.emails?.every((e) => e.preview_locked === true)).toBe(true)
   })
 
-  it("marca flow como preview_locked quando nenhum email bate", () => {
+  it("flow sem nenhum piloto: todos emails ficam preview_locked", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 99 },
     ])
     expect(result).toHaveLength(3)
-    const welcome = result.find((f) => f.flow_type === "welcome")!
-    expect(welcome.preview_locked).toBe(true)
-    expect(welcome.emails).toEqual([])
+    for (const f of result) {
+      expect(f.emails?.every((e) => e.preview_locked === true)).toBe(true)
+    }
   })
 
-  it("simula os 4 pilotos da etapa 3", () => {
+  it("simula os 4 pilotos da etapa 3 (welcome#1, cart#1+2, post#1)", () => {
     const result = filterFlowsByMode(flows, "preview", [
       { flowType: "welcome", number: 1 },
       { flowType: "abandoned_cart", number: 1 },
       { flowType: "abandoned_cart", number: 2 },
       { flowType: "post_purchase", number: 1 },
     ])
-    expect(result).toHaveLength(3)
-    expect(result.find((f) => f.flow_type === "welcome")?.emails).toHaveLength(1)
-    expect(result.find((f) => f.flow_type === "abandoned_cart")?.emails).toHaveLength(2)
-    expect(result.find((f) => f.flow_type === "post_purchase")?.emails).toHaveLength(1)
-    expect(result.every((f) => !f.preview_locked)).toBe(true)
+    const unlocked = Object.fromEntries(
+      result.map((f) => [
+        f.flow_type,
+        f.emails?.filter((e) => !e.preview_locked).map((e) => e.number) ?? [],
+      ]),
+    )
+    expect(unlocked).toEqual({
+      welcome: [1],
+      abandoned_cart: [1, 2],
+      post_purchase: [1],
+    })
   })
 
   it("preserva ordem original dos flows em modo preview", () => {

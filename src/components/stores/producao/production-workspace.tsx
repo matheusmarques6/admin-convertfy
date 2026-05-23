@@ -1003,25 +1003,34 @@ function FlowItem({
           {emails.map((email) => {
             const isActive =
               selection.kind === "email" && selection.emailId === email.id
+            const isLocked = email.preview_locked === true
             return (
               <button
                 key={email.id}
-                onClick={() => onSelectEmail(email.id)}
+                onClick={() => !isLocked && onSelectEmail(email.id)}
+                disabled={isLocked}
+                title={
+                  isLocked
+                    ? "Disponivel apenas na producao completa"
+                    : undefined
+                }
                 className="cf-focusable w-full flex items-center gap-2 text-left"
                 style={{
                   padding: "6px 10px 6px 14px",
                   borderRadius: 6,
                   background: isActive ? "var(--crm-blue-50)" : "transparent",
-                  color: isActive
-                    ? "var(--crm-brand)"
-                    : "var(--crm-gray-700)",
+                  color: isLocked
+                    ? "var(--crm-gray-400)"
+                    : isActive
+                      ? "var(--crm-brand)"
+                      : "var(--crm-gray-700)",
                   border: 0,
-                  cursor: "pointer",
+                  cursor: isLocked ? "default" : "pointer",
                   fontSize: 12.5,
                   fontWeight: isActive ? 600 : 500,
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive)
+                  if (!isActive && !isLocked)
                     e.currentTarget.style.background = "var(--crm-gray-50)"
                 }}
                 onMouseLeave={(e) => {
@@ -1029,12 +1038,21 @@ function FlowItem({
                     e.currentTarget.style.background = "transparent"
                 }}
               >
-                <EmailStatusDot status={email.status} />
+                {isLocked ? (
+                  <Lock
+                    className="h-3 w-3 shrink-0"
+                    style={{ color: "var(--crm-gray-400)" }}
+                    aria-label="E-mail bloqueado no preview"
+                  />
+                ) : (
+                  <EmailStatusDot status={email.status} />
+                )}
                 <span className="flex-1 truncate">
                   E-mail #{String(email.number).padStart(2, "0")} -{" "}
                   {email.name}
                 </span>
-                {email.progress_percent > 0 &&
+                {!isLocked &&
+                  email.progress_percent > 0 &&
                   email.status !== "ready" &&
                   email.status !== "approved" &&
                   email.status !== "live" && (
@@ -1048,11 +1066,12 @@ function FlowItem({
                       {email.progress_percent}%
                     </span>
                   )}
-                {(email.status === "ready" ||
-                  email.status === "approved" ||
-                  email.status === "live") && (
-                  <span style={{ color: "var(--crm-pos)" }}>✓</span>
-                )}
+                {!isLocked &&
+                  (email.status === "ready" ||
+                    email.status === "approved" ||
+                    email.status === "live") && (
+                    <span style={{ color: "var(--crm-pos)" }}>✓</span>
+                  )}
               </button>
             )
           })}

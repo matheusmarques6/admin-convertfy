@@ -2,10 +2,12 @@ import type { EmailFlow, FlowType } from "@/types/email-workspace"
 import type { WorkspaceMode, AllowedEmailRef } from "./production-workspace-types"
 
 /**
- * Em modo "preview", mantém todos os flows mas:
- *  - flows com emails-piloto: filtra `emails` para somente os liberados.
- *  - flows sem nenhum email-piloto: zera `emails` e marca `preview_locked: true`
- *    para a UI renderizá-los como bloqueados visuais (sem botão Desbloquear).
+ * Em modo "preview", mantém todos os flows e todos os emails abertos, mas
+ * marca com `preview_locked: true` cada email que não esta na lista de pilotos.
+ * UI renderiza emails bloqueados com cadeado individual (sem Desbloquear) e
+ * impede a selecao deles. Flows ficam SEMPRE navegaveis em preview — mesmo
+ * que nenhum email do flow esteja na lista (todos os subs ficam bloqueados).
+ *
  * Em modo "full" — ou preview sem `allowedEmails` — retorna intacto.
  */
 export function filterFlowsByMode(
@@ -23,14 +25,11 @@ export function filterFlowsByMode(
     byFlowType.set(ref.flowType, set)
   }
   return flows.map((f) => {
-    const allowed = byFlowType.get(f.flow_type)
-    if (!allowed) {
-      return { ...f, emails: [], preview_locked: true }
-    }
-    const filteredEmails = (f.emails ?? []).filter((e) => allowed.has(e.number))
-    if (filteredEmails.length === 0) {
-      return { ...f, emails: [], preview_locked: true }
-    }
-    return { ...f, emails: filteredEmails }
+    const allowed = byFlowType.get(f.flow_type) ?? new Set<number>()
+    const emails = (f.emails ?? []).map((e) => ({
+      ...e,
+      preview_locked: !allowed.has(e.number),
+    }))
+    return { ...f, emails }
   })
 }
