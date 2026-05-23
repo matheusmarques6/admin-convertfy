@@ -4,7 +4,7 @@ import { useState } from "react"
 import { FileText, Sparkles } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
-import type { StoreBriefing, BriefingDetail } from "@/types/email-workspace"
+import type { StoreBriefing, BriefingMarca, BriefingDetail } from "@/types/email-workspace"
 
 // Subset de client_stores lido pela tab Marca. Fonte canônica dos campos
 // de marca (slogan via brand_thesis, atributos do tom via tone_use_words).
@@ -105,6 +105,32 @@ export function BriefingResourceView({
   const lastUpdate = briefing ? formatRelativeTime(briefing.created_at) : null
 
   const detail: BriefingDetail = briefing?.briefing ?? {}
+
+  // Fallback chain: client_stores (canônico) → store_briefings.marca (fonte
+  // legada, jsonb versionado). Quando o canônico está vazio, exibe o legado
+  // pra não perder dados; a próxima edição salva em client_stores via
+  // patchContext, promovendo automaticamente pra fonte canônica.
+  const marca: BriefingMarca = briefing?.marca ?? {}
+  const sloganValue =
+    store.brand_thesis ?? store.slogan ?? marca.slogan ?? null
+  const nichoValue = store.niche ?? marca.nicho ?? null
+  const diferencialValue = store.diferencial ?? marca.diferencial ?? null
+  const personaValue = store.persona ?? marca.persona ?? null
+  const posicionamentoValue =
+    store.posicionamento_preco ??
+    (marca.posicionamento as "popular" | "medio" | "premium" | undefined) ??
+    null
+  const hashtagsValue =
+    store.hashtags && store.hashtags.length > 0
+      ? store.hashtags
+      : marca.hashtags ?? []
+  // tom_voz legado é single-string; promove pra array de 1 item.
+  const toneWordsValue =
+    store.tone_use_words && store.tone_use_words.length > 0
+      ? store.tone_use_words
+      : marca.tom_voz
+        ? [marca.tom_voz]
+        : []
 
   // Persiste campo da tab Marca diretamente em client_stores via /context.
   // Fonte canônica — substitui o antigo patchBriefing("marca", …) que
@@ -284,7 +310,7 @@ export function BriefingResourceView({
                   }}
                 >
                   <InlineEditField
-                    value={store.brand_thesis ?? store.slogan ?? null}
+                    value={sloganValue}
                     placeholder="Slogan da marca"
                     onSave={(v) =>
                       patchContext({ brand_thesis: v || null })
@@ -346,20 +372,20 @@ export function BriefingResourceView({
               {/* Posicionamento */}
               <RowField
                 label="Nicho"
-                value={store.niche}
+                value={nichoValue}
                 placeholder="Ex: E-commerce de calçados esportivos · vôlei e basquete"
                 onSave={(v) => patchContext({ niche: v })}
               />
               <RowField
                 label="Diferencial declarado"
-                value={store.diferencial}
+                value={diferencialValue}
                 placeholder="O que distingue essa loja..."
                 onSave={(v) => patchContext({ diferencial: v })}
                 textarea
               />
               <RowField
                 label="Persona-alvo"
-                value={store.persona}
+                value={personaValue}
                 placeholder="Descreva o público-alvo..."
                 onSave={(v) => patchContext({ persona: v })}
                 textarea
@@ -378,7 +404,7 @@ export function BriefingResourceView({
                 Atributos do tom da marca
               </p>
               <TagListEditor
-                tags={store.tone_use_words ?? []}
+                tags={toneWordsValue}
                 placeholder="+ atributo"
                 onSave={(tags) => patchContext({ tone_use_words: tags })}
               />
@@ -391,7 +417,7 @@ export function BriefingResourceView({
                   Posicionamento de preço
                 </span>
                 <PositioningSelector
-                  pos={store.posicionamento_preco ?? undefined}
+                  pos={posicionamentoValue ?? undefined}
                   onSave={(v) =>
                     patchContext({
                       posicionamento_preco:
@@ -415,7 +441,7 @@ export function BriefingResourceView({
                 Usadas em campanhas e UGC
               </p>
               <TagListEditor
-                tags={store.hashtags ?? []}
+                tags={hashtagsValue}
                 prefix="#"
                 onSave={(tags) => patchContext({ hashtags: tags })}
               />
