@@ -305,11 +305,11 @@ export function BriefingResourceView({
                       font-style: italic;
                     }
                     .slogan-quote::before {
-                      content: "\\201C";
+                      content: "“";
                       margin-right: 2px;
                     }
                     .slogan-quote::after {
-                      content: "\\201D";
+                      content: "”";
                       margin-left: 2px;
                     }
                     .slogan-quote :global(.inline-edit-read) {
