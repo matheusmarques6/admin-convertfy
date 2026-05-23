@@ -90,10 +90,13 @@ export interface BriefingDetail {
 
 export type FlowType =
   | "welcome"
+  | "site_abandoned"
   | "abandoned_cart"
   | "browse_abandonment"
-  | "post_purchase"
+  | "upsell"
   | "win_back"
+  | "shipping_stages"
+  | "post_purchase"
   | "custom"
 
 export type FlowStatus =

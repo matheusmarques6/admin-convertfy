@@ -15,7 +15,9 @@ import {
   Plus,
   Send,
   ShoppingCart,
+  Sparkles,
   TrendingDown,
+  Truck,
   X,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -128,10 +130,13 @@ type Selection =
 
 const FLOW_ICONS: Record<FlowType, typeof Send> = {
   welcome: Send,
+  site_abandoned: FileText,
   abandoned_cart: ShoppingCart,
   browse_abandonment: TrendingDown,
-  post_purchase: Package,
+  upsell: Sparkles,
   win_back: Heart,
+  shipping_stages: Truck,
+  post_purchase: Package,
   custom: Mail,
 }
 

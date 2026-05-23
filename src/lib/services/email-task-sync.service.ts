@@ -26,19 +26,25 @@ type Admin = ReturnType<typeof createAdminClient>
 
 const FLOW_TYPE_LABELS: Record<FlowType, string> = {
   welcome: "Welcome Flow",
+  site_abandoned: "Site Abandoned",
   abandoned_cart: "Carrinho Abandonado",
   browse_abandonment: "Browse Abandoned",
-  post_purchase: "Pós-compra",
+  upsell: "Upsell",
   win_back: "Winback",
+  shipping_stages: "Etapas de Envio",
+  post_purchase: "Pós-compra",
   custom: "Custom",
 }
 
 const FLOW_POSITION: Record<FlowType, number> = {
   welcome: 1,
-  abandoned_cart: 2,
+  site_abandoned: 2,
   browse_abandonment: 3,
-  post_purchase: 4,
-  win_back: 5,
+  abandoned_cart: 4,
+  upsell: 5,
+  win_back: 6,
+  shipping_stages: 7,
+  post_purchase: 98,
   custom: 99,
 }
 
