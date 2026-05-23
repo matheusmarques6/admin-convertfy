@@ -597,6 +597,7 @@ export function ProductionWorkspace({
               <FlowItem
                 key={flow.id}
                 flow={flow}
+                mode={mode}
                 selection={selection}
                 onSelectEmail={(emailId) =>
                   setSelection({ kind: "email", flowId: flow.id, emailId })
@@ -832,19 +833,23 @@ function SidebarItem({
 
 function FlowItem({
   flow,
+  mode,
   selection,
   onSelectEmail,
   onCreated,
   onFlowChanged,
 }: {
   flow: EmailFlow
+  mode: WorkspaceMode
   selection: Selection
   onSelectEmail: (emailId: string) => void
   onCreated: (newEmailId: string) => void
   onFlowChanged: () => void
 }) {
   const FlowIcon = FLOW_ICONS[flow.flow_type] ?? Mail
-  const isRealBlocked = flow.status === "blocked"
+  // Em preview, ignora status=blocked do banco: o piloto define o que aparece,
+  // bloqueio real do flow nao se aplica nesse contexto. Em full, mantem.
+  const isRealBlocked = mode !== "preview" && flow.status === "blocked"
   const isPreviewLocked = flow.preview_locked === true
   const isBlocked = isRealBlocked || isPreviewLocked
   const expanded = !isBlocked
