@@ -43,7 +43,9 @@ UPDATE email_flows SET position = 4, name = 'Carrinho Abandonado'
   WHERE flow_type = 'abandoned_cart';
 UPDATE email_flows SET position = 6, name = 'Winback'
   WHERE flow_type = 'win_back';
-UPDATE email_flows SET position = 99 WHERE flow_type = 'post_purchase';
+-- Remove post_purchase (deprecated, substituido por upsell).
+-- Emails filhos sao deletados em cascata (ON DELETE CASCADE).
+DELETE FROM email_flows WHERE flow_type = 'post_purchase';
 
 -- ── 3. Cria os 3 novos flows pros stores que ja tem welcome ─
 INSERT INTO email_flows (store_id, flow_type, name, description, status, position)
