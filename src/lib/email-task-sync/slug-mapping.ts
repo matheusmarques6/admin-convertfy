@@ -70,7 +70,7 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
   preview_email_pos_compra: {
     kind: "email",
     mode: "preview",
-    flowType: "post_purchase",
+    flowType: "upsell",
     emailNumber: 1,
   },
 
@@ -96,7 +96,7 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
   flow_upsell: {
     kind: "email-list",
     mode: "full",
-    flowType: "post_purchase",
+    flowType: "upsell",
     subItems: subItems("upsell_email", 4),
   },
   flow_winback: {
@@ -105,12 +105,18 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
     flowType: "win_back",
     subItems: subItems("winback_email", 3),
   },
-
-  // Fase 2 — sem FlowType correspondente no enum email_flows ainda
-  flow_site_abandoned: null,
-  flow_etapas_envio: null,
-  flow_atraso_entrega: null,
-  flow_pedido_enviado: null,
+  flow_site_abandoned: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "site_abandoned",
+    subItems: subItems("site_abandoned_email", 1),
+  },
+  flow_etapas_envio: {
+    kind: "email-list",
+    mode: "full",
+    flowType: "shipping_stages",
+    subItems: subItems("envio_email", 5),
+  },
 }
 
 export function resolveTaskWorkspaceTarget(
@@ -147,8 +153,8 @@ const TITLE_FALLBACK_RULES: Array<{
     target: { kind: "email", mode: "preview", flowType: "abandoned_cart", emailNumber: 2 },
   },
   {
-    match: /(email[-\s]?piloto\s*3[:\s].*pos|piloto.*pos[-\s]compra)/i,
-    target: { kind: "email", mode: "preview", flowType: "post_purchase", emailNumber: 1 },
+    match: /(email[-\s]?piloto\s*3[:\s].*pos|piloto.*pos[-\s]compra|piloto.*upsell)/i,
+    target: { kind: "email", mode: "preview", flowType: "upsell", emailNumber: 1 },
   },
 ]
 

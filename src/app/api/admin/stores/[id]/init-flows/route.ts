@@ -91,14 +91,14 @@ const DEFAULT_EMAILS: Record<
   Array<{ number: number; name: string; delay_hours: number }>
 > = {
   welcome: [
-    { number: 1, name: "Bem-vindo", delay_hours: 0 },
-    { number: 2, name: "História da marca", delay_hours: 24 },
-    { number: 3, name: "Tênis favoritos", delay_hours: 48 },
-    { number: 4, name: "Ainda quer 10% OFF?", delay_hours: 96 },
-    { number: 5, name: "Última chance", delay_hours: 120 },
-    { number: 6, name: "Welcome 6 · Produtos em destaque", delay_hours: 144 },
-    { number: 7, name: "Welcome 7 · Depoimentos", delay_hours: 168 },
-    { number: 8, name: "Welcome 8 · Última chamada", delay_hours: 192 },
+    { number: 1, name: "Welcome 1", delay_hours: 0 },
+    { number: 2, name: "Welcome 2", delay_hours: 24 },
+    { number: 3, name: "Welcome 3", delay_hours: 48 },
+    { number: 4, name: "Welcome 4", delay_hours: 96 },
+    { number: 5, name: "Welcome 5", delay_hours: 120 },
+    { number: 6, name: "Welcome 6", delay_hours: 144 },
+    { number: 7, name: "Welcome 7", delay_hours: 168 },
+    { number: 8, name: "Welcome 8", delay_hours: 192 },
   ],
   site_abandoned: [
     { number: 1, name: "Site Abandoned 1", delay_hours: 1 },

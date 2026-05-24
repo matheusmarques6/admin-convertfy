@@ -79,14 +79,22 @@ WHERE ef.flow_type = 'welcome'
 -- ── 4. Seed de emails default por flow_type ───────────────
 -- Insere apenas os emails que ainda nao existem (idempotente).
 
--- Welcome 6-8 (1-5 já vêm do seed antigo 20260607b)
+-- Welcome: renomeia emails existentes (1-5) e adiciona 6-8
+UPDATE email_flow_emails efe
+SET name = 'Welcome ' || efe.number
+FROM email_flows ef
+WHERE efe.flow_id = ef.id
+  AND ef.flow_type = 'welcome'
+  AND efe.number BETWEEN 1 AND 5
+  AND efe.name != 'Welcome ' || efe.number;
+
 INSERT INTO email_flow_emails (flow_id, number, name, status, delay_hours)
 SELECT ef.id, t.number, t.name, 'draft', t.delay_hours
 FROM email_flows ef
 CROSS JOIN (VALUES
-  (6, 'Welcome 6 · Produtos em destaque', 144),
-  (7, 'Welcome 7 · Depoimentos',          168),
-  (8, 'Welcome 8 · Última chamada',       192)
+  (6, 'Welcome 6', 144),
+  (7, 'Welcome 7', 168),
+  (8, 'Welcome 8', 192)
 ) AS t(number, name, delay_hours)
 WHERE ef.flow_type = 'welcome'
   AND NOT EXISTS (

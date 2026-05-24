@@ -1237,7 +1237,7 @@ function InitFlowsCta({
           lineHeight: 1.4,
         }}
       >
-        Esta loja ainda não tem os 5 flows padrão de onboarding.
+        Esta loja ainda não tem os 7 flows padrão de onboarding.
       </div>
       <button
         onClick={handle}

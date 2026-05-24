@@ -99,7 +99,7 @@ describe("resolveTaskWorkspaceTarget", () => {
     expect(resolveTaskWorkspaceTarget("preview_email_pos_compra")).toMatchObject({
       kind: "email",
       mode: "preview",
-      flowType: "post_purchase",
+      flowType: "upsell",
       emailNumber: 1,
     })
   })
@@ -119,11 +119,24 @@ describe("resolveTaskWorkspaceTarget", () => {
     }
   })
 
-  it("retorna null para flows fase 2", () => {
-    expect(resolveTaskWorkspaceTarget("flow_site_abandoned")).toBeNull()
-    expect(resolveTaskWorkspaceTarget("flow_etapas_envio")).toBeNull()
-    expect(resolveTaskWorkspaceTarget("flow_atraso_entrega")).toBeNull()
-    expect(resolveTaskWorkspaceTarget("flow_pedido_enviado")).toBeNull()
+  it("retorna EmailListTarget para site_abandoned e etapas_envio", () => {
+    const sa = resolveTaskWorkspaceTarget("flow_site_abandoned")
+    expect(sa?.kind).toBe("email-list")
+    if (sa?.kind === "email-list") {
+      expect(sa.flowType).toBe("site_abandoned")
+      expect(sa.subItems).toHaveLength(1)
+    }
+
+    const ee = resolveTaskWorkspaceTarget("flow_etapas_envio")
+    expect(ee?.kind).toBe("email-list")
+    if (ee?.kind === "email-list") {
+      expect(ee.flowType).toBe("shipping_stages")
+      expect(ee.subItems).toHaveLength(5)
+    }
+  })
+
+  it("retorna null para slug desconhecido ou legado", () => {
+    expect(resolveTaskWorkspaceTarget("flow_inexistente")).toBeNull()
   })
 })
 
@@ -224,17 +237,17 @@ describe("resolveTaskWorkspaceTargetByTitle (fallback p/ tasks legadas)", () => 
     })
   })
 
-  it("identifica Pós-compra (ambas variações)", () => {
+  it("identifica Pós-compra / Upsell (ambas variações)", () => {
     expect(
       resolveTaskWorkspaceTargetByTitle(
         "Criar email-piloto 3: Pos-compra (engajamento)",
       ),
-    ).toMatchObject({ kind: "email", flowType: "post_purchase", emailNumber: 1 })
+    ).toMatchObject({ kind: "email", flowType: "upsell", emailNumber: 1 })
     expect(
       resolveTaskWorkspaceTargetByTitle(
         "Criar email-piloto: Pos-compra (engajamento)",
       ),
-    ).toMatchObject({ kind: "email", flowType: "post_purchase", emailNumber: 1 })
+    ).toMatchObject({ kind: "email", flowType: "upsell", emailNumber: 1 })
   })
 
   it("retorna null pra título não-relacionado", () => {
