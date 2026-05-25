@@ -13,6 +13,7 @@ import {
   Loader2,
   Copy,
   ArrowRight,
+  FileText,
 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
@@ -45,7 +46,7 @@ interface ToolDef {
   name: string
   description: string
   icon: LucideIcon
-  category: "ai" | "calculators"
+  category: "ai" | "calculators" | "monitoring"
   badge?: string
   href?: string
 }
@@ -91,11 +92,20 @@ const TOOLS: ToolDef[] = [
     category: "calculators",
     badge: "Em breve",
   },
+  {
+    id: "email-generation-logs",
+    name: "Logs de Geração de Emails",
+    description: "Acompanhe execuções, erros e métricas dos agentes de geração de emails.",
+    icon: FileText,
+    category: "monitoring",
+    href: "/admin/tools/email-generation-logs",
+  },
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
   ai: "Geradores de IA",
   calculators: "Calculadoras",
+  monitoring: "Monitoramento",
 }
 
 // ─── ToolCard ────────────────────────────────────────────

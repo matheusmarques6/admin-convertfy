@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench } from "lucide-react"
+import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
@@ -52,6 +52,13 @@ const SETTINGS_SECTIONS: SettingSection[] = [
     description: "Prompts reutilizáveis com variáveis pra o assistente Claude",
     icon: Sparkles,
     href: "/admin/settings/ai-templates",
+    adminOnly: true,
+  },
+  {
+    title: "Geração de Emails",
+    description: "Blueprints, prompts dos agentes e configurações de geração",
+    icon: Wand2,
+    href: "/admin/settings/email-generation",
     adminOnly: true,
   },
   {
