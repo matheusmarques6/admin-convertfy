@@ -279,14 +279,28 @@ export async function generateEmail(
         user_template: userTemplate,
       })
 
-      const rawOutput = await chain.invoke(inputVars)
+      let rawOutput = await chain.invoke(inputVars)
 
-      // Parse JSON from output
+      // Strip markdown fences
+      rawOutput = rawOutput
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim()
+
+      // Extract JSON object from output
       const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error("Copy agent não retornou JSON válido")
+      if (!jsonMatch) {
+        log.error("copy.no_json", { rawOutput: rawOutput.slice(0, 500) })
+        throw new Error(`Copy agent não retornou JSON válido. Início da resposta: ${rawOutput.slice(0, 200)}`)
+      }
 
-      const cleaned = jsonMatch[0]
-      const parsed = JSON.parse(cleaned)
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(jsonMatch[0])
+      } catch (parseErr) {
+        log.error("copy.json_parse_error", { rawOutput: rawOutput.slice(0, 500) })
+        throw new Error(`Copy agent retornou JSON malformado: ${(parseErr as Error).message}`)
+      }
       const copyOutput = CopyOutputSchema.parse(parsed)
 
       // Estimate tokens (rough: 1 token ≈ 4 chars)
