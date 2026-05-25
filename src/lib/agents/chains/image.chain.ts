@@ -48,7 +48,7 @@ export async function generateEmailImage(
   const t0 = Date.now()
 
   const response = await openai.images.generate({
-    model: "gpt-image-1",
+    model: "gpt-image-2",
     prompt,
     n: 1,
     size: "1536x1024",

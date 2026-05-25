@@ -42,6 +42,7 @@ import {
   logGenerationRun,
   computeCostCents,
 } from "./callbacks/telemetry.callback"
+import { notifyGenerationError } from "./generation-notify.service"
 
 const log = logger.child("EmailGeneration")
 
@@ -122,6 +123,17 @@ export async function generateEmail(
         errorMessage: msg,
         errorStack: err instanceof Error ? err.stack : undefined,
       })
+      notifyGenerationError({
+        runId: "",
+        storeId,
+        storeName: ctx.store.store_name,
+        emailName: `Flow ${flowType} #${emailNumber}`,
+        agent: "seed",
+        model: "deterministic",
+        error: msg,
+        durationMs: Date.now() - seedT0,
+        costCents: 0,
+      }).catch(() => {})
       return { status: "error", error: `Seed failed: ${msg}` }
     }
 
@@ -261,6 +273,17 @@ export async function generateEmail(
         errorMessage: msg,
         errorStack: err instanceof Error ? err.stack : undefined,
       })
+      notifyGenerationError({
+        runId: "",
+        storeId,
+        storeName: ctx.store.store_name,
+        emailName: `Flow ${flowType} #${emailNumber}`,
+        agent: "copy",
+        model: ctx.agentConfigs.copy?.model ?? "claude-sonnet-4-5-20250514",
+        error: msg,
+        durationMs: Date.now() - copyT0,
+        costCents: 0,
+      }).catch(() => {})
       return { status: "error", error: `Copy failed: ${msg}` }
     }
 
@@ -287,12 +310,19 @@ export async function generateEmail(
           const prompt = renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
           const imageUrl = await generateEmailImage(prompt, storeId)
 
-          // PATCH bloco com image_url
+          const { data: curBlock } = await admin
+            .from("email_blocks")
+            .select("content")
+            .eq("id", imgBlock.id)
+            .single()
+          const merged = {
+            ...((curBlock?.content as Record<string, unknown>) ?? {}),
+            image_url: imageUrl,
+            image_alt: imgBlock.label,
+          }
           await admin
             .from("email_blocks")
-            .update({
-              content: { image_url: imageUrl, image_alt: imgBlock.label },
-            })
+            .update({ content: merged })
             .eq("id", imgBlock.id)
 
           await logGenerationRun({
@@ -303,7 +333,7 @@ export async function generateEmail(
             batchId,
             agent: "image",
             status: "success",
-            model: "gpt-image-1",
+            model: "gpt-image-2",
             durationMs: Date.now() - imgT0,
             parsedOutput: { blockId: imgBlock.id, imageUrl },
           })
@@ -318,7 +348,7 @@ export async function generateEmail(
             batchId,
             agent: "image",
             status: "error",
-            model: "gpt-image-1",
+            model: "gpt-image-2",
             durationMs: Date.now() - imgT0,
             errorMessage: msg,
             errorStack: err instanceof Error ? err.stack : undefined,
@@ -462,6 +492,17 @@ export async function generateEmail(
         errorMessage: msg,
         errorStack: err instanceof Error ? err.stack : undefined,
       })
+      notifyGenerationError({
+        runId: "",
+        storeId,
+        storeName: ctx.store.store_name,
+        emailName: `Flow ${flowType} #${emailNumber}`,
+        agent: "html",
+        model: ctx.agentConfigs.html?.model ?? "claude-sonnet-4-5-20250514",
+        error: msg,
+        durationMs: Date.now() - htmlT0,
+        costCents: 0,
+      }).catch(() => {})
       return { status: "error", error: `HTML failed: ${msg}` }
     }
 
