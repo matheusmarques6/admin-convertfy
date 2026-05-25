@@ -281,14 +281,13 @@ export async function generateEmail(
       const userTemplate = copyConfig?.user_template ?? DEFAULT_COPY_USER_TEMPLATE
 
       // Resolve blueprint data
-      const blueprintData = ctx.blueprint
-        ? { objective: ctx.blueprint.objective, messaging: ctx.blueprint.messaging }
-        : DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]
-          ? {
-              objective: DEFAULT_BLUEPRINTS[flowType][emailNumber].objective,
-              messaging: DEFAULT_BLUEPRINTS[flowType][emailNumber].messaging,
-            }
-          : { objective: "Gerar email de qualidade", messaging: "Conteúdo relevante para o público" }
+      const dbBlueprint = ctx.blueprint as Record<string, unknown> | null
+      const defaultBp = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]
+      const blueprintData = {
+        objective: (dbBlueprint?.objective as string) ?? defaultBp?.objective ?? "Gerar email de qualidade",
+        messaging: (dbBlueprint?.messaging as string) ?? defaultBp?.messaging ?? "Conteúdo relevante para o público",
+        subject_hint: (dbBlueprint?.subject_hint as string) ?? defaultBp?.subject_hint ?? "",
+      }
 
       // Build input vars from ALL data sources
       const inputVars = buildAllVars(ctx)
@@ -297,6 +296,7 @@ export async function generateEmail(
       inputVars.email_number = String(emailNumber)
       inputVars.objective = blueprintData.objective
       inputVars.messaging = blueprintData.messaging
+      inputVars.subject_hint = blueprintData.subject_hint
       inputVars.blocks_json = JSON.stringify(
         seededBlocks.map((b) => ({
           position: b.position,
