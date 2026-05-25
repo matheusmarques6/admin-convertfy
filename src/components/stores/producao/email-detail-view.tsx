@@ -739,7 +739,7 @@ export function EmailDetailView({
 
         {/* Painel direito: blocos + QA */}
         <aside
-          className="flex flex-col shrink-0 overflow-hidden"
+          className="flex flex-col shrink-0 overflow-hidden min-h-0"
           style={{
             width: 380,
             background: "var(--crm-gray-0)",
