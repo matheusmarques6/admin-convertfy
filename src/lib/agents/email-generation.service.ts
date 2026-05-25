@@ -269,6 +269,8 @@ export async function generateEmail(
     }
 
     // ── Step 2: Copy generation ───────────────────────────────
+    let copyRawOutput = ""
+    let copyOutputIsRawHtml = false
     const copyT0 = Date.now()
     try {
       const copyConfig = ctx.agentConfigs.copy
@@ -327,6 +329,7 @@ export async function generateEmail(
       const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
       let copySubject: string | null = null
       let copyPreheader: string | null = null
+      let copyIsRawHtml = false
 
       if (jsonMatch) {
         try {
@@ -345,26 +348,22 @@ export async function generateEmail(
             }
           }
         } catch {
-          // JSON parse failed — output é texto livre, continua abaixo
+          copyIsRawHtml = true
         }
+      } else {
+        copyIsRawHtml = true
       }
 
-      // Se não veio JSON estruturado, extrair subject/preheader do texto
-      if (!copySubject) {
-        const subjectMatch = rawOutput.match(/Subject:\s*(.+)/i)
-        const preheaderMatch = rawOutput.match(/(?:Preview|Preheader):\s*(.+)/i)
-        copySubject = subjectMatch?.[1]?.trim() ?? null
-        copyPreheader = preheaderMatch?.[1]?.trim() ?? null
-
-        // Salvar output inteiro como conteúdo do primeiro bloco
-        const firstBlock = seededBlocks[0]
-        if (firstBlock) {
-          await admin
-            .from("email_blocks")
-            .update({ content: { body: rawOutput } })
-            .eq("id", firstBlock.id)
-        }
+      if (copyIsRawHtml) {
+        const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim()
+        const subjectMatch = rawOutput.match(/Subject[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+        const preheaderMatch = rawOutput.match(/(?:Preview|Preheader)[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+        copySubject = subjectMatch ? stripHtml(subjectMatch[1]) : null
+        copyPreheader = preheaderMatch ? stripHtml(preheaderMatch[1]) : null
       }
+
+      copyRawOutput = rawOutput
+      copyOutputIsRawHtml = copyIsRawHtml
 
       // PATCH email subject/preheader
       if (copySubject || copyPreheader) {
@@ -536,16 +535,19 @@ export async function generateEmail(
       inputVars.email_name = updatedEmail?.name ?? ""
       inputVars.subject = (updatedEmail?.subject as string) ?? ""
       inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
-      inputVars.blocks_with_content = JSON.stringify(
-        (updatedBlocks ?? []).map((b) => ({
-          position: b.position,
-          type: b.block_type,
-          label: b.label,
-          content: b.content,
-        })),
-        null,
-        2,
-      )
+      inputVars.copy_output = copyOutputIsRawHtml ? copyRawOutput : ""
+      inputVars.blocks_with_content = copyOutputIsRawHtml
+        ? copyRawOutput
+        : JSON.stringify(
+            (updatedBlocks ?? []).map((b) => ({
+              position: b.position,
+              type: b.block_type,
+              label: b.label,
+              content: b.content,
+            })),
+            null,
+            2,
+          )
 
       fillMissingVars(inputVars, systemPrompt, userTemplate)
 
