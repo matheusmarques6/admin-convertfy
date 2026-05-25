@@ -126,31 +126,75 @@ export function RitualDiagnosticModal({
     return () => window.removeEventListener("keydown", handler)
   }, [onClose])
 
-  const { data: storeBasic } = useSWR<{
+  interface RitualStoreResponse {
     success?: boolean
-    id?: string
-    store_name?: string
-    niche?: string | null
-    platform?: string | null
-    client?: { name?: string } | null
-    mrr_cents?: number | null
-  }>(
-    storeId ? `/api/stores/${storeId}` : null,
-    (url: string) => fetch(url, { credentials: "include" }).then((r) => r.ok ? r.json() : null),
-  )
-
-  const { data: acompData } = useSWR<{
-    success?: boolean
-    health_score?: number
-    health_state?: string
-    reports?: Array<{ week_start: string; metrics: Record<string, unknown> | null }>
-    latest_report?: {
+    store?: {
+      id: string
+      store_name: string
+      niche: string | null
+      platform: string | null
+      email_platform: string | null
+      currency: string | null
+      mrr_cents: number | null
+      contract_end_date: string | null
+      client_name: string | null
+      owner_name: string | null
+    }
+    health?: {
+      health_state: string | null
+      health_score: number | null
+      flag_reason: string | null
+    }
+    reports?: Array<{
+      id: string
+      week_start: string
       highlights: unknown[]
       concerns: unknown[]
       metrics: Record<string, unknown> | null
       ai_summary: string | null
-    } | null
-  }>(storeId ? `/api/stores/${storeId}/acompanhamento` : null, fetcher)
+    }>
+    campaigns?: Array<{
+      campaign_id: string
+      campaign_name: string
+      send_time: string | null
+      subject: string | null
+      recipients: number | null
+      delivered: number | null
+      opened: number | null
+      clicked: number | null
+      conversions: number | null
+      conversion_value: number | null
+      open_rate: number | null
+      click_rate: number | null
+      bounce_rate: number | null
+    }>
+    automations?: Array<{
+      flow_id: string
+      flow_name: string
+      flow_status: string | null
+      trigger_type: string | null
+      recipients: number | null
+      delivered: number | null
+      opened: number | null
+      clicked: number | null
+      conversions: number | null
+      conversion_value: number | null
+      open_rate: number | null
+      click_rate: number | null
+    }>
+  }
+
+  const { data: ritualData } = useSWR<RitualStoreResponse>(
+    storeId ? `/api/ritual/stores/${storeId}` : null,
+    fetcher,
+  )
+
+  const storeInfo = ritualData?.store
+  const healthInfo = ritualData?.health
+  const latestReport = ritualData?.reports?.[0] ?? null
+  const allReports = ritualData?.reports ?? []
+  const campaigns = ritualData?.campaigns ?? []
+  const automations = ritualData?.automations ?? []
 
   const fmtTimer = () => {
     const h = Math.floor(timerSec / 3600)
@@ -193,8 +237,8 @@ export function RitualDiagnosticModal({
     await goToStore(currentIdx - 1)
   }
 
-  const healthState = (acompData?.health_state ?? "healthy") as string
-  const storeName = storeBasic?.store_name ?? "Loja"
+  const healthState = (healthInfo?.health_state ?? "healthy") as string
+  const storeName = storeInfo?.store_name ?? "Loja"
   const totalStores = session.store_ids.length
   const remaining = Math.max(0, (totalStores - currentIdx - 1) * 8)
 
@@ -308,14 +352,14 @@ export function RitualDiagnosticModal({
             {/* Store header */}
             <StoreHeader
               storeName={storeName}
-              clientName={typeof storeBasic?.client === "object" && storeBasic.client ? (storeBasic.client as { name?: string }).name ?? null : null}
-              niche={storeBasic?.niche ?? null}
-              platform={storeBasic?.platform ?? null}
-              plan={null}
-              mrr={storeBasic?.mrr_cents ? Math.round(storeBasic.mrr_cents / 100) : null}
+              clientName={storeInfo?.client_name ?? null}
+              niche={storeInfo?.niche ?? null}
+              platform={storeInfo?.platform ?? null}
+              plan={storeInfo?.email_platform ?? null}
+              mrr={storeInfo?.mrr_cents ? Math.round(storeInfo.mrr_cents / 100) : null}
               healthState={healthState}
-              healthScore={acompData?.health_score ?? null}
-              alert={acompData?.latest_report?.ai_summary ?? null}
+              healthScore={healthInfo?.health_score ?? null}
+              alert={healthInfo?.flag_reason ?? latestReport?.ai_summary ?? null}
             />
 
             {/* Fathom banner */}
@@ -357,11 +401,11 @@ export function RitualDiagnosticModal({
 
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={acompData?.latest_report} />}
-              {activeTab === "problemas" && <ProblemasTab report={acompData?.latest_report} />}
-              {activeTab === "comparativo" && <ComparativoTab storeId={storeId!} />}
-              {activeTab === "campanhas" && <CampanhasTab storeId={storeId!} />}
-              {activeTab === "automacoes" && <AutomacoesTab storeId={storeId!} />}
+              {activeTab === "funil" && <FunilTab report={latestReport} />}
+              {activeTab === "problemas" && <ProblemasTab report={latestReport} />}
+              {activeTab === "comparativo" && <ComparativoTab reports={allReports} />}
+              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} />}
+              {activeTab === "automacoes" && <AutomacoesTab automations={automations} />}
             </div>
           </div>
 
@@ -588,15 +632,7 @@ function ProblemasTab({ report }: { report?: { concerns: unknown[] } | null }) {
 
 /* ────────── Tab: Comparativo ────────── */
 
-function ComparativoTab({ storeId }: { storeId: string }) {
-  const { data } = useSWR<{
-    success?: boolean
-    reports?: Array<{ week_start: string; metrics: Record<string, unknown> | null }>
-  }>(
-    storeId ? `/api/stores/${storeId}/acompanhamento` : null,
-    fetcher,
-  )
-  const reports = data?.reports ?? []
+function ComparativoTab({ reports }: { reports: Array<{ week_start: string; highlights?: unknown[]; concerns?: unknown[]; metrics: Record<string, unknown> | null; ai_summary?: string | null }> }) {
   return (
     <div>
       <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
@@ -608,16 +644,23 @@ function ComparativoTab({ storeId }: { storeId: string }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {reports.slice(0, 8).map((r, i) => (
             <div key={i} style={{
-              padding: "10px 14px", background: C.white,
+              padding: "12px 14px", background: C.white,
               border: `1px solid ${C.border}`, borderRadius: 8,
-              display: "flex", justifyContent: "space-between", alignItems: "center",
             }}>
-              <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>
-                {new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-              </span>
-              <span style={{ fontSize: 11.5, color: C.g500 }}>
-                {r.metrics ? Object.keys(r.metrics).slice(0, 5).join(" · ") : "—"}
-              </span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: r.ai_summary ? 6 : 0 }}>
+                <span style={{ fontSize: 13, color: C.g700, fontWeight: 600 }}>
+                  {new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                </span>
+                <div style={{ display: "flex", gap: 8, fontSize: 11, ...TNUM }}>
+                  {r.highlights && <span style={{ color: C.pos }}>{(r.highlights as unknown[]).length} destaques</span>}
+                  {r.concerns && <span style={{ color: C.neg }}>{(r.concerns as unknown[]).length} alertas</span>}
+                </div>
+              </div>
+              {r.ai_summary && (
+                <div style={{ fontSize: 12, color: C.g500, lineHeight: 1.4, marginTop: 4 }}>
+                  {r.ai_summary.length > 120 ? r.ai_summary.slice(0, 117) + "..." : r.ai_summary}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -626,51 +669,162 @@ function ComparativoTab({ storeId }: { storeId: string }) {
   )
 }
 
-/* ────────── Tab: Campanhas ────────── */
+/* ────────── Tab: Campanhas (dados reais Omnisend) ────────── */
 
-function CampanhasTab({ storeId }: { storeId: string }) {
+interface CampaignRow {
+  campaign_id: string
+  campaign_name: string
+  send_time: string | null
+  subject: string | null
+  recipients: number | null
+  delivered: number | null
+  opened: number | null
+  clicked: number | null
+  conversions: number | null
+  conversion_value: number | null
+  open_rate: number | null
+  click_rate: number | null
+  bounce_rate: number | null
+}
+
+function CampanhasTab({ campaigns }: { campaigns: CampaignRow[] }) {
+  if (campaigns.length === 0) {
+    return <EmptyTab>Sem campanhas nos últimos 30 dias.</EmptyTab>
+  }
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
-        Performance de campanhas recentes via Omnisend/Klaviyo.
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ background: C.g50, borderBottom: `1px solid ${C.border}` }}>
+              <ThCell>Data</ThCell>
+              <ThCell>Campanha</ThCell>
+              <ThCell right>Enviados</ThCell>
+              <ThCell right>Abertura</ThCell>
+              <ThCell right>CTR</ThCell>
+              <ThCell right>Receita</ThCell>
+            </tr>
+          </thead>
+          <tbody>
+            {campaigns.map((c) => {
+              const isLowOpen = (c.open_rate ?? 0) < 20
+              return (
+                <tr key={c.campaign_id} style={{ borderBottom: `1px solid ${C.g100}` }}>
+                  <td style={{ padding: "10px 12px", color: C.g500, whiteSpace: "nowrap", ...TNUM }}>
+                    {c.send_time ? new Date(c.send_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
+                  </td>
+                  <td style={{ padding: "10px 12px", minWidth: 200 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: C.g900, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
+                      {c.campaign_name}
+                    </div>
+                    {c.subject && (
+                      <div style={{ fontSize: 11, color: C.g500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
+                        {c.subject}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
+                    {c.recipients?.toLocaleString("pt-BR") ?? "—"}
+                  </td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", ...TNUM }}>
+                    <span style={{ color: isLowOpen ? C.neg : C.g700, fontWeight: isLowOpen ? 600 : 400 }}>
+                      {c.open_rate != null ? `${c.open_rate.toFixed(1)}%` : "—"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
+                    {c.click_rate != null ? `${c.click_rate.toFixed(1)}%` : "—"}
+                  </td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: C.g900, ...TNUM }}>
+                    {c.conversion_value != null && c.conversion_value > 0
+                      ? `R$ ${c.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      : "—"}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
-      <EmptyTab>
-        Dados de campanhas serão carregados via integração.
-        <br />
-        <a
-          href={`/admin/stores/${storeId}?tab=performance`}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
-        >
-          Ver detalhe da loja
-        </a>
-      </EmptyTab>
     </div>
   )
 }
 
-/* ────────── Tab: Automações ────────── */
+/* ────────── Tab: Automações (dados reais Omnisend) ────────── */
 
-function AutomacoesTab({ storeId }: { storeId: string }) {
+interface AutomationRow {
+  flow_id: string
+  flow_name: string
+  flow_status: string | null
+  trigger_type: string | null
+  recipients: number | null
+  delivered: number | null
+  opened: number | null
+  clicked: number | null
+  conversions: number | null
+  conversion_value: number | null
+  open_rate: number | null
+  click_rate: number | null
+}
+
+function AutomacoesTab({ automations }: { automations: AutomationRow[] }) {
+  if (automations.length === 0) {
+    return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {automations.map((a) => {
+        const statusColor = a.flow_status === "active" ? C.pos : a.flow_status === "paused" ? C.warn : C.g500
+        const statusBg = a.flow_status === "active" ? C.posBg : a.flow_status === "paused" ? C.warnBg : C.g100
+        const statusLabel = a.flow_status === "active" ? "Ativo" : a.flow_status === "paused" ? "Pausado" : (a.flow_status ?? "—")
+        return (
+          <div key={a.flow_id} style={{
+            padding: "14px 16px", background: C.white,
+            border: `1px solid ${C.border}`, borderRadius: 10,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{a.flow_name}</span>
+                <span style={{
+                  fontSize: 10.5, fontWeight: 600, padding: "2px 8px",
+                  color: statusColor, background: statusBg,
+                  borderRadius: 999,
+                }}>{statusLabel}</span>
+              </div>
+              {a.trigger_type && (
+                <span style={{ fontSize: 11, color: C.g500 }}>Trigger: {a.trigger_type}</span>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+              <MetricCell label="Enviados" value={a.recipients?.toLocaleString("pt-BR") ?? "—"} />
+              <MetricCell label="Abertura" value={a.open_rate != null ? `${a.open_rate.toFixed(1)}%` : "—"} tone={a.open_rate != null && a.open_rate < 20 ? "neg" : undefined} />
+              <MetricCell label="CTR" value={a.click_rate != null ? `${a.click_rate.toFixed(1)}%` : "—"} />
+              <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
+              <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `R$ ${a.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function MetricCell({ label, value, tone }: { label: string; value: string; tone?: "pos" | "neg" }) {
+  const color = tone === "pos" ? C.pos : tone === "neg" ? C.neg : C.g700
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
-        Performance de flows/automações via Omnisend/Klaviyo.
-      </div>
-      <EmptyTab>
-        Dados de automações serão carregados via integração.
-        <br />
-        <a
-          href={`/admin/stores/${storeId}?tab=performance`}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
-        >
-          Ver detalhe da loja
-        </a>
-      </EmptyTab>
+      <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color, ...TNUM, marginTop: 2 }}>{value}</div>
     </div>
+  )
+}
+
+function ThCell({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return (
+    <th style={{
+      padding: "8px 12px", textAlign: right ? "right" : "left",
+      fontSize: 10.5, fontWeight: 600, color: C.g500,
+      letterSpacing: "0.06em", textTransform: "uppercase",
+    }}>{children}</th>
   )
 }
 
