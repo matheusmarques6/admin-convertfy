@@ -179,23 +179,27 @@ export async function POST(request: NextRequest) {
     const healthState = body.health_state ?? "healthy"
     const healthScore = Number(body.health_score ?? 70)
 
+    // Delete-then-insert: partial unique index nao funciona com upsert PostgREST
+    await admin
+      .from("weekly_pipeline_states")
+      .delete()
+      .eq("store_id", body.store_id)
+      .eq("week_start", week)
+
     const { data: created, error } = await admin
       .from("weekly_pipeline_states")
-      .upsert(
-        {
-          org_id: store.org_id,
-          store_id: body.store_id,
-          week_start: week,
-          current_stage: body.current_stage ?? 1,
-          health_state: healthState,
-          health_score: healthScore,
-          flag_reason: body.flag_reason ?? null,
-          flagged_by: body.flagged_by ?? "manual",
-          flagged_at: new Date().toISOString(),
-          is_active: true,
-        },
-        { onConflict: "store_id,week_start", ignoreDuplicates: false },
-      )
+      .insert({
+        org_id: store.org_id,
+        store_id: body.store_id,
+        week_start: week,
+        current_stage: body.current_stage ?? 1,
+        health_state: healthState,
+        health_score: healthScore,
+        flag_reason: body.flag_reason ?? null,
+        flagged_by: body.flagged_by ?? "manual",
+        flagged_at: new Date().toISOString(),
+        is_active: true,
+      })
       .select()
       .single()
 

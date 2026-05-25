@@ -286,27 +286,32 @@ export async function flagStoresForWeek({
     }
 
     if (force && reasons.length === 0) {
-      // Loja sem motivo entra na fila com estado correto, sem virar attention
       reasons.push("Performance estável · sem ações pendentes")
     }
 
+    // Delete-then-insert ao invés de upsert: o partial unique index
+    // (store_id, week_start WHERE is_active = TRUE) nao funciona bem
+    // com upsert via PostgREST.
+    await admin
+      .from("weekly_pipeline_states")
+      .delete()
+      .eq("store_id", store.id)
+      .eq("week_start", targetWeek)
+
     const { error } = await admin
       .from("weekly_pipeline_states")
-      .upsert(
-        {
-          org_id: store.org_id,
-          store_id: store.id,
-          week_start: targetWeek,
-          current_stage: 1,
-          health_state: healthState,
-          health_score: healthScore,
-          flag_reason: reasons.join(" · "),
-          flagged_by: force ? "manual" : "system",
-          flagged_at: new Date().toISOString(),
-          is_active: true,
-        },
-        { onConflict: "store_id,week_start", ignoreDuplicates: false },
-      )
+      .insert({
+        org_id: store.org_id,
+        store_id: store.id,
+        week_start: targetWeek,
+        current_stage: 1,
+        health_state: healthState,
+        health_score: healthScore,
+        flag_reason: reasons.join(" · "),
+        flagged_by: force ? "manual" : "system",
+        flagged_at: new Date().toISOString(),
+        is_active: true,
+      })
 
     if (!error) {
       // Dual-write: tambem cria/atualiza deal no pipeline CS
