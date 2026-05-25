@@ -59,9 +59,10 @@ export interface HtmlChainConfig {
 }
 
 export function createHtmlChain(config: HtmlChainConfig) {
+  const isOpus = config.model.includes("opus")
   const model = new ChatAnthropic({
     model: config.model,
-    temperature: config.temperature,
+    ...(isOpus ? {} : { temperature: config.temperature }),
     maxTokens: config.max_tokens,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   })
