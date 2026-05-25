@@ -23,8 +23,10 @@ import {
   GripVertical,
   Image as ImageIcon,
   LayoutGrid,
+  Loader2,
   Plus,
   Send,
+  Sparkles,
   Square,
   Tag as TagIcon,
   Trash2,
@@ -71,6 +73,7 @@ interface EmailDetailViewProps {
 }
 
 export function EmailDetailView({
+  storeId,
   flow,
   emailId,
   onEmailUpdated,
@@ -379,6 +382,46 @@ export function EmailDetailView({
   const [confirmDeleteEmail, setConfirmDeleteEmail] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [sendTestOpen, setSendTestOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+
+  const generateWithAI = async () => {
+    if (generating) return
+    setGenerating(true)
+    toast.toast({ title: "Gerando email com IA...", description: "Isso pode levar alguns segundos." })
+    try {
+      const res = await fetch(
+        `/api/admin/stores/${storeId}/generate-email`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flowId: flow.id,
+            emailId,
+            flowType: flow.flow_type,
+            emailNumber: email?.number ?? 1,
+          }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok || json?.status === "error") {
+        throw new Error(json?.error || json?.data?.error || `Falha na geração (HTTP ${res.status})`)
+      }
+      toast.toast({
+        title: "Email gerado com sucesso!",
+        description: "Blocos, copy e HTML foram gerados pela IA.",
+      })
+      await mutate()
+      onEmailUpdated()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro na geração",
+        description: (e as Error).message,
+      })
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   const sendTest = async (to: string) => {
     try {
@@ -526,6 +569,33 @@ export function EmailDetailView({
               onClick={() => setViewMode("html")}
             />
           </div>
+          <button
+            onClick={generateWithAI}
+            disabled={generating}
+            title="Gerar email com IA"
+            style={{
+              height: 28,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              background: generating ? "var(--crm-gray-100)" : "var(--crm-gray-900)",
+              color: generating ? "var(--crm-gray-400)" : "#fff",
+              border: 0,
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: generating ? "default" : "pointer",
+              opacity: generating ? 0.7 : 1,
+            }}
+          >
+            {generating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {generating ? "Gerando..." : "Gerar com IA"}
+          </button>
           <button
             onClick={() => setSendTestOpen(true)}
             title="Enviar e-mail de teste"
