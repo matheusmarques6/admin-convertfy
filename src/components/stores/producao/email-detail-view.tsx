@@ -92,7 +92,7 @@ export function EmailDetailView({
   const blocks = email?.blocks ?? []
   const qaItems = email?.qa_items ?? []
 
-  const [viewMode, setViewMode] = useState<"mock" | "render" | "html">("mock")
+  const [viewMode, setViewMode] = useState<"render" | "html">("render")
   const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
   const [width, setWidth] = useState<number>(600)
 
@@ -558,12 +558,6 @@ export function EmailDetailView({
             }}
           >
             <ModePillBtn
-              icon={<LayoutGrid className="h-3 w-3" />}
-              label="Mock"
-              active={viewMode === "mock"}
-              onClick={() => setViewMode("mock")}
-            />
-            <ModePillBtn
               icon={<Eye className="h-3 w-3" />}
               label="Render"
               active={viewMode === "render"}
@@ -717,10 +711,10 @@ export function EmailDetailView({
           className="flex-1 overflow-y-auto"
           style={{ background: "var(--crm-gray-50)" }}
         >
-          {viewMode === "mock" && (
-            <EmailMockPreview
+          {viewMode === "render" && (
+            <EmailRenderPreview
               email={email}
-              blocks={blocks}
+              html={renderEmailHtml(email, blocks)}
               width={width}
               onEditSubject={(v) => patchEmail({ subject: v || null })}
               onEditPreheader={(v) => patchEmail({ preheader: v || null })}
@@ -732,13 +726,6 @@ export function EmailDetailView({
                   delay_hours: n !== null && !Number.isNaN(n) ? n : null,
                 })
               }}
-            />
-          )}
-          {viewMode === "render" && (
-            <EmailRenderPreview
-              email={email}
-              html={renderEmailHtml(email, blocks)}
-              width={width}
             />
           )}
           {viewMode === "html" && (
@@ -1877,47 +1864,84 @@ function EmailRenderPreview({
   email,
   html,
   width,
+  onEditSubject,
+  onEditPreheader,
+  onEditFromName,
+  onEditFromEmail,
+  onEditDelay,
 }: {
   email: EmailFlowEmail
   html: string
   width: number
+  onEditSubject: (v: string) => Promise<void>
+  onEditPreheader: (v: string) => Promise<void>
+  onEditFromName: (v: string) => Promise<void>
+  onEditFromEmail: (v: string) => Promise<void>
+  onEditDelay: (v: string) => Promise<void>
 }) {
   return (
     <div style={{ padding: "24px 32px 48px", maxWidth: 1000, margin: "0 auto" }}>
-      <SectionLabel>Pré-visualização real (iframe sandbox)</SectionLabel>
+      <SectionLabel>Envelope</SectionLabel>
       <div
         style={{
           background: "var(--crm-gray-0)",
           border: "1px solid var(--crm-border)",
           borderRadius: 10,
-          padding: "14px 18px",
-          marginBottom: 16,
-          fontSize: 12,
-          color: "var(--crm-gray-500)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
+          padding: "16px 20px",
+          fontSize: 13,
+          marginBottom: 20,
         }}
       >
-        <span>
-          <b style={{ color: "var(--crm-gray-900)" }}>{email.subject || "Sem assunto"}</b>
-          {email.preheader && (
-            <>
-              {" — "}
-              <span style={{ color: "var(--crm-gray-500)" }}>
-                {email.preheader}
-              </span>
-            </>
-          )}
-        </span>
-        <span
-          className="crm-tnum"
-          style={{ fontSize: 11, color: "var(--crm-gray-400)" }}
-        >
-          {width}px · render real
-        </span>
+        <EnvelopeRow label="De">
+          <span style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}>
+            <InlineEditField
+              value={email.from_name}
+              placeholder="Nome do remetente"
+              onSave={onEditFromName}
+            />
+          </span>
+          <span style={{ color: "var(--crm-gray-500)", marginLeft: 8 }}>
+            &lt;
+            <InlineEditField
+              value={email.from_email}
+              placeholder="email@dominio.com"
+              onSave={onEditFromEmail}
+            />
+            &gt;
+          </span>
+        </EnvelopeRow>
+        <EnvelopeRow label="Assunto">
+          <span style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}>
+            <InlineEditField
+              value={email.subject}
+              placeholder="Assunto do email"
+              onSave={onEditSubject}
+            />
+          </span>
+        </EnvelopeRow>
+        <EnvelopeRow label="Pré-cabeçalho">
+          <InlineEditField
+            value={email.preheader}
+            placeholder="Texto curto que aparece após o assunto"
+            onSave={onEditPreheader}
+          />
+        </EnvelopeRow>
+        <EnvelopeRow label="Esperar" last>
+          <span style={{ color: "var(--crm-gray-700)" }}>
+            <InlineEditField
+              type="number"
+              value={email.delay_hours}
+              placeholder="0"
+              onSave={onEditDelay}
+            />{" "}
+            <span style={{ color: "var(--crm-gray-500)" }}>
+              horas após o e-mail anterior
+            </span>
+          </span>
+        </EnvelopeRow>
       </div>
+
+      <SectionLabel>Corpo do e-mail</SectionLabel>
       <div
         style={{
           width,
