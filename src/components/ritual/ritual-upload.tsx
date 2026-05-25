@@ -2,9 +2,16 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import {
   Check, Download, Link as LinkIcon, Bell, ChevronRight, FileVideo, Loader2,
 } from "lucide-react"
+
+const swrFetcher = (url: string) =>
+  fetch(url, { credentials: "include" }).then(async (r) => {
+    if (!r.ok) return null
+    return r.json()
+  })
 
 const C = {
   brand: "#4E62D8",
@@ -54,6 +61,15 @@ function formatFileSize(bytes: number) {
 
 export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
+
+  const { data: sessionInfo } = useSWR<{
+    session?: { store_ids?: string[]; started_at?: string; completed_at?: string }
+  }>(
+    sessionId ? `/api/ritual/sessions/${sessionId}` : null,
+    swrFetcher,
+  )
+  const totalStores = sessionInfo?.session?.store_ids?.length ?? 0
+
   const [stage, setStage] = useState<Stage>("upload")
   const [uploading, setUploading] = useState(false)
   const [fileName, setFileName] = useState("")
@@ -187,7 +203,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
           <Check size={13} /> Ritual concluído
         </div>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 600, color: C.g900, letterSpacing: "-0.02em" }}>
-          12 lojas revisadas em 1h 58min
+          {totalStores > 0 ? `${totalStores} lojas revisadas` : "Ritual concluído"}
         </h1>
         <div style={{ marginTop: 8, fontSize: 14, color: C.g500 }}>
           Fathom capturou toda a discussão · Agora suba a gravação para a IA extrair as decisões.
@@ -202,12 +218,12 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
         boxShadow: C.shadowSm,
       }}>
         {[
-          { label: "Lojas", value: "12", tone: C.g900 },
-          { label: "Em crise", value: "3", tone: C.warn },
-          { label: "Saudáveis", value: "7", tone: C.pos },
-          { label: "Renovação", value: "1", tone: C.purple },
-          { label: "Solicitações", value: "1", tone: C.brand },
-          { label: "Perguntas IA", value: "47", tone: C.g700 },
+          { label: "Lojas", value: String(totalStores || "—"), tone: C.g900 },
+          { label: "Concluídas", value: String(totalStores || "—"), tone: C.pos },
+          { label: "Puladas", value: "0", tone: C.g500 },
+          { label: "Com ações", value: "—", tone: C.brand },
+          { label: "Gravação", value: sessionInfo?.session?.completed_at ? "Pronta" : "—", tone: C.g700 },
+          { label: "Status", value: stage === "done" ? "Pronto" : stage === "processing" ? "Processando" : "Aguardando", tone: C.g700 },
         ].map((k, i) => (
           <div key={k.label} style={{
             padding: "14px 16px",

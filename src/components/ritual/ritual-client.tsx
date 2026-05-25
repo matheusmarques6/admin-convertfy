@@ -382,6 +382,16 @@ export function RitualClient() {
             </div>
           </div>
 
+          {startError && (
+            <div style={{
+              marginTop: 12, padding: "10px 14px",
+              background: C.negBg, border: `1px solid ${C.negBorder}`,
+              borderRadius: 8, fontSize: 12.5, color: C.neg,
+            }}>
+              Erro ao iniciar ritual: {startError}
+            </div>
+          )}
+
           {/* Context banner */}
           {!isEmpty && !bannerDismissed && (
             <div style={{

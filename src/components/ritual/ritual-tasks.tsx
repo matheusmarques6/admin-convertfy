@@ -1,10 +1,17 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import {
-  ChevronRight, Check, Plus, Paperclip, MoreHorizontal, Calendar, Trash2,
+  ChevronRight, Check, Plus, Paperclip, MoreHorizontal, Calendar, Trash2, Loader2,
 } from "lucide-react"
+
+const swrFetcher = (url: string) =>
+  fetch(url, { credentials: "include" }).then(async (r) => {
+    if (!r.ok) return null
+    return r.json()
+  })
 
 const C = {
   brand: "#4E62D8",
@@ -120,9 +127,60 @@ const DISCARDED = [
 
 export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
-  const [blocks, setBlocks] = useState(MOCK_BLOCKS)
+  const [blocks, setBlocks] = useState<TaskBlock[]>(MOCK_BLOCKS)
+  const [loadedFromApi, setLoadedFromApi] = useState(false)
   const [approving, setApproving] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
+
+  const { data: processData } = useSWR(
+    sessionId ? `/api/ritual/sessions/${sessionId}/process` : null,
+    swrFetcher,
+  )
+
+  useEffect(() => {
+    if (loadedFromApi || !processData?.generated_tasks) return
+    const gen = processData.generated_tasks as {
+      tasks?: Array<{
+        store_name?: string
+        store_id?: string
+        title?: string
+        owner_role?: string
+        priority?: string
+        due_hint?: string
+        origin_quote?: string
+      }>
+      discarded?: Array<{ text?: string; reason?: string }>
+    }
+    if (!gen.tasks || gen.tasks.length === 0) return
+
+    const byStore = new Map<string, TaskBlock>()
+    for (const t of gen.tasks) {
+      const key = t.store_id || t.store_name || "unknown"
+      if (!byStore.has(key)) {
+        byStore.set(key, {
+          storeId: t.store_id || key,
+          storeName: t.store_name || "Loja",
+          state: "attention",
+          summary: "",
+          tasks: [],
+        })
+      }
+      const block = byStore.get(key)!
+      block.tasks.push({
+        id: `gen_${block.tasks.length}`,
+        title: t.title || "",
+        ownerName: t.owner_role || "—",
+        ownerRole: t.owner_role || "—",
+        dueDate: t.due_hint || "—",
+        priority: (t.priority === "high" ? "high" : t.priority === "low" ? "low" : "med") as "high" | "med" | "low",
+        origin: t.origin_quote || "",
+        approved: true,
+        discarded: false,
+      })
+    }
+    setBlocks(Array.from(byStore.values()))
+    setLoadedFromApi(true)
+  }, [processData, loadedFromApi])
 
   const approvedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.approved && !t.discarded).length, 0), [blocks])
   const rejectedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.discarded).length, 0), [blocks])
