@@ -6,10 +6,15 @@ export const metadata = {
 
 export const dynamic = "force-dynamic"
 
-export default function RitualUploadPage() {
+export default async function RitualUploadPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string }>
+}) {
+  const { session } = await searchParams
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto", background: "#FAFBFC" }}>
-      <RitualUploadClient />
+      <RitualUploadClient sessionId={session} />
     </div>
   )
 }

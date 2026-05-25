@@ -6,6 +6,11 @@ export const metadata = {
 
 export const dynamic = "force-dynamic"
 
-export default function RitualTasksPage() {
-  return <RitualTasksClient />
+export default async function RitualTasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string }>
+}) {
+  const { session } = await searchParams
+  return <RitualTasksClient sessionId={session} />
 }

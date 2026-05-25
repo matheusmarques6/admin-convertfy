@@ -66,51 +66,91 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
     return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
   }
 
+  const [taskCount, setTaskCount] = useState(0)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
   const handleFile = useCallback(async (file: File) => {
-    if (uploading) return
+    if (uploading || !sessionId) return
     const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
-    if (!ALLOWED_EXT.includes(ext)) return
+    if (!ALLOWED_EXT.includes(ext)) {
+      setErrorMsg(`Tipo ${ext} não aceito. Use .mp4, .mp3, .m4a ou .wav`)
+      return
+    }
 
     const sizeStr = formatSize(file.size)
     setFileName(file.name)
     setFileSize(sizeStr)
     setUploading(true)
+    setErrorMsg(null)
 
     setSteps((s) => s.map((st, i) =>
-      i === 0 ? { ...st, status: "active" as const, sub: "enviando..." } : st
+      i === 0 ? { ...st, status: "active" as const, sub: "enviando para Supabase Storage..." } : st
     ))
     setStage("processing")
 
     try {
-      await new Promise((r) => setTimeout(r, 1500))
+      // Step 1: Upload para Storage
+      const formData = new FormData()
+      formData.append("file", file)
+      const uploadRes = await fetch(`/api/ritual/sessions/${sessionId}/upload`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      })
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}))
+        throw new Error(err.error || `Upload falhou: HTTP ${uploadRes.status}`)
+      }
+
       setSteps((s) => s.map((st, i) => {
         if (i === 0) return { ...st, status: "done" as const, sub: `100% · ${sizeStr}` }
-        if (i === 1) return { ...st, status: "active" as const, sub: "processando áudio..." }
+        if (i === 1) return { ...st, status: "active" as const, sub: "aguardando transcrição..." }
         return st
       }))
 
-      await new Promise((r) => setTimeout(r, 2000))
+      // Step 2-4: Process (transcrição + correlação + extração)
+      // Nesta versão, o usuário pode colar a transcrição manualmente
+      // ou o áudio será processado pelo backend
       setSteps((s) => s.map((st, i) => {
         if (i === 0) return st
-        if (i === 1) return { ...st, status: "done" as const, sub: "transcrição completa" }
-        if (i === 2) return { ...st, status: "active" as const, sub: "correlacionando com lojas...", progress: 0.58 }
+        if (i === 1) return { ...st, status: "done" as const, sub: "upload concluído" }
+        if (i === 2) return { ...st, status: "active" as const, sub: "IA correlacionando e extraindo tasks..." }
         return st
       }))
 
-      await new Promise((r) => setTimeout(r, 2000))
-      setSteps((s) => s.map((st, i) => {
-        if (i <= 1) return st
-        if (i === 2) return { ...st, status: "done" as const, sub: "12 lojas mapeadas" }
-        if (i === 3) return { ...st, status: "active" as const, sub: "extraindo decisões..." }
-        return st
-      }))
+      const processRes = await fetch(`/api/ritual/sessions/${sessionId}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      })
 
-      await new Promise((r) => setTimeout(r, 2000))
-      setSteps((s) => s.map((st) => ({ ...st, status: "done" as const })))
+      if (processRes.ok) {
+        const result = await processRes.json()
+        const tasks = result.tasks ?? []
+        setTaskCount(tasks.length)
 
-      await new Promise((r) => setTimeout(r, 500))
-      setStage("done")
-    } catch {
+        setSteps((s) => s.map((st, i) => {
+          if (i <= 1) return st
+          if (i === 2) return { ...st, status: "done" as const, sub: "lojas mapeadas" }
+          if (i === 3) return { ...st, status: "done" as const, sub: `${tasks.length} tasks extraídas` }
+          return st
+        }))
+
+        setStage("done")
+      } else {
+        // Processamento pendente (ex: sem transcrição ainda)
+        const err = await processRes.json().catch(() => ({}))
+        setSteps((s) => s.map((st, i) => {
+          if (i <= 1) return st
+          if (i === 2) return { ...st, status: "pending" as const, sub: err.error || "aguardando transcrição" }
+          return st
+        }))
+        setStage("done")
+        setTaskCount(0)
+      }
+    } catch (e) {
+      setErrorMsg((e as Error).message)
       setStage("upload")
     } finally {
       setUploading(false)
@@ -256,6 +296,12 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
             }}>Conectar</button>
           </div>
 
+          {errorMsg && (
+            <div style={{ marginTop: 16, padding: "10px 14px", background: C.negBg, border: `1px solid #FECACA`, borderRadius: 8, fontSize: 12.5, color: C.neg }}>
+              {errorMsg}
+            </div>
+          )}
+
           <div style={{ marginTop: 20, fontSize: 12, color: C.g500 }}>
             Sem gravação? <span style={{ color: C.brand, cursor: "pointer" }}>Preencher manualmente</span>
           </div>
@@ -323,14 +369,14 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
             display: "flex", alignItems: "center", justifyContent: "center",
           }}><Check size={32} /></div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: C.g900 }}>
-            14 tasks prontas para revisão
+            {taskCount > 0 ? `${taskCount} tasks prontas para revisão` : "Processamento concluído"}
           </h2>
           <div style={{ marginTop: 8, fontSize: 14, color: C.g500 }}>
             IA extraiu decisões de 4 lojas críticas. Revise, edite ou aprove tudo.
           </div>
           <button
             type="button"
-            onClick={() => router.push("/admin/operacional/ritual/tasks")}
+            onClick={() => router.push(`/admin/operacional/ritual/tasks${sessionId ? `?session=${sessionId}` : ""}`)}
             style={{
               marginTop: 22, padding: "12px 24px",
               fontSize: 14, fontWeight: 600, color: "#fff", background: C.brand,

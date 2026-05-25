@@ -118,10 +118,11 @@ const DISCARDED = [
   { txt: "Comentário sobre ferramenta de A/B", why: "Off-topic" },
 ]
 
-export function RitualTasksClient() {
+export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
   const [blocks, setBlocks] = useState(MOCK_BLOCKS)
   const [approving, setApproving] = useState(false)
+  const [approveError, setApproveError] = useState<string | null>(null)
 
   const approvedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.approved && !t.discarded).length, 0), [blocks])
   const rejectedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.discarded).length, 0), [blocks])
@@ -140,12 +141,45 @@ export function RitualTasksClient() {
   }
 
   async function handleApproveAll() {
+    if (!sessionId) return
     setApproving(true)
+    setApproveError(null)
     try {
-      // TODO: POST /api/ritual/approve-tasks com IDs das tasks aprovadas
-      await new Promise((r) => setTimeout(r, 1500))
+      const approvedTasks = blocks.flatMap((b) =>
+        b.tasks
+          .filter((t) => t.approved && !t.discarded)
+          .map((t) => ({
+            title: t.title,
+            store_id: b.storeId,
+            assignee_id: null,
+            due_date: null,
+            priority: t.priority === "high" ? "high" as const : t.priority === "low" ? "low" as const : "medium" as const,
+            origin_quote: t.origin,
+          })),
+      )
+
+      if (approvedTasks.length === 0) {
+        setApproveError("Nenhuma task aprovada para criar.")
+        setApproving(false)
+        return
+      }
+
+      const res = await fetch(`/api/ritual/sessions/${sessionId}/approve-tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tasks: approvedTasks }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+
+      const result = await res.json()
       router.push("/admin/operacional/ritual")
-    } catch {
+    } catch (e) {
+      setApproveError((e as Error).message)
       setApproving(false)
     }
   }
@@ -195,10 +229,16 @@ export function RitualTasksClient() {
                 boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
               }}
             >
-              <Check size={15} /> {approving ? "Aprovando..." : "Aprovar tudo e mover lojas"}
+              <Check size={15} /> {approving ? "Aprovando..." : `Aprovar ${approvedCount} e mover lojas`}
             </button>
           </div>
         </div>
+
+        {approveError && (
+          <div style={{ marginTop: 8, padding: "8px 14px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, fontSize: 12.5, color: "#991B1B" }}>
+            {approveError}
+          </div>
+        )}
 
         {/* KPI bar */}
         <div style={{
