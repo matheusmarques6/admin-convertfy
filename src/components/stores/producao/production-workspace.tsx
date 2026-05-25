@@ -366,11 +366,12 @@ export function ProductionWorkspace({
 
   return (
     <div
-      className="flex h-full flex-col"
+      className="flex flex-col"
       style={{
         background: "var(--crm-gray-50)",
         fontFamily: "var(--crm-font-sans)",
         overflow: "hidden",
+        height: "100dvh",
       }}
     >
       {/* ─── TOPBAR ─────────────────────────────────────────── */}
