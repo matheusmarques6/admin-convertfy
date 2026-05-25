@@ -196,6 +196,16 @@ export async function generateEmail(
         tone_avoid_words: joinArr(ctx.store.tone_avoid_words),
         tone_do: joinArr(ctx.store.tone_do),
         tone_dont: joinArr(ctx.store.tone_dont),
+        // Brand identity fields
+        voice: joinArr(ctx.brand?.voice),
+        logo_url: ctx.brand?.logo_main_png ?? ctx.brand?.logo_main_svg ?? "",
+        primary_color: (ctx.brand?.colors_primary ?? [])[0]?.hex ?? "#1F1F1F",
+        secondary_color: (ctx.brand?.colors_secondary ?? [])[0]?.hex ?? "#F0F0F0",
+        primary_colors: (ctx.brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || "#1F1F1F",
+        primary_color_names: (ctx.brand?.colors_primary ?? []).map((c) => c.name).join(", "),
+        secondary_colors: (ctx.brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || "#F0F0F0",
+        font_heading: ctx.brand?.font_heading ?? "Arial",
+        font_body: ctx.brand?.font_body ?? "Arial",
         // Briefing fields
         tom_voz: marca.tom_voz ?? "casual",
         restricoes: joinArr(briefingDetail.restricoes),
