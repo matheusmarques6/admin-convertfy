@@ -45,6 +45,7 @@ import type {
   ProductsBlockContent,
   TextBlockContent,
 } from "@/types/email-workspace"
+import { GenerationProgressDrawer } from "./generation-progress-drawer"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
