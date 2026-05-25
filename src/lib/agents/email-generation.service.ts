@@ -127,6 +127,144 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
   return vars
 }
 
+async function parseRawCopyIntoBlocks(
+  admin: ReturnType<typeof createAdminClient>,
+  rawOutput: string,
+  seededBlocks: Array<{ id: string; block_type: string; position: number; label: string }>,
+  strip: (s: string) => string,
+) {
+  // Split output by position/section markers
+  // Matches: <!-- POSITION 1: HERO -->, <!-- 1. HERO -->, ### 1. HERO, etc.
+  const sectionPattern = /<!--\s*(?:POSITION\s+)?(\d+)[.:]\s*(\w+)\s*-->|###?\s*(\d+)[.:]\s*(\w+)/gi
+  const sections: Array<{ position: number; type: string; startIdx: number }> = []
+  let match: RegExpExecArray | null
+  while ((match = sectionPattern.exec(rawOutput)) !== null) {
+    const pos = parseInt(match[1] ?? match[3])
+    const type = (match[2] ?? match[4]).toLowerCase()
+    sections.push({ position: pos, type, startIdx: match.index })
+  }
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+    const nextStart = sections[i + 1]?.startIdx ?? rawOutput.length
+    const sectionHtml = rawOutput.slice(section.startIdx, nextStart)
+
+    const block = seededBlocks.find((b) => b.position === section.position)
+    if (!block) continue
+
+    const extractText = (tag: string) => {
+      const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i")
+      const m = sectionHtml.match(re)
+      return m ? strip(m[1]) : undefined
+    }
+    const extractAllText = (tag: string) => {
+      const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "gi")
+      const results: string[] = []
+      let m: RegExpExecArray | null
+      while ((m = re.exec(sectionHtml)) !== null) results.push(strip(m[1]))
+      return results
+    }
+    const extractLink = () => {
+      const m = sectionHtml.match(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/i)
+      return m ? { url: m[1], text: strip(m[2]) } : undefined
+    }
+
+    let content: Record<string, unknown> = {}
+
+    switch (block.block_type) {
+      case "hero": {
+        const h1 = extractText("h1")
+        const h2 = extractText("h2")
+        const ps = extractAllText("p")
+        const link = extractLink()
+        content = {
+          headline: h1 ?? h2 ?? undefined,
+          body: h2 && h1 ? (ps.length > 0 ? `${h2}\n${ps.join("\n")}` : h2) : ps.join("\n") || undefined,
+          cta_text: link?.text ?? undefined,
+          cta_url: link?.url ?? undefined,
+        }
+        break
+      }
+      case "text": {
+        const h2 = extractText("h2")
+        const ps = extractAllText("p")
+        content = {
+          headline: h2 ?? undefined,
+          body: ps.join("\n") || undefined,
+        }
+        break
+      }
+      case "coupon": {
+        const h1 = extractText("h1")
+        const h2 = extractText("h2")
+        const ps = extractAllText("p")
+        const link = extractLink()
+        content = {
+          code: h1 ?? undefined,
+          hint: h2 ? ps.join(" ") : ps.slice(0, -1).join(" ") || undefined,
+          cta_text: link?.text ?? undefined,
+          cta_url: link?.url ?? undefined,
+        }
+        if (!content.code && h2) content.code = h2
+        break
+      }
+      case "products": {
+        const h2 = extractText("h2")
+        const h3s = extractAllText("h3")
+        const ps = extractAllText("p")
+        const links = [] as Array<{ url: string; text: string }>
+        const linkRe = /<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi
+        let lm: RegExpExecArray | null
+        while ((lm = linkRe.exec(sectionHtml)) !== null) links.push({ url: lm[1], text: strip(lm[2]) })
+
+        const products = h3s.map((name, idx) => ({
+          name,
+          price: "",
+          image_url: "",
+          url: links[idx]?.url ?? "#",
+          cta_text: links[idx]?.text ?? "VER",
+        }))
+        content = {
+          title: h2 ?? undefined,
+          products: products.length > 0 ? products : undefined,
+        }
+        break
+      }
+      case "footer": {
+        const links = [] as Array<{ label: string; url: string }>
+        const linkRe = /<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi
+        let lm: RegExpExecArray | null
+        while ((lm = linkRe.exec(sectionHtml)) !== null) {
+          const label = strip(lm[2])
+          if (label) links.push({ label, url: lm[1] })
+        }
+        const strong = extractText("strong")
+        content = {
+          columns: links.length > 0 ? [{ links }] : undefined,
+          copyright: strong ?? undefined,
+        }
+        break
+      }
+      default: {
+        const ps = extractAllText("p")
+        const h2 = extractText("h2")
+        if (h2 || ps.length > 0) {
+          content = { headline: h2 ?? undefined, body: ps.join("\n") || undefined }
+        }
+      }
+    }
+
+    // Remove undefined values
+    const cleaned = Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined))
+    if (Object.keys(cleaned).length > 0) {
+      await admin
+        .from("email_blocks")
+        .update({ content: cleaned })
+        .eq("id", block.id)
+    }
+  }
+}
+
 function fillMissingVars(
   inputVars: Record<string, string>,
   systemPrompt: string,
@@ -326,6 +464,9 @@ export async function generateEmail(
         const preheaderMatch = rawOutput.match(/(?:\*{0,2})(?:Preview|Preheader|Pre-?header)(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
         copySubject = subjectMatch ? stripMarkup(subjectMatch[1]).slice(0, 200) : null
         copyPreheader = preheaderMatch ? stripMarkup(preheaderMatch[1]).slice(0, 200) : null
+
+        // Parse raw HTML into block content by matching POSITION/section comments
+        await parseRawCopyIntoBlocks(admin, rawOutput, seededBlocks, stripMarkup)
       }
 
       copyRawOutput = rawOutput
