@@ -89,6 +89,15 @@ export async function GET(
       total,
       completed,
       errors,
+      runs: (runs ?? []).map((r) => ({
+        agent: r.agent,
+        status: r.status,
+        error_message: r.error_message,
+        duration_ms: r.duration_ms,
+        tokens_input: r.tokens_input,
+        tokens_output: r.tokens_output,
+        cost_cents: r.cost_cents,
+      })),
       summary: {
         totalCost,
         totalDuration,

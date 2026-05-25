@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import {
@@ -14,6 +14,12 @@ import {
   Code2,
   Save,
   History,
+  Play,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Store,
+  Mail,
 } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
@@ -61,7 +67,7 @@ const AGENT_DESCRIPTIONS: Record<AgentType, string> = {
   html: "Compila o HTML final combinando blocos, imagens e estilos",
 }
 
-type Tab = "blueprints" | "agents" | "settings" | "references"
+type Tab = "blueprints" | "agents" | "settings" | "references" | "test"
 
 export default function EmailGenerationSettingsPage() {
   const [tab, setTab] = useState<Tab>("blueprints")
@@ -78,12 +84,14 @@ export default function EmailGenerationSettingsPage() {
         <SegmentedTabItem value="agents">Agentes</SegmentedTabItem>
         <SegmentedTabItem value="settings">Configurações</SegmentedTabItem>
         <SegmentedTabItem value="references">Referências</SegmentedTabItem>
+        <SegmentedTabItem value="test">Testar</SegmentedTabItem>
       </SegmentedTabs>
 
       {tab === "blueprints" && <BlueprintsTab />}
       {tab === "agents" && <AgentsTab />}
       {tab === "settings" && <SettingsTab />}
       {tab === "references" && <ReferencesTab />}
+      {tab === "test" && <TestTab />}
     </div>
   )
 }
@@ -1136,6 +1144,404 @@ function ReferencesTab() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Test Tab ──────────────────────────────────────────────
+
+interface StoreOption {
+  id: string
+  store_name: string
+}
+
+interface FlowOption {
+  id: string
+  flow_type: string
+  name: string
+  emails: Array<{
+    id: string
+    number: number
+    name: string
+    status: string
+    subject: string | null
+  }>
+}
+
+interface RunStep {
+  agent: string
+  status: "pending" | "success" | "error" | "skipped" | "running"
+  error?: string
+  durationMs?: number
+  tokens?: number
+  cost?: number
+}
+
+function TestTab() {
+  const { data: storesData, isLoading: loadingStores } = useSWR<{ stores: StoreOption[] }>(
+    "/api/admin/stores",
+    fetcher,
+  )
+  const stores = storesData?.stores ?? []
+
+  const [selectedStoreId, setSelectedStoreId] = useState("")
+  const [selectedFlowId, setSelectedFlowId] = useState("")
+  const [selectedEmailId, setSelectedEmailId] = useState("")
+  const [generating, setGenerating] = useState(false)
+  const [batchId, setBatchId] = useState<string | null>(null)
+  const [result, setResult] = useState<{
+    status: "done" | "error"
+    error?: string
+    batchId?: string
+    emailId?: string
+  } | null>(null)
+  const [steps, setSteps] = useState<RunStep[]>([])
+  const [pollInterval, setPollInterval] = useState(0)
+
+  const { data: producaoData, isLoading: loadingFlows } = useSWR<{ flows: FlowOption[] }>(
+    selectedStoreId ? `/api/admin/stores/${selectedStoreId}/producao` : null,
+    fetcher,
+  )
+  const flows = producaoData?.flows ?? []
+
+  const selectedFlow = flows.find((f) => f.id === selectedFlowId)
+  const selectedEmail = selectedFlow?.emails.find((e) => e.id === selectedEmailId)
+
+  const { data: statusData } = useSWR(
+    batchId && selectedStoreId
+      ? `/api/admin/stores/${selectedStoreId}/generation-status/${batchId}`
+      : null,
+    fetcher,
+    {
+      refreshInterval: pollInterval,
+      revalidateOnFocus: false,
+    },
+  )
+
+  const statusInfo = statusData?.data ?? statusData
+
+  useEffect(() => {
+    if (statusInfo && pollInterval > 0) {
+      if (statusInfo.status === "done" || statusInfo.status === "error") {
+        setPollInterval(0)
+      }
+    }
+  }, [statusInfo, pollInterval])
+
+  const handleGenerate = async () => {
+    if (!selectedStoreId || !selectedFlowId || !selectedEmailId || !selectedFlow || !selectedEmail) return
+
+    setGenerating(true)
+    setResult(null)
+    setBatchId(null)
+    setSteps([
+      { agent: "seed", status: "pending" },
+      { agent: "copy", status: "pending" },
+      { agent: "image", status: "pending" },
+      { agent: "html", status: "pending" },
+    ])
+
+    try {
+      const res = await fetch(`/api/admin/stores/${selectedStoreId}/generate-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          flowId: selectedFlowId,
+          emailId: selectedEmailId,
+          flowType: selectedFlow.flow_type,
+          emailNumber: selectedEmail.number,
+        }),
+      })
+
+      const data = await res.json()
+      const responseData = data?.data ?? data
+
+      if (!res.ok) {
+        throw new Error(responseData?.error || `HTTP ${res.status}`)
+      }
+
+      setResult(responseData)
+      if (responseData.batchId) {
+        setBatchId(responseData.batchId)
+        setPollInterval(2000)
+      }
+    } catch (err) {
+      setResult({
+        status: "error",
+        error: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const agentLabels: Record<string, string> = {
+    seed: "Seed Blocos",
+    copy: "Copy (IA)",
+    image: "Imagem (IA)",
+    html: "HTML (IA)",
+  }
+
+  const statusIcon = (s: string) => {
+    switch (s) {
+      case "success": return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+      case "error": return <AlertCircle className="h-4 w-4 text-red-500" />
+      case "running": return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+      case "skipped": return <Clock className="h-4 w-4 text-slate-400" />
+      default: return <Clock className="h-4 w-4 text-slate-300 dark:text-white/20" />
+    }
+  }
+
+  const runSteps: RunStep[] = statusInfo?.agents
+    ? (statusInfo.agents as RunStep[])
+    : steps
+
+  return (
+    <div className="max-w-[700px] space-y-5">
+      <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Play className="h-4 w-4 text-slate-700 dark:text-white/80" />
+          <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
+            Testar geração de email
+          </h3>
+        </div>
+        <p className="text-[12px] text-slate-500 dark:text-white/45">
+          Selecione uma loja e um email para executar o pipeline completo (seed → copy → image → html).
+        </p>
+
+        <div className="space-y-3">
+          {/* Store selector */}
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+              <Store className="h-3.5 w-3.5" />
+              Loja
+            </label>
+            {loadingStores ? (
+              <div className="flex items-center gap-2 text-[12px] text-slate-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando lojas...
+              </div>
+            ) : (
+              <select
+                value={selectedStoreId}
+                onChange={(e) => {
+                  setSelectedStoreId(e.target.value)
+                  setSelectedFlowId("")
+                  setSelectedEmailId("")
+                  setResult(null)
+                  setBatchId(null)
+                }}
+                className="crm-input w-full"
+              >
+                <option value="">Selecione uma loja...</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>{s.store_name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Flow selector */}
+          {selectedStoreId && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                <Mail className="h-3.5 w-3.5" />
+                Flow
+              </label>
+              {loadingFlows ? (
+                <div className="flex items-center gap-2 text-[12px] text-slate-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando flows...
+                </div>
+              ) : flows.length === 0 ? (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400">
+                  Nenhum flow encontrado. Inicialize os flows desta loja primeiro.
+                </p>
+              ) : (
+                <select
+                  value={selectedFlowId}
+                  onChange={(e) => {
+                    setSelectedFlowId(e.target.value)
+                    setSelectedEmailId("")
+                    setResult(null)
+                    setBatchId(null)
+                  }}
+                  className="crm-input w-full"
+                >
+                  <option value="">Selecione um flow...</option>
+                  {flows.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {FLOW_TYPE_LABELS[f.flow_type] ?? f.flow_type} — {f.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Email selector */}
+          {selectedFlow && selectedFlow.emails.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                <Mail className="h-3.5 w-3.5" />
+                Email
+              </label>
+              <select
+                value={selectedEmailId}
+                onChange={(e) => {
+                  setSelectedEmailId(e.target.value)
+                  setResult(null)
+                  setBatchId(null)
+                }}
+                className="crm-input w-full"
+              >
+                <option value="">Selecione um email...</option>
+                {selectedFlow.emails.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    #{e.number} — {e.name} {e.subject ? `(${e.subject})` : ""} [{e.status}]
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Generate button */}
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
+            className="inline-flex items-center gap-2 h-9 px-5 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[13px] font-semibold disabled:opacity-40 transition-opacity"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {generating ? "Gerando..." : "Executar geração"}
+          </button>
+        </div>
+      </div>
+
+      {/* Progress / Result */}
+      {(result || generating || statusInfo) && (
+        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-4">
+          {/* Status header */}
+          <div className="flex items-center gap-2">
+            {statusInfo?.status === "done" || result?.status === "done" ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            ) : statusInfo?.status === "error" || result?.status === "error" ? (
+              <AlertCircle className="h-5 w-5 text-red-500" />
+            ) : (
+              <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+            )}
+            <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
+              {statusInfo?.status === "done" || result?.status === "done"
+                ? "Geração concluída"
+                : statusInfo?.status === "error" || result?.status === "error"
+                  ? "Erro na geração"
+                  : "Gerando email..."}
+            </h3>
+          </div>
+
+          {/* Agent steps */}
+          {statusInfo?.runs && (
+            <div className="space-y-1.5">
+              {(["seed", "copy", "image", "html"] as const).map((agent) => {
+                const agentRuns = (statusInfo.runs as Array<{ agent: string; status: string; error_message?: string; duration_ms?: number; tokens_input?: number; tokens_output?: number; cost_cents?: number }>).filter(
+                  (r) => r.agent === agent,
+                )
+                const latestRun = agentRuns[agentRuns.length - 1]
+                const status = latestRun?.status ?? "pending"
+
+                return (
+                  <div
+                    key={agent}
+                    className="flex items-center justify-between px-3 py-2 rounded-[4px] bg-slate-50 dark:bg-white/[0.03]"
+                  >
+                    <div className="flex items-center gap-2">
+                      {statusIcon(status)}
+                      <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                        {agentLabels[agent] ?? agent}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-white/35">
+                      {latestRun?.duration_ms != null && (
+                        <span>{(latestRun.duration_ms / 1000).toFixed(1)}s</span>
+                      )}
+                      {(latestRun?.tokens_input || latestRun?.tokens_output) && (
+                        <span>
+                          {((latestRun.tokens_input ?? 0) + (latestRun.tokens_output ?? 0)).toLocaleString()} tokens
+                        </span>
+                      )}
+                      {latestRun?.cost_cents != null && latestRun.cost_cents > 0 && (
+                        <span>${(latestRun.cost_cents / 100).toFixed(4)}</span>
+                      )}
+                      {latestRun?.error_message && (
+                        <span className="text-red-500 max-w-[200px] truncate" title={latestRun.error_message}>
+                          {latestRun.error_message}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Fallback steps when no status polling data yet */}
+          {!statusInfo?.runs && steps.length > 0 && (
+            <div className="space-y-1.5">
+              {steps.map((step) => (
+                <div
+                  key={step.agent}
+                  className="flex items-center gap-2 px-3 py-2 rounded-[4px] bg-slate-50 dark:bg-white/[0.03]"
+                >
+                  {generating ? (
+                    <Loader2 className="h-4 w-4 text-slate-300 animate-spin" />
+                  ) : (
+                    statusIcon(step.status)
+                  )}
+                  <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                    {agentLabels[step.agent] ?? step.agent}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error message */}
+          {result?.error && (
+            <div className="p-3 rounded-[4px] bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+              <p className="text-[12px] text-red-700 dark:text-red-400 font-mono break-all">
+                {result.error}
+              </p>
+            </div>
+          )}
+
+          {/* Summary */}
+          {statusInfo?.summary && (statusInfo.status === "done" || statusInfo.status === "error") && (
+            <div className="flex items-center gap-4 pt-2 border-t border-slate-100 dark:border-white/[0.06] text-[11px] text-slate-500 dark:text-white/45">
+              {statusInfo.summary.totalDuration > 0 && (
+                <span>Tempo: {(statusInfo.summary.totalDuration / 1000).toFixed(1)}s</span>
+              )}
+              {statusInfo.summary.tokensTotal > 0 && (
+                <span>Tokens: {statusInfo.summary.tokensTotal.toLocaleString()}</span>
+              )}
+              {statusInfo.summary.totalCost > 0 && (
+                <span>Custo: ${(statusInfo.summary.totalCost / 100).toFixed(4)}</span>
+              )}
+              {batchId && (
+                <a
+                  href={`/admin/tools/email-generation-logs?batch=${batchId}`}
+                  className="text-blue-600 dark:text-blue-400 hover:underline ml-auto"
+                >
+                  Ver logs completos
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
