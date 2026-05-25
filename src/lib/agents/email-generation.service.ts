@@ -46,6 +46,23 @@ import { notifyGenerationError } from "./generation-notify.service"
 
 const log = logger.child("EmailGeneration")
 
+function fillMissingVars(
+  inputVars: Record<string, string>,
+  systemPrompt: string,
+  userTemplate: string,
+): Record<string, string> {
+  const varPattern = /\{(\w+)\}/g
+  const combined = systemPrompt + userTemplate
+  let match: RegExpExecArray | null
+  while ((match = varPattern.exec(combined)) !== null) {
+    const key = match[1]
+    if (!(key in inputVars)) {
+      inputVars[key] = ""
+    }
+  }
+  return inputVars
+}
+
 // ── Types ───────────────────────────────────────────────────
 
 interface GenerateEmailParams {
@@ -241,6 +258,8 @@ export async function generateEmail(
           2,
         ),
       }
+
+      fillMissingVars(inputVars, systemPrompt, userTemplate)
 
       const chain = createCopyChain({
         model,
@@ -495,6 +514,8 @@ export async function generateEmail(
               )
             : "Sem produtos",
       }
+
+      fillMissingVars(inputVars, systemPrompt, userTemplate)
 
       const chain = createHtmlChain({
         model,
