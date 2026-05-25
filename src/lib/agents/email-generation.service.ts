@@ -134,13 +134,14 @@ async function parseRawCopyIntoBlocks(
   strip: (s: string) => string,
 ) {
   // Split output by position/section markers
-  // Matches: <!-- POSITION 1: HERO -->, <!-- 1. HERO -->, ### 1. HERO, etc.
-  const sectionPattern = /<!--\s*(?:POSITION\s+)?(\d+)[.:]\s*(\w+)\s*-->|###?\s*(\d+)[.:]\s*(\w+)/gi
+  // Matches: <!-- POSITION 1: HERO SECTION -->, <!-- 1. HERO -->, <!-- 2. TEXT - APRESENTAÇÃO DA MARCA -->, ### 1. HERO, etc.
+  const sectionPattern = /<!--\s*(?:POSITION\s+)?(\d+)[.:]\s*(.+?)\s*-->|###?\s*(\d+)[.:]\s*(.+)/gi
   const sections: Array<{ position: number; type: string; startIdx: number }> = []
   let match: RegExpExecArray | null
   while ((match = sectionPattern.exec(rawOutput)) !== null) {
     const pos = parseInt(match[1] ?? match[3])
-    const type = (match[2] ?? match[4]).toLowerCase()
+    const rawType = (match[2] ?? match[4]).trim()
+    const type = rawType.split(/[\s\-–—]+/)[0].toLowerCase()
     sections.push({ position: pos, type, startIdx: match.index })
   }
 
@@ -149,7 +150,19 @@ async function parseRawCopyIntoBlocks(
     const nextStart = sections[i + 1]?.startIdx ?? rawOutput.length
     const sectionHtml = rawOutput.slice(section.startIdx, nextStart)
 
-    const block = seededBlocks.find((b) => b.position === section.position)
+    // Match by position first, fallback to type name
+    let block = seededBlocks.find((b) => b.position === section.position)
+    if (!block) {
+      const typeMap: Record<string, string> = {
+        hero: "hero", text: "text", texto: "text", copy: "text",
+        coupon: "coupon", cupom: "coupon", cupão: "coupon",
+        products: "products", produtos: "products", product: "products",
+        footer: "footer", rodapé: "footer", rodape: "footer",
+        cta: "cta", image: "image", imagem: "image",
+      }
+      const mappedType = typeMap[section.type] ?? section.type
+      block = seededBlocks.find((b) => b.block_type === mappedType)
+    }
     if (!block) continue
 
     const extractText = (tag: string) => {
