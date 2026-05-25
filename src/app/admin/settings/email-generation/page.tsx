@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import {
@@ -14,9 +14,6 @@ import {
   Code2,
   Save,
   History,
-  Upload,
-  Eye,
-  EyeOff,
 } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
@@ -998,7 +995,7 @@ function ReferencesTab() {
       )}
 
       {!isLoading && templates.length === 0 && !adding && (
-        <div className="rounded-[8px] border border-dashed border-slate-300 dark:border-white/[0.10] py-10 text-center">
+        <div className="rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] py-10 text-center">
           <p className="text-[13px] text-slate-500 dark:text-white/45">
             Nenhuma referência ainda. Adicione HTMLs de exemplo para guiar a geração.
           </p>
