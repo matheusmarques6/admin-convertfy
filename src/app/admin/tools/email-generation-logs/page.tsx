@@ -333,8 +333,8 @@ function RunDetail({ run }: { run: EmailGenerationRun }) {
         throw new Error(body?.error || `HTTP ${res.status}`)
       }
       window.location.reload()
-    } catch {
-      // Silently fail
+    } catch (err) {
+      alert(`Erro ao re-gerar: ${err instanceof Error ? err.message : "Erro desconhecido"}`)
     } finally {
       setRegenLoading(false)
     }

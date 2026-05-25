@@ -111,7 +111,7 @@ export async function generateEmail(
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro no seed"
-      await logGenerationRun({
+      const seedRunId = await logGenerationRun({
         storeId,
         flowId,
         emailId,
@@ -124,7 +124,7 @@ export async function generateEmail(
         errorStack: err instanceof Error ? err.stack : undefined,
       })
       notifyGenerationError({
-        runId: "",
+        runId: seedRunId,
         storeId,
         storeName: ctx.store.store_name,
         emailName: `Flow ${flowType} #${emailNumber}`,
@@ -260,7 +260,7 @@ export async function generateEmail(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro na copy"
       log.error("generation.copy.error", { emailId, error: msg })
-      await logGenerationRun({
+      const copyRunId = await logGenerationRun({
         storeId,
         flowId,
         emailId,
@@ -274,7 +274,7 @@ export async function generateEmail(
         errorStack: err instanceof Error ? err.stack : undefined,
       })
       notifyGenerationError({
-        runId: "",
+        runId: copyRunId,
         storeId,
         storeName: ctx.store.store_name,
         emailName: `Flow ${flowType} #${emailNumber}`,
@@ -479,7 +479,7 @@ export async function generateEmail(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro no HTML"
       log.error("generation.html.error", { emailId, error: msg })
-      await logGenerationRun({
+      const htmlRunId = await logGenerationRun({
         storeId,
         flowId,
         emailId,
@@ -493,7 +493,7 @@ export async function generateEmail(
         errorStack: err instanceof Error ? err.stack : undefined,
       })
       notifyGenerationError({
-        runId: "",
+        runId: htmlRunId,
         storeId,
         storeName: ctx.store.store_name,
         emailName: `Flow ${flowType} #${emailNumber}`,

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
+import { notificationService } from "@/lib/services/notification.service"
 import { logger } from "@/lib/logger"
 import { renderErrorEmailTemplate } from "./templates/error-email.template"
 import { renderSuccessEmailTemplate } from "./templates/success-email.template"
@@ -19,39 +20,29 @@ export async function notifyGenerationError(params: {
   costCents: number
 }): Promise<void> {
   try {
-    const admin = createAdminClient()
-
     const logUrl = `${APP_URL}/admin/tools/email-generation-logs?run=${params.runId}`
 
-    // 1. In-app notification via notifyByRole
+    // 1. In-app notification
     try {
-      const { data: users } = await admin
-        .from("profiles")
-        .select("id")
-        .in("role", ["admin", "manager"])
-
-      if (users && users.length > 0) {
-        const notifications = users.map((u) => ({
-          user_id: u.id as string,
-          title: `Erro na geracao: ${params.storeName} / ${params.emailName}`,
-          body: `Agente ${params.agent} falhou: ${params.error.slice(0, 200)}`,
-          type: "error" as const,
-          link: `/admin/tools/email-generation-logs?run=${params.runId}`,
-          metadata: {
-            source: "email-generation",
-            storeId: params.storeId,
-            agent: params.agent,
-          },
-        }))
-
-        await admin.from("notifications").insert(notifications)
-      }
+      await notificationService.notifyByRole(["admin", "manager"], {
+        title: `Erro na geracao: ${params.storeName} / ${params.emailName}`,
+        body: `Agente ${params.agent} falhou: ${params.error.slice(0, 200)}`,
+        type: "error",
+        link: `/admin/tools/email-generation-logs?run=${params.runId}`,
+        event_id: `gen-error-${params.runId}`,
+        metadata: {
+          source: "email-generation",
+          storeId: params.storeId,
+          agent: params.agent,
+        },
+      })
     } catch (err) {
       log.warn("notify.in_app.error", { error: (err as Error).message })
     }
 
-    // 2. Email notification
+    // 2. Email notification (condicional via settings)
     try {
+      const admin = createAdminClient()
       const { data: settings } = await admin
         .from("email_generation_settings")
         .select("notify_on_error, notify_emails")
@@ -63,7 +54,6 @@ export async function notifyGenerationError(params: {
 
       if (notifyOnError && notifyEmails.length > 0) {
         const { emailService } = await import("@/lib/email/email.service")
-
         const html = renderErrorEmailTemplate({
           storeName: params.storeName,
           emailName: params.emailName,
@@ -107,44 +97,34 @@ export async function notifyGenerationBatchComplete(params: {
   totalCostCents: number
 }): Promise<void> {
   try {
-    const admin = createAdminClient()
-
     const allSuccess = params.emailsGenerated === params.emailsTotal
     const workspaceUrl = `${APP_URL}/admin/stores/${params.storeId}/producao?flow=${params.flowId}`
 
     // 1. In-app notification
     try {
-      const { data: users } = await admin
-        .from("profiles")
-        .select("id")
-        .in("role", ["admin", "manager"])
+      const title = allSuccess
+        ? `Geracao concluida: ${params.storeName} / ${params.flowName}`
+        : `Geracao parcial: ${params.storeName} / ${params.flowName} (${params.emailsGenerated}/${params.emailsTotal})`
 
-      if (users && users.length > 0) {
-        const title = allSuccess
-          ? `Geracao concluida: ${params.storeName} / ${params.flowName}`
-          : `Geracao parcial: ${params.storeName} / ${params.flowName} (${params.emailsGenerated}/${params.emailsTotal})`
-
-        const notifications = users.map((u) => ({
-          user_id: u.id as string,
-          title,
-          body: `${params.emailsGenerated} de ${params.emailsTotal} emails gerados em ${(params.totalDurationMs / 1000).toFixed(1)}s`,
-          type: (allSuccess ? "success" : "warning") as "success" | "warning",
-          link: workspaceUrl,
-          metadata: {
-            source: "email-generation",
-            storeId: params.storeId,
-            batchId: params.batchId,
-          },
-        }))
-
-        await admin.from("notifications").insert(notifications)
-      }
+      await notificationService.notifyByRole(["admin", "manager"], {
+        title,
+        body: `${params.emailsGenerated} de ${params.emailsTotal} emails gerados em ${(params.totalDurationMs / 1000).toFixed(1)}s`,
+        type: allSuccess ? "success" : "warning",
+        link: workspaceUrl,
+        event_id: `gen-batch-${params.batchId}`,
+        metadata: {
+          source: "email-generation",
+          storeId: params.storeId,
+          batchId: params.batchId,
+        },
+      })
     } catch (err) {
       log.warn("notify.batch.in_app.error", { error: (err as Error).message })
     }
 
-    // 2. Email notification
+    // 2. Email notification (condicional via settings)
     try {
+      const admin = createAdminClient()
       const { data: settings } = await admin
         .from("email_generation_settings")
         .select("notify_on_success, notify_emails")
@@ -156,7 +136,6 @@ export async function notifyGenerationBatchComplete(params: {
 
       if (notifyOnSuccess && notifyEmails.length > 0) {
         const { emailService } = await import("@/lib/email/email.service")
-
         const html = renderSuccessEmailTemplate({
           storeName: params.storeName,
           flowName: params.flowName,
