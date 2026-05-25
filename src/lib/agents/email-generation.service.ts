@@ -222,7 +222,7 @@ async function parseRawCopyIntoBlocks(
         const headline = extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h1")
         const desc = extractMdField(sectionText, "Description") ?? extractMdField(sectionText, "Subheadline") ?? extractHtmlTag(sectionText, "h2")
         const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
-        const body = desc ?? extractParagraphs(sectionText).join("\n") || undefined
+        const body = desc ?? (extractParagraphs(sectionText).join("\n") || undefined)
         content = { headline, body, cta_text: cta }
         break
       }
@@ -244,7 +244,7 @@ async function parseRawCopyIntoBlocks(
         const paragraphs = extractParagraphs(sectionText)
         content = {
           code: code ?? undefined,
-          hint: hint ?? paragraphs.join(" ") || undefined,
+          hint: hint ?? (paragraphs.join(" ") || undefined),
           cta_text: cta ?? undefined,
         }
         break
