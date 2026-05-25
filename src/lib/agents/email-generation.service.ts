@@ -83,9 +83,9 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
     vars.logo_alt_url = b.logo_alt_png ?? b.logo_alt_svg ?? ""
     vars.primary_color = (b.colors_primary ?? [])[0]?.hex ?? "#1F1F1F"
     vars.secondary_color = (b.colors_secondary ?? [])[0]?.hex ?? "#F0F0F0"
-    vars.primary_colors = (b.colors_primary ?? []).map((c) => c.hex).join(", ") || "#1F1F1F"
+    vars.primary_colors = ((b.colors_primary ?? []).map((c) => c.hex).join(", ")) || "#1F1F1F"
     vars.primary_color_names = (b.colors_primary ?? []).map((c) => c.name).join(", ")
-    vars.secondary_colors = (b.colors_secondary ?? []).map((c) => c.hex).join(", ") || "#F0F0F0"
+    vars.secondary_colors = ((b.colors_secondary ?? []).map((c) => c.hex).join(", ")) || "#F0F0F0"
     vars.font_heading = b.font_heading ?? "Arial"
     vars.font_heading_weight = b.font_heading_weight ?? ""
     vars.font_body = b.font_body ?? "Arial"
@@ -222,7 +222,7 @@ async function parseRawCopyIntoBlocks(
         const headline = extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h1")
         const desc = extractMdField(sectionText, "Description") ?? extractMdField(sectionText, "Subheadline") ?? extractHtmlTag(sectionText, "h2")
         const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
-        const body = desc ?? (extractParagraphs(sectionText).join("\n") || undefined)
+        const body = (desc ?? extractParagraphs(sectionText).join("\n")) || undefined
         content = { headline, body, cta_text: cta }
         break
       }
@@ -244,7 +244,7 @@ async function parseRawCopyIntoBlocks(
         const paragraphs = extractParagraphs(sectionText)
         content = {
           code: code ?? undefined,
-          hint: hint ?? (paragraphs.join(" ") || undefined),
+          hint: (hint ?? paragraphs.join(" ")) || undefined,
           cta_text: cta ?? undefined,
         }
         break
@@ -283,7 +283,7 @@ async function parseRawCopyIntoBlocks(
       default: {
         const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Headline")
         const paragraphs = extractParagraphs(sectionText)
-        content = { headline: title, body: paragraphs.join("\n") || undefined }
+        content = { headline: title, body: (paragraphs.join("\n")) || undefined }
       }
     }
 
