@@ -126,43 +126,6 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
   return vars
 }
 
-function extractCopyJson(raw: string) {
-  // 1) Strip ALL markdown fences anywhere in the string
-  let text = raw.replace(/```(?:json)?\s*/gi, "").trim()
-
-  // 2) Try direct parse first (cleanest case)
-  try {
-    return CopyOutputSchema.parse(JSON.parse(text))
-  } catch { /* continue */ }
-
-  // 3) Find JSON by matching balanced braces
-  const start = text.indexOf("{")
-  if (start === -1) {
-    log.error("copy.no_json", { rawOutput: raw.slice(0, 1000) })
-    throw new Error(`Copy não retornou JSON. Resposta: ${raw.slice(0, 300)}`)
-  }
-
-  let depth = 0
-  let end = -1
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === "{") depth++
-    else if (text[i] === "}") {
-      depth--
-      if (depth === 0) { end = i + 1; break }
-    }
-  }
-
-  if (end === -1) end = text.length
-  const jsonStr = text.slice(start, end)
-
-  try {
-    return CopyOutputSchema.parse(JSON.parse(jsonStr))
-  } catch (parseErr) {
-    log.error("copy.json_parse_error", { rawOutput: raw.slice(0, 1000), jsonStr: jsonStr.slice(0, 500) })
-    throw new Error(`Copy JSON inválido: ${(parseErr as Error).message}. Resposta: ${raw.slice(0, 300)}`)
-  }
-}
-
 function fillMissingVars(
   inputVars: Record<string, string>,
   systemPrompt: string,
@@ -355,11 +318,12 @@ export async function generateEmail(
       }
 
       if (copyIsRawHtml) {
-        const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim()
-        const subjectMatch = rawOutput.match(/Subject[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-        const preheaderMatch = rawOutput.match(/(?:Preview|Preheader)[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-        copySubject = subjectMatch ? stripHtml(subjectMatch[1]) : null
-        copyPreheader = preheaderMatch ? stripHtml(preheaderMatch[1]) : null
+        const stripMarkup = (s: string) =>
+          s.replace(/<[^>]*>/g, "").replace(/\*{1,2}/g, "").replace(/\s+/g, " ").trim()
+        const subjectMatch = rawOutput.match(/(?:\*{0,2})Subject(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+        const preheaderMatch = rawOutput.match(/(?:\*{0,2})(?:Preview|Preheader|Pre-?header)(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+        copySubject = subjectMatch ? stripMarkup(subjectMatch[1]).slice(0, 200) : null
+        copyPreheader = preheaderMatch ? stripMarkup(preheaderMatch[1]).slice(0, 200) : null
       }
 
       copyRawOutput = rawOutput
@@ -536,18 +500,16 @@ export async function generateEmail(
       inputVars.subject = (updatedEmail?.subject as string) ?? ""
       inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
       inputVars.copy_output = copyOutputIsRawHtml ? copyRawOutput : ""
-      inputVars.blocks_with_content = copyOutputIsRawHtml
-        ? copyRawOutput
-        : JSON.stringify(
-            (updatedBlocks ?? []).map((b) => ({
-              position: b.position,
-              type: b.block_type,
-              label: b.label,
-              content: b.content,
-            })),
-            null,
-            2,
-          )
+      inputVars.blocks_with_content = JSON.stringify(
+        (updatedBlocks ?? []).map((b) => ({
+          position: b.position,
+          type: b.block_type,
+          label: b.label,
+          content: b.content,
+        })),
+        null,
+        2,
+      )
 
       fillMissingVars(inputVars, systemPrompt, userTemplate)
 
@@ -565,6 +527,12 @@ export async function generateEmail(
       rawHtml = rawHtml
         .replace(/```(?:html)?\s*/gi, "")
         .trim()
+
+      // Extrair somente o documento HTML se houver texto ao redor
+      const doctypeMatch = rawHtml.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
+      if (doctypeMatch) {
+        rawHtml = doctypeMatch[1]
+      }
 
       // Estimate tokens
       const promptText = systemPrompt + JSON.stringify(inputVars)

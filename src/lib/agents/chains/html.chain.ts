@@ -12,7 +12,8 @@ import { StringOutputParser } from "@langchain/core/output_parsers"
 // ── Default prompts ─────────────────────────────────────────
 
 export const DEFAULT_HTML_SYSTEM_PROMPT = `Você é um especialista em email HTML para e-commerce.
-Monte um email completo em HTML/CSS inline, responsivo (600px max-width).
+Monte um email COMPLETO em HTML/CSS inline, responsivo (600px max-width).
+OBRIGATÓRIO: retorne o documento completo começando com <!DOCTYPE html> e terminando com </html>.
 
 Regras:
 - Use APENAS tabelas para layout (email-safe)
@@ -23,7 +24,7 @@ Regras:
 - Mobile: use max-width:100% nas imagens e tabelas
 - CTA buttons: padding 15px 32px, border-radius 4px, cor primária da marca
 - Footer: fundo escuro (#1F1F1F), texto branco
-- Retorne APENAS o HTML completo (doctype até </html>), sem markdown, sem explicação.`
+- Retorne APENAS o HTML completo (<!DOCTYPE html> até </html>), sem markdown, sem explicação.`
 
 export const DEFAULT_HTML_USER_TEMPLATE = `## Marca
 Nome: {brand_name}
@@ -37,16 +38,19 @@ Fonte body: {font_body}
 Subject: {subject}
 Preheader: {preheader}
 
-## HTML de referência (use como base estrutural, adapte o conteúdo)
+## HTML de referência (use como base estrutural)
 {reference_html}
 
-## Blocos (renderize nesta ordem)
+## Conteúdo editorial completo (se fornecido, use como fonte primária de copy)
+{copy_output}
+
+## Blocos estruturais (se conteúdo editorial estiver vazio, use estes)
 {blocks_with_content}
 
-## Produtos (use estes dados reais quando bloco for products)
+## Produtos (dados reais para blocos de produtos)
 {top_products}
 
-Gere o HTML completo do email baseado na estrutura de referência acima, substituindo o conteúdo pelos blocos fornecidos. APENAS HTML, sem texto antes ou depois.`
+Se "Conteúdo editorial completo" estiver preenchido, use-o como fonte primária de todo o texto, headlines, CTAs e estrutura do email — transforme o conteúdo semântico (h1, h2, p, a) em HTML email-safe com tabelas e CSS inline. Se estiver vazio, use os Blocos estruturais. APENAS HTML completo (<!DOCTYPE html> até </html>), sem texto antes ou depois.`
 
 // ── Chain factory ───────────────────────────────────────────
 

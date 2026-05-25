@@ -21,7 +21,13 @@ export function renderEmailHtml(
   email: Pick<EmailFlowEmail, "html" | "name">,
   blocks: EmailBlock[],
 ): string {
-  if (email.html) return email.html
+  if (email.html) {
+    const trimmed = email.html.trim()
+    if (trimmed.match(/^<!DOCTYPE/i) || trimmed.match(/^<html/i)) {
+      return email.html
+    }
+    return wrapInEmailShell(email.name, email.html)
+  }
 
   const esc = (s: string | undefined | null) =>
     (s ?? "")
@@ -144,6 +150,44 @@ export function renderEmailHtml(
 <body>
   <table class="wrap" cellpadding="0" cellspacing="0" role="presentation">
 ${body}
+  </table>
+</body>
+</html>`
+}
+
+function wrapInEmailShell(name: string, bodyHtml: string): string {
+  const escName = (name ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escName}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #F8F8F8; font-family: 'Inter', Arial, sans-serif; color: #2A2A2A; }
+    .wrap { width: 600px; max-width: 100%; margin: 0 auto; background: #FFFFFF; }
+    .hero { background: #4E62D8; }
+    .cta { display: inline-block; padding: 15px 32px; background: #4E62D8; color: #FFFFFF;
+      font: 700 13px/1 'Inter'; letter-spacing: 0.06em; text-decoration: none; border-radius: 999px; }
+    .display { font: 900 32px/1 'Inter'; color: #0F0F0F; text-transform: uppercase; letter-spacing: -0.02em; }
+    .coupon { display: inline-flex; border: 1.5px dashed #2A2A2A; border-radius: 4px; overflow: hidden; }
+    .coupon .code { background: #0F0F0F; color: #FFFFFF; padding: 14px 20px;
+      font: 800 14px/1 'Inter'; letter-spacing: 0.06em; }
+    h1, h2, h3 { font-family: 'Inter', Arial, sans-serif; color: #0F0F0F; }
+    a { color: #4E62D8; }
+  </style>
+</head>
+<body>
+  <table class="wrap" cellpadding="0" cellspacing="0" role="presentation">
+    <tr><td style="padding: 24px 36px;">
+${bodyHtml}
+    </td></tr>
   </table>
 </body>
 </html>`
