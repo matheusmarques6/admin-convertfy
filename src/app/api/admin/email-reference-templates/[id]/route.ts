@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic"
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   flow_type: z.string().optional().nullable(),
+  email_number: z.number().int().min(1).optional().nullable(),
   html: z.string().optional().nullable(),
   copy: z.string().optional().nullable(),
   thumbnail: z.string().optional().nullable(),

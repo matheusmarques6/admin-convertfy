@@ -23,7 +23,10 @@ Regras:
 - Use os produtos reais da loja quando o bloco for "products"
 - NUNCA use "Clique aqui" como CTA
 
-Responda APENAS com JSON válido no formato especificado.`
+REGRA CRÍTICA sobre Referência de Copy:
+- Se uma REFERÊNCIA DE COPY for fornecida, SIGA os valores exatos dela (cupons, percentuais de desconto, códigos promocionais, estrutura).
+- NUNCA invente valores de desconto, cupons ou ofertas diferentes dos informados na referência.
+- A referência define a estrutura e os dados reais — adapte o tom e a copy mas MANTENHA os dados.`
 
 export const DEFAULT_COPY_USER_TEMPLATE = `## Marca
 Nome: {brand_name}

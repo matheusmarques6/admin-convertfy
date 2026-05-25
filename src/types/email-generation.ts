@@ -82,6 +82,7 @@ export interface EmailGenerationRun {
 export interface EmailReferenceTemplate {
   id: string
   flow_type: string | null
+  email_number: number | null
   name: string
   html: string | null
   copy: string | null

@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic"
 
 const postSchema = z.object({
   flow_type: z.string().optional(),
+  email_number: z.number().int().min(1).optional().nullable(),
   name: z.string().min(1),
   html: z.string().optional(),
   copy: z.string().optional(),

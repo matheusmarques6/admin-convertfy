@@ -1001,9 +1001,10 @@ function ReferencesTab() {
                 <h4 className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
                   {tpl.name}
                 </h4>
-                {tpl.flow_type && (
+                {(tpl.flow_type || tpl.email_number) && (
                   <span className="text-[11px] text-slate-500 dark:text-white/45">
-                    {FLOW_TYPE_LABELS[tpl.flow_type] ?? tpl.flow_type}
+                    {FLOW_TYPE_LABELS[tpl.flow_type ?? ""] ?? tpl.flow_type ?? ""}
+                    {tpl.email_number ? ` #${tpl.email_number}` : ""}
                   </span>
                 )}
               </div>
@@ -1063,6 +1064,7 @@ function ReferenceDialog({
   const isEdit = template !== null
   const [name, setName] = useState(template?.name ?? "")
   const [flowType, setFlowType] = useState(template?.flow_type ?? "")
+  const [emailNumber, setEmailNumber] = useState<number | null>(template?.email_number ?? null)
   const [html, setHtml] = useState(template?.html ?? "")
   const [copy, setCopy] = useState(template?.copy ?? "")
   const [tags, setTags] = useState((template?.tags ?? []).join(", "))
@@ -1077,6 +1079,7 @@ function ReferenceDialog({
       const payload = {
         name: name.trim(),
         flow_type: flowType || null,
+        email_number: emailNumber,
         html: html || null,
         copy: copy || null,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
@@ -1135,7 +1138,7 @@ function ReferenceDialog({
             </DialogPrimitive.Close>
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Nome</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Welcome 1" className="crm-input w-full" autoFocus />
@@ -1148,6 +1151,10 @@ function ReferenceDialog({
                     <option key={k} value={k}>{v}</option>
                   ))}
                 </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Email #</label>
+                <input type="number" value={emailNumber ?? ""} onChange={(e) => setEmailNumber(e.target.value ? parseInt(e.target.value) : null)} placeholder="1" min={1} max={20} className="crm-input w-full" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Tags</label>

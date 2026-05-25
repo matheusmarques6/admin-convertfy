@@ -133,8 +133,6 @@ async function parseRawCopyIntoBlocks(
   seededBlocks: Array<{ id: string; block_type: string; position: number; label: string }>,
   strip: (s: string) => string,
 ) {
-  // Split output by position/section markers
-  // Matches: <!-- POSITION 1: HERO SECTION -->, <!-- 1. HERO -->, <!-- 2. TEXT - APRESENTAÇÃO DA MARCA -->, ### 1. HERO, etc.
   const sectionPattern = /<!--\s*(?:POSITION\s+)?(\d+)[.:]\s*(.+?)\s*-->|###?\s*(\d+)[.:]\s*(.+)/gi
   const sections: Array<{ position: number; type: string; startIdx: number }> = []
   let match: RegExpExecArray | null
@@ -145,129 +143,150 @@ async function parseRawCopyIntoBlocks(
     sections.push({ position: pos, type, startIdx: match.index })
   }
 
+  if (sections.length === 0) {
+    log.warn("parseRawCopyIntoBlocks: no sections found in output")
+    return
+  }
+
+  const typeMap: Record<string, string> = {
+    hero: "hero", text: "text", texto: "text", copy: "text",
+    coupon: "coupon", cupom: "coupon", cupão: "coupon", discount: "coupon",
+    products: "products", produtos: "products", product: "products",
+    footer: "footer", rodapé: "footer", rodape: "footer", bottom: "footer",
+    cta: "cta", image: "image", imagem: "image",
+    mission: "text", value: "text", why: "text",
+  }
+
+  // Extract markdown field: **Label:** value
+  const extractMdField = (text: string, label: string): string | undefined => {
+    const re = new RegExp(`\\*\\*${label}[:\\s]*\\*\\*\\s*(.+?)(?:\\n|$)`, "i")
+    const m = text.match(re)
+    return m ? strip(m[1]) : undefined
+  }
+
+  // Extract all paragraphs (lines that aren't headers, fields, or separators)
+  const extractParagraphs = (text: string): string[] => {
+    return text
+      .split("\n")
+      .filter((line) => {
+        const t = line.trim()
+        if (!t) return false
+        if (t.startsWith("#")) return false
+        if (t.startsWith("**") && t.includes(":**")) return false
+        if (t.startsWith("---")) return false
+        if (t.startsWith("<!--")) return false
+        if (t.startsWith("- ") || t.startsWith("* ")) return false
+        return true
+      })
+      .map((l) => strip(l))
+      .filter(Boolean)
+  }
+
+  // Extract list items (- item or * item)
+  const extractListItems = (text: string): string[] => {
+    return text
+      .split("\n")
+      .filter((l) => /^\s*[-*]\s/.test(l))
+      .map((l) => strip(l.replace(/^\s*[-*]\s*/, "")))
+      .filter(Boolean)
+  }
+
+  // Extract from HTML tags (fallback)
+  const extractHtmlTag = (text: string, tag: string): string | undefined => {
+    const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i")
+    const m = text.match(re)
+    return m ? strip(m[1]) : undefined
+  }
+
+  const extractHtmlLink = (text: string) => {
+    const m = text.match(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/i)
+    return m ? { url: m[1], text: strip(m[2]) } : undefined
+  }
+
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]
     const nextStart = sections[i + 1]?.startIdx ?? rawOutput.length
-    const sectionHtml = rawOutput.slice(section.startIdx, nextStart)
+    const sectionText = rawOutput.slice(section.startIdx, nextStart)
 
-    // Match by position first, fallback to type name
     let block = seededBlocks.find((b) => b.position === section.position)
     if (!block) {
-      const typeMap: Record<string, string> = {
-        hero: "hero", text: "text", texto: "text", copy: "text",
-        coupon: "coupon", cupom: "coupon", cupão: "coupon",
-        products: "products", produtos: "products", product: "products",
-        footer: "footer", rodapé: "footer", rodape: "footer",
-        cta: "cta", image: "image", imagem: "image",
-      }
-      const mappedType = typeMap[section.type] ?? section.type
-      block = seededBlocks.find((b) => b.block_type === mappedType)
+      const mapped = typeMap[section.type] ?? section.type
+      block = seededBlocks.find((b) => b.block_type === mapped)
     }
     if (!block) continue
-
-    const extractText = (tag: string) => {
-      const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i")
-      const m = sectionHtml.match(re)
-      return m ? strip(m[1]) : undefined
-    }
-    const extractAllText = (tag: string) => {
-      const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "gi")
-      const results: string[] = []
-      let m: RegExpExecArray | null
-      while ((m = re.exec(sectionHtml)) !== null) results.push(strip(m[1]))
-      return results
-    }
-    const extractLink = () => {
-      const m = sectionHtml.match(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/i)
-      return m ? { url: m[1], text: strip(m[2]) } : undefined
-    }
 
     let content: Record<string, unknown> = {}
 
     switch (block.block_type) {
       case "hero": {
-        const h1 = extractText("h1")
-        const h2 = extractText("h2")
-        const ps = extractAllText("p")
-        const link = extractLink()
-        content = {
-          headline: h1 ?? h2 ?? undefined,
-          body: h2 && h1 ? (ps.length > 0 ? `${h2}\n${ps.join("\n")}` : h2) : ps.join("\n") || undefined,
-          cta_text: link?.text ?? undefined,
-          cta_url: link?.url ?? undefined,
-        }
+        const headline = extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h1")
+        const desc = extractMdField(sectionText, "Description") ?? extractMdField(sectionText, "Subheadline") ?? extractHtmlTag(sectionText, "h2")
+        const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
+        const body = desc ?? extractParagraphs(sectionText).join("\n") || undefined
+        content = { headline, body, cta_text: cta }
         break
       }
       case "text": {
-        const h2 = extractText("h2")
-        const ps = extractAllText("p")
-        content = {
-          headline: h2 ?? undefined,
-          body: ps.join("\n") || undefined,
+        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h2")
+        const paragraphs = extractParagraphs(sectionText)
+        const listItems = extractListItems(sectionText)
+        let body = paragraphs.join("\n") || undefined
+        if (listItems.length > 0) {
+          body = (body ? body + "\n\n" : "") + listItems.map((l) => `• ${l}`).join("\n")
         }
+        content = { headline: title, body }
         break
       }
       case "coupon": {
-        const h1 = extractText("h1")
-        const h2 = extractText("h2")
-        const ps = extractAllText("p")
-        const link = extractLink()
+        const code = extractMdField(sectionText, "Code") ?? extractMdField(sectionText, "Código") ?? extractMdField(sectionText, "Cupom")
+        const hint = extractMdField(sectionText, "Hint") ?? extractMdField(sectionText, "Validade") ?? extractMdField(sectionText, "Válido")
+        const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
+        const paragraphs = extractParagraphs(sectionText)
         content = {
-          code: h1 ?? undefined,
-          hint: h2 ? ps.join(" ") : ps.slice(0, -1).join(" ") || undefined,
-          cta_text: link?.text ?? undefined,
-          cta_url: link?.url ?? undefined,
+          code: code ?? undefined,
+          hint: hint ?? paragraphs.join(" ") || undefined,
+          cta_text: cta ?? undefined,
         }
-        if (!content.code && h2) content.code = h2
         break
       }
       case "products": {
-        const h2 = extractText("h2")
-        const h3s = extractAllText("h3")
-        const ps = extractAllText("p")
-        const links = [] as Array<{ url: string; text: string }>
-        const linkRe = /<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi
-        let lm: RegExpExecArray | null
-        while ((lm = linkRe.exec(sectionHtml)) !== null) links.push({ url: lm[1], text: strip(lm[2]) })
-
-        const products = h3s.map((name, idx) => ({
-          name,
-          price: "",
-          image_url: "",
-          url: links[idx]?.url ?? "#",
-          cta_text: links[idx]?.text ?? "VER",
+        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Título") ?? extractHtmlTag(sectionText, "h2")
+        const productNames = sectionText
+          .split("\n")
+          .filter((l) => /^\s*[-*]\s/.test(l) || /^\*\*[^*]+\*\*/.test(l.trim()))
+          .map((l) => strip(l.replace(/^\s*[-*]\s*/, "").replace(/\*\*/g, "")))
+          .filter(Boolean)
+        const products = productNames.map((name) => ({
+          name, price: "", image_url: "", url: "#", cta_text: "VER",
         }))
-        content = {
-          title: h2 ?? undefined,
-          products: products.length > 0 ? products : undefined,
-        }
+        content = { title, products: products.length > 0 ? products : undefined }
         break
       }
       case "footer": {
-        const links = [] as Array<{ label: string; url: string }>
+        const paragraphs = extractParagraphs(sectionText)
+        const htmlLinks = [] as Array<{ label: string; url: string }>
         const linkRe = /<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi
         let lm: RegExpExecArray | null
-        while ((lm = linkRe.exec(sectionHtml)) !== null) {
+        while ((lm = linkRe.exec(sectionText)) !== null) {
           const label = strip(lm[2])
-          if (label) links.push({ label, url: lm[1] })
+          if (label) htmlLinks.push({ label, url: lm[1] })
         }
-        const strong = extractText("strong")
+        const links = htmlLinks.length > 0
+          ? htmlLinks
+          : paragraphs.map((p) => ({ label: p, url: "#" }))
         content = {
           columns: links.length > 0 ? [{ links }] : undefined,
-          copyright: strong ?? undefined,
+          copyright: extractMdField(sectionText, "Copyright") ?? undefined,
         }
         break
       }
       default: {
-        const ps = extractAllText("p")
-        const h2 = extractText("h2")
-        if (h2 || ps.length > 0) {
-          content = { headline: h2 ?? undefined, body: ps.join("\n") || undefined }
-        }
+        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Headline")
+        const paragraphs = extractParagraphs(sectionText)
+        content = { headline: title, body: paragraphs.join("\n") || undefined }
       }
     }
 
-    // Remove undefined values
     const cleaned = Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined))
     if (Object.keys(cleaned).length > 0) {
       await admin
@@ -853,11 +872,12 @@ async function loadGenerationContext(
       .limit(1)
       .maybeSingle(),
 
-    // Reference template for flow_type
+    // Reference template for flow_type + email_number
     admin
       .from("email_reference_templates")
       .select("html, copy")
       .eq("flow_type", flowType)
+      .eq("email_number", emailNumber)
       .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(1)
