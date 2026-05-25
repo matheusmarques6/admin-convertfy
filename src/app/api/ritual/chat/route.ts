@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
         .from("store_revenue_summary")
         .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, omnisend_total_orders, updated_at")
         .eq("store_id", body.store_id)
+        .eq("period_label", "30d")
         .maybeSingle(),
 
       admin

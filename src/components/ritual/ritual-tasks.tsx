@@ -119,16 +119,12 @@ const MOCK_BLOCKS: TaskBlock[] = [
   },
 ]
 
-const DISCARDED = [
-  { txt: "Discutir migração pro Klaviyo (Salvini)", why: "Sem decisão final" },
-  { txt: "Bruno mencionou férias do Marcos", why: "Não-acionável" },
-  { txt: "Comentário sobre ferramenta de A/B", why: "Off-topic" },
-]
-
 export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
-  const [blocks, setBlocks] = useState<TaskBlock[]>(MOCK_BLOCKS)
+  const [blocks, setBlocks] = useState<TaskBlock[]>([])
+  const [discardedItems, setDiscardedItems] = useState<Array<{ text?: string; reason?: string }>>([])
   const [loadedFromApi, setLoadedFromApi] = useState(false)
+  const [loading, setLoading] = useState(!!sessionId)
   const [approving, setApproving] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
 
@@ -151,7 +147,10 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
       }>
       discarded?: Array<{ text?: string; reason?: string }>
     }
-    if (!gen.tasks || gen.tasks.length === 0) return
+    if (!gen.tasks || gen.tasks.length === 0) {
+      setLoading(false)
+      return
+    }
 
     const byStore = new Map<string, TaskBlock>()
     for (const t of gen.tasks) {
@@ -179,7 +178,11 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
       })
     }
     setBlocks(Array.from(byStore.values()))
+    if (gen.discarded && gen.discarded.length > 0) {
+      setDiscardedItems(gen.discarded)
+    }
     setLoadedFromApi(true)
+    setLoading(false)
   }, [processData, loadedFromApi])
 
   const approvedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.approved && !t.discarded).length, 0), [blocks])
@@ -332,6 +335,23 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
       {/* Tasks list + sidebar */}
       <div style={{ padding: "20px 32px 40px", display: "flex", gap: 16 }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+          {loading && (
+            <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 13 }}>
+              <Loader2 size={20} style={{ animation: "spin 1s linear infinite", margin: "0 auto 8px" }} />
+              Carregando tasks geradas pela IA...
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+            </div>
+          )}
+          {!loading && blocks.length === 0 && (
+            <div style={{ padding: 40, textAlign: "center", background: C.white, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.g900, marginBottom: 4 }}>
+                Nenhuma task gerada ainda
+              </div>
+              <div style={{ fontSize: 13, color: C.g500 }}>
+                As tasks são extraídas automaticamente após o upload da gravação Fathom.
+              </div>
+            </div>
+          )}
           {blocks.map((block, blockIdx) => (
             <TaskBlockCard key={block.storeId} block={block} blockIdx={blockIdx} onToggleTask={toggleTask} />
           ))}
@@ -346,19 +366,21 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <Trash2 size={14} style={{ color: C.g400 }} />
             <span style={{ fontSize: 13, fontWeight: 600, color: C.g700 }}>Tasks descartadas pela IA</span>
-            <span style={{ marginLeft: "auto", fontSize: 11, color: C.g500, ...TNUM }}>{DISCARDED.length}</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: C.g500, ...TNUM }}>{discardedItems.length}</span>
           </div>
           <div style={{ fontSize: 11, color: C.g500, marginBottom: 12 }}>
-            Coisas que apareceram na conversa mas a IA julgou não-acionáveis. Toque para reverter.
+            {discardedItems.length === 0
+              ? "Nenhuma task descartada pela IA."
+              : "Coisas que apareceram na conversa mas a IA julgou não-acionáveis. Toque para reverter."}
           </div>
-          {DISCARDED.map((d, i) => (
+          {discardedItems.map((d, i) => (
             <div key={i} style={{
               padding: "8px 10px", marginBottom: 6,
               background: C.g25, border: `1px solid ${C.border}`,
               borderRadius: 6, cursor: "pointer",
             }}>
-              <div style={{ fontSize: 12, color: C.g700, lineHeight: 1.4 }}>{d.txt}</div>
-              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3 }}>{d.why}</div>
+              <div style={{ fontSize: 12, color: C.g700, lineHeight: 1.4 }}>{d.text ?? "—"}</div>
+              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3 }}>{d.reason ?? ""}</div>
             </div>
           ))}
         </aside>

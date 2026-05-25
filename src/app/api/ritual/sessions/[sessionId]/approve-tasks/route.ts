@@ -144,7 +144,6 @@ export async function POST(
       .update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        generated_tasks: tasks,
       })
       .eq("id", sessionId)
 

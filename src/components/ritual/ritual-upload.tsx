@@ -292,7 +292,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
               style={{ display: "none" }}
             />
             <div style={{ fontSize: 11.5, color: C.g400, ...TNUM }}>
-              .mp4 · .mp3 · link Fathom · até 2GB
+              .mp4 · .mp3 · .m4a · .wav · até 500MB
             </div>
           </div>
 
@@ -388,7 +388,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
             {taskCount > 0 ? `${taskCount} tasks prontas para revisão` : "Processamento concluído"}
           </h2>
           <div style={{ marginTop: 8, fontSize: 14, color: C.g500 }}>
-            IA extraiu decisões de 4 lojas críticas. Revise, edite ou aprove tudo.
+            IA extraiu decisões das lojas revisadas. Revise, edite ou aprove tudo.
           </div>
           <button
             type="button"

@@ -57,9 +57,9 @@ export async function POST(
       throw new AppError(`Tipo de arquivo não aceito: ${ext}. Use ${ALLOWED.join(", ")}`, 400)
     }
 
-    const MAX_SIZE = 2 * 1024 * 1024 * 1024
+    const MAX_SIZE = 500 * 1024 * 1024
     if (file.size > MAX_SIZE) {
-      throw new AppError("Arquivo excede limite de 2GB", 400)
+      throw new AppError("Arquivo excede limite de 500MB", 400)
     }
 
     const fileName = `${sessionId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
