@@ -172,6 +172,17 @@ const OPERACIONAL_NAV: NavGroup[] = [
         href: ROUTES.ADMIN.OPERACIONAL.FORMS,
         icon: FileText,
       },
+    ],
+  },
+  {
+    key: "workflows",
+    label: "Workflows",
+    items: [
+      {
+        name: "Pipelines CS",
+        href: ROUTES.ADMIN.OPERACIONAL.PIPELINES,
+        icon: HeartHandshake,
+      },
       {
         name: "Ritual de Sexta",
         href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL,
@@ -204,7 +215,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
     key: "pipelines",
     label: "Pipelines",
     items: [
-      { name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
       { name: "Configurar pipelines", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN, icon: Settings },
     ],
   },
