@@ -1538,6 +1538,14 @@ function TestTab() {
                   Ver logs completos
                 </a>
               )}
+              {selectedStoreId && selectedEmailId && statusInfo?.status === "done" && (
+                <a
+                  href={`/admin/stores/${selectedStoreId}/producao?email=${selectedEmailId}`}
+                  className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
+                >
+                  Ver email gerado
+                </a>
+              )}
             </div>
           )}
         </div>
