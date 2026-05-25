@@ -318,13 +318,64 @@ export async function generateEmail(
 
       const rawOutput = await chain.invoke(inputVars)
 
-      // Robust JSON extraction: strip fences, find outermost { }
-      const copyOutput = extractCopyJson(rawOutput)
-
       // Estimate tokens (rough: 1 token ≈ 4 chars)
       const promptText = systemPrompt + JSON.stringify(inputVars)
       const tokensInput = Math.ceil(promptText.length / 4)
       const tokensOutput = Math.ceil(rawOutput.length / 4)
+
+      // Try JSON parse — se falhar, tratar como texto livre
+      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
+      let copySubject: string | null = null
+      let copyPreheader: string | null = null
+
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0])
+          const copyOutput = CopyOutputSchema.parse(parsed)
+          copySubject = copyOutput.subject
+          copyPreheader = copyOutput.preheader
+
+          for (const blockData of copyOutput.blocks) {
+            const matchingBlock = seededBlocks.find((b) => b.position === blockData.position)
+            if (matchingBlock) {
+              await admin
+                .from("email_blocks")
+                .update({ content: blockData.content })
+                .eq("id", matchingBlock.id)
+            }
+          }
+        } catch {
+          // JSON parse failed — output é texto livre, continua abaixo
+        }
+      }
+
+      // Se não veio JSON estruturado, extrair subject/preheader do texto
+      if (!copySubject) {
+        const subjectMatch = rawOutput.match(/Subject:\s*(.+)/i)
+        const preheaderMatch = rawOutput.match(/(?:Preview|Preheader):\s*(.+)/i)
+        copySubject = subjectMatch?.[1]?.trim() ?? null
+        copyPreheader = preheaderMatch?.[1]?.trim() ?? null
+
+        // Salvar output inteiro como conteúdo do primeiro bloco
+        const firstBlock = seededBlocks[0]
+        if (firstBlock) {
+          await admin
+            .from("email_blocks")
+            .update({ content: { body: rawOutput } })
+            .eq("id", firstBlock.id)
+        }
+      }
+
+      // PATCH email subject/preheader
+      if (copySubject || copyPreheader) {
+        const updateFields: Record<string, string> = {}
+        if (copySubject) updateFields.subject = copySubject
+        if (copyPreheader) updateFields.preheader = copyPreheader
+        await admin
+          .from("email_flow_emails")
+          .update(updateFields)
+          .eq("id", emailId)
+      }
 
       await logGenerationRun({
         storeId,
@@ -338,32 +389,12 @@ export async function generateEmail(
         model,
         inputVars,
         rawOutput,
-        parsedOutput: copyOutput as unknown as Record<string, unknown>,
+        parsedOutput: { subject: copySubject, preheader: copyPreheader },
         tokensInput,
         tokensOutput,
         costCents: computeCostCents(model, tokensInput, tokensOutput),
         durationMs: Date.now() - copyT0,
       })
-
-      // PATCH email subject/preheader
-      await admin
-        .from("email_flow_emails")
-        .update({
-          subject: copyOutput.subject,
-          preheader: copyOutput.preheader,
-        })
-        .eq("id", emailId)
-
-      // PATCH each block content
-      for (const blockData of copyOutput.blocks) {
-        const matchingBlock = seededBlocks.find((b) => b.position === blockData.position)
-        if (matchingBlock) {
-          await admin
-            .from("email_blocks")
-            .update({ content: blockData.content })
-            .eq("id", matchingBlock.id)
-        }
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro na copy"
       log.error("generation.copy.error", { emailId, error: msg })
