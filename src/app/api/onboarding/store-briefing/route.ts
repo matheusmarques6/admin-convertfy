@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
+import { dispatchBriefingWebhook } from "@/lib/services/briefing-webhook.service"
 
 const log = logger.child("OnboardingStoreBriefing")
 
@@ -200,70 +200,30 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // mode === "regenerate": trigger N8N
-    const { data: fullStore } = await adminClient
-      .from("client_stores")
-      .select("store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
-      .eq("id", body.store_id)
-      .single()
-
-    if (!fullStore) {
-      throw new AppError("Loja não encontrada", 404)
-    }
-
-    const { data: formData } = await adminClient
-      .from("store_onboarding_data")
-      .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url")
-      .eq("store_id", body.store_id)
-      .maybeSingle()
-
+    // mode === "regenerate": dispara o mesmo webhook de briefing (N8N_BRIEFING_WEBHOOK_URL)
     const { data: onboarding } = await adminClient
-      .from("client_onboardings")
+      .from("onboardings")
       .select("id")
       .eq("store_id", body.store_id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-
-    const result = await n8nTriggerService.triggerBriefingGeneration({
-      onboarding_id: onboarding?.id || body.store_id,
-      store: {
-        name: fullStore.store_name || "",
-        url: fullStore.store_url || "",
-        platform: fullStore.platform || "",
-        niche: fullStore.niche || null,
-        country: fullStore.country || null,
-        language: fullStore.language || null,
-        target_audience: fullStore.target_audience || null,
-        free_shipping_type: fullStore.free_shipping_type || null,
-        shopify_collaborator_code: fullStore.shopify_collaborator_code || null,
-      },
-      form_data: formData ? {
-        price_sensitivity: formData.price_sensitivity || null,
-        additional_notes: formData.additional_notes || null,
-        logo_url: formData.logo_url || null,
-        design_direction_text: formData.design_direction_text || null,
-        design_direction_file_url: formData.design_direction_file_url || null,
-        brand_manual_url: formData.brand_manual_url || null,
-      } : null,
-      callback_url: `${appUrl}/api/onboarding/webhook`,
-    })
-
-    if (!result.success) {
-      log.error(`Failed to trigger briefing regeneration for store ${body.store_id}`, { error: result.error })
-      throw new AppError(
-        `Erro ao disparar webhook N8N: ${result.error || "URL não configurada ou N8N indisponível"}`,
-        502,
-      )
+    if (!onboarding) {
+      throw new AppError("Nenhum onboarding encontrado para esta loja", 404)
     }
 
-    log.info(`Briefing regeneration triggered for store ${body.store_id}`)
+    if (!process.env.N8N_BRIEFING_WEBHOOK_URL) {
+      throw new AppError("N8N_BRIEFING_WEBHOOK_URL não configurada", 502)
+    }
+
+    await dispatchBriefingWebhook(onboarding.id)
+
+    log.info(`Briefing webhook dispatched for store ${body.store_id}, onboarding ${onboarding.id}`)
 
     return successResponse(request, {
       triggered: true,
-      message: "Geração do briefing disparada. Aguarde o resultado.",
+      message: "Webhook do briefing disparado com sucesso.",
     })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreBriefing")
