@@ -384,6 +384,7 @@ export function EmailDetailView({
   const [duplicating, setDuplicating] = useState(false)
   const [sendTestOpen, setSendTestOpen] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
 
   const generateWithAI = async () => {
     if (generating) return
@@ -407,12 +408,17 @@ export function EmailDetailView({
       if (!res.ok || json?.status === "error") {
         throw new Error(json?.error || json?.data?.error || `Falha na geração (HTTP ${res.status})`)
       }
-      toast.toast({
-        title: "Email gerado com sucesso!",
-        description: "Blocos, copy e HTML foram gerados pela IA.",
-      })
-      await mutate()
-      onEmailUpdated()
+      const returnedBatchId = json?.data?.batchId ?? json?.batchId ?? null
+      if (returnedBatchId) {
+        setActiveBatchId(returnedBatchId)
+      } else {
+        toast.toast({
+          title: "Email gerado com sucesso!",
+          description: "Blocos, copy e HTML foram gerados pela IA.",
+        })
+        await mutate()
+        onEmailUpdated()
+      }
     } catch (e) {
       toast.toast({
         variant: "destructive",
@@ -1108,6 +1114,18 @@ export function EmailDetailView({
           onSend={async (to) => {
             setSendTestOpen(false)
             await sendTest(to)
+          }}
+        />
+      )}
+
+      {activeBatchId && (
+        <GenerationProgressDrawer
+          batchId={activeBatchId}
+          storeId={storeId}
+          onClose={() => setActiveBatchId(null)}
+          onComplete={async () => {
+            await mutate()
+            onEmailUpdated()
           }}
         />
       )}

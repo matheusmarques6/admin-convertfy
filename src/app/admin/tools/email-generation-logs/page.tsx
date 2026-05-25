@@ -304,6 +304,42 @@ function RunRow({
 }
 
 function RunDetail({ run }: { run: EmailGenerationRun }) {
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
+  const [regenLoading, setRegenLoading] = useState(false)
+
+  const toggleSection = (key: string) =>
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }))
+
+  const handleRegenerate = async () => {
+    if (regenLoading || !run.store_id || !run.flow_id || !run.email_id) return
+    setRegenLoading(true)
+    try {
+      const flowType = run.flow_type ?? "welcome"
+      const res = await fetch(
+        `/api/admin/stores/${run.store_id}/generate-email`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flowId: run.flow_id,
+            emailId: run.email_id,
+            flowType,
+            emailNumber: 1,
+          }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `HTTP ${res.status}`)
+      }
+      window.location.reload()
+    } catch {
+      // Silently fail
+    } finally {
+      setRegenLoading(false)
+    }
+  }
+
   return (
     <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.01] space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
@@ -329,52 +365,148 @@ function RunDetail({ run }: { run: EmailGenerationRun }) {
         </div>
       </div>
 
-      {run.error_message && (
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-            Erro
-          </span>
-          <pre className="text-[12px] font-mono text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/10 rounded-[6px] p-3 overflow-x-auto whitespace-pre-wrap">
-            {run.error_message}
-            {run.error_stack && `\n\n${run.error_stack}`}
+      {/* Actions row */}
+      <div className="flex items-center gap-2">
+        {run.store_id && run.flow_id && run.email_id && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRegenerate}
+            disabled={regenLoading}
+            className="text-[11px]"
+          >
+            {regenLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : null}
+            Re-gerar
+          </Button>
+        )}
+        {run.store_id && run.flow_id && run.email_id && (
+          <a
+            href={`/admin/stores/${run.store_id}/producao?flow=${run.flow_id}&email=${run.email_id}`}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[11px] font-medium text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-[6px] hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors"
+          >
+            Ver no workspace
+          </a>
+        )}
+      </div>
+
+      {/* Collapsible: Input Vars */}
+      {run.input_vars && (
+        <CollapsibleSection
+          title="Input Vars"
+          isOpen={openSections.inputVars}
+          onToggle={() => toggleSection("inputVars")}
+        >
+          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+            {JSON.stringify(run.input_vars, null, 2)}
           </pre>
-        </div>
+        </CollapsibleSection>
       )}
 
+      {/* Collapsible: Rendered Prompt */}
       {run.rendered_prompt && (
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
-            Prompt renderizado
-          </span>
-          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+        <CollapsibleSection
+          title="Prompt Renderizado"
+          isOpen={openSections.renderedPrompt}
+          onToggle={() => toggleSection("renderedPrompt")}
+        >
+          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[300px] overflow-y-auto">
             {run.rendered_prompt}
           </pre>
-        </div>
+        </CollapsibleSection>
       )}
 
+      {/* Collapsible: Raw Output */}
       {run.raw_output && (
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
-            Output bruto
-          </span>
-          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+        <CollapsibleSection
+          title="Output Bruto"
+          isOpen={openSections.rawOutput}
+          onToggle={() => toggleSection("rawOutput")}
+        >
+          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[300px] overflow-y-auto">
             {run.raw_output}
           </pre>
-        </div>
+        </CollapsibleSection>
       )}
 
+      {/* Collapsible: Parsed Output */}
       {run.parsed_output && (
-        <div className="space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
-            Output parseado
-          </span>
-          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-            {JSON.stringify(run.parsed_output, null, 2)}
+        <CollapsibleSection
+          title="Output Parseado"
+          isOpen={openSections.parsedOutput}
+          onToggle={() => toggleSection("parsedOutput")}
+        >
+          <pre className="text-[12px] font-mono text-slate-600 dark:text-white/60 bg-white dark:bg-white/[0.03] rounded-[6px] border border-slate-200 dark:border-white/[0.08] p-3 overflow-x-auto whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+            {formatJson(run.parsed_output)}
           </pre>
-        </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Collapsible: Error */}
+      {run.error_message && (
+        <CollapsibleSection
+          title="Erro"
+          isOpen={openSections.error ?? true}
+          onToggle={() => toggleSection("error")}
+          variant="error"
+        >
+          <pre className="text-[12px] font-mono text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/10 rounded-[6px] p-3 overflow-x-auto whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+            {run.error_message}
+            {run.error_stack && `\n\n--- Stack Trace ---\n${run.error_stack}`}
+          </pre>
+        </CollapsibleSection>
       )}
     </div>
   )
+}
+
+function CollapsibleSection({
+  title,
+  isOpen,
+  onToggle,
+  variant,
+  children,
+}: {
+  title: string
+  isOpen?: boolean
+  onToggle: () => void
+  variant?: "error"
+  children: React.ReactNode
+}) {
+  const open = isOpen ?? false
+  const titleColor =
+    variant === "error"
+      ? "text-red-600 dark:text-red-400"
+      : "text-slate-500 dark:text-white/45"
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={onToggle}
+        className={cn(
+          "flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide cursor-pointer",
+          titleColor,
+        )}
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        {title}
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
+function formatJson(obj: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(obj, null, 2)
+  } catch {
+    return String(obj)
+  }
 }
 
 function MetricCard({
