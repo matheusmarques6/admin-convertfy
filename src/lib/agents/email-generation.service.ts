@@ -46,6 +46,86 @@ import { notifyGenerationError } from "./generation-notify.service"
 
 const log = logger.child("EmailGeneration")
 
+function stringify(val: unknown): string {
+  if (val == null) return ""
+  if (typeof val === "string") return val
+  if (typeof val === "number" || typeof val === "boolean") return String(val)
+  if (Array.isArray(val)) {
+    if (val.length === 0) return ""
+    if (typeof val[0] === "string") return val.join(", ")
+    return JSON.stringify(val, null, 2)
+  }
+  if (typeof val === "object") return JSON.stringify(val, null, 2)
+  return String(val)
+}
+
+function buildAllVars(ctx: GenerationContext): Record<string, string> {
+  const vars: Record<string, string> = {}
+  const s = ctx.storeRaw
+
+  // 1) Flat map de TODOS os campos de client_stores
+  for (const [key, val] of Object.entries(s)) {
+    if (key.includes("api_key") || key.includes("api_secret") || key.includes("access_token")
+      || key.includes("credentials") || key.includes("private_key")) continue
+    vars[key] = stringify(val)
+  }
+
+  // Aliases convenientes
+  vars.brand_name = (s.store_name as string) ?? "Loja"
+  vars.niche = (s.niche as string) ?? ""
+  vars.posicionamento = (s.posicionamento_preco as string) ?? ""
+
+  // 2) Brand identity
+  const b = ctx.brand
+  if (b) {
+    vars.voice = stringify(b.voice)
+    vars.logo_url = b.logo_main_png ?? b.logo_main_svg ?? ""
+    vars.logo_alt_url = b.logo_alt_png ?? b.logo_alt_svg ?? ""
+    vars.primary_color = (b.colors_primary ?? [])[0]?.hex ?? "#1F1F1F"
+    vars.secondary_color = (b.colors_secondary ?? [])[0]?.hex ?? "#F0F0F0"
+    vars.primary_colors = (b.colors_primary ?? []).map((c) => c.hex).join(", ") || "#1F1F1F"
+    vars.primary_color_names = (b.colors_primary ?? []).map((c) => c.name).join(", ")
+    vars.secondary_colors = (b.colors_secondary ?? []).map((c) => c.hex).join(", ") || "#F0F0F0"
+    vars.font_heading = b.font_heading ?? "Arial"
+    vars.font_heading_weight = b.font_heading_weight ?? ""
+    vars.font_body = b.font_body ?? "Arial"
+    vars.font_body_weight = b.font_body_weight ?? ""
+  }
+
+  // 3) Briefing — marca
+  const marca = (ctx.briefing?.marca ?? {}) as Record<string, unknown>
+  for (const [key, val] of Object.entries(marca)) {
+    if (!(key in vars) || !vars[key]) {
+      vars[key] = stringify(val)
+    }
+  }
+  vars.tom_voz = stringify(marca.tom_voz) || "casual"
+  if (!vars.posicionamento) vars.posicionamento = stringify(marca.posicionamento) || "medio"
+
+  // 4) Briefing — detail
+  const detail = (ctx.briefing?.briefing ?? {}) as Record<string, unknown>
+  for (const [key, val] of Object.entries(detail)) {
+    if (key === "politicas" && Array.isArray(val)) {
+      vars.politicas = (val as Array<{ tipo: string; valor: string }>)
+        .map((p) => `${p.tipo}: ${p.valor}`).join("; ")
+    } else {
+      vars[key] = stringify(val)
+    }
+  }
+
+  // 5) Top products
+  vars.top_products = ctx.topProducts.length > 0
+    ? JSON.stringify(ctx.topProducts.map((p) => ({
+        name: p.name, price: p.price, image_url: p.image_url, url: p.url ?? "",
+      })), null, 2)
+    : "Nenhum produto disponível"
+
+  // 6) Reference HTML
+  vars.reference_html = ctx.referenceHtml ?? ""
+
+  return vars
+}
+
 function fillMissingVars(
   inputVars: Record<string, string>,
   systemPrompt: string,
@@ -90,25 +170,7 @@ interface GenerationContext {
     image: EmailAgentConfig | null
     html: EmailAgentConfig | null
   }
-  store: {
-    store_name: string
-    store_url: string | null
-    niche: string | null
-    country: string | null
-    language: string | null
-    slogan: string | null
-    diferencial: string | null
-    persona: string | null
-    posicionamento_preco: string | null
-    hashtags: string[] | null
-    brand_thesis: string | null
-    brand_about: string | null
-    brand_pillars: string[] | null
-    tone_use_words: string[] | null
-    tone_avoid_words: string[] | null
-    tone_do: string[] | null
-    tone_dont: string[] | null
-  }
+  storeRaw: Record<string, unknown>
 }
 
 // ── Main function ───────────────────────────────────────────
@@ -158,7 +220,7 @@ export async function generateEmail(
       notifyGenerationError({
         runId: seedRunId,
         storeId,
-        storeName: ctx.store.store_name,
+        storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
         emailName: `Flow ${flowType} #${emailNumber}`,
         agent: "seed",
         model: "deterministic",
@@ -189,75 +251,23 @@ export async function generateEmail(
             }
           : { objective: "Gerar email de qualidade", messaging: "Conteúdo relevante para o público" }
 
-      // Build input vars
-      const marca = ctx.briefing?.marca ?? {}
-      const briefingDetail = ctx.briefing?.briefing ?? {}
-      const joinArr = (arr: string[] | null | undefined) => (arr ?? []).join(", ")
-      const inputVars: Record<string, string> = {
-        // Store fields
-        brand_name: ctx.store.store_name,
-        store_url: ctx.store.store_url ?? "",
-        niche: ctx.store.niche ?? "",
-        country: ctx.store.country ?? "BR",
-        language: ctx.store.language ?? "pt-BR",
-        // Brand & tone from client_stores
-        slogan: ctx.store.slogan ?? marca.slogan ?? "",
-        diferencial: ctx.store.diferencial ?? marca.diferencial ?? "",
-        persona: ctx.store.persona ?? marca.persona ?? "",
-        posicionamento: ctx.store.posicionamento_preco ?? marca.posicionamento ?? "medio",
-        hashtags: joinArr(ctx.store.hashtags) || joinArr(marca.hashtags as string[] | undefined),
-        brand_thesis: ctx.store.brand_thesis ?? "",
-        brand_about: ctx.store.brand_about ?? "",
-        brand_pillars: joinArr(ctx.store.brand_pillars),
-        tone_use_words: joinArr(ctx.store.tone_use_words),
-        tone_avoid_words: joinArr(ctx.store.tone_avoid_words),
-        tone_do: joinArr(ctx.store.tone_do),
-        tone_dont: joinArr(ctx.store.tone_dont),
-        // Brand identity fields
-        voice: joinArr(ctx.brand?.voice),
-        logo_url: ctx.brand?.logo_main_png ?? ctx.brand?.logo_main_svg ?? "",
-        primary_color: (ctx.brand?.colors_primary ?? [])[0]?.hex ?? "#1F1F1F",
-        secondary_color: (ctx.brand?.colors_secondary ?? [])[0]?.hex ?? "#F0F0F0",
-        primary_colors: (ctx.brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || "#1F1F1F",
-        primary_color_names: (ctx.brand?.colors_primary ?? []).map((c) => c.name).join(", "),
-        secondary_colors: (ctx.brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || "#F0F0F0",
-        font_heading: ctx.brand?.font_heading ?? "Arial",
-        font_body: ctx.brand?.font_body ?? "Arial",
-        // Briefing fields
-        tom_voz: marca.tom_voz ?? "casual",
-        restricoes: joinArr(briefingDetail.restricoes),
-        conceito: (briefingDetail as Record<string, unknown>).conceito as string ?? "",
-        competidores: joinArr((briefingDetail as Record<string, unknown>).competidores as string[] | undefined),
-        diferenciais: joinArr((briefingDetail as Record<string, unknown>).diferenciais as string[] | undefined),
-        // Products
-        top_products: ctx.topProducts.length > 0
-          ? JSON.stringify(
-              ctx.topProducts.map((p) => ({
-                name: p.name,
-                price: p.price,
-                image_url: p.image_url,
-                url: p.url ?? "",
-              })),
-              null,
-              2,
-            )
-          : "Nenhum produto disponível",
-        // Email context
-        flow_type: flowType,
-        email_number: String(emailNumber),
-        objective: blueprintData.objective,
-        messaging: blueprintData.messaging,
-        blocks_json: JSON.stringify(
-          seededBlocks.map((b) => ({
-            position: b.position,
-            type: b.block_type,
-            label: b.label,
-            purpose: b.purpose,
-          })),
-          null,
-          2,
-        ),
-      }
+      // Build input vars from ALL data sources
+      const inputVars = buildAllVars(ctx)
+      // Email-specific context
+      inputVars.flow_type = flowType
+      inputVars.email_number = String(emailNumber)
+      inputVars.objective = blueprintData.objective
+      inputVars.messaging = blueprintData.messaging
+      inputVars.blocks_json = JSON.stringify(
+        seededBlocks.map((b) => ({
+          position: b.position,
+          type: b.block_type,
+          label: b.label,
+          purpose: b.purpose,
+        })),
+        null,
+        2,
+      )
 
       fillMissingVars(inputVars, systemPrompt, userTemplate)
 
@@ -341,7 +351,7 @@ export async function generateEmail(
       notifyGenerationError({
         runId: copyRunId,
         storeId,
-        storeName: ctx.store.store_name,
+        storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
         emailName: `Flow ${flowType} #${emailNumber}`,
         agent: "copy",
         model: ctx.agentConfigs.copy?.model ?? "claude-sonnet-4-5-20250514",
@@ -364,7 +374,7 @@ export async function generateEmail(
             .join(", ") || "#000000"
 
           const promptVars: Record<string, string> = {
-            brand_name: ctx.store.store_name,
+            brand_name: (ctx.storeRaw.store_name as string) ?? "Loja",
             nicho: marca.nicho ?? "",
             posicionamento: marca.posicionamento ?? "medio",
             tom_voz: marca.tom_voz ?? "casual",
@@ -457,63 +467,22 @@ export async function generateEmail(
         .eq("id", emailId)
         .single()
 
-      const primaryColor =
-        ctx.brand?.colors_primary?.[0]?.hex ?? "#1F1F1F"
-      const secondaryColor =
-        ctx.brand?.colors_secondary?.[0]?.hex ?? "#F0F0F0"
-
-      const joinArr = (arr: string[] | null | undefined) => (arr ?? []).join(", ")
-      const inputVars: Record<string, string> = {
-        brand_name: ctx.store.store_name,
-        store_url: ctx.store.store_url ?? "",
-        logo_url: ctx.brand?.logo_main_png ?? ctx.brand?.logo_main_svg ?? "",
-        primary_color: primaryColor,
-        secondary_color: secondaryColor,
-        primary_colors: (ctx.brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || primaryColor,
-        secondary_colors: (ctx.brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || secondaryColor,
-        font_heading: ctx.brand?.font_heading ?? "Arial",
-        font_body: ctx.brand?.font_body ?? "Arial",
-        // Store brand/tone
-        slogan: ctx.store.slogan ?? "",
-        diferencial: ctx.store.diferencial ?? "",
-        persona: ctx.store.persona ?? "",
-        posicionamento: ctx.store.posicionamento_preco ?? "",
-        brand_thesis: ctx.store.brand_thesis ?? "",
-        brand_about: ctx.store.brand_about ?? "",
-        brand_pillars: joinArr(ctx.store.brand_pillars),
-        tone_do: joinArr(ctx.store.tone_do),
-        tone_dont: joinArr(ctx.store.tone_dont),
-        tone_use_words: joinArr(ctx.store.tone_use_words),
-        tone_avoid_words: joinArr(ctx.store.tone_avoid_words),
-        // Email context
-        email_name: updatedEmail?.name ?? "",
-        subject: (updatedEmail?.subject as string) ?? "",
-        preheader: (updatedEmail?.preheader as string) ?? "",
-        reference_html: ctx.referenceHtml ?? "",
-        blocks_with_content: JSON.stringify(
-          (updatedBlocks ?? []).map((b) => ({
-            position: b.position,
-            type: b.block_type,
-            label: b.label,
-            content: b.content,
-          })),
-          null,
-          2,
-        ),
-        top_products:
-          ctx.topProducts.length > 0
-            ? JSON.stringify(
-                ctx.topProducts.map((p) => ({
-                  name: p.name,
-                  price: p.price,
-                  image_url: p.image_url,
-                  url: p.url ?? "",
-                })),
-                null,
-                2,
-              )
-            : "Sem produtos",
-      }
+      // Build input vars from ALL data sources
+      const inputVars = buildAllVars(ctx)
+      // HTML-specific context
+      inputVars.email_name = updatedEmail?.name ?? ""
+      inputVars.subject = (updatedEmail?.subject as string) ?? ""
+      inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
+      inputVars.blocks_with_content = JSON.stringify(
+        (updatedBlocks ?? []).map((b) => ({
+          position: b.position,
+          type: b.block_type,
+          label: b.label,
+          content: b.content,
+        })),
+        null,
+        2,
+      )
 
       fillMissingVars(inputVars, systemPrompt, userTemplate)
 
@@ -580,7 +549,7 @@ export async function generateEmail(
       notifyGenerationError({
         runId: htmlRunId,
         storeId,
-        storeName: ctx.store.store_name,
+        storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
         emailName: `Flow ${flowType} #${emailNumber}`,
         agent: "html",
         model: ctx.agentConfigs.html?.model ?? "claude-sonnet-4-5-20250514",
@@ -627,10 +596,10 @@ async function loadGenerationContext(
     htmlConfigRes,
     refTemplateRes,
   ] = await Promise.all([
-    // Store info
+    // Store info — SELECT * para que qualquer campo fique disponível como variável
     admin
       .from("client_stores")
-      .select("store_name, store_url, niche, country, language, slogan, diferencial, persona, posicionamento_preco, hashtags, brand_thesis, brand_about, brand_pillars, tone_use_words, tone_avoid_words, tone_do, tone_dont")
+      .select("*")
       .eq("id", storeId)
       .single(),
 
@@ -707,36 +676,6 @@ async function loadGenerationContext(
       .maybeSingle(),
   ])
 
-  const sd = storeRes.data
-  const store = sd
-    ? {
-        store_name: sd.store_name as string,
-        store_url: sd.store_url as string | null,
-        niche: sd.niche as string | null,
-        country: sd.country as string | null,
-        language: sd.language as string | null,
-        slogan: sd.slogan as string | null,
-        diferencial: sd.diferencial as string | null,
-        persona: sd.persona as string | null,
-        posicionamento_preco: sd.posicionamento_preco as string | null,
-        hashtags: sd.hashtags as string[] | null,
-        brand_thesis: sd.brand_thesis as string | null,
-        brand_about: sd.brand_about as string | null,
-        brand_pillars: sd.brand_pillars as string[] | null,
-        tone_use_words: sd.tone_use_words as string[] | null,
-        tone_avoid_words: sd.tone_avoid_words as string[] | null,
-        tone_do: sd.tone_do as string[] | null,
-        tone_dont: sd.tone_dont as string[] | null,
-      }
-    : {
-        store_name: "Loja", store_url: null, niche: null,
-        country: null, language: null, slogan: null, diferencial: null,
-        persona: null, posicionamento_preco: null, hashtags: null,
-        brand_thesis: null, brand_about: null, brand_pillars: null,
-        tone_use_words: null, tone_avoid_words: null,
-        tone_do: null, tone_dont: null,
-      }
-
   return {
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
@@ -749,9 +688,9 @@ async function loadGenerationContext(
     },
     agentConfigs: {
       copy: (copyConfigRes.data as EmailAgentConfig | null) ?? null,
-      image: null, // Image uses OpenAI, not configurable agent
+      image: null,
       html: (htmlConfigRes.data as EmailAgentConfig | null) ?? null,
     },
-    store,
+    storeRaw: (storeRes.data as Record<string, unknown>) ?? { store_name: "Loja" },
   }
 }
