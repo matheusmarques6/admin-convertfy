@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react"
-import { Sparkles, Edit2, Loader2 } from "lucide-react"
+import { Sparkles, Edit2, Loader2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PesquisaCard } from "./pesquisa-card"
 import {
@@ -146,6 +146,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [data, setData] = useState<PesquisaData>(initialData ?? {})
   const [openEditor, setOpenEditor] = useState<null | "marca" | "loja" | "icp" | "tom">(null)
   const [regenerating, setRegenerating] = useState(false)
+  const [regeneratingAll, setRegeneratingAll] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -177,6 +178,21 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
     })
+  }
+
+  const regenerateAll = async () => {
+    setRegeneratingAll(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/trigger-ads-analyzer`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        setTimeout(() => reload(), 90_000)
+        setTimeout(() => reload(), 150_000)
+      }
+    } finally {
+      setRegeneratingAll(false)
+    }
   }
 
   const regenerateAds = async () => {
@@ -217,27 +233,45 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
             O entendimento profundo da loja, do cliente final e da forma como a marca se comunica. É a base que guia briefings, copywriting e estratégia.
           </p>
         </div>
-        {editor?.name && (
-          <div className="shrink-0 flex items-center gap-2 text-right">
-            {editor.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={editor.avatar_url} alt={editor.name} className="h-7 w-7 rounded-full border" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
+        <div className="shrink-0 flex items-center gap-3">
+          <button
+            onClick={regenerateAll}
+            disabled={regeneratingAll}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            style={{ borderColor: "rgba(0,0,0,0.10)" }}
+          >
+            {regeneratingAll ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" /> Regenerando…
+              </>
             ) : (
-              <div className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "linear-gradient(135deg, #4E62D8, #2137B6)" }}>
-                {editor.name.slice(0, 2).toUpperCase()}
-              </div>
+              <>
+                <RefreshCw className="h-3 w-3" /> Regenerar briefing
+              </>
             )}
-            <div className="text-right leading-tight">
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                {editor.name.slice(0, 2).toUpperCase()}
-              </div>
-              <div className="text-[10.5px] text-slate-500">
-                Atualizado por {editor.name}
-                {editor.updated_at && ` em ${new Date(editor.updated_at).toLocaleDateString("pt-BR")}`}
+          </button>
+          {editor?.name && (
+            <div className="flex items-center gap-2 text-right">
+              {editor.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={editor.avatar_url} alt={editor.name} className="h-7 w-7 rounded-full border" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
+              ) : (
+                <div className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "linear-gradient(135deg, #4E62D8, #2137B6)" }}>
+                  {editor.name.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="text-right leading-tight">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                  {editor.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="text-[10.5px] text-slate-500">
+                  Atualizado por {editor.name}
+                  {editor.updated_at && ` em ${new Date(editor.updated_at).toLocaleDateString("pt-BR")}`}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {/* Sub-nav âncoras */}
