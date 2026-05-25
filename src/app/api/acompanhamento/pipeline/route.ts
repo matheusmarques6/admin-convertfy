@@ -63,25 +63,34 @@ export async function GET(request: NextRequest) {
 
     if (error) throw new AppError(error.message, 500)
 
-    // Carrega o ultimo weekly_report de cada loja pra extrair revenue.change_pct
     const storeIds = ((states ?? []) as unknown as Array<{ store_id: string }>)
       .map((s) => s.store_id)
       .filter(Boolean)
+
     const revenueChangeByStore: Record<string, number | null> = {}
+    const revenueByStore: Record<string, number | null> = {}
     if (storeIds.length > 0) {
-      const { data: reports } = await admin
-        .from("weekly_reports")
-        .select("store_id, metrics, week_start")
-        .in("store_id", storeIds)
-        .order("week_start", { ascending: false })
-      // Pega o mais recente por store_id (primeiro que aparece)
-      for (const r of reports ?? []) {
+      const [reportsRes, revSummaryRes] = await Promise.all([
+        admin
+          .from("weekly_reports")
+          .select("store_id, metrics, week_start")
+          .in("store_id", storeIds)
+          .order("week_start", { ascending: false }),
+        admin
+          .from("store_revenue_summary")
+          .select("store_id, omnisend_total_revenue")
+          .in("store_id", storeIds)
+          .eq("period_label", "30d"),
+      ])
+      for (const r of reportsRes.data ?? []) {
         const sid = (r as { store_id: string }).store_id
         if (sid in revenueChangeByStore) continue
-        const m = (r as { metrics?: { revenue?: { change_pct?: number } } })
-          .metrics
+        const m = (r as { metrics?: { revenue?: { change_pct?: number } } }).metrics
         const pct = m?.revenue?.change_pct
         revenueChangeByStore[sid] = typeof pct === "number" ? pct : null
+      }
+      for (const r of (revSummaryRes.data ?? []) as Array<{ store_id: string; omnisend_total_revenue: number | null }>) {
+        revenueByStore[r.store_id] = r.omnisend_total_revenue
       }
     }
 
@@ -102,9 +111,6 @@ export async function GET(request: NextRequest) {
       store: unknown
     }>
 
-    // Converte mrr_cents (BIGINT em centavos) -> mrr_value (number em reais)
-    // pra manter o contrato com o front sem mudar o componente.
-    // Tambem adiciona revenue_change_pct vindo do ultimo weekly_report.
     const normalized = rows.map((r) => {
       const s = r.store as { mrr_cents?: number | null } | null
       if (s && typeof s === "object") {
@@ -112,9 +118,10 @@ export async function GET(request: NextRequest) {
         ;(s as Record<string, unknown>).mrr_value =
           cents > 0 ? Math.round(cents / 100) : null
       }
-      const pct = revenueChangeByStore[r.store_id]
       ;(r as Record<string, unknown>).revenue_change_pct =
-        typeof pct === "number" ? pct : null
+        revenueChangeByStore[r.store_id] ?? null
+      ;(r as Record<string, unknown>).revenue_30d =
+        revenueByStore[r.store_id] ?? null
       return r
     })
 

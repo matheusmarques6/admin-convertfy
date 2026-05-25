@@ -34,6 +34,7 @@ interface StoreRow {
   health_score: number | null
   nps_last_score: number | null
   nps_last_at: string | null
+  mrr_cents: number | null
 }
 
 export function thisMonday(): string {
@@ -92,7 +93,7 @@ export async function flagStoresForWeek({
   let storesQuery = admin
     .from("client_stores")
     .select(
-      "id, org_id, store_name, created_at, contract_end_date, health_score, nps_last_score, nps_last_at",
+      "id, org_id, store_name, created_at, contract_end_date, health_score, nps_last_score, nps_last_at, mrr_cents",
     )
     .eq("is_active", true)
     .limit(500)
@@ -104,7 +105,31 @@ export async function flagStoresForWeek({
     throw new Error(`Erro buscando lojas: ${storesErr.message}`)
   }
 
-  const stores = (storesRaw ?? []) as StoreRow[]
+  // Filtra lojas com receita nos últimos 7 dias (store_revenue_summary)
+  const allStoreIds = (storesRaw ?? []).map((s) => (s as { id: string }).id)
+  const recentRevenueStoreIds = new Set<string>()
+  if (allStoreIds.length > 0) {
+    const { data: revRows } = await admin
+      .from("store_revenue_summary")
+      .select("store_id, omnisend_total_revenue, updated_at")
+      .in("store_id", allStoreIds)
+      .eq("period_label", "7d")
+    for (const r of (revRows ?? []) as Array<{ store_id: string; omnisend_total_revenue: number | null }>) {
+      if (r.omnisend_total_revenue != null && r.omnisend_total_revenue > 0) {
+        recentRevenueStoreIds.add(r.store_id)
+      }
+    }
+    // Também incluir lojas com MRR > 0 (pagam mensalidade = ativas)
+    for (const s of (storesRaw ?? []) as StoreRow[]) {
+      if (s.mrr_cents && s.mrr_cents > 0) {
+        recentRevenueStoreIds.add(s.id)
+      }
+    }
+  }
+
+  const stores = ((storesRaw ?? []) as StoreRow[]).filter(
+    (s) => recentRevenueStoreIds.has(s.id),
+  )
   if (stores.length === 0) {
     return {
       week: targetWeek,

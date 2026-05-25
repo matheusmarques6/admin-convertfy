@@ -89,6 +89,7 @@ interface PipelineState {
   flag_reason: string | null
   flagged_at: string
   revenue_change_pct: number | null
+  revenue_30d: number | null
   store: PipelineStore
 }
 
@@ -252,8 +253,26 @@ export function RitualClient() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
-
   const [startError, setStartError] = useState<string | null>(null)
+  const [stateFilter, setStateFilter] = useState<HealthState | "all">("all")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [showFilter, setShowFilter] = useState(false)
+
+  const filteredQueue = useMemo(() => {
+    let result = queue
+    if (stateFilter !== "all") {
+      result = result.filter((q) => q.health_state === stateFilter)
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter((q) =>
+        q.store.store_name?.toLowerCase().includes(term) ||
+        q.store.client?.name?.toLowerCase().includes(term) ||
+        q.flag_reason?.toLowerCase().includes(term)
+      )
+    }
+    return result
+  }, [queue, stateFilter, searchTerm])
 
   async function startRitual() {
     if (creating) return
@@ -500,16 +519,71 @@ export function RitualClient() {
               padding: "14px 18px", borderBottom: `1px solid ${C.border}`,
             }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>Fila do ritual</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>
+                  Fila do ritual
+                  {stateFilter !== "all" && (
+                    <span style={{ fontSize: 12, fontWeight: 400, color: C.g500, marginLeft: 8 }}>
+                      · filtrado: {HEALTH_TONE[stateFilter]?.label}
+                    </span>
+                  )}
+                  {searchTerm && (
+                    <span style={{ fontSize: 12, fontWeight: 400, color: C.g500, marginLeft: 8 }}>
+                      · buscando: &quot;{searchTerm}&quot;
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 12, color: C.g500, marginTop: 2 }}>
-                  Ordenadas por urgência · arraste para reordenar (raramente necessário)
+                  {filteredQueue.length} de {queue.length} lojas · ordenadas por urgência
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                <BtnGhost icon={<Filter size={13} />}>Filtrar</BtnGhost>
-                <BtnSecondary>Reordenar IA</BtnSecondary>
+                <BtnGhost icon={<Filter size={13} />} onClick={() => setShowFilter(!showFilter)}>Filtrar</BtnGhost>
+                <BtnSecondary onClick={() => { setStateFilter("all"); setSearchTerm("") }}>Limpar filtros</BtnSecondary>
               </div>
             </header>
+
+            {/* Filter bar */}
+            {showFilter && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 18px",
+                background: C.g50, borderBottom: `1px solid ${C.border}`,
+                flexWrap: "wrap",
+              }}>
+                <input
+                  type="text"
+                  placeholder="Buscar loja ou cliente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{
+                    padding: "6px 12px", fontSize: 12, border: `1px solid ${C.g200}`,
+                    borderRadius: 6, outline: "none", width: 200, background: C.white,
+                  }}
+                />
+                {(["all", "risk", "attention", "renewal", "rampup", "healthy"] as const).map((s) => {
+                  const isActive = stateFilter === s
+                  const label = s === "all" ? "Todas" : HEALTH_TONE[s]?.label ?? s
+                  const dot = s !== "all" ? HEALTH_TONE[s]?.dot : undefined
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setStateFilter(s)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "5px 10px", fontSize: 11.5, fontWeight: 500,
+                        color: isActive ? "#fff" : C.g700,
+                        background: isActive ? C.brand : C.white,
+                        border: `1px solid ${isActive ? C.brand : C.border}`,
+                        borderRadius: 999, cursor: "pointer",
+                      }}
+                    >
+                      {dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: isActive ? "#fff" : dot }} />}
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Table head */}
             <div style={{
@@ -530,12 +604,12 @@ export function RitualClient() {
             </div>
 
             {/* Rows */}
-            {queue.map((state, i) => (
+            {filteredQueue.map((state, i) => (
               <RitualHomeRow
                 key={state.id}
                 state={state}
                 position={i + 1}
-                isLast={i === queue.length - 1}
+                isLast={i === filteredQueue.length - 1}
               />
             ))}
           </div>
@@ -676,12 +750,18 @@ function RitualHomeRow({
         {state.flag_reason ?? "—"}
       </span>
 
-      {/* Signals */}
+      {/* Signals: MRR + receita 30d + variação */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-        {store.mrr_value != null && (
+        {store.mrr_value != null && store.mrr_value > 0 ? (
           <span style={{ fontSize: 11.5, color: C.g500, ...TNUM }}>
             MRR <strong style={{ fontWeight: 600, color: C.g900 }}>R$ {store.mrr_value.toLocaleString("pt-BR")}</strong>
           </span>
+        ) : state.revenue_30d != null && state.revenue_30d > 0 ? (
+          <span style={{ fontSize: 11.5, color: C.g500, ...TNUM }}>
+            30d <strong style={{ fontWeight: 600, color: C.g900 }}>R$ {Math.round(state.revenue_30d).toLocaleString("pt-BR")}</strong>
+          </span>
+        ) : (
+          <span style={{ color: C.g400, fontSize: 11, ...TNUM }}>Sem receita</span>
         )}
         {state.revenue_change_pct != null && (
           <span style={{
@@ -691,9 +771,6 @@ function RitualHomeRow({
             {state.revenue_change_pct >= 0 ? "+" : ""}
             {state.revenue_change_pct.toFixed(1).replace(".", ",")}% receita
           </span>
-        )}
-        {store.mrr_value == null && state.revenue_change_pct == null && (
-          <span style={{ color: C.g400, fontSize: 11 }}>—</span>
         )}
       </div>
 
