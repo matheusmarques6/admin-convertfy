@@ -25,6 +25,7 @@ import {
   Layers,
   Upload,
   ShieldAlert,
+  RefreshCw,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
@@ -1207,6 +1208,7 @@ function BriefingTab({
 }) {
   const toast = useToast()
   const [requesting, setRequesting] = useState(false)
+  const [resending, setResending] = useState(false)
   const b = onboarding.briefing
   const briefingError =
     b && typeof b === "object" && "error" in b
@@ -1257,6 +1259,34 @@ function BriefingTab({
       onMutate()
     } finally {
       setRequesting(false)
+    }
+  }
+
+  async function resendWebhook() {
+    setResending(true)
+    try {
+      const res = await fetch(
+        `/api/onboardings/${onboarding.id}/resend-briefing-webhook`,
+        { method: "POST" },
+      )
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.toast({
+          variant: "destructive",
+          title: "Falha ao reenviar webhook",
+          description: j.error?.message ?? j.error ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({ title: "Webhook reenviado com sucesso" })
+    } catch {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro de rede",
+        description: "Nao foi possivel reenviar o webhook.",
+      })
+    } finally {
+      setResending(false)
     }
   }
 
@@ -1374,15 +1404,29 @@ function BriefingTab({
       )}
 
       {briefingHasContent && onboarding.briefing_status === "approved" && (
-        <button
-          type="button"
-          onClick={requestRevision}
-          disabled={requesting}
-          className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 rounded-[6px]"
-        >
-          {requesting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          Pedir revisao do briefing
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={requestRevision}
+            disabled={requesting}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 rounded-[6px]"
+          >
+            {requesting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Pedir revisao do briefing
+          </button>
+
+          {onboarding.briefing_confirmed_by_client && (
+            <button
+              type="button"
+              onClick={resendWebhook}
+              disabled={resending}
+              className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold text-slate-600 bg-slate-50 dark:bg-white/5 dark:text-slate-300 border border-slate-300 dark:border-white/15 rounded-[6px] hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${resending ? "animate-spin" : ""}`} />
+              {resending ? "Enviando..." : "Reenviar webhook"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
