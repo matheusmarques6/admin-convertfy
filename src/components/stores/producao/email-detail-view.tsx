@@ -99,7 +99,7 @@ export function EmailDetailView({
   // Reset tab quando troca de email
   useEffect(() => {
     setActiveTab("struct")
-    setViewMode("mock")
+    setViewMode("render")
   }, [emailId])
 
   // Navegação prev/next entre emails do flow
