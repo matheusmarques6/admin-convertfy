@@ -183,12 +183,15 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const regenerateAll = async () => {
     setRegeneratingAll(true)
     try {
-      const res = await fetch(`/api/admin/stores/${storeId}/trigger-ads-analyzer`, {
+      const res = await fetch("/api/onboarding/store-briefing", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: storeId, mode: "regenerate" }),
       })
       if (res.ok) {
-        setTimeout(() => reload(), 90_000)
-        setTimeout(() => reload(), 150_000)
+        setTimeout(() => reload(), 15_000)
+        setTimeout(() => reload(), 30_000)
+        setTimeout(() => reload(), 60_000)
       }
     } finally {
       setRegeneratingAll(false)
@@ -242,11 +245,11 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
           >
             {regeneratingAll ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin" /> Regenerando…
+                <Loader2 className="h-3 w-3 animate-spin" /> Regerando…
               </>
             ) : (
               <>
-                <RefreshCw className="h-3 w-3" /> Regenerar briefing
+                <RefreshCw className="h-3 w-3" /> Regerar briefing
               </>
             )}
           </button>
