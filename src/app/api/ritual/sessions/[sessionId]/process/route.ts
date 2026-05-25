@@ -32,8 +32,17 @@ export async function POST(
   try {
     const { sessionId } = await params
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
     const admin = createAdminClient()
+
+    const { data: member } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+    if (!member) throw new AppError("Sem org", 403)
 
     const body = await request.json().catch(() => ({})) as { transcript?: string }
 
@@ -43,6 +52,7 @@ export async function POST(
       .eq("id", sessionId)
       .maybeSingle()
     if (!session) throw new AppError("Sessão não encontrada", 404)
+    if (session.org_id !== (member as { org_id: string }).org_id) throw new AppError("Sem permissão", 403)
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new AppError("ANTHROPIC_API_KEY não configurada", 500)
@@ -200,15 +210,25 @@ export async function GET(
   try {
     const { sessionId } = await params
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
     const admin = createAdminClient()
+
+    const { data: member } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+    if (!member) throw new AppError("Sem org", 403)
 
     const { data: session } = await admin
       .from("ritual_sessions")
-      .select("id, transcript_status, transcript_processed_at, generated_tasks, recording_url, recording_uploaded_at")
+      .select("id, org_id, transcript_status, transcript_processed_at, generated_tasks, recording_url, recording_uploaded_at")
       .eq("id", sessionId)
       .maybeSingle()
     if (!session) throw new AppError("Sessão não encontrada", 404)
+    if (session.org_id !== (member as { org_id: string }).org_id) throw new AppError("Sem permissão", 403)
 
     return successResponse(request, {
       transcript_status: session.transcript_status,

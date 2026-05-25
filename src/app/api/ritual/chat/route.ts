@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+
+export const dynamic = "force-dynamic"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("RitualChat")

@@ -45,6 +45,13 @@ interface ProcessingStep {
   progress?: number
 }
 
+const ALLOWED_EXT = [".mp4", ".mp3", ".m4a", ".wav"]
+
+function formatFileSize(bytes: number) {
+  const mb = bytes / (1024 * 1024)
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
+}
+
 export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
   const [stage, setStage] = useState<Stage>("upload")
@@ -59,13 +66,6 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
     { label: "IA extraindo decisões e gerando tasks", sub: "aguardando etapa anterior", status: "pending" },
   ])
 
-  const ALLOWED_EXT = [".mp4", ".mp3", ".m4a", ".wav"]
-
-  const formatSize = (bytes: number) => {
-    const mb = bytes / (1024 * 1024)
-    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
-  }
-
   const [taskCount, setTaskCount] = useState(0)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -77,7 +77,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
       return
     }
 
-    const sizeStr = formatSize(file.size)
+    const sizeStr = formatFileSize(file.size)
     setFileName(file.name)
     setFileSize(sizeStr)
     setUploading(true)
@@ -155,7 +155,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
     } finally {
       setUploading(false)
     }
-  }, [uploading])
+  }, [uploading, sessionId])
 
   const [isDragging, setIsDragging] = useState(false)
 

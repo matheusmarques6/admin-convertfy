@@ -30,12 +30,22 @@ export async function POST(
     const user = await requireAuth(supabase)
     const admin = createAdminClient()
 
+    const { data: member } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+    if (!member) throw new AppError("Sem org", 403)
+
     const { data: session } = await admin
       .from("ritual_sessions")
       .select("id, org_id")
       .eq("id", sessionId)
       .maybeSingle()
     if (!session) throw new AppError("Sessão não encontrada", 404)
+    if (session.org_id !== (member as { org_id: string }).org_id) throw new AppError("Sem permissão", 403)
 
     const formData = await request.formData()
     const file = formData.get("file") as File | null

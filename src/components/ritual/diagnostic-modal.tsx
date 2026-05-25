@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, X, Zap, Send,
-  TrendingDown, TrendingUp, Loader2,
+  TrendingDown, TrendingUp,
 } from "lucide-react"
 
 const C = {
@@ -40,7 +41,14 @@ const C = {
 
 const TNUM: React.CSSProperties = { fontVariantNumeric: "tabular-nums lining-nums" }
 
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
+const fetcher = (url: string) =>
+  fetch(url, { credentials: "include" }).then(async (r) => {
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body?.error || r.statusText || `HTTP ${r.status}`)
+    }
+    return r.json()
+  })
 
 const HEALTH_ACCENT: Record<string, string> = {
   risk: "#B91C1C",
@@ -99,6 +107,7 @@ export function RitualDiagnosticModal({
   onClose: () => void
   onUpdate: () => void
 }) {
+  const router = useRouter()
   const [currentIdx, setCurrentIdx] = useState(session.current_store_index)
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("funil")
   const [timerSec, setTimerSec] = useState(0)
@@ -227,6 +236,7 @@ export function RitualDiagnosticModal({
       await patchSession({ status: "completed" })
       onUpdate()
       onClose()
+      router.push(`/admin/operacional/ritual/upload?session=${session.id}`)
       return
     }
     await goToStore(nextIdx)
@@ -411,7 +421,7 @@ export function RitualDiagnosticModal({
 
           {/* Right: Chat IA */}
           <div style={{ minHeight: 0, overflow: "hidden" }}>
-            <RitualChat storeId={storeId!} storeName={storeName} />
+            <RitualChat key={storeId} storeId={storeId!} storeName={storeName} />
           </div>
         </div>
 

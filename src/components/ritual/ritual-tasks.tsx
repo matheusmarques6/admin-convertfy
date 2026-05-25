@@ -176,7 +176,7 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
         throw new Error(err.error || `HTTP ${res.status}`)
       }
 
-      const result = await res.json()
+      await res.json()
       router.push("/admin/operacional/ritual")
     } catch (e) {
       setApproveError((e as Error).message)

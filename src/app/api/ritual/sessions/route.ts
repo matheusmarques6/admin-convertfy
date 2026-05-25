@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+
+export const dynamic = "force-dynamic"
 import { handleCorsPreFlight } from "@/lib/cors"
 
 export async function OPTIONS(request: NextRequest) {

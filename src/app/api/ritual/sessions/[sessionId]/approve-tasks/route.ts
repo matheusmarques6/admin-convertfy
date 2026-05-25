@@ -77,46 +77,48 @@ export async function POST(
     let createdCount = 0
     let errorCount = 0
     const storeIds = new Set<string>()
+    const validTasks = tasks.filter((t) => t.title && t.store_id)
+    for (const t of validTasks) storeIds.add(t.store_id)
 
-    for (const task of tasks) {
-      if (!task.title || !task.store_id) {
-        errorCount++
-        continue
-      }
-
-      storeIds.add(task.store_id)
-
-      const { data: clientStore } = await admin
+    const clientIdMap = new Map<string, string | null>()
+    if (storeIds.size > 0) {
+      const { data: stores } = await admin
         .from("client_stores")
-        .select("client_id")
-        .eq("id", task.store_id)
-        .maybeSingle()
+        .select("id, client_id")
+        .in("id", Array.from(storeIds))
+      for (const s of (stores ?? []) as Array<{ id: string; client_id: string | null }>) {
+        clientIdMap.set(s.id, s.client_id)
+      }
+    }
 
-      const { error } = await admin.from("tasks").insert({
-        org_id: (member as { org_id: string }).org_id,
-        title: task.title,
-        description: task.origin_quote || null,
-        type: "general",
-        status: "pending",
-        priority: task.priority || "medium",
-        assignee_id: task.assignee_id || null,
-        created_by: user.id,
-        store_id: task.store_id,
-        client_id: clientStore?.client_id || null,
-        due_date: task.due_date || null,
-        source_type: "manual",
-        metadata: {
-          origin: "ritual",
-          ritual_session_id: sessionId,
-          origin_quote: task.origin_quote || null,
-        },
-      })
+    const orgId = (member as { org_id: string }).org_id
+    const taskRows = validTasks.map((task) => ({
+      org_id: orgId,
+      title: task.title,
+      description: task.origin_quote || null,
+      type: "general" as const,
+      status: "pending" as const,
+      priority: task.priority || ("medium" as const),
+      assignee_id: task.assignee_id || null,
+      created_by: user.id,
+      store_id: task.store_id,
+      client_id: clientIdMap.get(task.store_id) ?? null,
+      due_date: task.due_date || null,
+      source_type: "manual" as const,
+      metadata: {
+        origin: "ritual",
+        ritual_session_id: sessionId,
+        origin_quote: task.origin_quote || null,
+      },
+    }))
 
+    if (taskRows.length > 0) {
+      const { error } = await admin.from("tasks").insert(taskRows)
       if (error) {
-        log.error("Falha ao criar task", { title: task.title, error: error.message })
-        errorCount++
+        log.error("Falha ao criar tasks em batch", { error: error.message, count: taskRows.length })
+        errorCount = taskRows.length
       } else {
-        createdCount++
+        createdCount = taskRows.length
       }
     }
 

@@ -3,6 +3,8 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 
+export const dynamic = "force-dynamic"
+
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }

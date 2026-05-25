@@ -253,9 +253,12 @@ export function RitualClient() {
   const [modalOpen, setModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
 
+  const [startError, setStartError] = useState<string | null>(null)
+
   async function startRitual() {
     if (creating) return
     setCreating(true)
+    setStartError(null)
     try {
       const r = await fetch("/api/ritual/sessions", {
         method: "POST",
@@ -263,10 +266,14 @@ export function RitualClient() {
         credentials: "include",
         body: JSON.stringify({}),
       })
-      if (r.ok) {
-        await mutateSessions()
-        setModalOpen(true)
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.error || `HTTP ${r.status}`)
       }
+      await mutateSessions()
+      setModalOpen(true)
+    } catch (e) {
+      setStartError((e as Error).message)
     } finally {
       setCreating(false)
     }
