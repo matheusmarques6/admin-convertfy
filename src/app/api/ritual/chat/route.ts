@@ -22,35 +22,49 @@ const SYSTEM_PROMPT = `Você é o copiloto da Convertfy durante o ritual semanal
 Sua função: ajudar o time (Bruno, Jean, Ryan) a diagnosticar performance
 de email marketing de uma loja e sugerir ações concretas.
 
-FERRAMENTAS DISPONÍVEIS:
-Você tem acesso ao Omnisend ao vivo via ferramentas. Use-as para buscar
-dados atualizados quando o contexto pré-carregado não for suficiente.
+DADOS DO ADMIN CONVERTFY (pré-carregados):
+Você já recebe no contexto dados REAIS do nosso sistema:
+- Cadastro da loja (nome, nicho, MRR, NPS, health score, contrato)
+- Estado no pipeline semanal (health_state, flag_reason)
+- Resumo de receita (total, campanhas, flows, pedidos)
+- Últimos 3 relatórios semanais (métricas, highlights, alertas)
+- Tasks pendentes atribuídas à loja
+- Solicitações abertas do cliente
+- Status do onboarding
+- Últimas 3 calls de feedback
+- Campanhas Omnisend dos últimos 30d (cache)
+- Automações Omnisend dos últimos 30d (cache)
+
+FERRAMENTAS OMNISEND (ao vivo):
+Quando precisar de dados MAIS RECENTES ou detalhados do Omnisend,
+use estas ferramentas que consultam a API ao vivo:
 - omnisend_list_campaigns: campanhas recentes com métricas
 - omnisend_get_campaign: detalhes de uma campanha específica
 - omnisend_list_automations: flows/automações ativas
 - omnisend_list_segments: segmentos de contatos
 - omnisend_segment_stats: estatísticas de um segmento
 - omnisend_campaign_analytics: relatório de analytics por período
-- omnisend_brand_info: informações da conta
+- omnisend_brand_info: informações da conta Omnisend
 - omnisend_list_contacts: listar contatos com filtros
 
-QUANDO USAR FERRAMENTAS:
+QUANDO USAR FERRAMENTAS vs CONTEXTO:
+- Se o contexto pré-carregado já responde → NÃO chame ferramenta
 - Perguntas sobre campanhas específicas → omnisend_get_campaign
-- "Como estão os flows?" → omnisend_list_automations
-- "Qual o tamanho da lista?" → omnisend_list_segments ou omnisend_brand_info
+- Dados de HOJE (não nos últimos 30d do cache) → use ferramentas
+- "Qual o tamanho da lista?" → omnisend_list_segments
 - "Compara campanhas do mês" → omnisend_campaign_analytics
-- Se o contexto pré-carregado já responde, NÃO chame a ferramenta
 
 REGRAS:
 - Responda em português brasileiro, direto e prático
 - Use bullet points quando listar coisas
-- Cite números específicos — nunca invente
+- Cite números específicos dos dados fornecidos — nunca invente
 - Quando sugerir ações, seja específico com responsável: Mariana (Designer), Pedro (Ops), Jean (Estrategista), Ryan (CS)
 - Se a ferramenta retornar erro, informe ao time e sugira alternativa
-- Referência de dados: [Omnisend: nome-do-item]
+- Referência de dados do admin: [Admin: métrica] e do Omnisend: [Omnisend: nome-do-item]
+- Se a loja tem tasks pendentes ou solicitações abertas, MENCIONE no diagnóstico
 - Formato para diagnóstico:
   1. Diagnóstico (1-2 frases)
-  2. Evidências (bullets com números)
+  2. Evidências (bullets com números reais)
   3. Ações sugeridas (2-3 com responsável e prazo)
   4. Métrica pra acompanhar`
 
@@ -75,11 +89,16 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient()
 
-    const [storeRes, reportsRes, pipelineRes, callsRes, campaignsRes, automationsRes] = await Promise.all([
+    const [
+      storeRes, reportsRes, pipelineRes, callsRes,
+      campaignsRes, automationsRes,
+      revenueRes, tasksRes, requestsRes, onbRes,
+    ] = await Promise.all([
       admin
         .from("client_stores")
         .select(
           "id, store_name, niche, country, mrr_cents, created_at, email_platform, currency, contract_end_date, org_id, " +
+            "health_score, nps_last_score, nps_last_at, " +
             "client:clients!client_stores_client_id_fkey(name)",
         )
         .eq("id", body.store_id)
@@ -131,6 +150,35 @@ export async function POST(request: NextRequest) {
         .eq("period_label", "30d")
         .order("conversion_value", { ascending: false })
         .limit(10),
+
+      admin
+        .from("store_revenue_summary")
+        .select("omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, omnisend_total_orders, updated_at")
+        .eq("store_id", body.store_id)
+        .maybeSingle(),
+
+      admin
+        .from("tasks")
+        .select("id, title, status, priority, due_date, assignee_id")
+        .eq("store_id", body.store_id)
+        .in("status", ["pending", "in_progress", "blocked"])
+        .order("due_date", { ascending: true })
+        .limit(10),
+
+      admin
+        .from("client_store_requests")
+        .select("id, title, status, priority, created_at")
+        .eq("store_id", body.store_id)
+        .in("status", ["open", "in_progress"])
+        .limit(5),
+
+      admin
+        .from("onboardings")
+        .select("id, status, briefing_status, completed_at, created_at")
+        .eq("store_id", body.store_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
 
     if (!storeRes.data) throw new AppError("Loja não encontrada", 404)
@@ -146,6 +194,9 @@ export async function POST(request: NextRequest) {
       currency: string | null
       contract_end_date: string | null
       org_id: string
+      health_score: number | null
+      nps_last_score: number | null
+      nps_last_at: string | null
       client: { name: string } | { name: string }[] | null
     }
 
@@ -163,6 +214,37 @@ export async function POST(request: NextRequest) {
     const rawCampaigns = (campaignsRes.data ?? []) as unknown as Array<Record<string, unknown>>
     const rawAutomations = (automationsRes.data ?? []) as unknown as Array<Record<string, unknown>>
 
+    const revData = revenueRes.data as unknown as {
+      omnisend_total_revenue?: number | null
+      omnisend_campaign_revenue?: number | null
+      omnisend_flow_revenue?: number | null
+      omnisend_total_orders?: number | null
+      updated_at?: string | null
+    } | null
+
+    const pendingTasks = ((tasksRes.data ?? []) as unknown as Array<{
+      id: string; title: string; status: string; priority: string; due_date: string | null
+    }>).map((t) => ({
+      titulo: t.title,
+      status: t.status,
+      prioridade: t.priority,
+      vencimento: t.due_date,
+    }))
+
+    const openRequests = ((requestsRes.data ?? []) as unknown as Array<{
+      id: string; title: string; status: string; priority: string; created_at: string
+    }>).map((r) => ({
+      titulo: r.title,
+      status: r.status,
+      prioridade: r.priority,
+      criada_em: r.created_at,
+    }))
+
+    const onb = onbRes.data as unknown as {
+      id?: string; status?: string; briefing_status?: string
+      completed_at?: string | null; created_at?: string
+    } | null
+
     const ctx = {
       loja: {
         nome: store.store_name,
@@ -173,10 +255,27 @@ export async function POST(request: NextRequest) {
         mrr: store.mrr_cents && store.mrr_cents > 0 ? Math.round(store.mrr_cents / 100) : null,
         dias_na_convertfy: ageDays,
         vencimento_contrato: store.contract_end_date,
+        health_score: store.health_score,
+        nps_ultimo: store.nps_last_score,
+        nps_data: store.nps_last_at,
         omnisend_conectado: !!omnisendApiKey,
       },
       cliente: store.client,
       pipeline: pipelineRes.data,
+      receita_resumo: revData ? {
+        receita_total: revData.omnisend_total_revenue,
+        receita_campanhas: revData.omnisend_campaign_revenue,
+        receita_flows: revData.omnisend_flow_revenue,
+        total_pedidos: revData.omnisend_total_orders,
+        atualizado_em: revData.updated_at,
+      } : null,
+      onboarding: onb ? {
+        status: onb.status,
+        briefing_status: onb.briefing_status,
+        concluido_em: onb.completed_at,
+      } : null,
+      tasks_pendentes: pendingTasks,
+      solicitacoes_abertas: openRequests,
       ultimos_3_reports: reportsRes.data,
       ultimas_3_calls: callsRes.data,
       omnisend_campanhas_30d_cache: rawCampaigns.map((c) => ({
@@ -191,7 +290,7 @@ export async function POST(request: NextRequest) {
       })),
     }
 
-    const systemWithCtx = `${SYSTEM_PROMPT}\n\n=== CONTEXTO PRÉ-CARREGADO (cache 30d) ===\n${JSON.stringify(ctx, null, 2)}`
+    const systemWithCtx = `${SYSTEM_PROMPT}\n\n=== CONTEXTO DA LOJA (DADOS REAIS DO ADMIN CONVERTFY + OMNISEND) ===\n${JSON.stringify(ctx, null, 2)}`
 
     const tools = omnisendApiKey ? OMNISEND_TOOLS : []
 
@@ -212,6 +311,10 @@ export async function POST(request: NextRequest) {
     if (reportsRes.data && reportsRes.data.length > 0) sources.push("admin.weekly_reports")
     if (pipelineRes.data) sources.push("admin.pipeline")
     if (callsRes.data && callsRes.data.length > 0) sources.push("admin.feedback_calls")
+    if (revData) sources.push("admin.revenue_summary")
+    if (pendingTasks.length > 0) sources.push("admin.tasks")
+    if (openRequests.length > 0) sources.push("admin.requests")
+    if (onb) sources.push("admin.onboarding")
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await ai.messages.create({
