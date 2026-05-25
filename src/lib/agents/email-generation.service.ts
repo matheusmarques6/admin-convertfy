@@ -63,6 +63,7 @@ interface GenerationContext {
   briefing: StoreBriefing | null
   blueprint: EmailBlueprint | null
   topProducts: TopProduct[]
+  referenceHtml: string | null
   settings: {
     generate_images: boolean
     max_parallel: number
@@ -407,6 +408,7 @@ export async function generateEmail(
         email_name: updatedEmail?.name ?? "",
         subject: (updatedEmail?.subject as string) ?? "",
         preheader: (updatedEmail?.preheader as string) ?? "",
+        reference_html: ctx.referenceHtml ?? "",
         blocks_with_content: JSON.stringify(
           (updatedBlocks ?? []).map((b) => ({
             position: b.position,
@@ -540,6 +542,7 @@ async function loadGenerationContext(
     settingsRes,
     copyConfigRes,
     htmlConfigRes,
+    refTemplateRes,
   ] = await Promise.all([
     // Store info
     admin
@@ -609,6 +612,16 @@ async function loadGenerationContext(
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+
+    // Reference template for flow_type
+    admin
+      .from("email_reference_templates")
+      .select("html")
+      .eq("flow_type", flowType)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const store = storeRes.data
@@ -624,6 +637,7 @@ async function loadGenerationContext(
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
     blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
     topProducts: ((topProductsRes.data?.top_products as TopProduct[]) ?? []),
+    referenceHtml: (refTemplateRes.data?.html as string | null) ?? null,
     settings: {
       generate_images: (settingsRes.data?.generate_images as boolean) ?? false,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,

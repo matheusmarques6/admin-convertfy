@@ -37,13 +37,16 @@ Fonte body: {font_body}
 Subject: {subject}
 Preheader: {preheader}
 
+## HTML de referência (use como base estrutural, adapte o conteúdo)
+{reference_html}
+
 ## Blocos (renderize nesta ordem)
 {blocks_with_content}
 
 ## Produtos (use estes dados reais quando bloco for products)
 {top_products}
 
-Gere o HTML completo do email. APENAS HTML, sem texto antes ou depois.`
+Gere o HTML completo do email baseado na estrutura de referência acima, substituindo o conteúdo pelos blocos fornecidos. APENAS HTML, sem texto antes ou depois.`
 
 // ── Chain factory ───────────────────────────────────────────
 
