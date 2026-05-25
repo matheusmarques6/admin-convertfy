@@ -30,6 +30,8 @@ import { toast } from "@/lib/hooks/use-toast"
 import type {
   EmailBlueprint,
   EmailAgentConfig,
+  ImageMapEntry,
+  ImageMapType,
   EmailGenerationSettings,
   EmailReferenceTemplate,
   AgentType,
@@ -1067,10 +1069,54 @@ function ReferenceDialog({
   const [emailNumber, setEmailNumber] = useState<number | null>(template?.email_number ?? null)
   const [html, setHtml] = useState(template?.html ?? "")
   const [copy, setCopy] = useState(template?.copy ?? "")
+  const [imageMap, setImageMap] = useState<ImageMapEntry[]>(template?.image_map ?? [])
   const [tags, setTags] = useState((template?.tags ?? []).join(", "))
   const [isActive, setIsActive] = useState(template?.is_active ?? true)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const detectImageType = (src: string): ImageMapType => {
+    const s = src.toUpperCase()
+    if (s.includes("LOGO")) return "logo"
+    if (s.includes("HERO") || s.includes("BANNER")) return "hero"
+    if (s.includes("PRODUCT") || s.includes("PRODUTO")) return "product"
+    if (s.includes("ICON")) return "icon"
+    if (s.includes("STAR") || s.includes("SEPARATOR") || s.includes("DIVIDER")) return "decorative"
+    return "custom"
+  }
+
+  const extractImagesFromHtml = (htmlStr: string) => {
+    const imgRe = /<img[^>]+src="([^"]*)"[^>]*(?:alt="([^"]*)")?[^>]*(?:width="(\d+)")?[^>]*(?:height="(\d+)")?[^>]*/gi
+    const found: ImageMapEntry[] = []
+    const seen = new Set<string>()
+    let m: RegExpExecArray | null
+    while ((m = imgRe.exec(htmlStr)) !== null) {
+      const src = m[1]
+      if (seen.has(src)) continue
+      seen.add(src)
+      if (src.startsWith("http") && !src.includes("placehold")) continue
+      const alt = m[2] ?? ""
+      const width = m[3] ? parseInt(m[3]) : null
+      const height = m[4] ? parseInt(m[4]) : null
+      const type = detectImageType(src)
+      const existing = imageMap.find((e) => e.src === src)
+      found.push({
+        src, alt, width, height,
+        type: existing?.type ?? type,
+        product_index: existing?.product_index ?? (type === "product" ? found.filter((f) => f.type === "product").length : undefined),
+        instruction: existing?.instruction ?? null,
+      })
+    }
+    return found
+  }
+
+  const handleHtmlChange = (newHtml: string) => {
+    setHtml(newHtml)
+    if (newHtml.trim()) {
+      const detected = extractImagesFromHtml(newHtml)
+      if (detected.length > 0) setImageMap(detected)
+    }
+  }
 
   const save = async () => {
     if (!name.trim()) return
@@ -1082,6 +1128,7 @@ function ReferenceDialog({
         email_number: emailNumber,
         html: html || null,
         copy: copy || null,
+        image_map: imageMap.length > 0 ? imageMap : null,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         is_active: isActive,
       }
@@ -1180,11 +1227,81 @@ function ReferenceDialog({
               <textarea
                 rows={8}
                 value={html}
-                onChange={(e) => setHtml(e.target.value)}
+                onChange={(e) => handleHtmlChange(e.target.value)}
                 placeholder="Cole o HTML de referência aqui..."
                 className="crm-input w-full font-mono text-[12px]"
               />
             </div>
+            {imageMap.length > 0 && (
+              <div className="space-y-2">
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                  Imagens detectadas ({imageMap.length})
+                </label>
+                <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                  {imageMap.map((img, idx) => (
+                    <div key={img.src} className="flex items-start gap-2 p-2.5 rounded-[4px] bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06]">
+                      <div className="shrink-0 w-10 h-10 rounded bg-slate-200 dark:bg-white/10 flex items-center justify-center text-[16px]">
+                        {img.type === "logo" ? "🏷" : img.type === "hero" ? "🖼" : img.type === "product" ? "📦" : img.type === "icon" ? "✨" : img.type === "decorative" ? "⭐" : "🎨"}
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-white/40 truncate flex-1">{img.src}</span>
+                          {img.width && img.height && (
+                            <span className="text-[10px] text-slate-400 dark:text-white/30 shrink-0">{img.width}x{img.height}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={img.type}
+                            onChange={(e) => {
+                              const updated = [...imageMap]
+                              updated[idx] = { ...img, type: e.target.value as ImageMapType }
+                              setImageMap(updated)
+                            }}
+                            className="crm-input text-[11px] h-7 w-[100px]"
+                          >
+                            <option value="logo">Logo</option>
+                            <option value="hero">Hero</option>
+                            <option value="product">Produto</option>
+                            <option value="icon">Ícone</option>
+                            <option value="decorative">Decorativo</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                          {(img.type === "hero" || img.type === "custom" || img.type === "icon") && (
+                            <input
+                              type="text"
+                              value={img.instruction ?? ""}
+                              onChange={(e) => {
+                                const updated = [...imageMap]
+                                updated[idx] = { ...img, instruction: e.target.value || null }
+                                setImageMap(updated)
+                              }}
+                              placeholder={img.type === "icon" ? "Ex: 🚚" : "Instrução para esta imagem..."}
+                              className="crm-input text-[11px] h-7 flex-1"
+                            />
+                          )}
+                          {img.type === "product" && (
+                            <input
+                              type="number"
+                              value={img.product_index ?? 0}
+                              onChange={(e) => {
+                                const updated = [...imageMap]
+                                updated[idx] = { ...img, product_index: parseInt(e.target.value) || 0 }
+                                setImageMap(updated)
+                              }}
+                              min={0}
+                              max={9}
+                              placeholder="Índice"
+                              className="crm-input text-[11px] h-7 w-[60px]"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {isEdit && (
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center gap-2">

@@ -58,14 +58,18 @@ Preheader: {preheader}
 ## Produtos (dados reais para blocos de produtos)
 {top_products}
 
+## Mapa de imagens (substitua cada placeholder pela fonte indicada)
+{image_instructions}
+
 Instruções:
 1. Use o HTML de referência como BASE ESTRUTURAL (layout, espaçamentos, seções).
 2. Substitua a copy pelo conteúdo editorial (se fornecido) ou pelos blocos estruturais.
-3. SUBSTITUA todos os placeholders de imagem:
+3. SUBSTITUA todos os placeholders de imagem conforme o mapa acima. Se o mapa estiver vazio, use estas regras:
    - IMG_LOGO* → use {logo_url}
-   - IMG_PRODUCT_1, IMG_PRODUCT_2... → use as image_url dos Produtos acima (na ordem)
+   - IMG_PRODUCT_N → use image_url do produto N dos Produtos acima
    - IMG_HERO* → use placeholder: https://placehold.co/600x400/{primary_color_hex}/ffffff?text={brand_name}
    - IMG_ICON*, IMG_STAR* → use emojis Unicode (🚚 📦 ⭐ etc.)
+   - NUNCA deixe src com nomes de arquivo locais (IMG_*.png, IMG_*.jpg).
 4. Adapte as cores da referência para as cores da marca ({primary_color}, {secondary_color}).
 5. APENAS HTML completo (<!DOCTYPE html> até </html>), sem texto antes ou depois.`
 

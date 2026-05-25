@@ -8,12 +8,23 @@ const log = logger.child("EmailReferenceTemplates")
 
 export const dynamic = "force-dynamic"
 
+const imageMapEntrySchema = z.object({
+  src: z.string(),
+  alt: z.string(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  type: z.enum(["logo", "product", "hero", "icon", "decorative", "custom"]),
+  product_index: z.number().optional(),
+  instruction: z.string().nullable().optional(),
+})
+
 const postSchema = z.object({
   flow_type: z.string().optional(),
   email_number: z.number().int().min(1).optional().nullable(),
   name: z.string().min(1),
   html: z.string().optional(),
   copy: z.string().optional(),
+  image_map: z.array(imageMapEntrySchema).optional().nullable(),
   thumbnail: z.string().optional(),
   tags: z.array(z.string()).default([]),
   is_active: z.boolean().default(true),

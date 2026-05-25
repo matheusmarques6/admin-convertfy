@@ -79,6 +79,18 @@ export interface EmailGenerationRun {
   email_name?: string
 }
 
+export type ImageMapType = "logo" | "product" | "hero" | "icon" | "decorative" | "custom"
+
+export interface ImageMapEntry {
+  src: string
+  alt: string
+  width: number | null
+  height: number | null
+  type: ImageMapType
+  product_index?: number
+  instruction?: string | null
+}
+
 export interface EmailReferenceTemplate {
   id: string
   flow_type: string | null
@@ -86,6 +98,7 @@ export interface EmailReferenceTemplate {
   name: string
   html: string | null
   copy: string | null
+  image_map: ImageMapEntry[] | null
   thumbnail: string | null
   tags: string[]
   is_active: boolean

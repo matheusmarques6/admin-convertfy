@@ -121,9 +121,39 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
       })), null, 2)
     : "Nenhum produto disponível"
 
-  // 6) Reference HTML
+  // 6) Reference HTML + Copy
   vars.reference_html = ctx.referenceHtml ?? ""
   vars.reference_copy = ctx.referenceCopy ?? ""
+
+  // 7) Image map → image_instructions
+  if (ctx.imageMap && ctx.imageMap.length > 0) {
+    const lines = ctx.imageMap.map((img) => {
+      switch (img.type) {
+        case "logo":
+          return `${img.src} → SUBSTITUIR por logo da marca: ${vars.logo_url || "sem logo"}`
+        case "product": {
+          const idx = img.product_index ?? 0
+          const products = ctx.topProducts
+          const url = products[idx]?.image_url ?? "sem imagem"
+          const name = products[idx]?.name ?? `Produto ${idx + 1}`
+          return `${img.src} → SUBSTITUIR por imagem do produto "${name}": ${url}`
+        }
+        case "hero":
+          return `${img.src} → SUBSTITUIR por hero banner. ${img.instruction ? `Instrução: ${img.instruction}` : `Usar placeholder: https://placehold.co/${img.width ?? 600}x${img.height ?? 400}/${vars.primary_color_hex || "1F1F1F"}/ffffff?text=${encodeURIComponent(vars.brand_name)}`}`
+        case "icon":
+          return `${img.src} → SUBSTITUIR por emoji/Unicode. ${img.instruction ? `Usar: ${img.instruction}` : "Escolher emoji apropriado (🚚 📦 ⭐ 💬 ✨ etc.)"}`
+        case "decorative":
+          return `${img.src} → SUBSTITUIR por caractere Unicode (★ ☆ etc.) ou remover`
+        case "custom":
+          return `${img.src} → ${img.instruction ?? "Substituir por imagem apropriada"}`
+        default:
+          return `${img.src} → Substituir conforme contexto`
+      }
+    })
+    vars.image_instructions = lines.join("\n")
+  } else {
+    vars.image_instructions = ""
+  }
 
   return vars
 }
@@ -334,6 +364,7 @@ interface GenerationContext {
   topProducts: TopProduct[]
   referenceHtml: string | null
   referenceCopy: string | null
+  imageMap: Array<{ src: string; alt: string; type: string; product_index?: number; instruction?: string | null }> | null
   settings: {
     generate_images: boolean
     max_parallel: number
@@ -876,7 +907,7 @@ async function loadGenerationContext(
     // Reference template for flow_type + email_number
     admin
       .from("email_reference_templates")
-      .select("html, copy")
+      .select("html, copy, image_map")
       .eq("flow_type", flowType)
       .eq("email_number", emailNumber)
       .eq("is_active", true)
@@ -892,6 +923,7 @@ async function loadGenerationContext(
     topProducts: ((topProductsRes.data?.top_products as TopProduct[]) ?? []),
     referenceHtml: (refTemplateRes.data?.html as string | null) ?? null,
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
+    imageMap: (refTemplateRes.data?.image_map as GenerationContext["imageMap"]) ?? null,
     settings: {
       generate_images: (settingsRes.data?.generate_images as boolean) ?? false,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,
