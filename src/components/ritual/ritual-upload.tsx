@@ -59,9 +59,21 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
     { label: "IA extraindo decisões e gerando tasks", sub: "aguardando etapa anterior", status: "pending" },
   ])
 
+  const ALLOWED_EXT = [".mp4", ".mp3", ".m4a", ".wav"]
+
+  const formatSize = (bytes: number) => {
+    const mb = bytes / (1024 * 1024)
+    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
+  }
+
   const handleFile = useCallback(async (file: File) => {
+    if (uploading) return
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
+    if (!ALLOWED_EXT.includes(ext)) return
+
+    const sizeStr = formatSize(file.size)
     setFileName(file.name)
-    setFileSize(`${(file.size / (1024 * 1024 * 1024)).toFixed(2)} GB`)
+    setFileSize(sizeStr)
     setUploading(true)
 
     setSteps((s) => s.map((st, i) =>
@@ -69,50 +81,54 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
     ))
     setStage("processing")
 
-    await new Promise((r) => setTimeout(r, 1500))
+    try {
+      await new Promise((r) => setTimeout(r, 1500))
+      setSteps((s) => s.map((st, i) => {
+        if (i === 0) return { ...st, status: "done" as const, sub: `100% · ${sizeStr}` }
+        if (i === 1) return { ...st, status: "active" as const, sub: "processando áudio..." }
+        return st
+      }))
 
-    setSteps((s) => s.map((st, i) => {
-      if (i === 0) return { ...st, status: "done" as const, sub: `100% · ${fileSize || "upload completo"}` }
-      if (i === 1) return { ...st, status: "active" as const, sub: "processando áudio..." }
-      return st
-    }))
+      await new Promise((r) => setTimeout(r, 2000))
+      setSteps((s) => s.map((st, i) => {
+        if (i === 0) return st
+        if (i === 1) return { ...st, status: "done" as const, sub: "transcrição completa" }
+        if (i === 2) return { ...st, status: "active" as const, sub: "correlacionando com lojas...", progress: 0.58 }
+        return st
+      }))
 
-    await new Promise((r) => setTimeout(r, 2000))
+      await new Promise((r) => setTimeout(r, 2000))
+      setSteps((s) => s.map((st, i) => {
+        if (i <= 1) return st
+        if (i === 2) return { ...st, status: "done" as const, sub: "12 lojas mapeadas" }
+        if (i === 3) return { ...st, status: "active" as const, sub: "extraindo decisões..." }
+        return st
+      }))
 
-    setSteps((s) => s.map((st, i) => {
-      if (i === 0) return st
-      if (i === 1) return { ...st, status: "done" as const, sub: "transcrição completa" }
-      if (i === 2) return { ...st, status: "active" as const, sub: "correlacionando com lojas...", progress: 0.58 }
-      return st
-    }))
+      await new Promise((r) => setTimeout(r, 2000))
+      setSteps((s) => s.map((st) => ({ ...st, status: "done" as const })))
 
-    await new Promise((r) => setTimeout(r, 2000))
+      await new Promise((r) => setTimeout(r, 500))
+      setStage("done")
+    } catch {
+      setStage("upload")
+    } finally {
+      setUploading(false)
+    }
+  }, [uploading])
 
-    setSteps((s) => s.map((st, i) => {
-      if (i <= 1) return st
-      if (i === 2) return { ...st, status: "done" as const, sub: "12 lojas mapeadas" }
-      if (i === 3) return { ...st, status: "active" as const, sub: "extraindo decisões..." }
-      return st
-    }))
-
-    await new Promise((r) => setTimeout(r, 2000))
-
-    setSteps((s) => s.map((st) => ({ ...st, status: "done" as const })))
-
-    await new Promise((r) => setTimeout(r, 500))
-    setStage("done")
-    setUploading(false)
-  }, [fileSize])
+  const [isDragging, setIsDragging] = useState(false)
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    setIsDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) void handleFile(file)
+    if (file) handleFile(file).catch(() => {})
   }, [handleFile])
 
   const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) void handleFile(file)
+    if (file) handleFile(file).catch(() => {})
   }, [handleFile])
 
   return (
@@ -186,12 +202,16 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
           {/* Dropzone */}
           <div
             onDragOver={(e) => e.preventDefault()}
+            onDragEnter={(e) => { e.preventDefault(); setIsDragging(true) }}
+            onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
             onDrop={onDrop}
             style={{
               marginTop: 22, padding: "36px 24px",
-              background: C.g25, border: `2px dashed rgba(78,98,216,0.35)`,
+              background: isDragging ? C.infoBg : C.g25,
+              border: `2px dashed ${isDragging ? C.brand : "rgba(78,98,216,0.35)"}`,
               borderRadius: 12,
               display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+              transition: "background 150ms, border-color 150ms",
             }}
           >
             <div style={{ fontSize: 14, color: C.g600 }}>Arraste o arquivo aqui ou</div>
@@ -270,6 +290,7 @@ export function RitualUploadClient({ sessionId }: { sessionId?: string }) {
             }}>processando</span>
           </div>
 
+          <SpinStyle />
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {steps.map((step, i) => (
               <ProcessStepRow key={i} step={step} />
@@ -361,7 +382,8 @@ function ProcessStepRow({ step }: { step: ProcessingStep }) {
       <span style={{ fontSize: 11, color: isActive ? C.brand : isDone ? C.pos : C.g400, fontWeight: 500, ...TNUM }}>
         {isDone ? "concluído" : isActive ? "em andamento" : "aguardando"}
       </span>
-      <style>{`@keyframes cf-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
+
+const SpinStyle = () => <style>{`@keyframes cf-spin { to { transform: rotate(360deg); } }`}</style>

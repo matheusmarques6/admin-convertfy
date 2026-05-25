@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState, useMemo } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import useSWR from "swr"
 import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, X, Zap, Send,
-  Paperclip, AlertTriangle, TrendingDown, TrendingUp, Minus,
+  TrendingDown, TrendingUp, Loader2,
 } from "lucide-react"
 
 const C = {
@@ -80,18 +80,6 @@ interface RitualSession {
   status: string
 }
 
-type StoreContext = {
-  identity: {
-    store_id?: string
-    store_name?: string | null
-    client_name?: string | null
-    platform?: string | null
-    niche?: string | null
-    mrr?: number | null
-    plan?: string | null
-  } | null
-}
-
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
 const TABS = [
@@ -114,33 +102,54 @@ export function RitualDiagnosticModal({
   const [currentIdx, setCurrentIdx] = useState(session.current_store_index)
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("funil")
   const [timerSec, setTimerSec] = useState(0)
-  const storeId = session.store_ids[currentIdx]
+  const [paused, setPaused] = useState(false)
+  const storeId = session.store_ids[currentIdx] as string | undefined
 
   useEffect(() => {
+    if (paused) return
     const t = setInterval(() => setTimerSec((s) => s + 1), 1000)
     return () => clearInterval(t)
-  }, [])
+  }, [paused])
 
   useEffect(() => {
     setActiveTab("funil")
   }, [storeId])
 
-  const { data: storeData } = useSWR<{ data: StoreContext }>(
-    storeId ? `/api/stores/${storeId}/onboarding-status` : null,
-    fetcher,
+  useEffect(() => {
+    document.body.style.overflow = "hidden"
+    return () => { document.body.style.overflow = "" }
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [onClose])
+
+  const { data: storeBasic } = useSWR<{
+    success?: boolean
+    id?: string
+    store_name?: string
+    niche?: string | null
+    platform?: string | null
+    client?: { name?: string } | null
+    mrr_cents?: number | null
+  }>(
+    storeId ? `/api/stores/${storeId}` : null,
+    (url: string) => fetch(url, { credentials: "include" }).then((r) => r.ok ? r.json() : null),
   )
 
   const { data: acompData } = useSWR<{
-    data: {
-      health_score: number
-      health_state: string
-      latest_report: {
-        highlights: unknown[]
-        concerns: unknown[]
-        metrics: Record<string, unknown> | null
-        ai_summary: string | null
-      } | null
-    }
+    success?: boolean
+    health_score?: number
+    health_state?: string
+    reports?: Array<{ week_start: string; metrics: Record<string, unknown> | null }>
+    latest_report?: {
+      highlights: unknown[]
+      concerns: unknown[]
+      metrics: Record<string, unknown> | null
+      ai_summary: string | null
+    } | null
   }>(storeId ? `/api/stores/${storeId}/acompanhamento` : null, fetcher)
 
   const fmtTimer = () => {
@@ -150,40 +159,58 @@ export function RitualDiagnosticModal({
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
   }
 
-  async function nextStore() {
-    const nextIdx = currentIdx + 1
-    if (nextIdx >= session.store_ids.length) {
+  const patchSession = useCallback(async (body: Record<string, unknown>) => {
+    try {
       await fetch(`/api/ritual/sessions/${session.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify(body),
       })
+    } catch { /* best-effort */ }
+  }, [session.id])
+
+  const goToStore = useCallback(async (idx: number) => {
+    await patchSession({ current_store_index: idx })
+    setCurrentIdx(idx)
+    setTimerSec(0)
+    onUpdate()
+  }, [patchSession, onUpdate])
+
+  async function nextStore() {
+    const nextIdx = currentIdx + 1
+    if (nextIdx >= session.store_ids.length) {
+      await patchSession({ status: "completed" })
       onUpdate()
       onClose()
       return
     }
-    await fetch(`/api/ritual/sessions/${session.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ current_store_index: nextIdx }),
-    })
-    setCurrentIdx(nextIdx)
-    setTimerSec(0)
-    onUpdate()
+    await goToStore(nextIdx)
   }
 
-  function prevStore() {
+  async function prevStore() {
     if (currentIdx <= 0) return
-    setCurrentIdx(currentIdx - 1)
-    setTimerSec(0)
+    await goToStore(currentIdx - 1)
   }
 
-  const healthState = (acompData?.data?.health_state ?? "healthy") as string
-  const storeName = storeData?.data?.identity?.store_name ?? "Loja"
+  const healthState = (acompData?.health_state ?? "healthy") as string
+  const storeName = storeBasic?.store_name ?? "Loja"
   const totalStores = session.store_ids.length
   const remaining = Math.max(0, (totalStores - currentIdx - 1) * 8)
+
+  if (!storeId) {
+    return (
+      <>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }} />
+        <div style={{ position: "fixed", inset: 12, background: "#F5F6F8", borderRadius: 12, zIndex: 101, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.g900, marginBottom: 8 }}>Nenhuma loja na sessão</div>
+            <button type="button" onClick={onClose} style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#fff", background: C.brand, border: "none", borderRadius: 8, cursor: "pointer" }}>Fechar</button>
+          </div>
+        </div>
+      </>
+    )
+  }
 
   return (
     <>
@@ -239,7 +266,7 @@ export function RitualDiagnosticModal({
 
           <div style={{ display: "flex", alignItems: "center", gap: 6, justifySelf: "end" }}>
             <IconBtn title="Minimizar"><ChevronDown size={16} /></IconBtn>
-            <IconBtn title="Pausar"><Clock size={16} /></IconBtn>
+            <IconBtn title={paused ? "Retomar" : "Pausar"} onClick={() => setPaused(!paused)}><Clock size={16} /></IconBtn>
             <button
               type="button"
               onClick={onClose}
@@ -264,7 +291,7 @@ export function RitualDiagnosticModal({
               <span style={{ color: C.g900, fontWeight: 600 }}>{storeName}</span>
             </span>
             <div style={{ flex: 1, height: 4, borderRadius: 2, background: C.g100, overflow: "hidden" }}>
-              <div style={{ width: `${((currentIdx + 1) / totalStores) * 100}%`, height: "100%", background: C.brand, transition: "width 200ms" }} />
+              <div style={{ width: `${totalStores > 0 ? ((currentIdx + 1) / totalStores) * 100 : 0}%`, height: "100%", background: C.brand, transition: "width 200ms" }} />
             </div>
             <span style={{ fontSize: 12, color: C.g500, ...TNUM }}>~{remaining}min restantes</span>
           </div>
@@ -281,14 +308,14 @@ export function RitualDiagnosticModal({
             {/* Store header */}
             <StoreHeader
               storeName={storeName}
-              clientName={storeData?.data?.identity?.client_name ?? null}
-              niche={storeData?.data?.identity?.niche ?? null}
-              platform={storeData?.data?.identity?.platform ?? null}
-              plan={storeData?.data?.identity?.plan ?? null}
-              mrr={storeData?.data?.identity?.mrr ?? null}
+              clientName={typeof storeBasic?.client === "object" && storeBasic.client ? (storeBasic.client as { name?: string }).name ?? null : null}
+              niche={storeBasic?.niche ?? null}
+              platform={storeBasic?.platform ?? null}
+              plan={null}
+              mrr={storeBasic?.mrr_cents ? Math.round(storeBasic.mrr_cents / 100) : null}
               healthState={healthState}
-              healthScore={acompData?.data?.health_score ?? null}
-              alert={acompData?.data?.latest_report?.ai_summary ?? null}
+              healthScore={acompData?.health_score ?? null}
+              alert={acompData?.latest_report?.ai_summary ?? null}
             />
 
             {/* Fathom banner */}
@@ -330,8 +357,8 @@ export function RitualDiagnosticModal({
 
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={acompData?.data?.latest_report} />}
-              {activeTab === "problemas" && <ProblemasTab report={acompData?.data?.latest_report} />}
+              {activeTab === "funil" && <FunilTab report={acompData?.latest_report} />}
+              {activeTab === "problemas" && <ProblemasTab report={acompData?.latest_report} />}
               {activeTab === "comparativo" && <ComparativoTab storeId={storeId!} />}
               {activeTab === "campanhas" && <CampanhasTab storeId={storeId!} />}
               {activeTab === "automacoes" && <AutomacoesTab storeId={storeId!} />}
@@ -366,7 +393,7 @@ export function RitualDiagnosticModal({
                       cursor: isDone ? "pointer" : "default",
                       transition: "all 150ms",
                     }}
-                    onClick={() => isDone && setCurrentIdx(i)}
+                    onClick={() => isDone && void goToStore(i)}
                   />
                 )
               })}
@@ -562,11 +589,14 @@ function ProblemasTab({ report }: { report?: { concerns: unknown[] } | null }) {
 /* ────────── Tab: Comparativo ────────── */
 
 function ComparativoTab({ storeId }: { storeId: string }) {
-  const { data } = useSWR<{ data: { reports: Array<{ week_start: string; metrics: Record<string, unknown> | null }> } }>(
+  const { data } = useSWR<{
+    success?: boolean
+    reports?: Array<{ week_start: string; metrics: Record<string, unknown> | null }>
+  }>(
     storeId ? `/api/stores/${storeId}/acompanhamento` : null,
     fetcher,
   )
-  const reports = data?.data?.reports ?? []
+  const reports = data?.reports ?? []
   return (
     <div>
       <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
@@ -695,13 +725,16 @@ function RitualChat({ storeId, storeName }: { storeId: string; storeName: string
         credentials: "include",
         body: JSON.stringify({ store_id: storeId, messages: newMessages }),
       })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const json = await r.json()
-      const aiMsg = json.data?.message ?? json.message
-      if (aiMsg) {
+      const aiMsg = json.message
+      if (aiMsg && typeof aiMsg.content === "string") {
         setMessages((prev) => [...prev, aiMsg as ChatMessage])
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: "Não consegui processar agora. Tenta de novo?" }])
       }
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "Erro ao consultar a IA. Tenta novamente." }])
     } finally {
       setSending(false)
     }
@@ -893,11 +926,12 @@ function Badge({ tone, label }: { tone: string; label: string }) {
   )
 }
 
-function IconBtn({ children, title }: { children: React.ReactNode; title: string }) {
+function IconBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick?: () => void }) {
   return (
     <button
       type="button"
       title={title}
+      onClick={onClick}
       style={{
         width: 32, height: 32, padding: 0,
         display: "inline-flex", alignItems: "center", justifyContent: "center",

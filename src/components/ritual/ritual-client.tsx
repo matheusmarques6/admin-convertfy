@@ -165,36 +165,36 @@ const fetcherWithError = (url: string) =>
   })
 
 export function RitualClient() {
-  const router = useRouter()
   const {
     data: sessionsData,
     error: sessionsError,
     mutate: mutateSessions,
     isLoading: sessionsLoading,
   } = useSWR<{
-    data?: { sessions: RitualSession[]; week_start: string }
+    success?: boolean
+    sessions?: RitualSession[]
+    week_start?: string
   }>("/api/ritual/sessions", fetcherWithError, { shouldRetryOnError: false })
 
-  const sessions = sessionsData?.data?.sessions ?? []
-  const weekStart = sessionsData?.data?.week_start
+  const sessions = sessionsData?.sessions ?? []
+  const weekStart = sessionsData?.week_start
 
   const activeSession = sessions.find((s) => s.status === "in_progress")
 
-  const { data: pipelineData, mutate: mutatePipeline } = useSWR<{
-    data?: {
-      by_stage: Record<number, PipelineState[]>
-      health_counts: Record<HealthState, number>
-    }
+  const { data: pipelineData, error: pipelineError, mutate: mutatePipeline } = useSWR<{
+    success?: boolean
+    by_stage?: Record<number, PipelineState[]>
+    health_counts?: Record<HealthState, number>
   }>("/api/acompanhamento/pipeline", fetcherWithError, {
     shouldRetryOnError: false,
   })
 
   const healthCounts =
-    pipelineData?.data?.health_counts ??
+    pipelineData?.health_counts ??
     ({ risk: 0, attention: 0, rampup: 0, renewal: 0, healthy: 0 } as Record<HealthState, number>)
 
   const queue = useMemo(() => {
-    const stage1Raw = pipelineData?.data?.by_stage?.[1] ?? []
+    const stage1Raw = pipelineData?.by_stage?.[1] ?? []
     return [...stage1Raw].sort((a, b) => {
       const sa = HEALTH_TONE[a.health_state]?.severity ?? 99
       const sb = HEALTH_TONE[b.health_state]?.severity ?? 99

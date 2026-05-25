@@ -120,16 +120,34 @@ const DISCARDED = [
 
 export function RitualTasksClient() {
   const router = useRouter()
-  const [blocks] = useState(MOCK_BLOCKS)
+  const [blocks, setBlocks] = useState(MOCK_BLOCKS)
   const [approving, setApproving] = useState(false)
 
-  const totalTasks = useMemo(() => blocks.reduce((acc, b) => acc + b.tasks.length, 0), [blocks])
+  const approvedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.approved && !t.discarded).length, 0), [blocks])
+  const rejectedCount = useMemo(() => blocks.reduce((a, b) => a + b.tasks.filter((t) => t.discarded).length, 0), [blocks])
+
+  function toggleTask(blockIdx: number, taskIdx: number) {
+    setBlocks((prev) =>
+      prev.map((b, bi) =>
+        bi !== blockIdx ? b : {
+          ...b,
+          tasks: b.tasks.map((t, ti) =>
+            ti !== taskIdx ? t : { ...t, approved: !t.approved }
+          ),
+        }
+      ),
+    )
+  }
 
   async function handleApproveAll() {
     setApproving(true)
-    await new Promise((r) => setTimeout(r, 1500))
-    setApproving(false)
-    router.push("/admin/operacional/ritual")
+    try {
+      // TODO: POST /api/ritual/approve-tasks com IDs das tasks aprovadas
+      await new Promise((r) => setTimeout(r, 1500))
+      router.push("/admin/operacional/ritual")
+    } catch {
+      setApproving(false)
+    }
   }
 
   return (
@@ -188,9 +206,9 @@ export function RitualTasksClient() {
           background: C.white, border: `1px solid ${C.border}`, borderRadius: 10,
           marginTop: 16, fontSize: 12.5,
         }}>
-          <KPIChip dot="#10B981" value={totalTasks} label="aprovadas" />
+          <KPIChip dot="#10B981" value={approvedCount} label="aprovadas" />
           <span style={{ color: C.g300 }}>·</span>
-          <KPIChip dot={C.g300} value={0} label="rejeitadas" />
+          <KPIChip dot={C.g300} value={rejectedCount} label="rejeitadas" />
           <span style={{ color: C.g300 }}>·</span>
           <KPIChip dot={C.warn} value={0} label="editadas" />
           <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
@@ -216,8 +234,8 @@ export function RitualTasksClient() {
       {/* Tasks list + sidebar */}
       <div style={{ padding: "20px 32px 40px", display: "flex", gap: 16 }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-          {blocks.map((block) => (
-            <TaskBlockCard key={block.storeId} block={block} />
+          {blocks.map((block, blockIdx) => (
+            <TaskBlockCard key={block.storeId} block={block} blockIdx={blockIdx} onToggleTask={toggleTask} />
           ))}
         </div>
 
@@ -251,7 +269,7 @@ export function RitualTasksClient() {
   )
 }
 
-function TaskBlockCard({ block }: { block: TaskBlock }) {
+function TaskBlockCard({ block, blockIdx, onToggleTask }: { block: TaskBlock; blockIdx: number; onToggleTask: (bi: number, ti: number) => void }) {
   const tone = TONE_MAP[block.state] ?? TONE_MAP.healthy!
   return (
     <section style={{
@@ -287,14 +305,14 @@ function TaskBlockCard({ block }: { block: TaskBlock }) {
 
       <div>
         {block.tasks.map((t, i) => (
-          <TaskRow key={t.id} task={t} isFirst={i === 0} />
+          <TaskRow key={t.id} task={t} isFirst={i === 0} onToggle={() => onToggleTask(blockIdx, i)} />
         ))}
       </div>
     </section>
   )
 }
 
-function TaskRow({ task, isFirst }: { task: TaskItem; isFirst: boolean }) {
+function TaskRow({ task, isFirst, onToggle }: { task: TaskItem; isFirst: boolean; onToggle: () => void }) {
   const prio = PRIO_MAP[task.priority] ?? PRIO_MAP.med!
   return (
     <div style={{
@@ -303,12 +321,15 @@ function TaskRow({ task, isFirst }: { task: TaskItem; isFirst: boolean }) {
       borderTop: isFirst ? "none" : `1px solid ${C.g100}`,
     }}>
       {/* Checkbox */}
-      <div style={{
-        width: 20, height: 20, borderRadius: 5,
-        border: `1.5px solid ${C.brand}`, background: task.approved ? C.brand : C.white,
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        color: "#fff", cursor: "pointer",
-      }}>{task.approved && <Check size={12} />}</div>
+      <div
+        onClick={onToggle}
+        style={{
+          width: 20, height: 20, borderRadius: 5,
+          border: `1.5px solid ${C.brand}`, background: task.approved ? C.brand : C.white,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", cursor: "pointer",
+        }}
+      >{task.approved && <Check size={12} />}</div>
 
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 500, color: C.g900, marginBottom: 6, lineHeight: 1.4 }}>
