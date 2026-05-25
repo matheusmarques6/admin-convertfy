@@ -630,7 +630,7 @@ function AgentConfigDialog({
                   value={maxTokens}
                   onChange={(e) => setMaxTokens(parseInt(e.target.value) || 2048)}
                   min={100}
-                  max={16384}
+                  max={32768}
                   className="crm-input w-full"
                 />
               </div>

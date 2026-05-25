@@ -13,7 +13,7 @@ const patchSchema = z.object({
   system_prompt: z.string().min(1).optional(),
   user_template: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).optional(),
-  max_tokens: z.number().int().min(100).max(16384).optional(),
+  max_tokens: z.number().int().min(100).max(32768).optional(),
   output_schema: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 

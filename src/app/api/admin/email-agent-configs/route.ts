@@ -14,7 +14,7 @@ const postSchema = z.object({
   system_prompt: z.string().min(1),
   user_template: z.string().min(1),
   temperature: z.number().min(0).max(2).default(0.7),
-  max_tokens: z.number().int().min(100).max(16384).default(2048),
+  max_tokens: z.number().int().min(100).max(32768).default(2048),
   output_schema: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
