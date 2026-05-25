@@ -12,6 +12,7 @@ const postSchema = z.object({
   flow_type: z.string().optional(),
   name: z.string().min(1),
   html: z.string().optional(),
+  copy: z.string().optional(),
   thumbnail: z.string().optional(),
   tags: z.array(z.string()).default([]),
   is_active: z.boolean().default(true),

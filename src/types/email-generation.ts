@@ -84,6 +84,7 @@ export interface EmailReferenceTemplate {
   flow_type: string | null
   name: string
   html: string | null
+  copy: string | null
   thumbnail: string | null
   tags: string[]
   is_active: boolean

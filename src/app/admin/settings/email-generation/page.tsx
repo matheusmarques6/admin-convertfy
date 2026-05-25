@@ -956,43 +956,7 @@ function ReferencesTab() {
     fetcher,
   )
   const templates = data?.templates ?? []
-  const [adding, setAdding] = useState(false)
-  const [name, setName] = useState("")
-  const [flowType, setFlowType] = useState("")
-  const [html, setHtml] = useState("")
-  const [tags, setTags] = useState("")
-  const [submitting, setSubmitting] = useState(false)
-
-  const save = async () => {
-    if (!name.trim()) return
-    setSubmitting(true)
-    try {
-      const res = await fetch("/api/admin/email-reference-templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          flow_type: flowType || undefined,
-          html: html || undefined,
-          tags: tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean),
-        }),
-      })
-      if (!res.ok) throw new Error("Erro ao criar")
-      setAdding(false)
-      setName("")
-      setFlowType("")
-      setHtml("")
-      setTags("")
-      mutate()
-    } catch {
-      toast({ variant: "destructive", title: "Erro ao salvar referência" })
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  const [editing, setEditing] = useState<EmailReferenceTemplate | "new" | null>(null)
 
   return (
     <div className="space-y-4">
@@ -1002,7 +966,7 @@ function ReferencesTab() {
         </div>
         <button
           type="button"
-          onClick={() => setAdding(true)}
+          onClick={() => setEditing("new")}
           className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -1016,96 +980,21 @@ function ReferencesTab() {
         </div>
       )}
 
-      {!isLoading && templates.length === 0 && !adding && (
+      {!isLoading && templates.length === 0 && !editing && (
         <div className="rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] py-10 text-center">
           <p className="text-[13px] text-slate-500 dark:text-white/45">
-            Nenhuma referência ainda. Adicione HTMLs de exemplo para guiar a geração.
+            Nenhuma referência ainda. Adicione HTMLs e copys de exemplo para guiar a geração.
           </p>
-        </div>
-      )}
-
-      {adding && (
-        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Nome
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Template Black Friday"
-                className="crm-input w-full"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Flow type
-              </label>
-              <select
-                value={flowType}
-                onChange={(e) => setFlowType(e.target.value)}
-                className="crm-input w-full"
-              >
-                <option value="">Todos</option>
-                {Object.entries(FLOW_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-              HTML
-            </label>
-            <textarea
-              rows={8}
-              value={html}
-              onChange={(e) => setHtml(e.target.value)}
-              placeholder="Cole o HTML de referência aqui..."
-              className="crm-input w-full font-mono text-[12px]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-              Tags (separadas por vírgula)
-            </label>
-            <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="promo, minimal, dark"
-              className="crm-input w-full"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={submitting || !name.trim()}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold disabled:opacity-50"
-            >
-              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Salvar
-            </button>
-          </div>
         </div>
       )}
 
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {templates.map((tpl) => (
-          <div
+          <button
             key={tpl.id}
-            className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-4"
+            type="button"
+            onClick={() => setEditing(tpl)}
+            className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-4 text-left hover:border-slate-300 dark:hover:border-white/[0.15] transition-colors"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -1137,14 +1026,194 @@ function ReferencesTab() {
                 ))}
               </div>
             )}
-            <div className="mt-2 text-[11px] text-slate-400 dark:text-white/35">
-              {new Date(tpl.created_at).toLocaleDateString("pt-BR")}
-              {tpl.html ? " - HTML incluído" : " - Sem HTML"}
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400 dark:text-white/35">
+              <span>{new Date(tpl.created_at).toLocaleDateString("pt-BR")}</span>
+              {tpl.html && <span>HTML</span>}
+              {tpl.copy && <span>Copy</span>}
+              {!tpl.html && !tpl.copy && <span>Vazio</span>}
             </div>
-          </div>
+            <div className="mt-2 flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400">
+              <Pencil className="h-3 w-3" />
+              Editar
+            </div>
+          </button>
         ))}
       </div>
+
+      {editing && (
+        <ReferenceDialog
+          template={editing === "new" ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); mutate() }}
+        />
+      )}
     </div>
+  )
+}
+
+function ReferenceDialog({
+  template,
+  onClose,
+  onSaved,
+}: {
+  template: EmailReferenceTemplate | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = template !== null
+  const [name, setName] = useState(template?.name ?? "")
+  const [flowType, setFlowType] = useState(template?.flow_type ?? "")
+  const [html, setHtml] = useState(template?.html ?? "")
+  const [copy, setCopy] = useState(template?.copy ?? "")
+  const [tags, setTags] = useState((template?.tags ?? []).join(", "))
+  const [isActive, setIsActive] = useState(template?.is_active ?? true)
+  const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const save = async () => {
+    if (!name.trim()) return
+    setSubmitting(true)
+    try {
+      const payload = {
+        name: name.trim(),
+        flow_type: flowType || null,
+        html: html || null,
+        copy: copy || null,
+        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        is_active: isActive,
+      }
+      const url = isEdit
+        ? `/api/admin/email-reference-templates/${template!.id}`
+        : "/api/admin/email-reference-templates"
+      const method = isEdit ? "PATCH" : "POST"
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error("Erro ao salvar")
+      onSaved()
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao salvar referência" })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!isEdit || !confirm("Tem certeza que deseja excluir esta referência?")) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/email-reference-templates/${template!.id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) throw new Error("Erro ao excluir")
+      onSaved()
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao excluir referência" })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <DialogPrimitive.Root open onOpenChange={(v) => !v && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-[800px] -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogPrimitive.Title className="sr-only">
+            {isEdit ? "Editar referência" : "Nova referência"}
+          </DialogPrimitive.Title>
+          <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
+            <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
+              {isEdit ? `Editar: ${template!.name}` : "Nova referência"}
+            </h2>
+            <DialogPrimitive.Close asChild>
+              <button type="button" className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]">
+                <X className="h-4 w-4" />
+              </button>
+            </DialogPrimitive.Close>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Nome</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Welcome 1" className="crm-input w-full" autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Flow type</label>
+                <select value={flowType} onChange={(e) => setFlowType(e.target.value)} className="crm-input w-full">
+                  <option value="">Todos</option>
+                  {Object.entries(FLOW_TYPE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">Tags</label>
+                <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="promo, minimal" className="crm-input w-full" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                Referência de Copy (texto/estrutura que o agente Copy deve seguir)
+              </label>
+              <textarea
+                rows={8}
+                value={copy}
+                onChange={(e) => setCopy(e.target.value)}
+                placeholder={"Subject: Bem-vinda à [marca]...\nPreheader: ...\n\n1. HERO\nHeadline: ...\nBody: ...\nCTA: ...\n\n2. TEXTO\n..."}
+                className="crm-input w-full font-mono text-[12px]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                Referência de HTML (template base para o agente HTML)
+              </label>
+              <textarea
+                rows={8}
+                value={html}
+                onChange={(e) => setHtml(e.target.value)}
+                placeholder="Cole o HTML de referência aqui..."
+                className="crm-input w-full font-mono text-[12px]"
+              />
+            </div>
+            {isEdit && (
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-2">
+                  <Switch checked={isActive} onCheckedChange={setIsActive} />
+                  <span className="text-[12px] text-slate-600 dark:text-white/60">{isActive ? "Ativo" : "Inativo"}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1 text-[12px] text-red-500 hover:text-red-600"
+                >
+                  {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  Excluir
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
+            <button type="button" onClick={onClose} className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-100 dark:hover:bg-white/[0.06]">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={submitting || !name.trim()}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold disabled:opacity-50"
+            >
+              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Save className="h-3.5 w-3.5" />
+              {isEdit ? "Salvar" : "Criar referência"}
+            </button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 

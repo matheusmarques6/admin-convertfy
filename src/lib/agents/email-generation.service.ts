@@ -122,6 +122,7 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
 
   // 6) Reference HTML
   vars.reference_html = ctx.referenceHtml ?? ""
+  vars.reference_copy = ctx.referenceCopy ?? ""
 
   return vars
 }
@@ -161,6 +162,7 @@ interface GenerationContext {
   blueprint: EmailBlueprint | null
   topProducts: TopProduct[]
   referenceHtml: string | null
+  referenceCopy: string | null
   settings: {
     generate_images: boolean
     max_parallel: number
@@ -700,7 +702,7 @@ async function loadGenerationContext(
     // Reference template for flow_type
     admin
       .from("email_reference_templates")
-      .select("html")
+      .select("html, copy")
       .eq("flow_type", flowType)
       .eq("is_active", true)
       .order("created_at", { ascending: false })
@@ -714,6 +716,7 @@ async function loadGenerationContext(
     blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
     topProducts: ((topProductsRes.data?.top_products as TopProduct[]) ?? []),
     referenceHtml: (refTemplateRes.data?.html as string | null) ?? null,
+    referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
     settings: {
       generate_images: (settingsRes.data?.generate_images as boolean) ?? false,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,
