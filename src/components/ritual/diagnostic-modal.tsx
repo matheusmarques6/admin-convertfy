@@ -882,8 +882,12 @@ function RitualChat({ storeId, storeName }: { storeId: string; storeName: string
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const json = await r.json()
       const aiMsg = json.message
+      const aiSources = (json.sources ?? []) as string[]
       if (aiMsg && typeof aiMsg.content === "string") {
-        setMessages((prev) => [...prev, aiMsg as ChatMessage])
+        const sourceNote = aiSources.length > 0
+          ? `\n\n_Fontes: ${aiSources.map((s: string) => s.replace(".", " · ")).join(" | ")}_`
+          : ""
+        setMessages((prev) => [...prev, { role: "assistant", content: aiMsg.content + sourceNote }])
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: "Não consegui processar agora. Tenta de novo?" }])
       }
