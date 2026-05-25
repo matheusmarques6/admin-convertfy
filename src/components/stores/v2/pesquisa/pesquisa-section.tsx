@@ -17,6 +17,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { Sparkles, Edit2, Loader2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "@/lib/hooks/use-toast"
 import { PesquisaCard } from "./pesquisa-card"
 import {
   Pull,
@@ -189,10 +190,17 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
         body: JSON.stringify({ store_id: storeId, mode: "regenerate" }),
       })
       if (res.ok) {
+        toast({ title: "Briefing sendo regerado", description: "O webhook foi disparado. Os dados serão atualizados em alguns segundos." })
         setTimeout(() => reload(), 15_000)
         setTimeout(() => reload(), 30_000)
         setTimeout(() => reload(), 60_000)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        const msg = (err as Record<string, unknown>).error ?? (err as Record<string, unknown>).message ?? `HTTP ${res.status}`
+        toast({ variant: "destructive", title: "Erro ao regerar briefing", description: String(msg) })
       }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
     } finally {
       setRegeneratingAll(false)
     }

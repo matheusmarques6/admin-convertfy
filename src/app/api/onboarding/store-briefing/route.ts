@@ -253,7 +253,10 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       log.error(`Failed to trigger briefing regeneration for store ${body.store_id}`, { error: result.error })
-      throw new AppError("Erro ao disparar geração do briefing via N8N", 500)
+      throw new AppError(
+        `Erro ao disparar webhook N8N: ${result.error || "URL não configurada ou N8N indisponível"}`,
+        502,
+      )
     }
 
     log.info(`Briefing regeneration triggered for store ${body.store_id}`)
