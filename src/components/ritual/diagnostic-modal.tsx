@@ -931,7 +931,7 @@ function RitualChat({ storeId, storeName }: { storeId: string; storeName: string
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: CC.text }}>Chat sobre {storeName}</div>
           <div style={{ fontSize: 10.5, color: CC.textMut, marginTop: 2, letterSpacing: "0.04em" }}>
-            MCP OMNISEND + ADMIN · Claude Sonnet
+            Omnisend Live + Admin · Claude Sonnet
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>

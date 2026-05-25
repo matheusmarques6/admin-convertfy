@@ -1,15 +1,18 @@
 import { NextRequest } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
+import type { MessageParam, ContentBlockParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resources/messages"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { OMNISEND_TOOLS, executeOmnisendTool } from "@/lib/integrations/omnisend/ritual-tools"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
-import { logger } from "@/lib/logger"
 
 const log = logger.child("RitualChat")
 
-export const maxDuration = 60
+export const maxDuration = 90
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -19,24 +22,33 @@ const SYSTEM_PROMPT = `Você é o copiloto da Convertfy durante o ritual semanal
 Sua função: ajudar o time (Bruno, Jean, Ryan) a diagnosticar performance
 de email marketing de uma loja e sugerir ações concretas.
 
-Você tem acesso a dados REAIS da loja:
-- Dados cadastrais (nome, nicho, MRR, tempo na Convertfy)
-- Health state e score do pipeline semanal
-- Últimos relatórios semanais (métricas, highlights, alertas)
-- Campanhas recentes do Omnisend (nome, subject, open rate, CTR, receita)
-- Automações ativas do Omnisend (status, performance, receita)
-- Histórico de calls anteriores
-- Briefing do onboarding
+FERRAMENTAS DISPONÍVEIS:
+Você tem acesso ao Omnisend ao vivo via ferramentas. Use-as para buscar
+dados atualizados quando o contexto pré-carregado não for suficiente.
+- omnisend_list_campaigns: campanhas recentes com métricas
+- omnisend_get_campaign: detalhes de uma campanha específica
+- omnisend_list_automations: flows/automações ativas
+- omnisend_list_segments: segmentos de contatos
+- omnisend_segment_stats: estatísticas de um segmento
+- omnisend_campaign_analytics: relatório de analytics por período
+- omnisend_brand_info: informações da conta
+- omnisend_list_contacts: listar contatos com filtros
+
+QUANDO USAR FERRAMENTAS:
+- Perguntas sobre campanhas específicas → omnisend_get_campaign
+- "Como estão os flows?" → omnisend_list_automations
+- "Qual o tamanho da lista?" → omnisend_list_segments ou omnisend_brand_info
+- "Compara campanhas do mês" → omnisend_campaign_analytics
+- Se o contexto pré-carregado já responde, NÃO chame a ferramenta
 
 REGRAS:
 - Responda em português brasileiro, direto e prático
 - Use bullet points quando listar coisas
-- Cite números específicos dos dados fornecidos — nunca invente números
-- Quando sugerir ações, seja específico: "Trocar subject do welcome flow para X" não "melhorar o welcome flow"
-- Sugira responsável: Mariana (Designer), Pedro (Ops), Jean (Estrategista), Ryan (CS)
-- Se não tiver dado, diga "não tenho esse dado" — nunca invente
-- Quando citar dados de campanha/automação, referencie pelo nome: [Omnisend: nome-da-campanha]
-- Formato de resposta para diagnóstico:
+- Cite números específicos — nunca invente
+- Quando sugerir ações, seja específico com responsável: Mariana (Designer), Pedro (Ops), Jean (Estrategista), Ryan (CS)
+- Se a ferramenta retornar erro, informe ao time e sugira alternativa
+- Referência de dados: [Omnisend: nome-do-item]
+- Formato para diagnóstico:
   1. Diagnóstico (1-2 frases)
   2. Evidências (bullets com números)
   3. Ações sugeridas (2-3 com responsável e prazo)
@@ -46,6 +58,8 @@ interface ChatMessage {
   role: "user" | "assistant"
   content: string
 }
+
+const MAX_TOOL_ROUNDS = 3
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,11 +75,11 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient()
 
-    const [storeRes, reportsRes, pipelineRes, callsRes, onbRes, campaignsRes, automationsRes] = await Promise.all([
+    const [storeRes, reportsRes, pipelineRes, callsRes, campaignsRes, automationsRes] = await Promise.all([
       admin
         .from("client_stores")
         .select(
-          "id, store_name, niche, country, mrr_cents, created_at, email_platform, currency, contract_end_date, " +
+          "id, store_name, niche, country, mrr_cents, created_at, email_platform, currency, contract_end_date, org_id, " +
             "client:clients!client_stores_client_id_fkey(name)",
         )
         .eq("id", body.store_id)
@@ -93,14 +107,6 @@ export async function POST(request: NextRequest) {
         .eq("store_id", body.store_id)
         .order("conducted_at", { ascending: false })
         .limit(3),
-
-      admin
-        .from("onboardings")
-        .select("briefing, briefing_status")
-        .eq("store_id", body.store_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
 
       admin
         .from("omnisend_campaign_metrics")
@@ -139,37 +145,23 @@ export async function POST(request: NextRequest) {
       email_platform: string | null
       currency: string | null
       contract_end_date: string | null
+      org_id: string
       client: { name: string } | { name: string }[] | null
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new AppError("ANTHROPIC_API_KEY não configurada", 500)
 
+    let omnisendApiKey: string | null = null
+    try {
+      const creds = await getStoreCredentials(body.store_id, store.org_id)
+      omnisendApiKey = creds.omnisend_api_key ?? null
+    } catch { /* store may not have Omnisend configured */ }
+
     const ageDays = Math.floor((Date.now() - new Date(store.created_at).getTime()) / 86_400_000)
 
     const rawCampaigns = (campaignsRes.data ?? []) as unknown as Array<Record<string, unknown>>
-    const campaignsSummary = rawCampaigns.map((c) => ({
-      nome: c.campaign_name,
-      data: c.send_time,
-      subject: c.subject,
-      enviados: c.recipients,
-      abertura: c.open_rate ? `${c.open_rate}%` : null,
-      ctr: c.click_rate ? `${c.click_rate}%` : null,
-      receita: c.conversion_value,
-      bounce: c.bounce_rate ? `${c.bounce_rate}%` : null,
-    }))
-
     const rawAutomations = (automationsRes.data ?? []) as unknown as Array<Record<string, unknown>>
-    const automationsSummary = rawAutomations.map((a) => ({
-      nome: a.flow_name,
-      status: a.flow_status,
-      trigger: a.trigger_type,
-      enviados: a.recipients,
-      abertura: a.open_rate ? `${a.open_rate}%` : null,
-      ctr: a.click_rate ? `${a.click_rate}%` : null,
-      conversoes: a.conversions,
-      receita: a.conversion_value,
-    }))
 
     const ctx = {
       loja: {
@@ -181,51 +173,131 @@ export async function POST(request: NextRequest) {
         mrr: store.mrr_cents && store.mrr_cents > 0 ? Math.round(store.mrr_cents / 100) : null,
         dias_na_convertfy: ageDays,
         vencimento_contrato: store.contract_end_date,
+        omnisend_conectado: !!omnisendApiKey,
       },
       cliente: store.client,
       pipeline: pipelineRes.data,
       ultimos_3_reports: reportsRes.data,
       ultimas_3_calls: callsRes.data,
-      briefing: onbRes.data?.briefing,
-      omnisend_campanhas_30d: campaignsSummary,
-      omnisend_automacoes_30d: automationsSummary,
+      omnisend_campanhas_30d_cache: rawCampaigns.map((c) => ({
+        nome: c.campaign_name, data: c.send_time, subject: c.subject,
+        enviados: c.recipients, abertura: c.open_rate ? `${c.open_rate}%` : null,
+        ctr: c.click_rate ? `${c.click_rate}%` : null, receita: c.conversion_value,
+      })),
+      omnisend_automacoes_30d_cache: rawAutomations.map((a) => ({
+        nome: a.flow_name, status: a.flow_status, trigger: a.trigger_type,
+        enviados: a.recipients, abertura: a.open_rate ? `${a.open_rate}%` : null,
+        ctr: a.click_rate ? `${a.click_rate}%` : null, receita: a.conversion_value,
+      })),
     }
 
-    const systemWithCtx = `${SYSTEM_PROMPT}\n\n=== CONTEXTO DA LOJA (DADOS REAIS) ===\n${JSON.stringify(ctx, null, 2)}`
+    const systemWithCtx = `${SYSTEM_PROMPT}\n\n=== CONTEXTO PRÉ-CARREGADO (cache 30d) ===\n${JSON.stringify(ctx, null, 2)}`
+
+    const tools = omnisendApiKey ? OMNISEND_TOOLS : []
 
     const ai = new Anthropic({ apiKey })
-    const response = await ai.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      system: systemWithCtx,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    })
 
-    const text = response.content[0]?.type === "text" ? response.content[0].text : ""
+    let apiMessages: MessageParam[] = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
 
+    let finalText = ""
     const sources: string[] = []
-    if (campaignsSummary.length > 0) sources.push("omnisend.campaigns")
-    if (automationsSummary.length > 0) sources.push("omnisend.automations")
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+
+    if (rawCampaigns.length > 0) sources.push("omnisend.campaigns.cache")
+    if (rawAutomations.length > 0) sources.push("omnisend.automations.cache")
     if (reportsRes.data && reportsRes.data.length > 0) sources.push("admin.weekly_reports")
     if (pipelineRes.data) sources.push("admin.pipeline")
     if (callsRes.data && callsRes.data.length > 0) sources.push("admin.feedback_calls")
 
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      const response = await ai.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2000,
+        system: systemWithCtx,
+        messages: apiMessages,
+        ...(tools.length > 0 ? { tools } : {}),
+      })
+
+      totalInputTokens += response.usage?.input_tokens ?? 0
+      totalOutputTokens += response.usage?.output_tokens ?? 0
+
+      if (response.stop_reason === "end_turn" || response.stop_reason !== "tool_use") {
+        for (const block of response.content) {
+          if (block.type === "text") {
+            finalText += block.text
+          }
+        }
+        break
+      }
+
+      const toolResults: ToolResultBlockParam[] = []
+      const assistantContent: ContentBlockParam[] = []
+
+      for (const block of response.content) {
+        if (block.type === "text") {
+          assistantContent.push(block)
+          finalText += block.text
+        } else if (block.type === "tool_use") {
+          assistantContent.push(block)
+
+          if (!omnisendApiKey) {
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify({ error: "Omnisend não configurado para esta loja" }),
+            })
+            continue
+          }
+
+          log.info("[RitualChat] tool_use", {
+            tool: block.name,
+            input: block.input,
+            storeId: body.store_id,
+          })
+
+          const result = await executeOmnisendTool(
+            block.name,
+            block.input as Record<string, unknown>,
+            omnisendApiKey,
+          )
+
+          if (!sources.includes(`omnisend.${block.name}.live`)) {
+            sources.push(`omnisend.${block.name}.live`)
+          }
+
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: result,
+          })
+        }
+      }
+
+      apiMessages = [
+        ...apiMessages,
+        { role: "assistant", content: assistantContent },
+        { role: "user", content: toolResults },
+      ]
+    }
+
     log.info("[RitualChat] response", {
       storeId: body.store_id,
       messageCount: messages.length,
-      textLength: text.length,
+      textLength: finalText.length,
       sources,
-      inputTokens: response.usage?.input_tokens,
-      outputTokens: response.usage?.output_tokens,
+      toolCalls: sources.filter((s) => s.includes(".live")).length,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
     })
 
     return successResponse(request, {
-      message: { role: "assistant", content: text },
+      message: { role: "assistant", content: finalText },
       sources,
-      tokens: {
-        input: response.usage?.input_tokens,
-        output: response.usage?.output_tokens,
-      },
+      tokens: { input: totalInputTokens, output: totalOutputTokens },
     })
   } catch (error) {
     return errorResponse(request, error, "RitualChat")
