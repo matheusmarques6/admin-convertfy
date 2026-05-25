@@ -18,13 +18,21 @@ OBRIGATÓRIO: retorne o documento completo começando com <!DOCTYPE html> e term
 Regras:
 - Use APENAS tabelas para layout (email-safe)
 - Todos os estilos INLINE (sem classes CSS, sem <style>)
-- Imagens como <img src="URL"> (nunca base64)
 - Fonte: use a fonte da marca se disponível, fallback pra Arial
 - Cores: use as cores da marca nos CTAs, headlines e acentos
 - Mobile: use max-width:100% nas imagens e tabelas
 - CTA buttons: padding 15px 32px, border-radius 4px, cor primária da marca
 - Footer: fundo escuro (#1F1F1F), texto branco
-- Retorne APENAS o HTML completo (<!DOCTYPE html> até </html>), sem markdown, sem explicação.`
+- Retorne APENAS o HTML completo (<!DOCTYPE html> até </html>), sem markdown, sem explicação.
+
+REGRA CRÍTICA sobre imagens:
+- Substitua TODOS os placeholders de imagem (IMG_LOGO, IMG_HERO, IMG_PRODUCT, etc.) pelas URLs reais fornecidas.
+- Logo da marca: use a URL fornecida em "Logo URL".
+- Imagens de produtos: use as URLs reais de "Produtos" (top_products), na ordem: produto 1 → IMG_PRODUCT_1, produto 2 → IMG_PRODUCT_2, etc.
+- Hero banner: se não houver URL real, use um placeholder visível (https://placehold.co/600x400/CORHEX/ffffff?text=MARCA).
+- Ícones decorativos: use emojis ou caracteres Unicode no lugar de placeholders (ex: 🚚 para shipping, 💬 para suporte, ✨ para destaque).
+- Estrelas de avaliação: use ★ e ☆ em texto, não imagens.
+- NUNCA deixe src com nomes de arquivo locais (IMG_*.png, IMG_*.jpg).`
 
 export const DEFAULT_HTML_USER_TEMPLATE = `## Marca
 Nome: {brand_name}
@@ -50,7 +58,16 @@ Preheader: {preheader}
 ## Produtos (dados reais para blocos de produtos)
 {top_products}
 
-Se "Conteúdo editorial completo" estiver preenchido, use-o como fonte primária de todo o texto, headlines, CTAs e estrutura do email — transforme o conteúdo semântico (h1, h2, p, a) em HTML email-safe com tabelas e CSS inline. Se estiver vazio, use os Blocos estruturais. APENAS HTML completo (<!DOCTYPE html> até </html>), sem texto antes ou depois.`
+Instruções:
+1. Use o HTML de referência como BASE ESTRUTURAL (layout, espaçamentos, seções).
+2. Substitua a copy pelo conteúdo editorial (se fornecido) ou pelos blocos estruturais.
+3. SUBSTITUA todos os placeholders de imagem:
+   - IMG_LOGO* → use {logo_url}
+   - IMG_PRODUCT_1, IMG_PRODUCT_2... → use as image_url dos Produtos acima (na ordem)
+   - IMG_HERO* → use placeholder: https://placehold.co/600x400/{primary_color_hex}/ffffff?text={brand_name}
+   - IMG_ICON*, IMG_STAR* → use emojis Unicode (🚚 📦 ⭐ etc.)
+4. Adapte as cores da referência para as cores da marca ({primary_color}, {secondary_color}).
+5. APENAS HTML completo (<!DOCTYPE html> até </html>), sem texto antes ou depois.`
 
 // ── Chain factory ───────────────────────────────────────────
 

@@ -82,6 +82,7 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
     vars.logo_url = b.logo_main_png ?? b.logo_main_svg ?? ""
     vars.logo_alt_url = b.logo_alt_png ?? b.logo_alt_svg ?? ""
     vars.primary_color = (b.colors_primary ?? [])[0]?.hex ?? "#1F1F1F"
+    vars.primary_color_hex = vars.primary_color.replace("#", "")
     vars.secondary_color = (b.colors_secondary ?? [])[0]?.hex ?? "#F0F0F0"
     vars.primary_colors = ((b.colors_primary ?? []).map((c) => c.hex).join(", ")) || "#1F1F1F"
     vars.primary_color_names = (b.colors_primary ?? []).map((c) => c.name).join(", ")
