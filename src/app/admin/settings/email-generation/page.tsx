@@ -516,7 +516,8 @@ function AgentConfigDialog({
   onSaved: () => void
 }) {
   const isEdit = config !== null
-  const [model, setModel] = useState(config?.model ?? "claude-sonnet-4-6")
+  const defaultModel = agentType === "image" ? "gpt-image-2" : "claude-sonnet-4-6"
+  const [model, setModel] = useState(config?.model ?? defaultModel)
   const [systemPrompt, setSystemPrompt] = useState(config?.system_prompt ?? "")
   const [userTemplate, setUserTemplate] = useState(config?.user_template ?? "")
   const [temperature, setTemperature] = useState(config?.temperature ?? 0.7)
@@ -602,38 +603,51 @@ function AgentConfigDialog({
                   onChange={(e) => setModel(e.target.value)}
                   className="crm-input w-full"
                 >
-                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                  <option value="claude-opus-4-7">Claude Opus 4.7</option>
-                  <option value="claude-haiku-3-5">Claude Haiku 3.5</option>
+                  {agentType === "image" ? (
+                    <>
+                      <option value="gpt-image-2">GPT Image 2</option>
+                      <option value="gpt-image-1">GPT Image 1</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                      <option value="claude-opus-4-7">Claude Opus 4.7</option>
+                      <option value="claude-haiku-3-5">Claude Haiku 3.5</option>
+                    </>
+                  )}
                 </select>
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                  Temperatura ({temperature})
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={temperature}
-                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#4E62D8]"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                  Max tokens
-                </label>
-                <input
-                  type="number"
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(parseInt(e.target.value) || 2048)}
-                  min={100}
-                  max={32768}
-                  className="crm-input w-full"
-                />
-              </div>
+              {agentType !== "image" && (
+                <div className="space-y-1.5">
+                  <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                    Temperatura ({temperature})
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    value={temperature}
+                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#4E62D8]"
+                  />
+                </div>
+              )}
+              {agentType !== "image" && (
+                <div className="space-y-1.5">
+                  <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                    Max tokens
+                  </label>
+                  <input
+                    type="number"
+                    value={maxTokens}
+                    onChange={(e) => setMaxTokens(parseInt(e.target.value) || 2048)}
+                    min={100}
+                    max={32768}
+                    className="crm-input w-full"
+                  />
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
