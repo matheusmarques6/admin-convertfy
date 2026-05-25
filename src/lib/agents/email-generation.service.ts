@@ -126,6 +126,43 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
   return vars
 }
 
+function extractCopyJson(raw: string) {
+  // 1) Strip ALL markdown fences anywhere in the string
+  let text = raw.replace(/```(?:json)?\s*/gi, "").trim()
+
+  // 2) Try direct parse first (cleanest case)
+  try {
+    return CopyOutputSchema.parse(JSON.parse(text))
+  } catch { /* continue */ }
+
+  // 3) Find JSON by matching balanced braces
+  const start = text.indexOf("{")
+  if (start === -1) {
+    log.error("copy.no_json", { rawOutput: raw.slice(0, 1000) })
+    throw new Error(`Copy não retornou JSON. Resposta: ${raw.slice(0, 300)}`)
+  }
+
+  let depth = 0
+  let end = -1
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++
+    else if (text[i] === "}") {
+      depth--
+      if (depth === 0) { end = i + 1; break }
+    }
+  }
+
+  if (end === -1) end = text.length
+  const jsonStr = text.slice(start, end)
+
+  try {
+    return CopyOutputSchema.parse(JSON.parse(jsonStr))
+  } catch (parseErr) {
+    log.error("copy.json_parse_error", { rawOutput: raw.slice(0, 1000), jsonStr: jsonStr.slice(0, 500) })
+    throw new Error(`Copy JSON inválido: ${(parseErr as Error).message}. Resposta: ${raw.slice(0, 300)}`)
+  }
+}
+
 function fillMissingVars(
   inputVars: Record<string, string>,
   systemPrompt: string,
@@ -279,29 +316,10 @@ export async function generateEmail(
         user_template: userTemplate,
       })
 
-      let rawOutput = await chain.invoke(inputVars)
+      const rawOutput = await chain.invoke(inputVars)
 
-      // Strip markdown fences
-      rawOutput = rawOutput
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim()
-
-      // Extract JSON object from output
-      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        log.error("copy.no_json", { rawOutput: rawOutput.slice(0, 500) })
-        throw new Error(`Copy agent não retornou JSON válido. Início da resposta: ${rawOutput.slice(0, 200)}`)
-      }
-
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(jsonMatch[0])
-      } catch (parseErr) {
-        log.error("copy.json_parse_error", { rawOutput: rawOutput.slice(0, 500) })
-        throw new Error(`Copy agent retornou JSON malformado: ${(parseErr as Error).message}`)
-      }
-      const copyOutput = CopyOutputSchema.parse(parsed)
+      // Robust JSON extraction: strip fences, find outermost { }
+      const copyOutput = extractCopyJson(rawOutput)
 
       // Estimate tokens (rough: 1 token ≈ 4 chars)
       const promptText = systemPrompt + JSON.stringify(inputVars)
@@ -320,7 +338,7 @@ export async function generateEmail(
         model,
         inputVars,
         rawOutput,
-        parsedOutput: parsed as Record<string, unknown>,
+        parsedOutput: copyOutput as unknown as Record<string, unknown>,
         tokensInput,
         tokensOutput,
         costCents: computeCostCents(model, tokensInput, tokensOutput),
@@ -510,10 +528,9 @@ export async function generateEmail(
 
       let rawHtml = await chain.invoke(inputVars)
 
-      // Strip markdown fences se vieram
+      // Strip markdown fences (qualquer posição)
       rawHtml = rawHtml
-        .replace(/^```html\s*/i, "")
-        .replace(/```\s*$/i, "")
+        .replace(/```(?:html)?\s*/gi, "")
         .trim()
 
       // Estimate tokens
