@@ -1,29 +1,76 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import useSWR from "swr"
-
-const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
+import {
+  ChevronLeft, ChevronRight, ChevronDown, Clock, X, Zap, Send,
+  Paperclip, AlertTriangle, TrendingDown, TrendingUp, Minus,
+} from "lucide-react"
 
 const C = {
-  brand: "#2137B6",
-  brand50: "#EEF0FB",
-  brandLight: "#4E62D8",
+  brand: "#4E62D8",
+  white: "#FFFFFF",
+  g25: "#FAFBFC",
   g50: "#F8FAFC",
   g100: "#F3F4F6",
   g200: "#E5E7EB",
   g300: "#D1D5DB",
+  g400: "#9CA3AF",
   g500: "#6B7280",
+  g600: "#4B5563",
   g700: "#374151",
   g900: "#111827",
+  border: "rgba(0,0,0,0.08)",
   pos: "#065F46",
   posBg: "#ECFDF5",
-  warn: "#92400E",
-  warnBg: "#FFFBEB",
+  posBorder: "#A7F3D0",
   neg: "#991B1B",
   negBg: "#FEF2F2",
+  negBorder: "#FECACA",
+  warn: "#92400E",
+  warnBg: "#FFFBEB",
+  warnBorder: "#FDE68A",
   purple: "#7C3AED",
   purpleBg: "#F3E8FF",
+  purpleBorder: "#DDD6FE",
+  info: "#2137B6",
+  infoBg: "#EEF0FB",
+  infoBorder: "#C7CDEF",
+}
+
+const TNUM: React.CSSProperties = { fontVariantNumeric: "tabular-nums lining-nums" }
+
+const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
+
+const HEALTH_ACCENT: Record<string, string> = {
+  risk: "#B91C1C",
+  attention: "#B45309",
+  renewal: "#7C3AED",
+  rampup: "#4E62D8",
+  healthy: "#047857",
+}
+
+const HEALTH_LABEL: Record<string, string> = {
+  risk: "Em risco",
+  attention: "Em atenção",
+  renewal: "Renovação",
+  rampup: "Ramp-up",
+  healthy: "Saudável",
+}
+
+const HEALTH_TONE: Record<string, string> = {
+  risk: "neg",
+  attention: "warn",
+  renewal: "purple",
+  rampup: "info",
+  healthy: "pos",
+}
+
+const DOT = {
+  done: { bg: "#10B981", ring: "rgba(16,185,129,0.18)" },
+  current: { bg: "#4E62D8", ring: "rgba(78,98,216,0.22)" },
+  pending: { bg: "#D1D5DB", ring: "transparent" },
+  skipped: { bg: "#9CA3AF", ring: "transparent" },
 }
 
 interface RitualSession {
@@ -49,10 +96,10 @@ type ChatMessage = { role: "user" | "assistant"; content: string }
 
 const TABS = [
   { id: "funil" as const, label: "Funil & gargalo" },
-  { id: "problemas" as const, label: "80/20 problemas" },
-  { id: "comparativo" as const, label: "Comparativo" },
-  { id: "campanhas" as const, label: "Campanhas" },
-  { id: "automacoes" as const, label: "Automações" },
+  { id: "problemas" as const, label: "80/20 problemas", badge: true },
+  { id: "comparativo" as const, label: "Comparativo histórico" },
+  { id: "campanhas" as const, label: "Campanhas", badge: true },
+  { id: "automacoes" as const, label: "Automações", badge: true },
 ]
 
 export function RitualDiagnosticModal({
@@ -66,80 +113,46 @@ export function RitualDiagnosticModal({
 }) {
   const [currentIdx, setCurrentIdx] = useState(session.current_store_index)
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("funil")
-  const [notes, setNotes] = useState("")
-  const [actions, setActions] = useState<string[]>([])
-  const [actionDraft, setActionDraft] = useState("")
-  const [skipReason, setSkipReason] = useState("")
-  const [savingState, setSavingState] = useState<"idle" | "saving" | "saved">("idle")
   const [timerSec, setTimerSec] = useState(0)
   const storeId = session.store_ids[currentIdx]
 
-  // Timer
   useEffect(() => {
     const t = setInterval(() => setTimerSec((s) => s + 1), 1000)
     return () => clearInterval(t)
   }, [])
 
-  // Reset state on store change
   useEffect(() => {
-    setNotes("")
-    setActions([])
-    setActionDraft("")
-    setSkipReason("")
     setActiveTab("funil")
   }, [storeId])
 
-  // Pega contexto da loja (usa endpoint que já existe pra task)
-  const { data: storeData } = useSWR<{
-    data: StoreContext
-  }>(
+  const { data: storeData } = useSWR<{ data: StoreContext }>(
     storeId ? `/api/stores/${storeId}/onboarding-status` : null,
     fetcher,
   )
 
-  // Latest weekly report
   const { data: acompData } = useSWR<{
-    data: { health_score: number; health_state: string; latest_report: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null }
-  }>(
-    storeId ? `/api/stores/${storeId}/acompanhamento` : null,
-    fetcher,
-  )
+    data: {
+      health_score: number
+      health_state: string
+      latest_report: {
+        highlights: unknown[]
+        concerns: unknown[]
+        metrics: Record<string, unknown> | null
+        ai_summary: string | null
+      } | null
+    }
+  }>(storeId ? `/api/stores/${storeId}/acompanhamento` : null, fetcher)
 
   const fmtTimer = () => {
-    const m = Math.floor(timerSec / 60)
+    const h = Math.floor(timerSec / 3600)
+    const m = Math.floor((timerSec % 3600) / 60)
     const s = timerSec % 60
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-  }
-
-  async function saveDiagnostic(opts: { skipped?: boolean } = {}) {
-    if (!storeId) return
-    setSavingState("saving")
-    try {
-      await fetch(`/api/ritual/sessions/${session.id}/diagnostics`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          store_id: storeId,
-          notes,
-          approved_actions: actions,
-          skipped: opts.skipped ?? false,
-          skip_reason: opts.skipped ? skipReason : null,
-          duration_seconds: timerSec,
-        }),
-      })
-      setSavingState("saved")
-      setTimeout(() => setSavingState("idle"), 1500)
-    } catch {
-      setSavingState("idle")
-    }
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
   }
 
   async function nextStore() {
-    await saveDiagnostic()
     const nextIdx = currentIdx + 1
     if (nextIdx >= session.store_ids.length) {
-      // Encerra sessão
       await fetch(`/api/ritual/sessions/${session.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -161,448 +174,392 @@ export function RitualDiagnosticModal({
     onUpdate()
   }
 
-  async function skipStore() {
-    if (!skipReason.trim()) {
-      const r = window.prompt("Por que pular esta loja?")
-      if (!r) return
-      setSkipReason(r)
-      await saveDiagnostic({ skipped: true })
-    } else {
-      await saveDiagnostic({ skipped: true })
-    }
-    void nextStore()
+  function prevStore() {
+    if (currentIdx <= 0) return
+    setCurrentIdx(currentIdx - 1)
+    setTimerSec(0)
   }
 
-  function addAction() {
-    if (!actionDraft.trim()) return
-    setActions((arr) => [...arr, actionDraft.trim()])
-    setActionDraft("")
-  }
+  const healthState = (acompData?.data?.health_state ?? "healthy") as string
+  const storeName = storeData?.data?.identity?.store_name ?? "Loja"
+  const totalStores = session.store_ids.length
+  const remaining = Math.max(0, (totalStores - currentIdx - 1) * 8)
 
   return (
     <>
-      <div
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }}
-      />
-      <div
-        style={{
-          position: "fixed",
-          inset: 16,
-          background: "#fff",
-          borderRadius: 8,
-          zIndex: 101,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "12px 20px",
-            borderBottom: `1px solid ${C.g200}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 10px",
-                fontSize: 10,
-                fontWeight: 700,
-                color: C.neg,
-                background: C.negBg,
-                borderRadius: 3,
-                textTransform: "uppercase",
-                letterSpacing: 0.6,
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: C.neg,
-                  animation: "pulse 2s infinite",
-                }}
-              />
-              <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }`}</style>
-              Sessão ativa
-            </span>
-            <span style={{ fontSize: 11, color: C.g500, fontVariantNumeric: "tabular-nums" }}>
-              {fmtTimer()}
-            </span>
-            <span style={{ fontSize: 12, color: C.g700, fontWeight: 600 }}>
-              {currentIdx + 1} de {session.store_ids.length}
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }} />
+      <div style={{
+        position: "fixed", inset: 12, background: "#F5F6F8",
+        borderRadius: 12, zIndex: 101,
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        boxShadow: "0 25px 50px rgba(0,0,0,0.25)",
+      }}>
+        {/* ── Modal Header ── */}
+        <header style={{
+          display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center",
+          padding: "12px 22px", borderBottom: `1px solid ${C.border}`,
+          background: C.white, gap: 16, flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "5px 11px 5px 10px",
+              background: C.white, border: `1px solid ${C.border}`,
+              borderRadius: 6,
+            }}>
+              <style>{`@keyframes cf-pulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.6)}50%{box-shadow:0 0 0 5px rgba(220,38,38,0)}}`}</style>
+              <span style={{
+                width: 7, height: 7, borderRadius: "50%",
+                background: "#DC2626", flexShrink: 0,
+                animation: "cf-pulse 1.8s ease-in-out infinite",
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: C.g700 }}>Gravando</span>
+              <span style={{ width: 1, height: 11, background: C.border, margin: "0 2px" }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.g700, ...TNUM, letterSpacing: "0.01em" }}>{fmtTimer()}</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, justifySelf: "center" }}>
+            <div style={{ display: "flex" }}>
+              {["B", "J", "R"].map((initial, i) => (
+                <div key={initial} style={{
+                  width: 26, height: 26, borderRadius: "50%",
+                  background: ["#DBEAFE", "#FEF3C7", "#D1FAE5"][i],
+                  color: ["#1E40AF", "#92400E", "#065F46"][i],
+                  border: `2px solid ${C.white}`,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, marginLeft: i === 0 ? 0 : -8,
+                }}>{initial}</div>
+              ))}
+            </div>
+            <span style={{ fontSize: 12.5, color: C.g600 }}>
+              Na call: <span style={{ color: C.g900, fontWeight: 500 }}>Bruno · Jean · Ryan</span>
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ fontSize: 13, color: C.g500, background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px" }}
-          >
-            Fechar ✕
-          </button>
-        </div>
 
-        {/* Main grid: content + chat IA */}
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 400px", minHeight: 0 }}>
-          {/* Content */}
-          <div style={{ overflowY: "auto", padding: 20 }}>
-            {storeData?.data && (
-              <StoreInfoCard
-                storeData={storeData.data}
-                acompData={acompData?.data}
-              />
-            )}
-
-            {/* Tabs */}
-            <div
+          <div style={{ display: "flex", alignItems: "center", gap: 6, justifySelf: "end" }}>
+            <IconBtn title="Minimizar"><ChevronDown size={16} /></IconBtn>
+            <IconBtn title="Pausar"><Clock size={16} /></IconBtn>
+            <button
+              type="button"
+              onClick={onClose}
               style={{
-                display: "flex",
-                gap: 4,
-                borderBottom: `1px solid ${C.g200}`,
-                marginTop: 16,
-                marginBottom: 12,
+                padding: "6px 12px", fontSize: 12, fontWeight: 600,
+                color: C.neg, background: C.negBg,
+                border: `1px solid ${C.negBorder}`, borderRadius: 6,
+                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5,
               }}
             >
+              <X size={13} /> Encerrar ritual
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 14, marginTop: 4 }}>
+            <span style={{ fontSize: 12, color: C.g500 }}>
+              Loja <span style={{ color: C.g900, fontWeight: 600, ...TNUM }}>{currentIdx + 1}</span>
+              <span style={{ color: C.g300 }}> / </span>
+              <span style={TNUM}>{totalStores}</span>
+              <span style={{ color: C.g400, margin: "0 8px" }}>·</span>
+              <span style={{ color: C.g900, fontWeight: 600 }}>{storeName}</span>
+            </span>
+            <div style={{ flex: 1, height: 4, borderRadius: 2, background: C.g100, overflow: "hidden" }}>
+              <div style={{ width: `${((currentIdx + 1) / totalStores) * 100}%`, height: "100%", background: C.brand, transition: "width 200ms" }} />
+            </div>
+            <span style={{ fontSize: 12, color: C.g500, ...TNUM }}>~{remaining}min restantes</span>
+          </div>
+        </header>
+
+        {/* ── Body: analysis + chat ── */}
+        <div style={{
+          flex: 1, display: "grid",
+          gridTemplateColumns: "1fr 460px",
+          gap: 14, padding: 14, minHeight: 0, overflow: "hidden",
+        }}>
+          {/* Left: analysis area */}
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            {/* Store header */}
+            <StoreHeader
+              storeName={storeName}
+              clientName={storeData?.data?.identity?.client_name ?? null}
+              niche={storeData?.data?.identity?.niche ?? null}
+              platform={storeData?.data?.identity?.platform ?? null}
+              plan={storeData?.data?.identity?.plan ?? null}
+              mrr={storeData?.data?.identity?.mrr ?? null}
+              healthState={healthState}
+              healthScore={acompData?.data?.health_score ?? null}
+              alert={acompData?.data?.latest_report?.ai_summary ?? null}
+            />
+
+            {/* Fathom banner */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "7px 14px", background: C.g25,
+              border: `1px solid ${C.border}`, borderRadius: 8,
+              marginBottom: 12, fontSize: 12, color: C.g600,
+            }}>
+              <Zap size={13} style={{ color: C.g400, flexShrink: 0 }} />
+              <span>Fathom captura a discussão em background · ao final do ritual, a IA extrai decisões da transcrição.</span>
+            </div>
+
+            {/* Tabs */}
+            <div style={{
+              display: "flex", gap: 0, borderBottom: `1px solid ${C.border}`,
+              marginBottom: 14,
+            }}>
               {TABS.map((t) => {
                 const isActive = activeTab === t.id
                 return (
-                  <button
+                  <div
                     key={t.id}
-                    type="button"
                     onClick={() => setActiveTab(t.id)}
                     style={{
-                      padding: "8px 12px",
-                      fontSize: 12,
-                      fontWeight: isActive ? 600 : 500,
+                      padding: "10px 14px",
+                      fontSize: 13, fontWeight: isActive ? 600 : 500,
                       color: isActive ? C.brand : C.g500,
-                      background: "transparent",
-                      border: "none",
                       borderBottom: `2px solid ${isActive ? C.brand : "transparent"}`,
-                      cursor: "pointer",
-                      marginBottom: -1,
+                      marginBottom: -1, cursor: "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 6,
                     }}
                   >
                     {t.label}
-                  </button>
+                  </div>
                 )
               })}
             </div>
 
             {/* Tab content */}
-            <div style={{ minHeight: 200 }}>
-              {activeTab === "funil" && <FunilTab acompData={acompData?.data} />}
-              {activeTab === "problemas" && <ProblemasTab acompData={acompData?.data} />}
-              {activeTab === "comparativo" && <ComparativoTab storeId={storeId} />}
-              {activeTab === "campanhas" && <CampanhasTab storeId={storeId} />}
-              {activeTab === "automacoes" && <AutomacoesTab storeId={storeId} />}
-            </div>
-
-            {/* Notes + actions */}
-            <div style={{ marginTop: 24, padding: 16, background: C.g50, borderRadius: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.g700, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
-                Notas do diagnóstico
-              </div>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Decisões da call sobre esta loja..."
-                style={{
-                  width: "100%",
-                  minHeight: 80,
-                  padding: 10,
-                  fontSize: 13,
-                  border: `1px solid ${C.g200}`,
-                  borderRadius: 4,
-                  outline: "none",
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                  background: "#fff",
-                }}
-              />
-
-              <div style={{ marginTop: 14, fontSize: 11, fontWeight: 700, color: C.g700, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
-                Ações aprovadas ({actions.length})
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  type="text"
-                  value={actionDraft}
-                  onChange={(e) => setActionDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addAction()}
-                  placeholder="ex: Mariana refazer welcome email com novo CTA"
-                  style={{
-                    flex: 1,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    border: `1px solid ${C.g200}`,
-                    borderRadius: 4,
-                    outline: "none",
-                    background: "#fff",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={addAction}
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#fff",
-                    background: C.brand,
-                    border: "none",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                  }}
-                >
-                  Adicionar
-                </button>
-              </div>
-              {actions.length > 0 && (
-                <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
-                  {actions.map((a, i) => (
-                    <li
-                      key={i}
-                      style={{
-                        padding: "6px 0",
-                        fontSize: 12,
-                        color: C.g700,
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <span style={{ color: C.pos, fontWeight: 700 }}>✓</span>
-                      <span style={{ flex: 1 }}>{a}</span>
-                      <button
-                        type="button"
-                        onClick={() => setActions((arr) => arr.filter((_, idx) => idx !== i))}
-                        style={{ fontSize: 11, color: C.neg, background: "transparent", border: "none", cursor: "pointer" }}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
+              {activeTab === "funil" && <FunilTab report={acompData?.data?.latest_report} />}
+              {activeTab === "problemas" && <ProblemasTab report={acompData?.data?.latest_report} />}
+              {activeTab === "comparativo" && <ComparativoTab storeId={storeId!} />}
+              {activeTab === "campanhas" && <CampanhasTab storeId={storeId!} />}
+              {activeTab === "automacoes" && <AutomacoesTab storeId={storeId!} />}
             </div>
           </div>
 
-          {/* Chat IA */}
-          <RitualChatPanel storeId={storeId} />
+          {/* Right: Chat IA */}
+          <div style={{ minHeight: 0, overflow: "hidden" }}>
+            <RitualChat storeId={storeId!} storeName={storeName} />
+          </div>
         </div>
 
-        {/* Footer */}
-        <div
-          style={{
-            padding: "12px 20px",
-            borderTop: `1px solid ${C.g200}`,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            background: C.g50,
-          }}
-        >
-          <div style={{ display: "flex", gap: 4 }}>
-            {session.store_ids.map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: i < currentIdx ? C.pos : i === currentIdx ? C.brand : C.g300,
-                }}
-              />
-            ))}
+        {/* ── Footer ── */}
+        <footer style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 22px", borderTop: `1px solid ${C.border}`,
+          background: C.white, gap: 16, flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {session.store_ids.map((_, i) => {
+                const isCurrent = i === currentIdx
+                const isDone = i < currentIdx
+                const cfg = DOT[isCurrent ? "current" : isDone ? "done" : "pending"]
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: isCurrent ? 12 : 9, height: isCurrent ? 12 : 9,
+                      borderRadius: "50%", background: cfg.bg,
+                      boxShadow: isCurrent ? `0 0 0 4px ${cfg.ring}` : "none",
+                      cursor: isDone ? "pointer" : "default",
+                      transition: "all 150ms",
+                    }}
+                    onClick={() => isDone && setCurrentIdx(i)}
+                  />
+                )
+              })}
+            </div>
+            <span style={{ fontSize: 12, color: C.g500, ...TNUM }}>
+              <span style={{ color: C.g900, fontWeight: 600 }}>{currentIdx + 1}</span>
+              <span style={{ color: C.g300 }}> / </span>
+              {totalStores}
+            </span>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {savingState !== "idle" && (
-              <span style={{ fontSize: 11, color: C.g500, fontStyle: "italic" }}>
-                {savingState === "saving" ? "Salvando..." : "Salvo ✓"}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => saveDiagnostic()}
-              style={{
-                padding: "8px 14px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: C.g700,
-                background: "transparent",
-                border: `1px solid ${C.g300}`,
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
-            >
-              Salvar
-            </button>
-            <button
-              type="button"
-              onClick={skipStore}
-              style={{
-                padding: "8px 14px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: C.warn,
-                background: "transparent",
-                border: `1px solid ${C.warn}`,
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
-            >
-              Pular
-            </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <FooterBtn onClick={prevStore} disabled={currentIdx <= 0}>
+              <ChevronLeft size={14} /> Voltar
+            </FooterBtn>
+            <FooterBtn onClick={nextStore}>Pular esta loja</FooterBtn>
             <button
               type="button"
               onClick={nextStore}
               style={{
-                padding: "8px 18px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#fff",
-                background: C.brand,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
+                padding: "9px 16px", fontSize: 13, fontWeight: 600,
+                color: "#fff", background: C.brand,
+                border: "none", borderRadius: 8,
+                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
               }}
             >
-              {currentIdx + 1 === session.store_ids.length ? "Finalizar ritual" : "Próxima loja →"}
+              {currentIdx + 1 === totalStores ? "Finalizar ritual" : "Próxima loja"}
+              <ChevronRight size={14} />
             </button>
           </div>
-        </div>
+        </footer>
       </div>
     </>
   )
 }
 
-function StoreInfoCard({
-  storeData,
-  acompData,
+/* ────────── Store Header ────────── */
+
+function StoreHeader({
+  storeName, clientName, niche, platform, plan, mrr,
+  healthState, healthScore, alert,
 }: {
-  storeData: StoreContext
-  acompData?: { health_score: number; health_state: string } | undefined
+  storeName: string
+  clientName: string | null
+  niche: string | null
+  platform: string | null
+  plan: string | null
+  mrr: number | null
+  healthState: string
+  healthScore: number | null
+  alert: string | null
 }) {
-  const id = storeData?.identity
-  if (!id) return null
+  const accent = HEALTH_ACCENT[healthState] ?? HEALTH_ACCENT.healthy
+  const label = HEALTH_LABEL[healthState] ?? "Saudável"
+  const tone = HEALTH_TONE[healthState] ?? "pos"
+  const initial = storeName[0]?.toUpperCase() ?? "?"
+
   return (
-    <div style={{ padding: 16, background: C.g50, borderRadius: 6, marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.g900 }}>{id.store_name}</div>
-          {id.client_name && (
-            <div style={{ fontSize: 13, color: C.g500, marginTop: 2 }}>{id.client_name}</div>
-          )}
+    <div style={{
+      display: "flex", alignItems: "center", gap: 16,
+      padding: "16px 18px 16px 22px", background: C.white,
+      border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 12,
+      position: "relative", overflow: "hidden",
+    }}>
+      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: accent }} />
+      <div style={{
+        width: 48, height: 48, borderRadius: 10,
+        background: C.g50, color: C.g900,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em",
+        border: `1px solid ${C.border}`,
+      }}>{initial}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: C.g900, letterSpacing: "-0.02em" }}>{storeName}</h2>
+          <Badge tone={tone} label={label} />
         </div>
-        {acompData && (
-          <div
-            style={{
-              padding: "8px 12px",
-              background: "#fff",
-              borderRadius: 4,
-              border: `1px solid ${C.g200}`,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 9, fontWeight: 700, color: C.g500, textTransform: "uppercase" }}>Health</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.g900, fontVariantNumeric: "tabular-nums" }}>
-              {acompData.health_score}
-            </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, fontSize: 12.5, color: C.g500 }}>
+          {clientName && <span style={{ color: C.g700 }}>{clientName}</span>}
+          {niche && <span>{niche}</span>}
+          {platform && <span>{platform}</span>}
+          {plan && <span>{plan}</span>}
+          {mrr != null && mrr > 0 && <span style={{ color: C.g700, fontWeight: 500, ...TNUM }}>MRR R$ {Math.round(mrr / 1000)}k</span>}
+        </div>
+      </div>
+      {(alert || healthScore != null) && (
+        <div style={{ textAlign: "right", paddingLeft: 18, borderLeft: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            {healthState === "healthy" ? "Receita semana" : "Alerta principal"}
           </div>
-        )}
-      </div>
-      <div style={{ marginTop: 12, display: "flex", gap: 12, fontSize: 11, color: C.g500 }}>
-        {id.niche && <span>{id.niche}</span>}
-        {id.platform && <span>· {id.platform}</span>}
-        {id.mrr && <span>· R$ {(id.mrr / 1000).toFixed(1)}k MRR</span>}
-        {id.plan && <span>· {id.plan}</span>}
-      </div>
+          <div style={{
+            fontSize: 15, fontWeight: 600, marginTop: 3,
+            color: healthState === "healthy" ? C.pos : accent,
+            letterSpacing: "-0.01em", ...TNUM,
+          }}>
+            {alert ? (alert.length > 50 ? alert.slice(0, 47) + "..." : alert) : `Score ${healthScore}`}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function FunilTab({ acompData }: { acompData?: { latest_report: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null } }) {
-  const report = acompData?.latest_report
+/* ────────── Tab: Funil ────────── */
+
+function FunilTab({ report }: { report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null }) {
   if (!report) {
-    return <div style={{ padding: 24, textAlign: "center", color: C.g500, fontSize: 13 }}>Sem dados de funil disponíveis.</div>
+    return <EmptyTab>Sem dados de funil disponíveis.</EmptyTab>
   }
   return (
     <div>
       {report.ai_summary && (
-        <div style={{ marginBottom: 16, padding: 12, background: C.brand50, borderRadius: 4, fontSize: 13, color: C.g700, lineHeight: 1.5 }}>
-          <strong>Resumo:</strong> {report.ai_summary}
+        <div style={{ marginBottom: 16, padding: 14, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 8, fontSize: 13, color: C.g700, lineHeight: 1.55 }}>
+          <strong style={{ fontWeight: 600 }}>Resumo IA:</strong> {report.ai_summary}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.g500, textTransform: "uppercase", marginBottom: 6 }}>
-            Destaques
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-            {(report.highlights ?? []).map((h, i) => (
-              <li key={i} style={{ padding: "6px 0", fontSize: 12, color: C.g700, borderBottom: `1px solid ${C.g100}` }}>
-                <span style={{ color: C.pos }}>↑</span> {typeof h === "string" ? h : JSON.stringify(h)}
-              </li>
-            ))}
-            {(!report.highlights || report.highlights.length === 0) && (
-              <li style={{ color: C.g500, fontSize: 12 }}>—</li>
-            )}
-          </ul>
+          <SectionLabel>Destaques</SectionLabel>
+          {(report.highlights ?? []).length === 0 ? (
+            <div style={{ fontSize: 12, color: C.g500 }}>Nenhum destaque registrado.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {(report.highlights ?? []).map((h, i) => (
+                <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <TrendingUp size={12} style={{ color: C.pos, flexShrink: 0, marginTop: 2 }} />
+                  <span>{typeof h === "string" ? h : JSON.stringify(h)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.g500, textTransform: "uppercase", marginBottom: 6 }}>
-            Alertas
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-            {(report.concerns ?? []).map((c, i) => (
-              <li key={i} style={{ padding: "6px 0", fontSize: 12, color: C.g700, borderBottom: `1px solid ${C.g100}` }}>
-                <span style={{ color: C.neg }}>↓</span> {typeof c === "string" ? c : JSON.stringify(c)}
-              </li>
-            ))}
-            {(!report.concerns || report.concerns.length === 0) && (
-              <li style={{ color: C.g500, fontSize: 12 }}>—</li>
-            )}
-          </ul>
+          <SectionLabel>Alertas</SectionLabel>
+          {(report.concerns ?? []).length === 0 ? (
+            <div style={{ fontSize: 12, color: C.g500 }}>Nenhum alerta.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {(report.concerns ?? []).map((c, i) => (
+                <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <TrendingDown size={12} style={{ color: C.neg, flexShrink: 0, marginTop: 2 }} />
+                  <span>{typeof c === "string" ? c : JSON.stringify(c)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function ProblemasTab({ acompData }: { acompData?: { latest_report: { concerns: unknown[] } | null } }) {
-  const concerns = acompData?.latest_report?.concerns ?? []
+/* ────────── Tab: 80/20 Problemas ────────── */
+
+function ProblemasTab({ report }: { report?: { concerns: unknown[] } | null }) {
+  const concerns = report?.concerns ?? []
   return (
     <div>
-      <div style={{ fontSize: 12, color: C.g500, marginBottom: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14, lineHeight: 1.5 }}>
         Causa-raiz ranqueada pela IA com base nos alertas mais recorrentes.
       </div>
       {concerns.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: C.g500, fontSize: 13 }}>
-          Sem alertas recorrentes mapeados.
-        </div>
+        <EmptyTab>Sem alertas recorrentes mapeados.</EmptyTab>
       ) : (
-        <ol style={{ margin: 0, padding: "0 0 0 20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {concerns.slice(0, 5).map((c, i) => (
-            <li key={i} style={{ padding: "8px 0", fontSize: 13, color: C.g700 }}>
-              {typeof c === "string" ? c : JSON.stringify(c)}
-            </li>
+            <div key={i} style={{
+              padding: "12px 14px", background: i === 0 ? C.warnBg : C.white,
+              border: `1px solid ${i === 0 ? C.warnBorder : C.border}`,
+              borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 10,
+            }}>
+              <span style={{
+                width: 22, height: 22, borderRadius: 6,
+                background: i === 0 ? C.warn : C.g200,
+                color: i === 0 ? "#fff" : C.g600,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>
+                {i + 1}
+              </span>
+              <div style={{ flex: 1, fontSize: 13, color: C.g700, lineHeight: 1.5 }}>
+                {typeof c === "string" ? c : JSON.stringify(c)}
+              </div>
+            </div>
           ))}
-        </ol>
+        </div>
       )}
-      <div style={{ marginTop: 16, padding: 12, background: C.warnBg, borderRadius: 4, fontSize: 12, color: C.warn, lineHeight: 1.5 }}>
-        <strong>Sugestão:</strong> use o chat IA →ao lado pra perguntar &quot;qual a próxima ação pra resolver o problema #1?&quot;
-      </div>
     </div>
   )
 }
+
+/* ────────── Tab: Comparativo ────────── */
 
 function ComparativoTab({ storeId }: { storeId: string }) {
   const { data } = useSWR<{ data: { reports: Array<{ week_start: string; metrics: Record<string, unknown> | null }> } }>(
@@ -612,81 +569,99 @@ function ComparativoTab({ storeId }: { storeId: string }) {
   const reports = data?.data?.reports ?? []
   return (
     <div>
-      <div style={{ fontSize: 12, color: C.g500, marginBottom: 12 }}>
-        Últimas {reports.length} semanas — variação por métrica.
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
+        Últimas {reports.length || 0} semanas — variação por métrica.
       </div>
       {reports.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: C.g500, fontSize: 13 }}>
-          Sem histórico semanal ainda.
-        </div>
+        <EmptyTab>Sem histórico semanal ainda.</EmptyTab>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.g200}`, color: C.g500, fontSize: 11, textAlign: "left" }}>
-                <th style={{ padding: "8px 6px" }}>Semana</th>
-                <th style={{ padding: "8px 6px" }}>Métricas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((r, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${C.g100}` }}>
-                  <td style={{ padding: "8px 6px", color: C.g700, whiteSpace: "nowrap" }}>
-                    {new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-                  </td>
-                  <td style={{ padding: "8px 6px", color: C.g500, fontSize: 11 }}>
-                    {r.metrics ? Object.keys(r.metrics).slice(0, 5).join(" · ") : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {reports.slice(0, 8).map((r, i) => (
+            <div key={i} style={{
+              padding: "10px 14px", background: C.white,
+              border: `1px solid ${C.border}`, borderRadius: 8,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>
+                {new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+              </span>
+              <span style={{ fontSize: 11.5, color: C.g500 }}>
+                {r.metrics ? Object.keys(r.metrics).slice(0, 5).join(" · ") : "—"}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
 }
 
+/* ────────── Tab: Campanhas ────────── */
+
 function CampanhasTab({ storeId }: { storeId: string }) {
   return (
-    <div style={{ padding: 24, textAlign: "center", color: C.g500, fontSize: 13 }}>
-      Performance de campanhas será carregada via Omnisend/Klaviyo API.
-      <br />
-      <a
-        href={`/admin/stores/${storeId}?tab=performance`}
-        target="_blank"
-        rel="noreferrer"
-        style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
-      >
-        Ver detalhe da loja →
-      </a>
+    <div>
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
+        Performance de campanhas recentes via Omnisend/Klaviyo.
+      </div>
+      <EmptyTab>
+        Dados de campanhas serão carregados via integração.
+        <br />
+        <a
+          href={`/admin/stores/${storeId}?tab=performance`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
+        >
+          Ver detalhe da loja
+        </a>
+      </EmptyTab>
     </div>
   )
 }
+
+/* ────────── Tab: Automações ────────── */
 
 function AutomacoesTab({ storeId }: { storeId: string }) {
   return (
-    <div style={{ padding: 24, textAlign: "center", color: C.g500, fontSize: 13 }}>
-      Performance de flows/automações será carregada via Omnisend/Klaviyo API.
-      <br />
-      <a
-        href={`/admin/stores/${storeId}?tab=performance`}
-        target="_blank"
-        rel="noreferrer"
-        style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
-      >
-        Ver detalhe da loja →
-      </a>
+    <div>
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
+        Performance de flows/automações via Omnisend/Klaviyo.
+      </div>
+      <EmptyTab>
+        Dados de automações serão carregados via integração.
+        <br />
+        <a
+          href={`/admin/stores/${storeId}?tab=performance`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: C.brand, fontSize: 12, marginTop: 8, display: "inline-block" }}
+        >
+          Ver detalhe da loja
+        </a>
+      </EmptyTab>
     </div>
   )
 }
 
-function RitualChatPanel({ storeId }: { storeId: string }) {
+/* ────────── Chat IA Panel ────────── */
+
+const CC = {
+  surface: "#FCFCFB",
+  panel: "#FFFFFF",
+  border: "rgba(0,0,0,0.06)",
+  text: "#1F2230",
+  textSec: "#5B6072",
+  textMut: "#9398AA",
+  ai: "#C45F2C",
+  userBg: "#F4F4F2",
+}
+
+function RitualChat({ storeId, storeName }: { storeId: string; storeName: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content:
-        "Oi! Estou aqui pra ajudar a diagnosticar essa loja. Posso analisar funil, comparativo histórico, sugerir ações específicas. O que você quer entender primeiro?",
+      content: `Diagnóstico inicial de ${storeName}. Posso analisar funil, comparativo histórico, sugerir ações específicas. O que vocês querem entender primeiro?`,
     },
   ])
   const [input, setInput] = useState("")
@@ -697,15 +672,14 @@ function RitualChatPanel({ storeId }: { storeId: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
 
-  // Reset chat ao mudar de loja
   useEffect(() => {
     setMessages([
       {
         role: "assistant",
-        content: "Loja nova carregada. Estou pronto pra ajudar nesse diagnóstico.",
+        content: `Loja ${storeName} carregada. Estou pronto pra ajudar no diagnóstico. Pergunte o que quiserem.`,
       },
     ])
-  }, [storeId])
+  }, [storeId, storeName])
 
   async function send(content: string) {
     if (!content.trim() || sending) return
@@ -726,10 +700,7 @@ function RitualChatPanel({ storeId }: { storeId: string }) {
       if (aiMsg) {
         setMessages((prev) => [...prev, aiMsg as ChatMessage])
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Não consegui processar agora. Tenta de novo?" },
-        ])
+        setMessages((prev) => [...prev, { role: "assistant", content: "Não consegui processar agora. Tenta de novo?" }])
       }
     } finally {
       setSending(false)
@@ -737,76 +708,73 @@ function RitualChatPanel({ storeId }: { storeId: string }) {
   }
 
   const suggestions = [
-    "Qual o problema #1 dessa loja?",
-    "Compare com a média do nicho",
+    "Qual o problema #1?",
     "Sugira 3 ações concretas",
-    "Como está a saúde dos flows?",
+    "Compare com média do nicho",
+    "Como estão os flows?",
+    "Subjects das últimas 5",
   ]
 
   return (
-    <div
-      style={{
-        borderLeft: `1px solid ${C.g200}`,
-        background: C.g900,
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-      }}
-    >
+    <div style={{
+      display: "flex", flexDirection: "column",
+      height: "100%", background: CC.surface,
+      border: `1px solid ${CC.border}`, borderRadius: 10,
+      overflow: "hidden",
+    }}>
       {/* Header */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: `1px solid rgba(255,255,255,0.08)`,
-        }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>Chat sobre a loja</div>
-        <div style={{ fontSize: 10, color: "#9CA3AF", letterSpacing: 0.4 }}>
-          MCP OMNISEND + ADMIN · Claude Sonnet
+      <div style={{
+        padding: "12px 16px", borderBottom: `1px solid ${CC.border}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: CC.text }}>Chat sobre {storeName}</div>
+          <div style={{ fontSize: 10.5, color: CC.textMut, marginTop: 2, letterSpacing: "0.04em" }}>
+            MCP OMNISEND + ADMIN · Claude Sonnet
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          <SourceChip>Omnisend</SourceChip>
+          <SourceChip>Admin</SourceChip>
         </div>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
         {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              marginBottom: 12,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: m.role === "user" ? "flex-end" : "flex-start",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: "90%",
-                padding: "8px 12px",
-                borderRadius: 8,
-                fontSize: 12,
-                lineHeight: 1.5,
-                background: m.role === "user" ? C.brand : "rgba(255,255,255,0.08)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {m.content}
+          <div key={i} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              {m.role === "assistant" ? (
+                <AIMark />
+              ) : (
+                <UserMark name="Bruno" />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {m.role === "user" && (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: CC.textSec, marginBottom: 3 }}>Bruno</div>
+                )}
+                <div style={{
+                  fontSize: 13, color: CC.text, lineHeight: 1.6,
+                  whiteSpace: "pre-wrap", wordBreak: "break-word",
+                }}>
+                  {m.content}
+                </div>
+              </div>
             </div>
           </div>
         ))}
         {sending && (
-          <div style={{ fontSize: 11, color: "#9CA3AF", padding: "0 12px" }}>
-            IA pensando...
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <AIMark />
+            <div style={{ fontSize: 12, color: CC.textMut, fontStyle: "italic" }}>
+              consultando Omnisend...
+            </div>
           </div>
         )}
       </div>
 
       {/* Suggestions */}
-      <div style={{ padding: "8px 12px", borderTop: `1px solid rgba(255,255,255,0.08)` }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
-          Perguntas frequentes
-        </div>
+      <div style={{ padding: "8px 16px", borderTop: `1px solid ${CC.border}` }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
           {suggestions.map((s) => (
             <button
@@ -815,13 +783,10 @@ function RitualChatPanel({ storeId }: { storeId: string }) {
               onClick={() => void send(s)}
               disabled={sending}
               style={{
-                fontSize: 10,
-                padding: "3px 8px",
-                background: "rgba(255,255,255,0.06)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 3,
-                cursor: sending ? "wait" : "pointer",
+                fontSize: 11, padding: "4px 10px",
+                background: CC.panel, color: CC.textSec,
+                border: `1px solid ${CC.border}`,
+                borderRadius: 999, cursor: sending ? "wait" : "pointer",
               }}
             >
               {s}
@@ -831,44 +796,151 @@ function RitualChatPanel({ storeId }: { storeId: string }) {
       </div>
 
       {/* Input */}
-      <div style={{ padding: 12, borderTop: `1px solid rgba(255,255,255,0.08)`, display: "flex", gap: 6 }}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void send(input)}
-          placeholder="Pergunte algo..."
-          disabled={sending}
-          style={{
-            flex: 1,
-            padding: "8px 10px",
-            fontSize: 12,
-            background: "rgba(255,255,255,0.06)",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 4,
-            outline: "none",
-          }}
-        />
+      <div style={{ padding: "10px 16px", borderTop: `1px solid ${CC.border}`, display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ flex: 1, position: "relative" }}>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void send(input)}
+            placeholder="Pergunte algo sobre a loja..."
+            disabled={sending}
+            style={{
+              width: "100%", padding: "10px 12px",
+              fontSize: 13, background: CC.panel, color: CC.text,
+              border: `1px solid ${CC.border}`, borderRadius: 8,
+              outline: "none",
+            }}
+          />
+        </div>
         <button
           type="button"
           onClick={() => void send(input)}
           disabled={sending || !input.trim()}
           style={{
-            padding: "8px 14px",
-            fontSize: 11,
-            fontWeight: 600,
-            color: "#fff",
-            background: C.brand,
-            border: "none",
-            borderRadius: 4,
-            cursor: sending || !input.trim() ? "wait" : "pointer",
-            opacity: sending || !input.trim() ? 0.5 : 1,
+            width: 36, height: 36, padding: 0,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: C.brand, color: "#fff",
+            border: "none", borderRadius: 8,
+            cursor: sending || !input.trim() ? "default" : "pointer",
+            opacity: sending || !input.trim() ? 0.4 : 1,
           }}
         >
-          Enviar
+          <Send size={16} />
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ────────── Micro components ────────── */
+
+function AIMark() {
+  return (
+    <div style={{
+      width: 24, height: 24, borderRadius: "50%",
+      background: CC.ai, color: "#fff", flexShrink: 0,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2 L13.2 9.5 L20 8.5 L14.5 13.5 L20 18.5 L13.2 17.5 L12 25 L10.8 17.5 L4 18.5 L9.5 13.5 L4 8.5 L10.8 9.5 Z" opacity="0.92"/>
+      </svg>
+    </div>
+  )
+}
+
+function UserMark({ name = "Bruno" }: { name?: string }) {
+  const initial = (name[0] || "?").toUpperCase()
+  return (
+    <div style={{
+      width: 22, height: 22, borderRadius: "50%",
+      background: CC.userBg, color: CC.textSec, flexShrink: 0,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      fontSize: 10, fontWeight: 600, border: `1px solid ${CC.border}`,
+    }}>{initial}</div>
+  )
+}
+
+function SourceChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 500, padding: "2px 7px",
+      background: CC.userBg, color: CC.textSec,
+      border: `1px solid ${CC.border}`, borderRadius: 4,
+    }}>{children}</span>
+  )
+}
+
+function Badge({ tone, label }: { tone: string; label: string }) {
+  const map: Record<string, { bg: string; color: string; border: string; dot: string }> = {
+    pos: { bg: C.posBg, color: C.pos, border: C.posBorder, dot: "#10B981" },
+    neg: { bg: C.negBg, color: C.neg, border: C.negBorder, dot: "#EF4444" },
+    warn: { bg: C.warnBg, color: C.warn, border: C.warnBorder, dot: "#F59E0B" },
+    purple: { bg: C.purpleBg, color: C.purple, border: C.purpleBorder, dot: C.purple },
+    info: { bg: C.infoBg, color: C.info, border: C.infoBorder, dot: C.brand },
+  }
+  const t = map[tone] ?? map.pos!
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      fontSize: 11, fontWeight: 600, padding: "3px 9px",
+      color: t.color, background: t.bg,
+      border: `1px solid ${t.border}`, borderRadius: 999,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.dot }} />
+      {label}
+    </span>
+  )
+}
+
+function IconBtn({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      style={{
+        width: 32, height: 32, padding: 0,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${C.border}`, borderRadius: 6, background: C.white,
+        color: C.g500, cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function FooterBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "8px 14px", fontSize: 13, fontWeight: 500,
+        color: disabled ? C.g400 : C.g700, background: "transparent",
+        border: `1px solid ${disabled ? C.g200 : C.g300}`, borderRadius: 8,
+        cursor: disabled ? "default" : "pointer",
+        display: "inline-flex", alignItems: "center", gap: 6,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+      {children}
+    </div>
+  )
+}
+
+function EmptyTab({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: 32, textAlign: "center", color: C.g500, fontSize: 13, lineHeight: 1.5 }}>
+      {children}
     </div>
   )
 }
