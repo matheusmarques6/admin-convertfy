@@ -77,6 +77,20 @@ interface GenerationContext {
     store_name: string
     store_url: string | null
     niche: string | null
+    country: string | null
+    language: string | null
+    slogan: string | null
+    diferencial: string | null
+    persona: string | null
+    posicionamento_preco: string | null
+    hashtags: string[] | null
+    brand_thesis: string | null
+    brand_about: string | null
+    brand_pillars: string[] | null
+    tone_use_words: string[] | null
+    tone_avoid_words: string[] | null
+    tone_do: string[] | null
+    tone_dont: string[] | null
   }
 }
 
@@ -161,14 +175,34 @@ export async function generateEmail(
       // Build input vars
       const marca = ctx.briefing?.marca ?? {}
       const briefingDetail = ctx.briefing?.briefing ?? {}
+      const joinArr = (arr: string[] | null | undefined) => (arr ?? []).join(", ")
       const inputVars: Record<string, string> = {
+        // Store fields
         brand_name: ctx.store.store_name,
-        slogan: marca.slogan ?? "",
+        store_url: ctx.store.store_url ?? "",
+        niche: ctx.store.niche ?? "",
+        country: ctx.store.country ?? "BR",
+        language: ctx.store.language ?? "pt-BR",
+        // Brand & tone from client_stores
+        slogan: ctx.store.slogan ?? marca.slogan ?? "",
+        diferencial: ctx.store.diferencial ?? marca.diferencial ?? "",
+        persona: ctx.store.persona ?? marca.persona ?? "",
+        posicionamento: ctx.store.posicionamento_preco ?? marca.posicionamento ?? "medio",
+        hashtags: joinArr(ctx.store.hashtags) || joinArr(marca.hashtags as string[] | undefined),
+        brand_thesis: ctx.store.brand_thesis ?? "",
+        brand_about: ctx.store.brand_about ?? "",
+        brand_pillars: joinArr(ctx.store.brand_pillars),
+        tone_use_words: joinArr(ctx.store.tone_use_words),
+        tone_avoid_words: joinArr(ctx.store.tone_avoid_words),
+        tone_do: joinArr(ctx.store.tone_do),
+        tone_dont: joinArr(ctx.store.tone_dont),
+        // Briefing fields
         tom_voz: marca.tom_voz ?? "casual",
-        persona: marca.persona ?? "",
-        diferencial: marca.diferencial ?? "",
-        restricoes: (briefingDetail.restricoes ?? []).join(", "),
-        posicionamento: marca.posicionamento ?? "medio",
+        restricoes: joinArr(briefingDetail.restricoes),
+        conceito: (briefingDetail as Record<string, unknown>).conceito as string ?? "",
+        competidores: joinArr((briefingDetail as Record<string, unknown>).competidores as string[] | undefined),
+        diferenciais: joinArr((briefingDetail as Record<string, unknown>).diferenciais as string[] | undefined),
+        // Products
         top_products: ctx.topProducts.length > 0
           ? JSON.stringify(
               ctx.topProducts.map((p) => ({
@@ -181,6 +215,7 @@ export async function generateEmail(
               2,
             )
           : "Nenhum produto disponível",
+        // Email context
         flow_type: flowType,
         email_number: String(emailNumber),
         objective: blueprintData.objective,
@@ -398,13 +433,30 @@ export async function generateEmail(
       const secondaryColor =
         ctx.brand?.colors_secondary?.[0]?.hex ?? "#F0F0F0"
 
+      const joinArr = (arr: string[] | null | undefined) => (arr ?? []).join(", ")
       const inputVars: Record<string, string> = {
         brand_name: ctx.store.store_name,
+        store_url: ctx.store.store_url ?? "",
         logo_url: ctx.brand?.logo_main_png ?? ctx.brand?.logo_main_svg ?? "",
         primary_color: primaryColor,
         secondary_color: secondaryColor,
+        primary_colors: (ctx.brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || primaryColor,
+        secondary_colors: (ctx.brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || secondaryColor,
         font_heading: ctx.brand?.font_heading ?? "Arial",
         font_body: ctx.brand?.font_body ?? "Arial",
+        // Store brand/tone
+        slogan: ctx.store.slogan ?? "",
+        diferencial: ctx.store.diferencial ?? "",
+        persona: ctx.store.persona ?? "",
+        posicionamento: ctx.store.posicionamento_preco ?? "",
+        brand_thesis: ctx.store.brand_thesis ?? "",
+        brand_about: ctx.store.brand_about ?? "",
+        brand_pillars: joinArr(ctx.store.brand_pillars),
+        tone_do: joinArr(ctx.store.tone_do),
+        tone_dont: joinArr(ctx.store.tone_dont),
+        tone_use_words: joinArr(ctx.store.tone_use_words),
+        tone_avoid_words: joinArr(ctx.store.tone_avoid_words),
+        // Email context
         email_name: updatedEmail?.name ?? "",
         subject: (updatedEmail?.subject as string) ?? "",
         preheader: (updatedEmail?.preheader as string) ?? "",
@@ -547,7 +599,7 @@ async function loadGenerationContext(
     // Store info
     admin
       .from("client_stores")
-      .select("store_name, store_url, niche")
+      .select("store_name, store_url, niche, country, language, slogan, diferencial, persona, posicionamento_preco, hashtags, brand_thesis, brand_about, brand_pillars, tone_use_words, tone_avoid_words, tone_do, tone_dont")
       .eq("id", storeId)
       .single(),
 
@@ -624,13 +676,35 @@ async function loadGenerationContext(
       .maybeSingle(),
   ])
 
-  const store = storeRes.data
+  const sd = storeRes.data
+  const store = sd
     ? {
-        store_name: storeRes.data.store_name as string,
-        store_url: storeRes.data.store_url as string | null,
-        niche: storeRes.data.niche as string | null,
+        store_name: sd.store_name as string,
+        store_url: sd.store_url as string | null,
+        niche: sd.niche as string | null,
+        country: sd.country as string | null,
+        language: sd.language as string | null,
+        slogan: sd.slogan as string | null,
+        diferencial: sd.diferencial as string | null,
+        persona: sd.persona as string | null,
+        posicionamento_preco: sd.posicionamento_preco as string | null,
+        hashtags: sd.hashtags as string[] | null,
+        brand_thesis: sd.brand_thesis as string | null,
+        brand_about: sd.brand_about as string | null,
+        brand_pillars: sd.brand_pillars as string[] | null,
+        tone_use_words: sd.tone_use_words as string[] | null,
+        tone_avoid_words: sd.tone_avoid_words as string[] | null,
+        tone_do: sd.tone_do as string[] | null,
+        tone_dont: sd.tone_dont as string[] | null,
       }
-    : { store_name: "Loja", store_url: null, niche: null }
+    : {
+        store_name: "Loja", store_url: null, niche: null,
+        country: null, language: null, slogan: null, diferencial: null,
+        persona: null, posicionamento_preco: null, hashtags: null,
+        brand_thesis: null, brand_about: null, brand_pillars: null,
+        tone_use_words: null, tone_avoid_words: null,
+        tone_do: null, tone_dont: null,
+      }
 
   return {
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
