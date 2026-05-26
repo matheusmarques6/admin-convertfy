@@ -1,7 +1,7 @@
 /**
- * Image Chain — gera imagens para blocos de email via OpenAI GPT Image 2.
+ * Image Chain — gera imagens para blocos de email via OpenRouter (GPT Image).
  *
- * 1. Gera imagem com openai.images.generate()
+ * 1. Gera imagem com openai-compat API via OpenRouter
  * 2. Faz download do base64/URL retornado
  * 3. Upload pro Supabase Storage (bucket: onboarding-visual-assets)
  * 4. Retorna signed URL
@@ -39,16 +39,19 @@ export async function generateEmailImage(
   prompt: string,
   storeId: string,
 ): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error("OPENAI_API_KEY não configurada")
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY não configurada")
 
-  const openai = new OpenAI({ apiKey })
+  const openai = new OpenAI({
+    apiKey,
+    baseURL: "https://openrouter.ai/api/v1",
+  })
 
   log.info("image.generate.start", { storeId, promptLength: prompt.length })
   const t0 = Date.now()
 
   const response = await openai.images.generate({
-    model: "gpt-image-2",
+    model: "openai/gpt-5.4-image-2",
     prompt,
     n: 1,
     size: "1536x1024",
@@ -57,10 +60,9 @@ export async function generateEmailImage(
 
   const imageData = response.data?.[0]
   if (!imageData) {
-    throw new Error("OpenAI não retornou imagem")
+    throw new Error("OpenRouter não retornou imagem")
   }
 
-  // Converter b64_json ou URL para buffer
   let imageBuffer: Buffer
 
   if (imageData.b64_json) {
@@ -71,7 +73,7 @@ export async function generateEmailImage(
     const arrayBuf = await imgRes.arrayBuffer()
     imageBuffer = Buffer.from(arrayBuf)
   } else {
-    throw new Error("OpenAI retornou imagem sem dados")
+    throw new Error("OpenRouter retornou imagem sem dados")
   }
 
   // Upload pro Supabase Storage
@@ -97,7 +99,6 @@ export async function generateEmailImage(
     .createSignedUrl(path, 365 * 24 * 60 * 60)
 
   if (signErr || !signedData?.signedUrl) {
-    // Fallback: retorna public URL (pode não funcionar se bucket é privado)
     const { data: publicData } = admin.storage
       .from("onboarding-visual-assets")
       .getPublicUrl(path)
