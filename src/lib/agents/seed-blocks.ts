@@ -98,14 +98,18 @@ export async function seedBlocksFromBlueprint(
     throw new Error(`Falha ao inserir blocos: ${insertErr.message}`)
   }
 
-  const blocks: SeededBlock[] = (inserted ?? []).map((row, idx) => ({
-    id: row.id as string,
-    block_type: row.block_type as string,
-    position: row.position as number,
-    label: row.label as string,
-    purpose: blockDefs![idx]?.purpose ?? "",
-    needs_image: blockDefs![idx]?.needs_image ?? false,
-  }))
+  const blocks: SeededBlock[] = (inserted ?? []).map((row, idx) => {
+    const def = blockDefs![idx]
+    const blockType = row.block_type as string
+    return {
+      id: row.id as string,
+      block_type: blockType,
+      position: row.position as number,
+      label: row.label as string,
+      purpose: def?.purpose ?? "",
+      needs_image: def?.needs_image ?? blockType === "hero",
+    }
+  })
 
   log.info("seed.done", { emailId, blockCount: blocks.length })
   return { blocks }
