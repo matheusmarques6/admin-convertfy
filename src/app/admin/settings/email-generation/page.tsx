@@ -28,7 +28,6 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import type {
-  EmailBlueprint,
   EmailAgentConfig,
   ImageMapEntry,
   ImageMapType,
@@ -69,365 +68,30 @@ const AGENT_DESCRIPTIONS: Record<AgentType, string> = {
   html: "Compila o HTML final combinando blocos, imagens e estilos",
 }
 
-type Tab = "blueprints" | "agents" | "settings" | "references" | "test"
+type Tab = "agents" | "settings" | "references" | "test"
 
 export default function EmailGenerationSettingsPage() {
-  const [tab, setTab] = useState<Tab>("blueprints")
+  const [tab, setTab] = useState<Tab>("agents")
 
   return (
     <div className="space-y-5 max-w-[1100px]">
       <PageHeader
         title="Geração de Emails"
-        description="Blueprints, prompts dos agentes e configurações de geração automática."
+        description="Prompts dos agentes, configurações e referências de geração automática."
       />
 
       <SegmentedTabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <SegmentedTabItem value="blueprints">Blueprints</SegmentedTabItem>
         <SegmentedTabItem value="agents">Agentes</SegmentedTabItem>
         <SegmentedTabItem value="settings">Configurações</SegmentedTabItem>
         <SegmentedTabItem value="references">Referências</SegmentedTabItem>
         <SegmentedTabItem value="test">Testar</SegmentedTabItem>
       </SegmentedTabs>
 
-      {tab === "blueprints" && <BlueprintsTab />}
       {tab === "agents" && <AgentsTab />}
       {tab === "settings" && <SettingsTab />}
       {tab === "references" && <ReferencesTab />}
       {tab === "test" && <TestTab />}
     </div>
-  )
-}
-
-// ─── Blueprints Tab ─────────────────────────────────────────
-
-function BlueprintsTab() {
-  const { data, mutate, isLoading } = useSWR<{ blueprints: EmailBlueprint[] }>(
-    "/api/admin/email-blueprints",
-    fetcher,
-  )
-  const blueprints = data?.blueprints ?? []
-  const [editing, setEditing] = useState<EmailBlueprint | "new" | null>(null)
-  const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
-
-  const flowTypes = Array.from(new Set(blueprints.map((b) => b.flow_type))).sort()
-  const activeFlow = selectedFlow ?? flowTypes[0] ?? null
-  const filtered = activeFlow
-    ? blueprints.filter((b) => b.flow_type === activeFlow)
-    : []
-
-  return (
-    <div className="flex gap-5">
-      <div className="w-[200px] shrink-0 space-y-1">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45 mb-2">
-          Flows
-        </div>
-        {isLoading && (
-          <div className="py-4 flex justify-center">
-            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-          </div>
-        )}
-        {flowTypes.map((ft) => (
-          <button
-            key={ft}
-            type="button"
-            onClick={() => setSelectedFlow(ft)}
-            className={cn(
-              "w-full text-left px-3 py-2 rounded-[6px] text-[13px] transition-colors",
-              activeFlow === ft
-                ? "bg-slate-100 dark:bg-white/[0.06] font-medium text-slate-900 dark:text-white"
-                : "text-slate-600 dark:text-white/55 hover:bg-slate-50 dark:hover:bg-white/[0.03]",
-            )}
-          >
-            {FLOW_TYPE_LABELS[ft] ?? ft}
-            <span className="ml-1.5 text-[11px] text-slate-400">
-              ({blueprints.filter((b) => b.flow_type === ft).length})
-            </span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setEditing("new")}
-          className="w-full flex items-center gap-1.5 px-3 py-2 rounded-[6px] text-[12px] font-medium text-slate-500 dark:text-white/45 hover:bg-slate-50 dark:hover:bg-white/[0.03] mt-2"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Novo blueprint
-        </button>
-      </div>
-
-      <div className="flex-1 min-w-0">
-        {!isLoading && filtered.length === 0 && (
-          <div className="py-10 text-center text-[13px] text-slate-500 dark:text-white/45">
-            {flowTypes.length === 0
-              ? "Nenhum blueprint cadastrado ainda."
-              : "Selecione um flow na sidebar."}
-          </div>
-        )}
-        {filtered
-          .sort((a, b) => a.email_number - b.email_number)
-          .map((bp) => (
-            <div
-              key={bp.id}
-              className="group flex items-start justify-between gap-3 rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] px-4 py-3 mb-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded text-slate-500">
-                    #{bp.email_number}
-                  </span>
-                  <span className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
-                    {bp.objective}
-                  </span>
-                </div>
-                <p className="mt-1 text-[12px] text-slate-500 dark:text-white/55 line-clamp-2">
-                  {bp.messaging}
-                </p>
-                {bp.subject_hint && (
-                  <p className="mt-1 text-[11px] text-slate-400 dark:text-white/35 italic">
-                    Assunto: {bp.subject_hint}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  onClick={() => setEditing(bp)}
-                  className="flex h-7 w-7 items-center justify-center rounded-[5px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm(`Excluir blueprint #${bp.email_number}?`)) return
-                    await fetch(`/api/admin/email-blueprints/${bp.id}`, { method: "DELETE" })
-                    mutate()
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-[5px] text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-      </div>
-
-      {editing && (
-        <BlueprintDialog
-          blueprint={editing === "new" ? null : editing}
-          defaultFlowType={activeFlow}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null)
-            mutate()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function BlueprintDialog({
-  blueprint,
-  defaultFlowType,
-  onClose,
-  onSaved,
-}: {
-  blueprint: EmailBlueprint | null
-  defaultFlowType: string | null
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const isEdit = blueprint !== null
-  const [flowType, setFlowType] = useState(blueprint?.flow_type ?? defaultFlowType ?? "welcome")
-  const [emailNumber, setEmailNumber] = useState(blueprint?.email_number ?? 1)
-  const [objective, setObjective] = useState(blueprint?.objective ?? "")
-  const [messaging, setMessaging] = useState(blueprint?.messaging ?? "")
-  const [subjectHint, setSubjectHint] = useState(blueprint?.subject_hint ?? "")
-  const [blocksJson, setBlocksJson] = useState(
-    JSON.stringify(blueprint?.blocks ?? [], null, 2),
-  )
-  const [toneOverride, setToneOverride] = useState(blueprint?.tone_override ?? "")
-  const [submitting, setSubmitting] = useState(false)
-
-  const save = async () => {
-    if (!objective.trim() || !messaging.trim()) return
-    setSubmitting(true)
-    try {
-      let blocks: unknown[]
-      try {
-        blocks = JSON.parse(blocksJson)
-      } catch {
-        toast({ variant: "destructive", title: "JSON de blocos inválido" })
-        setSubmitting(false)
-        return
-      }
-
-      const payload = {
-        flow_type: flowType,
-        email_number: emailNumber,
-        objective: objective.trim(),
-        messaging: messaging.trim(),
-        subject_hint: subjectHint.trim() || null,
-        blocks,
-        tone_override: toneOverride.trim() || null,
-      }
-      const url = isEdit
-        ? `/api/admin/email-blueprints/${blueprint!.id}`
-        : "/api/admin/email-blueprints"
-      const method = isEdit ? "PATCH" : "POST"
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Erro ao salvar")
-      }
-      onSaved()
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: err instanceof Error ? err.message : "Erro ao salvar",
-      })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <DialogPrimitive.Root open onOpenChange={(v) => !v && onClose()}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-[640px] -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-[#0F1117] rounded-[10px] shadow-2xl border border-black/[0.08] dark:border-white/[0.08] max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogPrimitive.Title className="sr-only">
-            {isEdit ? "Editar blueprint" : "Novo blueprint"}
-          </DialogPrimitive.Title>
-          <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-            <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
-              {isEdit ? "Editar blueprint" : "Novo blueprint"}
-            </h2>
-            <DialogPrimitive.Close asChild>
-              <button
-                type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </DialogPrimitive.Close>
-          </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                  Flow type
-                </label>
-                <select
-                  value={flowType}
-                  onChange={(e) => setFlowType(e.target.value)}
-                  className="crm-input w-full"
-                  disabled={isEdit}
-                >
-                  {Object.entries(FLOW_TYPE_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                  Email #
-                </label>
-                <input
-                  type="number"
-                  value={emailNumber}
-                  onChange={(e) => setEmailNumber(parseInt(e.target.value) || 1)}
-                  min={1}
-                  className="crm-input w-full"
-                  disabled={isEdit}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Objetivo
-              </label>
-              <input
-                type="text"
-                value={objective}
-                onChange={(e) => setObjective(e.target.value)}
-                placeholder="Ex: Apresentar a marca e oferecer primeiro desconto"
-                className="crm-input w-full"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Messaging
-              </label>
-              <textarea
-                rows={3}
-                value={messaging}
-                onChange={(e) => setMessaging(e.target.value)}
-                placeholder="Descreva a abordagem e tom da mensagem..."
-                className="crm-input w-full"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Sugestão de assunto
-              </label>
-              <input
-                type="text"
-                value={subjectHint}
-                onChange={(e) => setSubjectHint(e.target.value)}
-                placeholder="Opcional"
-                className="crm-input w-full"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Blocos (JSON)
-              </label>
-              <textarea
-                rows={5}
-                value={blocksJson}
-                onChange={(e) => setBlocksJson(e.target.value)}
-                className="crm-input w-full font-mono text-[12px]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                Override de tom
-              </label>
-              <input
-                type="text"
-                value={toneOverride}
-                onChange={(e) => setToneOverride(e.target.value)}
-                placeholder="Opcional (ex: divertido, formal)"
-                className="crm-input w-full"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={submitting || !objective.trim() || !messaging.trim()}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold disabled:opacity-50"
-            >
-              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {isEdit ? "Salvar" : "Criar blueprint"}
-            </button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
   )
 }
 
