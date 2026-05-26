@@ -339,8 +339,12 @@ function fillMissingVars(
   while ((match = varPattern.exec(combined)) !== null) {
     const key = match[1]
     if (!(key in inputVars)) {
-      inputVars[key] = ""
+      inputVars[key] = "(nenhum)"
     }
+  }
+  // Anthropic API rejeita text blocks vazios com cache_control
+  for (const key of Object.keys(inputVars)) {
+    if (inputVars[key] === "") inputVars[key] = "(nenhum)"
   }
   return inputVars
 }
@@ -708,7 +712,7 @@ export async function generateEmail(
       inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
       inputVars.copy_output = copyOutputIsRawHtml ? copyRawOutput : ""
       inputVars.blocks_with_content = JSON.stringify(
-        (updatedBlocks ?? []).map((b) => ({
+        (updatedBlocks ?? []).map((b: Record<string, unknown>) => ({
           position: b.position,
           type: b.block_type,
           label: b.label,
@@ -823,9 +827,17 @@ async function loadGenerationContext(
 ): Promise<GenerationContext> {
   const admin = createAdminClient()
 
-  // Parallelizar todas as queries
+  // Buscar store primeiro para obter org_id
+  const storeRes = await admin
+    .from("client_stores")
+    .select("*")
+    .eq("id", storeId)
+    .single()
+
+  const orgId = (storeRes.data as Record<string, unknown>)?.org_id as string | undefined
+
+  // Parallelizar demais queries (settings agora filtra por org_id)
   const [
-    storeRes,
     brandRes,
     briefingRes,
     blueprintRes,
@@ -835,13 +847,6 @@ async function loadGenerationContext(
     htmlConfigRes,
     refTemplateRes,
   ] = await Promise.all([
-    // Store info — SELECT * para que qualquer campo fique disponível como variável
-    admin
-      .from("client_stores")
-      .select("*")
-      .eq("id", storeId)
-      .single(),
-
     // Brand identity
     admin
       .from("store_brand_identities")
@@ -877,13 +882,14 @@ async function loadGenerationContext(
       .limit(1)
       .maybeSingle(),
 
-    // Generation settings (busca o primeiro registro ativo)
-    admin
-      .from("email_generation_settings")
-      .select("generate_images, max_parallel")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    // Generation settings — filtra por org_id da store
+    orgId
+      ? admin
+          .from("email_generation_settings")
+          .select("generate_images, max_parallel")
+          .eq("org_id", orgId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
 
     // Agent configs — copy
     admin
@@ -917,6 +923,8 @@ async function loadGenerationContext(
       .maybeSingle(),
   ])
 
+  const hasSettings = settingsRes.data != null
+
   return {
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
@@ -926,7 +934,7 @@ async function loadGenerationContext(
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
     imageMap: (refTemplateRes.data?.image_map as GenerationContext["imageMap"]) ?? null,
     settings: {
-      generate_images: settingsRes.data?.generate_images === true,
+      generate_images: hasSettings ? settingsRes.data.generate_images === true : true,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,
     },
     agentConfigs: {
