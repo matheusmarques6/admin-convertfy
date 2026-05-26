@@ -897,6 +897,102 @@ const CC = {
   userBg: "#F4F4F2",
 }
 
+function MdContent({ text }: { text: string }) {
+  const lines = text.split("\n")
+  const elements: React.ReactNode[] = []
+  let listItems: string[] = []
+
+  const flushList = () => {
+    if (listItems.length === 0) return
+    elements.push(
+      <ul key={`ul-${elements.length}`} style={{ margin: "6px 0", paddingLeft: 18 }}>
+        {listItems.map((li, i) => <li key={i} style={{ marginBottom: 3 }}><InlineText text={li} /></li>)}
+      </ul>,
+    )
+    listItems = []
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      flushList()
+      continue
+    }
+
+    if (trimmed.startsWith("### ")) {
+      flushList()
+      elements.push(<div key={i} style={{ fontSize: 13, fontWeight: 700, color: "#1F2230", marginTop: 12, marginBottom: 4 }}><InlineText text={trimmed.slice(4)} /></div>)
+      continue
+    }
+    if (trimmed.startsWith("## ")) {
+      flushList()
+      elements.push(<div key={i} style={{ fontSize: 14, fontWeight: 700, color: "#1F2230", marginTop: 14, marginBottom: 4 }}><InlineText text={trimmed.slice(3)} /></div>)
+      continue
+    }
+    if (trimmed === "---" || trimmed === "***") {
+      flushList()
+      elements.push(<hr key={i} style={{ border: "none", borderTop: "1px solid rgba(0,0,0,0.08)", margin: "10px 0" }} />)
+      continue
+    }
+    if (/^[-*]\s/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^[-*]\s+/, ""))
+      continue
+    }
+    if (/^\d+\.\s/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^\d+\.\s+/, ""))
+      continue
+    }
+    if (trimmed.startsWith("> ")) {
+      flushList()
+      elements.push(<div key={i} style={{ borderLeft: "3px solid #C7CDEF", paddingLeft: 10, margin: "6px 0", fontSize: 12.5, color: "#5B6072", fontStyle: "italic" }}><InlineText text={trimmed.slice(2)} /></div>)
+      continue
+    }
+
+    flushList()
+    elements.push(<p key={i} style={{ margin: "4px 0" }}><InlineText text={trimmed} /></p>)
+  }
+  flushList()
+
+  return <>{elements}</>
+}
+
+function InlineText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = []
+  let remaining = text
+  let idx = 0
+
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/)
+    const italicMatch = remaining.match(/_(.+?)_/)
+    const codeMatch = remaining.match(/`(.+?)`/)
+
+    let earliest: { match: RegExpMatchArray; type: "bold" | "italic" | "code" } | null = null
+    if (boldMatch?.index != null) earliest = { match: boldMatch, type: "bold" }
+    if (italicMatch?.index != null && (earliest == null || italicMatch.index < (earliest.match.index ?? Infinity))) earliest = { match: italicMatch, type: "italic" }
+    if (codeMatch?.index != null && (earliest == null || codeMatch.index < (earliest.match.index ?? Infinity))) earliest = { match: codeMatch, type: "code" }
+
+    if (!earliest || earliest.match.index == null) {
+      parts.push(<span key={idx++}>{remaining}</span>)
+      break
+    }
+
+    if (earliest.match.index > 0) {
+      parts.push(<span key={idx++}>{remaining.slice(0, earliest.match.index)}</span>)
+    }
+
+    const inner = earliest.match[1]!
+    if (earliest.type === "bold") parts.push(<strong key={idx++} style={{ fontWeight: 600 }}>{inner}</strong>)
+    else if (earliest.type === "italic") parts.push(<em key={idx++} style={{ fontStyle: "italic", color: "#5B6072" }}>{inner}</em>)
+    else parts.push(<code key={idx++} style={{ fontSize: 11.5, padding: "1px 4px", background: "rgba(0,0,0,0.04)", borderRadius: 3, fontFamily: "monospace" }}>{inner}</code>)
+
+    remaining = remaining.slice((earliest.match.index ?? 0) + earliest.match[0].length)
+  }
+
+  return <>{parts}</>
+}
+
 function RitualChat({ storeId, storeName }: { storeId: string; storeName: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -1002,9 +1098,9 @@ function RitualChat({ storeId, storeName }: { storeId: string; storeName: string
                 )}
                 <div style={{
                   fontSize: 13, color: CC.text, lineHeight: 1.6,
-                  whiteSpace: "pre-wrap", wordBreak: "break-word",
+                  wordBreak: "break-word",
                 }}>
-                  {m.content}
+                  <MdContent text={m.content} />
                 </div>
               </div>
             </div>
