@@ -2,9 +2,10 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { buildFullDiagnostic } from "@/lib/services/diagnostic"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -116,12 +117,20 @@ export async function GET(
         .limit(10),
     ])
 
+    let diagnostic = null
+    try {
+      diagnostic = await buildFullDiagnostic(admin, storeId, store.store_name, store.currency ?? "BRL")
+    } catch (e) {
+      diagnostic = null
+    }
+
     return successResponse(request, {
       store,
       health,
       reports: reportsRes.data ?? [],
       campaigns: campaignsRes.data ?? [],
       automations: automationsRes.data ?? [],
+      diagnostic,
     })
   } catch (error) {
     return errorResponse(request, error, "RitualStoreData")
