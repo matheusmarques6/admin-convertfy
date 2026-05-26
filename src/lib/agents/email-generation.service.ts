@@ -660,7 +660,7 @@ export async function generateEmail(
             batchId,
             agent: "image",
             status: "success",
-            model: "gpt-image-2",
+            model: "openai/gpt-5.4-image-2",
             durationMs: Date.now() - imgT0,
             parsedOutput: { blockId: imgBlock.id, imageUrl },
           })
@@ -675,7 +675,7 @@ export async function generateEmail(
             batchId,
             agent: "image",
             status: "error",
-            model: "gpt-image-2",
+            model: "openai/gpt-5.4-image-2",
             durationMs: Date.now() - imgT0,
             errorMessage: msg,
             errorStack: err instanceof Error ? err.stack : undefined,
