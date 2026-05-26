@@ -877,10 +877,11 @@ async function loadGenerationContext(
       .limit(1)
       .maybeSingle(),
 
-    // Generation settings
+    // Generation settings (busca o primeiro registro ativo)
     admin
       .from("email_generation_settings")
       .select("generate_images, max_parallel")
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
 
@@ -925,7 +926,7 @@ async function loadGenerationContext(
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
     imageMap: (refTemplateRes.data?.image_map as GenerationContext["imageMap"]) ?? null,
     settings: {
-      generate_images: (settingsRes.data?.generate_images as boolean) ?? false,
+      generate_images: settingsRes.data?.generate_images === true,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,
     },
     agentConfigs: {
