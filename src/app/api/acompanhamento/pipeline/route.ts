@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
           "approved_actions, ai_message, feedback_sent_at, feedback_method, " +
           "flagged_at, approved_at, ai_message_generated_at, " +
           "store:client_stores(id, store_name, store_url, platform, niche, country, " +
-          "mrr_cents, contract_end_date, email_platform, " +
+          "mrr_cents, contract_end_date, email_platform, currency, " +
           "client:clients!client_stores_client_id_fkey(id, name, " +
           "owner:profiles!clients_owner_id_fkey(id, name, avatar_url)))",
       )

@@ -204,6 +204,8 @@ export function RitualDiagnosticModal({
   const allReports = ritualData?.reports ?? []
   const campaigns = ritualData?.campaigns ?? []
   const automations = ritualData?.automations ?? []
+  const storeCurrency = storeInfo?.currency ?? "BRL"
+  const currencySymbol = storeCurrency === "EUR" ? "€" : storeCurrency === "USD" ? "$" : "R$"
 
   const fmtTimer = () => {
     const h = Math.floor(timerSec / 3600)
@@ -354,7 +356,7 @@ export function RitualDiagnosticModal({
         {/* ── Body: analysis + chat ── */}
         <div style={{
           flex: 1, display: "grid",
-          gridTemplateColumns: "1fr 460px",
+          gridTemplateColumns: "1fr minmax(340px, 420px)",
           gap: 14, padding: 14, minHeight: 0, overflow: "hidden",
         }}>
           {/* Left: analysis area */}
@@ -367,6 +369,7 @@ export function RitualDiagnosticModal({
               platform={storeInfo?.platform ?? null}
               plan={storeInfo?.email_platform ?? null}
               mrr={storeInfo?.mrr_cents ? Math.round(storeInfo.mrr_cents / 100) : null}
+              cs={currencySymbol}
               healthState={healthState}
               healthScore={healthInfo?.health_score ?? null}
               alert={healthInfo?.flag_reason ?? latestReport?.ai_summary ?? null}
@@ -414,8 +417,8 @@ export function RitualDiagnosticModal({
               {activeTab === "funil" && <FunilTab report={latestReport} />}
               {activeTab === "problemas" && <ProblemasTab report={latestReport} />}
               {activeTab === "comparativo" && <ComparativoTab reports={allReports} />}
-              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} />}
-              {activeTab === "automacoes" && <AutomacoesTab automations={automations} />}
+              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} />}
+              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} />}
             </div>
           </div>
 
@@ -488,7 +491,7 @@ export function RitualDiagnosticModal({
 /* ────────── Store Header ────────── */
 
 function StoreHeader({
-  storeName, clientName, niche, platform, plan, mrr,
+  storeName, clientName, niche, platform, plan, mrr, cs = "R$",
   healthState, healthScore, alert,
 }: {
   storeName: string
@@ -497,6 +500,7 @@ function StoreHeader({
   platform: string | null
   plan: string | null
   mrr: number | null
+  cs?: string
   healthState: string
   healthScore: number | null
   alert: string | null
@@ -531,7 +535,7 @@ function StoreHeader({
           {niche && <span>{niche}</span>}
           {platform && <span>{platform}</span>}
           {plan && <span>{plan}</span>}
-          {mrr != null && mrr > 0 && <span style={{ color: C.g700, fontWeight: 500, ...TNUM }}>MRR R$ {Math.round(mrr / 1000)}k</span>}
+          {mrr != null && mrr > 0 && <span style={{ color: C.g700, fontWeight: 500, ...TNUM }}>MRR {cs} {mrr.toLocaleString("pt-BR")}</span>}
         </div>
       </div>
       {(alert || healthScore != null) && (
@@ -697,7 +701,7 @@ interface CampaignRow {
   bounce_rate: number | null
 }
 
-function CampanhasTab({ campaigns }: { campaigns: CampaignRow[] }) {
+function CampanhasTab({ campaigns, cs = "R$" }: { campaigns: CampaignRow[]; cs?: string }) {
   if (campaigns.length === 0) {
     return <EmptyTab>Sem campanhas nos últimos 30 dias.</EmptyTab>
   }
@@ -746,7 +750,7 @@ function CampanhasTab({ campaigns }: { campaigns: CampaignRow[] }) {
                   </td>
                   <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: C.g900, ...TNUM }}>
                     {c.conversion_value != null && c.conversion_value > 0
-                      ? `R$ ${c.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      ? `${cs} ${c.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                       : "—"}
                   </td>
                 </tr>
@@ -776,7 +780,7 @@ interface AutomationRow {
   click_rate: number | null
 }
 
-function AutomacoesTab({ automations }: { automations: AutomationRow[] }) {
+function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[]; cs?: string }) {
   if (automations.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
@@ -809,7 +813,7 @@ function AutomacoesTab({ automations }: { automations: AutomationRow[] }) {
               <MetricCell label="Abertura" value={a.open_rate != null ? `${a.open_rate.toFixed(1)}%` : "—"} tone={a.open_rate != null && a.open_rate < 20 ? "neg" : undefined} />
               <MetricCell label="CTR" value={a.click_rate != null ? `${a.click_rate.toFixed(1)}%` : "—"} />
               <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
-              <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `R$ ${a.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
+              <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `${cs} ${a.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
             </div>
           </div>
         )

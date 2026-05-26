@@ -71,6 +71,7 @@ interface PipelineStore {
   niche: string | null
   country: string | null
   email_platform: string | null
+  currency: string | null
   contract_end_date: string | null
   mrr_value: number | null
   client: {
@@ -701,6 +702,7 @@ function RitualHomeRow({
   const tone = HEALTH_TONE[state.health_state]
   const minutes = tone?.minutes ?? 3
   const store = state.store
+  const cs = store.currency === "EUR" ? "€" : store.currency === "USD" ? "$" : "R$"
   const isCritical = state.health_state === "risk" || state.health_state === "attention" || state.health_state === "renewal"
   const vertical = platformLabel(store.niche, store.platform, store.email_platform)
 
@@ -754,11 +756,11 @@ function RitualHomeRow({
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
         {store.mrr_value != null && store.mrr_value > 0 ? (
           <span style={{ fontSize: 11.5, color: C.g500, ...TNUM }}>
-            MRR <strong style={{ fontWeight: 600, color: C.g900 }}>R$ {store.mrr_value.toLocaleString("pt-BR")}</strong>
+            MRR <strong style={{ fontWeight: 600, color: C.g900 }}>{cs} {store.mrr_value.toLocaleString("pt-BR")}</strong>
           </span>
         ) : state.revenue_30d != null && state.revenue_30d > 0 ? (
           <span style={{ fontSize: 11.5, color: C.g500, ...TNUM }}>
-            30d <strong style={{ fontWeight: 600, color: C.g900 }}>R$ {Math.round(state.revenue_30d).toLocaleString("pt-BR")}</strong>
+            30d <strong style={{ fontWeight: 600, color: C.g900 }}>{cs} {Math.round(state.revenue_30d).toLocaleString("pt-BR")}</strong>
           </span>
         ) : (
           <span style={{ color: C.g400, fontSize: 11, ...TNUM }}>Sem receita</span>
