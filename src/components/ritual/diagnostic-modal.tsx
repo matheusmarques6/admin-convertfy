@@ -191,6 +191,20 @@ export function RitualDiagnosticModal({
       open_rate: number | null
       click_rate: number | null
     }>
+    diagnostic?: {
+      funnel?: {
+        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>
+        gargaloLabel: string | null
+        gargaloDelta: number | null
+        insightTitle: string
+        insightBody: string
+      }
+      pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
+      history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+      campaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }>
+      automations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }>
+      currencySymbol?: string
+    } | null
   }
 
   const { data: ritualData } = useSWR<RitualStoreResponse>(
@@ -200,6 +214,7 @@ export function RitualDiagnosticModal({
 
   const storeInfo = ritualData?.store
   const healthInfo = ritualData?.health
+  const diag = ritualData?.diagnostic
   const latestReport = ritualData?.reports?.[0] ?? null
   const allReports = ritualData?.reports ?? []
   const campaigns = ritualData?.campaigns ?? []
@@ -414,11 +429,11 @@ export function RitualDiagnosticModal({
 
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={latestReport} />}
-              {activeTab === "problemas" && <ProblemasTab report={latestReport} />}
-              {activeTab === "comparativo" && <ComparativoTab reports={allReports} />}
-              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} />}
-              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} />}
+              {activeTab === "funil" && <FunilTab report={latestReport} diag={diag?.funnel} />}
+              {activeTab === "problemas" && <ParetoTab report={latestReport} diag={diag?.pareto} />}
+              {activeTab === "comparativo" && <HistoricoTab reports={allReports} diag={diag?.history} />}
+              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} diagCampaigns={diag?.campaigns} />}
+              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} diagAutomations={diag?.automations} />}
             </div>
           </div>
 
@@ -558,127 +573,154 @@ function StoreHeader({
 
 /* ────────── Tab: Funil ────────── */
 
-function FunilTab({ report }: { report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null }) {
-  if (!report) {
-    return <EmptyTab>Sem dados de funil disponíveis.</EmptyTab>
-  }
+function FunilTab({ report, diag }: {
+  report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null
+  diag?: { stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>; gargaloLabel: string | null; gargaloDelta: number | null; insightTitle: string; insightBody: string }
+}) {
+  const stages = diag?.stages ?? []
   return (
     <div>
-      {report.ai_summary && (
-        <div style={{ marginBottom: 16, padding: 14, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 8, fontSize: 13, color: C.g700, lineHeight: 1.55 }}>
-          <strong style={{ fontWeight: 600 }}>Resumo IA:</strong> {report.ai_summary}
+      {diag?.insightBody && (
+        <div style={{ marginBottom: 16, padding: 14, background: diag.gargaloLabel ? C.warnBg : C.infoBg, border: `1px solid ${diag.gargaloLabel ? C.warnBorder : C.infoBorder}`, borderRadius: 8, fontSize: 13, color: C.g700, lineHeight: 1.55 }}>
+          <strong style={{ fontWeight: 600 }}>{diag.insightTitle}:</strong> {diag.insightBody}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      {stages.length > 0 ? (
         <div>
-          <SectionLabel>Destaques</SectionLabel>
-          {(report.highlights ?? []).length === 0 ? (
-            <div style={{ fontSize: 12, color: C.g500 }}>Nenhum destaque registrado.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {(report.highlights ?? []).map((h, i) => (
-                <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", alignItems: "flex-start", gap: 6 }}>
-                  <TrendingUp size={12} style={{ color: C.pos, flexShrink: 0, marginTop: 2 }} />
-                  <span>{typeof h === "string" ? h : JSON.stringify(h)}</span>
-                </div>
-              ))}
+          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "8px 12px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: "8px 8px 0 0" }}>
+            <span>Estágio</span><span>Barra</span><span style={{ textAlign: "right" }}>Volume</span><span style={{ textAlign: "right" }}>Taxa</span><span style={{ textAlign: "right" }}>vs 30d</span>
+          </div>
+          {stages.map((s) => (
+            <div key={s.key} style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "10px 12px", alignItems: "center", borderBottom: `1px solid ${C.g100}`, background: s.isGargalo ? C.warnBg : C.white }}>
+              <span style={{ fontSize: 12.5, fontWeight: s.isGargalo ? 600 : 400, color: s.isGargalo ? C.warn : C.g700 }}>{s.label}{s.isGargalo ? " *" : ""}</span>
+              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
+                <div style={{ width: `${Math.min(s.pct * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.warn : C.brand, borderRadius: 4, transition: "width 200ms" }} />
+              </div>
+              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 500, color: C.g900, ...TNUM }}>{s.volume.toLocaleString("pt-BR")}</span>
+              <span style={{ textAlign: "right", fontSize: 12, color: C.g700, ...TNUM }}>{(s.pct * 100).toFixed(1)}%</span>
+              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: s.delta >= 0 ? C.pos : C.neg, ...TNUM }}>{s.delta >= 0 ? "+" : ""}{s.delta.toFixed(1)}%</span>
             </div>
-          )}
+          ))}
         </div>
-        <div>
-          <SectionLabel>Alertas</SectionLabel>
-          {(report.concerns ?? []).length === 0 ? (
-            <div style={{ fontSize: 12, color: C.g500 }}>Nenhum alerta.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {(report.concerns ?? []).map((c, i) => (
-                <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", alignItems: "flex-start", gap: 6 }}>
-                  <TrendingDown size={12} style={{ color: C.neg, flexShrink: 0, marginTop: 2 }} />
-                  <span>{typeof c === "string" ? c : JSON.stringify(c)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+      ) : report ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <SectionLabel>Destaques</SectionLabel>
+            {(report.highlights ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum destaque.</div> : (report.highlights ?? []).map((h, i) => (
+              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
+                <TrendingUp size={12} style={{ color: C.pos, flexShrink: 0, marginTop: 2 }} />
+                <span>{typeof h === "string" ? h : JSON.stringify(h)}</span>
+              </div>
+            ))}
+          </div>
+          <div>
+            <SectionLabel>Alertas</SectionLabel>
+            {(report.concerns ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum alerta.</div> : (report.concerns ?? []).map((c, i) => (
+              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
+                <TrendingDown size={12} style={{ color: C.neg, flexShrink: 0, marginTop: 2 }} />
+                <span>{typeof c === "string" ? c : JSON.stringify(c)}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>}
     </div>
   )
 }
 
 /* ────────── Tab: 80/20 Problemas ────────── */
 
-function ProblemasTab({ report }: { report?: { concerns: unknown[] } | null }) {
-  const concerns = report?.concerns ?? []
+function ParetoTab({ report, diag }: {
+  report?: { concerns: unknown[] } | null
+  diag?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
+}) {
+  const items = diag ?? []
+  if (items.length === 0 && (!report?.concerns || (report.concerns as unknown[]).length === 0)) {
+    return <EmptyTab>Sem problemas identificados. Loja performando bem.</EmptyTab>
+  }
+  const useItems = items.length > 0 ? items : (report?.concerns ?? []).slice(0, 5).map((c, i) => ({
+    rank: i + 1, title: typeof c === "string" ? c : JSON.stringify(c), detail: "", evidences: [] as string[], impactPercent: Math.round(100 / Math.min((report?.concerns as unknown[]).length, 5)),
+  }))
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14, lineHeight: 1.5 }}>
-        Causa-raiz ranqueada pela IA com base nos alertas mais recorrentes.
-      </div>
-      {concerns.length === 0 ? (
-        <EmptyTab>Sem alertas recorrentes mapeados.</EmptyTab>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {concerns.slice(0, 5).map((c, i) => (
-            <div key={i} style={{
-              padding: "12px 14px", background: i === 0 ? C.warnBg : C.white,
-              border: `1px solid ${i === 0 ? C.warnBorder : C.border}`,
-              borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 10,
-            }}>
-              <span style={{
-                width: 22, height: 22, borderRadius: 6,
-                background: i === 0 ? C.warn : C.g200,
-                color: i === 0 ? "#fff" : C.g600,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, flexShrink: 0,
-              }}>
-                {i + 1}
-              </span>
-              <div style={{ flex: 1, fontSize: 13, color: C.g700, lineHeight: 1.5 }}>
-                {typeof c === "string" ? c : JSON.stringify(c)}
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Problemas ranqueados por impacto. IA analisa dados reais da loja.</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {useItems.map((item, i) => (
+          <div key={i} style={{ padding: "14px 16px", background: i === 0 ? C.warnBg : C.white, border: `1px solid ${i === 0 ? C.warnBorder : C.border}`, borderRadius: 10 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 8, background: i === 0 ? C.warn : C.g200, color: i === 0 ? "#fff" : C.g600, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{item.rank}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{item.title}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? C.warn : C.g500, ...TNUM }}>{item.impactPercent}%</span>
+                </div>
+                {item.detail && <div style={{ fontSize: 12.5, color: C.g600, lineHeight: 1.5, marginBottom: item.evidences.length > 0 ? 8 : 0 }}>{item.detail}</div>}
+                {item.evidences.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {item.evidences.map((e, ei) => (
+                      <span key={ei} style={{ fontSize: 11, padding: "3px 8px", background: i === 0 ? "rgba(146,64,14,0.08)" : C.g50, border: `1px solid ${C.border}`, borderRadius: 4, color: C.g600 }}>{e}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-/* ────────── Tab: Comparativo ────────── */
+/* ────────── Tab: Comparativo Histórico ────────── */
 
-function ComparativoTab({ reports }: { reports: Array<{ week_start: string; highlights?: unknown[]; concerns?: unknown[]; metrics: Record<string, unknown> | null; ai_summary?: string | null }> }) {
+function HistoricoTab({ reports, diag }: {
+  reports: Array<{ week_start: string; ai_summary?: string | null }>
+  diag?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+}) {
+  const rows = diag ?? []
+  if (rows.length === 0 && reports.length === 0) {
+    return <EmptyTab>Sem histórico semanal ainda.</EmptyTab>
+  }
+  if (rows.length > 0) {
+    return (
+      <div>
+        <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Atual vs média das últimas semanas.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {rows.map((r, i) => {
+            const tone = r.deltaTone === "pos" ? C.pos : r.deltaTone === "neg" ? C.neg : C.g500
+            return (
+              <div key={i} style={{ padding: "14px 16px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{r.metric}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: tone, ...TNUM }}>
+                    {r.delta > 0 ? "+" : ""}{r.delta.toFixed(1)}%
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 20, fontSize: 12.5, color: C.g500 }}>
+                  <span>Atual: <strong style={{ color: C.g900, fontWeight: 600 }}>{r.now}</strong></span>
+                  <span>Média: <strong style={{ color: C.g700 }}>{r.avg}</strong></span>
+                </div>
+                {r.context && r.context !== "estável" && (
+                  <div style={{ marginTop: 6, fontSize: 11.5, color: C.g500, fontStyle: "italic" }}>{r.context}</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>
-        Últimas {reports.length || 0} semanas — variação por métrica.
+      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Últimas {reports.length} semanas.</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {reports.slice(0, 8).map((r, i) => (
+          <div key={i} style={{ padding: "10px 14px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>{new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+            <span style={{ fontSize: 11.5, color: C.g500 }}>{r.ai_summary?.slice(0, 60) ?? "—"}</span>
+          </div>
+        ))}
       </div>
-      {reports.length === 0 ? (
-        <EmptyTab>Sem histórico semanal ainda.</EmptyTab>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {reports.slice(0, 8).map((r, i) => (
-            <div key={i} style={{
-              padding: "12px 14px", background: C.white,
-              border: `1px solid ${C.border}`, borderRadius: 8,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: r.ai_summary ? 6 : 0 }}>
-                <span style={{ fontSize: 13, color: C.g700, fontWeight: 600 }}>
-                  {new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
-                </span>
-                <div style={{ display: "flex", gap: 8, fontSize: 11, ...TNUM }}>
-                  {r.highlights && <span style={{ color: C.pos }}>{(r.highlights as unknown[]).length} destaques</span>}
-                  {r.concerns && <span style={{ color: C.neg }}>{(r.concerns as unknown[]).length} alertas</span>}
-                </div>
-              </div>
-              {r.ai_summary && (
-                <div style={{ fontSize: 12, color: C.g500, lineHeight: 1.4, marginTop: 4 }}>
-                  {r.ai_summary.length > 120 ? r.ai_summary.slice(0, 117) + "..." : r.ai_summary}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -701,7 +743,7 @@ interface CampaignRow {
   bounce_rate: number | null
 }
 
-function CampanhasTab({ campaigns, cs = "R$" }: { campaigns: CampaignRow[]; cs?: string }) {
+function CampanhasTab({ campaigns, cs = "R$", diagCampaigns }: { campaigns: CampaignRow[]; cs?: string; diagCampaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }> }) {
   if (campaigns.length === 0) {
     return <EmptyTab>Sem campanhas nos últimos 30 dias.</EmptyTab>
   }
@@ -780,7 +822,7 @@ interface AutomationRow {
   click_rate: number | null
 }
 
-function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[]; cs?: string }) {
+function AutomacoesTab({ automations, cs = "R$", diagAutomations }: { automations: AutomationRow[]; cs?: string; diagAutomations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }> }) {
   if (automations.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
