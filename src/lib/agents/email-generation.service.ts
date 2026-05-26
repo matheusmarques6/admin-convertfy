@@ -364,7 +364,7 @@ interface GenerationContext {
   topProducts: TopProduct[]
   referenceHtml: string | null
   referenceCopy: string | null
-  imageMap: Array<{ src: string; alt: string; type: string; product_index?: number; instruction?: string | null }> | null
+  imageMap: Array<{ src: string; alt: string; type: string; width?: number | null; height?: number | null; product_index?: number; instruction?: string | null }> | null
   settings: {
     generate_images: boolean
     max_parallel: number
