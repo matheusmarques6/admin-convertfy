@@ -58,72 +58,31 @@ export async function generateEmailImage(
 
   const data = await res.json()
 
-  // Log completo para debug (truncado)
-  log.info("image.raw_response", {
-    storeId,
-    keys: Object.keys(data),
-    hasChoices: !!data.choices,
-    hasData: !!data.data,
-    choiceContent: data.choices?.[0]?.message?.content === null ? "null" : typeof data.choices?.[0]?.message?.content,
-    dataLength: data.data?.length,
-    firstDataKeys: data.data?.[0] ? Object.keys(data.data[0]) : [],
-  })
-
   let imageBuffer: Buffer | null = null
 
-  // Formato 1: OpenAI images API (data[].b64_json ou data[].url)
-  if (data.data?.[0]) {
-    const imgData = data.data[0]
-    if (imgData.b64_json) {
-      imageBuffer = Buffer.from(imgData.b64_json, "base64")
-    } else if (imgData.url) {
-      const dl = await fetch(imgData.url)
-      if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
-    }
-  }
-
-  // Formato 2: Chat completions com content array (image_url parts)
-  if (!imageBuffer) {
-    const content = data.choices?.[0]?.message?.content
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        if (part.type === "image_url" && part.image_url?.url) {
-          const url = part.image_url.url
-          if (url.startsWith("data:")) {
-            const b64 = url.split(",")[1]
-            if (b64) imageBuffer = Buffer.from(b64, "base64")
-          } else {
-            const dl = await fetch(url)
-            if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
-          }
-          break
-        }
-      }
-    } else if (typeof content === "string") {
-      // Pode conter URL ou base64 inline
-      const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)/i)
-      if (urlMatch) {
-        const dl = await fetch(urlMatch[0])
-        if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
-      }
-    }
-  }
-
-  // Formato 3: output na resposta (alguns modelos OpenRouter)
-  if (!imageBuffer && data.choices?.[0]?.message?.output) {
-    const output = data.choices[0].message.output
-    if (Array.isArray(output)) {
-      for (const item of output) {
-        if (item.type === "image" && item.data) {
-          imageBuffer = Buffer.from(item.data, "base64")
+  // Formato OpenRouter GPT Image: choices[0].message.images[0].image_url.url (data:image/png;base64,...)
+  const images = data.choices?.[0]?.message?.images
+  if (Array.isArray(images)) {
+    for (const img of images) {
+      const url = img?.image_url?.url
+      if (url && typeof url === "string" && url.startsWith("data:")) {
+        const b64 = url.split(",")[1]
+        if (b64) {
+          imageBuffer = Buffer.from(b64, "base64")
           break
         }
       }
     }
   }
 
+  // Fallback: data[].b64_json (OpenAI compat)
+  if (!imageBuffer && data.data?.[0]?.b64_json) {
+    imageBuffer = Buffer.from(data.data[0].b64_json, "base64")
+  }
+
   if (!imageBuffer) {
-    log.error("image.parse_failed", { storeId, response: JSON.stringify(data).slice(0, 1000) })
+    const msgKeys = data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : []
+    log.error("image.parse_failed", { storeId, messageKeys: msgKeys })
     throw new Error("Não foi possível extrair imagem da resposta do OpenRouter")
   }
 
