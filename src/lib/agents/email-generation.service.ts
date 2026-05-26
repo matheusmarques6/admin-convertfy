@@ -602,6 +602,21 @@ export async function generateEmail(
     // ── Step 3: Image generation (optional) ───────────────────
     if (ctx.settings.generate_images) {
       const imageBlocks = seededBlocks.filter((b) => b.needs_image)
+      log.info("generation.image.check", {
+        emailId,
+        generate_images: true,
+        totalBlocks: seededBlocks.length,
+        imageBlocks: imageBlocks.length,
+        blockTypes: seededBlocks.map((b) => `${b.block_type}:needs_image=${b.needs_image}`),
+      })
+      if (imageBlocks.length === 0) {
+        await logGenerationRun({
+          storeId, flowId, emailId, triggeredBy, batchId,
+          agent: "image",
+          status: "skipped",
+          parsedOutput: { reason: "no blocks with needs_image=true" },
+        })
+      }
       for (const imgBlock of imageBlocks) {
         const imgT0 = Date.now()
         try {
