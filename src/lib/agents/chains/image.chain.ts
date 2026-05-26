@@ -56,33 +56,75 @@ export async function generateEmailImage(
   }
 
   const data = await res.json()
-  const choice = data.choices?.[0]
-  if (!choice) throw new Error("OpenRouter não retornou resposta")
 
-  // Extrair URL da imagem da resposta
-  const content = choice.message?.content
-  let imageUrl: string | null = null
+  // Log completo para debug (truncado)
+  log.info("image.raw_response", {
+    storeId,
+    keys: Object.keys(data),
+    hasChoices: !!data.choices,
+    hasData: !!data.data,
+    choiceContent: data.choices?.[0]?.message?.content === null ? "null" : typeof data.choices?.[0]?.message?.content,
+    dataLength: data.data?.length,
+    firstDataKeys: data.data?.[0] ? Object.keys(data.data[0]) : [],
+  })
 
-  if (Array.isArray(content)) {
-    const imgPart = content.find((p: { type: string }) => p.type === "image_url")
-    imageUrl = imgPart?.image_url?.url ?? null
+  let imageBuffer: Buffer | null = null
+
+  // Formato 1: OpenAI images API (data[].b64_json ou data[].url)
+  if (data.data?.[0]) {
+    const imgData = data.data[0]
+    if (imgData.b64_json) {
+      imageBuffer = Buffer.from(imgData.b64_json, "base64")
+    } else if (imgData.url) {
+      const dl = await fetch(imgData.url)
+      if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
+    }
   }
 
-  if (!imageUrl && typeof content === "string") {
-    const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)/i)
-    imageUrl = urlMatch?.[0] ?? null
+  // Formato 2: Chat completions com content array (image_url parts)
+  if (!imageBuffer) {
+    const content = data.choices?.[0]?.message?.content
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part.type === "image_url" && part.image_url?.url) {
+          const url = part.image_url.url
+          if (url.startsWith("data:")) {
+            const b64 = url.split(",")[1]
+            if (b64) imageBuffer = Buffer.from(b64, "base64")
+          } else {
+            const dl = await fetch(url)
+            if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
+          }
+          break
+        }
+      }
+    } else if (typeof content === "string") {
+      // Pode conter URL ou base64 inline
+      const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)/i)
+      if (urlMatch) {
+        const dl = await fetch(urlMatch[0])
+        if (dl.ok) imageBuffer = Buffer.from(await dl.arrayBuffer())
+      }
+    }
   }
 
-  if (!imageUrl) {
-    log.warn("image.no_url_in_response", { storeId, content: JSON.stringify(content).slice(0, 500) })
-    throw new Error("OpenRouter não retornou URL de imagem na resposta")
+  // Formato 3: output na resposta (alguns modelos OpenRouter)
+  if (!imageBuffer && data.choices?.[0]?.message?.output) {
+    const output = data.choices[0].message.output
+    if (Array.isArray(output)) {
+      for (const item of output) {
+        if (item.type === "image" && item.data) {
+          imageBuffer = Buffer.from(item.data, "base64")
+          break
+        }
+      }
+    }
   }
 
-  // Download da imagem
-  const imgRes = await fetch(imageUrl)
-  if (!imgRes.ok) throw new Error(`Falha ao baixar imagem: HTTP ${imgRes.status}`)
-  const arrayBuf = await imgRes.arrayBuffer()
-  const imageBuffer = Buffer.from(arrayBuf)
+  if (!imageBuffer) {
+    log.error("image.parse_failed", { storeId, response: JSON.stringify(data).slice(0, 1000) })
+    throw new Error("Não foi possível extrair imagem da resposta do OpenRouter")
+  }
 
   // Upload pro Supabase Storage
   const admin = createAdminClient()
