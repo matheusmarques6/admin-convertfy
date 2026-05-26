@@ -934,7 +934,7 @@ async function loadGenerationContext(
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
     imageMap: (refTemplateRes.data?.image_map as GenerationContext["imageMap"]) ?? null,
     settings: {
-      generate_images: hasSettings ? settingsRes.data.generate_images === true : true,
+      generate_images: hasSettings ? settingsRes.data?.generate_images === true : true,
       max_parallel: (settingsRes.data?.max_parallel as number) ?? 2,
     },
     agentConfigs: {
