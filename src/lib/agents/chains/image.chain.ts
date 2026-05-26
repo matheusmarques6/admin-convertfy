@@ -47,6 +47,7 @@ export async function generateEmailImage(
     body: JSON.stringify({
       model: "openai/gpt-5.4-image-2",
       messages: [{ role: "user", content: prompt }],
+      response_format: "b64_json",
     }),
   })
 
