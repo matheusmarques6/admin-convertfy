@@ -439,168 +439,171 @@ export async function generateEmail(
       return { status: "error", error: `Seed failed: ${msg}` }
     }
 
-    // ── Step 2: Copy generation ───────────────────────────────
+    // ── Step 2+3: Copy + Image em paralelo ─────────────────────
     let copyRawOutput = ""
     let copyOutputIsRawHtml = false
-    const copyT0 = Date.now()
-    try {
-      const copyConfig = ctx.agentConfigs.copy
-      const model = copyConfig?.model ?? "claude-sonnet-4-5-20250514"
-      const temperature = copyConfig?.temperature ?? 0.7
-      const maxTokens = copyConfig?.max_tokens ?? 4096
-      const systemPrompt = copyConfig?.system_prompt ?? DEFAULT_COPY_SYSTEM_PROMPT
-      const userTemplate = copyConfig?.user_template ?? DEFAULT_COPY_USER_TEMPLATE
+    let copyFailed = false
 
-      // Resolve blueprint data
-      const dbBlueprint = ctx.blueprint as Record<string, unknown> | null
-      const defaultBp = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]
-      const blueprintData = {
-        objective: (dbBlueprint?.objective as string) ?? defaultBp?.objective ?? "Gerar email de qualidade",
-        messaging: (dbBlueprint?.messaging as string) ?? defaultBp?.messaging ?? "Conteúdo relevante para o público",
-        subject_hint: (dbBlueprint?.subject_hint as string) ?? defaultBp?.subject_hint ?? "",
-      }
+    const copyPromise = (async () => {
+      const copyT0 = Date.now()
+      try {
+        const copyConfig = ctx.agentConfigs.copy
+        const model = copyConfig?.model ?? "claude-sonnet-4-5-20250514"
+        const temperature = copyConfig?.temperature ?? 0.7
+        const maxTokens = copyConfig?.max_tokens ?? 4096
+        const systemPrompt = copyConfig?.system_prompt ?? DEFAULT_COPY_SYSTEM_PROMPT
+        const userTemplate = copyConfig?.user_template ?? DEFAULT_COPY_USER_TEMPLATE
 
-      // Build input vars from ALL data sources
-      const inputVars = buildAllVars(ctx)
-      // Email-specific context
-      inputVars.flow_type = flowType
-      inputVars.email_number = String(emailNumber)
-      inputVars.objective = blueprintData.objective
-      inputVars.messaging = blueprintData.messaging
-      inputVars.subject_hint = blueprintData.subject_hint
-      inputVars.blocks_json = JSON.stringify(
-        seededBlocks.map((b) => ({
-          position: b.position,
-          type: b.block_type,
-          label: b.label,
-          purpose: b.purpose,
-        })),
-        null,
-        2,
-      )
+        const dbBlueprint = ctx.blueprint as Record<string, unknown> | null
+        const defaultBp = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]
+        const blueprintData = {
+          objective: (dbBlueprint?.objective as string) ?? defaultBp?.objective ?? "Gerar email de qualidade",
+          messaging: (dbBlueprint?.messaging as string) ?? defaultBp?.messaging ?? "Conteúdo relevante para o público",
+          subject_hint: (dbBlueprint?.subject_hint as string) ?? defaultBp?.subject_hint ?? "",
+        }
 
-      fillMissingVars(inputVars, systemPrompt, userTemplate)
+        const inputVars = buildAllVars(ctx)
+        inputVars.flow_type = flowType
+        inputVars.email_number = String(emailNumber)
+        inputVars.objective = blueprintData.objective
+        inputVars.messaging = blueprintData.messaging
+        inputVars.subject_hint = blueprintData.subject_hint
+        inputVars.blocks_json = JSON.stringify(
+          seededBlocks.map((b) => ({
+            position: b.position,
+            type: b.block_type,
+            label: b.label,
+            purpose: b.purpose,
+          })),
+          null,
+          2,
+        )
 
-      const chain = createCopyChain({
-        model,
-        temperature,
-        max_tokens: maxTokens,
-        system_prompt: systemPrompt,
-        user_template: userTemplate,
-      })
+        fillMissingVars(inputVars, systemPrompt, userTemplate)
 
-      const rawOutput = await chain.invoke(inputVars)
+        const chain = createCopyChain({
+          model,
+          temperature,
+          max_tokens: maxTokens,
+          system_prompt: systemPrompt,
+          user_template: userTemplate,
+        })
 
-      // Estimate tokens (rough: 1 token ≈ 4 chars)
-      const promptText = systemPrompt + JSON.stringify(inputVars)
-      const tokensInput = Math.ceil(promptText.length / 4)
-      const tokensOutput = Math.ceil(rawOutput.length / 4)
+        const rawOutput = await chain.invoke(inputVars)
 
-      // Try JSON parse — se falhar, tratar como texto livre
-      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-      let copySubject: string | null = null
-      let copyPreheader: string | null = null
-      let copyIsRawHtml = false
+        const promptText = systemPrompt + JSON.stringify(inputVars)
+        const tokensInput = Math.ceil(promptText.length / 4)
+        const tokensOutput = Math.ceil(rawOutput.length / 4)
 
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0])
-          const copyOutput = CopyOutputSchema.parse(parsed)
-          copySubject = copyOutput.subject
-          copyPreheader = copyOutput.preheader
+        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
+        let copySubject: string | null = null
+        let copyPreheader: string | null = null
+        let copyIsRawHtml = false
 
-          for (const blockData of copyOutput.blocks) {
-            const matchingBlock = seededBlocks.find((b) => b.position === blockData.position)
-            if (matchingBlock) {
-              await admin
-                .from("email_blocks")
-                .update({ content: blockData.content })
-                .eq("id", matchingBlock.id)
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0])
+            const copyOutput = CopyOutputSchema.parse(parsed)
+            copySubject = copyOutput.subject
+            copyPreheader = copyOutput.preheader
+
+            for (const blockData of copyOutput.blocks) {
+              const matchingBlock = seededBlocks.find((b) => b.position === blockData.position)
+              if (matchingBlock) {
+                await admin
+                  .from("email_blocks")
+                  .update({ content: blockData.content })
+                  .eq("id", matchingBlock.id)
+              }
             }
+          } catch {
+            copyIsRawHtml = true
           }
-        } catch {
+        } else {
           copyIsRawHtml = true
         }
-      } else {
-        copyIsRawHtml = true
+
+        if (copyIsRawHtml) {
+          const stripMarkup = (s: string) =>
+            s.replace(/<[^>]*>/g, "").replace(/\*{1,2}/g, "").replace(/\s+/g, " ").trim()
+          const subjectMatch = rawOutput.match(/(?:\*{0,2})Subject(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+          const preheaderMatch = rawOutput.match(/(?:\*{0,2})(?:Preview|Preheader|Pre-?header)(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
+          copySubject = subjectMatch ? stripMarkup(subjectMatch[1]).slice(0, 200) : null
+          copyPreheader = preheaderMatch ? stripMarkup(preheaderMatch[1]).slice(0, 200) : null
+          await parseRawCopyIntoBlocks(admin, rawOutput, seededBlocks, stripMarkup)
+        }
+
+        copyRawOutput = rawOutput
+        copyOutputIsRawHtml = copyIsRawHtml
+
+        if (copySubject || copyPreheader) {
+          const updateFields: Record<string, string> = {}
+          if (copySubject) updateFields.subject = copySubject
+          if (copyPreheader) updateFields.preheader = copyPreheader
+          await admin
+            .from("email_flow_emails")
+            .update(updateFields)
+            .eq("id", emailId)
+        }
+
+        await logGenerationRun({
+          storeId,
+          flowId,
+          emailId,
+          triggeredBy,
+          batchId,
+          agent: "copy",
+          agentConfigId: copyConfig?.id,
+          status: "success",
+          model,
+          inputVars,
+          rawOutput,
+          parsedOutput: { subject: copySubject, preheader: copyPreheader },
+          tokensInput,
+          tokensOutput,
+          costCents: computeCostCents(model, tokensInput, tokensOutput),
+          durationMs: Date.now() - copyT0,
+        })
+      } catch (err) {
+        copyFailed = true
+        const msg = err instanceof Error ? err.message : "Erro na copy"
+        log.error("generation.copy.error", { emailId, error: msg })
+        const copyRunId = await logGenerationRun({
+          storeId,
+          flowId,
+          emailId,
+          triggeredBy,
+          batchId,
+          agent: "copy",
+          agentConfigId: ctx.agentConfigs.copy?.id,
+          status: "error",
+          durationMs: Date.now() - copyT0,
+          errorMessage: msg,
+          errorStack: err instanceof Error ? err.stack : undefined,
+        })
+        notifyGenerationError({
+          runId: copyRunId,
+          storeId,
+          storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
+          emailName: `Flow ${flowType} #${emailNumber}`,
+          agent: "copy",
+          model: ctx.agentConfigs.copy?.model ?? "claude-sonnet-4-5-20250514",
+          error: msg,
+          durationMs: Date.now() - copyT0,
+          costCents: 0,
+        }).catch(() => {})
       }
+    })()
 
-      if (copyIsRawHtml) {
-        const stripMarkup = (s: string) =>
-          s.replace(/<[^>]*>/g, "").replace(/\*{1,2}/g, "").replace(/\s+/g, " ").trim()
-        const subjectMatch = rawOutput.match(/(?:\*{0,2})Subject(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-        const preheaderMatch = rawOutput.match(/(?:\*{0,2})(?:Preview|Preheader|Pre-?header)(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-        copySubject = subjectMatch ? stripMarkup(subjectMatch[1]).slice(0, 200) : null
-        copyPreheader = preheaderMatch ? stripMarkup(preheaderMatch[1]).slice(0, 200) : null
-
-        // Parse raw HTML into block content by matching POSITION/section comments
-        await parseRawCopyIntoBlocks(admin, rawOutput, seededBlocks, stripMarkup)
+    const imagePromise = (async () => {
+      if (!ctx.settings.generate_images) {
+        await logGenerationRun({
+          storeId, flowId, emailId, triggeredBy, batchId,
+          agent: "image",
+          status: "skipped",
+        })
+        return
       }
-
-      copyRawOutput = rawOutput
-      copyOutputIsRawHtml = copyIsRawHtml
-
-      // PATCH email subject/preheader
-      if (copySubject || copyPreheader) {
-        const updateFields: Record<string, string> = {}
-        if (copySubject) updateFields.subject = copySubject
-        if (copyPreheader) updateFields.preheader = copyPreheader
-        await admin
-          .from("email_flow_emails")
-          .update(updateFields)
-          .eq("id", emailId)
-      }
-
-      await logGenerationRun({
-        storeId,
-        flowId,
-        emailId,
-        triggeredBy,
-        batchId,
-        agent: "copy",
-        agentConfigId: copyConfig?.id,
-        status: "success",
-        model,
-        inputVars,
-        rawOutput,
-        parsedOutput: { subject: copySubject, preheader: copyPreheader },
-        tokensInput,
-        tokensOutput,
-        costCents: computeCostCents(model, tokensInput, tokensOutput),
-        durationMs: Date.now() - copyT0,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro na copy"
-      log.error("generation.copy.error", { emailId, error: msg })
-      const copyRunId = await logGenerationRun({
-        storeId,
-        flowId,
-        emailId,
-        triggeredBy,
-        batchId,
-        agent: "copy",
-        agentConfigId: ctx.agentConfigs.copy?.id,
-        status: "error",
-        durationMs: Date.now() - copyT0,
-        errorMessage: msg,
-        errorStack: err instanceof Error ? err.stack : undefined,
-      })
-      notifyGenerationError({
-        runId: copyRunId,
-        storeId,
-        storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
-        emailName: `Flow ${flowType} #${emailNumber}`,
-        agent: "copy",
-        model: ctx.agentConfigs.copy?.model ?? "claude-sonnet-4-5-20250514",
-        error: msg,
-        durationMs: Date.now() - copyT0,
-        costCents: 0,
-      }).catch(() => {})
-      return { status: "error", error: `Copy failed: ${msg}` }
-    }
-
-    // ── Step 3: Image generation (optional) ───────────────────
-    if (ctx.settings.generate_images) {
       const imageBlocks = seededBlocks.filter((b) => b.needs_image)
       log.info("generation.image.check", {
         emailId,
@@ -616,6 +619,7 @@ export async function generateEmail(
           status: "skipped",
           parsedOutput: { reason: "no blocks with needs_image=true" },
         })
+        return
       }
       for (const imgBlock of imageBlocks) {
         const imgT0 = Date.now()
@@ -653,11 +657,7 @@ export async function generateEmail(
             .eq("id", imgBlock.id)
 
           await logGenerationRun({
-            storeId,
-            flowId,
-            emailId,
-            triggeredBy,
-            batchId,
+            storeId, flowId, emailId, triggeredBy, batchId,
             agent: "image",
             status: "success",
             model: "openai/gpt-5.4-image-2",
@@ -668,11 +668,7 @@ export async function generateEmail(
           const msg = err instanceof Error ? err.message : "Erro na imagem"
           log.warn("generation.image.error", { emailId, blockId: imgBlock.id, error: msg })
           await logGenerationRun({
-            storeId,
-            flowId,
-            emailId,
-            triggeredBy,
-            batchId,
+            storeId, flowId, emailId, triggeredBy, batchId,
             agent: "image",
             status: "error",
             model: "openai/gpt-5.4-image-2",
@@ -680,19 +676,14 @@ export async function generateEmail(
             errorMessage: msg,
             errorStack: err instanceof Error ? err.stack : undefined,
           })
-          // Não aborta — imagem é opcional
         }
       }
-    } else {
-      await logGenerationRun({
-        storeId,
-        flowId,
-        emailId,
-        triggeredBy,
-        batchId,
-        agent: "image",
-        status: "skipped",
-      })
+    })()
+
+    await Promise.allSettled([copyPromise, imagePromise])
+
+    if (copyFailed) {
+      return { status: "error", error: "Copy failed" }
     }
 
     // ── Step 4: HTML generation ───────────────────────────────
