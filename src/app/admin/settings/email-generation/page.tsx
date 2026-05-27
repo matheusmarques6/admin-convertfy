@@ -1111,9 +1111,9 @@ function TestTab() {
       })
 
       const text = await res.text()
-      let data: Record<string, unknown>
+      let parsed: Record<string, unknown>
       try {
-        data = JSON.parse(text)
+        parsed = JSON.parse(text)
       } catch {
         throw new Error(
           res.status === 504 || text.includes("timed out")
@@ -1121,15 +1121,20 @@ function TestTab() {
             : `Resposta inválida do servidor (HTTP ${res.status})`,
         )
       }
-      const responseData = (data?.data ?? data) as Record<string, unknown>
+      const responseData = (parsed?.data ?? parsed) as Record<string, unknown>
 
       if (!res.ok) {
         throw new Error((responseData?.error as string) || `HTTP ${res.status}`)
       }
 
-      setResult(responseData)
+      setResult({
+        status: (responseData.status as string) === "error" ? "error" : "done",
+        error: responseData.error as string | undefined,
+        batchId: responseData.batchId as string | undefined,
+        emailId: responseData.emailId as string | undefined,
+      })
       if (responseData.batchId) {
-        setBatchId(responseData.batchId)
+        setBatchId(responseData.batchId as string)
         setPollInterval(2000)
       }
     } catch (err) {
