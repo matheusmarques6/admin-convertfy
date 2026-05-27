@@ -56,33 +56,28 @@ export async function generateEmailImage(
     throw new Error(`OpenRouter ${res.status}: ${text.slice(0, 300)}`)
   }
 
-  const data = await res.json()
+  // A resposta contém base64 gigante (~5MB+) que pode truncar com res.json().
+  // Ler como text e extrair o base64 via regex é mais seguro.
+  const rawText = await res.text()
 
   let imageBuffer: Buffer | null = null
 
-  // Formato OpenRouter GPT Image: choices[0].message.images[0].image_url.url (data:image/png;base64,...)
-  const images = data.choices?.[0]?.message?.images
-  if (Array.isArray(images)) {
-    for (const img of images) {
-      const url = img?.image_url?.url
-      if (url && typeof url === "string" && url.startsWith("data:")) {
-        const b64 = url.split(",")[1]
-        if (b64) {
-          imageBuffer = Buffer.from(b64, "base64")
-          break
-        }
-      }
+  // Extrair data:image/...;base64,XXXX da resposta bruta
+  const b64Match = rawText.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]+=*)/)
+  if (b64Match?.[1]) {
+    imageBuffer = Buffer.from(b64Match[1], "base64")
+  }
+
+  // Fallback: tentar b64_json direto
+  if (!imageBuffer) {
+    const b64JsonMatch = rawText.match(/"b64_json"\s*:\s*"([A-Za-z0-9+/]+=*)"/)
+    if (b64JsonMatch?.[1]) {
+      imageBuffer = Buffer.from(b64JsonMatch[1], "base64")
     }
   }
 
-  // Fallback: data[].b64_json (OpenAI compat)
-  if (!imageBuffer && data.data?.[0]?.b64_json) {
-    imageBuffer = Buffer.from(data.data[0].b64_json, "base64")
-  }
-
   if (!imageBuffer) {
-    const msgKeys = data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : []
-    log.error("image.parse_failed", { storeId, messageKeys: msgKeys })
+    log.error("image.parse_failed", { storeId, responseLength: rawText.length, first500: rawText.slice(0, 500) })
     throw new Error("Não foi possível extrair imagem da resposta do OpenRouter")
   }
 
