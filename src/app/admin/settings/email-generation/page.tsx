@@ -1110,8 +1110,18 @@ function TestTab() {
         }),
       })
 
-      const data = await res.json()
-      const responseData = data?.data ?? data
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(text)
+      } catch {
+        throw new Error(
+          res.status === 504 || text.includes("timed out")
+            ? "Timeout: a geração está demorando mais que o esperado. Tente novamente."
+            : `Resposta inválida do servidor (HTTP ${res.status})`,
+        )
+      }
+      const responseData = (data?.data ?? data) as Record<string, unknown>
 
       if (!res.ok) {
         throw new Error(responseData?.error || `HTTP ${res.status}`)
