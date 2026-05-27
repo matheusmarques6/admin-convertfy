@@ -1124,7 +1124,7 @@ function TestTab() {
       const responseData = (data?.data ?? data) as Record<string, unknown>
 
       if (!res.ok) {
-        throw new Error(responseData?.error || `HTTP ${res.status}`)
+        throw new Error((responseData?.error as string) || `HTTP ${res.status}`)
       }
 
       setResult(responseData)
