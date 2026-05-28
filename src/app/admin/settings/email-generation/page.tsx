@@ -757,9 +757,9 @@ function ReferenceDialog({
     let m: RegExpExecArray | null
     while ((m = imgRe.exec(htmlStr)) !== null) {
       const src = m[1]
-      if (seen.has(src)) continue
+      if (!src || seen.has(src)) continue
       seen.add(src)
-      if (src.startsWith("http") && !src.includes("placehold")) continue
+      if (src.startsWith("data:")) continue
       const alt = m[2] ?? ""
       const width = m[3] ? parseInt(m[3]) : null
       const height = m[4] ? parseInt(m[4]) : null
@@ -770,10 +770,26 @@ function ReferenceDialog({
         type: existing?.type ?? type,
         product_index: existing?.product_index ?? (type === "product" ? found.filter((f) => f.type === "product").length : undefined),
         instruction: existing?.instruction ?? null,
+        image_prompt: existing?.image_prompt ?? null,
       })
     }
     return found
   }
+
+  // Ao abrir o dialog, se o HTML tem <img> mas o image_map salvo está vazio/desatualizado,
+  // re-extrai mantendo o que já estava configurado.
+  useEffect(() => {
+    if (!html.trim()) return
+    const detected = extractImagesFromHtml(html)
+    if (detected.length === 0) return
+    const savedSrcs = new Set(imageMap.map((e) => e.src))
+    const detectedSrcs = new Set(detected.map((e) => e.src))
+    const sameSet =
+      savedSrcs.size === detectedSrcs.size &&
+      [...savedSrcs].every((s) => detectedSrcs.has(s))
+    if (!sameSet) setImageMap(detected)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleHtmlChange = (newHtml: string) => {
     setHtml(newHtml)
