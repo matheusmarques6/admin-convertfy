@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import {
   DragDropContext,
@@ -20,6 +20,7 @@ import {
   Download,
   Eye,
   FileImage,
+  FileText,
   GripVertical,
   Image as ImageIcon,
   LayoutGrid,
@@ -92,7 +93,7 @@ export function EmailDetailView({
   const blocks = email?.blocks ?? []
   const qaItems = email?.qa_items ?? []
 
-  const [viewMode, setViewMode] = useState<"render" | "html">("render")
+  const [viewMode, setViewMode] = useState<"render" | "copy" | "html">("render")
   const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
   const [width, setWidth] = useState<number>(600)
 
@@ -564,6 +565,12 @@ export function EmailDetailView({
               onClick={() => setViewMode("render")}
             />
             <ModePillBtn
+              icon={<FileText className="h-3 w-3" />}
+              label="Copy"
+              active={viewMode === "copy"}
+              onClick={() => setViewMode("copy")}
+            />
+            <ModePillBtn
               icon={<CodeIcon className="h-3 w-3" />}
               label="HTML"
               active={viewMode === "html"}
@@ -726,6 +733,13 @@ export function EmailDetailView({
                   delay_hours: n !== null && !Number.isNaN(n) ? n : null,
                 })
               }}
+            />
+          )}
+          {viewMode === "copy" && (
+            <EmailCopyView
+              email={email}
+              blocks={blocks}
+              copyToClipboard={copyToClipboard}
             />
           )}
           {viewMode === "html" && (
@@ -1966,6 +1980,219 @@ function EmailRenderPreview({
             background: "#fff",
           }}
         />
+      </div>
+    </div>
+  )
+}
+
+// ─── Copy View ─────────────────────────────────────────────
+
+function EmailCopyView({
+  email,
+  blocks,
+  copyToClipboard,
+}: {
+  email: EmailFlowEmail
+  blocks: EmailBlock[]
+  copyToClipboard: (text: string, label?: string) => void
+}) {
+  const status = email.status as string
+
+  const blockSections = useMemo(() => {
+    const sorted = [...blocks].sort((a, b) => a.position - b.position)
+    return sorted.map((b) => {
+      const content = (b.content ?? {}) as Record<string, unknown>
+      const fields: Array<{ key: string; label: string; value: string }> = []
+      const order: Array<[string, string]> = [
+        ["headline", "Headline"],
+        ["body", "Body"],
+        ["cta_text", "CTA"],
+        ["code", "Cupom"],
+        ["hint", "Validade"],
+      ]
+      for (const [k, label] of order) {
+        const v = content[k]
+        if (typeof v === "string" && v.trim()) {
+          fields.push({ key: k, label, value: v })
+        }
+      }
+      // Products: lista
+      const products = content.products
+      if (Array.isArray(products) && products.length > 0) {
+        const txt = (products as Array<Record<string, unknown>>)
+          .map((p, i) => `${i + 1}. ${p.name ?? ""} (${p.price ?? ""}) — ${p.cta_text ?? "Ver"}`)
+          .join("\n")
+        fields.push({ key: "products", label: "Produtos", value: txt })
+      }
+      return { block: b, fields }
+    })
+  }, [blocks])
+
+  const fullText = useMemo(() => {
+    const parts: string[] = []
+    if (email.subject) parts.push(`SUBJECT: ${email.subject}`)
+    if (email.preheader) parts.push(`PREHEADER: ${email.preheader}`)
+    parts.push("")
+    for (const sec of blockSections) {
+      parts.push(`━━━━ ${sec.block.label.toUpperCase()} ━━━━`)
+      for (const f of sec.fields) {
+        parts.push(`${f.label}: ${f.value}`)
+      }
+      parts.push("")
+    }
+    return parts.join("\n").trim()
+  }, [email, blockSections])
+
+  const hasCopy = !!(email.subject || email.preheader || blockSections.some((s) => s.fields.length > 0))
+
+  if (!hasCopy) {
+    return (
+      <div style={{ padding: "48px 32px", maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
+        <FileText
+          className="h-12 w-12 mx-auto mb-4"
+          style={{ color: "var(--crm-gray-400)" }}
+        />
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Copy ainda não foi gerada</h3>
+        <p style={{ fontSize: 13, color: "var(--crm-gray-600)", maxWidth: 440, margin: "0 auto" }}>
+          Status atual: <strong>{status}</strong>. Dispare a geração via n8n pelo botão
+          &ldquo;Gerar copies&rdquo; no sidebar da loja, ou aguarde o briefing ser finalizado.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: "24px 32px 48px", maxWidth: 800, margin: "0 auto" }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 14, fontWeight: 600 }}>Copy do email</h3>
+          <p style={{ fontSize: 11, color: "var(--crm-gray-500)", marginTop: 2 }}>
+            Texto formatado para o designer. Use os botões para copiar cada parte.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => copyToClipboard(fullText, "Copy completa")}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] text-white text-[12px] font-semibold hover:bg-black"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copiar tudo
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {email.subject && (
+          <CopyCard label="Subject" value={email.subject} onCopy={() => copyToClipboard(email.subject!, "Subject")} />
+        )}
+        {email.preheader && (
+          <CopyCard label="Preheader" value={email.preheader} onCopy={() => copyToClipboard(email.preheader!, "Preheader")} />
+        )}
+
+        {blockSections.map((sec) =>
+          sec.fields.length > 0 ? (
+            <div
+              key={sec.block.id}
+              style={{
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 6,
+                padding: 14,
+              }}
+            >
+              <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: "var(--crm-gray-600)",
+                  }}
+                >
+                  #{sec.block.position} · {sec.block.label}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {sec.fields.map((f) => (
+                  <div
+                    key={f.key}
+                    className="flex items-start gap-2"
+                    style={{
+                      padding: 8,
+                      borderRadius: 4,
+                      background: "var(--crm-gray-50)",
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--crm-gray-500)",
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.03em",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {f.label}
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--crm-gray-900)", whiteSpace: "pre-wrap" }}>
+                        {f.value}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(f.value, f.label)}
+                      className="shrink-0 flex h-6 w-6 items-center justify-center rounded-[4px] text-slate-500 hover:bg-slate-200"
+                      title={`Copiar ${f.label}`}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null,
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CopyCard({ label, value, onCopy }: { label: string; value: string; onCopy: () => void }) {
+  return (
+    <div
+      style={{
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 6,
+        padding: 14,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--crm-gray-500)",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.03em",
+              marginBottom: 6,
+            }}
+          >
+            {label}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--crm-gray-900)" }}>{value}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="shrink-0 flex h-7 w-7 items-center justify-center rounded-[4px] text-slate-500 hover:bg-slate-100"
+          title={`Copiar ${label}`}
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   )

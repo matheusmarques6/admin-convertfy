@@ -106,7 +106,7 @@ export type FlowStatus =
   | "approved"
   | "live"
 
-export type EmailStatus = "draft" | "in_progress" | "ready" | "approved" | "live"
+export type EmailStatus = "draft" | "in_progress" | "copy_ready" | "ready" | "approved" | "live"
 
 export interface EmailFlow {
   id: string
