@@ -16,6 +16,7 @@ const imageMapEntrySchema = z.object({
   type: z.enum(["logo", "product", "hero", "icon", "decorative", "custom"]),
   product_index: z.number().optional(),
   instruction: z.string().nullable().optional(),
+  image_prompt: z.string().nullable().optional(),
 })
 
 const patchSchema = z.object({

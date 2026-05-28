@@ -11,15 +11,25 @@ import { logger } from "@/lib/logger"
 const log = logger.child("ImageChain")
 
 export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `Create a hero banner for an email marketing campaign.
-Brand: {brand_name} ({nicho})
-Style: {posicionamento} positioning, {tom_voz} tone
+
+Brand: {brand_name}
+Niche: {nicho}
+Brand persona: {persona}
+Brand differentiator: {diferencial}
+Tone: {tom_voz}, positioning: {posicionamento}
 Brand colors: {primary_colors}
+Secondary colors: {secondary_colors}
+
+Top products of the store: {top_products}
+
 Email context: {block_purpose}
+
 Requirements:
-- Clean, modern e-commerce aesthetic
+- Clean, modern e-commerce aesthetic that reflects the brand persona
+- Show or evoke the niche/products (visual cues, lifestyle, product hints)
 - No text in the image (text is overlaid in HTML)
 - Landscape aspect ratio (600x300)
-- Product/lifestyle photography style`
+- Product/lifestyle photography style aligned with brand tone`
 
 export function renderImagePrompt(
   template: string,

@@ -158,6 +158,66 @@ function buildAllVars(ctx: GenerationContext): Record<string, string> {
   return vars
 }
 
+// ── Helper: variáveis para o agente de imagem (reaproveitada por endpoint de teste) ─
+
+export interface ImagePromptVarsInput {
+  brand: StoreBrandIdentity | null
+  briefing: StoreBriefing | null
+  topProducts: TopProduct[]
+  storeRaw: Record<string, unknown>
+  blockPurpose: string
+}
+
+export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string, string> {
+  const marca = (input.briefing?.marca ?? {}) as Record<string, unknown>
+  const detail = (input.briefing?.briefing ?? {}) as Record<string, unknown>
+  const brand = input.brand
+  const products = (input.topProducts ?? []).slice(0, 5)
+
+  const primaryColors = (brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || "#000000"
+  const secondaryColors = (brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || ""
+  const colorNames = (brand?.colors_primary ?? []).map((c) => c.name).join(", ")
+
+  const topProductsDesc = products.length > 0
+    ? products.map((p, i) => `${i + 1}. ${p.name} (R$ ${p.price})`).join("; ")
+    : "Nenhum produto disponível"
+  const topProductsImages = products.map((p) => p.image_url).filter(Boolean).join(", ")
+
+  const restricoesArr = detail.restricoes as string[] | undefined
+  const restricoes = Array.isArray(restricoesArr) ? restricoesArr.join("; ") : ""
+
+  return {
+    brand_name: (input.storeRaw.store_name as string) ?? "Loja",
+    block_purpose: input.blockPurpose,
+
+    // Perfil da marca
+    nicho: (marca.nicho as string) ?? "",
+    posicionamento: (marca.posicionamento as string) ?? "medio",
+    tom_voz: (marca.tom_voz as string) ?? "casual",
+    persona: (marca.persona as string) ?? "",
+    diferencial: (marca.diferencial as string) ?? "",
+    slogan: (marca.slogan as string) ?? "",
+    restricoes,
+
+    // Identidade visual
+    primary_colors: primaryColors,
+    secondary_colors: secondaryColors,
+    color_names: colorNames,
+    font_heading: brand?.font_heading ?? "",
+    font_body: brand?.font_body ?? "",
+    logo_url: brand?.logo_main_png ?? brand?.logo_main_svg ?? "",
+
+    // Top 5 produtos
+    top_products: topProductsDesc,
+    top_products_images: topProductsImages,
+    product_1_name: products[0]?.name ?? "",
+    product_2_name: products[1]?.name ?? "",
+    product_3_name: products[2]?.name ?? "",
+    product_4_name: products[3]?.name ?? "",
+    product_5_name: products[4]?.name ?? "",
+  }
+}
+
 async function parseRawCopyIntoBlocks(
   admin: ReturnType<typeof createAdminClient>,
   rawOutput: string,
@@ -368,7 +428,7 @@ interface GenerationContext {
   topProducts: TopProduct[]
   referenceHtml: string | null
   referenceCopy: string | null
-  imageMap: Array<{ src: string; alt: string; type: string; width?: number | null; height?: number | null; product_index?: number; instruction?: string | null }> | null
+  imageMap: Array<{ src: string; alt: string; type: string; width?: number | null; height?: number | null; product_index?: number; instruction?: string | null; image_prompt?: string | null }> | null
   settings: {
     generate_images: boolean
     max_parallel: number
@@ -624,21 +684,22 @@ export async function generateEmail(
       for (const imgBlock of imageBlocks) {
         const imgT0 = Date.now()
         try {
-          const marca = ctx.briefing?.marca ?? {}
-          const primaryColors = (ctx.brand?.colors_primary ?? [])
-            .map((c) => c.hex)
-            .join(", ") || "#000000"
+          const promptVars = buildImagePromptVars({
+            brand: ctx.brand,
+            briefing: ctx.briefing,
+            topProducts: ctx.topProducts,
+            storeRaw: ctx.storeRaw,
+            blockPurpose: imgBlock.purpose,
+          })
 
-          const promptVars: Record<string, string> = {
-            brand_name: (ctx.storeRaw.store_name as string) ?? "Loja",
-            nicho: marca.nicho ?? "",
-            posicionamento: marca.posicionamento ?? "medio",
-            tom_voz: marca.tom_voz ?? "casual",
-            primary_colors: primaryColors,
-            block_purpose: imgBlock.purpose,
-          }
+          // Procura entrada no imageMap correspondente ao tipo do bloco
+          const mapEntry = ctx.imageMap?.find(
+            (m) => m.type === "hero" || m.type === "custom"
+          )
+          const customPrompt = mapEntry?.image_prompt?.trim() || null
+          const promptTemplate = customPrompt || DEFAULT_IMAGE_PROMPT_TEMPLATE
 
-          const prompt = renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
+          const prompt = renderImagePrompt(promptTemplate, promptVars)
           const imageUrl = await generateEmailImage(prompt, storeId)
 
           const { data: curBlock } = await admin
@@ -662,7 +723,12 @@ export async function generateEmail(
             status: "success",
             model: "openai/gpt-5.4-image-2",
             durationMs: Date.now() - imgT0,
-            parsedOutput: { blockId: imgBlock.id, imageUrl },
+            parsedOutput: {
+              blockId: imgBlock.id,
+              imageUrl,
+              used_custom_prompt: !!customPrompt,
+              prompt_length: prompt.length,
+            },
           })
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Erro na imagem"
