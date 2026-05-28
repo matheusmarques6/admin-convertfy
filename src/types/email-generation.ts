@@ -89,6 +89,7 @@ export interface ImageMapEntry {
   type: ImageMapType
   product_index?: number
   instruction?: string | null
+  image_prompt?: string | null
 }
 
 export interface EmailReferenceTemplate {
