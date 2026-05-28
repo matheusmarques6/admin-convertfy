@@ -18,6 +18,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import { dispatchBriefingWebhook } from "./briefing-webhook.service"
+import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
 import type {
   BriefingContent,
   OperationalPipelineColumn,
@@ -1130,6 +1131,15 @@ export async function confirmBriefing(
 
   // Dispara webhook outbound pro n8n (fire-and-forget via after() do Next 15)
   after(dispatchBriefingWebhook(onb.id))
+
+  // Dispara geração de copy dos emails via n8n (fire-and-forget)
+  if (onb.store_id) {
+    after(
+      dispatchEmailCopyWebhook(onb.store_id, {
+        triggerSource: "briefing_confirmed",
+      }),
+    )
+  }
 
   return { ok: true }
 }

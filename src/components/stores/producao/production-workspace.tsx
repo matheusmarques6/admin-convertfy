@@ -9,6 +9,7 @@ import {
   ChevronRight,
   FileText,
   Heart,
+  Loader2,
   Lock,
   Mail,
   Package,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   TrendingDown,
   Truck,
+  Wand2,
   X,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -552,6 +554,11 @@ export function ProductionWorkspace({
             </div>
           </div>
 
+          {/* Gerar copies via n8n */}
+          <div style={{ padding: "12px 12px 4px" }}>
+            <DispatchEmailCopiesButton storeId={store.id} flows={flows} />
+          </div>
+
           {/* Recursos do projeto */}
           <div style={{ padding: "12px 12px 8px" }}>
             <SidebarSectionLabel>Recursos do projeto</SidebarSectionLabel>
@@ -762,6 +769,165 @@ export function ProductionWorkspace({
         </main>
       </div>
     </div>
+  )
+}
+
+// ─── Dispatch email copies (n8n) ────────────────────────────
+
+function DispatchEmailCopiesButton({
+  storeId,
+  flows,
+}: {
+  storeId: string
+  flows: EmailFlow[]
+}) {
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [onlyDrafts, setOnlyDrafts] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set(flows.map((f) => f.id)))
+    }
+  }, [open, flows])
+
+  const toggle = (id: string) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelected(next)
+  }
+
+  const dispatch = async () => {
+    if (selected.size === 0) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/dispatch-email-copies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          flow_ids: Array.from(selected),
+          only_drafts: onlyDrafts,
+        }),
+      })
+      const text = await res.text()
+      let body: Record<string, unknown> = {}
+      try { body = JSON.parse(text) } catch {
+        throw new Error(`Resposta inválida (HTTP ${res.status})`)
+      }
+      const data = (body?.data ?? body) as Record<string, unknown>
+      if (!res.ok || data?.ok === false) {
+        throw new Error((data?.reason as string) || (data?.error as string) || `HTTP ${res.status}`)
+      }
+      toast({
+        title: "Geração iniciada",
+        description: `${data.flow_count ?? 0} flow(s) · ${data.email_count ?? 0} email(s) enviados ao n8n.`,
+      })
+      setOpen(false)
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Falha ao disparar",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={flows.length === 0}
+        className="w-full inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] text-white text-[12px] font-semibold hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Wand2 className="h-3.5 w-3.5" />
+        Gerar copies (n8n)
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={() => !submitting && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-[440px] bg-white rounded-[10px] shadow-2xl border border-black/[0.08] flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/[0.06]">
+              <h2 className="text-[15px] font-semibold text-slate-900">Disparar geração de copies</h2>
+              <button
+                type="button"
+                onClick={() => !submitting && setOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              <div>
+                <label className="block text-[12px] font-semibold text-slate-700 mb-2">
+                  Flows ({selected.size} de {flows.length} selecionados)
+                </label>
+                <div className="space-y-1">
+                  {flows.map((f) => (
+                    <label
+                      key={f.id}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-[5px] hover:bg-slate-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(f.id)}
+                        onChange={() => toggle(f.id)}
+                        className="h-3.5 w-3.5 rounded"
+                      />
+                      <span className="text-[13px] text-slate-800 flex-1">{f.name}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                        {f.flow_type}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center gap-2 px-2.5 py-2 rounded-[5px] hover:bg-slate-50 cursor-pointer border-t pt-3 border-slate-100">
+                <input
+                  type="checkbox"
+                  checked={onlyDrafts}
+                  onChange={(e) => setOnlyDrafts(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded"
+                />
+                <span className="text-[12px] text-slate-700">
+                  Apenas emails em <strong>draft</strong> (não regerar copy_ready/ready)
+                </span>
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] bg-slate-50/60">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={submitting}
+                className="h-8 px-3 rounded-[6px] text-[12px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={dispatch}
+                disabled={submitting || selected.size === 0}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] text-white text-[12px] font-semibold disabled:opacity-50"
+              >
+                {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {submitting ? "Disparando..." : "Disparar webhook"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

@@ -1,13 +1,17 @@
 /**
- * Email Generation Service — orquestrador principal.
+ * Email Generation Service — gera os "visuais" do email (imagem + HTML).
+ *
+ * A copy (subject/preheader/blocos) é gerada externamente pelo n8n via
+ * `email-copy-webhook.service.ts` — quando o callback `/api/webhooks/n8n/email-copy`
+ * é recebido, status muda para `copy_ready`. Esta função processa email com copy
+ * pronta gerando imagem + HTML.
  *
  * Fluxo:
  * 1. loadGenerationContext() — brand, briefing, blueprint, top_products, agent configs
- * 2. seedBlocksFromBlueprint() — cria blocos (determinístico)
- * 3. createCopyChain() → invoke → parse → PATCH blocos + PATCH email subject/preheader
- * 4. Se generate_images: generateEmailImage() → PATCH bloco
- * 5. createHtmlChain() → invoke → PATCH email.html
- * 6. Atualiza email status pra "in_progress"
+ * 2. seedBlocksFromBlueprint() — re-cria blocos vazios se necessário (determinístico)
+ * 3. generateEmailImage() — se generate_images, gera imagens dos blocos hero/custom
+ * 4. createHtmlChain() → PATCH email.html
+ * 5. Atualiza email status para "ready"
  *
  * Cada passo persiste log em email_generation_runs via telemetry callback.
  */
@@ -20,13 +24,7 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 import type { EmailAgentConfig, EmailBlueprint } from "@/types/email-generation"
-import { DEFAULT_BLUEPRINTS } from "./email-blueprint"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
-import {
-  createCopyChain,
-  DEFAULT_COPY_SYSTEM_PROMPT,
-  DEFAULT_COPY_USER_TEMPLATE,
-} from "./chains/copy.chain"
 import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
@@ -37,7 +35,6 @@ import {
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
 } from "./chains/html.chain"
-import { CopyOutputSchema } from "./schemas/copy-output.schema"
 import {
   logGenerationRun,
   computeCostCents,
@@ -218,175 +215,6 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   }
 }
 
-async function parseRawCopyIntoBlocks(
-  admin: ReturnType<typeof createAdminClient>,
-  rawOutput: string,
-  seededBlocks: Array<{ id: string; block_type: string; position: number; label: string }>,
-  strip: (s: string) => string,
-) {
-  const sectionPattern = /<!--\s*(?:POSITION\s+)?(\d+)[.:]\s*(.+?)\s*-->|###?\s*(\d+)[.:]\s*(.+)/gi
-  const sections: Array<{ position: number; type: string; startIdx: number }> = []
-  let match: RegExpExecArray | null
-  while ((match = sectionPattern.exec(rawOutput)) !== null) {
-    const pos = parseInt(match[1] ?? match[3])
-    const rawType = (match[2] ?? match[4]).trim()
-    const type = rawType.split(/[\s\-–—]+/)[0].toLowerCase()
-    sections.push({ position: pos, type, startIdx: match.index })
-  }
-
-  if (sections.length === 0) {
-    log.warn("parseRawCopyIntoBlocks: no sections found in output")
-    return
-  }
-
-  const typeMap: Record<string, string> = {
-    hero: "hero", text: "text", texto: "text", copy: "text",
-    coupon: "coupon", cupom: "coupon", cupão: "coupon", discount: "coupon",
-    products: "products", produtos: "products", product: "products",
-    footer: "footer", rodapé: "footer", rodape: "footer", bottom: "footer",
-    cta: "cta", image: "image", imagem: "image",
-    mission: "text", value: "text", why: "text",
-  }
-
-  // Extract markdown field: **Label:** value
-  const extractMdField = (text: string, label: string): string | undefined => {
-    const re = new RegExp(`\\*\\*${label}[:\\s]*\\*\\*\\s*(.+?)(?:\\n|$)`, "i")
-    const m = text.match(re)
-    return m ? strip(m[1]) : undefined
-  }
-
-  // Extract all paragraphs (lines that aren't headers, fields, or separators)
-  const extractParagraphs = (text: string): string[] => {
-    return text
-      .split("\n")
-      .filter((line) => {
-        const t = line.trim()
-        if (!t) return false
-        if (t.startsWith("#")) return false
-        if (t.startsWith("**") && t.includes(":**")) return false
-        if (t.startsWith("---")) return false
-        if (t.startsWith("<!--")) return false
-        if (t.startsWith("- ") || t.startsWith("* ")) return false
-        return true
-      })
-      .map((l) => strip(l))
-      .filter(Boolean)
-  }
-
-  // Extract list items (- item or * item)
-  const extractListItems = (text: string): string[] => {
-    return text
-      .split("\n")
-      .filter((l) => /^\s*[-*]\s/.test(l))
-      .map((l) => strip(l.replace(/^\s*[-*]\s*/, "")))
-      .filter(Boolean)
-  }
-
-  // Extract from HTML tags (fallback)
-  const extractHtmlTag = (text: string, tag: string): string | undefined => {
-    const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i")
-    const m = text.match(re)
-    return m ? strip(m[1]) : undefined
-  }
-
-  const extractHtmlLink = (text: string) => {
-    const m = text.match(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/i)
-    return m ? { url: m[1], text: strip(m[2]) } : undefined
-  }
-
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i]
-    const nextStart = sections[i + 1]?.startIdx ?? rawOutput.length
-    const sectionText = rawOutput.slice(section.startIdx, nextStart)
-
-    let block = seededBlocks.find((b) => b.position === section.position)
-    if (!block) {
-      const mapped = typeMap[section.type] ?? section.type
-      block = seededBlocks.find((b) => b.block_type === mapped)
-    }
-    if (!block) continue
-
-    let content: Record<string, unknown> = {}
-
-    switch (block.block_type) {
-      case "hero": {
-        const headline = extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h1")
-        const desc = extractMdField(sectionText, "Description") ?? extractMdField(sectionText, "Subheadline") ?? extractHtmlTag(sectionText, "h2")
-        const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
-        const body = (desc ?? extractParagraphs(sectionText).join("\n")) || undefined
-        content = { headline, body, cta_text: cta }
-        break
-      }
-      case "text": {
-        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Headline") ?? extractHtmlTag(sectionText, "h2")
-        const paragraphs = extractParagraphs(sectionText)
-        const listItems = extractListItems(sectionText)
-        let body = paragraphs.join("\n") || undefined
-        if (listItems.length > 0) {
-          body = (body ? body + "\n\n" : "") + listItems.map((l) => `• ${l}`).join("\n")
-        }
-        content = { headline: title, body }
-        break
-      }
-      case "coupon": {
-        const code = extractMdField(sectionText, "Code") ?? extractMdField(sectionText, "Código") ?? extractMdField(sectionText, "Cupom")
-        const hint = extractMdField(sectionText, "Hint") ?? extractMdField(sectionText, "Validade") ?? extractMdField(sectionText, "Válido")
-        const cta = extractMdField(sectionText, "CTA") ?? extractHtmlLink(sectionText)?.text
-        const paragraphs = extractParagraphs(sectionText)
-        content = {
-          code: code ?? undefined,
-          hint: (hint ?? paragraphs.join(" ")) || undefined,
-          cta_text: cta ?? undefined,
-        }
-        break
-      }
-      case "products": {
-        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Título") ?? extractHtmlTag(sectionText, "h2")
-        const productNames = sectionText
-          .split("\n")
-          .filter((l) => /^\s*[-*]\s/.test(l) || /^\*\*[^*]+\*\*/.test(l.trim()))
-          .map((l) => strip(l.replace(/^\s*[-*]\s*/, "").replace(/\*\*/g, "")))
-          .filter(Boolean)
-        const products = productNames.map((name) => ({
-          name, price: "", image_url: "", url: "#", cta_text: "VER",
-        }))
-        content = { title, products: products.length > 0 ? products : undefined }
-        break
-      }
-      case "footer": {
-        const paragraphs = extractParagraphs(sectionText)
-        const htmlLinks = [] as Array<{ label: string; url: string }>
-        const linkRe = /<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi
-        let lm: RegExpExecArray | null
-        while ((lm = linkRe.exec(sectionText)) !== null) {
-          const label = strip(lm[2])
-          if (label) htmlLinks.push({ label, url: lm[1] })
-        }
-        const links = htmlLinks.length > 0
-          ? htmlLinks
-          : paragraphs.map((p) => ({ label: p, url: "#" }))
-        content = {
-          columns: links.length > 0 ? [{ links }] : undefined,
-          copyright: extractMdField(sectionText, "Copyright") ?? undefined,
-        }
-        break
-      }
-      default: {
-        const title = extractMdField(sectionText, "Title") ?? extractMdField(sectionText, "Headline")
-        const paragraphs = extractParagraphs(sectionText)
-        content = { headline: title, body: (paragraphs.join("\n")) || undefined }
-      }
-    }
-
-    const cleaned = Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined))
-    if (Object.keys(cleaned).length > 0) {
-      await admin
-        .from("email_blocks")
-        .update({ content: cleaned })
-        .eq("id", block.id)
-    }
-  }
-}
 
 function fillMissingVars(
   inputVars: Record<string, string>,
@@ -499,162 +327,12 @@ export async function generateEmail(
       return { status: "error", error: `Seed failed: ${msg}` }
     }
 
-    // ── Step 2+3: Copy + Image em paralelo ─────────────────────
-    let copyRawOutput = ""
-    let copyOutputIsRawHtml = false
-    let copyFailed = false
+    // ── Step 2 (copy): delegado ao n8n via webhook (email-copy-webhook.service.ts).
+    // Quando o callback chega em /api/webhooks/n8n/email-copy, email_blocks.content +
+    // email_flow_emails.subject/preheader são preenchidos e status vira "copy_ready".
+    // Este pipeline (generateEmail) agora cuida apenas dos Steps 3+4 (imagem + html).
 
-    const copyPromise = (async () => {
-      const copyT0 = Date.now()
-      try {
-        const copyConfig = ctx.agentConfigs.copy
-        const model = copyConfig?.model ?? "claude-sonnet-4-5-20250514"
-        const temperature = copyConfig?.temperature ?? 0.7
-        const maxTokens = copyConfig?.max_tokens ?? 4096
-        const systemPrompt = copyConfig?.system_prompt ?? DEFAULT_COPY_SYSTEM_PROMPT
-        const userTemplate = copyConfig?.user_template ?? DEFAULT_COPY_USER_TEMPLATE
-
-        const dbBlueprint = ctx.blueprint as Record<string, unknown> | null
-        const defaultBp = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]
-        const blueprintData = {
-          objective: (dbBlueprint?.objective as string) ?? defaultBp?.objective ?? "Gerar email de qualidade",
-          messaging: (dbBlueprint?.messaging as string) ?? defaultBp?.messaging ?? "Conteúdo relevante para o público",
-          subject_hint: (dbBlueprint?.subject_hint as string) ?? defaultBp?.subject_hint ?? "",
-        }
-
-        const inputVars = buildAllVars(ctx)
-        inputVars.flow_type = flowType
-        inputVars.email_number = String(emailNumber)
-        inputVars.objective = blueprintData.objective
-        inputVars.messaging = blueprintData.messaging
-        inputVars.subject_hint = blueprintData.subject_hint
-        inputVars.blocks_json = JSON.stringify(
-          seededBlocks.map((b) => ({
-            position: b.position,
-            type: b.block_type,
-            label: b.label,
-            purpose: b.purpose,
-          })),
-          null,
-          2,
-        )
-
-        fillMissingVars(inputVars, systemPrompt, userTemplate)
-
-        const chain = createCopyChain({
-          model,
-          temperature,
-          max_tokens: maxTokens,
-          system_prompt: systemPrompt,
-          user_template: userTemplate,
-        })
-
-        const rawOutput = await chain.invoke(inputVars)
-
-        const promptText = systemPrompt + JSON.stringify(inputVars)
-        const tokensInput = Math.ceil(promptText.length / 4)
-        const tokensOutput = Math.ceil(rawOutput.length / 4)
-
-        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/)
-        let copySubject: string | null = null
-        let copyPreheader: string | null = null
-        let copyIsRawHtml = false
-
-        if (jsonMatch) {
-          try {
-            const parsed = JSON.parse(jsonMatch[0])
-            const copyOutput = CopyOutputSchema.parse(parsed)
-            copySubject = copyOutput.subject
-            copyPreheader = copyOutput.preheader
-
-            for (const blockData of copyOutput.blocks) {
-              const matchingBlock = seededBlocks.find((b) => b.position === blockData.position)
-              if (matchingBlock) {
-                await admin
-                  .from("email_blocks")
-                  .update({ content: blockData.content })
-                  .eq("id", matchingBlock.id)
-              }
-            }
-          } catch {
-            copyIsRawHtml = true
-          }
-        } else {
-          copyIsRawHtml = true
-        }
-
-        if (copyIsRawHtml) {
-          const stripMarkup = (s: string) =>
-            s.replace(/<[^>]*>/g, "").replace(/\*{1,2}/g, "").replace(/\s+/g, " ").trim()
-          const subjectMatch = rawOutput.match(/(?:\*{0,2})Subject(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-          const preheaderMatch = rawOutput.match(/(?:\*{0,2})(?:Preview|Preheader|Pre-?header)(?:\*{0,2})[:\s]*(?:<[^>]*>)*\s*(.+)/im)
-          copySubject = subjectMatch ? stripMarkup(subjectMatch[1]).slice(0, 200) : null
-          copyPreheader = preheaderMatch ? stripMarkup(preheaderMatch[1]).slice(0, 200) : null
-          await parseRawCopyIntoBlocks(admin, rawOutput, seededBlocks, stripMarkup)
-        }
-
-        copyRawOutput = rawOutput
-        copyOutputIsRawHtml = copyIsRawHtml
-
-        if (copySubject || copyPreheader) {
-          const updateFields: Record<string, string> = {}
-          if (copySubject) updateFields.subject = copySubject
-          if (copyPreheader) updateFields.preheader = copyPreheader
-          await admin
-            .from("email_flow_emails")
-            .update(updateFields)
-            .eq("id", emailId)
-        }
-
-        await logGenerationRun({
-          storeId,
-          flowId,
-          emailId,
-          triggeredBy,
-          batchId,
-          agent: "copy",
-          agentConfigId: copyConfig?.id,
-          status: "success",
-          model,
-          inputVars,
-          rawOutput,
-          parsedOutput: { subject: copySubject, preheader: copyPreheader },
-          tokensInput,
-          tokensOutput,
-          costCents: computeCostCents(model, tokensInput, tokensOutput),
-          durationMs: Date.now() - copyT0,
-        })
-      } catch (err) {
-        copyFailed = true
-        const msg = err instanceof Error ? err.message : "Erro na copy"
-        log.error("generation.copy.error", { emailId, error: msg })
-        const copyRunId = await logGenerationRun({
-          storeId,
-          flowId,
-          emailId,
-          triggeredBy,
-          batchId,
-          agent: "copy",
-          agentConfigId: ctx.agentConfigs.copy?.id,
-          status: "error",
-          durationMs: Date.now() - copyT0,
-          errorMessage: msg,
-          errorStack: err instanceof Error ? err.stack : undefined,
-        })
-        notifyGenerationError({
-          runId: copyRunId,
-          storeId,
-          storeName: (ctx.storeRaw.store_name as string) ?? "Loja",
-          emailName: `Flow ${flowType} #${emailNumber}`,
-          agent: "copy",
-          model: ctx.agentConfigs.copy?.model ?? "claude-sonnet-4-5-20250514",
-          error: msg,
-          durationMs: Date.now() - copyT0,
-          costCents: 0,
-        }).catch(() => {})
-      }
-    })()
-
+    // ── Step 3: Image (executa em paralelo apenas consigo mesma; sem copy) ─
     const imagePromise = (async () => {
       if (!ctx.settings.generate_images) {
         await logGenerationRun({
@@ -746,11 +424,7 @@ export async function generateEmail(
       }
     })()
 
-    await Promise.allSettled([copyPromise, imagePromise])
-
-    if (copyFailed) {
-      return { status: "error", error: "Copy failed" }
-    }
+    await imagePromise
 
     // ── Step 4: HTML generation ───────────────────────────────
     const htmlT0 = Date.now()
@@ -782,7 +456,7 @@ export async function generateEmail(
       inputVars.email_name = updatedEmail?.name ?? ""
       inputVars.subject = (updatedEmail?.subject as string) ?? ""
       inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
-      inputVars.copy_output = copyOutputIsRawHtml ? copyRawOutput : ""
+      inputVars.copy_output = ""
       inputVars.blocks_with_content = JSON.stringify(
         (updatedBlocks ?? []).map((b: Record<string, unknown>) => ({
           position: b.position,
@@ -875,10 +549,10 @@ export async function generateEmail(
       return { status: "error", error: `HTML failed: ${msg}` }
     }
 
-    // ── Step 5: Update email status ───────────────────────────
+    // ── Step 5: Update email status para "ready" (copy + imagem + html concluídos) ──
     await admin
       .from("email_flow_emails")
-      .update({ status: "in_progress" })
+      .update({ status: "ready" })
       .eq("id", emailId)
 
     log.info("generation.done", { storeId, emailId, batchId })
