@@ -17,7 +17,29 @@ export interface EmailBlueprint {
   updated_by: string | null
 }
 
-export type AgentType = "copy" | "image" | "html"
+export type AgentType = "copy" | "image" | "html" | "qa"
+
+// ── QA Agent (Epic AE) ─────────────────────────────────────
+// Espelha o output do qa.chain.ts. Persistido em
+// email_flow_emails.qa_issues (JSONB DEFAULT '[]').
+export type QaIssueSeverity = "low" | "medium" | "high"
+
+export type QaIssueType =
+  | "spam_score_alto"
+  | "links_quebrados"
+  | "blocos_vazios"
+  | "tom_inconsistente"
+  | "claim_nao_coberto"
+  | "html_invalido"
+  | "alt_text_faltando"
+  | "compliance"
+
+export interface QaIssue {
+  type: QaIssueType
+  severity: QaIssueSeverity
+  message: string
+  location?: string
+}
 
 export interface EmailAgentConfig {
   id: string
@@ -48,7 +70,7 @@ export interface EmailGenerationSettings {
 }
 
 export type GenerationRunStatus = "running" | "success" | "error" | "skipped"
-export type GenerationRunAgent = "seed" | "copy" | "image" | "html"
+export type GenerationRunAgent = "seed" | "copy" | "image" | "html" | "qa"
 
 export interface EmailGenerationRun {
   id: string

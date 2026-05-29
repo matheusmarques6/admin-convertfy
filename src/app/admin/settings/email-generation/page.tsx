@@ -20,6 +20,7 @@ import {
   Clock,
   Store,
   Mail,
+  ShieldCheck,
 } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
@@ -54,18 +55,21 @@ const AGENT_LABELS: Record<AgentType, string> = {
   copy: "Copy",
   image: "Imagens",
   html: "HTML",
+  qa: "QA",
 }
 
 const AGENT_ICONS: Record<AgentType, typeof Bot> = {
   copy: Bot,
   image: Image,
   html: Code2,
+  qa: ShieldCheck,
 }
 
 const AGENT_DESCRIPTIONS: Record<AgentType, string> = {
   copy: "Gera textos, assuntos e copies para os blocos do email",
   image: "Gera prompts e coordena a criação de imagens para os emails",
   html: "Compila o HTML final combinando blocos, imagens e estilos",
+  qa: "Valida o HTML gerado: spam, links, claims, blocos vazios, alt text e compliance",
 }
 
 type Tab = "agents" | "settings" | "references" | "test"

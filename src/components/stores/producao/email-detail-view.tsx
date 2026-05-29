@@ -3678,6 +3678,37 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       fg: "var(--crm-pos)",
       label: "Ao vivo",
     },
+    // ── Epic AE: novos status de geracao ───────────────────
+    pending: {
+      bg: "var(--crm-gray-100)",
+      fg: "var(--crm-gray-600)",
+      label: "Aguardando",
+    },
+    copy_generating: {
+      bg: "var(--crm-blue-50)",
+      fg: "var(--crm-brand)",
+      label: "Gerando copy",
+    },
+    copy_generating_recovery: {
+      bg: "var(--crm-blue-50)",
+      fg: "var(--crm-brand)",
+      label: "Gerando copy (recovery)",
+    },
+    rendering: {
+      bg: "var(--crm-blue-50)",
+      fg: "var(--crm-brand)",
+      label: "Renderizando",
+    },
+    qa_running: {
+      bg: "var(--crm-blue-50)",
+      fg: "var(--crm-brand)",
+      label: "QA",
+    },
+    failed: {
+      bg: "var(--crm-neg-bg)",
+      fg: "var(--crm-neg)",
+      label: "Falhou",
+    },
   }
   const v = map[status]
   return (

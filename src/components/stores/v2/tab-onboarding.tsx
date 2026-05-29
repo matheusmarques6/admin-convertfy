@@ -88,10 +88,17 @@ function mapStatusToBucket(status: EmailStatus): StatusBucket {
   switch (status) {
     case "draft":
     case "in_progress":
+    case "pending":
+    case "copy_generating":
+    case "copy_generating_recovery":
+    case "rendering":
+    case "qa_running":
       return "rascunho"
     case "copy_ready":
     case "ready":
       return "em_revisao"
+    case "failed":
+      return "rascunho"
     case "approved":
       return "aprovado"
     case "live":
