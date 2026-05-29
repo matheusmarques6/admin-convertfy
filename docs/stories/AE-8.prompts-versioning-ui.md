@@ -155,6 +155,7 @@ Esta story constrói a UI + API para gerenciá-la. Sem A/B testing nesta fase �
 - [ ] Criar componente `src/components/agents/prompt-diff-modal.tsx`
 - [ ] Criar `src/lib/services/prompt-management.service.ts` (encapsula lógica DB)
 - [ ] Adicionar link na sidebar admin (provavelmente `src/components/admin/sidebar.tsx`)
+- [ ] **Atualizar `src/app/admin/settings/email-generation/page.tsx`** — incluir `'qa'` no array `activeConfigs` do `AgentsTab` (hoje só renderiza `["copy","image","html"]`). AE-1 já adicionou labels/icons/descriptions pra `qa`, falta só o card de configuração. Pendência herdada do review da AE-1.
 - [ ] Testes
 
 ---
