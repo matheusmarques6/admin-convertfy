@@ -106,7 +106,33 @@ export type FlowStatus =
   | "approved"
   | "live"
 
-export type EmailStatus = "draft" | "in_progress" | "copy_ready" | "ready" | "approved" | "live"
+/**
+ * Status canonico de email_flow_emails.
+ *
+ * Valores Epic AE (Agent Email Generation):
+ *   draft -> pending -> copy_generating [-> copy_generating_recovery]
+ *     -> copy_ready -> rendering -> qa_running -> ready | failed
+ *
+ * Valores LEGACY (Epic 8/9, push Klaviyo): in_progress, approved, live.
+ * Mantidos por retrocompat — NAO usar em codigo novo.
+ *
+ * Espelha o CHECK constraint da migration 20260530_agent_email_generation.sql.
+ */
+export type EmailStatus =
+  | "draft"
+  | "in_progress"
+  | "pending"
+  | "copy_generating"
+  | "copy_generating_recovery"
+  | "copy_ready"
+  | "rendering"
+  | "qa_running"
+  | "ready"
+  | "failed"
+  | "approved"
+  | "live"
+
+import type { QaIssue } from "./email-generation"
 
 export interface EmailFlow {
   id: string
@@ -152,6 +178,20 @@ export interface EmailFlowEmail {
    * pilotos. UI renderiza com cadeado e desabilita selecao. Nunca persistido.
    */
   preview_locked?: boolean
+  // ── Telemetria Epic AE (migration 20260530_agent_email_generation.sql) ──
+  // Todas opcionais porque rows legacy nao tem esses valores.
+  generation_batch_id?: string | null
+  copy_started_at?: string | null
+  copy_ready_at?: string | null
+  rendering_started_at?: string | null
+  qa_started_at?: string | null
+  ready_at?: string | null
+  failed_at?: string | null
+  failure_reason?: string | null
+  qa_issues?: QaIssue[]
+  total_cost_cents?: number
+  attempts?: number
+  last_attempt_at?: string | null
   // Joins
   blocks?: EmailBlock[]
   qa_items?: EmailQAItem[]

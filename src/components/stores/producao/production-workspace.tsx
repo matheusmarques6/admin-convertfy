@@ -1300,14 +1300,21 @@ function EmailStatusDot({
 }: {
   status: EmailFlowEmail["status"]
 }) {
-  const color = {
+  const color: Record<EmailFlowEmail["status"], string> = {
     draft: "var(--crm-gray-300)",
     in_progress: "var(--crm-brand)",
     copy_ready: "var(--crm-warn)",
     ready: "var(--crm-pos)",
     approved: "var(--crm-pos)",
     live: "var(--crm-pos)",
-  }[status]
+    // ── Epic AE: novos status de geracao ─────────────────
+    pending: "var(--crm-gray-300)",
+    copy_generating: "var(--crm-brand)",
+    copy_generating_recovery: "var(--crm-brand)",
+    rendering: "var(--crm-brand)",
+    qa_running: "var(--crm-brand)",
+    failed: "var(--crm-neg)",
+  }
   return (
     <span
       aria-hidden
@@ -1315,7 +1322,7 @@ function EmailStatusDot({
         width: 6,
         height: 6,
         borderRadius: "50%",
-        background: color,
+        background: color[status],
         flexShrink: 0,
       }}
     />

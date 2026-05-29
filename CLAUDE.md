@@ -1057,5 +1057,39 @@ Documentacao completa em `docs/crm/`.
 
 ---
 
+## Status canônico Epic AE (Agent Email Generation)
+
+A partir da migration `20260530_agent_email_generation.sql`, `email_flow_emails.status` aceita:
+
+| Status | Significado | Terminal? |
+|--------|-------------|-----------|
+| `draft` | Email criado, ainda não enfileirado | Não |
+| `pending` | Agendado para gerar (na fila) | Não |
+| `copy_generating` | N8N processando copy | Não |
+| `copy_generating_recovery` | Fallback in-process após watchdog | Não |
+| `copy_ready` | Copy gerada, aguardando fase 2 | Não |
+| `rendering` | Gerando imagem + HTML | Não |
+| `qa_running` | QA agent validando | Não |
+| `ready` | Pronto para o designer | Sim |
+| `failed` | Erro irrecuperável (ver `failure_reason`) | Sim |
+| `in_progress`, `approved`, `live` | Status LEGACY (Epic 8/9 Klaviyo) — não use em código novo | — |
+
+Tabelas novas do epic: `email_generation_queue_signals` (sinal de fila — trigger
+`fn_on_briefing_confirmed` insere quando `store_briefings.status='confirmed'`)
+e `email_status_events` (audit log + SSE bus — trigger
+`fn_log_email_status_change` insere a cada transicao de status).
+
+Sistema de tags em `profiles.tags TEXT[]`: rota `cto` para alertas de falha
+do pipeline AE. Marcar via SQL/Supabase Studio até existir UI de gestão.
+
+Tipos canônicos:
+- `EmailStatus` em `src/types/email-workspace.ts`
+- `QaIssue` em `src/types/email-generation.ts`
+- `Profile` em `src/types/profile.ts`
+
+Referência: `docs/architecture/adr-agent-email-generation.md`.
+
+---
+
 *Última atualização: Marco 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
