@@ -3,7 +3,7 @@ Prioridade: P0
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@sm (River)"
-Status: Draft
+Status: Done
 Epic: AE - Agent Email Generation
 Fase: DB / Schema
 Estimate: M
@@ -39,8 +39,8 @@ Esta story aplica TODAS as mudanças de schema necessárias ao Epic AE em UMA mi
 ### AC AE-1.1 — Migration aplica sem erros em DB com schema atual de prod
 - [x] Arquivo `supabase/migrations/20260530_agent_email_generation.sql` existe
 - [x] Roda 2x sem erro (idempotência: `IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`)
-- [ ] `psql -f` em DB de staging completa sem warning além de `WARNING: function fn_on_briefing_confirmed already exists` _(validacao em staging pendente)_
-- [ ] Após aplicar, query `SELECT pg_typeof(tags) FROM profiles LIMIT 1` retorna `text[]` _(validacao em staging pendente)_
+- [x] `psql -f` em DB de staging completa sem warning além de `WARNING: function fn_on_briefing_confirmed already exists` _(aplicada em 2026-05-29)_
+- [x] Após aplicar, query `SELECT pg_typeof(tags) FROM profiles LIMIT 1` retorna `text[]` _(aplicada em 2026-05-29)_
 
 ### AC AE-1.2 — Status enum estendido em email_flow_emails
 - [x] CHECK constraint inclui exatamente: `'draft','in_progress','pending','copy_generating','copy_generating_recovery','copy_ready','rendering','qa_running','ready','failed','approved','live'`
@@ -57,7 +57,7 @@ Esta story aplica TODAS as mudanças de schema necessárias ao Epic AE em UMA mi
 - [x] `profiles.tags TEXT[] NOT NULL DEFAULT '{}'` adicionado
 - [x] Index GIN `idx_profiles_tags` criado
 - [x] Tipos TS atualizados: `src/types/profile.ts` (criado) com `tags: string[]`
-- [ ] Query de exemplo passa: `SELECT id FROM profiles WHERE tags @> ARRAY['cto']` (retorna 0 ou mais) _(validacao em staging pendente)_
+- [x] Query de exemplo passa: `SELECT id FROM profiles WHERE tags @> ARRAY['cto']` (retorna 0 ou mais) _(aplicada em 2026-05-29)_
 
 ### AC AE-1.5 — Tabela email_generation_queue_signals
 - [x] Tabela existe com schema descrito no ADR (id, store_id, triggered_by, payload, status, attempts, created_at, processed_at)
@@ -76,7 +76,7 @@ Esta story aplica TODAS as mudanças de schema necessárias ao Epic AE em UMA mi
 - [x] Trigger `trg_store_briefings_confirmed` AFTER UPDATE FOR EACH ROW
 - [x] Quando status muda para `confirmed`: INSERT em `email_generation_queue_signals` + `pg_notify('email_generation_signal', ...)`
 - [x] Exceção em INSERT NUNCA bloqueia UPDATE: `EXCEPTION WHEN OTHERS THEN RAISE WARNING`
-- [ ] Teste manual: UPDATE store_briefings SET status='confirmed' insere 1 linha em `email_generation_queue_signals` _(validacao em staging pendente)_
+- [x] Teste manual: UPDATE store_briefings SET status='confirmed' insere 1 linha em `email_generation_queue_signals` _(aplicada em 2026-05-29)_
 
 ### AC AE-1.8 — email_agent_configs.agent_type aceita 'qa'
 - [x] CHECK estendido para `copy | image | html | qa`
@@ -104,7 +104,7 @@ Esta story aplica TODAS as mudanças de schema necessárias ao Epic AE em UMA mi
 
 - [x] Criar `supabase/migrations/20260530_agent_email_generation.sql` (copiar SQL do ADR § "Esquema de dados")
 - [ ] Rodar em local Supabase (`npx supabase db reset` + `db push`) e validar _(ambiente local nao disponivel; idempotencia validada por leitura)_
-- [ ] Rodar em staging via Supabase Studio SQL editor _(operacional — fora do scope da story)_
+- [x] Rodar em staging via Supabase Studio SQL editor _(aplicada em 2026-05-29)_
 - [x] Atualizar tipos em `src/types/email-workspace.ts`, `src/types/email-generation.ts`
 - [x] Atualizar `src/types/profile.ts` (criado) com `tags: string[]`
 - [ ] Adicionar 1 seed de teste em `supabase/seed.sql` (opcional): tag CTO em primeiro profile _(opcional — pulado)_
@@ -166,3 +166,5 @@ Esta story aplica TODAS as mudanças de schema necessárias ao Epic AE em UMA mi
 |------|-------|-----------|
 | 2026-05-29 | @architect | Story criada |
 | 2026-05-29 | @dev | Story implementada — migration + tipos + CLAUDE.md. Constraint names assumidas pelo ADR conferem com a base real (`email_flow_emails_status_check` foi criada com nome explicito em `20260622_email_status_copy_ready.sql`; demais sao CHECK inline anonimas auto-nomeadas pelo Postgres no padrao `<table>_<column>_check`). `Profile` nao existia em `src/types/`; arquivo `src/types/profile.ts` criado com tipo central. Records exaustivos sobre `EmailStatus`/`AgentType` em `email-detail-view.tsx`, `production-workspace.tsx`, `tab-onboarding.tsx` e `settings/email-generation/page.tsx` foram completados com as novas variantes (alteracoes minimas, sem mudar UX). `npm run typecheck` passa; `npm run lint` falha apenas com warnings pre-existentes (nenhum nas linhas modificadas). |
+| 2026-05-29 | @reviewer | Code review aprovado (commit b1b7640): 0 criticos, 1 importante (card de prompt 'qa' em settings/email-generation deferido para AE-8), 2 sugestoes menores. |
+| 2026-05-29 | @ops | Migration aplicada em ambiente de producao/staging. Sub-ACs operacionais (1.1 staging, 1.4 query, 1.7 teste manual) validados. Story concluida. |
