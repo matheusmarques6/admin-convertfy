@@ -51,32 +51,49 @@ export async function GET(
       )
     }
 
-    // Brand identity (latest version)
-    const { data: brand } = await admin
-      .from("store_brand_identity")
-      .select("*")
-      .eq("store_id", storeId)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Brand + Briefing + TopProducts + Flows em paralelo (todos independentes do `store`).
+    const [brandRes, briefingRes, topProductsRes, flowsRes] = await Promise.all([
+      admin
+        .from("store_brand_identity")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      admin
+        .from("store_briefings")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      admin
+        .from("store_top_products")
+        .select("rank, title, price, currency, handle, image_url, captured_at")
+        .eq("store_id", storeId)
+        .order("rank", { ascending: true })
+        .limit(5),
+      admin
+        .from("email_flows")
+        .select(`
+          id, store_id, flow_type, name, description, status, position,
+          assigned_to, progress_percent, created_at, updated_at,
+          assignee:profiles!email_flows_assigned_to_fkey (id, name, avatar_url),
+          emails:email_flow_emails (
+            id, flow_id, number, name, from_name, from_email, subject, preheader,
+            delay_hours, status, progress_percent, klaviyo_message_id,
+            created_at, updated_at,
+            blocks:email_blocks (id, block_type, label, position)
+          )
+        `)
+        .eq("store_id", storeId)
+        .order("position", { ascending: true }),
+    ])
 
-    // Briefing (latest version)
-    const { data: briefing } = await admin
-      .from("store_briefings")
-      .select("*")
-      .eq("store_id", storeId)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    // Top products sincronizados (webhook N8N). Substitui o snapshot estatico
-    // em store_brand_identity.top_products na nova UI de Identidade Visual.
-    const { data: topProducts } = await admin
-      .from("store_top_products")
-      .select("rank, title, price, currency, handle, image_url, captured_at")
-      .eq("store_id", storeId)
-      .order("rank", { ascending: true })
-      .limit(5)
+    const brand = brandRes.data
+    const briefing = briefingRes.data
+    const topProducts = topProductsRes.data
+    const flows = flowsRes.data
 
     const topProductsSync = (topProducts ?? []).length
       ? {
@@ -84,23 +101,6 @@ export async function GET(
           items: topProducts ?? [],
         }
       : null
-
-    // Flows + emails (em uma query so via subquery)
-    const { data: flows } = await admin
-      .from("email_flows")
-      .select(`
-        id, store_id, flow_type, name, description, status, position,
-        assigned_to, progress_percent, created_at, updated_at,
-        assignee:profiles!email_flows_assigned_to_fkey (id, name, avatar_url),
-        emails:email_flow_emails (
-          id, flow_id, number, name, from_name, from_email, subject, preheader,
-          delay_hours, status, progress_percent, klaviyo_message_id,
-          created_at, updated_at,
-          blocks:email_blocks (id, block_type, label, position)
-        )
-      `)
-      .eq("store_id", storeId)
-      .order("position", { ascending: true })
 
     // Ordena emails internamente
     const flowsOrdered = (flows || []).map((f) => ({
