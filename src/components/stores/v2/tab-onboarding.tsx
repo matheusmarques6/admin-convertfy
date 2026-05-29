@@ -174,6 +174,7 @@ export default function TabOnboarding({ storeId }: { storeId: string }) {
   const { data, isLoading, error } = useSWR<{ data?: StoreProducaoPayload } & StoreProducaoPayload>(
     `/api/admin/stores/${storeId}/producao`,
     fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
   )
   const payload = (data?.data ?? data) as StoreProducaoPayload | undefined
 
@@ -944,9 +945,23 @@ function EmailFlowCard({
         </div>
       </button>
 
-      {expanded && emails.length > 0 && (
-        <EmailRowsTable emails={emails} flowId={flow.id} storeId={storeId} />
-      )}
+      {expanded &&
+        (emails.length > 0 ? (
+          <EmailRowsTable emails={emails} flowId={flow.id} storeId={storeId} />
+        ) : (
+          <div
+            style={{
+              borderTop: `1px solid ${C.g100}`,
+              padding: "16px 18px",
+              fontSize: 12,
+              color: C.g500,
+              textAlign: "center",
+              background: "#fff",
+            }}
+          >
+            Nenhum e-mail criado neste flow ainda.
+          </div>
+        ))}
     </div>
   )
 }
