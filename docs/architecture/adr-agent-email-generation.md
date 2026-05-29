@@ -33,7 +33,7 @@ Adotamos uma arquitetura **reativa serverless** sem worker dedicado, sem queue e
 1. **Gatilho híbrido**: trigger SQL em `store_briefings` (status `confirmed`) + endpoint manual `POST /api/admin/stores/[id]/start-onboarding` acionado por botão na UI.
 2. **Pipeline em duas fases por email**:
    - Fase 1 (copy): N8N gera subject + preheader + blocos. Faz callback em `POST /api/webhooks/n8n/email-copy` (handler existente, **enriquecido**).
-   - Fase 2 (visual + QA): roda **in-process** no mesmo handler do webhook usando `waitUntil()` do Vercel — gera imagem hero (OpenRouter), HTML chain (Claude Anthropic Messages direto) e QA agent (Claude). O handler responde 200 imediatamente; a fase 2 continua em background até ~5min (limite do Vercel Pro).
+   - Fase 2 (visual + QA): roda **in-process** no mesmo handler do webhook usando `waitUntil()` do Vercel — gera imagem hero (OpenRouter via `image.chain.ts` existente), HTML chain (Claude via LangChain `ChatAnthropic` em `html.chain.ts` existente) e QA agent (Claude via nova chain `qa.chain.ts` seguindo mesmo padrão LangChain). O handler responde 200 imediatamente; a fase 2 continua em background até ~5min (limite do Vercel Pro).
 3. **Watchdog cron** em `/api/cron/email-generation-watchdog` (a cada 5min) detecta emails travados e:
    - `copy_generating > 15min` → dispara chain in-process com Claude direto (pula n8n)
    - `rendering | qa_running > 10min` → marca `failed` com motivo `timeout`
@@ -106,11 +106,11 @@ Não há `awaiting_approval`. Não há `approved`. O designer **consume** emails
 │   a. UPDATE status='rendering', rendering_started_at=now()           │
 │   b. generateEmailImage()  ── OpenRouter ──►  image url(s)           │
 │      (já existe em src/lib/agents/chains/image.chain.ts)             │
-│   c. createHtmlChain()     ── Anthropic Messages direto ──► HTML     │
+│   c. createHtmlChain()     ── LangChain ChatAnthropic ──► HTML       │
 │      (já existe em src/lib/agents/chains/html.chain.ts)              │
 │   d. UPDATE email_flow_emails.html, status='qa_running'              │
 │   e. runQaAgent({html, blocks, briefing, brand})                     │
-│      ── Anthropic Messages direto ──► { passed, issues[] }           │
+│      ── LangChain ChatAnthropic (qa.chain.ts NOVA) ──► {passed, ...} │
 │   f. SE passed:                                                      │
 │        UPDATE status='ready', ready_at=now(), qa_issues=[]           │
 │      SENÃO:                                                          │
@@ -146,6 +146,37 @@ GET /api/cron/email-generation-watchdog (Bearer CRON_SECRET)
   5. Idempotente: usa SELECT ... FOR UPDATE SKIP LOCKED para
      evitar duplo processamento entre execuções consecutivas.
 ```
+
+---
+
+## Reuso de infraestrutura existente (pós-audit 2026-05-29)
+
+Antes de implementar, fizemos auditoria da base. Há infraestrutura sólida que será **reusada**, não recriada:
+
+| Componente | Estado | Como reusar |
+|------------|--------|-------------|
+| `email_agent_configs` (prompts versionados) | ✅ pronto | AE-8 estende — adiciona apenas UI e `agent_type='qa'` ao CHECK |
+| `email_generation_runs` (telemetria) | ✅ pronto | AE-3/AE-5 escrevem nele; AE-9 estende UI existente |
+| `email_flows`, `email_flow_emails`, `email_blocks` | ✅ pronto | AE-1 estende CHECK + colunas |
+| Chains `html.chain.ts`, `copy.chain.ts`, `image.chain.ts` (LangChain) | ✅ pronto | AE-3 reusa; AE-5 cria `qa.chain.ts` com mesmo padrão |
+| `email-generation.service.ts` (orquestração fase 2) | ✅ pronto | AE-3 reusa; só envolve em `waitUntil` |
+| `email-copy-webhook.service.ts` (dispatch n8n) | ✅ pronto | AE-2 reusa |
+| Endpoint `POST /api/admin/stores/[id]/dispatch-email-copies` | ✅ pronto | AE-2 reusa (chamado pelo signal consumer) |
+| Endpoint `POST /api/admin/stores/[id]/generate-email` | ✅ pronto | AE-3 não substitui — entrada in-process da fase 2 |
+| Endpoint `POST /api/webhooks/n8n/email-copy` | ✅ pronto | AE-3 enriquece com `waitUntil` |
+| `notificationService.notifyByRole()` | ✅ pronto | AE-7 estende com `notifyByTag()` (nova função, mesmo service) |
+| `emailService.send()` (transacional) | ✅ pronto | AE-7 reusa |
+| `notifications` table (in-app bell) | ✅ pronto | AE-7 reusa |
+| `generation-notify.service.ts` (notif erro/sucesso) | ✅ pronto | AE-7 estende com tag-based routing |
+| `/admin/tools/email-generation-logs` | ✅ pronto | AE-9 estende (filtros, drawer, follow live) em vez de página nova |
+| Padrão `errorResponse/successResponse`, `createAdminClient`, Zod | ✅ pronto | Todas as stories seguem |
+| Cron secret / `vercel.json` crons | ✅ pronto | AE-4 adiciona entry `*/5 * * * *` |
+
+**Tabelas a criar do zero**: apenas `email_generation_queue_signals` e `email_status_events` (event bus pra SSE).
+
+**Status conflict resolvido**: enum atual (`draft|in_progress|copy_ready|ready|approved|live`) é **estendido**, não substituído. Valores legacy (`in_progress`, `approved`, `live`) ficam na CHECK pra retrocompat. Novos: `pending`, `copy_generating`, `copy_generating_recovery`, `rendering`, `qa_running`, `failed`.
+
+**Briefing status**: `store_briefings` ganha valor `'confirmed'` no CHECK existente (atual: `'current'|'archived'`). Distinto e separado de `client_onboardings.briefing_status` (que cobre o formulário do cliente, outro contexto).
 
 ---
 
