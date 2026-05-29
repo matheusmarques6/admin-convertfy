@@ -3658,6 +3658,11 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       fg: "var(--crm-brand)",
       label: "Em progresso",
     },
+    copy_ready: {
+      bg: "var(--crm-warn-bg)",
+      fg: "var(--crm-warn)",
+      label: "Copy pronta",
+    },
     ready: {
       bg: "var(--crm-warn-bg)",
       fg: "var(--crm-warn)",

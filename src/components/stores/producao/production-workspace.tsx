@@ -1303,6 +1303,7 @@ function EmailStatusDot({
   const color = {
     draft: "var(--crm-gray-300)",
     in_progress: "var(--crm-brand)",
+    copy_ready: "var(--crm-warn)",
     ready: "var(--crm-pos)",
     approved: "var(--crm-pos)",
     live: "var(--crm-pos)",
