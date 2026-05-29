@@ -46,7 +46,6 @@ const TABS = [
 const LEGACY_TAB_MAP: Record<string, string> = {
   overview: "visao",
   integrations: "setup",
-  onboarding: "setup",
   briefing: "contexto",
   reports: "performance",
 }
