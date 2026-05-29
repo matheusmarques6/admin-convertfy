@@ -55,6 +55,7 @@ interface StoreProducaoPayload {
     id: string
     store_name: string
     slogan: string | null
+    brand_thesis: string | null
     niche: string | null
     diferencial: string | null
     persona: string | null
@@ -67,7 +68,13 @@ interface StoreProducaoPayload {
     frete_gratis_acima_cents: number | null
     ads_score: number | null
     ads_summary: string | null
-    ads_sub_scores: Record<string, number> | null
+    ads_sub_scores: {
+      strategy?: number
+      creatives?: number
+      targeting?: number
+      diversification?: number
+      tracking?: number
+    } | null
   }
   briefing: StoreBriefing | null
   flows: EmailFlow[]
@@ -138,35 +145,80 @@ function formatDelay(hours: number | null): string {
   return `+${days} ${days === 1 ? "dia" : "dias"}`
 }
 
-function adsScoreLabel(score0to100: number): "BOA" | "RAZOÁVEL" | "BAIXA" {
-  if (score0to100 >= 80) return "BOA"
-  if (score0to100 >= 60) return "RAZOÁVEL"
+// ─── Score de anuncios ────────────────────────────────────
+// Espelha pesquisa-section.tsx:computeAdsScore — escala canonica 0-10.
+// ads_score do banco pode vir em escala variavel do webhook n8n; usado
+// so como fallback quando nao ha sub_scores.
+function computeAdsScore(
+  subScores: StoreProducaoPayload["store"]["ads_sub_scores"],
+  fallback: number | null,
+): number {
+  const fb = Math.max(0, Math.min(10, Number(fallback) || 0))
+  if (!subScores) return fb
+  const values = [
+    subScores.strategy,
+    subScores.creatives,
+    subScores.targeting,
+    subScores.diversification,
+    subScores.tracking,
+  ]
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0)
+  if (values.length === 0) return fb
+  const avg = values.reduce((s, v) => s + v, 0) / values.length
+  return Math.max(0, Math.min(10, avg))
+}
+
+function adsScoreLabel(score0to10: number): "BOA" | "RAZOÁVEL" | "BAIXA" {
+  if (score0to10 >= 7) return "BOA"
+  if (score0to10 >= 5) return "RAZOÁVEL"
   return "BAIXA"
 }
 
-function adsScoreColor(score0to100: number) {
-  if (score0to100 >= 80) return { bg: C.posBg, fg: C.pos, border: C.posBorder }
-  if (score0to100 >= 60) return { bg: C.warnBg, fg: C.warn, border: C.warnBorder }
+function adsScoreColor(score0to10: number) {
+  if (score0to10 >= 7) return { bg: C.posBg, fg: C.pos, border: C.posBorder }
+  if (score0to10 >= 5) return { bg: C.warnBg, fg: C.warn, border: C.warnBorder }
   return { bg: C.negBg, fg: C.neg, border: C.negBorder }
 }
 
-// ─── Resolve briefing politica ────────────────────────────
-
-function findPolitica(briefing: StoreBriefing | null, tipo: string): string | null {
-  const list = briefing?.briefing?.politicas
-  if (!Array.isArray(list)) return null
-  return list.find((p) => p.tipo === tipo)?.valor ?? null
+// ─── Politicas ────────────────────────────────────────────
+// Espelha briefing-resource-view.tsx:185-200 — combina canonicos de
+// client_stores (devolucao_politica, frete_*) com o jsonb livre
+// store_briefings.briefing.politicas. Como as chaves do jsonb nao sao
+// padronizadas (vem do n8n ou edicao manual), nao filtramos por tipo;
+// listamos tudo que o briefing trouxer + os canonicos derivados.
+interface Politica {
+  tipo: string
+  valor: string
 }
 
-function freteText(store: StoreProducaoPayload["store"], briefing: StoreBriefing | null): string | null {
-  if (store.frete_cobertura) {
-    const minimo = store.frete_gratis_acima_cents
-    if (minimo && minimo > 0) {
-      return `${store.frete_cobertura} · grátis acima de R$ ${(minimo / 100).toFixed(0)}`
-    }
-    return store.frete_cobertura
+function derivePoliticas(
+  store: StoreProducaoPayload["store"],
+  briefing: StoreBriefing | null,
+): Politica[] {
+  const detail = briefing?.briefing
+  const jsonbList: Politica[] = Array.isArray(detail?.politicas)
+    ? (detail.politicas as Politica[]).filter((p) => p?.tipo && p?.valor)
+    : []
+  if (jsonbList.length > 0) return jsonbList
+
+  const derived: Politica[] = []
+  if (store.devolucao_politica) {
+    derived.push({ tipo: "Devolução", valor: store.devolucao_politica })
   }
-  return findPolitica(briefing, "frete")
+  if (store.frete_cobertura) {
+    derived.push({ tipo: "Cobertura de frete", valor: store.frete_cobertura })
+  }
+  if (store.frete_prazo) {
+    derived.push({ tipo: "Prazo de frete", valor: store.frete_prazo })
+  }
+  if (store.frete_gratis_acima_cents != null && store.frete_gratis_acima_cents > 0) {
+    const reais = (store.frete_gratis_acima_cents / 100).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+    })
+    derived.push({ tipo: "Frete grátis", valor: `Acima de R$ ${reais}` })
+  }
+  return derived
 }
 
 // ─── Componente principal ────────────────────────────────
@@ -330,7 +382,10 @@ function BriefingSummaryCard({
   briefing: StoreBriefing | null
   storeId: string
 }) {
-  const slogan = store.slogan ?? briefing?.marca?.slogan ?? null
+  // Slogan: alinhado com briefing-resource-view.tsx:130 — brand_thesis e
+  // a fonte canonica primaria (vem da Pesquisa & Diagnostico pilar 1).
+  const slogan =
+    store.brand_thesis ?? store.slogan ?? briefing?.marca?.slogan ?? null
   const nicho = store.niche ?? briefing?.marca?.nicho ?? null
   const diferencial = store.diferencial ?? briefing?.marca?.diferencial ?? null
   const persona = store.persona ?? briefing?.marca?.persona ?? null
@@ -509,10 +564,7 @@ function PoliticasCard({
   store: StoreProducaoPayload["store"]
   briefing: StoreBriefing | null
 }) {
-  const frete = freteText(store, briefing)
-  const devolucao = store.devolucao_politica ?? findPolitica(briefing, "devolucao")
-  const parcelamento = findPolitica(briefing, "parcelamento")
-  const pagamento = findPolitica(briefing, "pagamento")
+  const politicas = useMemo(() => derivePoliticas(store, briefing), [store, briefing])
 
   return (
     <section
@@ -532,14 +584,35 @@ function PoliticasCard({
         <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Políticas</div>
         <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>verdade nos e-mails</div>
       </header>
-      <div style={{ padding: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <PoliticaItem icon={<Truck size={14} />} label="Frete grátis" value={frete} />
-        <PoliticaItem icon={<Undo2 size={14} />} label="Devolução" value={devolucao} />
-        <PoliticaItem icon={<CreditCard size={14} />} label="Parcelamento" value={parcelamento} />
-        <PoliticaItem icon={<Wallet size={14} />} label="Pagamento" value={pagamento} />
-      </div>
+      {politicas.length === 0 ? (
+        <div style={{ padding: 16, fontSize: 12, color: C.g400, textAlign: "center" }}>
+          Sem políticas cadastradas
+        </div>
+      ) : (
+        <div style={{ padding: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {politicas.map((p) => (
+            <PoliticaItem
+              key={p.tipo}
+              icon={iconForPolitica(p.tipo)}
+              label={p.tipo}
+              value={p.valor}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
+}
+
+function iconForPolitica(tipo: string): React.ReactNode {
+  const t = tipo.toLowerCase()
+  if (t.includes("frete") || t.includes("entrega")) return <Truck size={14} />
+  if (t.includes("devolu") || t.includes("troca")) return <Undo2 size={14} />
+  if (t.includes("parcel") || t.includes("juro")) return <CreditCard size={14} />
+  if (t.includes("pagamento") || t.includes("pix") || t.includes("boleto") || t.includes("cart")) {
+    return <Wallet size={14} />
+  }
+  return <Wallet size={14} />
 }
 
 function PoliticaItem({
@@ -624,12 +697,14 @@ function NaoFazerCard({ store }: { store: StoreProducaoPayload["store"] }) {
 // ─── Card: Score de anuncios ──────────────────────────────
 
 function ScoreAnunciosCard({ store }: { store: StoreProducaoPayload["store"] }) {
-  // ads_score em DB e 0-10 (numeric 3,1). Escala pra 0-100 visual.
-  const rawScore = store.ads_score
-  if (rawScore == null) return null
-  const score100 = Math.round(rawScore * 10)
-  const label = adsScoreLabel(score100)
-  const palette = adsScoreColor(score100)
+  // Usa computeAdsScore (espelhando pesquisa-section.tsx) — prioriza media
+  // dos sub_scores e ignora ads_score do banco que vem em escala variavel.
+  if (store.ads_score == null && !store.ads_sub_scores) return null
+  const score = computeAdsScore(store.ads_sub_scores, store.ads_score)
+  // Mostra em 0-10 com uma casa decimal (alinhado a fonte canonica).
+  const display = score.toFixed(1)
+  const label = adsScoreLabel(score)
+  const palette = adsScoreColor(score)
 
   return (
     <section
@@ -656,8 +731,13 @@ function ScoreAnunciosCard({ store }: { store: StoreProducaoPayload["store"] }) 
             minWidth: 70,
           }}
         >
-          <div style={{ fontSize: 24, fontWeight: 700, color: palette.fg, ...TNUM, lineHeight: 1 }}>
-            {score100}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: palette.fg, ...TNUM, lineHeight: 1 }}>
+              {display}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: palette.fg, opacity: 0.65 }}>
+              /10
+            </div>
           </div>
           <div
             style={{
