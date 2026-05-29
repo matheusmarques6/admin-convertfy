@@ -190,15 +190,16 @@ Mudanças de prompt afetam outputs de IA. Apenas roles `admin | owner` ou tag `d
 - Index `idx_agent_config_active` — já garante unicidade do ativo
 - Diff library: verificar `package.json`
 
-### Decisão pendente: endpoint legacy
+### Endpoint legacy: manter dual (decisão tomada)
 
-Já existe `/api/admin/email-agent-configs/route.ts` (GET/POST/PATCH) fazendo CRUD na mesma tabela. Esta story propõe novos endpoints em `/api/admin/agents/prompts/*` por consistência de namespace `/agents/*`. Implementador deve:
+Já existe `/api/admin/email-agent-configs/route.ts` (GET/POST/PATCH) fazendo CRUD na mesma tabela. **Decisão**: ambos os endpoints permanecem ativos em paralelo:
 
-1. Verificar quem chama `/api/admin/email-agent-configs` hoje (UI antiga? scripts?)
-2. Migrar consumidores pro novo namespace
-3. Manter o legacy como alias por 1 release ou redirect 308 → `/api/admin/agents/prompts`
+- `/api/admin/email-agent-configs/*` — endpoint legacy, continua funcionando como está
+- `/api/admin/agents/prompts/*` — novos endpoints desta story (com versionamento explícito, ativar, rollback, diff)
 
-Não duplicar lógica: ambos devem terminar chamando `prompt-management.service.ts`.
+**Regra de implementação**: ambos devem terminar chamando o mesmo `prompt-management.service.ts`. Lógica de validação, versionamento e activate/rollback fica centralizada no service. Os route handlers são wrappers finos.
+
+Não há plano de deprecação nesta fase — convive-se com os dois caminhos. UI nova (`/admin/agents/prompts`) usa o namespace novo. Scripts internos e UI antiga (se existir) continuam usando o legacy.
 
 ---
 

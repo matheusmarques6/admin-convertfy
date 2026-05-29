@@ -154,7 +154,10 @@ Esta story constrói a UI dev-only que consome essa tabela em tempo real (SSE ig
 - [ ] Criar hook `src/hooks/use-agent-runs-live.ts`
 - [ ] Criar migration `supabase/migrations/20260530c_runs_view_index.sql` (index para query recent)
 - [ ] Adicionar atalhos `g d` / `g p` na lib de keybinds global
-- [ ] Adicionar link na sidebar admin (apenas dev-visible)
+- [ ] Adicionar link na sidebar admin no novo grupo "Agents" (apenas dev-visible)
+- [ ] Substituir `src/app/admin/tools/email-generation-logs/page.tsx` por `permanentRedirect("/admin/agents/runs")`
+- [ ] Remover entrada de sidebar do grupo "Tools" → "Email generation logs"
+- [ ] `grep -r "/admin/tools/email-generation-logs" src/ docs/` e atualizar todas as referências
 - [ ] Testes
 
 ---
@@ -177,14 +180,30 @@ Mesmo padrão da AE-6: polling de 2s na tabela `email_generation_runs` (last id 
 
 Já existe sistema no CRM (`g+l`, `g+p`, `g+c`, etc — ver CLAUDE.md § CRM Convertfy). Reusar a lib (provavelmente `src/lib/keybinds.ts` ou similar — verificar).
 
-### Decisão pendente: consolidar ou criar nova?
+### Substituição de `/admin/tools/email-generation-logs` (decisão tomada)
 
-Já existe `/admin/tools/email-generation-logs` (read-only de `email_generation_runs`). Esta story propõe **nova** página em `/admin/agents/runs` com live trace + drawer + atalhos. Duas opções na implementação:
+Página antiga `/admin/tools/email-generation-logs` é read-only de `email_generation_runs` (sem live trace, sem drawer de detalhes, sem filtros avançados, sem export CSV). Esta story a **substitui** pela nova `/admin/agents/runs`.
 
-1. **Substituir** `/admin/tools/email-generation-logs` (redirect 301 → `/admin/agents/runs`)
-2. **Coexistir**: `tools/email-generation-logs` continua como view simples; `agents/runs` é a view dev com live trace
+**Passos de implementação obrigatórios**:
 
-Recomendação: opção 1 (uma única fonte de verdade). Implementador valida antes.
+1. Criar a nova página `/admin/agents/runs` com todas as features AC AE-9.1 a AE-9.10
+2. Substituir o conteúdo do arquivo `src/app/admin/tools/email-generation-logs/page.tsx` por um redirect 301 server-side:
+   ```ts
+   import { redirect } from "next/navigation"
+   export default function Page() {
+     redirect("/admin/agents/runs")  // 307 por padrão; usar permanentRedirect para 308
+   }
+   ```
+   Preferir `permanentRedirect()` (HTTP 308) — preserva método e cacheia client-side.
+3. Remover entrada da sidebar admin do grupo "Tools" e adicionar em novo grupo "Agents" (apenas dev-visible)
+4. Buscar referências hardcoded ao path antigo em todo o repo (`grep -r "/admin/tools/email-generation-logs"`) e atualizar links/botões pra nova rota
+5. Atualizar qualquer doc em `docs/` ou README que mencione o caminho antigo
+
+**Impacto pra usuário**:
+- Quem tem link salvo do antigo é redirecionado transparentemente
+- Sidebar muda de localização do link
+- Quem usa muscle-memory de URL antiga continua chegando na página certa
+- Nova interface é mais rica (drawer, live, filtros) — pequena curva de aprendizado de ~minutos pra quem já usava
 
 ### Por que dev-only?
 
