@@ -34,6 +34,8 @@ export async function GET(
         tone_use_words, tone_avoid_words, tone_do, tone_dont,
         devolucao_politica, frete_cobertura, frete_prazo,
         frete_gratis_acima_cents,
+        ads_score, ads_summary, ads_sub_scores,
+        ads_strengths, ads_opportunities, ads_risks, ads_reviewed_at,
         clients (id, name, owner_id,
           owner:profiles!clients_owner_id_fkey(id, name, avatar_url)
         )
@@ -93,7 +95,8 @@ export async function GET(
         emails:email_flow_emails (
           id, flow_id, number, name, from_name, from_email, subject, preheader,
           delay_hours, status, progress_percent, klaviyo_message_id,
-          created_at, updated_at
+          created_at, updated_at,
+          blocks:email_blocks (id, block_type, label, position)
         )
       `)
       .eq("store_id", storeId)

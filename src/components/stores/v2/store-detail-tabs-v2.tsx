@@ -22,7 +22,7 @@ import { TabContexto } from "./tab-contexto"
 import { TabRelatorio } from "./tab-relatorio"
 import { TabPerformance } from "./tab-performance"
 import { TabSetup } from "./tab-setup"
-import TabOnboardingStatus from "./tab-onboarding-status"
+import TabOnboarding from "./tab-onboarding"
 import TabAcompanhamento from "./tab-acompanhamento"
 import TabCalls from "./tab-calls"
 import TabSolicitacoes from "./tab-solicitacoes"
@@ -213,7 +213,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
       {/* Tab content */}
       <div className="pt-6">
         {activeTab === "visao" && <TabVisao storeId={store.id} />}
-        {activeTab === "onboarding" && <TabOnboardingStatus storeId={store.id} />}
+        {activeTab === "onboarding" && <TabOnboarding storeId={store.id} />}
         {activeTab === "performance" && <TabPerformance storeId={store.id} />}
         {activeTab === "relatorio" && <TabRelatorio storeId={store.id} />}
         {activeTab === "alertas" && <TabAlertas storeId={store.id} />}
