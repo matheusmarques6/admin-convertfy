@@ -41,6 +41,11 @@ import {
 } from "./chains/image.chain"
 import { renderImageTemplate } from "./image/template-renderer"
 import {
+  resolveAspectForBlock,
+  aspectInstructionForPrompt,
+  type AspectKey,
+} from "./image/aspect-ratio"
+import {
   createHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
@@ -413,7 +418,37 @@ export async function runPhase2InBackground(
         const prompt = ctx.imageConfig
           ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
           : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
-        const imageUrl = await generateEmailImage(prompt, storeId)
+
+        // AE-12: resolve aspect ratio (blueprint override > matriz >
+        // default) + inject instrucao textual no prompt. O resize final
+        // pra forcar a dimensao acontece dentro de generateEmailImage.
+        const blueprintAspectRaw = ctx.blueprint?.image_aspect ?? null
+        const reserveBottom =
+          ctx.blueprint?.image_overlay_reserve_bottom ?? true
+        const aspect: AspectKey = resolveAspectForBlock({
+          blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
+          flowType: ctx.flowType,
+          emailNumber: ctx.emailNumber,
+        })
+        const aspectSource = blueprintAspectRaw
+          ? "blueprint"
+          : ctx.flowType === "welcome" && ctx.emailNumber != null
+            ? "matrix"
+            : "default"
+        log.info("phase2.image.aspect_resolved", {
+          emailId,
+          blockId: blk.id,
+          aspect,
+          reserveBottom,
+          source: aspectSource,
+        })
+
+        const promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
+        const imageUrl = await generateEmailImage(
+          promptWithAspect,
+          storeId,
+          { aspect, overlayReserveBottom: reserveBottom },
+        )
 
         const merged = {
           ...((blk.content as Record<string, unknown>) ?? {}),
