@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import { dispatchBriefingWebhook } from "./briefing-webhook.service"
 import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
+import { languageLabelToCode } from "@/lib/i18n/store-language"
 import type {
   BriefingContent,
   OperationalPipelineColumn,
@@ -1128,6 +1129,23 @@ export async function confirmBriefing(
       log.error("autoCompleteOnBriefingApproved failed", e)
     }
   })()
+
+  // Sincroniza o idioma escolhido no formulário → client_stores.language,
+  // fonte canônica usada pela geração de copy e pelo briefing estruturado
+  // (dados_loja.idioma). Feito antes do dispatch para o webhook já enxergar o
+  // idioma correto. Quando a escolha for "Outro", langCode é null e o update é
+  // pulado (mantém o default); o idioma livre fica em form_responses.
+  if (onb.store_id) {
+    const langCode = languageLabelToCode(
+      (onb.form_responses as Record<string, unknown> | null)?.store_language,
+    )
+    if (langCode) {
+      await admin
+        .from("client_stores")
+        .update({ language: langCode })
+        .eq("id", onb.store_id)
+    }
+  }
 
   // Dispara webhook outbound pro n8n (fire-and-forget via after() do Next 15)
   after(dispatchBriefingWebhook(onb.id))
