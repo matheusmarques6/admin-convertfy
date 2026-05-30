@@ -424,6 +424,15 @@ export async function runPhase2InBackground(
           ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
           : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
 
+        // ⚠️ SYNC CONTRACT WITH AE-16: a logica abaixo (aspect + mode +
+        // fallback description + render final do prompt) deve ficar
+        // identica a `src/lib/agents/image/resolve-block-prompt.service.ts`,
+        // que e usada pelos endpoints resolve-prompt e regenerate-image.
+        // Se voce alterar este trecho, atualize la tambem — senao o
+        // modal de preview na UI mostrara prompt diferente do que esta
+        // rodando aqui (bug silencioso). Idealmente, extraia para um
+        // helper compartilhado em uma proxima refatoracao.
+
         // AE-12: resolve aspect ratio (blueprint override > matriz >
         // default) + inject instrucao textual no prompt. O resize final
         // pra forcar a dimensao acontece dentro de generateEmailImage.

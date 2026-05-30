@@ -108,6 +108,14 @@ export async function POST(
       image_last_prompt: promptSnapshot,
     }
 
+    // AE-16 KNOWN RACE: se 2 requests concorrentes chegam aqui ao mesmo
+    // tempo (designer clica rapido em 2 abas, mobile flaky), last-write-wins
+    // sobrescreve silenciosamente — ambos clientes recebem 200, mas so 1
+    // imagem persiste. Rate-limit 30s + serial designer workflow tornam
+    // isso <1% em prod. Monitorar via `logGenerationRun` (trigger =
+    // manual_block_regen) — duplicatas rapidas no mesmo blockId indicam
+    // o cenario. Fix futuro: UPDATE atomico com
+    // WHERE (content->>'image_last_generated_at')::timestamptz = $old_value.
     const { error: updateErr } = await admin
       .from("email_blocks")
       .update({ content: mergedContent })
