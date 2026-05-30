@@ -128,3 +128,242 @@ export function briefingToFullText(data: BriefingData): string {
 
   return blocks.join("\n\n")
 }
+
+/**
+ * Campos do documento "Pesquisa & Diagnóstico" (tabela client_stores). Cópia
+ * estrutural de PesquisaData (src/components/stores/v2/pesquisa/pesquisa-section.tsx)
+ * — mantida aqui para não acoplar este módulo server-safe ao componente "use client".
+ */
+export interface PesquisaFields {
+  // 01 · Perfil da Marca
+  brand_thesis?: string | null
+  brand_about?: string | null
+  brand_pillars?: { number?: string; label?: string; text?: string }[] | null
+  brand_presence?: string | null
+  // 02 · Sobre a loja
+  store_story?: string | null
+  store_milestones?: { year?: string; event?: string }[] | null
+  // 03 · Cliente Ideal
+  icp_persona?: { name?: string; age?: string; city?: string; monogram?: string } | null
+  icp_demographics?: {
+    age_range?: string
+    income?: string
+    education?: string
+    occupation?: string
+    religion?: string
+  } | null
+  icp_day_in_life?: string | null
+  icp_motivations?: string[] | null
+  icp_frictions?: string[] | null
+  // 04 · Tom de Comunicação
+  tone_description?: string | null
+  tone_do?: string[] | null
+  tone_dont?: string[] | null
+  tone_use_words?: string[] | null
+  tone_avoid_words?: string[] | null
+  // 05 · Review dos Anúncios
+  ads_score?: number | null
+  ads_summary?: string | null
+  ads_sub_scores?: {
+    strategy: number
+    creatives: number
+    targeting: number
+    diversification: number
+    tracking: number
+  } | null
+  ads_strengths?: { what?: string; body?: string }[] | null
+  ads_opportunities?: { what?: string; body?: string }[] | null
+  ads_risks?: { what?: string; body?: string }[] | null
+  ads_reviewed_at?: string | null
+}
+
+/**
+ * Score geral = média das 5 sub-notas (0-10 cada). O ads_score do banco vem em
+ * escala incompatível do webhook n8n — usado só como fallback quando não há
+ * sub_scores. Resultado clampado em 0-10.
+ *
+ * Réplica de computeAdsScore em
+ * src/components/stores/v2/pesquisa/pesquisa-section.tsx:125-144 — mantida em
+ * sincronia para o texto bater com o gauge da aba Content.
+ */
+function computeAdsScore(
+  subScores: PesquisaFields["ads_sub_scores"],
+  fallback: number,
+): number {
+  if (!subScores) return Math.max(0, Math.min(10, Number(fallback) || 0))
+  const values = [
+    subScores.strategy,
+    subScores.creatives,
+    subScores.targeting,
+    subScores.diversification,
+    subScores.tracking,
+  ]
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0)
+  if (values.length === 0) {
+    return Math.max(0, Math.min(10, Number(fallback) || 0))
+  }
+  const avg = values.reduce((s, v) => s + v, 0) / values.length
+  return Math.max(0, Math.min(10, avg))
+}
+
+/** Coage a um texto não-vazio, ou retorna "". */
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : ""
+}
+
+/** Filtra um array de strings para itens não-vazios. */
+function cleanList(arr: unknown): string[] {
+  if (!Array.isArray(arr)) return []
+  return arr.map((v) => str(v)).filter((v) => v !== "")
+}
+
+/**
+ * Converte os campos "Pesquisa & Diagnóstico" (client_stores) no mesmo
+ * documento textual de 5 seções exibido na aba Content. Campos/seções vazios
+ * são omitidos; se tudo estiver vazio retorna "" (preserva o empty state).
+ */
+export function pesquisaToFullText(store: PesquisaFields): string {
+  const blocks: string[] = []
+
+  // ── 01 · Perfil da Marca ──────────────────────────────────────────────
+  {
+    const lines: string[] = []
+    const thesis = str(store.brand_thesis)
+    const about = str(store.brand_about)
+    const presence = str(store.brand_presence)
+    if (thesis) lines.push(`"${thesis}"`)
+    if (about) lines.push(about)
+    if (presence) lines.push(presence)
+    const pillars = (store.brand_pillars ?? [])
+      .slice(0, 3)
+      .map((p) => {
+        const num = str(p?.number)
+        const label = str(p?.label)
+        const text = str(p?.text)
+        if (!label && !text) return ""
+        const head = [num, label].filter(Boolean).join(" ")
+        return head && text ? `- ${head}: ${text}` : `- ${head || text}`
+      })
+      .filter(Boolean)
+    if (pillars.length) lines.push("Pilares:", ...pillars)
+    if (lines.length) blocks.push(["## 01 · Perfil da Marca", ...lines].join("\n"))
+  }
+
+  // ── 02 · Sobre a loja ─────────────────────────────────────────────────
+  {
+    const lines: string[] = []
+    const story = str(store.store_story)
+    if (story) lines.push(story)
+    const milestones = (store.store_milestones ?? [])
+      .map((m) => {
+        const year = str(m?.year)
+        const event = str(m?.event)
+        if (!year && !event) return ""
+        return year && event ? `- ${year}: ${event}` : `- ${year || event}`
+      })
+      .filter(Boolean)
+    if (milestones.length) lines.push("Marcos da operação:", ...milestones)
+    if (lines.length) blocks.push(["## 02 · Sobre a loja", ...lines].join("\n"))
+  }
+
+  // ── 03 · Cliente Ideal ────────────────────────────────────────────────
+  {
+    const lines: string[] = []
+    const persona = store.icp_persona
+    if (persona) {
+      const name = str(persona.name)
+      const age = str(persona.age)
+      const city = str(persona.city)
+      const detail = [age, city].filter(Boolean).join(" · ")
+      if (name && detail) lines.push(`Persona: ${name} — ${detail}`)
+      else if (name || detail) lines.push(`Persona: ${name || detail}`)
+    }
+    const demo = store.icp_demographics
+    if (demo) {
+      if (str(demo.age_range)) lines.push(`Faixa etária: ${str(demo.age_range)}`)
+      if (str(demo.income)) lines.push(`Renda familiar: ${str(demo.income)}`)
+      if (str(demo.education)) lines.push(`Educação: ${str(demo.education)}`)
+      if (str(demo.occupation)) lines.push(`Profissão típica: ${str(demo.occupation)}`)
+      if (str(demo.religion)) lines.push(`Religião: ${str(demo.religion)}`)
+    }
+    const dayInLife = str(store.icp_day_in_life)
+    if (dayInLife) lines.push("Um dia na vida:", dayInLife)
+    const motivations = cleanList(store.icp_motivations)
+    if (motivations.length) lines.push("O que ela quer:", ...motivations.map((m) => `- ${m}`))
+    const frictions = cleanList(store.icp_frictions)
+    if (frictions.length) lines.push("O que a faz hesitar:", ...frictions.map((f) => `- ${f}`))
+    if (lines.length) blocks.push(["## 03 · Cliente Ideal", ...lines].join("\n"))
+  }
+
+  // ── 04 · Tom de Comunicação ───────────────────────────────────────────
+  {
+    const lines: string[] = []
+    const description = str(store.tone_description)
+    if (description) lines.push(description)
+    const toneDo = cleanList(store.tone_do).slice(0, 4)
+    if (toneDo.length) lines.push("Como falamos:", ...toneDo.map((d) => `- ${d}`))
+    const toneDont = cleanList(store.tone_dont).slice(0, 4)
+    if (toneDont.length) lines.push("Como nunca falamos:", ...toneDont.map((d) => `- ${d}`))
+    const useWords = cleanList(store.tone_use_words)
+    if (useWords.length) lines.push(`Vocabulário · Usar: ${useWords.join(", ")}`)
+    const avoidWords = cleanList(store.tone_avoid_words)
+    if (avoidWords.length) lines.push(`Vocabulário · Evitar: ${avoidWords.join(", ")}`)
+    if (lines.length) blocks.push(["## 04 · Tom de Comunicação", ...lines].join("\n"))
+  }
+
+  // ── 05 · Review dos Anúncios ──────────────────────────────────────────
+  {
+    const lines: string[] = []
+    const hasScore = store.ads_score != null || !!store.ads_sub_scores
+    if (hasScore) {
+      const score = computeAdsScore(store.ads_sub_scores, store.ads_score ?? 0)
+      lines.push(`Score geral: ${score.toFixed(1)}/10`)
+    }
+    const summary = str(store.ads_summary)
+    if (summary) lines.push(summary)
+    const sub = store.ads_sub_scores
+    if (sub) {
+      const subLine = (label: string, value: number): string | null => {
+        const v = Number(value)
+        if (!Number.isFinite(v)) return null
+        return `${label}: ${Math.max(0, Math.min(10, v)).toFixed(1)}/10`
+      }
+      const subLines = [
+        subLine("Estratégia", sub.strategy),
+        subLine("Criativos", sub.creatives),
+        subLine("Segmentação", sub.targeting),
+        subLine("Diversificação", sub.diversification),
+        subLine("Tracking & dados", sub.tracking),
+      ].filter((l): l is string => l !== null)
+      if (subLines.length) lines.push("Sub-notas:", ...subLines)
+    }
+    const reviewBlock = (
+      title: string,
+      items: { what?: string; body?: string }[] | null | undefined,
+    ): void => {
+      const rendered = (items ?? [])
+        .map((it) => {
+          const what = str(it?.what)
+          const body = str(it?.body)
+          if (!what && !body) return ""
+          return what && body ? `- ${what}: ${body}` : `- ${what || body}`
+        })
+        .filter(Boolean)
+      if (rendered.length) lines.push(`${title}:`, ...rendered)
+    }
+    reviewBlock("Pontos fortes", store.ads_strengths)
+    reviewBlock("Oportunidades", store.ads_opportunities)
+    reviewBlock("Riscos a monitorar", store.ads_risks)
+    const reviewedAt = str(store.ads_reviewed_at)
+    if (reviewedAt) {
+      const d = new Date(reviewedAt)
+      if (!Number.isNaN(d.getTime())) {
+        lines.push(`Última análise: ${d.toLocaleDateString("pt-BR")}`)
+      }
+    }
+    if (lines.length) blocks.push(["## 05 · Review dos Anúncios", ...lines].join("\n"))
+  }
+
+  return blocks.join("\n\n")
+}
