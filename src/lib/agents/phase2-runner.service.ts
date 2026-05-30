@@ -47,6 +47,10 @@ import {
   type AspectKey,
 } from "./image/aspect-ratio"
 import {
+  resolveImageMode,
+  productRefDescriptionFallback,
+} from "./image/mode-resolution"
+import {
   createHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
@@ -457,11 +461,52 @@ export async function runPhase2InBackground(
           source: aspectSource,
         })
 
-        const promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
+        let promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
+
+        // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
+        const multimodalEnabled =
+          process.env.IMAGE_MULTIMODAL_ENABLED === "true"
+        const topProductImageUrl = ctx.topProducts[0]?.image_url ?? null
+        const { mode, source: modeSource } = resolveImageMode({
+          blueprintMode: ctx.blueprint?.image_mode ?? null,
+          flowType: ctx.flowType,
+          emailNumber: ctx.emailNumber,
+          topProductImageUrl,
+          multimodalEnabled,
+        })
+        log.info("phase2.image.mode_resolved", {
+          emailId,
+          blockId: blk.id,
+          mode,
+          source: modeSource,
+          hasRefUrl: !!topProductImageUrl,
+        })
+
+        // Se caimos no fallback E o slot esperava product_ref, adiciona
+        // descricao textual rica do produto pra compensar a perda visual.
+        if (
+          (modeSource === "fallback_text2img_disabled" ||
+            modeSource === "fallback_text2img_no_product") &&
+          ctx.topProducts[0]?.name
+        ) {
+          promptWithAspect += `\n\n${productRefDescriptionFallback({
+            productName: ctx.topProducts[0].name,
+            productImageUrl: topProductImageUrl,
+          })}`
+        }
+
         const imageUrl = await generateEmailImage(
           promptWithAspect,
           storeId,
-          { aspect, overlayReserveBottom: reserveBottom },
+          {
+            aspect,
+            overlayReserveBottom: reserveBottom,
+            mode,
+            referenceImageUrl:
+              mode === "product_ref" && topProductImageUrl
+                ? topProductImageUrl
+                : undefined,
+          },
         )
 
         const merged = {
