@@ -170,10 +170,6 @@ export default function PreferencesPage() {
       <PageHeader
         title="Preferências"
         description="Configure notificações e aparência."
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Preferências" },
-        ]}
       />
 
       <div className="max-w-2xl space-y-6">

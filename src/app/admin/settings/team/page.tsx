@@ -224,10 +224,6 @@ export default function TeamSettingsPage() {
         title="Equipe"
         badge={members.length}
         description="Gerencie usuários, roles e permissões de acesso."
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Equipe" },
-        ]}
         actions={
           <Button variant="primary" size="md" onClick={() => setShowInvite(true)}>
             <UserPlus className="h-4 w-4 mr-2" />

@@ -6,7 +6,10 @@ export const dynamic = "force-dynamic"
 
 /**
  * GET /api/admin/briefings
- * Returns the list of stores that have a current briefing, ordered by name.
+ * Returns the list of all active stores, ordered by name. The page lets the
+ * user pick any store and shows whether it has a briefing (an empty state is
+ * rendered for stores without one), so the selector must not be limited to
+ * stores that already have a current briefing.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,28 +18,10 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Distinct store_ids that have a current briefing
-    const { data: briefings, error: briefingsError } = await adminClient
-      .from("store_briefings")
-      .select("store_id")
-      .eq("status", "current")
-
-    if (briefingsError) {
-      throw new AppError("Erro ao buscar briefings", 500)
-    }
-
-    const storeIds = Array.from(
-      new Set((briefings || []).map((b) => b.store_id as string).filter(Boolean))
-    )
-
-    if (storeIds.length === 0) {
-      return successResponse(request, { stores: [] })
-    }
-
     const { data: stores, error: storesError } = await adminClient
       .from("client_stores")
       .select("id, store_name")
-      .in("id", storeIds)
+      .eq("is_active", true)
       .order("store_name", { ascending: true })
 
     if (storesError) {

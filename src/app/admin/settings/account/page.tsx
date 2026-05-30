@@ -283,10 +283,6 @@ export default function AccountSettingsPage() {
       <PageHeader
         title="Conta"
         description="Gerencie seus dados pessoais e da empresa."
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Conta" },
-        ]}
       />
 
       <div className="max-w-2xl space-y-6">
