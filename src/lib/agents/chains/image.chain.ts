@@ -43,6 +43,70 @@ export function renderImagePrompt(
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? "")
 }
 
+const OPENROUTER_IMAGE_MODEL = "openai/gpt-5.4-image-2"
+
+/**
+ * Heuristica pra detectar erro "modelo nao suporta multimodal" no body
+ * de uma resposta 4xx do OpenRouter. Conservadora: so dispara retry
+ * em casos claros pra evitar loop com erros nao relacionados.
+ */
+function isMultimodalUnsupportedError(body: string): boolean {
+  const lower = body.toLowerCase()
+  return (
+    lower.includes("image input not supported") ||
+    lower.includes("image_url not supported") ||
+    lower.includes("does not support image") ||
+    lower.includes("multimodal not supported")
+  )
+}
+
+type ChatMessage =
+  | { role: "user"; content: string }
+  | {
+      role: "user"
+      content: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >
+    }
+
+function buildMessages(
+  prompt: string,
+  referenceImageUrl?: string,
+): ChatMessage[] {
+  if (referenceImageUrl) {
+    return [
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: referenceImageUrl } },
+          { type: "text", text: prompt },
+        ],
+      },
+    ]
+  }
+  return [{ role: "user", content: prompt }]
+}
+
+async function callOpenRouterImage(
+  apiKey: string,
+  prompt: string,
+  referenceImageUrl?: string,
+): Promise<Response> {
+  return fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_IMAGE_MODEL,
+      messages: buildMessages(prompt, referenceImageUrl),
+      response_format: "b64_json",
+    }),
+  })
+}
+
 export async function generateEmailImage(
   prompt: string,
   storeId: string,
@@ -53,31 +117,66 @@ export async function generateEmailImage(
      * prompt e responsabilidade do caller (phase2-runner).
      */
     overlayReserveBottom?: boolean
+    /**
+     * AE-13: modo de geracao. Quando `product_ref` + `referenceImageUrl`,
+     * envia content array multimodal ao OpenRouter. Em qualquer outro
+     * caso usa body legacy (string content). Default: `text2img`.
+     */
+    mode?: "product_ref" | "text2img"
+    /**
+     * AE-13: URL da imagem real do produto pra usar como referencia
+     * visual quando mode='product_ref'. Sem isso, mode degrada
+     * automaticamente pra text2img (caller ja deveria ter resolvido via
+     * `resolveImageMode`, mas a chain tambem se defende).
+     */
+    referenceImageUrl?: string
   },
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error("OPENROUTER_API_KEY não configurada")
+
+  const mode = options?.mode ?? "text2img"
+  const useMultimodal = mode === "product_ref" && !!options?.referenceImageUrl
 
   log.info("image.generate.start", {
     storeId,
     promptLength: prompt.length,
     aspect: options?.aspect,
     overlayReserveBottom: options?.overlayReserveBottom,
+    mode,
+    useMultimodal,
   })
   const t0 = Date.now()
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-5.4-image-2",
-      messages: [{ role: "user", content: prompt }],
-      response_format: "b64_json",
-    }),
-  })
+  if (useMultimodal) {
+    log.info("image.multimodal.attempted", {
+      storeId,
+      refUrl: options?.referenceImageUrl,
+      model: OPENROUTER_IMAGE_MODEL,
+    })
+  }
+
+  let res = await callOpenRouterImage(
+    apiKey,
+    prompt,
+    useMultimodal ? options?.referenceImageUrl : undefined,
+  )
+
+  // AE-13: se multimodal foi tentado e o modelo nao aceita, retry
+  // UMA vez em modo text2img puro. Apenas pra 4xx; 5xx propaga.
+  if (!res.ok && useMultimodal && res.status >= 400 && res.status < 500) {
+    const errText = await res.text().catch(() => "")
+    if (isMultimodalUnsupportedError(errText)) {
+      log.warn("image.multimodal.fallback_text2img", {
+        storeId,
+        status: res.status,
+        errorSnippet: errText.slice(0, 200),
+      })
+      res = await callOpenRouterImage(apiKey, prompt, undefined)
+    } else {
+      throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`)
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "")

@@ -168,3 +168,132 @@ describe("generateEmailImage — resize via sharp", () => {
     })
   })
 })
+
+// ── AE-13: PRODUCT-REF multimodal ─────────────────────────────────────
+describe("generateEmailImage — AE-13 multimodal (product_ref)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    uploadMock.mockResolvedValue({ error: null })
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: "https://signed.example/img.png" },
+      error: null,
+    })
+    getPublicUrlMock.mockReturnValue({
+      data: { publicUrl: "https://public.example/img.png" },
+    })
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized-bytes"))
+  })
+
+  it("mode='product_ref' + referenceImageUrl: body usa content array", async () => {
+    const fetchMock = mockFetchOk()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/capa.jpg",
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: "https://cdn/capa.jpg" } },
+          { type: "text", text: "the prompt" },
+        ],
+      },
+    ])
+  })
+
+  it("retry uma vez com text2img quando OpenRouter rejeita multimodal (4xx 'image input not supported')", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1a chamada: 400 multimodal nao suportado
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            error: { message: "Image input not supported by this model" },
+          }),
+      } as unknown as Response)
+      // 2a chamada: sucesso text2img puro
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: `data:image/png;base64,${TINY_PNG_B64}`,
+                },
+              },
+            ],
+          }),
+      } as unknown as Response)
+
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/capa.jpg",
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 2a chamada NAO usa content array (text2img puro)
+    const [, init2] = fetchMock.mock.calls[1]
+    const body2 = JSON.parse((init2 as RequestInit).body as string)
+    expect(body2.messages).toEqual([
+      { role: "user", content: "the prompt" },
+    ])
+    // pipeline segue normalmente apos retry
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
+  it("sem mode ou sem referenceImageUrl: body legacy (string content, sem array)", async () => {
+    const fetchMock = mockFetchOk()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("the prompt", "store-1", { aspect: "4:5" })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([{ role: "user", content: "the prompt" }])
+  })
+
+  it("mode='product_ref' SEM referenceImageUrl: cai pro body legacy (defesa em profundidade)", async () => {
+    const fetchMock = mockFetchOk()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      // referenceImageUrl ausente
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([{ role: "user", content: "the prompt" }])
+  })
+
+  it("4xx que NAO e 'unsupported': throw direto, sem retry", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized",
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(
+      generateEmailImage("p", "store-1", {
+        mode: "product_ref",
+        referenceImageUrl: "https://cdn/x.jpg",
+      }),
+    ).rejects.toThrow(/OpenRouter 401/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
