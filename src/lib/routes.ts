@@ -203,6 +203,7 @@ export const ROUTES = {
 
     SETTINGS: {
       ROOT: "/admin/settings",
+      BRIEFINGS: "/admin/settings/briefings",
       PROFILE: "/admin/settings/profile",
       COMPANY: "/admin/settings/company",
       APPEARANCE: "/admin/settings/appearance",

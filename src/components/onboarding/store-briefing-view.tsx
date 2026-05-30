@@ -31,6 +31,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { toast } from "@/lib/hooks/use-toast"
+import { isRawTextBriefing, getRawText } from "@/lib/briefing/briefing-text"
 import type { StoreBriefing, BriefingData } from "@/types/onboarding"
 
 interface StoreBriefingViewProps {
@@ -203,14 +204,6 @@ function textToBriefing(text: string, original: BriefingData): BriefingData {
   }
 
   return result
-}
-
-function isRawTextBriefing(data: BriefingData): boolean {
-  return typeof data.raw_text === "string"
-}
-
-function getRawText(data: BriefingData): string {
-  return data.raw_text || ""
 }
 
 export function StoreBriefingView({
