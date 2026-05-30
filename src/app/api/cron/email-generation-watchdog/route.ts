@@ -55,6 +55,10 @@ const COPY_TIMEOUT_MIN = Number(process.env.WATCHDOG_COPY_TIMEOUT_MIN ?? 15)
 const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 10)
 const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ?? 3)
 const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
+// Cap de re-dispatches do front 4 (POST /api/internal/run-phase2 para
+// emails em copy_ready travados). Atingindo o cap, marca como
+// failed:stale_copy_ready_exhausted para sair do loop.
+const MAX_STALE_DISPATCH = Number(process.env.WATCHDOG_STALE_DISPATCH_MAX ?? 3)
 const MAX_SIGNALS_PER_RUN = 20
 const MAX_COPY_RECOVERY_PER_RUN = 10
 const MAX_PHASE2_TIMEOUT_PER_RUN = 10
@@ -67,6 +71,7 @@ interface WatchdogSummary {
   max_attempts_exhausted: number
   phase2_timed_out: number
   stale_copy_ready: number
+  stale_dispatch_exhausted: number
   started_at: string
   finished_at: string
   duration_ms: number
@@ -172,6 +177,25 @@ async function exhaustMaxAttempts(thresholdIso: string): Promise<number> {
 }
 
 // ── Front 2b: claima emails com copy travada (attempts < MAX) ─────────
+//
+// DESIGN NOTE — por que NAO incrementamos `attempts` neste claim?
+//
+// AE-2 (`startOnboarding`) ja chama `increment_email_attempts(UUID[])`
+// ANTES de despachar pro n8n. Quando n8n falha em 15min, o email esta
+// em `copy_generating` com `attempts >= 1` ja contado.
+//
+// Aqui no watchdog mudamos status para `copy_generating_recovery` e
+// disparamos o fallback Claude in-process. Se o fallback der sucesso
+// -> status vira `copy_ready` (sai do filtro deste front, nao volta).
+// Se der falha -> `runCopyChainInProcess` marca status='failed' (sai
+// do filtro tambem). Em ambos os casos a proxima execucao do cron
+// NAO reclama o mesmo email porque o filtro requer `status='copy_generating'`.
+//
+// Consequencia intencional para MVP: cada email recebe EXATAMENTE 1
+// tentativa de fallback (alem do envio original do n8n). Se mais
+// tentativas forem necessarias no futuro, basta chamar
+// `increment_email_attempts` aqui — o cap `< MAX_ATTEMPTS` no WHERE
+// abaixo passa a contar.
 async function recoverStuckCopy(thresholdIso: string): Promise<number> {
   const admin = createAdminClient()
   const nowIso = new Date().toISOString()
@@ -301,7 +325,17 @@ async function timeoutPhase2(): Promise<number> {
 }
 
 // ── Front 4: re-dispatch copy_ready sem fase 2 iniciada ────────────────
-async function redispatchStaleCopyReady(): Promise<number> {
+//
+// Cap de tentativas: se o POST para /api/internal/run-phase2 falha
+// repetidamente (5xx, timeout, network), incrementa
+// `copy_ready_dispatch_attempts` (RPC criada em
+// `20260530c_copy_ready_dispatch_attempts.sql`). Ao atingir
+// MAX_STALE_DISPATCH, marca o email como
+// `failed:stale_copy_ready_exhausted` para evitar loop infinito.
+async function redispatchStaleCopyReady(): Promise<{
+  dispatched: number
+  exhausted: number
+}> {
   const admin = createAdminClient()
   const threshold = new Date(
     Date.now() - STALE_COPY_READY_MIN * 60_000,
@@ -309,29 +343,36 @@ async function redispatchStaleCopyReady(): Promise<number> {
 
   const { data, error } = await admin
     .from("email_flow_emails")
-    .select("id")
+    .select("id, flow_id, generation_batch_id")
     .eq("status", "copy_ready")
     .lt("copy_ready_at", threshold)
+    .lt("copy_ready_dispatch_attempts", MAX_STALE_DISPATCH)
     .order("copy_ready_at", { ascending: true })
     .limit(MAX_STALE_COPY_READY_PER_RUN)
 
   if (error) {
     log.error("watchdog.stale_copy_ready.query_failed", { error: error.message })
-    return 0
+    return { dispatched: 0, exhausted: 0 }
   }
-  const rows = (data ?? []) as Array<{ id: string }>
-  if (rows.length === 0) return 0
+  const rows = (data ?? []) as Array<{
+    id: string
+    flow_id: string
+    generation_batch_id: string | null
+  }>
+  if (rows.length === 0) return { dispatched: 0, exhausted: 0 }
 
   log.warn("watchdog.stale_copy_ready.detected", { count: rows.length })
 
   const internalSecret = process.env.INTERNAL_SECRET ?? ""
   if (!internalSecret) {
     log.error("watchdog.stale_copy_ready.no_secret", { count: rows.length })
-    return 0
+    return { dispatched: 0, exhausted: 0 }
   }
 
   const base = getInternalUrl()
+  const failedIds: string[] = []
   let dispatched = 0
+
   for (const r of rows) {
     const url = `${base}/api/internal/run-phase2/${r.id}`
     const ctrl = new AbortController()
@@ -345,14 +386,21 @@ async function redispatchStaleCopyReady(): Promise<number> {
           "x-internal-secret": internalSecret,
         },
       })
-      if (resp.ok) dispatched++
-      else {
+      if (resp.ok) {
+        dispatched++
+        log.info("watchdog.stale_copy_ready.dispatch_ok", {
+          emailId: r.id,
+          status: resp.status,
+        })
+      } else {
+        failedIds.push(r.id)
         log.warn("watchdog.stale_copy_ready.dispatch_non_ok", {
           emailId: r.id,
           status: resp.status,
         })
       }
     } catch (err) {
+      failedIds.push(r.id)
       log.warn("watchdog.stale_copy_ready.dispatch_error", {
         emailId: r.id,
         error: err instanceof Error ? err.message : String(err),
@@ -361,7 +409,71 @@ async function redispatchStaleCopyReady(): Promise<number> {
       clearTimeout(timer)
     }
   }
-  return dispatched
+
+  // Incrementa contador para todos os emails que falharam o POST e marca
+  // como `failed:stale_copy_ready_exhausted` os que atingiram o cap.
+  let exhausted = 0
+  if (failedIds.length > 0) {
+    const { data: incData, error: incErr } = await admin.rpc(
+      "increment_copy_ready_dispatch_attempts",
+      { p_email_ids: failedIds },
+    )
+    if (incErr) {
+      log.error("watchdog.stale_copy_ready.increment_failed", {
+        error: incErr.message,
+        count: failedIds.length,
+      })
+    } else {
+      const exhaustedIds = (
+        (incData ?? []) as Array<{ email_id: string; attempts: number }>
+      )
+        .filter((d) => d.attempts >= MAX_STALE_DISPATCH)
+        .map((d) => d.email_id)
+
+      if (exhaustedIds.length > 0) {
+        const nowIso = new Date().toISOString()
+        const { error: failErr } = await admin
+          .from("email_flow_emails")
+          .update({
+            status: "failed",
+            failure_reason: "stale_copy_ready_exhausted",
+            failed_at: nowIso,
+          })
+          .in("id", exhaustedIds)
+
+        if (failErr) {
+          log.error("watchdog.stale_copy_ready.exhaust_failed", {
+            error: failErr.message,
+            count: exhaustedIds.length,
+          })
+        } else {
+          exhausted = exhaustedIds.length
+          log.error("watchdog.stale_copy_ready.exhausted", {
+            count: exhausted,
+            email_ids: exhaustedIds,
+          })
+          // Notifica tag CTO + checkBatchTerminal (mocked ate AE-7).
+          for (const r of rows.filter((row) => exhaustedIds.includes(row.id))) {
+            try {
+              await notifyTaggedMock(["cto"], "email_generation_failed", {
+                email_id: r.id,
+                reason: "stale_copy_ready_exhausted",
+              })
+            } catch {
+              /* noop */
+            }
+            if (r.generation_batch_id) {
+              await checkBatchTerminalMock(r.generation_batch_id).catch(
+                () => {},
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { dispatched, exhausted }
 }
 
 // ── Persistir telemetria final do cron ────────────────────────────────
@@ -400,6 +512,7 @@ export async function GET(request: NextRequest) {
   let maxAttemptsExhausted = 0
   let phase2TimedOut = 0
   let staleCopyReady = 0
+  let staleDispatchExhausted = 0
 
   // Front 1: sinais
   try {
@@ -436,7 +549,9 @@ export async function GET(request: NextRequest) {
 
   // Front 4: copy_ready stale
   try {
-    staleCopyReady = await redispatchStaleCopyReady()
+    const r = await redispatchStaleCopyReady()
+    staleCopyReady = r.dispatched
+    staleDispatchExhausted = r.exhausted
   } catch (err) {
     log.error("watchdog.stale_copy_ready.fatal", {
       error: err instanceof Error ? err.message : String(err),
@@ -453,6 +568,7 @@ export async function GET(request: NextRequest) {
     max_attempts_exhausted: maxAttemptsExhausted,
     phase2_timed_out: phase2TimedOut,
     stale_copy_ready: staleCopyReady,
+    stale_dispatch_exhausted: staleDispatchExhausted,
     started_at: startedAt,
     finished_at: finishedAt,
     duration_ms: duration,
