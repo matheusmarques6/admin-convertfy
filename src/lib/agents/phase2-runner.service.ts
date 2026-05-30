@@ -50,6 +50,7 @@ import {
   resolveImageMode,
   productRefDescriptionFallback,
 } from "./image/mode-resolution"
+import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import {
   createHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
@@ -524,10 +525,21 @@ export async function runPhase2InBackground(
           },
         )
 
+        // Story AE-15: image_alt descritivo via buildImageAlt
+        // (PRODUTO_HEROI em CENARIO, mood MOOD). Fallback gracioso
+        // pra blk.label se o helper retornar string vazia por
+        // qualquer motivo — preserva compat retroativa com blocos
+        // antigos que dependiam de blk.label.
+        let altText: string
+        try {
+          altText = buildImageAlt(promptVars) || (blk.label as string)
+        } catch {
+          altText = (blk.label as string) ?? ""
+        }
         const merged = {
           ...((blk.content as Record<string, unknown>) ?? {}),
           image_url: imageUrl,
-          image_alt: blk.label,
+          image_alt: altText,
         }
         await admin.from("email_blocks").update({ content: merged }).eq("id", blk.id)
 

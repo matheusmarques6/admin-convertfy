@@ -39,6 +39,7 @@ import {
   computeCostCents,
   logGenerationRun,
 } from "../callbacks/telemetry.callback"
+import { runQaVisionCheck } from "./qa-vision.chain"
 
 const log = logger.child("QaChain")
 
@@ -57,6 +58,11 @@ const QA_ISSUE_TYPES = [
   "html_invalido",
   "alt_text_faltando",
   "compliance",
+  // ── Story AE-15: image niche-adaptive cascade ─────────
+  "image_nicho_mismatch",
+  "image_paleta_off",
+  "image_overlay_reserva_ausente",
+  "image_cena_inadequada",
 ] as const satisfies readonly QaIssueType[]
 
 const QA_SEVERITIES = ["low", "medium", "high"] as const satisfies readonly QaIssueSeverity[]
@@ -480,6 +486,58 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   // ── 6. Mescla deterministicas + LLM ─────────────────────────────────
   const llmIssues = zod.data.issues
   const issues: QaIssue[] = [...deterministicIssues, ...llmIssues]
+
+  // ── 6b. Story AE-15: cascade QA vision (Etapa 2) ────────────────────
+  // Dispara somente se feature flag ON E filtro determinístico passou
+  // (sem image_nicho_mismatch high da Etapa 1 textual).
+  // Falha graceful: vision throw/timeout vira 0 issues + log.warn em
+  // runQaVisionCheck — nao bloqueia o passed do textual.
+  const visionEnabled = process.env.EMAIL_QA_VISION_ENABLED === "true"
+  const stage1BlockedImage = issues.some(
+    (i) => i.type === "image_nicho_mismatch" && i.severity === "high",
+  )
+  if (visionEnabled && !stage1BlockedImage) {
+    const imageBlocks = blocks
+      .map((b, idx) => ({ b, idx }))
+      .filter(({ b }) => {
+        if (b.block_type !== "hero" && b.block_type !== "image") return false
+        const url = (b.content as Record<string, unknown> | null)?.image_url
+        return typeof url === "string" && url.length > 0
+      })
+      // Cap em 3 chamadas paralelas pra nao estourar timeout/custo.
+      .slice(0, 3)
+
+    if (imageBlocks.length > 0) {
+      const nicho = briefing?.marca?.nicho ?? ""
+      const produtoHeroi =
+        (brand?.top_products ?? [])[0]?.name ?? ""
+      const paleta1 = (brand?.colors_primary ?? [])[0]?.hex ?? ""
+      const paleta2 = (brand?.colors_secondary ?? [])[0]?.hex ?? ""
+
+      const visionPromises = imageBlocks.map(({ b, idx }) => {
+        const url = (b.content as Record<string, unknown>).image_url as string
+        return runQaVisionCheck({
+          imageUrl: url,
+          nicho,
+          produtoHeroi,
+          paleta1,
+          paleta2,
+          // MVP: assume reserve esperado por default (mesma logica
+          // do phase2-runner que usa true como fallback do blueprint).
+          overlayReserveExpected: true,
+          location: `block:${idx}:${b.block_type}`,
+        })
+      })
+
+      const visionResults = await Promise.allSettled(visionPromises)
+      for (const r of visionResults) {
+        if (r.status === "fulfilled") {
+          issues.push(...r.value.issues)
+        }
+      }
+    }
+  }
+
   const passed = computePassed(issues)
 
   const issuesBySeverity: Record<QaIssueSeverity, number> = { low: 0, medium: 0, high: 0 }

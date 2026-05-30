@@ -74,8 +74,14 @@ vi.mock("@/lib/logger", () => ({
 // ── Mock LangChain ChatAnthropic ───────────────────────────────────────
 // vi.hoisted garante que chainInvokeMock existe antes dos vi.mock factories
 // (que sao hoisted automaticamente pelo Vitest).
-const { chainInvokeMock } = vi.hoisted(() => ({
+const { chainInvokeMock, visionCheckMock } = vi.hoisted(() => ({
   chainInvokeMock: vi.fn(),
+  visionCheckMock: vi.fn(),
+}))
+
+// Story AE-15: mock do qa-vision chain. Default: nao chamado (env OFF).
+vi.mock("./qa-vision.chain", () => ({
+  runQaVisionCheck: visionCheckMock,
 }))
 vi.mock("@langchain/anthropic", () => {
   class ChatAnthropic {}
@@ -140,7 +146,9 @@ function makeInput(overrides: Partial<Parameters<typeof runQaAgent>[0]> = {}) {
 beforeEach(() => {
   resetTables()
   chainInvokeMock.mockReset()
+  visionCheckMock.mockReset()
   process.env.EMAIL_QA_BLOCK_SEVERITY = "high"
+  delete process.env.EMAIL_QA_VISION_ENABLED
 })
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -392,5 +400,146 @@ describe("runQaAgent — com config ativo", () => {
     expect(result.issues.find((i) => i.type === "claim_nao_coberto")).toBeDefined()
     // links_quebrados javascript: e high -> bloqueia
     expect(result.passed).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// Story AE-15 — QA cascade (vision Etapa 2)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("runQaAgent — Story AE-15 cascade vision", () => {
+  beforeEach(() => {
+    tables.email_agent_configs.push(makeConfig() as unknown as Row)
+  })
+
+  const heroBlock = {
+    block_type: "hero",
+    content: {
+      headline: "Promo",
+      image_url: "https://cdn.example.com/hero.jpg",
+    },
+  }
+
+  it("nao chama vision quando EMAIL_QA_VISION_ENABLED esta off (default)", async () => {
+    chainInvokeMock.mockResolvedValueOnce(
+      JSON.stringify({ passed: true, issues: [] }),
+    )
+    const result = await runQaAgent(makeInput({ blocks: [heroBlock] }))
+    expect(visionCheckMock).not.toHaveBeenCalled()
+    expect(result.passed).toBe(true)
+  })
+
+  it("chama vision quando flag ON e nao ha image_nicho_mismatch high", async () => {
+    process.env.EMAIL_QA_VISION_ENABLED = "true"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({ passed: true, issues: [] }),
+      )
+      visionCheckMock.mockResolvedValueOnce({
+        issues: [
+          {
+            type: "image_paleta_off",
+            severity: "medium",
+            message: "cores fora",
+            location: "block:0:hero",
+          },
+        ],
+        costCents: 1.5,
+        durationMs: 200,
+      })
+      const result = await runQaAgent(makeInput({ blocks: [heroBlock] }))
+      expect(visionCheckMock).toHaveBeenCalledTimes(1)
+      expect(result.issues.find((i) => i.type === "image_paleta_off")).toBeDefined()
+      // medium nao bloqueia (default threshold = high)
+      expect(result.passed).toBe(true)
+    } finally {
+      delete process.env.EMAIL_QA_VISION_ENABLED
+    }
+  })
+
+  it("nao chama vision quando Etapa 1 ja reportou image_nicho_mismatch high", async () => {
+    process.env.EMAIL_QA_VISION_ENABLED = "true"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({
+          passed: false,
+          issues: [
+            {
+              type: "image_nicho_mismatch",
+              severity: "high",
+              message: "produto errado",
+            },
+          ],
+        }),
+      )
+      const result = await runQaAgent(makeInput({ blocks: [heroBlock] }))
+      // Filtro: ja bloqueou na Etapa 1, skip Etapa 2.
+      expect(visionCheckMock).not.toHaveBeenCalled()
+      expect(result.passed).toBe(false)
+      expect(
+        result.issues.find((i) => i.type === "image_nicho_mismatch"),
+      ).toBeDefined()
+    } finally {
+      delete process.env.EMAIL_QA_VISION_ENABLED
+    }
+  })
+
+  it("nao chama vision quando nao ha blocos hero/image com image_url", async () => {
+    process.env.EMAIL_QA_VISION_ENABLED = "true"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({ passed: true, issues: [] }),
+      )
+      // Bloco hero SEM image_url
+      const noImageBlock = {
+        block_type: "hero",
+        content: { headline: "x" },
+      }
+      const result = await runQaAgent(makeInput({ blocks: [noImageBlock] }))
+      expect(visionCheckMock).not.toHaveBeenCalled()
+      expect(result.passed).toBe(true)
+    } finally {
+      delete process.env.EMAIL_QA_VISION_ENABLED
+    }
+  })
+
+  it("vision throw (Promise.allSettled rejected) preserva passed do textual", async () => {
+    process.env.EMAIL_QA_VISION_ENABLED = "true"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({ passed: true, issues: [] }),
+      )
+      visionCheckMock.mockRejectedValueOnce(new Error("vision boom"))
+      const result = await runQaAgent(makeInput({ blocks: [heroBlock] }))
+      expect(visionCheckMock).toHaveBeenCalledTimes(1)
+      // Rejected promise = sem issues adicionais. Textual disse passed -> mantem.
+      expect(result.passed).toBe(true)
+      expect(result.issues).toEqual([])
+    } finally {
+      delete process.env.EMAIL_QA_VISION_ENABLED
+    }
+  })
+
+  it("cap em 3 chamadas paralelas mesmo com mais blocos image", async () => {
+    process.env.EMAIL_QA_VISION_ENABLED = "true"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({ passed: true, issues: [] }),
+      )
+      visionCheckMock.mockResolvedValue({
+        issues: [],
+        costCents: 1.5,
+        durationMs: 100,
+      })
+      // 5 blocos image — deveria capar em 3.
+      const blocks = Array.from({ length: 5 }, (_, i) => ({
+        block_type: "image",
+        content: { image_url: `https://cdn.example.com/img${i}.jpg` },
+      }))
+      await runQaAgent(makeInput({ blocks }))
+      expect(visionCheckMock).toHaveBeenCalledTimes(3)
+    } finally {
+      delete process.env.EMAIL_QA_VISION_ENABLED
+    }
   })
 })
