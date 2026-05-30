@@ -33,6 +33,7 @@ import type {
 import { EmailDetailView } from "./email-detail-view"
 import { BrandResourceView } from "./brand-resource-view"
 import { BriefingResourceView } from "./briefing-resource-view"
+import { StartOnboardingButton } from "@/components/stores/start-onboarding-button"
 import { filterFlowsByMode } from "./filter-flows-by-mode"
 import type {
   WorkspaceMode,
@@ -554,8 +555,17 @@ export function ProductionWorkspace({
             </div>
           </div>
 
-          {/* Gerar copies via n8n */}
+          {/* Iniciar Onboarding (Epic AE) — pipeline completo de geracao */}
           <div style={{ padding: "12px 12px 4px" }}>
+            <StartOnboardingButton
+              storeId={store.id}
+              briefingConfirmed={briefing?.status === "confirmed"}
+              className="w-full"
+            />
+          </div>
+
+          {/* Gerar copies via n8n (legacy — apenas copy via webhook direto) */}
+          <div style={{ padding: "4px 12px 4px" }}>
             <DispatchEmailCopiesButton storeId={store.id} flows={flows} />
           </div>
 
