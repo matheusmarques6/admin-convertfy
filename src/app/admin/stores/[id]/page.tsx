@@ -1,4 +1,6 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Mail } from "lucide-react"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
@@ -232,6 +234,13 @@ export default async function StoreDetailPage({
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/stores/${store.id}/emails`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50"
+              title="Acompanhar pipeline de geracao de emails (Epic AE)"
+            >
+              <Mail className="h-3.5 w-3.5" /> Emails
+            </Link>
             <StoreForceResyncAction
               storeId={store.id}
               storeName={store.store_name}
