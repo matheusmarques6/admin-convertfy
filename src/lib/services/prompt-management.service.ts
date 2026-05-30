@@ -262,8 +262,7 @@ export async function activatePrompt(
     .maybeSingle()
 
   // Passo 1: desativa anterior (se existir).
-  // O unique index parcial garante consistência: se passo 2 falhar,
-  // o agent_type fica temporariamente sem ativo, mas nunca com 2.
+  // O unique index parcial garante consistência: nunca havera 2 ativas.
   if (currentActive) {
     const { error: dErr } = await admin
       .from("email_agent_configs")
@@ -272,14 +271,41 @@ export async function activatePrompt(
     if (dErr) throw dErr
   }
 
-  // Passo 2: ativa target
+  // Passo 2: ativa target.
+  // Se este UPDATE falhar, tentamos reverter o passo 1 para nao deixar
+  // `agent_type` sem nenhuma versao ativa. O caller ve o erro original;
+  // o revert e best-effort + logado.
   const { data: updated, error: uErr } = await admin
     .from("email_agent_configs")
     .update({ is_active: true })
     .eq("id", id)
     .select("*")
     .single()
-  if (uErr) throw uErr
+  if (uErr) {
+    if (currentActive) {
+      const { error: revertErr } = await admin
+        .from("email_agent_configs")
+        .update({ is_active: true })
+        .eq("id", (currentActive as { id: string }).id)
+      if (revertErr) {
+        log.error("prompt.activate.revert_failed", {
+          agent_type: targetRow.agent_type,
+          target_id: id,
+          previous_active_id: (currentActive as { id: string }).id,
+          activate_error: uErr.message,
+          revert_error: revertErr.message,
+        })
+      } else {
+        log.warn("prompt.activate.reverted_after_failure", {
+          agent_type: targetRow.agent_type,
+          target_id: id,
+          previous_active_id: (currentActive as { id: string }).id,
+          activate_error: uErr.message,
+        })
+      }
+    }
+    throw uErr
+  }
 
   log.info("prompt.activated", {
     agent_type: targetRow.agent_type,
