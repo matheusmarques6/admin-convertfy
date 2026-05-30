@@ -47,6 +47,7 @@ import type {
   TextBlockContent,
 } from "@/types/email-workspace"
 import { GenerationProgressDrawer } from "./generation-progress-drawer"
+import { BlockImageInstructionField } from "./block-image-instruction-field"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -906,6 +907,10 @@ export function EmailDetailView({
                                   onDelete={() => deleteBlock(block.id)}
                                   onMoveUp={() => moveBlock(block.id, "up")}
                                   onMoveDown={() => moveBlock(block.id, "down")}
+                                  onRefresh={async () => {
+                                    await mutate()
+                                    onEmailUpdated()
+                                  }}
                                 />
                               </div>
                             )}
@@ -2354,6 +2359,7 @@ function BlockCard({
   onDelete,
   onMoveUp,
   onMoveDown,
+  onRefresh,
 }: {
   block: EmailBlock
   isFirst: boolean
@@ -2365,6 +2371,8 @@ function BlockCard({
   onDelete: () => Promise<void>
   onMoveUp: () => Promise<void>
   onMoveDown: () => Promise<void>
+  /** AE-16 — chamado pelo BlockImageInstructionField apos regen. */
+  onRefresh?: () => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(block.applied === false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -2570,6 +2578,7 @@ function BlockCard({
             content={content}
             onCopy={onCopy}
             onPatch={onPatch}
+            onRefresh={onRefresh}
           />
         </div>
       )}
@@ -2678,11 +2687,14 @@ function BlockContentEditor({
   content,
   onCopy,
   onPatch,
+  onRefresh,
 }: {
   block: EmailBlock
   content: Record<string, unknown>
   onCopy: (text: string, label?: string) => void
   onPatch: (update: Record<string, unknown>) => Promise<void>
+  /** AE-16 — refetch do email apos regen de imagem. */
+  onRefresh?: () => Promise<void>
 }) {
   const updateContent = async (key: string, value: unknown) => {
     await onPatch({ content: { ...content, [key]: value } })
@@ -2725,6 +2737,15 @@ function BlockContentEditor({
           value={c.cta_text ?? ""}
           onSave={(v) => updateContent("cta_text", v)}
           onCopy={() => onCopy(c.cta_text ?? "", "CTA")}
+        />
+        {/* AE-16: instrucao adicional por bloco + regen */}
+        <BlockImageInstructionField
+          blockId={block.id}
+          blockLabel={block.label}
+          currentInstruction={c.image_instruction}
+          lastGeneratedAt={c.image_last_generated_at}
+          onInstructionSave={(v) => updateContent("image_instruction", v)}
+          onRegenerated={onRefresh}
         />
       </>
     )
@@ -3036,7 +3057,13 @@ function BlockContentEditor({
   }
 
   if (block.block_type === "image") {
-    const c = content as { image_url?: string; image_alt?: string; link_url?: string }
+    const c = content as {
+      image_url?: string
+      image_alt?: string
+      link_url?: string
+      image_instruction?: string
+      image_last_generated_at?: string
+    }
     return (
       <>
         <FieldImage
@@ -3054,6 +3081,15 @@ function BlockContentEditor({
           label="Link ao clicar (opcional)"
           value={c.link_url ?? ""}
           onSave={(v) => updateContent("link_url", v)}
+        />
+        {/* AE-16: instrucao adicional por bloco + regen */}
+        <BlockImageInstructionField
+          blockId={block.id}
+          blockLabel={block.label}
+          currentInstruction={c.image_instruction}
+          lastGeneratedAt={c.image_last_generated_at}
+          onInstructionSave={(v) => updateContent("image_instruction", v)}
+          onRegenerated={onRefresh}
         />
       </>
     )
