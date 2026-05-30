@@ -147,6 +147,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [data, setData] = useState<PesquisaData>(initialData ?? {})
   const [openEditor, setOpenEditor] = useState<null | "marca" | "loja" | "icp" | "tom">(null)
   const [regenerating, setRegenerating] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState(false)
   const [regeneratingAll, setRegeneratingAll] = useState(false)
 
   const reload = useCallback(async () => {
@@ -217,6 +218,35 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       }
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  // Dispara o webhook n8n "Analisador de ADS" (mesmo body/variáveis do
+  // /api/admin/stores/[id]/trigger-ads-analyzer). Fire-and-forget: o n8n
+  // responde via callbacks em ~1-2 min, por isso recarregamos em intervalos.
+  const reanalyzeAds = async () => {
+    setReanalyzing(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/trigger-ads-analyzer`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        toast({
+          title: "Análise de anúncios disparada",
+          description: "O webhook foi enviado. Os dados serão atualizados em 1-2 minutos.",
+        })
+        setTimeout(() => reload(), 30_000)
+        setTimeout(() => reload(), 60_000)
+        setTimeout(() => reload(), 120_000)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        const msg = (err as Record<string, unknown>).error ?? (err as Record<string, unknown>).message ?? `HTTP ${res.status}`
+        toast({ variant: "destructive", title: "Erro ao disparar análise", description: String(msg) })
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
+    } finally {
+      setReanalyzing(false)
     }
   }
 
@@ -510,11 +540,11 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
           title="Review dos Anúncios"
           meta={
             <button
-              onClick={regenerateAds}
-              disabled={regenerating}
+              onClick={reanalyzeAds}
+              disabled={reanalyzing}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[11.5px] font-semibold disabled:opacity-60"
             >
-              {regenerating ? (
+              {reanalyzing ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin" /> Reanalisando…
                 </>
