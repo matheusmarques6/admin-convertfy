@@ -181,6 +181,22 @@ export interface ImagePromptVarsInput {
   storeOverrides?: StoreImageOverrides | null
 }
 
+/**
+ * Monta variaveis para renderizar o prompt do agente de imagem.
+ *
+ * Retorna 31 variaveis em DUAS convencoes co-existentes:
+ *   - 19 vars legacy snake_case (`brand_name`, `nicho`, `tom_voz`, `primary_colors`,
+ *     `top_products`, `block_purpose` etc) — mantidas para retrocompat com
+ *     `DEFAULT_IMAGE_PROMPT_TEMPLATE` em image.chain.ts e com chamadas que
+ *     existiam antes da AE-10.
+ *   - 12 vars niche-adaptive UPPERCASE (`MARCA`, `LOGO_STYLE`, `NICHO`,
+ *     `PRODUTO_HEROI`, `PUBLICO`, `CENARIO`, `PALETA_1`, `PALETA_2`, `NEUTRO`,
+ *     `MOOD`, `IDIOMA`, `MOEDA`) — usadas pelos prompts mestres E1..E6 do
+ *     Welcome flow (story AE-11 em diante).
+ *
+ * Templates novos devem usar SOMENTE UPPERCASE. snake_case fica para callers
+ * legacy (Klaviyo, chains pre-AE-10) ate migracao completa.
+ */
 export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string, string> {
   const marca = (input.briefing?.marca ?? {}) as Record<string, unknown>
   const detail = (input.briefing?.briefing ?? {}) as Record<string, unknown>
@@ -241,7 +257,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const PALETA_2 = (brand?.colors_secondary ?? [])[0]?.hex ?? ""
 
   const PUBLICO = (marca.persona as string) ?? ""
-  const IDIOMA = "pt-BR"
+  const IDIOMA = (input.storeRaw.language as string) ?? "pt-BR"
   const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
 
   return {
