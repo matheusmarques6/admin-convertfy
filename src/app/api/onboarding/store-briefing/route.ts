@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchBriefingWebhook } from "@/lib/services/briefing-webhook.service"
+import { pesquisaToFullText } from "@/lib/briefing/briefing-text"
 import type { StoreBriefing, BriefingData } from "@/types/onboarding"
 
 const log = logger.child("OnboardingStoreBriefing")
@@ -37,36 +38,36 @@ export async function GET(request: NextRequest) {
     }
 
     // Fallback: a loja pode não ter linha em store_briefings mas ter o
-    // briefing_markdown gerado pelo n8n no onboarding — mesma fonte que a aba
-    // Content/Pesquisa renderiza. Sintetiza um StoreBriefing raw_text para a
-    // página de Configurações ficar consistente com a tela da loja.
-    const { data: onb } = await adminClient
-      .from("onboardings")
-      .select("id, briefing_markdown, briefing_confirmed_at, updated_at")
-      .eq("store_id", storeId)
-      .not("briefing_markdown", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
+    // documento "Pesquisa & Diagnóstico" preenchido nas colunas de
+    // client_stores (brand_*, store_story, icp_*, tone_*, ads_*) — mesma fonte
+    // que a aba Content/Pesquisa renderiza. Sintetiza um StoreBriefing raw_text
+    // com as 5 seções para a página de Configurações ficar consistente.
+    const { data: store } = await adminClient
+      .from("client_stores")
+      .select("*")
+      .eq("id", storeId)
       .maybeSingle()
 
-    if (onb?.briefing_markdown) {
+    const text = store ? pesquisaToFullText(store).trim() : ""
+
+    if (text) {
       const nowIso = new Date().toISOString()
       const generatedAt =
-        (onb.briefing_confirmed_at as string | null) ??
-        (onb.updated_at as string | null) ??
+        (store?.ads_reviewed_at as string | null) ??
+        (store?.updated_at as string | null) ??
         nowIso
       const fallback: StoreBriefing = {
-        id: `onboarding:${onb.id}`,
+        id: `pesquisa:${storeId}`,
         store_id: storeId,
         onboarding_data_id: null,
         // raw_text briefing — mesma forma que o modo manual grava em
         // store_briefings; o tipo BriefingData é estruturado, então cast.
-        briefing_data: { raw_text: onb.briefing_markdown as string } as unknown as BriefingData,
+        briefing_data: { raw_text: text } as unknown as BriefingData,
         version: 0,
         status: "current",
         generated_at: generatedAt,
-        generated_by: "n8n_markdown",
-        created_at: (onb.updated_at as string | null) ?? nowIso,
+        generated_by: "pesquisa_diagnostico",
+        created_at: generatedAt,
       }
       return successResponse(request, { briefing: fallback })
     }
