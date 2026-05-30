@@ -69,17 +69,61 @@ async function runQaAgentSafeFallback(params: {
   }
 }
 
-// ── Notify hooks — MOCK ate story AE-7 entregar dispatcher real ────────
-async function notifyBatchCompleteMock(storeId: string, batchId: string): Promise<void> {
-  log.info("phase2.notify.batch_complete_mock", { storeId, batchId })
+// ── Notify hooks — story AE-7: real dispatchers via generation-notify ──
+// Wrappers garantem que falhas no notify NUNCA propagam para o pipeline.
+// O proprio notify-service ja faz try/catch interno; este `try` extra e
+// uma rede de seguranca para imports / acesso DB.
+import {
+  notifyBatchComplete,
+  notifyBatchAllFailed,
+  notifyEmailFailed,
+} from "./generation-notify.service"
+
+async function safeNotifyEmailFailed(
+  storeId: string,
+  emailId: string,
+  failureReason: string,
+  batchId: string | null,
+): Promise<void> {
+  try {
+    await notifyEmailFailed({ storeId, emailId, failureReason, batchId })
+  } catch (err) {
+    log.warn("phase2.notify.email_failed_unexpected", {
+      storeId,
+      emailId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
-async function notifyTaggedMock(
-  tags: string[],
-  event: string,
-  payload: Record<string, unknown>,
+async function safeNotifyBatchTerminal(
+  storeId: string,
+  batchId: string,
 ): Promise<void> {
-  log.info("phase2.notify.tagged_mock", { tags, event, payload })
+  try {
+    // Decide entre batch_complete e batch_all_failed olhando o resumo
+    // do batch. Mantemos isso aqui (e nao em checkBatchTerminal) para
+    // que o caller mantenha controle e testabilidade clara.
+    const admin = createAdminClient()
+    const { data: emails } = await admin
+      .from("email_flow_emails")
+      .select("status")
+      .eq("generation_batch_id", batchId)
+    const list = (emails ?? []) as Array<{ status: string }>
+    if (list.length === 0) return
+    const allFailed = list.every((e) => e.status === "failed")
+    if (allFailed) {
+      await notifyBatchAllFailed({ storeId, batchId })
+    } else {
+      await notifyBatchComplete({ storeId, batchId })
+    }
+  } catch (err) {
+    log.warn("phase2.notify.batch_terminal_unexpected", {
+      storeId,
+      batchId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 // Severity threshold + decisao de bloqueio ficam centralizadas em qa.chain.ts
@@ -228,15 +272,7 @@ export async function checkBatchTerminal(
   )
   if (!allTerminal) return
 
-  try {
-    await notifyBatchCompleteMock(storeId, batchId)
-  } catch (err) {
-    log.warn("phase2.notify.batch_complete_failed", {
-      storeId,
-      batchId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  await safeNotifyBatchTerminal(storeId, batchId)
 }
 
 // ── Main: runPhase2InBackground ────────────────────────────────────────
@@ -280,13 +316,8 @@ export async function runPhase2InBackground(
     const msg = err instanceof Error ? err.message : "Erro ao carregar contexto"
     log.error("phase2.context.error", { emailId, error: msg })
     await markEmailFailed(emailId, "context_load_failed")
+    await safeNotifyEmailFailed(storeId, emailId, "context_load_failed", batchId || null)
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    try {
-      await notifyTaggedMock(["cto"], "email_generation_failed", {
-        email_id: emailId,
-        reason: "context_load_failed",
-      })
-    } catch { /* noop */ }
     return
   }
 
@@ -346,16 +377,11 @@ export async function runPhase2InBackground(
           errorMessage: msg,
         })
         await markEmailFailed(emailId, "image_failed")
+        await safeNotifyEmailFailed(storeId, emailId, "image_failed", batchId || null)
         if (batchId) {
           await rollupTotalCost(emailId, batchId).catch(() => {})
           await checkBatchTerminal(storeId, batchId).catch(() => {})
         }
-        try {
-          await notifyTaggedMock(["cto"], "email_generation_failed", {
-            email_id: emailId,
-            reason: "image_failed",
-          })
-        } catch { /* noop */ }
         return
       }
     }
@@ -480,16 +506,11 @@ export async function runPhase2InBackground(
       errorMessage: msg,
     })
     await markEmailFailed(emailId, "html_failed")
+    await safeNotifyEmailFailed(storeId, emailId, "html_failed", batchId || null)
     if (batchId) {
       await rollupTotalCost(emailId, batchId).catch(() => {})
       await checkBatchTerminal(storeId, batchId).catch(() => {})
     }
-    try {
-      await notifyTaggedMock(["cto"], "email_generation_failed", {
-        email_id: emailId,
-        reason: "html_failed",
-      })
-    } catch { /* noop */ }
     return
   }
 
@@ -566,15 +587,9 @@ export async function runPhase2InBackground(
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
+    await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
     if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    try {
-      await notifyTaggedMock(["cto"], "email_generation_failed", {
-        email_id: emailId,
-        reason: "qa_failed",
-        issues: qaResult.issues,
-      })
-    } catch { /* noop */ }
     log.info("phase2.qa.blocked", { emailId, issuesCount: qaResult.issues.length })
     return
   }

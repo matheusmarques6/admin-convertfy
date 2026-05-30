@@ -43,6 +43,11 @@ import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { consumeQueueSignal } from "@/lib/services/email-generation-trigger.service"
 import { runCopyChainInProcess } from "@/lib/agents/copy-chain-fallback.service"
+import {
+  notifyEmailFailed,
+  notifyBatchComplete,
+  notifyBatchAllFailed,
+} from "@/lib/agents/generation-notify.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("EmailGenWatchdog")
@@ -85,21 +90,74 @@ function getInternalUrl(): string {
   ).replace(/\/$/, "")
 }
 
-// ── Mock notify hooks — alinhado com phase2-runner.service.ts. Sera
-// substituido pelo dispatcher real de notificacoes (story AE-7). ──────
-async function notifyTaggedMock(
-  tags: string[],
-  event: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  log.info("watchdog.notify.tagged_mock", { tags, event, payload })
+// ── Notify wrappers — story AE-7: real dispatchers via generation-notify.
+// Try/catch envolve cada chamada para garantir que falha de notify NUNCA
+// derrubar o cron. O service ja faz try/catch interno; isso e seguranca
+// adicional contra falhas de import/runtime.
+
+async function safeNotifyEmailFailed(params: {
+  storeId: string
+  emailId: string
+  failureReason: string
+  batchId: string | null
+}): Promise<void> {
+  try {
+    await notifyEmailFailed(params)
+  } catch (err) {
+    log.warn("watchdog.notify.email_failed_unexpected", {
+      emailId: params.emailId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
-// ── checkBatchTerminal mock — quando o batch de um email expirado fica
-// terminal, sera notificado por phase2-runner em outros caminhos. Aqui
-// mantemos o no-op simbolico (story AE-7). ─────────────────────────────
-async function checkBatchTerminalMock(batchId: string): Promise<void> {
-  log.info("watchdog.notify.batch_terminal_mock", { batchId })
+// Quando um email do batch atinge terminal por timeout/exhaust, checa
+// se o batch inteiro acabou e dispara notifyBatchComplete (ou
+// notifyBatchAllFailed). Idempotente via dedup-key no service.
+async function safeNotifyBatchTerminalIfDone(
+  storeId: string | null,
+  batchId: string,
+): Promise<void> {
+  if (!storeId) return
+  try {
+    const admin = createAdminClient()
+    const { data: rows } = await admin
+      .from("email_flow_emails")
+      .select("status")
+      .eq("generation_batch_id", batchId)
+    const list = (rows ?? []) as Array<{ status: string }>
+    if (list.length === 0) return
+    const allTerminal = list.every(
+      (e) => e.status === "ready" || e.status === "failed",
+    )
+    if (!allTerminal) return
+    const allFailed = list.every((e) => e.status === "failed")
+    if (allFailed) {
+      await notifyBatchAllFailed({ storeId, batchId })
+    } else {
+      await notifyBatchComplete({ storeId, batchId })
+    }
+  } catch (err) {
+    log.warn("watchdog.notify.batch_terminal_unexpected", {
+      batchId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+// Helper: resolve storeId a partir do email (necessario porque os
+// updates do watchdog so tem `id` + `generation_batch_id`, nao `store_id`).
+async function getStoreIdForEmail(emailId: string): Promise<string | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from("email_flow_emails")
+    .select("flow:email_flows(store_id)")
+    .eq("id", emailId)
+    .maybeSingle()
+  const flow = (data as { flow?: { store_id?: string } | Array<{ store_id?: string }> } | null)
+    ?.flow
+  const flowRel = Array.isArray(flow) ? flow[0] : flow
+  return (flowRel as { store_id?: string } | undefined)?.store_id ?? null
 }
 
 // ── Front 1: consome sinais pendentes ─────────────────────────────────
@@ -161,16 +219,15 @@ async function exhaustMaxAttempts(thresholdIso: string): Promise<number> {
   log.error("watchdog.copy.max_attempts_exhausted", { count: rows.length })
 
   for (const r of rows) {
-    try {
-      await notifyTaggedMock(["cto"], "email_generation_failed", {
-        email_id: r.id,
-        reason: "max_attempts_exhausted",
-      })
-    } catch {
-      /* noop */
-    }
+    const storeId = await getStoreIdForEmail(r.id)
+    await safeNotifyEmailFailed({
+      storeId: storeId ?? "",
+      emailId: r.id,
+      failureReason: "max_attempts_exhausted",
+      batchId: r.generation_batch_id,
+    })
     if (r.generation_batch_id) {
-      await checkBatchTerminalMock(r.generation_batch_id).catch(() => {})
+      await safeNotifyBatchTerminalIfDone(storeId, r.generation_batch_id)
     }
   }
   return rows.length
@@ -307,16 +364,15 @@ async function timeoutPhase2(): Promise<number> {
     }
     const rows = (data ?? []) as Array<{ id: string; generation_batch_id: string | null }>
     for (const r of rows) {
-      try {
-        await notifyTaggedMock(["cto"], "email_generation_failed", {
-          email_id: r.id,
-          reason: "timeout_phase2",
-        })
-      } catch {
-        /* noop */
-      }
+      const storeId = await getStoreIdForEmail(r.id)
+      await safeNotifyEmailFailed({
+        storeId: storeId ?? "",
+        emailId: r.id,
+        failureReason: "timeout_phase2",
+        batchId: r.generation_batch_id,
+      })
       if (r.generation_batch_id) {
-        await checkBatchTerminalMock(r.generation_batch_id).catch(() => {})
+        await safeNotifyBatchTerminalIfDone(storeId, r.generation_batch_id)
       }
     }
     total += rows.length
@@ -452,20 +508,17 @@ async function redispatchStaleCopyReady(): Promise<{
             count: exhausted,
             email_ids: exhaustedIds,
           })
-          // Notifica tag CTO + checkBatchTerminal (mocked ate AE-7).
+          // Notifica tag CTO + checkBatchTerminal (story AE-7).
           for (const r of rows.filter((row) => exhaustedIds.includes(row.id))) {
-            try {
-              await notifyTaggedMock(["cto"], "email_generation_failed", {
-                email_id: r.id,
-                reason: "stale_copy_ready_exhausted",
-              })
-            } catch {
-              /* noop */
-            }
+            const storeId = await getStoreIdForEmail(r.id)
+            await safeNotifyEmailFailed({
+              storeId: storeId ?? "",
+              emailId: r.id,
+              failureReason: "stale_copy_ready_exhausted",
+              batchId: r.generation_batch_id,
+            })
             if (r.generation_batch_id) {
-              await checkBatchTerminalMock(r.generation_batch_id).catch(
-                () => {},
-              )
+              await safeNotifyBatchTerminalIfDone(storeId, r.generation_batch_id)
             }
           }
         }
