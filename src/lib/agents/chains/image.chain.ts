@@ -5,8 +5,13 @@
  * /images/generations. Usamos fetch direto no endpoint de chat.
  */
 
+import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import {
+  getAspectDimensions,
+  type AspectKey,
+} from "../image/aspect-ratio"
 
 const log = logger.child("ImageChain")
 
@@ -41,11 +46,24 @@ export function renderImagePrompt(
 export async function generateEmailImage(
   prompt: string,
   storeId: string,
+  options?: {
+    aspect?: AspectKey
+    /**
+     * Informativo apenas — propagado em logs. A instrucao textual no
+     * prompt e responsabilidade do caller (phase2-runner).
+     */
+    overlayReserveBottom?: boolean
+  },
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error("OPENROUTER_API_KEY não configurada")
 
-  log.info("image.generate.start", { storeId, promptLength: prompt.length })
+  log.info("image.generate.start", {
+    storeId,
+    promptLength: prompt.length,
+    aspect: options?.aspect,
+    overlayReserveBottom: options?.overlayReserveBottom,
+  })
   const t0 = Date.now()
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -91,6 +109,37 @@ export async function generateEmailImage(
     throw new Error("Não foi possível extrair imagem da resposta do OpenRouter")
   }
 
+  // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o
+  // resize falhar, segue com o buffer original (pipeline nao quebra).
+  let finalBuffer: Buffer = imageBuffer
+  if (options?.aspect) {
+    const dims = getAspectDimensions(options.aspect)
+    try {
+      finalBuffer = await sharp(imageBuffer)
+        .resize(dims.width, dims.height, {
+          fit: "cover",
+          position: "center",
+        })
+        .png()
+        .toBuffer()
+      log.info("image.resize", {
+        storeId,
+        aspect: options.aspect,
+        to: dims,
+        bytesOriginal: imageBuffer.length,
+        bytesResized: finalBuffer.length,
+      })
+    } catch (err) {
+      log.warn("image.resize_failed", {
+        storeId,
+        aspect: options.aspect,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      // fallback: mantem buffer original
+      finalBuffer = imageBuffer
+    }
+  }
+
   // Upload pro Supabase Storage
   const admin = createAdminClient()
   const uuid = crypto.randomUUID()
@@ -98,7 +147,7 @@ export async function generateEmailImage(
 
   const { error: uploadErr } = await admin.storage
     .from("onboarding-visual-assets")
-    .upload(path, imageBuffer, {
+    .upload(path, finalBuffer, {
       contentType: "image/png",
       upsert: false,
     })
