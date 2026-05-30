@@ -43,6 +43,7 @@ import { renderImageTemplate } from "./image/template-renderer"
 import {
   resolveAspectForBlock,
   aspectInstructionForPrompt,
+  isAspectKey,
   type AspectKey,
 } from "./image/aspect-ratio"
 import {
@@ -423,6 +424,17 @@ export async function runPhase2InBackground(
         // default) + inject instrucao textual no prompt. O resize final
         // pra forcar a dimensao acontece dentro de generateEmailImage.
         const blueprintAspectRaw = ctx.blueprint?.image_aspect ?? null
+        const blueprintAspectIsValid =
+          !!blueprintAspectRaw && isAspectKey(blueprintAspectRaw)
+        // AE-12 review S1: blueprint com valor invalido (ex "16:9") cai
+        // pra matriz silenciosamente — logar warn pra observabilidade.
+        if (blueprintAspectRaw && !blueprintAspectIsValid) {
+          log.warn("phase2.image.blueprint_aspect_invalid", {
+            emailId,
+            blockId: blk.id,
+            invalidValue: blueprintAspectRaw,
+          })
+        }
         const reserveBottom =
           ctx.blueprint?.image_overlay_reserve_bottom ?? true
         const aspect: AspectKey = resolveAspectForBlock({
@@ -430,7 +442,9 @@ export async function runPhase2InBackground(
           flowType: ctx.flowType,
           emailNumber: ctx.emailNumber,
         })
-        const aspectSource = blueprintAspectRaw
+        // AE-12 review C1: source so eh "blueprint" se o valor era VALIDO.
+        // Caso contrario, o resolveAspectForBlock caiu na matriz ou default.
+        const aspectSource = blueprintAspectIsValid
           ? "blueprint"
           : ctx.flowType === "welcome" && ctx.emailNumber != null
             ? "matrix"
