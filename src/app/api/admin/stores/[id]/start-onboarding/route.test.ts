@@ -331,3 +331,128 @@ describe("POST /start-onboarding — 409 batch_in_progress", () => {
     expect(json.error).toContain("batch_in_progress")
   })
 })
+
+// ──────────────────────────────────────────────────────────────
+// n8n dispatch failure (502 + revert)
+// ──────────────────────────────────────────────────────────────
+
+describe("POST /start-onboarding — 502 n8n dispatch failure", () => {
+  it("retorna 502 e reverte emails para pending quando fetch falha (network)", async () => {
+    // Simula erro de rede generico (ex: ECONNREFUSED).
+    // O service captura no catch e marca dispatchError com a mensagem;
+    // depois faz UPDATE revertendo status para 'pending'.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED")
+      }),
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res.status).toBe(502)
+    const json = await res.json()
+    expect(json.error).toContain("n8n_dispatch_failed")
+
+    const revertUpdate = updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "pending" &&
+        c.data.failure_reason === "n8n_dispatch_failed",
+    )
+    expect(revertUpdate).toBeDefined()
+  })
+
+  it("retorna 502 e reverte quando fetch lanca AbortError (timeout)", async () => {
+    // Simula o cenario do AbortController disparado pelo timer de 15s:
+    // fetch lanca AbortError. O service entra no branch generico do catch
+    // (ctrl.signal.aborted pode ser false neste mock — testamos o caminho
+    // de erro nomeado) e marca a falha igual ao caso de rede.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const err = new Error("The operation was aborted") as Error & { name: string }
+        err.name = "AbortError"
+        throw err
+      }),
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res.status).toBe(502)
+
+    const revertUpdate = updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "pending" &&
+        c.data.failure_reason === "n8n_dispatch_failed",
+    )
+    expect(revertUpdate).toBeDefined()
+  })
+
+  it("retorna 502 quando n8n responde com 5xx", async () => {
+    mockWebhookResponse = new Response("internal error", { status: 500 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res.status).toBe(502)
+
+    const revertUpdate = updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "pending" &&
+        c.data.failure_reason === "n8n_dispatch_failed",
+    )
+    expect(revertUpdate).toBeDefined()
+  })
+})
+
+// ──────────────────────────────────────────────────────────────
+// Race condition (2 cliques paralelos em mode=fresh)
+// ──────────────────────────────────────────────────────────────
+
+describe("POST /start-onboarding — race condition (dois cliques paralelos)", () => {
+  it("segunda chamada fresh apos a primeira: 409 batch_in_progress", async () => {
+    // Cenario sequencial determinista: dois admins (ou admin + signal
+    // consumer) chamam fresh em sucessao rapida. A primeira chamada move
+    // os emails para 'copy_generating' via UPDATE atomico; a segunda le
+    // o state mutado e detecta batch em andamento.
+    //
+    // Em producao a mesma garantia vem do UPDATE PostgreSQL com filtro
+    // status='draft' / IN(...) — se o primeiro request alterou o status,
+    // o segundo nao encontra linhas para alterar e cai no guard de
+    // batch_in_progress.
+    //
+    // Promise.all neste mock nao testa concorrencia real (Node e
+    // single-threaded e o mock state e single-source); por isso usamos
+    // chamadas sequenciais que refletem o comportamento depois do
+    // commit.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res1 = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res1.status).toBe(200)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res2 = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res2.status).toBe(409)
+    const json = await res2.json()
+    expect(json.error).toContain("batch_in_progress")
+  })
+
+  it("segunda chamada resume apos a primeira: retorna mesmo batch (idempotente)", async () => {
+    // Mesmo cenario, mas mode=resume na segunda chamada — deve devolver
+    // o batch_id existente em vez de 409.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res1 = await POST(makeRequest({ mode: "fresh" }) as any, ctx())
+    expect(res1.status).toBe(200)
+    const json1 = await res1.json()
+    const firstBatchId = json1.batch_id
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res2 = await POST(makeRequest({ mode: "resume" }) as any, ctx())
+    expect(res2.status).toBe(200)
+    const json2 = await res2.json()
+    expect(json2.batch_id).toBe(firstBatchId)
+    expect(json2.reused_batch).toBe(true)
+    expect(json2.dispatched_to_n8n).toBe(false)
+  })
+})

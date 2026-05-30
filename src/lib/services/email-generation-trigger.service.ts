@@ -24,7 +24,7 @@
 
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
-import { ConflictError, ValidationError } from "@/lib/api/errors"
+import { AppError, ConflictError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import type { FlowType } from "@/types/email-workspace"
 
@@ -426,15 +426,9 @@ export async function startOnboarding(
       dispatchError,
     })
 
-    const err = new Error("n8n_dispatch_failed") as Error & {
-      statusCode?: number
-      code?: string
-      details?: Record<string, unknown>
-    }
-    err.statusCode = 502
-    err.code = "n8n_dispatch_failed"
-    err.details = { batch_id: batchId, reason: dispatchError }
-    throw err
+    // Usa AppError para que errorResponse() retorne 502 (Bad Gateway).
+    // Erro generico Error caia no fallback do errorResponse e vira 500.
+    throw new AppError("n8n_dispatch_failed", 502, "n8n_dispatch_failed")
   }
 
   log.info("start.dispatch", {
