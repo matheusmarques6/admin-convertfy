@@ -223,3 +223,26 @@ describe("buildImagePromptVars — helper overrides", () => {
     expect(vars.LOGO_STYLE).toBe("art deco lettering")
   })
 })
+
+describe("buildImagePromptVars — INSTRUCAO_ADICIONAL (AE-11 hook pra AE-16)", () => {
+  it("repassa o valor quando fornecido", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      instrucaoAdicional: "Foco no detalhe da costura",
+    })
+    expect(vars.INSTRUCAO_ADICIONAL).toBe("Foco no detalhe da costura")
+  })
+
+  it("default vazio quando ausente (template usa {{#if}} para omitir bloco)", () => {
+    const vars = buildImagePromptVars(BASE_INPUT)
+    expect(vars.INSTRUCAO_ADICIONAL).toBe("")
+  })
+
+  it("trim de whitespace excedente", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      instrucaoAdicional: "   foco extra   ",
+    })
+    expect(vars.INSTRUCAO_ADICIONAL).toBe("foco extra")
+  })
+})

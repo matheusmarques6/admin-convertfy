@@ -27,12 +27,19 @@ import type {
   StoreBriefing,
   TopProduct,
 } from "@/types/email-workspace"
-import type { EmailAgentConfig, QaIssue, QaResult } from "@/types/email-generation"
+import type {
+  EmailAgentConfig,
+  EmailBlueprint,
+  QaIssue,
+  QaResult,
+  StoreImageOverrides,
+} from "@/types/email-generation"
 import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
   renderImagePrompt,
 } from "./chains/image.chain"
+import { renderImageTemplate } from "./image/template-renderer"
 import {
   createHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
@@ -197,19 +204,28 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   }
 
   let blueprintObjective = ""
+  let blueprintFull: EmailBlueprint | null = null
   if (flowTypeForBlueprint && emailNumberForBlueprint != null) {
     const { data: bpRow } = await admin
       .from("email_blueprints")
-      .select("objective")
+      .select("*")
       .eq("flow_type", flowTypeForBlueprint)
       .eq("email_number", emailNumberForBlueprint)
       .maybeSingle()
     blueprintObjective = (bpRow?.objective as string | undefined) ?? ""
+    blueprintFull = (bpRow as EmailBlueprint | null) ?? null
   }
 
   const orgId = (storeData as Record<string, unknown>)?.org_id as string | undefined
 
-  const [brandRes, briefingRes, htmlConfigRes, settingsRes] = await Promise.all([
+  const [
+    brandRes,
+    briefingRes,
+    htmlConfigRes,
+    settingsRes,
+    imageConfigRes,
+    storeOverridesRes,
+  ] = await Promise.all([
     admin
       .from("store_brand_identities")
       .select("*")
@@ -239,6 +255,20 @@ async function loadMinimalContext(storeId: string, emailId: string) {
           .eq("org_id", orgId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    // ── Story AE-11: imagem agora carrega config + overrides do DB ─
+    admin
+      .from("email_agent_configs")
+      .select("user_template, model")
+      .eq("agent_type", "image")
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from("store_image_overrides")
+      .select("*")
+      .eq("store_id", storeId)
+      .maybeSingle(),
   ])
 
   const generateImages = (settingsRes.data?.generate_images as boolean | undefined) ?? true
@@ -253,6 +283,15 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     topProducts,
     generateImages,
     blueprintObjective,
+    // ── AE-11: contexto extra para o agente de imagem ───────────
+    blueprint: blueprintFull,
+    storeOverrides:
+      (storeOverridesRes.data as StoreImageOverrides | null) ?? null,
+    imageConfig:
+      (imageConfigRes.data as { user_template: string; model: string } | null) ??
+      null,
+    flowType: flowTypeForBlueprint,
+    emailNumber: emailNumberForBlueprint,
   }
 }
 
@@ -330,17 +369,48 @@ export async function runPhase2InBackground(
       .eq("email_id", emailId)
       .in("block_type", ["hero", "custom"])
 
+    // ── AE-11: log de qual fonte do template (DB seed vs fallback) ─
+    log.info("phase2.image.template_source", {
+      source: ctx.imageConfig ? "db" : "fallback_hardcoded",
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      emailId,
+    })
+
     for (const blk of imageBlocks ?? []) {
       const imgT0 = Date.now()
       try {
+        const blockContent = (blk.content as Record<string, unknown> | null) ?? {}
+        const instrucaoAdicional =
+          typeof blockContent.image_instruction === "string"
+            ? (blockContent.image_instruction as string)
+            : undefined
+
         const promptVars = buildImagePromptVars({
           brand: ctx.brand,
           briefing: ctx.briefing,
           topProducts: ctx.topProducts,
           storeRaw: ctx.storeRaw,
           blockPurpose: (blk.label as string) ?? "hero",
+          // ── AE-11: vars niche-adaptive + contexto ─────────────
+          emailNumber: ctx.emailNumber ?? undefined,
+          flowType: ctx.flowType ?? undefined,
+          blueprint: ctx.blueprint,
+          storeOverrides: ctx.storeOverrides,
+          instrucaoAdicional,
         })
-        const prompt = renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
+
+        // Vars de contexto extras pro switch do template
+        promptVars.flow_type = ctx.flowType ?? ""
+        promptVars.email_number =
+          ctx.emailNumber != null ? String(ctx.emailNumber) : ""
+
+        // Se config existe no DB: renderImageTemplate (handlebars-lite,
+        // suporta switch + if). Sem config: fallback pro template
+        // hardcoded com o renderImagePrompt legacy (compat retroativa).
+        const prompt = ctx.imageConfig
+          ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
+          : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
         const imageUrl = await generateEmailImage(prompt, storeId)
 
         const merged = {
