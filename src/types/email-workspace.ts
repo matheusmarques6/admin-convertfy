@@ -248,6 +248,15 @@ export interface HeroBlockContent {
   image_alt?: string
   cta_text?: string
   cta_url?: string
+  // ── AE-16: per-block image instruction + last-gen telemetry ─────
+  // `image_instruction` é apendado ao prompt mestre (não substitui).
+  // `image_last_generated_at` é o timestamp ISO da última regeração
+  // por bloco (usado como rate-limit de 30s sem tabela nova).
+  // `image_last_prompt` é snapshot truncado (2KB) do prompt final
+  // resolvido — pra debug colaborativo dev+designer.
+  image_instruction?: string
+  image_last_generated_at?: string
+  image_last_prompt?: string
 }
 
 export interface TextBlockContent {
@@ -289,6 +298,11 @@ export interface ImageBlockContent {
   image_url: string
   image_alt?: string
   link_url?: string
+  // ── AE-16: per-block image instruction + last-gen telemetry ─────
+  // Mesma semantica do HeroBlockContent — ver comentario la em cima.
+  image_instruction?: string
+  image_last_generated_at?: string
+  image_last_prompt?: string
 }
 
 export interface CtaBlockContent {
