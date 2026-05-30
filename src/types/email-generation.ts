@@ -15,6 +15,29 @@ export interface EmailBlueprint {
   tone_override: string | null
   updated_at: string
   updated_by: string | null
+  // ── Epic AE-Image Niche-Adaptive (story AE-10) ───────────
+  // Briefing visual por blueprint (slot E1..E6). Opcional para
+  // retrocompat com rows legacy criados antes da migration
+  // 20260601_image_agent_niche_adaptive.sql.
+  image_brief?: string | null
+  image_aspect?: "4:5" | "3:5" | "4:3" | "1:1" | "3:4" | null
+  image_mode?: "auto" | "product_ref" | "text2img" | null
+  image_overlay_reserve_bottom?: boolean | null
+  image_produto_heroi_hint?: string | null
+}
+
+// ── Epic AE-Image Niche-Adaptive (story AE-10) ──────────────
+// Overrides manuais por loja. Override sempre vence helpers de
+// derivação (mood/cenario/neutro/logo_style/produto_heroi).
+export interface StoreImageOverrides {
+  store_id: string
+  cenario_override?: string | null
+  produto_heroi_override?: string | null
+  produto_heroi_image_url?: string | null
+  logo_style_override?: string | null
+  neutro_override?: string | null
+  mood_override?: string | null
+  updated_at?: string
 }
 
 export type AgentType = "copy" | "image" | "html" | "qa"

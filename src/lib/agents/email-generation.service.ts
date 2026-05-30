@@ -23,7 +23,15 @@ import type {
   StoreBriefing,
   TopProduct,
 } from "@/types/email-workspace"
-import type { EmailAgentConfig, EmailBlueprint } from "@/types/email-generation"
+import type {
+  EmailAgentConfig,
+  EmailBlueprint,
+  StoreImageOverrides,
+} from "@/types/email-generation"
+import { mapTomVozToMood } from "./image/mood-mapping"
+import { deriveCenario } from "./image/cenario-derivation"
+import { resolveNeutro } from "./image/neutro-resolution"
+import { deriveLogoStyle } from "./image/logo-style"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
 import {
   generateEmailImage,
@@ -163,6 +171,14 @@ export interface ImagePromptVarsInput {
   topProducts: TopProduct[]
   storeRaw: Record<string, unknown>
   blockPurpose: string
+  // ── Epic AE-Image Niche-Adaptive (story AE-10) ─────────
+  // Opcionais — quando ausentes, as 19 vars antigas continuam
+  // sendo retornadas, mas as 12 vars niche-adaptive (MAIUSCULAS)
+  // são preenchidas com fallbacks dos helpers.
+  emailNumber?: number
+  flowType?: string
+  blueprint?: EmailBlueprint | null
+  storeOverrides?: StoreImageOverrides | null
 }
 
 export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string, string> {
@@ -183,14 +199,59 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const restricoesArr = detail.restricoes as string[] | undefined
   const restricoes = Array.isArray(restricoesArr) ? restricoesArr.join("; ") : ""
 
+  const nicho = (marca.nicho as string) ?? ""
+  const posicionamento = (marca.posicionamento as string) ?? "medio"
+  const tomVoz = (marca.tom_voz as string) ?? "casual"
+  const brandName = (input.storeRaw.store_name as string) ?? "Loja"
+
+  // ── Niche-adaptive (story AE-10) ─────────────────────────
+  const overrides = input.storeOverrides ?? null
+  const blueprint = input.blueprint ?? null
+
+  const MOOD = overrides?.mood_override?.trim()
+    ? overrides.mood_override
+    : mapTomVozToMood(tomVoz)
+
+  const CENARIO = deriveCenario({
+    nicho,
+    posicionamento,
+    override: overrides?.cenario_override ?? null,
+  })
+
+  const NEUTRO = resolveNeutro({
+    colorsPrimary: brand?.colors_primary ?? null,
+    colorsSecondary: brand?.colors_secondary ?? null,
+    posicionamento,
+    override: overrides?.neutro_override ?? null,
+  })
+
+  const LOGO_STYLE = deriveLogoStyle({
+    fontHeading: brand?.font_heading ?? null,
+    override: overrides?.logo_style_override ?? null,
+  })
+
+  // Prioridade: override loja > hint do blueprint > top product [0]
+  const PRODUTO_HEROI =
+    overrides?.produto_heroi_override?.trim() ||
+    blueprint?.image_produto_heroi_hint ||
+    products[0]?.name ||
+    ""
+
+  const PALETA_1 = (brand?.colors_primary ?? [])[0]?.hex ?? ""
+  const PALETA_2 = (brand?.colors_secondary ?? [])[0]?.hex ?? ""
+
+  const PUBLICO = (marca.persona as string) ?? ""
+  const IDIOMA = "pt-BR"
+  const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
+
   return {
-    brand_name: (input.storeRaw.store_name as string) ?? "Loja",
+    brand_name: brandName,
     block_purpose: input.blockPurpose,
 
     // Perfil da marca
-    nicho: (marca.nicho as string) ?? "",
-    posicionamento: (marca.posicionamento as string) ?? "medio",
-    tom_voz: (marca.tom_voz as string) ?? "casual",
+    nicho,
+    posicionamento,
+    tom_voz: tomVoz,
     persona: (marca.persona as string) ?? "",
     diferencial: (marca.diferencial as string) ?? "",
     slogan: (marca.slogan as string) ?? "",
@@ -212,6 +273,20 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     product_3_name: products[2]?.name ?? "",
     product_4_name: products[3]?.name ?? "",
     product_5_name: products[4]?.name ?? "",
+
+    // ── Niche-adaptive (story AE-10) — chaves MAIUSCULAS ────
+    MARCA: brandName,
+    LOGO_STYLE,
+    NICHO: nicho,
+    PRODUTO_HEROI,
+    PUBLICO,
+    CENARIO,
+    PALETA_1,
+    PALETA_2,
+    NEUTRO,
+    MOOD,
+    IDIOMA,
+    MOEDA,
   }
 }
 
