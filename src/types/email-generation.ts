@@ -56,6 +56,14 @@ export type QaIssueType =
   | "html_invalido"
   | "alt_text_faltando"
   | "compliance"
+  // ── Epic AE-15: Image niche-adaptive QA cascade ───────
+  // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
+  // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:
+  //   Etapa 2 (Claude vision, dispara so se EMAIL_QA_VISION_ENABLED=true).
+  | "image_nicho_mismatch"
+  | "image_paleta_off"
+  | "image_overlay_reserva_ausente"
+  | "image_cena_inadequada"
 
 export interface QaIssue {
   type: QaIssueType

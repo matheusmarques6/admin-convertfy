@@ -21,12 +21,13 @@ Lista das migrations criadas durante os épicos AE-1..AE-15+ e seu status de apl
 | 7 | `20260622_image_agent_config_seed.sql` | AE-11 | ⏳ pendente | Seed v1 do `email_agent_configs.agent_type='image'` com switch Welcome E1-E6 (placeholders) + fallbacks pra cart/browse/win-back/upsell/post-purchase + `{{#if INSTRUCAO_ADICIONAL}}` hook |
 | 8 | `20260623_welcome_blueprints_image_brief.sql` | AE-14 | ⏳ pendente | Data-only: UPDATE em Welcome E1-E5 + UPSERT E6 populando `image_brief`, `image_aspect` (4:5/3:5/4:3), `image_mode` (product_ref/text2img), `image_overlay_reserve_bottom`. Idempotente via `ON CONFLICT (flow_type, email_number) DO UPDATE`. |
 | 9 | `20260624_image_agent_real_prompts.sql` | AE-14 | ⏳ pendente | Data-only: UPDATE no `user_template` da v1 ativa do `agent_type='image'` substituindo os 6 placeholders `<<E1..E6>>` da AE-11 pelos prompts mestres reais do documento niche-adaptive. Restricoes universais + hook `{{#if INSTRUCAO_ADICIONAL}}` preservados. |
+| 10 | `20260625_qa_agent_image_issue_types.sql` | AE-15 | ⏳ pendente | Data-only: UPDATE in-place no `system_prompt` + `output_schema` da v1 ativa do `agent_type='qa'` adicionando 4 issue types (`image_nicho_mismatch`, `image_paleta_off`, `image_overlay_reserva_ausente`, `image_cena_inadequada`) + instrução pra comparar `image_alt` vs PRODUTO_HEROI. Idempotente. Depende de #4 (AE-5 seed). |
 
-(stories AE-9, AE-12, AE-13, AE-15..16 ainda não têm migrations — entram aqui conforme forem implementadas)
+(stories AE-9, AE-12, AE-13, AE-16 ainda não têm migrations — entram aqui conforme forem implementadas)
 
 ---
 
-## Ordem de aplicação recomendada (7 pendentes)
+## Ordem de aplicação recomendada (8 pendentes)
 
 Pode rodar todas juntas no Supabase Studio (cada uma é independente e idempotente):
 
@@ -37,6 +38,7 @@ Pode rodar todas juntas no Supabase Studio (cada uma é independente e idempoten
 5. `20260622_image_agent_config_seed.sql`
 6. `20260623_welcome_blueprints_image_brief.sql` (depende de #4 — colunas image_*)
 7. `20260624_image_agent_real_prompts.sql` (depende de #5 — row ativa pra UPDATE)
+8. `20260625_qa_agent_image_issue_types.sql` (depende de #2 — row ativa do QA agent)
 
 Todas usam `IF NOT EXISTS` / `WHERE NOT EXISTS` / `ON CONFLICT DO UPDATE` / `CREATE OR REPLACE` — rodar 2x não causa erro.
 
@@ -77,6 +79,14 @@ SELECT length(user_template) AS sz,
        position('<<E1' IN user_template) AS placeholder_gone
 FROM email_agent_configs WHERE agent_type = 'image' AND is_active = true;
 -- esperado: sz > 4000, placeholder_gone = 0
+
+-- AE-15: confirma os 4 novos issue types no system_prompt + output_schema
+SELECT length(system_prompt) AS sp_len,
+       position('image_nicho_mismatch' IN system_prompt) AS has_new_prompt,
+       output_schema->'properties'->'issues'->'items'->'properties'->'type'->'enum'
+         AS schema_enum
+FROM email_agent_configs WHERE agent_type = 'qa' AND is_active = true;
+-- esperado: has_new_prompt > 0, schema_enum tem 12 valores
 ```
 
 ---
@@ -94,6 +104,7 @@ Cada feature funciona em fallback se a migration ainda não rodou:
 | AE-11 | `phase2-runner` cai no fallback `DEFAULT_IMAGE_PROMPT_TEMPLATE` hardcoded em `image.chain.ts` (legacy `{var}` interpolação, mesmo prompt pra todos os emails). |
 | AE-14 (blueprints) | `email_blueprints.image_*` ficam NULL nos Welcome E1-E6 → `mode-resolution` cai no default `text2img` 4:5 sem overlay reserve. Pipeline gera, mas sem diferenciação por slot. |
 | AE-14 (prompts) | `user_template` ativo ainda usa placeholders `<<E1..E6>>` da AE-11 → o LLM recebe texto literal "<<E1 — hero lifestyle...>>" como prompt e gera imagens genéricas. Resolução parcial dos casos L'Hombre / produto-errado. |
+| AE-15 | Zod schema do `qa.chain.ts` aceita os 12 issue types em runtime, mas o LLM textual continua com o prompt v1 antigo (só 8 tipos) — nunca vai emitir `image_nicho_mismatch`. Cascade Etapa 1 vira no-op silencioso. Etapa 2 (vision) continua funcionando pois nao depende do prompt textual. |
 
 Nada quebra. Mas as features niche-adaptive não ativam até rodar.
 
@@ -111,7 +122,8 @@ Nada quebra. Mas as features niche-adaptive não ativam até rodar.
 - AE-11: INSERT v1 em `email_agent_configs` com `agent_type='image'`
 - AE-14 (blueprints): UPDATE em Welcome E1-E5 + UPSERT E6 com `image_brief`/`image_aspect`/`image_mode`/`image_overlay_reserve_bottom`
 - AE-14 (prompts): UPDATE no `user_template` da v1 ativa substituindo `<<E1..E6>>` pelos prompts mestres reais
+- AE-15: UPDATE no `system_prompt` + `output_schema` da v1 ativa do `agent_type='qa'` adicionando 4 issue types (image_*) + instrução sobre comparação image_alt vs PRODUTO_HEROI
 
 ---
 
-*Última atualização: 2026-05-30 (após Story AE-14)*
+*Última atualização: 2026-05-30 (após Story AE-15 — fim do épico Image Niche-Adaptive)*

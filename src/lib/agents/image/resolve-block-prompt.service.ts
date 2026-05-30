@@ -44,6 +44,27 @@ import type {
 
 const log = logger.child("ResolveBlockPrompt")
 
+/**
+ * Story AE-15: monta image_alt descritivo a partir das vars resolvidas
+ * pelo `buildImagePromptVars` (PRODUTO_HEROI/CENARIO/MOOD UPPERCASE).
+ *
+ * Pure helper — input/output deterministico. Usado tanto por
+ * `resolveBlockPrompt` (preview na UI) quanto pelo `phase2-runner`
+ * (persiste em email_blocks.content.image_alt no UPDATE da imagem).
+ *
+ * Trunca em 200 chars pra nao poluir telemetria/UI. Fallback gracioso
+ * quando alguma var estiver vazia.
+ */
+export function buildImageAlt(
+  vars: Record<string, string>,
+): string {
+  const produtoHeroi = (vars.PRODUTO_HEROI ?? "").trim() || "produto"
+  const cenario = (vars.CENARIO ?? "").trim() || "cena padrao"
+  const mood = (vars.MOOD ?? "").trim() || "neutro"
+  const alt = `${produtoHeroi} em ${cenario}, mood ${mood}`
+  return alt.length > 200 ? `${alt.slice(0, 200)}…` : alt
+}
+
 export interface BlockPromptResolution {
   /** Prompt final renderizado (master + aspect appendix + fallback desc se aplicavel). */
   prompt: string
@@ -70,6 +91,13 @@ export interface BlockPromptResolution {
   blockContent: Record<string, unknown>
   /** UTC timestamp da ultima geracao (pro rate limit). */
   lastGeneratedAt: string | null
+  /**
+   * Story AE-15: alt-text descritivo composto a partir das vars
+   * (PRODUTO_HEROI em CENARIO, mood MOOD). Usado pelo phase2-runner
+   * pra persistir em email_blocks.content.image_alt no UPDATE da
+   * imagem — substitui o fallback `blk.label` legacy.
+   */
+  imageAlt: string
 }
 
 const VAR_TRUNCATE_LIMIT = 200
@@ -296,5 +324,6 @@ export async function resolveBlockPrompt(
     blockLabel: (blk.label as string | null) ?? null,
     blockContent,
     lastGeneratedAt,
+    imageAlt: buildImageAlt(promptVars),
   }
 }
