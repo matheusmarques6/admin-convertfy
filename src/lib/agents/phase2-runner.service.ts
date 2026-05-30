@@ -466,6 +466,9 @@ export async function runPhase2InBackground(
         // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
         const multimodalEnabled =
           process.env.IMAGE_MULTIMODAL_ENABLED === "true"
+        // topProductImageUrl vem de brand.top_products[0].image_url,
+        // tipicamente uma signed URL Supabase com validade ~365 dias
+        // (segura entre as fases copy → image → upload final).
         const topProductImageUrl = ctx.topProducts[0]?.image_url ?? null
         const { mode, source: modeSource } = resolveImageMode({
           blueprintMode: ctx.blueprint?.image_mode ?? null,
@@ -484,6 +487,9 @@ export async function runPhase2InBackground(
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
         // descricao textual rica do produto pra compensar a perda visual.
+        // Vale mesmo quando flag esta off (fallback_text2img_disabled) ou
+        // quando o produto nao tem imagem (fallback_text2img_no_product):
+        // o modelo ainda pode "evocar" o produto via texto detalhado.
         if (
           (modeSource === "fallback_text2img_disabled" ||
             modeSource === "fallback_text2img_no_product") &&
