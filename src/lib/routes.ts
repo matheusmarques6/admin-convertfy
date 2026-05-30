@@ -197,6 +197,10 @@ export const ROUTES = {
     TOOLS: "/admin/tools",
     TOOLS_CURRENCY_AUDIT: "/admin/tools/currency-audit",
 
+    AGENTS: {
+      PROMPTS: "/admin/agents/prompts",
+    },
+
     SETTINGS: {
       ROOT: "/admin/settings",
       PROFILE: "/admin/settings/profile",

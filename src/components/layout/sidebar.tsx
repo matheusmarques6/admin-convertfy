@@ -37,6 +37,7 @@ import {
   Sun,
   Moon,
   LifeBuoy,
+  Bot,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -303,6 +304,15 @@ const GERAL_NAV: NavGroup[] = [
     items: [
       { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
       { name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
+      {
+        name: "Agentes / Prompts",
+        href: ROUTES.ADMIN.AGENTS.PROMPTS,
+        icon: Bot,
+        // Visibilidade restrita: o link só aparece pra admin/owner.
+        // Devs (tag) acessam por URL direto — quem mexe em prompts em
+        // produção precisa de role formal pra evitar quebra acidental.
+        requiredFeatures: ["__admin_only__"],
+      },
     ],
   },
 ]

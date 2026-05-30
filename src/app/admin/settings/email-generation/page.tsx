@@ -109,7 +109,7 @@ function AgentsTab() {
   const configs = data?.configs ?? []
   const [editingAgent, setEditingAgent] = useState<AgentType | null>(null)
 
-  const activeConfigs = (["copy", "image", "html"] as AgentType[]).map((at) => ({
+  const activeConfigs = (["copy", "image", "html", "qa"] as AgentType[]).map((at) => ({
     agentType: at,
     config: configs.find((c) => c.agent_type === at && c.is_active) ?? null,
   }))
