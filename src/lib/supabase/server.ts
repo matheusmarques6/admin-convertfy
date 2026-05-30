@@ -1,5 +1,4 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 
 export async function createClient() {
@@ -29,23 +28,9 @@ export async function createClient() {
   )
 }
 
-// Admin client with service role key for admin operations
-// Use this only for server-side admin operations like creating users
-export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not defined")
-  }
-
-  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-    global: {
-      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
-    },
-  })
-}
+// Admin client with service role key for admin operations.
+// Re-exported from ./admin (which has no `next/headers` dependency) so that
+// importing `createAdminClient` from this module stays backward-compatible for
+// existing server-side callers. Client-reachable code should import directly
+// from "@/lib/supabase/admin" to avoid pulling `next/headers` into the bundle.
+export { createAdminClient } from "./admin"
