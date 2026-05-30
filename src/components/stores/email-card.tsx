@@ -268,10 +268,10 @@ export function EmailCard({ email, storeId, isDev }: EmailCardProps) {
                 srcDoc={email.html}
                 sandbox="allow-same-origin"
                 title={`Preview do email ${email.name}`}
-                className="w-full h-[420px] border border-gray-200 rounded bg-white"
+                className="w-full h-[60vh] max-h-[600px] min-h-[300px] lg:h-[420px] border border-gray-200 rounded bg-white"
               />
             ) : (
-              <div className="w-full h-[420px] border border-dashed border-gray-300 rounded bg-gray-50 flex items-center justify-center text-xs text-gray-500">
+              <div className="w-full h-[60vh] max-h-[600px] min-h-[300px] lg:h-[420px] border border-dashed border-gray-300 rounded bg-gray-50 flex items-center justify-center text-xs text-gray-500">
                 HTML ainda nao gerado
               </div>
             )}
