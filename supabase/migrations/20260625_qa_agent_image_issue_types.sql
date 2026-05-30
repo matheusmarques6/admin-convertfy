@@ -86,4 +86,27 @@ Responda APENAS o JSON, sem markdown, sem texto extra.$SYSTEM$,
       }
     }
   }$SCHEMA$::jsonb
-WHERE agent_type = 'qa' AND is_active = true;
+-- AE-15 review fix: guarda `version = 1` evita sobrescrever silenciosamente
+-- uma v2+ ativa criada via AE-8 UI (admin editou prompt manualmente).
+-- Se ja existe v2+ ativa: este UPDATE eh no-op e o aviso abaixo dispara.
+WHERE agent_type = 'qa' AND is_active = true AND version = 1;
+
+-- Aviso pra ops: se versao ativa nao eh v1 (admin editou via AE-8),
+-- a migration nao aplicou e precisa de sync manual da nova versao
+-- com os novos image_* issue types (image_nicho_mismatch + 3 outros).
+DO $$
+DECLARE
+  active_v INT;
+BEGIN
+  SELECT version INTO active_v
+    FROM email_agent_configs
+    WHERE agent_type = 'qa' AND is_active = true
+    LIMIT 1;
+  IF active_v IS NOT NULL AND active_v > 1 THEN
+    RAISE WARNING
+      'QA agent v% esta ativa (criada via AE-8?). Migration 20260625 nao '
+      'atualizou — sync manual necessario: adicionar image_nicho_mismatch + '
+      '3 outros issue types ao system_prompt + output_schema da v%.',
+      active_v, active_v;
+  END IF;
+END $$;
