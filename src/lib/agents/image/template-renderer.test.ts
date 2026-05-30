@@ -160,4 +160,23 @@ describe("renderImageTemplate — multi-bloco no mesmo template", () => {
       "moda | one | has-y",
     )
   })
+
+  // AE-11 review S1: template malformado eh tolerado (passa raw em vez de
+  // throw) pra nao bloquear evolucao do seed. Documentar via teste.
+  it("template malformado (case nao fechado) passa raw sem throw", () => {
+    const malformed = "antes {{#case x}}sem fechar — texto livre"
+    const result = renderImageTemplate(malformed, { x: "a" })
+    expect(result).toBe(malformed) // regex nao casa, template volta inalterado
+  })
+
+  it("template malformado (if nao fechado) passa raw sem throw", () => {
+    const malformed = "{{#if INSTRUCAO_ADICIONAL}}sem fechar"
+    const result = renderImageTemplate(malformed, { INSTRUCAO_ADICIONAL: "x" })
+    expect(result).toBe(malformed)
+  })
+
+  it("aceita aspas simples em when", () => {
+    const t = `{{#case x}}{{#when 'a'}}found{{/when}}{{/case}}`
+    expect(renderImageTemplate(t, { x: "a" })).toBe("found")
+  })
 })

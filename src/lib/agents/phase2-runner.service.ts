@@ -380,6 +380,10 @@ export async function runPhase2InBackground(
     for (const blk of imageBlocks ?? []) {
       const imgT0 = Date.now()
       try {
+        // CONTRATO COM AE-16: o campo opcional em `email_blocks.content` se
+        // chama EXATAMENTE `image_instruction` (string). Se AE-16 nomear
+        // diferente, este leitor silenciosamente vira no-op (instrucao
+        // sumiria do prompt). Manter os nomes em sincronia.
         const blockContent = (blk.content as Record<string, unknown> | null) ?? {}
         const instrucaoAdicional =
           typeof blockContent.image_instruction === "string"
@@ -393,17 +397,15 @@ export async function runPhase2InBackground(
           storeRaw: ctx.storeRaw,
           blockPurpose: (blk.label as string) ?? "hero",
           // ── AE-11: vars niche-adaptive + contexto ─────────────
+          // emailNumber e flowType ja produzem `email_number` e `flow_type`
+          // (snake_case) no retorno — usados pelo switch do template
+          // handlebars-lite. Nao precisa mutacao posterior.
           emailNumber: ctx.emailNumber ?? undefined,
           flowType: ctx.flowType ?? undefined,
           blueprint: ctx.blueprint,
           storeOverrides: ctx.storeOverrides,
           instrucaoAdicional,
         })
-
-        // Vars de contexto extras pro switch do template
-        promptVars.flow_type = ctx.flowType ?? ""
-        promptVars.email_number =
-          ctx.emailNumber != null ? String(ctx.emailNumber) : ""
 
         // Se config existe no DB: renderImageTemplate (handlebars-lite,
         // suporta switch + if). Sem config: fallback pro template
