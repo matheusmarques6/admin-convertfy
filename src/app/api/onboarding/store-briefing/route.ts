@@ -67,7 +67,6 @@ export async function GET(request: NextRequest) {
         generated_at: generatedAt,
         generated_by: "n8n_markdown",
         created_at: (onb.updated_at as string | null) ?? nowIso,
-        updated_at: (onb.updated_at as string | null) ?? nowIso,
       }
       return successResponse(request, { briefing: fallback })
     }
