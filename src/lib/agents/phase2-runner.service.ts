@@ -5,6 +5,11 @@
  * a copy (status `copy_ready`) e pelo endpoint interno /api/internal/run-phase2
  * usado pelo watchdog (story AE-4).
  *
+ * **Limite de execucao**: na Vercel Pro, `after()` continua executando ate
+ * ~5min apos o response (300s). Fase 2 esperada e 30-90s, com folga. Se algo
+ * exceder, o watchdog (AE-4) detecta emails em `rendering` / `qa_running`
+ * por > 10min e marca `failed` com `failure_reason='timeout_phase2'`.
+ *
  * Diferente de `email-generation.service.ts` (executor sincrono legacy),
  * este runner:
  *   - usa guards atomicos para garantir idempotencia / watchdog-friendly

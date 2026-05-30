@@ -123,7 +123,12 @@ vi.mock("next/server", async () => {
   return {
     ...actual,
     after: (task: unknown) => {
-      // Mantem o comportamento de "fire and forget" — se for Promise, ignora.
+      // Fire-and-forget: nao aguarda a promise. Em producao, `after()` da
+      // Vercel deixa rodar em background ate 5min apos o response. No teste
+      // queremos so confirmar o dispatch (via phase2Spy) — sem esperar o
+      // trabalho real. `.catch()` aqui evita unhandled rejection warnings
+      // se o runner mockado lancar; o handler em route.ts tambem tem seu
+      // proprio fallback `.catch()` quando `after()` nao esta disponivel.
       if (task && typeof (task as Promise<unknown>).then === "function") {
         ;(task as Promise<unknown>).catch(() => {})
       }
