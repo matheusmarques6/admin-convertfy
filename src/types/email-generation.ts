@@ -41,6 +41,23 @@ export interface QaIssue {
   location?: string
 }
 
+// Resultado do QA agent (story AE-5).
+// `meta.model = 'noop'` quando degradado seguro (config ausente).
+// `meta.model = 'qa-timeout'` quando estourou o timeout do Claude call.
+export interface QaResultMeta {
+  model: string
+  tokens_input: number
+  tokens_output: number
+  cost_cents: number
+  duration_ms: number
+}
+
+export interface QaResult {
+  passed: boolean
+  issues: QaIssue[]
+  meta: QaResultMeta
+}
+
 export interface EmailAgentConfig {
   id: string
   agent_type: AgentType

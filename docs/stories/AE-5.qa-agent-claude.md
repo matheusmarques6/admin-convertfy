@@ -3,7 +3,7 @@ Prioridade: P0
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@qa (Quinn)"
-Status: Draft
+Status: In Review
 Epic: AE - Agent Email Generation
 Fase: Agente IA
 Estimate: M
@@ -50,63 +50,63 @@ type QaResult = {
 ## Acceptance Criteria
 
 ### AC AE-5.1 — Tipos de issue suportados
-- [ ] `QaIssueType` enum em `src/types/email-generation.ts`:
+- [x] `QaIssueType` enum em `src/types/email-generation.ts` — 8 valores definidos pela AE-1, mantidos sem mudanca:
   - `spam_score_alto`
   - `links_quebrados`
   - `blocos_vazios`
   - `tom_inconsistente`
   - `claim_nao_coberto`
   - `html_invalido`
-  - `alt_text_ausente`
-  - `cta_ambiguo`
-- [ ] Documentado no comentário do tipo
+  - `alt_text_faltando` _(AE-1; story doc tinha `alt_text_ausente` — outdated)_
+  - `compliance` _(AE-1; story doc tinha `cta_ambiguo` — outdated)_
+- [x] Documentado no comentário do tipo (linhas 22-24 do arquivo)
+- [x] `QaResult` + `QaResultMeta` adicionados
 
 ### AC AE-5.2 — Prompt versionado em email_agent_configs
-- [ ] Seed em `supabase/migrations/20260530b_qa_agent_seed.sql` inserindo 1 row em `email_agent_configs`:
+- [x] Seed em `supabase/migrations/20260530d_qa_agent_seed.sql` (renomeado — `20260530b` ja existia da AE-2)
+- [x] System prompt + user template com placeholders `{{html}}`, `{{blocks_json}}`, `{{briefing_json}}`, `{{brand_json}}`, `{{blueprint_objective}}`
+- [x] `output_schema` em JSONB com schema completo dos 8 issue types
+- [x] Idempotente via `WHERE NOT EXISTS` (alem do unique partial index existente)
+- [ ] Validado em DB real (depende de `supabase db push` em ambiente staging)
+
+Migration original sugerida no story:
   ```sql
   INSERT INTO email_agent_configs (agent_type, model, system_prompt, user_template, temperature, max_tokens, output_schema, is_active, version)
   VALUES ('qa', 'claude-sonnet-4-6', $SYSTEM_PROMPT, $USER_TEMPLATE, 0.2, 1500, $JSON_SCHEMA, true, 1);
   ```
-- [ ] System prompt: define papel do agente, formato JSON estrito, tipos de issue
-- [ ] User template: variáveis `{{html}}`, `{{blocks_json}}`, `{{briefing_json}}`, `{{brand_json}}`, `{{blueprint_objective}}`
-- [ ] `output_schema` em JSONB: JSON Schema validando estrutura de `QaResult`
+- [x] System prompt: define papel do agente, formato JSON estrito, tipos de issue
+- [x] User template: variáveis `{{html}}`, `{{blocks_json}}`, `{{briefing_json}}`, `{{brand_json}}`, `{{blueprint_objective}}`
+- [x] `output_schema` em JSONB: JSON Schema validando estrutura de `QaResult`
 
 ### AC AE-5.3 — Função runQaAgent
-- [ ] Em `src/lib/agents/chains/qa.chain.ts`
-- [ ] Assinatura:
-  ```ts
-  async function runQaAgent(input: {
-    storeId: string
-    emailId: string
-    html: string
-    blocks: Array<{ block_type: string; content: Record<string, unknown> }>
-    briefing: StoreBriefing
-    brand: StoreBrandIdentity
-    blueprintObjective: string
-  }): Promise<QaResult>
-  ```
-- [ ] Carrega config ativo: `SELECT * FROM email_agent_configs WHERE agent_type='qa' AND is_active=true LIMIT 1`
-- [ ] Se nenhum config: retorna `{passed:true, issues:[], meta:{...}}` + log warn (degrade seguro)
-- [ ] Renderiza prompt: substitui `{{var}}` no user_template
-- [ ] Chama Anthropic Messages API (padrão direto, sem SDK — copiar de `html.chain.ts`)
-- [ ] Parse JSON do output (com retry de 1x se primeira resposta não for JSON válido — pede pra reformatar)
-- [ ] Valida contra `output_schema` usando `ajv` (já no projeto?) ou Zod equivalente
-- [ ] Se schema falhar: retorna `{passed:false, issues:[{type:'html_invalido', severity:'high', message:'qa_output_invalid'}]}`
+- [x] Em `src/lib/agents/chains/qa.chain.ts`
+- [x] Assinatura (com campos opcionais `flowId`, `batchId`, `triggeredBy` para telemetria)
+- [x] Carrega config ativo de `email_agent_configs` (agent_type=qa, is_active=true)
+- [x] Sem config → degrade seguro `{passed:true, issues:[], meta.model:'noop'}` + log warn
+- [x] Renderiza placeholders `{{var}}` no user_template
+- [x] Chama LangChain `ChatAnthropic` (padrao real do projeto — html.chain.ts/copy.chain.ts usam LangChain, story doc tinha info incorreta sobre Anthropic SDK direto)
+- [x] Parse JSON tolerante (aceita markdown fences) + 1 retry pedindo reformatacao
+- [x] Validacao Zod (`QaOutputSchema`) — Zod ja no projeto, ajv nao
+- [x] Schema invalido → fallback `{passed:false, issues:[{type:'html_invalido', severity:'high', message:'qa_output_invalid'}]}`
 
 ### AC AE-5.4 — Threshold de bloqueio
-- [ ] `passed = !issues.some(i => i.severity === blockSeverity)`
-- [ ] `blockSeverity` lido de `process.env.EMAIL_QA_BLOCK_SEVERITY ?? 'high'`
-- [ ] Documentado no top do arquivo
+- [x] `passed = !issues.some(i => SEVERITY_ORDER[i.severity] >= threshold)` — comparacao por nivel para que `EMAIL_QA_BLOCK_SEVERITY=medium` bloqueie tambem `high`
+- [x] `blockSeverity` lido de `process.env.EMAIL_QA_BLOCK_SEVERITY ?? 'high'`
+- [x] Documentado no top do arquivo (linhas 22-23)
+- [x] `getBlockingSeverity()` exportada para testes/reuso
 
 ### AC AE-5.5 — Verificações determinísticas pré-LLM
-- [ ] ANTES de chamar Claude, fazer checks determinísticos rápidos:
-  - **HTML válido**: parse rápido com regex/básico (presença de `<html>`, fechamento de tags top-level)
-  - **Blocos vazios**: enumera blocks; se algum tem `content` vazio ou `headline === ''`, adiciona issue `blocos_vazios`
-  - **Links quebrados**: regex extrai `href="..."` e valida que cada URL é válida (http/https + parseURL não throw). NÃO faz request HTTP (pra não inflar latência).
-- [ ] Issues determinísticas são mescladas com issues do LLM no resultado final
+- [x] `runDeterministicChecks(html, blocks)` exportada e roda ANTES do LLM:
+  - **HTML válido**: regex `/<html\b/i` + `/<\/html\s*>/i` → issue `html_invalido` severity=high
+  - **Blocos vazios**: enumera blocks; checa se algum value de `content` e nao-vazio → issue `blocos_vazios` severity=medium
+  - **Links quebrados**: regex extrai `href="..."` (single/double quotes), aceita `#`/`mailto:`/`tel:`, rejeita `javascript:` schemes (high) e URLs que `new URL()` throwe (medium). NAO faz HTTP request.
+- [x] Issues determinísticas mescladas com issues do LLM no resultado final
+- [x] Cobertura de testes unitarios para cada um dos 3 checks
 
 ### AC AE-5.6 — Telemetria
-- [ ] Antes de retornar: INSERT em `email_generation_runs`:
+- [x] Antes de retornar: INSERT em `email_generation_runs` via `logGenerationRun` em todos os caminhos (success, error, skipped/degrade-safe). Inclui `raw_output` truncado em 5000, `parsed_output` com `{passed, issues_count, issues_by_severity}`. `agent_config_id` passado quando config carregada.
+- [ ] Validar persistencia real com DB ao integrar staging
+- Original do story:
   ```ts
   {
     email_id, store_id, flow_id,
@@ -122,27 +122,27 @@ type QaResult = {
   ```
 
 ### AC AE-5.7 — Performance budget
-- [ ] Latência alvo: p95 ≤ 8s (LLM call + parse)
-- [ ] Max tokens output: 1500 (issues raramente passam de 5-10 itens)
-- [ ] Se LLM call demora > 15s: timeout + retorna `{passed:false, issues:[{type:'html_invalido', severity:'high', message:'qa_timeout'}]}` + log error
+- [x] Max tokens: 1500 (seed)
+- [x] Timeout 15s via `AbortController` → fallback `{passed:false, issues:[{type:'html_invalido', severity:'high', message:'qa_timeout'}]}` + log error + telemetria com `meta.model='qa-timeout'`
+- [ ] Latência p95 ≤ 8s — depende de medicao em producao com Claude real (tuning pos-deploy)
 
 ### AC AE-5.8 — Testes
-- [ ] Teste unit: html com bloco vazio → issue `blocos_vazios` adicionada determinísticamente
-- [ ] Teste unit: html sem `<html>` → issue `html_invalido` adicionada
-- [ ] Teste unit: link `href="javascript:..."` → issue `links_quebrados`
-- [ ] Teste integration (com mock do Claude): output válido → passed=true
-- [ ] Teste integration: Claude retorna issue severity=high → passed=false
+- [x] 17 testes em `src/lib/agents/chains/qa.chain.test.ts`, todos passando:
+  - 6 testes de `runDeterministicChecks` (html_invalido, blocos_vazios em ambos os sentidos, links_quebrados javascript:, anchors/mailto/tel aceitos)
+  - 3 testes de `getBlockingSeverity` (default, override, valor invalido)
+  - 2 testes de degrade seguro (sem config: passed=true; com html invalido: propaga issues)
+  - 6 testes com config + Claude mockado (issues vazias, severity high, severity low, retry fallback, JSON com fences, merge det+LLM)
 
 ---
 
 ## Tarefas
 
-- [ ] Criar `src/types/email-generation.ts` (extender se já existe) com `QaIssue`, `QaIssueType`, `QaResult`
-- [ ] Criar `src/lib/agents/chains/qa.chain.ts`
-- [ ] Criar `supabase/migrations/20260530b_qa_agent_seed.sql` com prompt seed
-- [ ] Integrar `runQaAgent` no `phase2-runner.service.ts` (story AE-3)
-- [ ] Adicionar `EMAIL_QA_BLOCK_SEVERITY=high` em `.env.example`
-- [ ] Testes em `src/lib/agents/chains/qa.chain.test.ts`
+- [x] Estender `src/types/email-generation.ts` com `QaResult` + `QaResultMeta` (tipos `QaIssue`/`QaIssueType` ja existiam da AE-1)
+- [x] Criar `src/lib/agents/chains/qa.chain.ts`
+- [x] Criar `supabase/migrations/20260530d_qa_agent_seed.sql` com prompt seed (sufixo `d` porque `b` e `c` ja foram usados por AE-2/AE-4)
+- [x] Integrar `runQaAgent` no `phase2-runner.service.ts` (substitui `runQaAgentMock`)
+- [x] `EMAIL_QA_BLOCK_SEVERITY=high` em `.env.example` (ja adicionado na AE-3, validado)
+- [x] Testes em `src/lib/agents/chains/qa.chain.test.ts` (17 testes)
 
 ---
 
@@ -286,3 +286,4 @@ LLM é caro e lento. Verificações triviais (HTML mal-formado, blocos vazios) p
 | Data | Autor | Descrição |
 |------|-------|-----------|
 | 2026-05-29 | @architect | Story criada |
+| 2026-05-30 | @dev | Story implementada. qa.chain.ts com pre-checks deterministicos + LangChain ChatAnthropic + Zod + timeout 15s; phase2-runner integra runQaAgent real (mock removido); migration 20260530d seeda v1 do prompt; 17 testes verdes; typecheck OK. ACs 5.1-5.5, 5.7-5.8 fechados em codigo; 5.2/5.6 dependentes de DB real ficam abertos. |
