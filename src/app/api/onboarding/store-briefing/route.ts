@@ -3,7 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchBriefingWebhook } from "@/lib/services/briefing-webhook.service"
-import type { StoreBriefing } from "@/types/onboarding"
+import type { StoreBriefing, BriefingData } from "@/types/onboarding"
 
 const log = logger.child("OnboardingStoreBriefing")
 
@@ -51,14 +51,20 @@ export async function GET(request: NextRequest) {
 
     if (onb?.briefing_markdown) {
       const nowIso = new Date().toISOString()
+      const generatedAt =
+        (onb.briefing_confirmed_at as string | null) ??
+        (onb.updated_at as string | null) ??
+        nowIso
       const fallback: StoreBriefing = {
         id: `onboarding:${onb.id}`,
         store_id: storeId,
         onboarding_data_id: null,
-        briefing_data: { raw_text: onb.briefing_markdown as string },
+        // raw_text briefing — mesma forma que o modo manual grava em
+        // store_briefings; o tipo BriefingData é estruturado, então cast.
+        briefing_data: { raw_text: onb.briefing_markdown as string } as unknown as BriefingData,
         version: 0,
         status: "current",
-        generated_at: (onb.briefing_confirmed_at ?? onb.updated_at) as string | null,
+        generated_at: generatedAt,
         generated_by: "n8n_markdown",
         created_at: (onb.updated_at as string | null) ?? nowIso,
         updated_at: (onb.updated_at as string | null) ?? nowIso,
