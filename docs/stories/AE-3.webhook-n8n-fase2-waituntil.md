@@ -221,3 +221,5 @@ O service existente foi pensado para execução síncrona via endpoint `generate
 |------|-------|-----------|
 | 2026-05-29 | @architect | Story criada |
 | 2026-05-29 | @dev | Story implementada. Webhook idempotente + fase 2 via `after()` (Next 15.5). Phase2 runner com guards atomicos, telemetria por sub-step, rollup de cost e batch-terminal hook. QA agent (AE-5) e notify dispatcher (AE-7) mockados. 6 testes passando. |
+| 2026-05-29 | @reviewer | Code review (commit e6c1ab1) — APROVADO. 0 criticos, 1 importante (gap de testes no endpoint interno `/api/internal/run-phase2/[emailId]`), 2 sugestoes (docs do limite `after()`, comentario no mock). |
+| 2026-05-29 | @dev | Follow-up review: criados 6 testes do endpoint interno (happy + flow array + 404 email + 404 store + 401 missing + 401 wrong). Adicionados comentarios pedidos no header do `phase2-runner.service.ts` e no mock `after()` do teste do webhook. Total de testes do epico AE: 24/24 verdes. |
