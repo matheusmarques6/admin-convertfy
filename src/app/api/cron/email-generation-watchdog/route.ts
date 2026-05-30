@@ -101,6 +101,16 @@ async function safeNotifyEmailFailed(params: {
   failureReason: string
   batchId: string | null
 }): Promise<void> {
+  if (!params.storeId) {
+    // storeId vazio significa que getStoreIdForEmail nao resolveu o flow
+    // do email (registro orfao ou flow deletado). Logamos para visibilidade
+    // mas seguimos — notifyEmailFailed degrada gracefully com "Loja" como
+    // fallback no template.
+    log.warn("watchdog.notify.email_failed.missing_store_id", {
+      emailId: params.emailId,
+      failureReason: params.failureReason,
+    })
+  }
   try {
     await notifyEmailFailed(params)
   } catch (err) {

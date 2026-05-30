@@ -13,10 +13,11 @@
  * Diferente de `email-generation.service.ts` (executor sincrono legacy),
  * este runner:
  *   - usa guards atomicos para garantir idempotencia / watchdog-friendly
- *   - chama QA agent (story AE-5 — mockado ate la)
+ *   - chama o QA agent real via `runQaAgent` (story AE-5)
  *   - mantem todas as colunas de timing AE-1 atualizadas
  *   - faz rollup de total_cost_cents ao final
- *   - dispara notificacoes de batch completo (story AE-7 — mockado)
+ *   - dispara notificacoes de batch completo via `generation-notify.service`
+ *     (story AE-7) — `notifyBatchComplete` ou `notifyBatchAllFailed`
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
