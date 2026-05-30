@@ -309,6 +309,12 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     IDIOMA,
     MOEDA,
     INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
+
+    // Contexto pro switch do template (snake_case porque o template usa
+    // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser
+    // handlebars-lite que casa snake_case com string).
+    flow_type: input.flowType ?? "",
+    email_number: input.emailNumber != null ? String(input.emailNumber) : "",
   }
 }
 
