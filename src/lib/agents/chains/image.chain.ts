@@ -174,6 +174,16 @@ export async function generateEmailImage(
       })
       res = await callOpenRouterImage(apiKey, prompt, undefined)
     } else {
+      // AE-13 review: se o body menciona "image" mas nao casa keywords
+      // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra
+      // ops detectar drift e atualizar isMultimodalUnsupportedError.
+      if (/image/i.test(errText)) {
+        log.warn("image.multimodal.4xx_with_image_keyword_no_match", {
+          storeId,
+          status: res.status,
+          errorSnippet: errText.slice(0, 300),
+        })
+      }
       throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`)
     }
   }
