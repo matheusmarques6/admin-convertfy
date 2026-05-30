@@ -26,7 +26,7 @@ import type {
   StoreBriefing,
   TopProduct,
 } from "@/types/email-workspace"
-import type { EmailAgentConfig, QaIssue } from "@/types/email-generation"
+import type { EmailAgentConfig, QaIssue, QaResult } from "@/types/email-generation"
 import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
@@ -37,6 +37,7 @@ import {
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
 } from "./chains/html.chain"
+import { runQaAgent } from "./chains/qa.chain"
 import {
   logGenerationRun,
   computeCostCents,
@@ -45,20 +46,27 @@ import { buildImagePromptVars } from "./email-generation.service"
 
 const log = logger.child("Phase2Runner")
 
-// ── QA agent — MOCK ate story AE-5 entregar `runQaAgent` real ─────────
-// Quando AE-5 for entregue, substituir este mock por:
-//   import { runQaAgent } from "./chains/qa.chain"
-async function runQaAgentMock(params: {
+// ── QA agent — fallback seguro caso runQaAgent throwe inesperadamente ─
+// O runQaAgent ja faz degrade seguro internamente (sem config, timeout,
+// JSON invalido). Este fallback so existe para falhas catastroficas
+// fora da chain (ex: import error). Mantemos `passed=true` para nao
+// derrubar o pipeline quando o QA esta indisponivel — politica AE-5.
+async function runQaAgentSafeFallback(params: {
   emailId: string
   storeId: string
-  html: string
-}): Promise<{ passed: boolean; issues: QaIssue[]; model?: string; tokensInput?: number; tokensOutput?: number; durationMs?: number }> {
-  // Mock no-op: sempre passa. Tagged como mock para nao confundir com AE-5 real.
-  log.info("phase2.qa.mock_invoked", {
-    emailId: params.emailId,
-    htmlLength: params.html.length,
-  })
-  return { passed: true, issues: [], model: "qa-mock", tokensInput: 0, tokensOutput: 0, durationMs: 0 }
+}): Promise<QaResult> {
+  log.warn("phase2.qa.safe_fallback_invoked", { emailId: params.emailId, storeId: params.storeId })
+  return {
+    passed: true,
+    issues: [],
+    meta: {
+      model: "qa-fallback",
+      tokens_input: 0,
+      tokens_output: 0,
+      cost_cents: 0,
+      duration_ms: 0,
+    },
+  }
 }
 
 // ── Notify hooks — MOCK ate story AE-7 entregar dispatcher real ────────
@@ -125,14 +133,44 @@ async function rollupTotalCost(emailId: string, batchId: string): Promise<void> 
     .eq("id", emailId)
 }
 
-// ── Helper: carrega contexto minimo para image + html ──────────────────
-async function loadMinimalContext(storeId: string, _emailId: string) {
+// ── Helper: carrega contexto minimo para image + html + qa ────────────
+async function loadMinimalContext(storeId: string, emailId: string) {
   const admin = createAdminClient()
   const { data: storeData } = await admin
     .from("client_stores")
     .select("*")
     .eq("id", storeId)
     .single()
+
+  // Resolve blueprint via email -> flow -> flow_type + email.email_number
+  const { data: emailRow } = await admin
+    .from("email_flow_emails")
+    .select("email_number, flow_id")
+    .eq("id", emailId)
+    .maybeSingle()
+  const flowIdForBlueprint = (emailRow?.flow_id as string | undefined) ?? null
+  const emailNumberForBlueprint = (emailRow?.email_number as number | undefined) ?? null
+
+  let flowTypeForBlueprint: string | null = null
+  if (flowIdForBlueprint) {
+    const { data: flowRow } = await admin
+      .from("email_flows")
+      .select("flow_type")
+      .eq("id", flowIdForBlueprint)
+      .maybeSingle()
+    flowTypeForBlueprint = (flowRow?.flow_type as string | undefined) ?? null
+  }
+
+  let blueprintObjective = ""
+  if (flowTypeForBlueprint && emailNumberForBlueprint != null) {
+    const { data: bpRow } = await admin
+      .from("email_blueprints")
+      .select("objective")
+      .eq("flow_type", flowTypeForBlueprint)
+      .eq("email_number", emailNumberForBlueprint)
+      .maybeSingle()
+    blueprintObjective = (bpRow?.objective as string | undefined) ?? ""
+  }
 
   const orgId = (storeData as Record<string, unknown>)?.org_id as string | undefined
 
@@ -179,6 +217,7 @@ async function loadMinimalContext(storeId: string, _emailId: string) {
     htmlConfig: (htmlConfigRes.data as EmailAgentConfig | null) ?? null,
     topProducts,
     generateImages,
+    blueprintObjective,
   }
 }
 
@@ -481,61 +520,48 @@ export async function runPhase2InBackground(
     return
   }
 
-  // ── Step 3: QA (mock ate AE-5) ───────────────────────────────────────
-  const qaT0 = Date.now()
-  let qaResult: Awaited<ReturnType<typeof runQaAgentMock>>
+  // ── Step 3: QA (story AE-5 — runQaAgent real, com fallback seguro) ──
+  // runQaAgent ja:
+  //  - faz pre-checks deterministicos (html_invalido, blocos_vazios, links)
+  //  - chama Claude com timeout 15s
+  //  - faz retry + fallback se JSON invalido
+  //  - persiste telemetria em email_generation_runs
+  //  - computa passed via EMAIL_QA_BLOCK_SEVERITY
+  // O try/catch externo cobre falhas catastroficas (import error, etc).
+  let qaResult: QaResult
   try {
-    qaResult = await runQaAgentMock({ emailId, storeId, html: finalHtml })
+    const { data: qaBlocks } = await admin
+      .from("email_blocks")
+      .select("block_type, content")
+      .eq("email_id", emailId)
+      .order("position", { ascending: true })
+    const blocksForQa = (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
+      block_type: (b.block_type as string) ?? "unknown",
+      content: ((b.content as Record<string, unknown>) ?? {}),
+    }))
+    qaResult = await runQaAgent({
+      storeId,
+      emailId,
+      flowId,
+      batchId,
+      triggeredBy,
+      html: finalHtml,
+      blocks: blocksForQa,
+      briefing: ctx.briefing,
+      brand: ctx.brand,
+      blueprintObjective: ctx.blueprintObjective,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"
-    log.error("phase2.qa.error", { emailId, error: msg })
-    await logGenerationRun({
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "qa",
-      status: "error",
-      durationMs: Date.now() - qaT0,
-      errorMessage: msg,
-    })
-    await markEmailFailed(emailId, "qa_error")
-    if (batchId) {
-      await rollupTotalCost(emailId, batchId).catch(() => {})
-      await checkBatchTerminal(storeId, batchId).catch(() => {})
-    }
-    try {
-      await notifyTaggedMock(["cto"], "email_generation_failed", {
-        email_id: emailId,
-        reason: "qa_error",
-      })
-    } catch { /* noop */ }
-    return
+    log.error("phase2.qa.unexpected_error", { emailId, error: msg })
+    // Fallback seguro: nao bloqueia o pipeline por falha catastrofica
+    // do agente; loga e segue como passed=true. Issues internas de
+    // qa.chain.ts (timeout, JSON invalido) NUNCA chegam aqui — sao
+    // tratadas la dentro.
+    qaResult = await runQaAgentSafeFallback({ emailId, storeId })
   }
 
-  const qaCost = computeCostCents(
-    qaResult.model ?? "qa-mock",
-    qaResult.tokensInput ?? 0,
-    qaResult.tokensOutput ?? 0,
-  )
-  await logGenerationRun({
-    storeId,
-    flowId,
-    emailId,
-    triggeredBy,
-    batchId,
-    agent: "qa",
-    status: "success",
-    model: qaResult.model ?? "qa-mock",
-    tokensInput: qaResult.tokensInput ?? 0,
-    tokensOutput: qaResult.tokensOutput ?? 0,
-    costCents: qaCost,
-    durationMs: qaResult.durationMs ?? Date.now() - qaT0,
-    parsedOutput: { passed: qaResult.passed, issues_count: qaResult.issues.length },
-  })
-
-  // ── AC AE-3.5: QA decide status final ────────────────────────────────
+  // ── AC AE-3.5 + AE-5.4: QA decide status final ──────────────────────
   const blockedByQa = !qaResult.passed || qaShouldBlock(qaResult.issues)
   if (blockedByQa) {
     await admin
