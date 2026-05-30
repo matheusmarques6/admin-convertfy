@@ -82,19 +82,9 @@ async function notifyTaggedMock(
   log.info("phase2.notify.tagged_mock", { tags, event, payload })
 }
 
-// ── Helper: severity threshold via env ────────────────────────────────
-function getBlockingSeverity(): QaIssue["severity"] {
-  const raw = (process.env.EMAIL_QA_BLOCK_SEVERITY ?? "high").toLowerCase()
-  if (raw === "low" || raw === "medium" || raw === "high") return raw
-  return "high"
-}
-
-function qaShouldBlock(issues: QaIssue[]): boolean {
-  const threshold = getBlockingSeverity()
-  const order: Record<QaIssue["severity"], number> = { low: 1, medium: 2, high: 3 }
-  const thresholdLevel = order[threshold]
-  return issues.some((i) => order[i.severity] >= thresholdLevel)
-}
+// Severity threshold + decisao de bloqueio ficam centralizadas em qa.chain.ts
+// (export `computePassed` ou flag `qaResult.passed`). Phase 2 confia em
+// `qaResult.passed` — evita divergencia entre dois pontos da logica.
 
 // ── Helper: marca email como failed (sempre seguro de chamar) ─────────
 async function markEmailFailed(
@@ -562,8 +552,10 @@ export async function runPhase2InBackground(
   }
 
   // ── AC AE-3.5 + AE-5.4: QA decide status final ──────────────────────
-  const blockedByQa = !qaResult.passed || qaShouldBlock(qaResult.issues)
-  if (blockedByQa) {
+  // `qaResult.passed` ja embute o threshold de severidade (computado em
+  // qa.chain.ts via EMAIL_QA_BLOCK_SEVERITY). Confiar nessa flag evita
+  // double-check redundante.
+  if (!qaResult.passed) {
     await admin
       .from("email_flow_emails")
       .update({
