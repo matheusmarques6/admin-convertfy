@@ -1082,6 +1082,12 @@ e `email_status_events` (audit log + SSE bus — trigger
 Sistema de tags em `profiles.tags TEXT[]`: rota `cto` para alertas de falha
 do pipeline AE. Marcar via SQL/Supabase Studio até existir UI de gestão.
 
+**Tag `dev` (Story AE-8)**: profiles com `tags @> ARRAY['dev']` podem
+gerenciar prompts em `/admin/agents/prompts` (API `/api/admin/agents/prompts/*`
+aceita admin/owner OR tag `dev`). A sidebar mostra o link apenas para
+admin/owner — devs com a tag acessam por URL direta. Comportamento intencional
+para reduzir poluição da nav para devs ad-hoc.
+
 Tipos canônicos:
 - `EmailStatus` em `src/types/email-workspace.ts`
 - `QaIssue` em `src/types/email-generation.ts`
