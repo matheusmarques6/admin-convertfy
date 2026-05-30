@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
@@ -51,23 +51,29 @@ export default function BriefingsSettingsPage() {
     }
   }, [toast])
 
+  // Token to ignore stale responses when the user switches stores quickly
+  const briefingReqRef = useRef(0)
+
   const loadBriefing = useCallback(
     async (id: string) => {
+      const reqId = ++briefingReqRef.current
       setLoadingBriefing(true)
       setBriefing(null)
       try {
         const res = await fetch(`/api/onboarding/store-briefing?store_id=${id}`)
         const j = await res.json()
+        if (briefingReqRef.current !== reqId) return // superseded by a newer request
         if (!res.ok) throw new Error(j.error || "Erro ao carregar briefing")
         setBriefing((j.briefing as StoreBriefing | null) ?? null)
       } catch (err) {
+        if (briefingReqRef.current !== reqId) return
         toast({
           variant: "destructive",
           title: "Erro",
           description: err instanceof Error ? err.message : "Erro ao carregar briefing.",
         })
       } finally {
-        setLoadingBriefing(false)
+        if (briefingReqRef.current === reqId) setLoadingBriefing(false)
       }
     },
     [toast]
@@ -144,9 +150,9 @@ export default function BriefingsSettingsPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-[#EAEDF3] max-h-[600px] overflow-auto font-sans">
+            <div className="whitespace-pre-wrap text-sm text-gray-700 dark:text-[#EAEDF3] max-h-[600px] overflow-auto font-sans">
               {briefingText || "—"}
-            </pre>
+            </div>
           </CardContent>
         </Card>
       )}
