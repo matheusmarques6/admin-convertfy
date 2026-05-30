@@ -58,6 +58,7 @@ import {
   Calendar,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
+import { STORE_LANGUAGE_OPTIONS, OTHER_LANGUAGE_LABEL } from "@/lib/i18n/store-language"
 
 interface OnboardingContext {
   id: string
@@ -163,6 +164,22 @@ const SECTIONS: Section[] = [
         helpText:
           "Encontre em Configurações > Usuários e permissões > Solicitações de colaborador.",
         showIf: (v) => v.platform_ecommerce === "Shopify",
+      },
+      {
+        key: "store_language",
+        label: "Idioma da loja",
+        type: "select",
+        required: true,
+        helpText: "Idioma em que os emails serão escritos.",
+        options: [...STORE_LANGUAGE_OPTIONS.map((o) => o.label), OTHER_LANGUAGE_LABEL],
+      },
+      {
+        key: "store_language_other",
+        label: "Qual idioma?",
+        type: "text",
+        required: true,
+        placeholder: "Ex: Français, 日本語…",
+        showIf: (v) => v.store_language === OTHER_LANGUAGE_LABEL,
       },
       {
         key: "vertical",

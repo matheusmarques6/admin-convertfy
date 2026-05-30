@@ -355,6 +355,11 @@ function buildRawTemplate(fr: FormResponses): BriefingContent {
   )
 
   const toneOfVoice = pick(fr, "tone_of_voice", "casual e amigável")
+  const storeLanguageRaw = pick(fr, "store_language", "")
+  const storeLanguage =
+    storeLanguageRaw === "Outro"
+      ? pick(fr, "store_language_other", "")
+      : storeLanguageRaw
 
   const shippingType = pick(fr, "shipping_type", "a confirmar")
   const ticketAvg = pick(fr, "ticket_avg", "a confirmar")
@@ -370,7 +375,7 @@ function buildRawTemplate(fr: FormResponses): BriefingContent {
   return {
     about_brand: `${storeName} atua no segmento de ${vertical} com posicionamento ${positioning}. Principais produtos: ${mainProducts}. Operação rodando em ${platform}.`,
     audience: `Público principal: ${primaryPersona}. Principal motivador de compra: ${mainMotivator}. Sensibilidade: ${priceVsQuality}.`,
-    language_tone: `Tom de voz declarado: ${toneOfVoice}. Aderente ao posicionamento ${positioning}. Comunicação deve respeitar essa diretriz em todos os disparos.`,
+    language_tone: `${storeLanguage ? `Idioma dos emails: ${storeLanguage}. ` : ""}Tom de voz declarado: ${toneOfVoice}. Aderente ao posicionamento ${positioning}. Comunicação deve respeitar essa diretriz em todos os disparos.`,
     visual_identity: {
       palette: "A definir com base no manual da marca enviado pelo cliente.",
       fonts:
