@@ -3,10 +3,16 @@
  *
  * Callback streaming do n8n: cada email completo dispara um POST aqui.
  * Persiste subject/preheader em email_flow_emails e content em email_blocks,
- * marca status = 'copy_ready' para liberar o designer.
+ * marca status = 'copy_ready' para liberar o pipeline fase 2 (image + html + QA).
+ *
+ * Story AE-3:
+ *  - Idempotencia: callbacks duplicados (status >= copy_ready) viram no-op
+ *  - copy_ready_at = now() na transicao
+ *  - Dispatcha fase 2 via `waitUntil(runPhase2InBackground(...))` ANTES do return
  */
 
 import { NextRequest } from "next/server"
+import { after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
@@ -17,10 +23,21 @@ import {
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("N8nEmailCopy")
 
 export const dynamic = "force-dynamic"
+
+// Status que indicam que a fase 2 ja foi disparada (ou ja terminou).
+// Callbacks duplicados nesses estados sao no-op idempotente.
+const IDEMPOTENT_STATUSES = new Set([
+  "copy_ready",
+  "rendering",
+  "qa_running",
+  "ready",
+  "failed",
+])
 
 const schema = z.object({
   store_id: z.string().uuid(),
@@ -64,14 +81,31 @@ export async function POST(request: NextRequest) {
       throw new NotFoundError("Email não pertence a esta loja")
     }
 
-    // 2) PATCH email_flow_emails: subject, preheader, status
+    // 1.5) AC AE-3.2 — idempotencia: callback duplicado para email ja
+    // em status >= copy_ready vira no-op (200) sem disparar fase 2.
+    const currentStatus = email.status as string | null
+    if (currentStatus && IDEMPOTENT_STATUSES.has(currentStatus)) {
+      log.info("webhook.duplicate_callback", {
+        email_id: body.email_id,
+        current_status: currentStatus,
+      })
+      return successResponse(request, {
+        idempotent: true,
+        current_status: currentStatus,
+        email_id: body.email_id,
+      })
+    }
+
+    // 2) PATCH email_flow_emails: subject, preheader, status, copy_ready_at
+    const nowIso = new Date().toISOString()
     const { error: updEmailErr } = await admin
       .from("email_flow_emails")
       .update({
         subject: body.subject,
         preheader: body.preheader ?? null,
         status: "copy_ready",
-        updated_at: new Date().toISOString(),
+        copy_ready_at: nowIso,
+        updated_at: nowIso,
       })
       .eq("id", body.email_id)
     if (updEmailErr) throw updEmailErr
@@ -120,12 +154,35 @@ export async function POST(request: NextRequest) {
       blocks_total: body.blocks.length,
     })
 
+    // 5) AC AE-3.1 — dispatcha fase 2 em background, sem segurar o response
+    try {
+      after(
+        runPhase2InBackground({
+          storeId: body.store_id,
+          emailId: body.email_id,
+          triggeredBy: "n8n:email-copy",
+        }),
+      )
+    } catch (err) {
+      // Runtime sem `after`: degrada para fire-and-forget local
+      log.warn("phase2.after_unavailable_fallback", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      void runPhase2InBackground({
+        storeId: body.store_id,
+        emailId: body.email_id,
+        triggeredBy: "n8n:email-copy",
+      }).catch((e: unknown) =>
+        log.error("phase2.bg.error", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      )
+    }
+
     return successResponse(request, {
-      data: {
-        ok: true,
-        email_id: body.email_id,
-        blocks_written: blocksWritten,
-      },
+      ok: true,
+      email_id: body.email_id,
+      blocks_written: blocksWritten,
     })
   } catch (e) {
     return errorResponse(request, e, "n8n:email-copy")
