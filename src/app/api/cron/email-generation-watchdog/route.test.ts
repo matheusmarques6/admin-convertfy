@@ -40,10 +40,20 @@ const state = {
   // returns por update.select() conforme filtros
   updateReturns: new Map<string, unknown[]>(),
   // copy_ready stale select
-  staleCopyReady: [] as Array<{ id: string }>,
+  staleCopyReady: [] as Array<{
+    id: string
+    flow_id?: string
+    generation_batch_id?: string | null
+  }>,
   selectCalls: [] as SelectCall[],
   updateCalls: [] as UpdateCall[],
   insertCalls: [] as InsertCall[],
+  // RPC: increment_copy_ready_dispatch_attempts -> retorna attempts por email
+  rpcCalls: [] as Array<{ fn: string; args: Record<string, unknown> }>,
+  rpcReturns: new Map<
+    string,
+    Array<{ email_id: string; attempts: number }>
+  >(),
 }
 
 function resetState() {
@@ -53,6 +63,8 @@ function resetState() {
   state.selectCalls = []
   state.updateCalls = []
   state.insertCalls = []
+  state.rpcCalls = []
+  state.rpcReturns = new Map()
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -171,6 +183,11 @@ function buildQuery(table: string): any {
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(() => ({
     from: (table: string) => buildQuery(table),
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      state.rpcCalls.push({ fn, args })
+      const data = state.rpcReturns.get(fn) ?? []
+      return Promise.resolve({ data, error: null })
+    },
   })),
 }))
 
@@ -472,5 +489,86 @@ describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready"
 
     // restaura para outros testes
     vi.stubEnv("INTERNAL_SECRET", "test-internal-secret")
+  })
+
+  it("dispatch falha (5xx): incrementa contador, nao marca exhausted ainda", async () => {
+    state.staleCopyReady = [
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-111111111111" },
+      { id: "bbbbbbbb-bbbb-4bbb-8bbb-222222222222" },
+    ]
+    // Primeiro POST falha (500), segundo passa (200)
+    let call = 0
+    fetchSpy.mockImplementation(async () => {
+      call++
+      return new Response(call === 1 ? "fail" : "ok", {
+        status: call === 1 ? 500 : 200,
+      })
+    })
+    // RPC retorna attempts ainda baixo (1) -> nao atinge cap (default 3)
+    state.rpcReturns.set("increment_copy_ready_dispatch_attempts", [
+      { email_id: "aaaaaaaa-aaaa-4aaa-8aaa-111111111111", attempts: 1 },
+    ])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(json.stale_copy_ready).toBe(1) // so o segundo POST contou
+    expect(json.stale_dispatch_exhausted).toBe(0) // nenhum atingiu cap
+
+    // RPC foi chamada apenas com o id que falhou
+    const rpcCall = state.rpcCalls.find(
+      (c) => c.fn === "increment_copy_ready_dispatch_attempts",
+    )
+    expect(rpcCall).toBeDefined()
+    expect(rpcCall?.args.p_email_ids).toEqual([
+      "aaaaaaaa-aaaa-4aaa-8aaa-111111111111",
+    ])
+
+    // Nenhum UPDATE para failed:stale_copy_ready_exhausted
+    const exhaustUpdate = state.updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.failure_reason === "stale_copy_ready_exhausted",
+    )
+    expect(exhaustUpdate).toBeUndefined()
+  })
+
+  it("dispatch falha apos cap (>=3 attempts): marca failed:stale_copy_ready_exhausted", async () => {
+    const failingId = "cccccccc-cccc-4ccc-8ccc-333333333333"
+    state.staleCopyReady = [
+      {
+        id: failingId,
+        flow_id: "flow-aaa",
+        generation_batch_id: "batch-aaa",
+      },
+    ]
+    // POST falha
+    fetchSpy.mockImplementation(
+      async () => new Response("server error", { status: 500 }),
+    )
+    // RPC retorna attempts=3 -> atingiu cap -> deve marcar failed
+    state.rpcReturns.set("increment_copy_ready_dispatch_attempts", [
+      { email_id: failingId, attempts: 3 },
+    ])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+
+    expect(json.stale_copy_ready).toBe(0)
+    expect(json.stale_dispatch_exhausted).toBe(1)
+
+    // Verifica que houve UPDATE marcando como failed com motivo correto
+    const exhaustUpdate = state.updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "failed" &&
+        c.data.failure_reason === "stale_copy_ready_exhausted",
+    )
+    expect(exhaustUpdate).toBeDefined()
   })
 })
