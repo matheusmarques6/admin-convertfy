@@ -91,6 +91,43 @@ class NotificationService {
   }
 
   /**
+   * Server-side variant of createBulk using the admin client. Required by
+   * pipeline contexts (cron, background runners) where the browser client
+   * does not have an authenticated session and RLS would block inserts.
+   *
+   * Returns the number of rows actually inserted.
+   */
+  async createBulkAdmin(
+    userIds: string[],
+    data: Omit<CreateNotificationData, 'user_id'>
+  ): Promise<number> {
+    if (userIds.length === 0) return 0;
+    const { createAdminClient } = await import('@/lib/supabase/server');
+    const admin = createAdminClient();
+    const notifications = userIds.map((userId) => ({
+      user_id: userId,
+      title: data.title,
+      body: data.body,
+      type: data.type || 'info',
+      link: data.link,
+      event_id: data.event_id,
+      metadata: data.metadata || {},
+    }));
+    const { data: inserted, error } = await admin
+      .from('notifications')
+      .insert(notifications)
+      .select('id');
+    if (error) {
+      log.error('createBulkAdmin.insert_failed', {
+        userCount: userIds.length,
+        error: error.message,
+      });
+      return 0;
+    }
+    return inserted?.length ?? 0;
+  }
+
+  /**
    * Get unread notifications for a user
    */
   async getUnread(userId: string, limit = 10): Promise<Notification[]> {
@@ -224,6 +261,90 @@ class NotificationService {
 
     const userIds = users.map((u) => u.id);
     return this.createBulk(userIds, data);
+  }
+
+  /**
+   * Notify users by tag (e.g. 'cto', 'designer_lead', 'cs_lead').
+   *
+   * Queries `profiles WHERE tags && ARRAY[$tags]` (overlap operator — qualquer
+   * tag em comum dispara). Padrao alinhado com Epic AE (story AE-7) para
+   * rotear alertas operacionais sem mudar schema. Usa admin client porque
+   * o caller tipico e service-side (cron, runner em background).
+   *
+   * **NAO envia email** — quem orquestra (ex: generation-notify.service)
+   * decide se quer email transacional adicional.
+   *
+   * Retorna numero de profiles que receberam notificacao in-app.
+   * Logs `notifyByTag.empty_audience` em warn se zero — alerta ops para
+   * configurar a tag (ex: marcar 1 profile como CTO antes do deploy).
+   */
+  async notifyByTag(
+    tags: string[],
+    data: Omit<CreateNotificationData, 'user_id'>
+  ): Promise<number> {
+    if (!tags.length) {
+      log.warn('notifyByTag.empty_tags', { tags });
+      return 0;
+    }
+
+    // Import dinamico para nao puxar admin client em bundles client-side
+    const { createAdminClient } = await import('@/lib/supabase/server');
+    const admin = createAdminClient();
+
+    // `overlaps` corresponde ao operador `&&` (Postgres array overlap).
+    // PostgREST: .overlaps('tags', tagsArray) gera `tags=ov.{a,b}`.
+    const { data: profiles, error } = await admin
+      .from('profiles')
+      .select('id')
+      .overlaps('tags', tags);
+
+    if (error) {
+      log.error('notifyByTag.query_failed', {
+        tags,
+        error: error.message,
+      });
+      return 0;
+    }
+
+    const userIds = (profiles ?? []).map((p) => p.id as string);
+    if (userIds.length === 0) {
+      log.warn('notifyByTag.empty_audience', { tags });
+      return 0;
+    }
+
+    // createBulk usa o browser client por design legacy — para garantir
+    // que a INSERT passe RLS quando chamada de cron/server, fazemos o
+    // insert direto via admin client aqui.
+    const notifications = userIds.map((userId) => ({
+      user_id: userId,
+      title: data.title,
+      body: data.body,
+      type: data.type || 'info',
+      link: data.link,
+      event_id: data.event_id,
+      metadata: data.metadata || {},
+    }));
+
+    const { data: inserted, error: insertErr } = await admin
+      .from('notifications')
+      .insert(notifications)
+      .select('id');
+
+    if (insertErr) {
+      log.error('notifyByTag.insert_failed', {
+        tags,
+        userCount: userIds.length,
+        error: insertErr.message,
+      });
+      return 0;
+    }
+
+    const count = inserted?.length ?? 0;
+    log.info('notifyByTag.fired', {
+      tags,
+      recipients_count: count,
+    });
+    return count;
   }
 
   /**
