@@ -63,6 +63,11 @@ export interface StoreBriefing {
   source: "ai_treatment" | "manual" | "edited"
   created_at: string
   created_by: string | null
+  // Estendido pela migration 20260530_agent_email_generation.sql (Epic AE).
+  // Opcional para retrocompat com rows legacy.
+  status?: "current" | "confirmed" | "archived"
+  confirmed_at?: string | null
+  confirmed_by?: string | null
 }
 
 export interface BriefingMarca {
