@@ -540,10 +540,6 @@ export default function CustomizePage() {
       <PageHeader
         title="Personalização"
         description="Campos customizados, tags e templates de email."
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Personalização" },
-        ]}
       >
         <SegmentedTabs value={tab} onValueChange={(v) => setTab(v as CustomizeTab)}>
           <SegmentedTabItem value="fields">Campos Custom</SegmentedTabItem>

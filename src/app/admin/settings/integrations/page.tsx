@@ -227,10 +227,6 @@ export default function IntegrationsPage() {
       <PageHeader
         title="Integrações"
         description="Conecte suas ferramentas e plataformas."
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Integrações" },
-        ]}
       />
 
       {isLoading ? (

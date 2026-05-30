@@ -106,10 +106,6 @@ export default function BriefingsSettingsPage() {
       <PageHeader
         title="Briefings"
         description="Veja o briefing completo de cada loja"
-        breadcrumb={[
-          { label: "Configurações", href: "/admin/settings" },
-          { label: "Briefings" },
-        ]}
       />
 
       {/* Store selector */}
