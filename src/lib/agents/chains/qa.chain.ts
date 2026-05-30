@@ -535,6 +535,14 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
           issues.push(...r.value.issues)
         }
       }
+      // TODO (AE-15 review IMPORTANTE): vision retorna `costCents` mas
+      // o `logGenerationRun` abaixo so contabiliza o custo textual.
+      // Quando ops ativar `EMAIL_QA_VISION_ENABLED=true`, agregar:
+      //   const visionTotalCost = visionResults.reduce((acc, r) =>
+      //     acc + (r.status === "fulfilled" ? r.value.costCents : 0), 0)
+      // E somar em `costCents` ao logar, ou adicionar coluna
+      // `vision_cost_cents` em email_generation_runs pra auditoria.
+      // Diferido ate flag ON em prod (zero impacto hoje, flag OFF).
     }
   }
 
