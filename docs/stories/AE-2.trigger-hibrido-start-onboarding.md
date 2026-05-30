@@ -78,7 +78,7 @@ Fluxo após esta story:
     AND status NOT IN ('live')
   ```
 - [x] Se 0 rows afetadas → retorna 200 com `nothing_to_generate`
-- [ ] **NOTA**: incremento de `attempts` foi implementado via RPC `increment_email_attempt` com fallback silencioso (RPC pode nao existir ainda — telemetria nao-crítica). Verificar em prod.
+- [x] **RESOLVIDO** (2026-05-29): incremento de `attempts` agora usa RPC `increment_email_attempts(UUID[])` criada em migration `20260530b_increment_email_attempts.sql` — chamada batch atomica em uma unica round-trip. Falha e logada via `log.warn` mas nao bloqueia dispatch. Retorna `email_id, attempts` por linha.
 
 ### AC AE-2.6 — Dispatch n8n
 - [x] POST para `process.env.N8N_EMAIL_COPY_URL` (com fallback para `N8N_EMAIL_COPY_WEBHOOK_URL`)
@@ -230,3 +230,5 @@ Mitigação: `mode='fresh'` falha com 409 se já há batch em andamento. O signa
 |------|-------|-----------|
 | 2026-05-29 | @architect | Story criada |
 | 2026-05-29 | @dev | Story implementada. Criados endpoints start-onboarding + briefing/confirm, service `email-generation-trigger.service.ts` com `startOnboarding`/`consumeQueueSignal`, componente `StartOnboardingButton` com modal 3-modes. Botão integrado no ProductionWorkspace (não há `/admin/stores/[id]/onboarding` — `/producao` é a tela equivalente). N8N URL aceita ambas envs (`N8N_EMAIL_COPY_URL` preferida; fallback para `N8N_EMAIL_COPY_WEBHOOK_URL`). 7 testes passam, typecheck/lint limpos. AC AE-2.7 watchdog parte depende de AE-4. |
+| 2026-05-29 | @reviewer | Code review (commit 686ecfa): 0 criticos, 3 importantes. Bloqueador: AC AE-2.5 attempts nao incrementava (RPC `increment_email_attempt` nao existia; fallback silencioso). Sugestoes nao-bloqueantes: testes de race condition e timeout n8n. |
+| 2026-05-29 | @dev | Fix bloqueador: criada migration `20260530b_increment_email_attempts.sql` com RPC batch `increment_email_attempts(UUID[])` e singular `increment_email_attempt(UUID)`. Service refatorado para chamada batch unica + log warn em falha. Testes mantem 7/7 verde. AC AE-2.5 marcado como completo. |

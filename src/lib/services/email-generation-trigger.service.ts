@@ -296,19 +296,21 @@ export async function startOnboarding(
     }
   }
 
-  // Incrementar attempts por linha (best-effort; supabase nao tem update +1
-  // direto sem RPC, fazemos via batch loop com SQL via PostgREST e ignoramos
-  // falha — telemetria não é crítica para fluxo)
-  try {
-    // Use raw SQL via rpc se disponivel; fallback silencioso
-    for (const id of updatedRows.map((r) => r.id)) {
-      await admin.rpc("increment_email_attempt", { p_email_id: id }).then(
-        () => undefined,
-        () => undefined,
-      )
-    }
-  } catch {
-    // RPC pode nao existir — ignorar
+  // Incrementa attempts via RPC atomica em batch. PostgREST nao expoe
+  // UPDATE col = col + 1 direto, entao usamos increment_email_attempts(UUID[])
+  // criada na migration 20260530b. Falha aqui e degradante (nao bloqueia
+  // dispatch) mas e logada — sem isso o watchdog (AE-4) nao consegue
+  // aplicar cap de retries.
+  const emailIdsForIncrement = updatedRows.map((r) => r.id)
+  const { error: incErr } = await admin.rpc("increment_email_attempts", {
+    p_email_ids: emailIdsForIncrement,
+  })
+  if (incErr) {
+    log.warn("start.increment_attempts_failed", {
+      batchId,
+      emailCount: emailIdsForIncrement.length,
+      error: incErr.message,
+    })
   }
 
   // Mapa flow_type por flow_id
