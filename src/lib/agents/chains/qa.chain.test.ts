@@ -314,6 +314,66 @@ describe("runQaAgent — com config ativo", () => {
     expect(chainInvokeMock).toHaveBeenCalledTimes(1)
   })
 
+  it("threshold=medium bloqueia medium E high (cap >=)", async () => {
+    // Override do env: medium passa a bloquear, low ainda nao bloqueia.
+    process.env.EMAIL_QA_BLOCK_SEVERITY = "medium"
+    try {
+      chainInvokeMock.mockResolvedValueOnce(
+        JSON.stringify({
+          passed: false,
+          issues: [
+            { type: "tom_inconsistente", severity: "medium", message: "tom" },
+          ],
+        }),
+      )
+      const result = await runQaAgent(makeInput())
+      expect(result.passed).toBe(false) // medium >= medium -> bloqueia
+      expect(
+        result.issues.some(
+          (i) => i.severity === "medium" && i.type === "tom_inconsistente",
+        ),
+      ).toBe(true)
+    } finally {
+      delete process.env.EMAIL_QA_BLOCK_SEVERITY
+    }
+  })
+
+  it("timeout 15s -> retorna qa_timeout high + model qa-timeout", async () => {
+    vi.useFakeTimers()
+    try {
+      // chain.invoke nunca resolve, mas rejeita com AbortError quando o
+      // signal e abortado pelo setTimeout interno de 15s.
+      chainInvokeMock.mockImplementationOnce(
+        (_input: unknown, opts: { signal?: AbortSignal } | undefined) =>
+          new Promise((_resolve, reject) => {
+            opts?.signal?.addEventListener("abort", () => {
+              const err = new Error("Aborted") as Error & { name: string }
+              err.name = "AbortError"
+              reject(err)
+            })
+          }),
+      )
+
+      const promise = runQaAgent(makeInput())
+      // Avanca o setTimeout interno (15_000ms) para disparar o abort.
+      await vi.advanceTimersByTimeAsync(15_500)
+      const result = await promise
+
+      expect(result.passed).toBe(false)
+      expect(
+        result.issues.some(
+          (i) =>
+            i.message === "qa_timeout" &&
+            i.severity === "high" &&
+            i.type === "html_invalido",
+        ),
+      ).toBe(true)
+      expect(result.meta.model).toBe("qa-timeout")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("mescla deterministicas + LLM issues", async () => {
     chainInvokeMock.mockResolvedValueOnce(
       JSON.stringify({
