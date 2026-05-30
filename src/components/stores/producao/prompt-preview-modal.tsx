@@ -126,7 +126,12 @@ export function PromptPreviewModal({
 
         {error && (
           <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
+            {/* AE-16 review sugestao: mensagens humanas pra erros comuns */}
+            {error.includes("404")
+              ? "Bloco nao encontrado. Pode ter sido deletado em outra aba — tente recarregar a pagina."
+              : error.includes("rate_limited") || error.includes("429")
+                ? "Aguarde 30s entre regeneracoes do mesmo bloco."
+                : error}
           </div>
         )}
 

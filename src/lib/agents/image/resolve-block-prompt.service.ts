@@ -96,6 +96,16 @@ function truncateVarsForDebug(
  * Throws:
  * - `NotFoundError` se bloco/email/store nao existem.
  * - Re-throws em erros de DB (caller envolve com errorResponse).
+ *
+ * ⚠️ SYNC CONTRACT WITH phase2-runner.service.ts: a logica de
+ * resolucao (aspect + mode + fallback description + render final
+ * do prompt) deve ficar identica a do bloco AE-12/AE-13 em
+ * `phase2-runner.service.ts` (~L427-516). Esta funcao existe pra
+ * suportar a UI (AE-16) sem chamar OpenRouter, mas precisa produzir
+ * o MESMO prompt que o phase2-runner produz quando regenerar o
+ * mesmo bloco. Refatorar um sem o outro = preview na UI divergir
+ * do batch run (bug silencioso). Idealmente extrair pra helper
+ * compartilhado.
  */
 export async function resolveBlockPrompt(
   blockId: string,
