@@ -102,7 +102,7 @@ class NotificationService {
     data: Omit<CreateNotificationData, 'user_id'>
   ): Promise<number> {
     if (userIds.length === 0) return 0;
-    const { createAdminClient } = await import('@/lib/supabase/server');
+    const { createAdminClient } = await import('@/lib/supabase/admin');
     const admin = createAdminClient();
     const notifications = userIds.map((userId) => ({
       user_id: userId,
@@ -288,7 +288,7 @@ class NotificationService {
     }
 
     // Import dinamico para nao puxar admin client em bundles client-side
-    const { createAdminClient } = await import('@/lib/supabase/server');
+    const { createAdminClient } = await import('@/lib/supabase/admin');
     const admin = createAdminClient();
 
     // `overlaps` corresponde ao operador `&&` (Postgres array overlap).
