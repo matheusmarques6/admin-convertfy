@@ -179,6 +179,11 @@ export interface ImagePromptVarsInput {
   flowType?: string
   blueprint?: EmailBlueprint | null
   storeOverrides?: StoreImageOverrides | null
+  // ── Story AE-11 — hook para instrucao por bloco (AE-16 preenche). ─
+  // Resolve para `INSTRUCAO_ADICIONAL` (UPPERCASE) no retorno; o
+  // template envolve em {{#if INSTRUCAO_ADICIONAL}}...{{/if}} para
+  // omitir o bloco quando vazio.
+  instrucaoAdicional?: string
 }
 
 /**
@@ -303,6 +308,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     MOOD,
     IDIOMA,
     MOEDA,
+    INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
   }
 }
 
