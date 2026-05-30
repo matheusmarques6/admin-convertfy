@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchBriefingWebhook } from "@/lib/services/briefing-webhook.service"
+import type { StoreBriefing } from "@/types/onboarding"
 
 const log = logger.child("OnboardingStoreBriefing")
 
@@ -22,21 +23,50 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    const { data: briefing, error } = await adminClient
+    const { data: briefing } = await adminClient
       .from("store_briefings")
       .select("*")
       .eq("store_id", storeId)
       .eq("status", "current")
       .order("version", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      // No briefing found is fine
-      return successResponse(request, { briefing: null })
+    if (briefing) {
+      return successResponse(request, { briefing })
     }
 
-    return successResponse(request, { briefing })
+    // Fallback: a loja pode não ter linha em store_briefings mas ter o
+    // briefing_markdown gerado pelo n8n no onboarding — mesma fonte que a aba
+    // Content/Pesquisa renderiza. Sintetiza um StoreBriefing raw_text para a
+    // página de Configurações ficar consistente com a tela da loja.
+    const { data: onb } = await adminClient
+      .from("onboardings")
+      .select("id, briefing_markdown, briefing_confirmed_at, updated_at")
+      .eq("store_id", storeId)
+      .not("briefing_markdown", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (onb?.briefing_markdown) {
+      const nowIso = new Date().toISOString()
+      const fallback: StoreBriefing = {
+        id: `onboarding:${onb.id}`,
+        store_id: storeId,
+        onboarding_data_id: null,
+        briefing_data: { raw_text: onb.briefing_markdown as string },
+        version: 0,
+        status: "current",
+        generated_at: (onb.briefing_confirmed_at ?? onb.updated_at) as string | null,
+        generated_by: "n8n_markdown",
+        created_at: (onb.updated_at as string | null) ?? nowIso,
+        updated_at: (onb.updated_at as string | null) ?? nowIso,
+      }
+      return successResponse(request, { briefing: fallback })
+    }
+
+    return successResponse(request, { briefing: null })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreBriefing")
   }
