@@ -3,7 +3,7 @@ Prioridade: P0
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@sm (River)"
-Status: Draft
+Status: In Review
 Epic: AE - Agent Email Generation
 Fase: Cron / Resiliência
 Estimate: M
@@ -33,104 +33,70 @@ O watchdog roda a cada 5 minutos e age em 3 frentes:
 ## Acceptance Criteria
 
 ### AC AE-4.1 — Cron endpoint
-- [ ] Path: `src/app/api/cron/email-generation-watchdog/route.ts`
-- [ ] Método `GET`, `dynamic = 'force-dynamic'`, `maxDuration = 300`
-- [ ] Auth: `requireCronAuth(request)` (padrão do projeto)
-- [ ] Retorna `{ success, signals_processed, copy_recovered, phase2_timed_out, started_at, finished_at }`
-- [ ] Registrado em `vercel.json` com schedule `*/5 * * * *`
+- [x] Path: `src/app/api/cron/email-generation-watchdog/route.ts`
+- [x] Método `GET`, `dynamic = 'force-dynamic'`, `maxDuration = 300`
+- [x] Auth: `requireCronAuth(request)` (padrão do projeto)
+- [x] Retorna `{ success, signals_processed, copy_recovered, phase2_timed_out, started_at, finished_at }` (e mais: `signals_failed`, `max_attempts_exhausted`, `stale_copy_ready`, `duration_ms`)
+- [x] Registrado em `vercel.json` com schedule `*/5 * * * *`
 
 ### AC AE-4.2 — Consome sinais pendentes (fase 1)
-- [ ] Query: `SELECT * FROM email_generation_queue_signals WHERE status='pending' ORDER BY created_at ASC LIMIT 20 FOR UPDATE SKIP LOCKED`
-- [ ] Para cada sinal: chama `consumeQueueSignal(signal.id)` (função da story AE-2)
-- [ ] Errors em consumo individual NÃO param o cron — log e continua
+- [x] Query: SELECT `id` de `email_generation_queue_signals` WHERE status='pending' ORDER BY created_at ASC LIMIT 20. **Nota:** PostgREST nao expoe `FOR UPDATE SKIP LOCKED`; a concorrencia eh garantida no `consumeQueueSignal` via UPDATE atomico `eq(status,'pending')` (AE-2).
+- [x] Para cada sinal: chama `consumeQueueSignal(signal.id)` (função da story AE-2)
+- [x] Errors em consumo individual NÃO param o cron — log e continua (try/catch por sinal, mais try/catch envolvendo a frente toda)
 
 ### AC AE-4.3 — Detecta copy travada (fase 2)
-- [ ] Query:
-  ```sql
-  SELECT efe.id, efe.flow_id, efe.generation_batch_id, ef.store_id
-  FROM email_flow_emails efe
-  JOIN email_flows ef ON ef.id = efe.flow_id
-  WHERE efe.status IN ('copy_generating')
-    AND efe.copy_started_at < now() - interval '15 minutes'
-    AND efe.attempts < 3
-  ORDER BY efe.copy_started_at ASC
-  LIMIT 10
-  FOR UPDATE SKIP LOCKED
-  ```
-- [ ] Para cada: UPDATE atômico `SET status='copy_generating_recovery', attempts=attempts+1, last_attempt_at=now()` WHERE status='copy_generating' (guard)
-- [ ] Se 0 rows: outro cron já pegou — skip
-- [ ] Dispara `waitUntil(runCopyChainInProcess({ emailId, storeId }))`
+- [x] UPDATE atomico em `email_flow_emails` claimando `status='copy_generating' AND copy_started_at < now()-15min AND attempts < MAX_GENERATION_ATTEMPTS (3)` -> `status='copy_generating_recovery'`. Concorrencia via WHERE — PostgREST nao expoe `FOR UPDATE SKIP LOCKED`, mas o UPDATE eh transacional e dois crons concorrentes resultam em apenas 1 ganhar a row.
+- [x] Para cada row claimed: dispara `after(runCopyChainInProcess({ emailId, storeId, triggeredBy: 'watchdog:copy_fallback' }))` com fallback `void runCopyChainInProcess(...).catch(...)` quando `after` indisponivel.
+- [x] Limite de 10 por execucao.
+- [ ] **Pendente DB real:** incremento de `attempts` no UPDATE de claim — o increment ja eh feito pelo `startOnboarding` (AE-2) via `increment_email_attempts` RPC, mas nao reaplicamos aqui para evitar duplicar contagem. Trade-off: emails que entram em recovery passam de attempt 1 para 2 (cap em 3); recovery so pode rodar 2x antes do exhaust. **Aceitavel para MVP** — pode ser ajustado em iteracao futura se a janela de 2 fallbacks por email for curta.
 
 ### AC AE-4.4 — Função runCopyChainInProcess
-- [ ] Em `src/lib/agents/copy-chain-fallback.service.ts`
-- [ ] Carrega contexto (briefing, brand identity, blueprint, top products) — mesmo helper de `email-generation.service.ts`
-- [ ] Chama Claude reusando `createCopyChain(config)` de `src/lib/agents/chains/copy.chain.ts` (LangChain `ChatAnthropic`) com prompt ativo de `email_agent_configs WHERE agent_type='copy' AND is_active=true`. Padrão LangChain, não Anthropic SDK direto.
-- [ ] Persiste `subject`, `preheader`, `blocks.content` igual ao webhook do n8n
-- [ ] Marca `status='copy_ready', copy_ready_at=now()`
-- [ ] Dispara fase 2 in-process via `waitUntil(runPhase2InBackground({...}))`
-- [ ] Registra `email_generation_runs` com `agent='copy', model=$claudeModel, parsed_output={...}` + flag `metadata.fallback=true`
+- [x] Em `src/lib/agents/copy-chain-fallback.service.ts`
+- [x] Carrega contexto (briefing, brand identity, blueprint, top products, copy agent config). Helper local — reusa o padrao de `loadGenerationContext` sem duplicar todo o flat-vars.
+- [x] Chama Claude reusando `createCopyChain(config)` (LangChain `ChatAnthropic`) com prompt ativo de `email_agent_configs WHERE agent_type='copy' AND is_active=true`. Defaults via `DEFAULT_COPY_SYSTEM_PROMPT` / `DEFAULT_COPY_USER_TEMPLATE`.
+- [x] Persiste `subject`, `preheader`, `blocks.content` (UPSERT por `block_id` ou fallback por `position`).
+- [x] Marca `status='copy_ready', copy_ready_at=now()` (mesmo shape do webhook do n8n).
+- [x] Dispara fase 2 in-process via `after(runPhase2InBackground({...}))` com fallback fire-and-forget.
+- [x] Registra `email_generation_runs` com `agent='copy', model=$claudeModel, parsed_output={subject, preheader, blocks_written, blocks_total, fallback: true}` + tokens estimados + cost via `computeCostCents`.
+- [x] Em qualquer falha (parse, chain, persistencia): marca `status='failed', failure_reason='copy_fallback_failed'` + log de erro.
 
 ### AC AE-4.5 — Marca fase 2 travada como failed
-- [ ] Query:
-  ```sql
-  UPDATE email_flow_emails
-  SET status='failed',
-      failure_reason='timeout_phase2',
-      failed_at=now()
-  WHERE status IN ('rendering','qa_running')
-    AND (
-      (status='rendering' AND rendering_started_at < now() - interval '10 minutes')
-      OR (status='qa_running' AND qa_started_at < now() - interval '10 minutes')
-    )
-  RETURNING id, flow_id
-  ```
-- [ ] Para cada retornado: enfileira notificação `notifyTagged(['cto'], 'email_generation_failed', {email_id, reason:'timeout_phase2'})`
-- [ ] Verifica se batch ficou terminal — se sim, dispara `notifyBatchComplete`
+- [x] 2 UPDATEs separados (rendering + qa_running) com timing column especifica + `lt < now() - 10min` -> `status='failed', failure_reason='timeout_phase2', failed_at=now()`. PostgREST nao permite a clausula composta `OR` nativamente entre 2 colunas de timing — separar em 2 UPDATEs eh equivalente e mais legivel.
+- [x] Para cada retornado: chama `notifyTaggedMock(['cto'], 'email_generation_failed', {email_id, reason:'timeout_phase2'})`.
+- [ ] **Pendente AE-7:** `notifyTagged` ainda eh mock (mesmo padrao de `phase2-runner.service.ts`). Quando AE-7 entregar o dispatcher real, basta substituir o `notifyTaggedMock` por `notifyTagged`.
+- [x] Chama `checkBatchTerminalMock(batchId)` para cada email afetado. Mock alinhado com o pattern do phase2-runner.
 
 ### AC AE-4.6 — Detecta emails copy_ready sem fase 2 iniciada (edge case)
-- [ ] Query:
-  ```sql
-  SELECT id, flow_id FROM email_flow_emails
-  WHERE status = 'copy_ready'
-    AND copy_ready_at < now() - interval '3 minutes'
-  LIMIT 10
-  ```
-- [ ] Para cada: dispara `POST /api/internal/run-phase2/[emailId]` (endpoint da story AE-3)
-- [ ] Header: `x-internal-secret: $INTERNAL_SECRET`
-- [ ] Cobre caso: webhook do n8n salvou copy mas crashou antes do `waitUntil`
+- [x] SELECT `id` de `email_flow_emails` WHERE `status='copy_ready' AND copy_ready_at < now() - 3min` ORDER BY copy_ready_at ASC LIMIT 10.
+- [x] Para cada: POST `${APP_URL}/api/internal/run-phase2/${emailId}` com header `x-internal-secret: $INTERNAL_SECRET`, timeout 5s. Erros individuais sao logados sem bloquear.
+- [x] Skip total quando `INTERNAL_SECRET` nao estiver configurado (log de erro).
 
 ### AC AE-4.7 — Idempotência e concorrência
-- [ ] `FOR UPDATE SKIP LOCKED` em todas as seleções de "pegar para processar"
-- [ ] UPDATE com guard de status antes de iniciar trabalho
-- [ ] Limite máximo de itens por execução: 20 sinais, 10 copy recoveries, 10 phase2 timeouts, 10 stale copy_ready
-- [ ] Se cron rodando enquanto outro ainda não terminou: SKIP LOCKED evita reprocesso; cron não bloqueia
+- [x] UPDATE atomico com filtro de status em todas as transicoes de claim ("copy_generating" -> "copy_generating_recovery" e "rendering|qa_running" -> "failed"). Substitui `FOR UPDATE SKIP LOCKED` (nao disponivel via PostgREST).
+- [x] Limite máximo: 20 sinais, 10 copy recoveries, 10 phase2 timeouts (por status), 10 stale copy_ready.
+- [x] Crons concorrentes nao reprocessam mesmo row: o WHERE do UPDATE eh avaliado dentro da transacao — somente 1 ganhador.
 
 ### AC AE-4.8 — Telemetria e métricas
-- [ ] Log final: `log.info('watchdog.summary', { signals_processed, copy_recovered, phase2_timed_out, stale_copy_ready, duration_ms })`
-- [ ] INSERT em tabela `email_generation_runs` com `agent='seed', status='success', parsed_output=summary` (1 row por execução do watchdog, com `email_id=null` permitido via FK ON DELETE SET NULL)
-- [ ] Se `copy_recovered > 0`: emite warning log para visibilidade (n8n está falhando)
-- [ ] Se `phase2_timed_out > 0`: emite error log
+- [x] Log final via `log.info|warn|error('watchdog.summary', summary)` — nivel depende dos contadores (warn se `copy_recovered>0`, error se `phase2_timed_out>0` ou `max_attempts_exhausted>0`).
+- [x] INSERT em `email_generation_runs` com `agent='seed', email_id=NULL, batch_id=randomUUID(), parsed_output=summary, model='watchdog'` — 1 row por execucao.
 
 ### AC AE-4.9 — Limite de attempts
-- [ ] Emails com `attempts >= 3` NÃO entram em copy recovery
-- [ ] Marcados diretamente como `failed` com `failure_reason='max_attempts_exhausted'`
-- [ ] Notifica tag CTO
+- [x] Emails com `attempts >= 3` NAO entram em copy recovery — o UPDATE de claim filtra com `lt('attempts', MAX_ATTEMPTS)`.
+- [x] Antes do claim, UPDATE separado marca emails com `status='copy_generating' AND attempts >= MAX_ATTEMPTS AND copy_started_at < now()-15min` como `failed` com `failure_reason='max_attempts_exhausted'`.
+- [x] Notifica tag CTO via mock.
 
 ### AC AE-4.10 — Configuração em vercel.json
-- [ ] Adicionar bloco:
-  ```json
-  { "path": "/api/cron/email-generation-watchdog", "schedule": "*/5 * * * *" }
-  ```
+- [x] Adicionado bloco `{ "path": "/api/cron/email-generation-watchdog", "schedule": "*/5 * * * *" }` no fim do array `crons`.
 
 ---
 
 ## Tarefas
 
-- [ ] Criar `src/app/api/cron/email-generation-watchdog/route.ts`
-- [ ] Criar `src/lib/agents/copy-chain-fallback.service.ts`
-- [ ] Atualizar `vercel.json` com novo cron
-- [ ] Adicionar `MAX_GENERATION_ATTEMPTS=3` em `.env.example` (config tunável)
-- [ ] Testes: 1 por branch (signal consume / copy recover / phase2 timeout / stale copy_ready / max attempts)
+- [x] Criar `src/app/api/cron/email-generation-watchdog/route.ts`
+- [x] Criar `src/lib/agents/copy-chain-fallback.service.ts`
+- [x] Atualizar `vercel.json` com novo cron
+- [x] Adicionar `MAX_GENERATION_ATTEMPTS=3` em `.env.example` (config tunável) + `WATCHDOG_COPY_TIMEOUT_MIN`, `WATCHDOG_PHASE2_TIMEOUT_MIN`, `WATCHDOG_STALE_COPY_READY_MIN`
+- [x] Testes: 10 specs cobrindo auth (401), summary zerada, signals (2 cenarios), copy stuck (claim + max attempts), phase2 timeout (rendering+qa_running), stale copy_ready (with/without INTERNAL_SECRET)
 
 ---
 
@@ -205,3 +171,4 @@ Se `copy_recovered > 0` em 3 execuções consecutivas, log emite erro estruturad
 | Data | Autor | Descrição |
 |------|-------|-----------|
 | 2026-05-29 | @architect | Story criada |
+| 2026-05-30 | @dev | Story implementada. Cron handler + copy fallback service + 10 testes. `FOR UPDATE SKIP LOCKED` substituido por UPDATE atomico com filtros (PostgREST nao expoe). `notifyTagged` / `checkBatchTerminal` permanecem mock ate AE-7. Reuso: `requireCronAuth`, `consumeQueueSignal` (AE-2), `runPhase2InBackground` (AE-3), `createCopyChain` (LangChain), `logGenerationRun`, `computeCostCents`. Status: Draft -> In Review. |
