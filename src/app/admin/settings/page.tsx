@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2 } from "lucide-react"
+import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2, FileText } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
@@ -46,6 +46,12 @@ const SETTINGS_SECTIONS: SettingSection[] = [
     description: "Shopify, Klaviyo, Asaas, Wise e outras conexões",
     icon: Plug,
     href: "/admin/settings/integrations",
+  },
+  {
+    title: "Briefings",
+    description: "Veja o briefing completo de cada loja",
+    icon: FileText,
+    href: "/admin/settings/briefings",
   },
   {
     title: "Templates IA",

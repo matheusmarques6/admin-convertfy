@@ -9,6 +9,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   account: "Conta",
   preferences: "Preferencias",
   team: "Equipe",
+  briefings: "Briefings",
   customize: "Personalizacao",
   integrations: "Integracoes",
   profile: "Perfil",
