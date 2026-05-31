@@ -31,6 +31,11 @@ export interface StoreBrandIdentity {
   source: "ai_capture" | "manual" | "edited"
   created_at: string
   created_by: string | null
+  // AE-18: gate 2 (designer confirma a identidade visual antes do
+  // dispatcher disparar fase 2). NULL = pendente; cada nova versao
+  // (PATCH) nasce com NULL.
+  confirmed_at: string | null
+  confirmed_by: string | null
 }
 
 export interface BrandColor {

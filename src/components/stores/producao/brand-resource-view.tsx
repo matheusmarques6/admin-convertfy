@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 import {
   Check,
+  CheckCircle2,
   Download,
   ExternalLink,
   Heart,
   Pencil,
   Plus,
+  ShieldCheck,
   Sparkles,
   Upload,
   X,
@@ -159,6 +161,9 @@ export function BrandResourceView({
   const [downloadingZip, setDownloadingZip] = useState(false)
   const [mode, setMode] = useState<"view" | "edit">("view")
   const [savingEdits, setSavingEdits] = useState(false)
+  // AE-18: gate 2 (designer confirma identidade antes do dispatcher
+  // disparar fase 2). `confirming` = loading do POST /confirm.
+  const [confirming, setConfirming] = useState(false)
   // Drafts: snapshots editaveis dos 3 stores (brand, briefing.marca, store).
   // Inicializados ao entrar em modo edit; descartados ao cancelar/salvar.
   const [brandDraft, setBrandDraft] = useState<EditableBrand>(() =>
@@ -442,6 +447,68 @@ export function BrandResourceView({
     }
   }
 
+  // AE-18: confirmar a identidade visual atual. Dispara a trigger SQL
+  // que enfileira o sinal de fase 2 (render). Idempotente no servidor.
+  const handleConfirmIdentity = async () => {
+    if (!brand || confirming) return
+    setConfirming(true)
+    try {
+      const res = await fetch(
+        `/api/admin/stores/${storeId}/brand-identity/confirm`,
+        { method: "POST" },
+      )
+      const json = (await res.json().catch(() => null)) as
+        | {
+            error?: string
+            code?: string
+            details?: { missing?: string[] }
+            confirmed_at?: string
+            already_confirmed?: boolean
+            emails_to_render?: number
+          }
+        | null
+      if (!res.ok) {
+        if (res.status === 422 && json?.code === "brand_identity_incomplete") {
+          const missing = json?.details?.missing ?? []
+          const label = labelizeMissing(missing)
+          toast.toast({
+            variant: "destructive",
+            title: "Identidade incompleta",
+            description: label
+              ? `Preencha antes de confirmar: ${label}.`
+              : "Preencha cores, fonte e ao menos um logo antes de confirmar.",
+          })
+          return
+        }
+        throw new Error(json?.error || `Falha ao confirmar (HTTP ${res.status})`)
+      }
+      if (json?.already_confirmed) {
+        toast.toast({
+          title: "Ja confirmada",
+          description: "Esta versao da identidade ja estava confirmada.",
+        })
+      } else {
+        const n = json?.emails_to_render ?? 0
+        toast.toast({
+          title: "Identidade confirmada",
+          description:
+            n > 0
+              ? `${n} email${n === 1 ? "" : "s"} entrara${n === 1 ? "" : "o"} em renderizacao.`
+              : "Pipeline destravado. Novos emails entrarao em renderizacao automaticamente.",
+        })
+      }
+      onChanged()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao confirmar",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setConfirming(false)
+    }
+  }
+
   const lastUpdate = brand
     ? formatRelativeTime(brand.created_at)
     : null
@@ -600,6 +667,49 @@ export function BrandResourceView({
               <Sparkles className="h-3.5 w-3.5" />
             </button>
           )}
+          {/* AE-18: gate 2 — badge quando confirmada / botao quando pendente. */}
+          {mode === "view" && brand && brand.confirmed_at && (
+            <span
+              className="inline-flex items-center gap-1.5"
+              title={`Versao ${brand.version} confirmada em ${new Date(brand.confirmed_at).toLocaleString("pt-BR")}`}
+              style={{
+                height: 32,
+                padding: "0 12px",
+                background: "var(--crm-success-50, #ECFDF5)",
+                color: "var(--crm-success, #047857)",
+                border: "1px solid var(--crm-success-100, #A7F3D0)",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Confirmada · v{brand.version}
+            </span>
+          )}
+          {mode === "view" && brand && !brand.confirmed_at && (
+            <button
+              onClick={handleConfirmIdentity}
+              disabled={confirming}
+              className="cf-focusable inline-flex items-center gap-1.5"
+              title="Confirma a identidade visual atual e libera a fase 2 (render + QA) dos emails copy_ready."
+              style={{
+                height: 32,
+                padding: "0 14px",
+                background: "var(--crm-brand)",
+                color: "var(--crm-brand-fg)",
+                border: 0,
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: confirming ? "default" : "pointer",
+                opacity: confirming ? 0.7 : 1,
+              }}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {confirming ? "Confirmando..." : "Confirmar identidade visual"}
+            </button>
+          )}
           {mode === "view" && (
             <button
               onClick={enterEditMode}
@@ -607,9 +717,15 @@ export function BrandResourceView({
               style={{
                 height: 32,
                 padding: "0 14px",
-                background: "var(--crm-brand)",
-                color: "var(--crm-brand-fg)",
-                border: 0,
+                background: brand?.confirmed_at
+                  ? "var(--crm-brand)"
+                  : "var(--crm-gray-0)",
+                color: brand?.confirmed_at
+                  ? "var(--crm-brand-fg)"
+                  : "var(--crm-gray-700)",
+                border: brand?.confirmed_at
+                  ? "0"
+                  : "1px solid var(--crm-border)",
                 borderRadius: 6,
                 fontSize: 12,
                 fontWeight: 600,
@@ -1325,6 +1441,17 @@ function StoreFieldSelectEdit({
       </select>
     </div>
   )
+}
+
+// AE-18: traduz codes do endpoint /confirm pra labels legiveis no toast.
+function labelizeMissing(missing: string[]): string {
+  if (missing.length === 0) return ""
+  const map: Record<string, string> = {
+    colors_primary: "cor principal",
+    font_heading: "fonte de headlines",
+    logo: "ao menos um logo",
+  }
+  return missing.map((m) => map[m] ?? m).join(", ")
 }
 
 function normalizeUrl(url: string): string {
