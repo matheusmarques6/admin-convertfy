@@ -14,14 +14,14 @@ Lista das migrations criadas durante os épicos AE-1..AE-15+ e seu status de apl
 |---|---|---|---|---|
 | 1 | `20260530_agent_email_generation.sql` | AE-1 | ✅ aplicada | Schema base: status enum estendido, telemetria, `profiles.tags`, `email_generation_queue_signals`, trigger de briefing confirmed, `email_status_events` |
 | 2 | `20260530b_increment_email_attempts.sql` | AE-2 patch | ✅ aplicada | RPC `increment_email_attempts(UUID[])` |
-| 3 | `20260530c_copy_ready_dispatch_attempts.sql` | AE-4 patch | ⏳ pendente | Coluna `email_flow_emails.copy_ready_dispatch_attempts` + RPC pra cap do front-4 do watchdog |
-| 4 | `20260530d_qa_agent_seed.sql` | AE-5 | ⏳ pendente | Seed v1 do `email_agent_configs.agent_type='qa'` com system_prompt + JSON schema |
-| 5 | `20260530e_notifications_metadata_gin.sql` | AE-7 patch | ⏳ pendente | Index GIN parcial em `notifications.metadata` pra dedup-key query |
-| 6 | `20260601_image_agent_niche_adaptive.sql` | AE-10 | ⏳ pendente | 5 colunas em `email_blueprints` (`image_brief`, `image_aspect`, `image_mode`, `image_overlay_reserve_bottom`, `image_produto_heroi_hint`) + tabela `store_image_overrides` |
-| 7 | `20260622_image_agent_config_seed.sql` | AE-11 | ⏳ pendente | Seed v1 do `email_agent_configs.agent_type='image'` com switch Welcome E1-E6 (placeholders) + fallbacks pra cart/browse/win-back/upsell/post-purchase + `{{#if INSTRUCAO_ADICIONAL}}` hook |
-| 8 | `20260623_welcome_blueprints_image_brief.sql` | AE-14 | ⏳ pendente | Data-only: UPDATE em Welcome E1-E5 + UPSERT E6 populando `image_brief`, `image_aspect` (4:5/3:5/4:3), `image_mode` (product_ref/text2img), `image_overlay_reserve_bottom`. Idempotente via `ON CONFLICT (flow_type, email_number) DO UPDATE`. |
-| 9 | `20260624_image_agent_real_prompts.sql` | AE-14 | ⏳ pendente | Data-only: UPDATE no `user_template` da v1 ativa do `agent_type='image'` substituindo os 6 placeholders `<<E1..E6>>` da AE-11 pelos prompts mestres reais do documento niche-adaptive. Restricoes universais + hook `{{#if INSTRUCAO_ADICIONAL}}` preservados. |
-| 10 | `20260625_qa_agent_image_issue_types.sql` | AE-15 | ⏳ pendente | Data-only: UPDATE in-place no `system_prompt` + `output_schema` da v1 ativa do `agent_type='qa'` adicionando 4 issue types (`image_nicho_mismatch`, `image_paleta_off`, `image_overlay_reserva_ausente`, `image_cena_inadequada`) + instrução pra comparar `image_alt` vs PRODUTO_HEROI. Idempotente. Depende de #4 (AE-5 seed). |
+| 3 | `20260530c_copy_ready_dispatch_attempts.sql` | AE-4 patch | ✅ aplicada | Coluna `email_flow_emails.copy_ready_dispatch_attempts` + RPC pra cap do front-4 do watchdog |
+| 4 | `20260530d_qa_agent_seed.sql` | AE-5 | ✅ aplicada | Seed v1 do `email_agent_configs.agent_type='qa'` com system_prompt + JSON schema |
+| 5 | `20260530e_notifications_metadata_gin.sql` | AE-7 patch | ✅ aplicada | Index GIN parcial em `notifications.metadata` pra dedup-key query |
+| 6 | `20260601_image_agent_niche_adaptive.sql` | AE-10 | ✅ aplicada | 5 colunas em `email_blueprints` (`image_brief`, `image_aspect`, `image_mode`, `image_overlay_reserve_bottom`, `image_produto_heroi_hint`) + tabela `store_image_overrides` |
+| 7 | `20260622_image_agent_config_seed.sql` | AE-11 | ✅ aplicada | Seed v1 do `email_agent_configs.agent_type='image'` com switch Welcome E1-E6 (placeholders) + fallbacks pra cart/browse/win-back/upsell/post-purchase + `{{#if INSTRUCAO_ADICIONAL}}` hook |
+| 8 | `20260623_welcome_blueprints_image_brief.sql` | AE-14 | ✅ aplicada | Data-only: UPSERT em Welcome E1-E6 populando `image_brief`, `image_aspect` (4:5/3:5/4:3), `image_mode` (product_ref/text2img), `image_overlay_reserve_bottom`. Idempotente via `ON CONFLICT (flow_type, email_number) DO UPDATE`. |
+| 9 | `20260624_image_agent_real_prompts.sql` | AE-14 | ✅ aplicada | Data-only: UPDATE no `user_template` da v1 ativa do `agent_type='image'` substituindo os 6 placeholders `<<E1..E6>>` da AE-11 pelos prompts mestres reais do documento niche-adaptive. Restricoes universais + hook `{{#if INSTRUCAO_ADICIONAL}}` preservados. |
+| 10 | `20260625_qa_agent_image_issue_types.sql` | AE-15 | ✅ aplicada | Data-only: UPDATE in-place no `system_prompt` + `output_schema` da v1 ativa do `agent_type='qa'` adicionando 4 issue types (`image_nicho_mismatch`, `image_paleta_off`, `image_overlay_reserva_ausente`, `image_cena_inadequada`) + instrução pra comparar `image_alt` vs PRODUTO_HEROI. Idempotente. Depende de #4 (AE-5 seed). |
 
 (stories AE-9, AE-12, AE-13, AE-16 ainda não têm migrations — entram aqui conforme forem implementadas)
 
