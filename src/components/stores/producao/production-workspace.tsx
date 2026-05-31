@@ -34,6 +34,7 @@ import { EmailDetailView } from "./email-detail-view"
 import { BrandResourceView } from "./brand-resource-view"
 import { BriefingResourceView } from "./briefing-resource-view"
 import { StartOnboardingButton } from "@/components/stores/start-onboarding-button"
+import { RerenderButton } from "./rerender-button"
 import { filterFlowsByMode } from "./filter-flows-by-mode"
 import type {
   WorkspaceMode,
@@ -474,6 +475,15 @@ export function ProductionWorkspace({
               Salvo automaticamente · {lastUpdateMin}
             </span>
           )}
+          {/* AE-20: Re-renderizar flow selecionado / loja inteira.
+              Quando ha flow selecionado (selection.kind==='email'),
+              dropdown oferece ambos os escopos. Caso contrario, so
+              "loja inteira". */}
+          <RerenderButton
+            storeId={store.id}
+            flowId={currentFlow?.id}
+            flowName={currentFlow?.name}
+          />
           <button
             onClick={
               onClose

@@ -476,21 +476,43 @@ export interface ConsumeSignalResult {
  * Retorna a quantidade de emails efetivamente despachados. Lista vazia
  * eh valida (designer pode ter confirmado a identidade antes do briefing
  * terminar) — o caller deve marcar o sinal como `done` mesmo assim.
+ *
+ * AE-20: `flowId` opcional restringe o escopo a um unico flow (usado pelo
+ * sinal `rerender` com scope=flow). Quando nao passado, processa todos os
+ * flows da loja.
  */
 export async function dispatchRenderForCopyReady(
   storeId: string,
   triggeredBy: "brand_confirm" | "rerender",
+  flowId?: string,
 ): Promise<{ dispatched: number; email_ids: string[] }> {
   const admin = createAdminClient()
 
   // Resolver emails em copy_ready via join com flows (precisamos do
   // store_id que vive em email_flows, nao em email_flow_emails).
-  const { data: flows, error: flowsErr } = await admin
-    .from("email_flows")
-    .select("id")
-    .eq("store_id", storeId)
-  if (flowsErr) throw flowsErr
-  const flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  let flowIds: string[]
+  if (flowId) {
+    // Validar que o flow pertence a store antes de prosseguir
+    const { data: flow, error: flowErr } = await admin
+      .from("email_flows")
+      .select("id, store_id")
+      .eq("id", flowId)
+      .eq("store_id", storeId)
+      .maybeSingle()
+    if (flowErr) throw flowErr
+    if (!flow) {
+      log.warn("render_dispatch.flow_not_in_store", { storeId, flowId })
+      return { dispatched: 0, email_ids: [] }
+    }
+    flowIds = [flowId]
+  } else {
+    const { data: flows, error: flowsErr } = await admin
+      .from("email_flows")
+      .select("id")
+      .eq("store_id", storeId)
+    if (flowsErr) throw flowsErr
+    flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  }
   if (flowIds.length === 0) {
     return { dispatched: 0, email_ids: [] }
   }
@@ -553,14 +575,36 @@ export async function dispatchRenderForCopyReady(
  *
  * Esta funcao eh idempotente: re-rodar nao causa efeito adicional pois
  * o filtro `IN (...)` exclui emails ja em copy_ready.
+ *
+ * AE-20: `flowId` opcional restringe o reset a um unico flow (usado pelo
+ * endpoint POST /rerender com scope=flow). Sem flowId, todos os flows da
+ * loja sao afetados.
  */
-async function resetEmailsForRerender(storeId: string): Promise<number> {
+async function resetEmailsForRerender(
+  storeId: string,
+  flowId?: string,
+): Promise<number> {
   const admin = createAdminClient()
-  const { data: flows } = await admin
-    .from("email_flows")
-    .select("id")
-    .eq("store_id", storeId)
-  const flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  let flowIds: string[]
+  if (flowId) {
+    const { data: flow } = await admin
+      .from("email_flows")
+      .select("id, store_id")
+      .eq("id", flowId)
+      .eq("store_id", storeId)
+      .maybeSingle()
+    if (!flow) {
+      log.warn("rerender.flow_not_in_store", { storeId, flowId })
+      return 0
+    }
+    flowIds = [flowId]
+  } else {
+    const { data: flows } = await admin
+      .from("email_flows")
+      .select("id")
+      .eq("store_id", storeId)
+    flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  }
   if (flowIds.length === 0) return 0
 
   const nowIso = new Date().toISOString()
@@ -585,7 +629,7 @@ async function resetEmailsForRerender(storeId: string): Promise<number> {
     throw error
   }
   const count = ((data ?? []) as Array<{ id: string }>).length
-  log.info("rerender.reset_done", { storeId, count })
+  log.info("rerender.reset_done", { storeId, flowId: flowId ?? null, count })
   return count
 }
 
@@ -633,12 +677,21 @@ export async function consumeQueueSignal(signalId: string): Promise<ConsumeSigna
 
   try {
     if (signalType === "render" || signalType === "rerender") {
+      // AE-20: scope=flow é passado via payload->>'flow_id'. Render
+      // (GATE 2 brand confirm) ignora flow_id — sempre processa loja inteira.
+      const payload = (signal.payload ?? {}) as Record<string, unknown>
+      const targetFlowId =
+        signalType === "rerender" && typeof payload.flow_id === "string"
+          ? payload.flow_id
+          : undefined
+
       if (signalType === "rerender") {
-        await resetEmailsForRerender(storeId)
+        await resetEmailsForRerender(storeId, targetFlowId)
       }
       const result = await dispatchRenderForCopyReady(
         storeId,
         signalType === "rerender" ? "rerender" : "brand_confirm",
+        targetFlowId,
       )
 
       await admin
