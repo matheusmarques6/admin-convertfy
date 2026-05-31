@@ -132,7 +132,7 @@ WHERE table_name = 'store_brand_identity'
 -- AE-18 (trigger registrado em store_brand_identity)
 SELECT trigger_name FROM information_schema.triggers
 WHERE event_object_table = 'store_brand_identity'
-  AND trigger_name = 'tr_on_brand_identity_confirmed';
+  AND trigger_name = 'trg_brand_identity_confirmed';
 -- esperado: 1 row
 
 -- AE-18 (index parcial pra latest confirmed)
@@ -162,6 +162,14 @@ WHERE conrelid = 'email_generation_queue_signals'::regclass
   AND contype = 'c'
   AND conname LIKE '%signal_type%';
 -- esperado: 1 row contendo 'start','render','rerender'
+
+-- AE-21 PRÉ-EXECUÇÃO (dimensionar impacto: quantas rows o backfill afetará?)
+SELECT source, COUNT(*) AS rows_to_backfill
+FROM store_brand_identity
+WHERE confirmed_at IS NULL AND source IN ('manual','edited')
+GROUP BY source;
+-- rode ANTES de aplicar 20260626d.sql; se número estiver muito alto,
+-- considere aplicar em batches via WHERE store_id IN (...).
 
 -- AE-21 (backfill aplicado: manual/edited confirmados, ai_capture pending)
 SELECT source,
@@ -313,8 +321,15 @@ UPDATE store_brand_identity
 **Forçar re-render de um flow inteiro (pós-edição de blueprint, troca de prompt etc.)** — use o botão AE-20 em `/admin/stores/[id]/producao` (preferido) ou:
 
 ```sql
-INSERT INTO email_generation_queue_signals (store_id, flow_id, signal_type)
-VALUES ('<store_id>', '<flow_id>', 'rerender');
+-- Schema real: email_generation_queue_signals NÃO tem coluna flow_id;
+-- triggered_by é NOT NULL (CHECK: briefing_confirmed | manual | watchdog_retry).
+-- flow_id (opcional) viaja no payload — consumeQueueSignal lê payload->>'flow_id'
+-- quando signal_type='rerender'. Omita o campo p/ re-renderizar a loja inteira.
+INSERT INTO email_generation_queue_signals
+  (store_id, triggered_by, signal_type, payload)
+VALUES
+  ('<store_id>', 'manual', 'rerender',
+   jsonb_build_object('flow_id', '<flow_id>', 'requested_by', null));
 ```
 
 ### Após o último push
