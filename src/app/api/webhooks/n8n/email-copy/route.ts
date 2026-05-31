@@ -3,16 +3,22 @@
  *
  * Callback streaming do n8n: cada email completo dispara um POST aqui.
  * Persiste subject/preheader em email_flow_emails e content em email_blocks,
- * marca status = 'copy_ready' para liberar o pipeline fase 2 (image + html + QA).
+ * marca status = 'copy_ready'.
  *
  * Story AE-3:
  *  - Idempotencia: callbacks duplicados (status >= copy_ready) viram no-op
  *  - copy_ready_at = now() na transicao
- *  - Dispatcha fase 2 via `waitUntil(runPhase2InBackground(...))` ANTES do return
+ *
+ * Story AE-19 (split callback):
+ *  - O callback NAO dispara mais fase 2 diretamente. O email fica em
+ *    copy_ready aguardando o GATE 2 (designer confirmar a identidade
+ *    visual). Quando store_brand_identity.confirmed_at vira NULL -> NOT NULL,
+ *    o trigger fn_on_brand_identity_confirmed enfileira um sinal
+ *    signal_type='render' em email_generation_queue_signals e o watchdog
+ *    (front 1) chama runPhase2InBackground pra cada email em copy_ready.
  */
 
 import { NextRequest } from "next/server"
-import { after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
@@ -23,7 +29,6 @@ import {
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("N8nEmailCopy")
 
@@ -154,30 +159,15 @@ export async function POST(request: NextRequest) {
       blocks_total: body.blocks.length,
     })
 
-    // 5) AC AE-3.1 — dispatcha fase 2 em background, sem segurar o response
-    try {
-      after(
-        runPhase2InBackground({
-          storeId: body.store_id,
-          emailId: body.email_id,
-          triggeredBy: "n8n:email-copy",
-        }),
-      )
-    } catch (err) {
-      // Runtime sem `after`: degrada para fire-and-forget local
-      log.warn("phase2.after_unavailable_fallback", {
-        error: err instanceof Error ? err.message : String(err),
-      })
-      void runPhase2InBackground({
-        storeId: body.store_id,
-        emailId: body.email_id,
-        triggeredBy: "n8n:email-copy",
-      }).catch((e: unknown) =>
-        log.error("phase2.bg.error", {
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      )
-    }
+    // 5) AE-19: fase 2 (render) agora aguarda confirmacao da identidade
+    // visual. O dispatcher (cron watchdog, front 1) vai chamar
+    // runPhase2InBackground quando store_brand_identity.confirmed_at virar
+    // NOT NULL e este email estiver em status='copy_ready'. Ver
+    // supabase/migrations/20260626c_email_render_signal_type.sql.
+    log.info("email_copy.phase2_deferred", {
+      email_id: body.email_id,
+      store_id: body.store_id,
+    })
 
     return successResponse(request, {
       ok: true,

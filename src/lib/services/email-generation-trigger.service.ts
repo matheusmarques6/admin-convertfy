@@ -6,9 +6,11 @@
  *     (chamado pelo endpoint POST /api/admin/stores/[id]/start-onboarding
  *     e pelo signal consumer).
  *   - `consumeQueueSignal`: pega 1 sinal pendente de
- *     `email_generation_queue_signals`, marca como processing, chama
- *     startOnboarding(mode='fresh', triggered_by='signal_consumer') e
- *     atualiza o sinal para done | failed (com retry até 3x).
+ *     `email_generation_queue_signals` e roteia por `signal_type`:
+ *       - `start`    -> startOnboarding(mode='fresh') (GATE 1: briefing)
+ *       - `render`   -> dispatchRenderForCopyReady (GATE 2: brand identity)
+ *       - `rerender` -> reset copy_ready + dispatchRenderForCopyReady (AE-20)
+ *     Atualiza o sinal para done | failed (com retry até 3x).
  *
  * Suporta 3 modes:
  *   - `fresh`  : valida que nao ha batch em andamento (409 se houver)
@@ -19,13 +21,16 @@
  *
  * Refs:
  *   - docs/stories/AE-2.trigger-hibrido-start-onboarding.md
+ *   - docs/stories/AE-19.split-callback-render-gate.md
  *   - docs/architecture/adr-agent-email-generation.md
  */
 
 import crypto from "crypto"
+import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { AppError, ConflictError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 import type { FlowType } from "@/types/email-workspace"
 
 const log = logger.child("EmailGenTrigger")
@@ -458,19 +463,145 @@ export interface ConsumeSignalResult {
   reason?: string
   batch_id?: string
   emails_dispatched?: number
+  // AE-19: numero de emails com runPhase2InBackground disparado quando
+  // signal_type='render' | 'rerender'. Undefined em sinais 'start'.
+  render_dispatched?: number
 }
 
 /**
- * Consome 1 sinal pendente e dispara startOnboarding.
+ * AE-19 — dispara `runPhase2InBackground` para cada email em copy_ready
+ * da loja. Usado pelos sinais `render` (GATE 2: brand identity confirmada)
+ * e `rerender` (AE-20: re-renderizar tudo).
+ *
+ * Retorna a quantidade de emails efetivamente despachados. Lista vazia
+ * eh valida (designer pode ter confirmado a identidade antes do briefing
+ * terminar) — o caller deve marcar o sinal como `done` mesmo assim.
+ */
+export async function dispatchRenderForCopyReady(
+  storeId: string,
+  triggeredBy: "brand_confirm" | "rerender",
+): Promise<{ dispatched: number; email_ids: string[] }> {
+  const admin = createAdminClient()
+
+  // Resolver emails em copy_ready via join com flows (precisamos do
+  // store_id que vive em email_flows, nao em email_flow_emails).
+  const { data: flows, error: flowsErr } = await admin
+    .from("email_flows")
+    .select("id")
+    .eq("store_id", storeId)
+  if (flowsErr) throw flowsErr
+  const flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  if (flowIds.length === 0) {
+    return { dispatched: 0, email_ids: [] }
+  }
+
+  const { data: emails, error: emailsErr } = await admin
+    .from("email_flow_emails")
+    .select("id")
+    .in("flow_id", flowIds)
+    .eq("status", "copy_ready")
+  if (emailsErr) throw emailsErr
+
+  const ids = ((emails ?? []) as Array<{ id: string }>).map((e) => e.id)
+  if (ids.length === 0) {
+    log.info("render_dispatch.no_copy_ready", { storeId, triggeredBy })
+    return { dispatched: 0, email_ids: [] }
+  }
+
+  log.info("render_dispatch.start", {
+    storeId,
+    triggeredBy,
+    count: ids.length,
+  })
+
+  // Disparar fase 2 para cada email. Prefere `after()` (Vercel: continua
+  // ate ~5min apos response) com fallback fire-and-forget local.
+  for (const emailId of ids) {
+    try {
+      after(
+        runPhase2InBackground({
+          storeId,
+          emailId,
+          triggeredBy: `signal_consumer:${triggeredBy}`,
+        }),
+      )
+    } catch (err) {
+      log.warn("render_dispatch.after_unavailable", {
+        emailId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      void runPhase2InBackground({
+        storeId,
+        emailId,
+        triggeredBy: `signal_consumer:${triggeredBy}`,
+      }).catch((e: unknown) =>
+        log.error("render_dispatch.bg_error", {
+          emailId,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      )
+    }
+  }
+
+  return { dispatched: ids.length, email_ids: ids }
+}
+
+/**
+ * AE-19/AE-20 — reseta emails para `copy_ready` quando o sinal e
+ * `rerender` (apaga estado de fase 2 anterior). Cobre status
+ * rendering / qa_running / ready / failed (mas NUNCA `live`).
+ *
+ * Esta funcao eh idempotente: re-rodar nao causa efeito adicional pois
+ * o filtro `IN (...)` exclui emails ja em copy_ready.
+ */
+async function resetEmailsForRerender(storeId: string): Promise<number> {
+  const admin = createAdminClient()
+  const { data: flows } = await admin
+    .from("email_flows")
+    .select("id")
+    .eq("store_id", storeId)
+  const flowIds = ((flows ?? []) as Array<{ id: string }>).map((f) => f.id)
+  if (flowIds.length === 0) return 0
+
+  const nowIso = new Date().toISOString()
+  const { data, error } = await admin
+    .from("email_flow_emails")
+    .update({
+      status: "copy_ready",
+      copy_ready_at: nowIso,
+      rendering_started_at: null,
+      qa_started_at: null,
+      failed_at: null,
+      failure_reason: null,
+      copy_ready_dispatch_attempts: 0,
+      updated_at: nowIso,
+    })
+    .in("flow_id", flowIds)
+    .in("status", ["rendering", "qa_running", "ready", "failed"])
+    .select("id")
+
+  if (error) {
+    log.error("rerender.reset_failed", { storeId, error: error.message })
+    throw error
+  }
+  const count = ((data ?? []) as Array<{ id: string }>).length
+  log.info("rerender.reset_done", { storeId, count })
+  return count
+}
+
+/**
+ * Consome 1 sinal pendente e roteia por `signal_type`.
  *
  * Comportamento:
- *   - Marca sinal como `processing` antes de chamar startOnboarding
- *     (best-effort: nao temos SELECT FOR UPDATE no PostgREST; o flag
- *     status='processing' atua como lock leve)
+ *   - Marca sinal como `processing` antes de processar (best-effort: nao
+ *     temos SELECT FOR UPDATE no PostgREST; o flag status='processing' atua
+ *     como lock leve)
  *   - Em sucesso: status='done', processed_at=now()
- *   - Em ConflictError (batch ja em andamento): trata como `done` —
- *     a UI ja disparou, sinal e idempotente
- *   - Em outra falha: attempts++, se attempts < 3 volta pra `pending`,
+ *   - Para `start`: chama startOnboarding(mode='fresh'); ConflictError
+ *     (batch_in_progress) tambem vira `done` — sinal eh idempotente
+ *   - Para `render`/`rerender`: dispatchRenderForCopyReady; lista vazia
+ *     ainda vira `done` (sinal eh no-op valido)
+ *   - Em falha generica: attempts++, se attempts < 3 volta pra `pending`,
  *     senao marca como `failed`
  */
 export async function consumeQueueSignal(signalId: string): Promise<ConsumeSignalResult> {
@@ -483,7 +614,7 @@ export async function consumeQueueSignal(signalId: string): Promise<ConsumeSigna
     .update({ status: "processing" })
     .eq("id", signalId)
     .eq("status", "pending")
-    .select("id, store_id, attempts, payload")
+    .select("id, store_id, attempts, payload, signal_type")
     .maybeSingle()
 
   if (fetchErr) throw fetchErr
@@ -494,10 +625,45 @@ export async function consumeQueueSignal(signalId: string): Promise<ConsumeSigna
 
   const storeId = signal.store_id as string
   const attempts = (signal.attempts as number) ?? 0
+  // signal_type default 'start' (backfill da migration garante coluna
+  // NOT NULL com default). Trata undefined com fallback defensivo.
+  const signalType = (signal.signal_type as string | null) ?? "start"
 
-  log.info("consume.start", { signalId, storeId, attempts })
+  log.info("consume.start", { signalId, storeId, attempts, signalType })
 
   try {
+    if (signalType === "render" || signalType === "rerender") {
+      if (signalType === "rerender") {
+        await resetEmailsForRerender(storeId)
+      }
+      const result = await dispatchRenderForCopyReady(
+        storeId,
+        signalType === "rerender" ? "rerender" : "brand_confirm",
+      )
+
+      await admin
+        .from("email_generation_queue_signals")
+        .update({
+          status: "done",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", signalId)
+
+      log.info("consume.done", {
+        signalId,
+        storeId,
+        signalType,
+        renderDispatched: result.dispatched,
+      })
+
+      return {
+        signal_id: signalId,
+        status: "done",
+        render_dispatched: result.dispatched,
+      }
+    }
+
+    // signal_type === 'start' (default / legado)
     const result = await startOnboarding({
       storeId,
       mode: "fresh",
@@ -512,7 +678,7 @@ export async function consumeQueueSignal(signalId: string): Promise<ConsumeSigna
       })
       .eq("id", signalId)
 
-    log.info("consume.done", { signalId, storeId, batchId: result.batch_id })
+    log.info("consume.done", { signalId, storeId, signalType, batchId: result.batch_id })
 
     return {
       signal_id: signalId,
@@ -525,6 +691,7 @@ export async function consumeQueueSignal(signalId: string): Promise<ConsumeSigna
     const errMsg = err instanceof Error ? err.message : "unknown"
 
     // ConflictError: batch ja iniciado pela UI — trata como done
+    // (so se aplica a signal_type='start')
     if (errCode === "batch_in_progress") {
       await admin
         .from("email_generation_queue_signals")

@@ -1,10 +1,14 @@
 /**
- * Tests for POST /api/webhooks/n8n/email-copy (Story AE-3)
+ * Tests for POST /api/webhooks/n8n/email-copy (Story AE-3 + AE-19)
+ *
+ * AE-19 split: callback NAO dispara mais fase 2. Apenas persiste copy
+ * e marca status='copy_ready'. A fase 2 fica em hold ate o trigger
+ * fn_on_brand_identity_confirmed enfileirar um sinal `render` que o
+ * watchdog consome.
  *
  * Cobre:
- *  - webhook normal -> 200 + status copy_ready + dispatch de fase 2
- *  - callback duplicado (email ja em copy_ready) -> 200 idempotente, sem
- *    novo dispatch nem novo run de fase 2
+ *  - webhook normal -> 200 + status copy_ready (SEM dispatch de fase 2)
+ *  - callback duplicado (email ja em copy_ready) -> 200 idempotente
  *  - email_id inexistente -> 404
  *  - email_id que nao pertence a store_id -> 404
  */
@@ -115,30 +119,10 @@ vi.mock("@/lib/cors", () => ({
   handleCorsPreFlight: vi.fn(),
 }))
 
-// Mock waitUntil/after de next/server e tambem o runner de fase 2,
-// para garantir que nao executa imagem/html nos testes.
-const phase2Spy = vi.fn(async () => undefined)
-vi.mock("next/server", async () => {
-  const actual = await vi.importActual<typeof import("next/server")>("next/server")
-  return {
-    ...actual,
-    after: (task: unknown) => {
-      // Fire-and-forget: nao aguarda a promise. Em producao, `after()` da
-      // Vercel deixa rodar em background ate 5min apos o response. No teste
-      // queremos so confirmar o dispatch (via phase2Spy) — sem esperar o
-      // trabalho real. `.catch()` aqui evita unhandled rejection warnings
-      // se o runner mockado lancar; o handler em route.ts tambem tem seu
-      // proprio fallback `.catch()` quando `after()` nao esta disponivel.
-      if (task && typeof (task as Promise<unknown>).then === "function") {
-        ;(task as Promise<unknown>).catch(() => {})
-      }
-    },
-  }
-})
-
-vi.mock("@/lib/agents/phase2-runner.service", () => ({
-  runPhase2InBackground: phase2Spy,
-}))
+// AE-19: o callback nao importa mais `runPhase2InBackground` nem `after`
+// de next/server. Nao precisa mockar nenhum dos dois — se a route voltar
+// a chamar runPhase2InBackground, o teste vai falhar no import resolver
+// porque o mock foi removido.
 
 vi.stubEnv("N8N_WEBHOOK_SECRET", "test-secret")
 
@@ -181,7 +165,7 @@ function validBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
-  it("returns 200, marks copy_ready, persists copy_ready_at and dispatches phase 2", async () => {
+  it("returns 200, marks copy_ready, persists copy_ready_at (AE-19: no phase 2 dispatch)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(makeRequest(validBody()) as any)
     expect(res.status).toBe(200)
@@ -195,15 +179,6 @@ describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
     expect(statusUpdate).toBeDefined()
     expect(statusUpdate?.data.copy_ready_at).toBeDefined()
 
-    // Phase 2 deve ter sido despachada exatamente 1 vez
-    expect(phase2Spy).toHaveBeenCalledTimes(1)
-    expect(phase2Spy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        storeId: MOCK_STORE_ID,
-        emailId: MOCK_EMAIL_ID,
-      }),
-    )
-
     // Telemetria de copy registrada
     const copyRun = insertCalls.find(
       (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
@@ -213,7 +188,7 @@ describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
 })
 
 describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
-  it("returns 200 idempotent when email is already in copy_ready (no new phase 2 dispatch)", async () => {
+  it("returns 200 idempotent when email is already in copy_ready", async () => {
     mockEmail = {
       id: MOCK_EMAIL_ID,
       flow_id: MOCK_FLOW_ID,
@@ -227,8 +202,7 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
     expect(json.idempotent).toBe(true)
     expect(json.current_status).toBe("copy_ready")
 
-    // Nenhum dispatch de fase 2 nem update de status
-    expect(phase2Spy).not.toHaveBeenCalled()
+    // Nenhum update de status (idempotente)
     const statusUpdate = updateCalls.find(
       (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
     )
@@ -238,7 +212,6 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
   it("returns 200 idempotent when email is in rendering / qa_running / ready / failed", async () => {
     for (const status of ["rendering", "qa_running", "ready", "failed"]) {
       resetState()
-      phase2Spy.mockClear()
       mockEmail = {
         id: MOCK_EMAIL_ID,
         flow_id: MOCK_FLOW_ID,
@@ -251,7 +224,6 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
       const json = await res.json()
       expect(json.idempotent).toBe(true)
       expect(json.current_status).toBe(status)
-      expect(phase2Spy).not.toHaveBeenCalled()
     }
   })
 })
@@ -274,7 +246,6 @@ describe("POST /api/webhooks/n8n/email-copy — errors", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(makeRequest(validBody()) as any)
     expect(res.status).toBe(404)
-    expect(phase2Spy).not.toHaveBeenCalled()
   })
 
   it("returns 401 when missing webhook secret", async () => {
@@ -286,6 +257,5 @@ describe("POST /api/webhooks/n8n/email-copy — errors", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(req as any)
     expect(res.status).toBe(401)
-    expect(phase2Spy).not.toHaveBeenCalled()
   })
 })
