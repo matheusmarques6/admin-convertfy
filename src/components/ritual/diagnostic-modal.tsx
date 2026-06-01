@@ -228,7 +228,7 @@ export function RitualDiagnosticModal({
         dateRangeEnd: string
         emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
       }
-      pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
+      pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number; actions: Array<{ title: string; owner: string; effort: string; impact: string }> }>
       history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
       campaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }>
       automations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }>
@@ -1184,43 +1184,106 @@ function KpiCard({ label, value, accent, accentTone, sub }: { label: string; val
 
 /* ────────── Tab: 80/20 Problemas ────────── */
 
+type ParetoItemT = { rank: number; title: string; detail: string; evidences: string[]; impactPercent: number; actions: Array<{ title: string; owner: string; effort: string; impact: string }> }
+
 function ParetoTab({ report, diag }: {
   report?: { concerns: unknown[] } | null
-  diag?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
+  diag?: ParetoItemT[]
 }) {
   const items = diag ?? []
   if (items.length === 0 && (!report?.concerns || (report.concerns as unknown[]).length === 0)) {
     return <EmptyTab>Sem problemas identificados. Loja performando bem.</EmptyTab>
   }
-  const useItems = items.length > 0 ? items : (report?.concerns ?? []).slice(0, 5).map((c, i) => ({
-    rank: i + 1, title: typeof c === "string" ? c : JSON.stringify(c), detail: "", evidences: [] as string[], impactPercent: Math.round(100 / Math.min((report?.concerns as unknown[]).length, 5)),
+  const useItems: ParetoItemT[] = items.length > 0 ? items : (report?.concerns ?? []).slice(0, 5).map((c, i) => ({
+    rank: i + 1, title: typeof c === "string" ? c : JSON.stringify(c), detail: "", evidences: [] as string[], impactPercent: Math.round(100 / Math.min((report?.concerns as unknown[]).length, 5)), actions: [],
   }))
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Problemas ranqueados por impacto. IA analisa dados reais da loja.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Causas-raiz do problema</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2, ...TNUM }}>{useItems.length} causas explicam 100% da queda · ataque por ordem de impacto</div>
+        </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6, display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Zap size={12} /> análise IA
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {useItems.map((item, i) => (
-          <div key={i} style={{ padding: "14px 16px", background: i === 0 ? C.warnBg : C.white, border: `1px solid ${i === 0 ? C.warnBorder : C.border}`, borderRadius: 10 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <span style={{ width: 26, height: 26, borderRadius: 8, background: i === 0 ? C.warn : C.g200, color: i === 0 ? "#fff" : C.g600, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{item.rank}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{item.title}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? C.warn : C.g500, ...TNUM }}>{item.impactPercent}%</span>
-                </div>
-                {item.detail && <div style={{ fontSize: 12.5, color: C.g600, lineHeight: 1.5, marginBottom: item.evidences.length > 0 ? 8 : 0 }}>{item.detail}</div>}
-                {item.evidences.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {item.evidences.map((e, ei) => (
-                      <span key={ei} style={{ fontSize: 11, padding: "3px 8px", background: i === 0 ? "rgba(146,64,14,0.08)" : C.g50, border: `1px solid ${C.border}`, borderRadius: 4, color: C.g600 }}>{e}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <ParetoCard key={i} item={item} top={i === 0} defaultOpen={i === 0} />
         ))}
       </div>
+    </div>
+  )
+}
+
+const OWNER_INITIAL: Record<string, { i: string; c: string; bg: string }> = {
+  Mariana: { i: "M", c: "#9D174D", bg: "#FCE7F3" },
+  Pedro: { i: "P", c: "#1E40AF", bg: "#DBEAFE" },
+  Jean: { i: "J", c: "#92400E", bg: "#FEF3C7" },
+  Ryan: { i: "R", c: "#065F46", bg: "#D1FAE5" },
+}
+
+function ParetoCard({ item, top, defaultOpen }: { item: ParetoItemT; top: boolean; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const hasActions = item.actions && item.actions.length > 0
+  return (
+    <div style={{
+      background: top ? C.warnBg : C.white,
+      border: `1px solid ${top ? C.warnBorder : C.border}`,
+      borderRadius: 10, overflow: "hidden",
+      borderLeft: top ? `3px solid ${C.warn}` : `1px solid ${C.border}`,
+    }}>
+      {/* Header */}
+      <div
+        onClick={() => hasActions && setOpen(!open)}
+        style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "flex-start", padding: "14px 16px", cursor: hasActions ? "pointer" : "default" }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 700, color: top ? C.warn : C.g400, ...TNUM, marginTop: 1 }}>#{item.rank}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{item.title}</span>
+            {top && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", background: C.warn, color: "#fff", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 3 }}><span style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />prioridade</span>}
+          </div>
+          {item.detail && <div style={{ fontSize: 12.5, color: C.g600, lineHeight: 1.5, marginBottom: item.evidences.length > 0 ? 8 : 0 }}>{item.detail}</div>}
+          {item.evidences.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {item.evidences.map((e, ei) => (
+                <span key={ei} style={{ fontSize: 11, padding: "3px 9px", background: top ? "rgba(146,64,14,0.08)" : C.g50, border: `1px solid ${C.border}`, borderRadius: 4, color: C.g600, display: "inline-flex", alignItems: "center", gap: 5 }}>{e}</span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>Impacto</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: top ? C.warn : C.g700, ...TNUM, letterSpacing: "-0.02em" }}>{item.impactPercent}%</div>
+        </div>
+      </div>
+      {/* Ações sugeridas */}
+      {hasActions && open && (
+        <div style={{ borderTop: `1px solid ${top ? C.warnBorder : C.g100}`, padding: "12px 16px", background: top ? "rgba(255,255,255,0.5)" : C.g25 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <Zap size={11} /> Ações sugeridas · {item.actions.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {item.actions.map((a, ai) => {
+              const o = OWNER_INITIAL[a.owner] ?? { i: a.owner[0]?.toUpperCase() ?? "?", c: C.g600, bg: C.g100 }
+              return (
+                <div key={ai} style={{ display: "grid", gridTemplateColumns: "20px 1fr auto auto auto", gap: 10, alignItems: "center", padding: "8px 10px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 6 }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 4, border: `1.5px solid ${C.g300}` }} />
+                  <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>{a.title}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.g600 }}>
+                    <span style={{ width: 18, height: 18, borderRadius: "50%", background: o.bg, color: o.c, fontSize: 9, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{o.i}</span>
+                    {a.owner}
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: C.g500, ...TNUM }}><Clock size={11} /> {a.effort}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: C.pos, ...TNUM }}>{a.impact}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
