@@ -201,8 +201,6 @@ export const ROUTES = {
       PROMPTS: "/admin/agents/prompts",
     },
 
-    EMAIL_BLUEPRINTS: "/admin/email-blueprints",
-
     SETTINGS: {
       ROOT: "/admin/settings",
       BRIEFINGS: "/admin/settings/briefings",
@@ -216,6 +214,7 @@ export const ROUTES = {
       CUSTOM_FIELDS: "/admin/settings/custom-fields",
       TAGS: "/admin/settings/tags",
       EMAIL_TEMPLATES: "/admin/settings/email-templates",
+      EMAIL_GENERATION: "/admin/settings/email-generation",
     },
   },
 
