@@ -61,12 +61,20 @@ export interface FunnelResult {
   emailPerformance: EmailPerformance
 }
 
+export interface ParetoAction {
+  title: string
+  owner: string
+  effort: string
+  impact: string
+}
+
 export interface ParetoItem {
   rank: number
   title: string
   detail: string
   evidences: string[]
   impactPercent: number
+  actions: ParetoAction[]
 }
 
 export interface HistoryRow {
@@ -381,7 +389,7 @@ export async function buildPareto(
   }
 
   if (problems.length === 0) {
-    return [{ rank: 1, title: "Sem problemas críticos", detail: "Loja performando dentro do esperado.", evidences: [], impactPercent: 100 }]
+    return [{ rank: 1, title: "Sem problemas críticos", detail: "Loja performando dentro do esperado.", evidences: [], impactPercent: 100, actions: [] }]
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -392,6 +400,7 @@ export async function buildPareto(
       detail: "",
       evidences: [],
       impactPercent: Math.round(100 / Math.min(problems.length, 5)),
+      actions: [],
     }))
   }
 
@@ -399,18 +408,39 @@ export async function buildPareto(
     const ai = new Anthropic({ apiKey })
     const res = await ai.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      system: `Você é analista sênior de email marketing. Ranqueie os problemas por impacto na queda da loja. Retorne APENAS JSON válido: { "items": [{ "rank": 1, "title": "...", "detail": "1 frase", "evidences": ["dado 1", "dado 2"], "impactPercent": 50 }] }. Soma dos impactPercent = 100. Use SÓ os dados fornecidos. Não invente.`,
+      max_tokens: 2500,
+      system: `Você é analista sênior de email marketing da Convertfy. Ranqueie os problemas por impacto na queda da loja e sugira ações concretas.
+Retorne APENAS JSON válido:
+{ "items": [{
+  "rank": 1,
+  "title": "título curto",
+  "detail": "1 frase explicando",
+  "evidences": ["dado numérico 1", "dado numérico 2"],
+  "impactPercent": 50,
+  "actions": [{ "title": "ação concreta", "owner": "Mariana", "effort": "2h", "impact": "+18% open est." }]
+}] }
+REGRAS:
+- Soma dos impactPercent = 100
+- Use SÓ os dados fornecidos. Não invente números.
+- owner deve ser um de: Mariana (Designer), Pedro (Ops), Jean (Estrategista), Ryan (CS)
+- effort: estimativa curta tipo "2h", "10min", "1d"
+- impact: ganho estimado curto tipo "+18% open est.", "limita queda", "+8% CTR est."
+- 1 a 3 ações por problema, só pros problemas mais impactantes (top 3)
+- problemas menores podem ter actions: []`,
       messages: [{
         role: "user",
-        content: `Loja: ${storeName}\nProblemas detectados:\n${problems.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\nRetorne JSON com até 5 itens ranqueados.`,
+        content: `Loja: ${storeName}\nProblemas detectados:\n${problems.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\nRetorne JSON com até 5 itens ranqueados, com ações concretas pros top 3.`,
       }],
     })
     const text = res.content[0]?.type === "text" ? res.content[0].text : ""
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0])
-      const items = (parsed.items ?? []) as ParetoItem[]
+      const items = ((parsed.items ?? []) as ParetoItem[]).map((it) => ({
+        ...it,
+        evidences: Array.isArray(it.evidences) ? it.evidences : [],
+        actions: Array.isArray(it.actions) ? it.actions : [],
+      }))
       const total = items.reduce((s, i) => s + (i.impactPercent || 0), 0)
       if (total > 0 && total !== 100) {
         items.forEach((i) => { i.impactPercent = Math.round((i.impactPercent / total) * 100) })
@@ -424,7 +454,7 @@ export async function buildPareto(
   }
 
   return problems.slice(0, 5).map((p, i) => ({
-    rank: i + 1, title: p, detail: "", evidences: [], impactPercent: Math.round(100 / Math.min(problems.length, 5)),
+    rank: i + 1, title: p, detail: "", evidences: [], impactPercent: Math.round(100 / Math.min(problems.length, 5)), actions: [],
   }))
 }
 
@@ -504,7 +534,7 @@ export async function buildHistory(
 export async function buildCampaigns(
   admin: SupabaseClient,
   storeId: string,
-  currency: string,
+  _currency: string,
 ): Promise<CampaignRow[]> {
   const { data: rows } = await admin
     .from("omnisend_campaign_metrics")
