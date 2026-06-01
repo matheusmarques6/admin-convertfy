@@ -90,6 +90,22 @@ interface RitualSession {
 
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
+type SingleFunnelT = {
+  source: "campaign" | "automation"
+  stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
+  gargaloLabel: string | null
+  gargaloDelta: number | null
+  gargaloKey: string | null
+  insightTitle: string
+  insightBody: string
+  revenueImpact: number
+  expectedOpen: number
+  realOpen: number
+  openDeltaPp: number
+  totalRevenue: number
+  hasData: boolean
+}
+
 const TABS = [
   { id: "performance" as const, label: "Performance" },
   { id: "funil" as const, label: "Funil & gargalo" },
@@ -211,19 +227,11 @@ export function RitualDiagnosticModal({
         topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
       }
       funnel?: {
-        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
-        gargaloLabel: string | null
-        gargaloDelta: number | null
-        gargaloKey: string | null
-        insightTitle: string
-        insightBody: string
-        revenueImpact: number
+        campaign: SingleFunnelT
+        automation: SingleFunnelT
         benchmarkOpen: number
         benchmarkClick: number
         benchmarkConvert: number
-        expectedOpen: number
-        realOpen: number
-        openDeltaPp: number
         dateRangeStart: string
         dateRangeEnd: string
         emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
@@ -858,52 +866,80 @@ function PerfTable({ title, sub, firstCol, rows, cs }: { title: string; sub: str
 
 function FunilTab({ diag, cs = "R$" }: {
   diag?: {
-    stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
-    gargaloLabel: string | null; gargaloDelta: number | null; gargaloKey: string | null
-    insightTitle: string; insightBody: string
-    revenueImpact: number; benchmarkOpen: number
-    expectedOpen: number; realOpen: number; openDeltaPp: number
+    campaign: SingleFunnelT
+    automation: SingleFunnelT
+    benchmarkOpen: number; benchmarkClick: number; benchmarkConvert: number
     dateRangeStart: string; dateRangeEnd: string
     emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
   }
   cs?: string
 }) {
-  const stages = diag?.stages ?? []
-  if (stages.length === 0) {
+  const [source, setSource] = useState<"campaign" | "automation">("campaign")
+  if (!diag) {
     return <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>
   }
-
-  const maxVolume = Math.max(...stages.map((s) => s.volume), 1)
-  // Formatação pt-BR: vírgula como separador decimal
+  const f = source === "campaign" ? diag.campaign : diag.automation
+  const stages = f.stages
   const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
   const fmt0 = (v: number) => v.toFixed(0)
   const fmtMoney = (v: number) => v >= 1000 ? `${cs} ${fmt1(v / 1000)}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const maxVolume = Math.max(...stages.map((s) => s.volume), 1)
   const openStage = stages.find((s) => s.key === "opened")
 
   return (
     <div>
+      {/* Toggle: Campanhas / Automações */}
+      <div style={{ display: "flex", gap: 2, padding: 2, background: C.g100, borderRadius: 8, marginBottom: 14, width: "fit-content" }}>
+        {([["campaign", "Campanhas"], ["automation", "Automações"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSource(id)}
+            style={{
+              padding: "6px 16px", fontSize: 12.5, fontWeight: 600,
+              color: source === id ? C.g900 : C.g500,
+              background: source === id ? C.white : "transparent",
+              border: "none", borderRadius: 6, cursor: "pointer",
+              boxShadow: source === id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {label}
+            <span style={{ fontSize: 10, fontWeight: 700, color: source === id ? C.brand : C.g400, ...TNUM }}>
+              {(id === "campaign" ? diag.campaign : diag.automation).stages[0]?.volume.toLocaleString("pt-BR") ?? "0"}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {!f.hasData ? (
+        <EmptyTab>
+          {source === "campaign" ? "Sem campanhas no período." : "Sem automações no período."}
+        </EmptyTab>
+      ) : (
+      <>
       {/* 3 KPI cards no topo */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
         <KpiCard
           label="Gargalo"
-          value={diag?.gargaloLabel ?? "Saudável"}
-          accent={diag?.gargaloDelta != null ? `${fmt1(diag.gargaloDelta)}%` : null}
+          value={f.gargaloLabel ?? "Saudável"}
+          accent={f.gargaloDelta != null ? `${fmt1(f.gargaloDelta)}%` : null}
           accentTone="neg"
           sub="vs semana anterior"
         />
         <KpiCard
           label="Receita perdida est."
-          value={diag?.revenueImpact ? fmtMoney(diag.revenueImpact) : "—"}
-          accent={diag?.gargaloDelta != null ? `${fmt0(diag.gargaloDelta)}%` : null}
+          value={f.revenueImpact ? fmtMoney(f.revenueImpact) : "—"}
+          accent={f.gargaloDelta != null ? `${fmt0(f.gargaloDelta)}%` : null}
           accentTone="neg"
           sub="últimas 2 semanas"
         />
         <KpiCard
           label="vs benchmark Convertfy"
-          value={diag && openStage ? `Abert. ${fmt1(openStage.pct * 100)}%` : "—"}
-          accent={diag?.openDeltaPp != null ? `${diag.openDeltaPp >= 0 ? "+" : ""}${fmt1(diag.openDeltaPp)}pp` : null}
-          accentTone={diag?.openDeltaPp != null && diag.openDeltaPp < 0 ? "neg" : "pos"}
-          sub={diag ? `média rede: ${fmt1(diag.benchmarkOpen)}%` : ""}
+          value={openStage ? `Abert. ${fmt1(openStage.pct * 100)}%` : "—"}
+          accent={f.openDeltaPp != null ? `${f.openDeltaPp >= 0 ? "+" : ""}${fmt1(f.openDeltaPp)}pp` : null}
+          accentTone={f.openDeltaPp < 0 ? "neg" : "pos"}
+          sub={`média rede: ${fmt1(diag.benchmarkOpen)}%`}
         />
       </div>
 
@@ -914,7 +950,7 @@ function FunilTab({ diag, cs = "R$" }: {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Onde a receita está vazando</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Onde a receita está vazando · {source === "campaign" ? "campanhas" : "automações"}</div>
             <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>largura proporcional ao volume · vermelho = gargalo</div>
           </div>
           <div style={{ display: "flex", gap: 6, fontSize: 11, color: C.g500 }}>
@@ -1029,7 +1065,7 @@ function FunilTab({ diag, cs = "R$" }: {
       </div>
 
       {/* Painel de diagnóstico */}
-      {diag?.gargaloLabel && (
+      {f.gargaloLabel && (
         <div style={{
           marginBottom: 14, padding: 16, background: C.white,
           border: `1px solid ${C.border}`, borderRadius: 10,
@@ -1040,7 +1076,7 @@ function FunilTab({ diag, cs = "R$" }: {
             </div>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Fundo do funil · diagnóstico</div>
-              <div style={{ fontSize: 11, color: C.g500 }}>{diag.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{diag.gargaloDelta != null ? fmt1(diag.gargaloDelta) : "—"}% vs sem. anterior</span></div>
+              <div style={{ fontSize: 11, color: C.g500 }}>{f.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{f.gargaloDelta != null ? fmt1(f.gargaloDelta) : "—"}% vs sem. anterior</span></div>
             </div>
           </div>
 
@@ -1048,19 +1084,19 @@ function FunilTab({ diag, cs = "R$" }: {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
             <div style={{ padding: 12, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.pos, letterSpacing: "0.06em", textTransform: "uppercase" }}>Esperado</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.pos, marginTop: 4, ...TNUM }}>{diag.expectedOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.pos, marginTop: 4, ...TNUM }}>{f.expectedOpen.toLocaleString("pt-BR")}</div>
               <div style={{ fontSize: 11, color: C.pos, marginTop: 2, opacity: 0.8 }}>benchmark {fmt1(diag.benchmarkOpen)}%</div>
             </div>
             <div style={{ padding: 12, background: C.negBg, border: `1px solid ${C.negBorder}`, borderRadius: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.neg, letterSpacing: "0.06em", textTransform: "uppercase" }}>Real</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.neg, marginTop: 4, ...TNUM }}>{diag.realOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.neg, marginTop: 4, ...TNUM }}>{f.realOpen.toLocaleString("pt-BR")}</div>
               <div style={{ fontSize: 11, color: C.neg, marginTop: 2, opacity: 0.8 }}>{openStage ? fmt1(openStage.pct * 100) : "0"}% · abriu</div>
             </div>
           </div>
 
           {/* Insight body */}
           <div style={{ padding: 12, background: C.warnBg, border: `1px solid ${C.warnBorder}`, borderRadius: 8, fontSize: 12.5, color: C.g700, lineHeight: 1.55 }}>
-            <strong style={{ fontWeight: 600, color: C.warn }}>{diag.insightTitle}.</strong> {diag.insightBody}
+            <strong style={{ fontWeight: 600, color: C.warn }}>{f.insightTitle}.</strong> {f.insightBody}
           </div>
         </div>
       )}
@@ -1128,12 +1164,14 @@ function FunilTab({ diag, cs = "R$" }: {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", padding: 16, gap: 12 }}>
             <EmailMetric label="Entregues" value={diag.emailPerformance.entregues.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.entreguesRate)}% taxa`} />
-            <EmailMetric label="Abertura" value={`${fmt1(diag.emailPerformance.abertura)}%`} bench={diag.emailPerformance.aberturaBench} actual={diag.emailPerformance.abertura} gargalo={diag?.gargaloKey === "opened"} />
+            <EmailMetric label="Abertura" value={`${fmt1(diag.emailPerformance.abertura)}%`} bench={diag.emailPerformance.aberturaBench} actual={diag.emailPerformance.abertura} gargalo={diag.campaign.gargaloKey === "opened"} />
             <EmailMetric label="Clique" value={`${fmt1(diag.emailPerformance.clique)}%`} bench={diag.emailPerformance.cliqueBench} actual={diag.emailPerformance.clique} />
             <EmailMetric label="CTOR" value={`${fmt1(diag.emailPerformance.ctor)}%`} bench={diag.emailPerformance.ctorBench} actual={diag.emailPerformance.ctor} />
             <EmailMetric label="Bounces" value={diag.emailPerformance.bounces.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.bouncesRate)}% taxa`} />
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )
