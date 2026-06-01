@@ -1360,40 +1360,100 @@ function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[
   if (automations.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
+  // Ordena: problemas/pausadas primeiro
+  const detectProblem = (a: AutomationRow): string | null => {
+    if (a.flow_status === "paused") return "Pausada · revisar se deve reativar"
+    if (a.open_rate != null && a.open_rate < 15 && (a.recipients ?? 0) > 50) return `Abertura baixa (${a.open_rate.toFixed(1).replace(".", ",")}%) · revisar subject`
+    if (a.click_rate != null && a.click_rate < 1 && (a.recipients ?? 0) > 50) return "CTR abaixo de 1% · revisar conteúdo/CTA"
+    return null
+  }
+  const sorted = [...automations].sort((a, b) => {
+    const pa = detectProblem(a) ? 0 : 1
+    const pb = detectProblem(b) ? 0 : 1
+    return pa - pb
+  })
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {automations.map((a) => {
-        const statusColor = a.flow_status === "active" ? C.pos : a.flow_status === "paused" ? C.warn : C.g500
-        const statusBg = a.flow_status === "active" ? C.posBg : a.flow_status === "paused" ? C.warnBg : C.g100
-        const statusLabel = a.flow_status === "active" ? "Ativo" : a.flow_status === "paused" ? "Pausado" : (a.flow_status ?? "—")
-        return (
-          <div key={a.flow_id} style={{
-            padding: "14px 16px", background: C.white,
-            border: `1px solid ${C.border}`, borderRadius: 10,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{a.flow_name}</span>
-                <span style={{
-                  fontSize: 10.5, fontWeight: 600, padding: "2px 8px",
-                  color: statusColor, background: statusBg,
-                  borderRadius: 999,
-                }}>{statusLabel}</span>
-              </div>
-              {a.trigger_type && (
-                <span style={{ fontSize: 11, color: C.g500 }}>Trigger: {a.trigger_type}</span>
-              )}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              <MetricCell label="Enviados" value={a.recipients?.toLocaleString("pt-BR") ?? "—"} />
-              <MetricCell label="Abertura" value={a.open_rate != null ? `${a.open_rate.toFixed(1)}%` : "—"} tone={a.open_rate != null && a.open_rate < 20 ? "neg" : undefined} />
-              <MetricCell label="CTR" value={a.click_rate != null ? `${a.click_rate.toFixed(1)}%` : "—"} />
-              <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
-              <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `${cs} ${a.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
-            </div>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Automações</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>flows ativos e pausados · métricas agregadas do período</div>
+        </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6 }}>omnisend · automations</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map((a) => (
+          <AutomationCardView key={a.flow_id} a={a} cs={cs} problem={detectProblem(a)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AutomationCardView({ a, cs, problem }: { a: AutomationRow; cs: string; problem: string | null }) {
+  const [open, setOpen] = useState(false)
+  const isPaused = a.flow_status === "paused"
+  const statusColor = isPaused ? C.warn : C.pos
+  const statusBg = isPaused ? C.warnBg : C.posBg
+  const statusLabel = isPaused ? "pausada" : "ativa"
+  const convRate = a.conversions != null && a.recipients != null && a.recipients > 0 ? (a.conversions / a.recipients) * 100 : null
+  const hasProblem = !!problem
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+
+  return (
+    <div style={{
+      background: hasProblem && !isPaused ? C.warnBg : C.white,
+      border: `1px solid ${hasProblem ? C.warnBorder : C.border}`,
+      borderRadius: 10, overflow: "hidden",
+    }}>
+      <div onClick={() => setOpen(!open)} style={{
+        display: "grid", gridTemplateColumns: "1fr auto auto auto 24px",
+        gap: 16, alignItems: "center", padding: "14px 16px", cursor: "pointer",
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{a.flow_name}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 600, padding: "2px 8px", color: statusColor, background: statusBg, borderRadius: 999 }}>
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: statusColor }} />{statusLabel}
+            </span>
           </div>
-        )
-      })}
+          {a.trigger_type && <div style={{ fontSize: 11, color: C.g500 }}>{a.trigger_type}</div>}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>Abertura média</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: a.open_rate != null && a.open_rate < 20 ? C.warn : C.g900, ...TNUM }}>{a.open_rate != null ? `${fmt1(a.open_rate)}%` : "—"}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>Conversão</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.g900, ...TNUM }}>{convRate != null ? `${fmt1(convRate)}%` : "—"}</div>
+        </div>
+        <div>
+          {hasProblem ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, padding: "4px 9px", color: C.warn, background: C.white, border: `1px solid ${C.warnBorder}`, borderRadius: 6, maxWidth: 220 }}>
+              <Zap size={11} /> {problem}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, padding: "4px 9px", color: C.pos, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 6 }}>
+              ✓ sem problemas
+            </span>
+          )}
+        </div>
+        <ChevronDown size={16} style={{ color: C.g400, transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+      </div>
+      {open && (
+        <div style={{ borderTop: `1px solid ${hasProblem ? C.warnBorder : C.g100}`, padding: 16, background: hasProblem && !isPaused ? "rgba(255,255,255,0.5)" : C.g25 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+            <MetricCell label="Enviados" value={a.recipients?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Entregues" value={a.delivered?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Cliques" value={a.clicked?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `${cs} ${a.conversion_value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: C.g400, fontStyle: "italic" }}>
+            Performance toque-a-toque (D+0, D+2…) disponível ao vivo — pergunte no chat: &quot;detalhe os toques do {a.flow_name}&quot;.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
