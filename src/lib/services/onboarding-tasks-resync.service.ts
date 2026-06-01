@@ -136,6 +136,161 @@ export async function resyncAllOnboardingTasks(): Promise<ResyncStats> {
   return stats
 }
 
+// ── Auditoria (read-only) ───────────────────────────────────────────────
+
+export interface ResyncAuditEntry {
+  onboarding_id: string
+  org_id: string
+  column_slug: string
+  column_name: string
+  task_id: string
+  task_slug: string | null
+  task_title: string | null
+  task_status: string
+  deliverables_with_files: Array<{
+    field_slug: string
+    field_label: string | null
+    file_url: string
+  }>
+}
+
+export interface ResyncAuditResult {
+  onboardings_scanned: number
+  tasks_to_delete: number
+  tasks_to_delete_with_files: number
+  files_at_risk: number
+  /** Apenas tasks que seriam deletadas E tem deliverables com file_url. */
+  at_risk: ResyncAuditEntry[]
+}
+
+/**
+ * Simula o resync SEM deletar nada e reporta o impacto destrutivo: quais
+ * tasks seriam deletadas (slug fora do template atual) e, dessas, quais tem
+ * task_deliverables com file_url preenchido — os arquivos que o cascade
+ * apagaria. Rode ANTES de resyncAllOnboardingTasks para decidir com seguranca.
+ *
+ * IMPORTANTE: nao chama ensureOnboardingBootstrap (que reescreve templates).
+ * Usa o template atual ja persistido em operational_pipeline_columns — mesmo
+ * snapshot que o resync usaria apos o bootstrap. Para fidelidade total rode o
+ * bootstrap antes; aqui priorizamos zero efeito colateral.
+ */
+export async function auditResyncImpact(): Promise<ResyncAuditResult> {
+  const admin = createAdminClient()
+  const result: ResyncAuditResult = {
+    onboardings_scanned: 0,
+    tasks_to_delete: 0,
+    tasks_to_delete_with_files: 0,
+    files_at_risk: 0,
+    at_risk: [],
+  }
+
+  const { data: cols } = await admin
+    .from("operational_pipeline_columns")
+    .select("id, slug, name, checklist_template")
+  const colById = new Map<
+    string,
+    { slug: string; name: string; templateSlugs: Set<string> }
+  >()
+  for (const c of (cols ?? []) as Array<{
+    id: string
+    slug: string
+    name: string
+    checklist_template: ChecklistItem[] | null
+  }>) {
+    const slugs = new Set<string>()
+    for (const item of c.checklist_template ?? []) {
+      if (item.slug) slugs.add(item.slug)
+    }
+    colById.set(c.id, { slug: c.slug, name: c.name, templateSlugs: slugs })
+  }
+
+  const { data: onbs } = await admin
+    .from("onboardings")
+    .select("id, org_id, current_version")
+    .eq("status", "in_progress")
+  const onbList = (onbs ?? []) as OnboardingRow[]
+
+  for (const onb of onbList) {
+    result.onboardings_scanned++
+    const version = onb.current_version ?? 1
+
+    const { data: tasks } = await admin
+      .from("tasks")
+      .select("id, slug, title, status, operational_column_id")
+      .eq("onboarding_id", onb.id)
+      .eq("version", version)
+      .not("operational_column_id", "is", null)
+
+    const taskList = (tasks ?? []) as Array<{
+      id: string
+      slug: string | null
+      title: string | null
+      status: string
+      operational_column_id: string
+    }>
+
+    // Agrupa por coluna pra aplicar a regra "template tem itens?".
+    const byCol = new Map<string, typeof taskList>()
+    for (const t of taskList) {
+      const arr = byCol.get(t.operational_column_id) ?? []
+      arr.push(t)
+      byCol.set(t.operational_column_id, arr)
+    }
+
+    for (const [colId, colTasks] of byCol.entries()) {
+      const col = colById.get(colId)
+      if (!col) continue
+      const templateEmpty = col.templateSlugs.size === 0
+
+      const toDelete = colTasks.filter((t) => {
+        if (!t.slug) return !templateEmpty // sem slug some so se template tem slugs
+        return !col.templateSlugs.has(t.slug)
+      })
+      if (toDelete.length === 0) continue
+      result.tasks_to_delete += toDelete.length
+
+      for (const t of toDelete) {
+        const { data: delivs } = await admin
+          .from("task_deliverables")
+          .select("field_slug, field_label, file_url")
+          .eq("task_id", t.id)
+          .not("file_url", "is", null)
+
+        const withFiles = (delivs ?? []).filter(
+          (d) => typeof d.file_url === "string" && d.file_url.length > 0,
+        ) as Array<{ field_slug: string; field_label: string | null; file_url: string }>
+
+        if (withFiles.length === 0) continue
+        result.tasks_to_delete_with_files++
+        result.files_at_risk += withFiles.length
+        result.at_risk.push({
+          onboarding_id: onb.id,
+          org_id: onb.org_id,
+          column_slug: col.slug,
+          column_name: col.name,
+          task_id: t.id,
+          task_slug: t.slug,
+          task_title: t.title,
+          task_status: t.status,
+          deliverables_with_files: withFiles.map((d) => ({
+            field_slug: d.field_slug,
+            field_label: d.field_label,
+            file_url: d.file_url,
+          })),
+        })
+      }
+    }
+  }
+
+  log.info("Auditoria de resync concluida", {
+    onboardings_scanned: result.onboardings_scanned,
+    tasks_to_delete: result.tasks_to_delete,
+    tasks_to_delete_with_files: result.tasks_to_delete_with_files,
+    files_at_risk: result.files_at_risk,
+  })
+  return result
+}
+
 type AdminClient = ReturnType<typeof createAdminClient>
 
 interface ReconcileOpts {
