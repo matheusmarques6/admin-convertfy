@@ -191,18 +191,22 @@ function pctChange(current: number, previous: number): number {
 async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: number; click: number; ctor: number; clickRate: number; convert: number; deliv: number }> {
   const { data } = await admin
     .from("omnisend_campaign_metrics")
-    .select("recipients, delivered, opened, clicked, conversions")
+    .select("store_id, campaign_id, recipients, delivered, opened, clicked, conversions, conversion_value")
     .eq("period_label", "30d")
-    .limit(500)
+    .limit(2000)
 
-  const rows = (data ?? []) as Array<Record<string, number | null>>
-  if (rows.length === 0) return { open: 30, click: 35, ctor: 11, clickRate: 3.8, convert: 8, deliv: 98 }
+  // Dedup por (store_id, campaign_id) — cache tem múltiplas linhas por campanha
+  const deduped = dedupRows(
+    (data ?? []).map((r) => ({ ...r, campaign_id: `${(r as Record<string, unknown>).store_id}:${(r as Record<string, unknown>).campaign_id}` })),
+    "campaign_id",
+  )
+  if (deduped.length === 0) return { open: 30, click: 35, ctor: 11, clickRate: 3.8, convert: 8, deliv: 98 }
 
-  const totSent = rows.reduce<number>((a, r) => a + (r.recipients || 0), 0)
-  const totDeliv = rows.reduce<number>((a, r) => a + (r.delivered || 0), 0)
-  const totOpen = rows.reduce<number>((a, r) => a + (r.opened || 0), 0)
-  const totClick = rows.reduce<number>((a, r) => a + (r.clicked || 0), 0)
-  const totConv = rows.reduce<number>((a, r) => a + (r.conversions || 0), 0)
+  const totSent = sumRows(deduped, "recipients")
+  const totDeliv = sumRows(deduped, "delivered")
+  const totOpen = sumRows(deduped, "opened")
+  const totClick = sumRows(deduped, "clicked")
+  const totConv = sumRows(deduped, "conversions")
 
   return {
     deliv: totSent > 0 ? (totDeliv / totSent) * 100 : 98,
@@ -216,8 +220,48 @@ async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: numbe
 
 type FunnelRow = Record<string, unknown>
 
+/**
+ * Deduplica linhas do cache Omnisend por id. O cron grava múltiplas linhas
+ * pra mesma campanha/flow (period_start/period_end variam por execução),
+ * então somar tudo infla os números. Mantém 1 linha por id — a de maior
+ * conversion_value (mesma estratégia do campaigns-flows-builder testado).
+ */
+function dedupRows(rows: FunnelRow[] | null, idKey: string): FunnelRow[] {
+  const byId = new Map<string, FunnelRow>()
+  for (const r of rows ?? []) {
+    const id = String(r[idKey] ?? "")
+    if (!id) continue
+    const existing = byId.get(id)
+    if (!existing || (Number(r.conversion_value) || 0) > (Number(existing.conversion_value) || 0)) {
+      byId.set(id, r)
+    }
+  }
+  return Array.from(byId.values())
+}
+
 const sumRows = (rows: FunnelRow[] | null, key: string): number =>
   (rows ?? []).reduce<number>((acc, r) => acc + (Number(r[key]) || 0), 0)
+
+/**
+ * Lê uma métrica do weekly_reports.metrics tentando vários paths.
+ * Formato real (weekly-report.service): opens.rate, clicks.rate,
+ * revenue.current, flows.revenue_total, campaigns_sent, paid_orders.count.
+ * Aceita paths legados como fallback.
+ */
+function pickNum(m: Record<string, unknown> | null, ...paths: string[]): number | null {
+  if (!m) return null
+  for (const path of paths) {
+    const parts = path.split(".")
+    let val: unknown = m
+    let ok = true
+    for (const p of parts) {
+      if (val == null || typeof val !== "object") { ok = false; break }
+      val = (val as Record<string, unknown>)[p]
+    }
+    if (ok && typeof val === "number" && Number.isFinite(val)) return val
+  }
+  return null
+}
 
 // Converte de forma robusta: usa `conversions`; se vier 0 (Statistics API
 // pode falhar/rate-limit), cai pra contagem de itens com receita > 0 —
@@ -309,16 +353,16 @@ export async function buildFunnel(
 
   const [camp7Res, camp30Res, flow7Res, flow30Res, bench, weeklyRes] = await Promise.all([
     admin.from("omnisend_campaign_metrics")
-      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
+      .select("campaign_id, recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
       .eq("store_id", storeId).eq("period_label", "7d"),
     admin.from("omnisend_campaign_metrics")
-      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time, bounced")
+      .select("campaign_id, recipients, delivered, opened, clicked, conversions, conversion_value, send_time, bounced")
       .eq("store_id", storeId).eq("period_label", "30d"),
     admin.from("omnisend_flow_metrics")
-      .select("recipients, delivered, opened, clicked, conversions, conversion_value")
+      .select("flow_id, recipients, delivered, opened, clicked, conversions, conversion_value")
       .eq("store_id", storeId).eq("period_label", "7d"),
     admin.from("omnisend_flow_metrics")
-      .select("recipients, delivered, opened, clicked, conversions, conversion_value")
+      .select("flow_id, recipients, delivered, opened, clicked, conversions, conversion_value")
       .eq("store_id", storeId).eq("period_label", "30d"),
     getNetworkBenchmark(admin),
     admin.from("weekly_reports")
@@ -327,31 +371,22 @@ export async function buildFunnel(
       .order("week_start", { ascending: false }).limit(8),
   ])
 
-  const campaigns7 = camp7Res.data as FunnelRow[] | null
-  const campaigns30 = camp30Res.data as FunnelRow[] | null
-  const flows7 = flow7Res.data as FunnelRow[] | null
-  const flows30 = flow30Res.data as FunnelRow[] | null
+  // Dedup por id (cache grava múltiplas linhas por campanha/flow)
+  const campaigns7 = dedupRows(camp7Res.data as FunnelRow[] | null, "campaign_id")
+  const campaigns30 = dedupRows(camp30Res.data as FunnelRow[] | null, "campaign_id")
+  const flows7 = dedupRows(flow7Res.data as FunnelRow[] | null, "flow_id")
+  const flows30 = dedupRows(flow30Res.data as FunnelRow[] | null, "flow_id")
 
-  // Sparklines de 8 semanas via weekly_reports (defensivo: JSONB incerto)
+  // Sparklines de 8 semanas via weekly_reports — paths reais do formato
+  // WeeklyReportMetrics (opens.rate, clicks.rate, campaigns_sent, revenue.current)
   const weeks = ((weeklyRes.data ?? []) as Array<{ week_start: string; metrics: Record<string, unknown> | null }>)
-  const metricSeries = (path: string): number[] => {
-    return weeks.map((w) => {
-      const m = w.metrics
-      if (!m) return null
-      const parts = path.split(".")
-      let val: unknown = m
-      for (const p of parts) {
-        if (val == null || typeof val !== "object") return null
-        val = (val as Record<string, unknown>)[p]
-      }
-      return typeof val === "number" ? val : null
-    }).filter((v): v is number => v != null).reverse()
-  }
+  const series = (...paths: string[]): number[] =>
+    weeks.map((w) => pickNum(w.metrics, ...paths)).filter((v): v is number => v != null).reverse()
   const trends = {
-    open: metricSeries("open_rate"),
-    click: metricSeries("click_rate"),
-    conv: metricSeries("conversion_rate"),
-    sent: metricSeries("sent"),
+    open: series("opens.rate", "open_rate"),
+    click: series("clicks.rate", "click_rate"),
+    conv: series("conversion_rate"),
+    sent: series("campaigns_sent", "sent"),
   }
   // Automações não têm trend semanal separado no weekly_reports
   const emptyTrends = { open: [], click: [], conv: [], sent: [] }
@@ -407,11 +442,11 @@ export async function buildPareto(
 ): Promise<ParetoItem[]> {
   const { data: flowsRaw } = await admin
     .from("omnisend_flow_metrics")
-    .select("flow_name, flow_status, open_rate, click_rate, conversion_value, recipients")
+    .select("flow_id, flow_name, flow_status, open_rate, click_rate, conversion_value, recipients")
     .eq("store_id", storeId)
     .eq("period_label", "30d")
 
-  const flows = (flowsRaw ?? []) as Array<Record<string, unknown>>
+  const flows = dedupRows(flowsRaw as FunnelRow[] | null, "flow_id")
 
   const { data: reportsRaw } = await admin
     .from("weekly_reports")
@@ -539,24 +574,15 @@ export async function buildHistory(
     ]
   }
 
-  const extract = (w: typeof weeks[0], path: string): number | null => {
-    const m = w.metrics
-    if (!m) return null
-    const parts = path.split(".")
-    let val: unknown = m
-    for (const p of parts) {
-      if (val == null || typeof val !== "object") return null
-      val = (val as Record<string, unknown>)[p]
-    }
-    return typeof val === "number" ? val : null
-  }
+  const extract = (w: typeof weeks[0], paths: string[]): number | null =>
+    pickNum(w.metrics, ...paths)
 
   // "invert": métrica onde subir é ruim (descadastro). format "intK": milhar (4.2k)
-  const buildRow = (label: string, path: string, format: "pct" | "money" | "intK", invert = false): HistoryRow => {
-    const current = extract(weeks[0]!, path)
-    const prevValues = weeks.slice(1).map((w) => extract(w, path)).filter((v): v is number => v != null)
+  const buildRow = (label: string, paths: string[], format: "pct" | "money" | "intK", invert = false): HistoryRow => {
+    const current = extract(weeks[0]!, paths)
+    const prevValues = weeks.slice(1).map((w) => extract(w, paths)).filter((v): v is number => v != null)
     const avg = prevValues.length > 0 ? prevValues.reduce((a, b) => a + b, 0) / prevValues.length : null
-    const trend = weeks.map((w) => extract(w, path)).filter((v): v is number => v != null).reverse()
+    const trend = weeks.map((w) => extract(w, paths)).filter((v): v is number => v != null).reverse()
 
     if (current == null || avg == null) {
       return { metric: label, now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Dados insuficientes", trend }
@@ -584,15 +610,18 @@ export async function buildHistory(
     }
   }
 
-  return [
-    buildRow("Abertura média", "open_rate", "pct"),
-    buildRow("Receita atribuída", "revenue.total", "money"),
-    buildRow("Recuperação cart", "revenue.flow", "money"),
-    buildRow("CTR", "click_rate", "pct"),
-    buildRow("Conversão do clique", "conversion_rate", "pct"),
-    buildRow("Lista engajados 30d", "engaged_leads", "intK"),
-    buildRow("Taxa de descadastro", "unsubscribe_rate", "pct", true),
+  // Paths reais do WeeklyReportMetrics (com fallback legado)
+  const rows = [
+    buildRow("Abertura média", ["opens.rate", "open_rate"], "pct"),
+    buildRow("Receita total", ["revenue.current", "revenue.total"], "money"),
+    buildRow("Receita de flows", ["flows.revenue_total", "revenue.flow"], "money"),
+    buildRow("CTR", ["clicks.rate", "click_rate"], "pct"),
+    buildRow("Pedidos pagos", ["paid_orders.count"], "intK"),
+    buildRow("Campanhas enviadas", ["campaigns_sent", "sent"], "intK"),
   ]
+  // Só retorna métricas com algum dado real (evita linhas "—" vazias)
+  const withData = rows.filter((r) => r.now !== "—")
+  return withData.length > 0 ? withData : rows.slice(0, 3)
 }
 
 /* ────────── ABA 4: Campanhas ────────── */
@@ -646,15 +675,14 @@ export async function buildAutomations(
 ): Promise<AutomationCard[]> {
   const { data: rows } = await admin
     .from("omnisend_flow_metrics")
-    .select("flow_name, flow_status, trigger_type, recipients, open_rate, click_rate, conversions, conversion_value")
+    .select("flow_id, flow_name, flow_status, trigger_type, recipients, open_rate, click_rate, conversions, conversion_value")
     .eq("store_id", storeId)
     .eq("period_label", "30d")
     .order("conversion_value", { ascending: false })
-    .limit(15)
 
   if (!rows || rows.length === 0) return []
 
-  const flows = rows as unknown as Array<{
+  const flows = (dedupRows(rows as FunnelRow[] | null, "flow_id")).slice(0, 15) as unknown as Array<{
     flow_name: string
     flow_status: string | null
     trigger_type: string | null
@@ -709,18 +737,16 @@ export async function buildPerformance(
       .maybeSingle(),
     admin
       .from("omnisend_campaign_metrics")
-      .select("campaign_name, recipients, open_rate, clicked, conversion_value")
+      .select("campaign_id, campaign_name, recipients, open_rate, clicked, conversion_value")
       .eq("store_id", storeId)
       .eq("period_label", period)
-      .order("conversion_value", { ascending: false })
-      .limit(5),
+      .order("conversion_value", { ascending: false }),
     admin
       .from("omnisend_flow_metrics")
-      .select("flow_name, flow_status, recipients, open_rate, clicked, conversion_value")
+      .select("flow_id, flow_name, flow_status, recipients, open_rate, clicked, conversion_value")
       .eq("store_id", storeId)
       .eq("period_label", period)
-      .order("conversion_value", { ascending: false })
-      .limit(5),
+      .order("conversion_value", { ascending: false }),
     admin
       .from("weekly_reports")
       .select("week_start, metrics")
@@ -752,24 +778,25 @@ export async function buildPerformance(
   const smsRevenue = 0
   const smsPercent = 0
 
-  const campaigns = (campaignsRes.data ?? []) as unknown as Array<{
+  // Dedup por id (cache acumula múltiplas linhas), depois top 5
+  const campaigns = (dedupRows(campaignsRes.data as FunnelRow[] | null, "campaign_id") as unknown as Array<{
     campaign_name: string; recipients: number | null; open_rate: number | null; clicked: number | null; conversion_value: number | null
-  }>
-  const flows = (flowsRes.data ?? []) as unknown as Array<{
+  }>)
+    .sort((a, b) => (b.conversion_value ?? 0) - (a.conversion_value ?? 0))
+  const flows = (dedupRows(flowsRes.data as FunnelRow[] | null, "flow_id") as unknown as Array<{
     flow_name: string; flow_status: string | null; recipients: number | null; open_rate: number | null; clicked: number | null; conversion_value: number | null
-  }>
+  }>)
+    .sort((a, b) => (b.conversion_value ?? 0) - (a.conversion_value ?? 0))
 
-  // Contagem total de envios/flows ativos (não só top 5)
-  const [{ count: campanhasEnvios }, { count: flowsAtivos }] = await Promise.all([
-    admin.from("omnisend_campaign_metrics").select("campaign_id", { count: "exact", head: true }).eq("store_id", storeId).eq("period_label", period),
-    admin.from("omnisend_flow_metrics").select("flow_id", { count: "exact", head: true }).eq("store_id", storeId).eq("period_label", period).neq("flow_status", "paused"),
-  ])
+  // Contagem distinta (não count exact que infla com duplicatas)
+  const campanhasEnvios = campaigns.length
+  const flowsAtivos = flows.filter((f) => f.flow_status !== "paused").length
 
   const avgCampOpen = campaigns.length > 0
     ? campaigns.reduce<number>((a, c) => a + (c.open_rate ?? 0), 0) / campaigns.length
     : 30
 
-  const topCampaigns: PerfTableRow[] = campaigns.map((c) => ({
+  const topCampaigns: PerfTableRow[] = campaigns.slice(0, 5).map((c) => ({
     name: c.campaign_name ?? "—",
     sends: c.recipients ?? 0,
     openRate: c.open_rate,
@@ -779,7 +806,7 @@ export async function buildPerformance(
     paused: false,
   }))
 
-  const topFlows: PerfTableRow[] = flows.map((f) => ({
+  const topFlows: PerfTableRow[] = flows.slice(0, 5).map((f) => ({
     name: f.flow_name ?? "—",
     sends: f.recipients ?? 0,
     openRate: f.open_rate,
@@ -789,25 +816,10 @@ export async function buildPerformance(
     paused: f.flow_status === "paused",
   }))
 
-  // Deltas + sparklines via weekly_reports (defensivo: formato JSONB incerto)
+  // Deltas + sparklines via weekly_reports — paths reais (revenue.current, paid_orders.count)
   const weeks = ((reportsRes.data ?? []) as Array<{ week_start: string; metrics: Record<string, unknown> | null }>)
-  const extractRevenue = (m: Record<string, unknown> | null): number | null => {
-    if (!m) return null
-    const rev = (m as { revenue?: { total?: number } }).revenue
-    if (rev && typeof rev.total === "number") return rev.total
-    if (typeof (m as { total_revenue?: number }).total_revenue === "number") return (m as { total_revenue: number }).total_revenue
-    return null
-  }
-  const extractOrders = (m: Record<string, unknown> | null): number | null => {
-    if (!m) return null
-    const o = (m as { orders?: { total?: number } }).orders
-    if (o && typeof o.total === "number") return o.total
-    if (typeof (m as { total_orders?: number }).total_orders === "number") return (m as { total_orders: number }).total_orders
-    return null
-  }
-
-  const revSeries = weeks.map((w) => extractRevenue(w.metrics)).filter((v): v is number => v != null).reverse()
-  const ordSeries = weeks.map((w) => extractOrders(w.metrics)).filter((v): v is number => v != null).reverse()
+  const revSeries = weeks.map((w) => pickNum(w.metrics, "revenue.current", "revenue.total", "total_revenue")).filter((v): v is number => v != null).reverse()
+  const ordSeries = weeks.map((w) => pickNum(w.metrics, "paid_orders.count", "orders.total", "total_orders")).filter((v): v is number => v != null).reverse()
 
   const halfDelta = (series: number[]): number | null => {
     if (series.length < 4) return null
