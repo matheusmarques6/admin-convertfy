@@ -2,7 +2,8 @@
 -- Block types expansion — Epic AE
 --
 -- Adiciona 9 novos tipos a `email_blocks.block_type` pra cobrir os
--- formatos de email que aparecem na lista do user (welcome 1-8 Ozoric):
+-- formatos de email padrão de welcome que não cabiam nos 10 tipos
+-- originais (Epic 8/9 Klaviyo workspace):
 --
 --   header         — cabeçalho do email com logo
 --   headline       — título isolado destacado (manchete)
@@ -42,7 +43,7 @@ ALTER TABLE email_blocks
     'divider',
     'spacer',
     'social',
-    -- Tipos novos (expansão Ozoric 2026-06)
+    -- Tipos novos (expansão de welcome universal)
     'header',
     'headline',
     'features',

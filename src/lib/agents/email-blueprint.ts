@@ -25,9 +25,10 @@ export const DEFAULT_BLUEPRINTS: Record<
   Record<number, BlueprintDef>
 > = {
   welcome: {
-    // Composição Ozoric (welcome 1-8) — fonte canônica espelha a
-    // migration 20260627b_welcome_blueprints_ozoric.sql. Usado como
-    // fallback quando email_blueprints não tem row pra (welcome, N).
+    // Composição padrão universal (welcome 1-8) — fonte canônica
+    // espelha a migration 20260627b_welcome_blueprints_default.sql.
+    // Usado como fallback quando email_blueprints não tem row pra
+    // (welcome, N). Toda loja seedada herda essa estrutura por default.
     1: {
       objective:
         "Boas-vindas + apresentação da marca. Cria pertencimento e desejo no primeiro contato.",
@@ -107,7 +108,7 @@ export const DEFAULT_BLUEPRINTS: Record<
       objective:
         "Diferenciação via comparação direta com concorrentes. Mostra superioridade de forma objetiva.",
       messaging:
-        "Tabela comparativa Ozoric vs outras lojas. Tom direto, factual.",
+        "Tabela comparativa <brand> vs outras lojas. Tom direto, factual.",
       subject_hint: "<brand> vs outras lojas — você decide",
       blocks: [
         { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
