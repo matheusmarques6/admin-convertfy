@@ -25,14 +25,26 @@ export interface FunnelStage {
   pct: number
   delta: number
   isGargalo: boolean
+  trend: number[]
+  bench: number | null
 }
 
 export interface FunnelResult {
   stages: FunnelStage[]
   gargaloLabel: string | null
   gargaloDelta: number | null
+  gargaloKey: string | null
   insightTitle: string
   insightBody: string
+  revenueImpact: number
+  benchmarkOpen: number
+  benchmarkClick: number
+  benchmarkConvert: number
+  expectedOpen: number
+  realOpen: number
+  openDeltaPp: number
+  dateRangeStart: string
+  dateRangeEnd: string
 }
 
 export interface ParetoItem {
@@ -109,6 +121,30 @@ function pctChange(current: number, previous: number): number {
 
 /* ────────── ABA 1: Funil & Gargalo ────────── */
 
+async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: number; click: number; convert: number; deliv: number }> {
+  const { data } = await admin
+    .from("omnisend_campaign_metrics")
+    .select("recipients, delivered, opened, clicked, conversions")
+    .eq("period_label", "30d")
+    .limit(500)
+
+  const rows = (data ?? []) as Array<Record<string, number | null>>
+  if (rows.length === 0) return { open: 30, click: 35, convert: 8, deliv: 98 }
+
+  const totSent = rows.reduce<number>((a, r) => a + (r.recipients || 0), 0)
+  const totDeliv = rows.reduce<number>((a, r) => a + (r.delivered || 0), 0)
+  const totOpen = rows.reduce<number>((a, r) => a + (r.opened || 0), 0)
+  const totClick = rows.reduce<number>((a, r) => a + (r.clicked || 0), 0)
+  const totConv = rows.reduce<number>((a, r) => a + (r.conversions || 0), 0)
+
+  return {
+    deliv: totSent > 0 ? (totDeliv / totSent) * 100 : 98,
+    open: totDeliv > 0 ? (totOpen / totDeliv) * 100 : 30,
+    click: totOpen > 0 ? (totClick / totOpen) * 100 : 35,
+    convert: totClick > 0 ? (totConv / totClick) * 100 : 8,
+  }
+}
+
 export async function buildFunnel(
   admin: SupabaseClient,
   storeId: string,
@@ -116,17 +152,22 @@ export async function buildFunnel(
 ): Promise<FunnelResult> {
   const sym = cs(currency)
 
-  const { data: campaigns } = await admin
-    .from("omnisend_campaign_metrics")
-    .select("recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate")
-    .eq("store_id", storeId)
-    .eq("period_label", "7d")
+  const [campaignsRes, campaigns30dRes, bench] = await Promise.all([
+    admin
+      .from("omnisend_campaign_metrics")
+      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
+      .eq("store_id", storeId)
+      .eq("period_label", "7d"),
+    admin
+      .from("omnisend_campaign_metrics")
+      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
+      .eq("store_id", storeId)
+      .eq("period_label", "30d"),
+    getNetworkBenchmark(admin),
+  ])
 
-  const { data: campaigns30d } = await admin
-    .from("omnisend_campaign_metrics")
-    .select("recipients, delivered, opened, clicked, conversions, conversion_value")
-    .eq("store_id", storeId)
-    .eq("period_label", "30d")
+  const campaigns = campaignsRes.data
+  const campaigns30d = campaigns30dRes.data
 
   const sum = (rows: unknown[] | null, key: string): number =>
     (rows ?? []).reduce<number>((acc, r) => acc + (Number((r as Record<string, unknown>)[key]) || 0), 0)
@@ -155,11 +196,11 @@ export async function buildFunnel(
   const convPct30d = click30d > 0 ? conv30d / click30d : 0
 
   const stages: FunnelStage[] = [
-    { key: "sent", label: "Enviados", volume: sent7d, pct: 1, delta: pctChange(sent7d, sent30d / 4), isGargalo: false },
-    { key: "delivered", label: "Entregues", volume: deliv7d, pct: delivPct7d, delta: pctChange(delivPct7d, delivPct30d), isGargalo: false },
-    { key: "opened", label: "Abertos", volume: open7d, pct: openPct7d, delta: pctChange(openPct7d, openPct30d), isGargalo: false },
-    { key: "clicked", label: "Clicaram", volume: click7d, pct: clickPct7d, delta: pctChange(clickPct7d, clickPct30d), isGargalo: false },
-    { key: "converted", label: "Converteram", volume: conv7d, pct: convPct7d, delta: pctChange(convPct7d, convPct30d), isGargalo: false },
+    { key: "sent", label: "Enviados", volume: sent7d, pct: 1, delta: pctChange(sent7d, sent30d / 4), isGargalo: false, trend: [], bench: null },
+    { key: "delivered", label: "Entregues", volume: deliv7d, pct: delivPct7d, delta: pctChange(delivPct7d, delivPct30d), isGargalo: false, trend: [], bench: bench.deliv },
+    { key: "opened", label: "Abertos", volume: open7d, pct: openPct7d, delta: pctChange(openPct7d, openPct30d), isGargalo: false, trend: [], bench: bench.open },
+    { key: "clicked", label: "Clicaram", volume: click7d, pct: clickPct7d, delta: pctChange(clickPct7d, clickPct30d), isGargalo: false, trend: [], bench: bench.click },
+    { key: "converted", label: "Converteram", volume: conv7d, pct: convPct7d, delta: pctChange(convPct7d, convPct30d), isGargalo: false, trend: [], bench: bench.convert },
   ]
 
   const candidates = stages.slice(2)
@@ -174,14 +215,34 @@ export async function buildFunnel(
     ? Math.abs(gargalo.delta / 100) * (gargalo.volume / gargalo.pct) * avgRevPerConv
     : 0
 
+  const expectedOpen = Math.round(deliv7d * (bench.open / 100))
+  const openDeltaPp = (openPct7d * 100) - bench.open
+
+  const dates = ((campaigns ?? []) as Array<{ send_time: string | null }>)
+    .map((c) => c.send_time)
+    .filter((d): d is string => !!d)
+    .sort()
+  const dateStart = dates[0] ? new Date(dates[0]).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : ""
+  const dateEnd = dates[dates.length - 1] ? new Date(dates[dates.length - 1]!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : ""
+
   return {
     stages,
     gargaloLabel: gargalo?.label ?? null,
     gargaloDelta: gargalo?.delta ?? null,
+    gargaloKey: gargalo?.key ?? null,
     insightTitle: gargalo ? `Gargalo: ${gargalo.label}` : "Funil saudável",
     insightBody: gargalo
-      ? `${gargalo.label} caiu ${Math.abs(gargalo.delta).toFixed(1)}% vs média 30d. Receita estimada perdida: ${fmtMoney(revenueImpact, sym)}. Foco: melhorar esta etapa do funil.`
-      : "Nenhum gargalo significativo detectado. Todas as etapas estão dentro da variação normal.",
+      ? `${gargalo.label} caiu ${Math.abs(gargalo.delta).toFixed(1)}% vs média 30d. Receita estimada perdida: ${fmtMoney(revenueImpact, sym)}.`
+      : "Nenhum gargalo significativo detectado.",
+    revenueImpact,
+    benchmarkOpen: bench.open,
+    benchmarkClick: bench.click,
+    benchmarkConvert: bench.convert,
+    expectedOpen,
+    realOpen: open7d,
+    openDeltaPp,
+    dateRangeStart: dateStart,
+    dateRangeEnd: dateEnd,
   }
 }
 

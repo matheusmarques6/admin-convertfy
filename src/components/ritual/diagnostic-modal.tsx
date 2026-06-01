@@ -193,11 +193,21 @@ export function RitualDiagnosticModal({
     }>
     diagnostic?: {
       funnel?: {
-        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>
+        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
         gargaloLabel: string | null
         gargaloDelta: number | null
+        gargaloKey: string | null
         insightTitle: string
         insightBody: string
+        revenueImpact: number
+        benchmarkOpen: number
+        benchmarkClick: number
+        benchmarkConvert: number
+        expectedOpen: number
+        realOpen: number
+        openDeltaPp: number
+        dateRangeStart: string
+        dateRangeEnd: string
       }
       pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
       history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
@@ -429,7 +439,7 @@ export function RitualDiagnosticModal({
 
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={latestReport} diag={diag?.funnel} />}
+              {activeTab === "funil" && <FunilTab report={latestReport} diag={diag?.funnel} cs={currencySymbol} />}
               {activeTab === "problemas" && <ParetoTab report={latestReport} diag={diag?.pareto} />}
               {activeTab === "comparativo" && <HistoricoTab reports={allReports} diag={diag?.history} />}
               {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} diagCampaigns={diag?.campaigns} />}
@@ -573,57 +583,250 @@ function StoreHeader({
 
 /* ────────── Tab: Funil ────────── */
 
-function FunilTab({ report, diag }: {
+function FunilTab({ report, diag, cs = "R$" }: {
   report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null
-  diag?: { stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>; gargaloLabel: string | null; gargaloDelta: number | null; insightTitle: string; insightBody: string }
+  diag?: {
+    stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
+    gargaloLabel: string | null; gargaloDelta: number | null; gargaloKey: string | null
+    insightTitle: string; insightBody: string
+    revenueImpact: number; benchmarkOpen: number
+    expectedOpen: number; realOpen: number; openDeltaPp: number
+    dateRangeStart: string; dateRangeEnd: string
+  }
+  cs?: string
 }) {
   const stages = diag?.stages ?? []
+  if (stages.length === 0) {
+    return <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>
+  }
+
+  const maxVolume = Math.max(...stages.map((s) => s.volume), 1)
+  const fmtMoney = (v: number) => v >= 1000 ? `${cs} ${(v / 1000).toFixed(1)}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+
   return (
     <div>
-      {diag?.insightBody && (
-        <div style={{ marginBottom: 16, padding: 14, background: diag.gargaloLabel ? C.warnBg : C.infoBg, border: `1px solid ${diag.gargaloLabel ? C.warnBorder : C.infoBorder}`, borderRadius: 8, fontSize: 13, color: C.g700, lineHeight: 1.55 }}>
-          <strong style={{ fontWeight: 600 }}>{diag.insightTitle}:</strong> {diag.insightBody}
+      {/* 3 KPI cards no topo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+        <KpiCard
+          label="Gargalo"
+          value={diag?.gargaloLabel ?? "Saudável"}
+          accent={diag?.gargaloDelta != null ? `${diag.gargaloDelta.toFixed(1)}%` : null}
+          accentTone="neg"
+          sub="vs semana anterior"
+        />
+        <KpiCard
+          label="Receita perdida est."
+          value={diag?.revenueImpact ? fmtMoney(diag.revenueImpact) : "—"}
+          accent={diag?.gargaloDelta != null ? `${diag.gargaloDelta.toFixed(0)}%` : null}
+          accentTone="neg"
+          sub="últimas 2 semanas"
+        />
+        <KpiCard
+          label="vs benchmark Convertfy"
+          value={diag ? `Abert. ${(diag.realOpen > 0 && stages[2] ? stages[2].pct * 100 : 0).toFixed(1)}%` : "—"}
+          accent={diag?.openDeltaPp != null ? `${diag.openDeltaPp >= 0 ? "+" : ""}${diag.openDeltaPp.toFixed(1)}pp` : null}
+          accentTone={diag?.openDeltaPp != null && diag.openDeltaPp < 0 ? "neg" : "pos"}
+          sub={`média rede: ${diag?.benchmarkOpen.toFixed(1)}%`}
+        />
+      </div>
+
+      {/* Card visual do funil */}
+      <div style={{
+        marginBottom: 14, padding: 16, background: C.white,
+        border: `1px solid ${C.border}`, borderRadius: 10,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Onde a receita está vazando</div>
+            <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>largura proporcional ao volume · vermelho = gargalo</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, fontSize: 11, color: C.g500 }}>
+            <span style={{ padding: "3px 8px", background: C.g50, border: `1px solid ${C.border}`, borderRadius: 4 }}>Omnisend</span>
+            {diag?.dateRangeStart && (
+              <span style={{ padding: "3px 8px", background: C.g50, border: `1px solid ${C.border}`, borderRadius: 4, ...TNUM }}>
+                {diag.dateRangeStart} → {diag.dateRangeEnd}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Funil visual */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0", gap: 0 }}>
+          {stages.map((s, i) => {
+            const widthPct = Math.max((s.volume / maxVolume) * 100, 14)
+            const nextWidthPct = i < stages.length - 1
+              ? Math.max(((stages[i + 1]!.volume) / maxVolume) * 100, 14)
+              : widthPct * 0.6
+            const isGargalo = s.isGargalo
+            const fill = isGargalo
+              ? "linear-gradient(180deg, #FCA5A5 0%, #EF4444 100%)"
+              : "linear-gradient(180deg, #DBEAFE 0%, #C7CDEF 100%)"
+            const stageHeight = 56
+            return (
+              <div key={s.key} style={{ width: "100%", position: "relative", display: "flex", justifyContent: "center" }}>
+                {/* Trapézio via clip-path */}
+                <div
+                  style={{
+                    width: `${widthPct}%`,
+                    height: stageHeight,
+                    background: fill,
+                    clipPath: `polygon(0 0, 100% 0, ${50 + (nextWidthPct / widthPct) * 50}% 100%, ${50 - (nextWidthPct / widthPct) * 50}% 100%)`,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: isGargalo ? "#fff" : C.g700,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    position: "relative",
+                  }}
+                >
+                  <div style={{ opacity: 0.85 }}>{s.label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0, marginTop: 2, ...TNUM, color: isGargalo ? "#fff" : C.g900 }}>
+                    {s.volume.toLocaleString("pt-BR")}
+                  </div>
+                </div>
+
+                {/* Label de conversão à esquerda */}
+                {i > 0 && (
+                  <div style={{
+                    position: "absolute", left: 12, top: 4,
+                    fontSize: 10.5, fontWeight: 600, color: s.delta < -3 ? C.neg : C.g500, ...TNUM,
+                  }}>
+                    {s.pct < 1 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: s.delta < -10 ? C.neg : C.g600 }}>
+                          ↓ {(s.pct * 100).toFixed(s.pct < 0.1 ? 1 : 0)}%
+                        </div>
+                        <div style={{ fontSize: 9, color: s.delta < -10 ? C.neg : C.g400, marginTop: 1 }}>
+                          {s.delta < -10 ? "queda crítica" : "conversão"}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Tag GARGALO à direita */}
+                {isGargalo && (
+                  <div style={{
+                    position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+                    padding: "5px 10px", background: C.negBg, border: `1px solid ${C.negBorder}`,
+                    borderRadius: 6, fontSize: 10, fontWeight: 700, color: C.neg, letterSpacing: "0.06em",
+                    display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.neg }} />
+                      GARGALO
+                    </div>
+                    <div style={{ fontSize: 9.5, fontWeight: 500, letterSpacing: 0, ...TNUM }}>
+                      {s.delta.toFixed(1)}% vs sem. anterior
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Painel de diagnóstico */}
+      {diag?.gargaloLabel && (
+        <div style={{
+          marginBottom: 14, padding: 16, background: C.white,
+          border: `1px solid ${C.border}`, borderRadius: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: C.brand, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <Zap size={14} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Fundo do funil · diagnóstico</div>
+              <div style={{ fontSize: 11, color: C.g500 }}>{diag.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{diag.gargaloDelta?.toFixed(1)}% vs sem. anterior</span></div>
+            </div>
+          </div>
+
+          {/* Esperado vs Real */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div style={{ padding: 12, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.pos, letterSpacing: "0.06em", textTransform: "uppercase" }}>Esperado</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.pos, marginTop: 4, ...TNUM }}>{diag.expectedOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 11, color: C.pos, marginTop: 2, opacity: 0.8 }}>benchmark {diag.benchmarkOpen.toFixed(1)}%</div>
+            </div>
+            <div style={{ padding: 12, background: C.negBg, border: `1px solid ${C.negBorder}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.neg, letterSpacing: "0.06em", textTransform: "uppercase" }}>Real</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.neg, marginTop: 4, ...TNUM }}>{diag.realOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 11, color: C.neg, marginTop: 2, opacity: 0.8 }}>{stages[2] ? (stages[2].pct * 100).toFixed(1) : "0"}% · abriu</div>
+            </div>
+          </div>
+
+          {/* Insight body */}
+          <div style={{ padding: 12, background: C.warnBg, border: `1px solid ${C.warnBorder}`, borderRadius: 8, fontSize: 12.5, color: C.g700, lineHeight: 1.55 }}>
+            <strong style={{ fontWeight: 600, color: C.warn }}>{diag.insightTitle}.</strong> {diag.insightBody}
+          </div>
         </div>
       )}
-      {stages.length > 0 ? (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "8px 12px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: "8px 8px 0 0" }}>
-            <span>Estágio</span><span>Barra</span><span style={{ textAlign: "right" }}>Volume</span><span style={{ textAlign: "right" }}>Taxa</span><span style={{ textAlign: "right" }}>vs 30d</span>
-          </div>
-          {stages.map((s) => (
-            <div key={s.key} style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "10px 12px", alignItems: "center", borderBottom: `1px solid ${C.g100}`, background: s.isGargalo ? C.warnBg : C.white }}>
-              <span style={{ fontSize: 12.5, fontWeight: s.isGargalo ? 600 : 400, color: s.isGargalo ? C.warn : C.g700 }}>{s.label}{s.isGargalo ? " *" : ""}</span>
-              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(s.pct * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.warn : C.brand, borderRadius: 4, transition: "width 200ms" }} />
+
+      {/* Tabela detalhada por estágio */}
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Detalhe por estágio</div>
+          <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>últimos 7 dias · vs média 30 dias · vs benchmark Convertfy</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 90px", padding: "8px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          <span>Estágio</span>
+          <span></span>
+          <span style={{ textAlign: "right" }}>Volume</span>
+          <span style={{ textAlign: "right" }}>Taxa</span>
+          <span style={{ textAlign: "right" }}>vs bench.</span>
+        </div>
+        {stages.map((s, i) => {
+          const benchDelta = s.bench != null ? (s.pct * 100) - s.bench : null
+          return (
+            <div key={s.key} style={{
+              display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 90px",
+              padding: "10px 16px", alignItems: "center",
+              borderBottom: i === stages.length - 1 ? "none" : `1px solid ${C.g100}`,
+              background: s.isGargalo ? "rgba(254, 226, 226, 0.4)" : C.white,
+            }}>
+              <span style={{ fontSize: 12.5, fontWeight: s.isGargalo ? 600 : 500, color: s.isGargalo ? C.neg : C.g700 }}>
+                {s.label}
+                {s.isGargalo && <span style={{ fontSize: 9, fontWeight: 700, marginLeft: 6, padding: "1px 5px", background: C.negBg, color: C.neg, borderRadius: 3, letterSpacing: "0.06em" }}>GARGALO</span>}
+              </span>
+              <div style={{ paddingRight: 12 }}>
+                <div style={{ height: 6, borderRadius: 3, background: C.g100, overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min((s.volume / maxVolume) * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.neg : C.brand }} />
+                </div>
               </div>
               <span style={{ textAlign: "right", fontSize: 12, fontWeight: 500, color: C.g900, ...TNUM }}>{s.volume.toLocaleString("pt-BR")}</span>
-              <span style={{ textAlign: "right", fontSize: 12, color: C.g700, ...TNUM }}>{(s.pct * 100).toFixed(1)}%</span>
-              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: s.delta >= 0 ? C.pos : C.neg, ...TNUM }}>{s.delta >= 0 ? "+" : ""}{s.delta.toFixed(1)}%</span>
+              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: C.g900, ...TNUM }}>{(s.pct * 100).toFixed(1)}%</span>
+              <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: benchDelta == null ? C.g400 : benchDelta >= 0 ? C.pos : C.neg, ...TNUM }}>
+                {benchDelta == null ? "—" : `${benchDelta >= 0 ? "+" : ""}${benchDelta.toFixed(1)}pp`}
+              </span>
             </div>
-          ))}
-        </div>
-      ) : report ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <SectionLabel>Destaques</SectionLabel>
-            {(report.highlights ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum destaque.</div> : (report.highlights ?? []).map((h, i) => (
-              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
-                <TrendingUp size={12} style={{ color: C.pos, flexShrink: 0, marginTop: 2 }} />
-                <span>{typeof h === "string" ? h : JSON.stringify(h)}</span>
-              </div>
-            ))}
-          </div>
-          <div>
-            <SectionLabel>Alertas</SectionLabel>
-            {(report.concerns ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum alerta.</div> : (report.concerns ?? []).map((c, i) => (
-              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
-                <TrendingDown size={12} style={{ color: C.neg, flexShrink: 0, marginTop: 2 }} />
-                <span>{typeof c === "string" ? c : JSON.stringify(c)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>}
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function KpiCard({ label, value, accent, accentTone, sub }: { label: string; value: string; accent: string | null; accentTone: "pos" | "neg"; sub: string }) {
+  const accentColor = accentTone === "pos" ? C.pos : C.neg
+  return (
+    <div style={{
+      padding: "14px 16px", background: C.white,
+      border: `1px solid ${C.border}`, borderRadius: 10,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.g900, letterSpacing: "-0.02em", ...TNUM }}>{value}</span>
+        {accent && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: accentColor, ...TNUM }}>{accent}</span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: C.g500, marginTop: 4, ...TNUM }}>{sub}</div>
     </div>
   )
 }
