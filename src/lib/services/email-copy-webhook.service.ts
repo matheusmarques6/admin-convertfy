@@ -58,6 +58,7 @@ interface BlueprintRow {
 }
 
 interface ReferenceRow {
+  id: string
   flow_type: string
   email_number: number | null
   name: string
@@ -163,7 +164,7 @@ export async function dispatchEmailCopyWebhook(
       .in("flow_type", flowTypes),
     admin
       .from("email_reference_templates")
-      .select("flow_type, email_number, name, copy, html")
+      .select("id, flow_type, email_number, name, copy, html")
       .in("flow_type", flowTypes)
       .eq("is_active", true)
       .order("created_at", { ascending: false }),
@@ -325,7 +326,7 @@ export async function dispatchEmailCopyWebhook(
         flow_type: f.flow_type,
         flow_name: f.name,
         reference: ref
-          ? { name: ref.name, copy: ref.copy, html: ref.html }
+          ? { id: ref.id, name: ref.name }
           : null,
         emails: flowEmails,
       }
