@@ -25,112 +25,144 @@ export const DEFAULT_BLUEPRINTS: Record<
   Record<number, BlueprintDef>
 > = {
   welcome: {
+    // Composição Ozoric (welcome 1-8) — fonte canônica espelha a
+    // migration 20260627b_welcome_blueprints_ozoric.sql. Usado como
+    // fallback quando email_blueprints não tem row pra (welcome, N).
     1: {
-      objective: "Dar boas-vindas e apresentar a marca",
+      objective:
+        "Boas-vindas + apresentação da marca. Cria pertencimento e desejo no primeiro contato.",
       messaging:
-        "Agradecer a inscrição, mostrar diferencial, oferecer cupom, apresentar produtos top",
-      subject_hint: "Bem-vindo(a)! Seu presente de boas-vindas está aqui",
+        "Tom aspiracional, foco no universo do público. Apresenta marca + produto-herói + cupom + produtos top.",
+      subject_hint: "Bem-vindo(a) à <brand>!",
       blocks: [
-        {
-          type: "hero",
-          label: "Hero",
-          purpose: "Banner de boas-vindas com imagem da marca",
-          needs_image: true,
-        },
-        {
-          type: "text",
-          label: "Texto",
-          purpose: "Apresentação da marca e diferencial",
-        },
-        {
-          type: "coupon",
-          label: "Cupom",
-          purpose: "Cupom de primeira compra",
-        },
-        {
-          type: "products",
-          label: "Produtos",
-          purpose: "Top 3-4 produtos da loja",
-        },
-        {
-          type: "footer",
-          label: "Rodapé",
-          purpose: "Links de navegação e redes sociais",
-        },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo da loja" },
+        { type: "hero", label: "Hero", purpose: "Banner aspiracional com produto-herói + headline + CTA", needs_image: true },
+        { type: "text", label: "See the World Differently", purpose: "Seção de copy explicando a tese da marca" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom de boas-vindas (ex: 10% OFF primeira compra)" },
+        { type: "cta", label: "Main CTA", purpose: "CTA principal logo após o cupom" },
+        { type: "features", label: "Features Icon Strip", purpose: "Faixa horizontal com 3-4 features (frete, troca, parcelamento)" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos top da loja em grade 2x2" },
+        { type: "cta", label: "Main Shop CTA", purpose: "CTA pra explorar a loja completa" },
+        { type: "social_proof", label: "Social Proof", purpose: "Número de clientes felizes ou rating médio" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão com links e copyright" },
       ],
     },
     2: {
-      objective: "Reforçar proposta de valor e criar urgência",
+      objective:
+        "Prova social e razões de escolha. Reforça diferenciais com manchete forte e cupom destacado.",
       messaging:
-        "Lembrar do cupom, mostrar benefícios exclusivos, destacar depoimentos ou diferenciais",
-      subject_hint: "Você esqueceu algo especial...",
+        "Foco em razões objetivas: por que escolher esta marca. Termina em CTA pra produtos.",
+      subject_hint: "Por que escolher a <brand>",
       blocks: [
-        { type: "hero", label: "Hero", purpose: "Reforço visual da marca", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Benefícios de ser cliente" },
-        { type: "coupon", label: "Cupom", purpose: "Lembrete do cupom de boas-vindas" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero", purpose: "Banner com produto destaque + CTA interno", needs_image: true },
+        { type: "headline", label: "Headline Block", purpose: "Manchete grandona destacada" },
+        { type: "text", label: "5 Reasons", purpose: "Seção com 5 razões pra escolher (numeradas)" },
+        { type: "coupon", label: "10% OFF Coupon", purpose: "Cupom de 10% OFF" },
+        { type: "cta", label: "CTA", purpose: "CTA logo após o cupom" },
+        { type: "headline", label: "Section Title", purpose: "Título da seção de produtos" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade 2x2" },
+        { type: "cta", label: "Main CTA", purpose: "CTA final pra loja" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     3: {
-      objective: "Aprofundar conhecimento de marca e gerar confiança",
-      messaging: "Contar a história da marca, mostrar bastidores, apresentar valores",
-      subject_hint: "Conheça quem está por trás da marca",
+      objective:
+        "Storytelling de fundação da marca. Constrói confiança e humaniza a relação com o cliente.",
+      messaging:
+        "História da marca em formato card + diferenciais. Tom mais íntimo, narrativo.",
+      subject_hint: "A história por trás da <brand>",
       blocks: [
-        { type: "hero", label: "Hero", purpose: "Imagem editorial / storytelling", needs_image: true },
-        { type: "text", label: "Texto", purpose: "História e valores da marca" },
-        { type: "cta", label: "CTA", purpose: "Convite para explorar a loja" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "story", label: "Brand Story Card", purpose: "Card com fundação, missão e valores da marca + CTA interno" },
+        { type: "text", label: "What Makes Different", purpose: "Seção destacando diferenciais únicos" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom de boas-vindas" },
+        { type: "cta", label: "CTA", purpose: "CTA após o cupom" },
+        { type: "headline", label: "Section Title", purpose: "Título da seção de produtos" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade" },
+        { type: "cta", label: "Main CTA", purpose: "CTA final" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     4: {
-      objective: "Educação de produto e cross-sell",
-      messaging: "Mostrar produtos complementares, dicas de uso, conteúdo educativo",
-      subject_hint: "Dicas exclusivas para você",
+      objective:
+        "Prova social via depoimentos reais. Hero com cupom em destaque, cards de depoimento, badge de avaliação.",
+      messaging:
+        "Foco em testimonials autênticos + selo de avaliação. Tom de confiança.",
+      subject_hint: "Veja o que estão falando da <brand>",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Dicas e educação de produto" },
-        { type: "products", label: "Produtos", purpose: "Produtos recomendados" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero", purpose: "Hero com fundo destacado", needs_image: true },
+        { type: "coupon", label: "Coupon over Hero", purpose: "Cupom destacado em cima do hero" },
+        { type: "cta", label: "Top CTA orange", purpose: "CTA laranja logo após o cupom" },
+        { type: "features", label: "Features Icon Strip", purpose: "Strip de features com ícones" },
+        { type: "headline", label: "Testimonials Headline", purpose: "Título da seção de depoimentos" },
+        { type: "testimonials", label: "Testimonial Cards", purpose: "2-3 cards com quotes de clientes (autor + texto + rating)" },
+        { type: "social_proof", label: "Review Badge", purpose: "Selo de avaliação (4.8/5 stars com X avaliações)" },
+        { type: "cta", label: "Final CTA", purpose: "CTA final pra explorar a loja" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     5: {
-      objective: "Último empurrão com urgência",
-      messaging: "Cupom expirando, escassez, prova social",
-      subject_hint: "Última chance: seu cupom está expirando!",
+      objective:
+        "Diferenciação via comparação direta com concorrentes. Mostra superioridade de forma objetiva.",
+      messaging:
+        "Tabela comparativa Ozoric vs outras lojas. Tom direto, factual.",
+      subject_hint: "<brand> vs outras lojas — você decide",
       blocks: [
-        { type: "hero", label: "Hero", purpose: "Visual de urgência", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Mensagem de urgência" },
-        { type: "coupon", label: "Cupom", purpose: "Cupom com prazo final" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "headline", label: "Headline Block", purpose: "Manchete principal da comparação" },
+        { type: "headline", label: "OZORIC Label", purpose: "Label de marca destacado" },
+        { type: "comparison", label: "Comparison Section", purpose: "Tabela com 4-6 linhas comparando atributos (preço, prazo, qualidade)" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom de boas-vindas" },
+        { type: "cta", label: "CTA", purpose: "CTA após cupom" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade" },
+        { type: "cta", label: "Main CTA", purpose: "CTA final" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     6: {
-      objective: "Engajar com lifestyle e comunidade",
-      messaging: "Conteúdo de lifestyle, dicas, comunidade da marca",
-      subject_hint: "Faça parte da nossa comunidade",
+      objective:
+        "Última chamada com urgência forte: prazo de 12h. Combina prova social + escassez + cupom.",
+      messaging:
+        "Tom de urgência leve mas firme. Mostra clientes recentes, escassez, tempo restante.",
+      subject_hint: "Últimas 12 horas: seu cupom está expirando",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Convite para a comunidade" },
-        { type: "cta", label: "CTA", purpose: "Link para redes sociais" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero", purpose: "Hero com produto destaque", needs_image: true },
+        { type: "social_proof", label: "412 Customers Block", purpose: "Bloco mostrando número de clientes recentes" },
+        { type: "urgency", label: "Scarcity Line", purpose: "Linha curta de escassez" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom com prazo de expiração" },
+        { type: "cta", label: "CTA", purpose: "CTA após o cupom" },
+        { type: "testimonials", label: "Testimonial Cards", purpose: "Cards de depoimentos pra reforçar confiança" },
+        { type: "urgency", label: "Expiration Urgency Block", purpose: "Bloco de urgência destacado (countdown)" },
+        { type: "cta", label: "CTA", purpose: "CTA final urgente" },
+        { type: "features", label: "Features Icon Strip", purpose: "Features pra reforçar valor" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     7: {
-      objective: "Recompra e fidelização",
-      messaging: "Incentivo para segunda compra, programa de fidelidade",
-      subject_hint: "Um agradecimento especial de volta",
+      objective:
+        "Última chance — formato curto e direto. Foco total no cupom expirando.",
+      messaging:
+        "Email enxuto: só cupom + CTA. Tom de urgência máxima.",
+      subject_hint: "Última chance — seu cupom expira hoje",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Agradecimento e convite de recompra" },
-        { type: "products", label: "Produtos", purpose: "Novidades ou best-sellers" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom com prazo expirando" },
+        { type: "cta", label: "CTA", purpose: "CTA urgente pra resgatar" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
     8: {
-      objective: "Feedback e NPS",
-      messaging: "Pedir avaliação, feedback, incentivar review",
-      subject_hint: "Conte pra gente: como está sendo a experiência?",
+      objective:
+        "Carta pessoal do fundador. Quebra padrão visual com formato puramente textual.",
+      messaging:
+        "Tom íntimo, formato carta. Sem CTAs comerciais — só conexão humana.",
+      subject_hint: "Uma mensagem pessoal pra você",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Pedido de feedback" },
-        { type: "cta", label: "CTA", purpose: "Link para pesquisa" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "letter", label: "Letter Card", purpose: "Carta pessoal do fundador (greeting + body longo + assinatura)" },
+        { type: "footer", label: "Plain Footer Line", purpose: "Footer simples, sem links, só copyright minimalista" },
       ],
     },
   },

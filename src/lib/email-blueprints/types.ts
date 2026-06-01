@@ -37,6 +37,16 @@ export const BLOCK_TYPE_OPTIONS = [
   { value: "image", label: "Image (banner sem texto)" },
   { value: "divider", label: "Divider (linha)" },
   { value: "spacer", label: "Spacer (espaço)" },
+  // ── Expansão Ozoric 2026-06 ──
+  { value: "header", label: "Header (cabeçalho com logo)" },
+  { value: "headline", label: "Headline (título destacado)" },
+  { value: "features", label: "Features (strip de ícones)" },
+  { value: "social_proof", label: "Social Proof (clientes/rating)" },
+  { value: "testimonials", label: "Testimonials (cards de depoimento)" },
+  { value: "urgency", label: "Urgency (escassez/expiração)" },
+  { value: "comparison", label: "Comparison (tabela comparativa)" },
+  { value: "story", label: "Story (card de história da marca)" },
+  { value: "letter", label: "Letter (texto formato carta)" },
 ] as const
 
 export type BlueprintBlockType = (typeof BLOCK_TYPE_OPTIONS)[number]["value"]

@@ -220,6 +220,16 @@ export type BlockType =
   | "divider"
   | "spacer"
   | "social"
+  // ── Expansão Ozoric 2026-06 (20260627_block_types_expansion) ──
+  | "header"
+  | "headline"
+  | "features"
+  | "social_proof"
+  | "testimonials"
+  | "urgency"
+  | "comparison"
+  | "story"
+  | "letter"
 
 export interface EmailBlock {
   id: string
@@ -243,6 +253,16 @@ export type BlockContent =
   | FooterBlockContent
   | ImageBlockContent
   | CtaBlockContent
+  // ── Expansão Ozoric 2026-06 ──
+  | HeaderBlockContent
+  | HeadlineBlockContent
+  | FeaturesBlockContent
+  | SocialProofBlockContent
+  | TestimonialsBlockContent
+  | UrgencyBlockContent
+  | ComparisonBlockContent
+  | StoryBlockContent
+  | LetterBlockContent
   | Record<string, never>
 
 export interface HeroBlockContent {
@@ -314,6 +334,64 @@ export interface CtaBlockContent {
   text: string
   url: string
   style?: "primary" | "secondary" | "ghost"
+}
+
+// ── Block contents (expansão Ozoric 2026-06) ───────────────
+// Schemas mínimos práticos — apenas campos que `renderEmailHtml` lê
+// no preview interno. A Fase 2 (LLM html.chain) é prompt-based e
+// aceita qualquer estrutura via JSONB.
+
+export interface HeaderBlockContent {
+  logo_url?: string
+  tagline?: string
+}
+
+export interface HeadlineBlockContent {
+  eyebrow?: string
+  headline?: string
+}
+
+export interface FeaturesBlockContent {
+  items?: Array<{ icon?: string; label: string }>
+}
+
+export interface SocialProofBlockContent {
+  number?: string
+  label?: string
+  rating?: number
+  body?: string
+}
+
+export interface TestimonialsBlockContent {
+  headline?: string
+  items?: Array<{ author: string; quote: string; rating?: number }>
+}
+
+export interface UrgencyBlockContent {
+  headline?: string
+  body?: string
+}
+
+export interface ComparisonBlockContent {
+  headline?: string
+  us_label?: string
+  them_label?: string
+  rows?: Array<{ label: string; us: string; them: string }>
+}
+
+export interface StoryBlockContent {
+  headline?: string
+  body?: string
+  cta_text?: string
+  cta_url?: string
+  image_url?: string
+}
+
+export interface LetterBlockContent {
+  greeting?: string
+  body?: string
+  signoff?: string
+  author?: string
 }
 
 // ── QA Checklist ────────────────────────────────────────────
