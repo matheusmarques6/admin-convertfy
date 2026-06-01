@@ -88,7 +88,40 @@ export interface AutomationCard {
   problem: string | null
 }
 
+export interface PerfTableRow {
+  name: string
+  sends: number
+  openRate: number | null
+  clicks: number
+  revenue: number
+  isOutlier: boolean
+  paused: boolean
+}
+
+export interface PerformanceResult {
+  faturamentoTotal: number
+  faturamentoDelta: number | null
+  pedidos: number
+  pedidosDelta: number | null
+  faturamentoTrend: number[]
+  pedidosTrend: number[]
+  receitaAtribuida: number
+  atribuidaPercent: number
+  atribuidaPedidos: number
+  emailRevenue: number
+  emailPercent: number
+  smsRevenue: number
+  smsPercent: number
+  campanhasRevenue: number
+  campanhasEnvios: number
+  flowsRevenue: number
+  flowsAtivos: number
+  topCampaigns: PerfTableRow[]
+  topFlows: PerfTableRow[]
+}
+
 export interface DiagnosticData {
+  performance: PerformanceResult
   funnel: FunnelResult
   pareto: ParetoItem[]
   history: HistoryRow[]
@@ -96,7 +129,10 @@ export interface DiagnosticData {
   automations: AutomationCard[]
   currency: string
   currencySymbol: string
+  period: string
 }
+
+export type DiagnosticPeriod = "7d" | "30d" | "90d" | "12m"
 
 function cs(currency: string): string {
   if (currency === "EUR") return "€"
@@ -503,6 +539,155 @@ export async function buildAutomations(
   })
 }
 
+/* ────────── ABA: Performance (financeiro) ────────── */
+
+export async function buildPerformance(
+  admin: SupabaseClient,
+  storeId: string,
+  period: DiagnosticPeriod,
+): Promise<PerformanceResult> {
+  const [summaryRes, campaignsRes, flowsRes, reportsRes] = await Promise.all([
+    admin
+      .from("store_revenue_summary")
+      .select("store_total_revenue, store_orders, omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, omnisend_total_orders")
+      .eq("store_id", storeId)
+      .eq("period_label", period)
+      .maybeSingle(),
+    admin
+      .from("omnisend_campaign_metrics")
+      .select("campaign_name, recipients, open_rate, clicked, conversion_value")
+      .eq("store_id", storeId)
+      .eq("period_label", period)
+      .order("conversion_value", { ascending: false })
+      .limit(5),
+    admin
+      .from("omnisend_flow_metrics")
+      .select("flow_name, flow_status, recipients, open_rate, clicked, conversion_value")
+      .eq("store_id", storeId)
+      .eq("period_label", period)
+      .order("conversion_value", { ascending: false })
+      .limit(5),
+    admin
+      .from("weekly_reports")
+      .select("week_start, metrics")
+      .eq("store_id", storeId)
+      .order("week_start", { ascending: false })
+      .limit(8),
+  ])
+
+  const summary = (summaryRes.data ?? {}) as {
+    store_total_revenue?: number | null
+    store_orders?: number | null
+    omnisend_total_revenue?: number | null
+    omnisend_campaign_revenue?: number | null
+    omnisend_flow_revenue?: number | null
+    omnisend_total_orders?: number | null
+  }
+
+  const faturamentoTotal = summary.store_total_revenue ?? 0
+  const pedidos = summary.store_orders ?? 0
+  const receitaAtribuida = summary.omnisend_total_revenue ?? 0
+  const campanhasRevenue = summary.omnisend_campaign_revenue ?? 0
+  const flowsRevenue = summary.omnisend_flow_revenue ?? 0
+  const atribuidaPedidos = summary.omnisend_total_orders ?? 0
+  const atribuidaPercent = faturamentoTotal > 0 ? (receitaAtribuida / faturamentoTotal) * 100 : 0
+
+  // Email vs SMS: o cache Omnisend é email; SMS fica 0 até termos canal SMS
+  const emailRevenue = receitaAtribuida
+  const emailPercent = faturamentoTotal > 0 ? (emailRevenue / faturamentoTotal) * 100 : 0
+  const smsRevenue = 0
+  const smsPercent = 0
+
+  const campaigns = (campaignsRes.data ?? []) as unknown as Array<{
+    campaign_name: string; recipients: number | null; open_rate: number | null; clicked: number | null; conversion_value: number | null
+  }>
+  const flows = (flowsRes.data ?? []) as unknown as Array<{
+    flow_name: string; flow_status: string | null; recipients: number | null; open_rate: number | null; clicked: number | null; conversion_value: number | null
+  }>
+
+  // Contagem total de envios/flows ativos (não só top 5)
+  const [{ count: campanhasEnvios }, { count: flowsAtivos }] = await Promise.all([
+    admin.from("omnisend_campaign_metrics").select("campaign_id", { count: "exact", head: true }).eq("store_id", storeId).eq("period_label", period),
+    admin.from("omnisend_flow_metrics").select("flow_id", { count: "exact", head: true }).eq("store_id", storeId).eq("period_label", period).neq("flow_status", "paused"),
+  ])
+
+  const avgCampOpen = campaigns.length > 0
+    ? campaigns.reduce<number>((a, c) => a + (c.open_rate ?? 0), 0) / campaigns.length
+    : 30
+
+  const topCampaigns: PerfTableRow[] = campaigns.map((c) => ({
+    name: c.campaign_name ?? "—",
+    sends: c.recipients ?? 0,
+    openRate: c.open_rate,
+    clicks: c.clicked ?? 0,
+    revenue: c.conversion_value ?? 0,
+    isOutlier: c.open_rate != null && c.open_rate < avgCampOpen * 0.7,
+    paused: false,
+  }))
+
+  const topFlows: PerfTableRow[] = flows.map((f) => ({
+    name: f.flow_name ?? "—",
+    sends: f.recipients ?? 0,
+    openRate: f.open_rate,
+    clicks: f.clicked ?? 0,
+    revenue: f.conversion_value ?? 0,
+    isOutlier: false,
+    paused: f.flow_status === "paused",
+  }))
+
+  // Deltas + sparklines via weekly_reports (defensivo: formato JSONB incerto)
+  const weeks = ((reportsRes.data ?? []) as Array<{ week_start: string; metrics: Record<string, unknown> | null }>)
+  const extractRevenue = (m: Record<string, unknown> | null): number | null => {
+    if (!m) return null
+    const rev = (m as { revenue?: { total?: number } }).revenue
+    if (rev && typeof rev.total === "number") return rev.total
+    if (typeof (m as { total_revenue?: number }).total_revenue === "number") return (m as { total_revenue: number }).total_revenue
+    return null
+  }
+  const extractOrders = (m: Record<string, unknown> | null): number | null => {
+    if (!m) return null
+    const o = (m as { orders?: { total?: number } }).orders
+    if (o && typeof o.total === "number") return o.total
+    if (typeof (m as { total_orders?: number }).total_orders === "number") return (m as { total_orders: number }).total_orders
+    return null
+  }
+
+  const revSeries = weeks.map((w) => extractRevenue(w.metrics)).filter((v): v is number => v != null).reverse()
+  const ordSeries = weeks.map((w) => extractOrders(w.metrics)).filter((v): v is number => v != null).reverse()
+
+  const halfDelta = (series: number[]): number | null => {
+    if (series.length < 4) return null
+    const mid = Math.floor(series.length / 2)
+    const older = series.slice(0, mid)
+    const recent = series.slice(mid)
+    const avgOld = older.reduce((a, b) => a + b, 0) / older.length
+    const avgNew = recent.reduce((a, b) => a + b, 0) / recent.length
+    return avgOld > 0 ? ((avgNew - avgOld) / avgOld) * 100 : null
+  }
+
+  return {
+    faturamentoTotal,
+    faturamentoDelta: halfDelta(revSeries),
+    pedidos,
+    pedidosDelta: halfDelta(ordSeries),
+    faturamentoTrend: revSeries.slice(-8),
+    pedidosTrend: ordSeries.slice(-8),
+    receitaAtribuida,
+    atribuidaPercent,
+    atribuidaPedidos,
+    emailRevenue,
+    emailPercent,
+    smsRevenue,
+    smsPercent,
+    campanhasRevenue,
+    campanhasEnvios: campanhasEnvios ?? campaigns.length,
+    flowsRevenue,
+    flowsAtivos: flowsAtivos ?? flows.filter((f) => f.flow_status !== "paused").length,
+    topCampaigns,
+    topFlows,
+  }
+}
+
 /* ────────── ORQUESTRADOR ────────── */
 
 export async function buildFullDiagnostic(
@@ -510,8 +695,10 @@ export async function buildFullDiagnostic(
   storeId: string,
   storeName: string,
   currency: string,
+  period: DiagnosticPeriod = "30d",
 ): Promise<DiagnosticData> {
-  const [funnel, campaigns, automations, history] = await Promise.all([
+  const [performance, funnel, campaigns, automations, history] = await Promise.all([
+    buildPerformance(admin, storeId, period),
     buildFunnel(admin, storeId, currency),
     buildCampaigns(admin, storeId, currency),
     buildAutomations(admin, storeId),
@@ -521,6 +708,7 @@ export async function buildFullDiagnostic(
   const pareto = await buildPareto(admin, storeId, storeName, funnel)
 
   return {
+    performance,
     funnel,
     pareto,
     history,
@@ -528,5 +716,6 @@ export async function buildFullDiagnostic(
     automations,
     currency,
     currencySymbol: cs(currency),
+    period,
   }
 }
