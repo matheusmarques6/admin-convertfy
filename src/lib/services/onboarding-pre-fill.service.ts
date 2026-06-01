@@ -152,3 +152,64 @@ export async function applyPreFillFromPreview(
     }
   }
 }
+
+export interface ReapplyPreFillStats {
+  onboardings_processed: number
+  errors: Array<{ onboarding_id: string; error: string }>
+}
+
+/**
+ * Re-aplica o pre-fill 03->05 sob demanda, sem precisar reavancar a fase.
+ *
+ * Util para lojas legadas que ja estavam em `emails_finais` antes do pre-fill
+ * existir (a transicao que dispara applyPreFillFromPreview ja passou), ou que
+ * tiveram os pilotos preenchidos depois. Idempotente: applyPreFillFromPreview
+ * nao sobrescreve sub_items editados manualmente e faz skip seguro quando a
+ * loja nao tem anchor de preview / tasks flow_* / pilotos preenchidos.
+ *
+ * Escopo: se `onboardingIds` vier, roda so neles; senao, roda em todos os
+ * onboardings `in_progress` que estao na coluna `emails_finais`.
+ */
+export async function reapplyPreFillForOnboardings(
+  onboardingIds: string[] | null,
+  actorId: string | null,
+): Promise<ReapplyPreFillStats> {
+  const admin = createAdminClient()
+  const stats: ReapplyPreFillStats = { onboardings_processed: 0, errors: [] }
+
+  let targetIds = onboardingIds
+  if (!targetIds || targetIds.length === 0) {
+    // Resolve o id da coluna emails_finais e filtra onboardings nela.
+    const { data: cols } = await admin
+      .from("operational_pipeline_columns")
+      .select("id")
+      .eq("slug", "emails_finais")
+    const colIds = (cols ?? []).map((c) => c.id as string)
+    if (colIds.length === 0) return stats
+
+    const { data: onbs } = await admin
+      .from("onboardings")
+      .select("id")
+      .eq("status", "in_progress")
+      .in("current_column_id", colIds)
+    targetIds = (onbs ?? []).map((o) => o.id as string)
+  }
+
+  for (const id of targetIds) {
+    try {
+      await applyPreFillFromPreview(id, actorId)
+      stats.onboardings_processed++
+    } catch (e) {
+      stats.errors.push({
+        onboarding_id: id,
+        error: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  log.info("Reapply pre-fill concluido", {
+    ...stats,
+    errors_count: stats.errors.length,
+  })
+  return stats
+}

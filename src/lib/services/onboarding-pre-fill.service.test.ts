@@ -106,7 +106,10 @@ vi.mock("./email-task-sync.service", () => ({
   ) => markPreviewEmailReady(storeId, flowType, emailNumber),
 }))
 
-import { applyPreFillFromPreview } from "./onboarding-pre-fill.service"
+import {
+  applyPreFillFromPreview,
+  reapplyPreFillForOnboardings,
+} from "./onboarding-pre-fill.service"
 
 const ONB_ID = "onb-1"
 const PREVIEW_ANCHOR_ID = "task-preview-anchor"
@@ -361,5 +364,28 @@ describe("applyPreFillFromPreview", () => {
     const calls = markPreviewEmailReady.mock.calls
     expect(calls).not.toContainEqual(["store-1", "welcome", 1])
     expect(calls.length).toBe(3)
+  })
+})
+
+describe("reapplyPreFillForOnboardings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("roda o pre-fill para os ids explicitos e conta os processados", async () => {
+    seed({ storeId: "store-1" })
+    const stats = await reapplyPreFillForOnboardings([ONB_ID], "actor-1")
+    expect(stats.onboardings_processed).toBe(1)
+    expect(stats.errors).toHaveLength(0)
+    // O pre-fill efetivamente rodou (propagou os 4 pilotos).
+    expect(markPreviewEmailReady.mock.calls.length).toBe(4)
+  })
+
+  it("nao lanca quando um id nao existe (skip seguro, conta como processado)", async () => {
+    seed({ storeId: "store-1" })
+    const stats = await reapplyPreFillForOnboardings(["inexistente"], null)
+    expect(stats.onboardings_processed).toBe(1)
+    expect(stats.errors).toHaveLength(0)
+    expect(markPreviewEmailReady).not.toHaveBeenCalled()
   })
 })
