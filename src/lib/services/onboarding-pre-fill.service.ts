@@ -9,6 +9,8 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { resolveSubItemEmailTarget } from "@/lib/email-task-sync/slug-mapping"
+import { markPreviewEmailReady } from "./email-task-sync.service"
 
 const log = logger.child("OnboardingPreFill")
 
@@ -52,7 +54,7 @@ export async function applyPreFillFromPreview(
 
   const { data: onb } = await admin
     .from("onboardings")
-    .select("id, current_version")
+    .select("id, current_version, store_id")
     .eq("id", onboardingId)
     .maybeSingle()
   if (!onb) return
@@ -131,5 +133,22 @@ export async function applyPreFillFromPreview(
       .from("tasks")
       .update({ metadata: { ...meta, sub_items: subItems } })
       .eq("id", flowTask.id)
+
+    // Propaga o piloto aprovado para o workspace de produção: marca o email
+    // correspondente como `ready`, pra aparecer com ✓ na lista (o designer
+    // finaliza só os restantes). Idempotente; não rebaixa approved/live.
+    if (onb.store_id) {
+      const emailTarget = resolveSubItemEmailTarget(
+        mapping.flowSlug,
+        mapping.subItemSlug,
+      )
+      if (emailTarget) {
+        await markPreviewEmailReady(
+          onb.store_id as string,
+          emailTarget.flowType,
+          emailTarget.emailNumber,
+        )
+      }
+    }
   }
 }

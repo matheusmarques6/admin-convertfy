@@ -269,7 +269,45 @@ async function ensureEmail(
   return created.id as string
 }
 
-// ── finish / approve ────────────────────────────────────────────────────
+/**
+ * Marca o email correspondente a um piloto aprovado no preview como `ready`
+ * no workspace de produção. Usado pelo pre-fill 03→05: garante flow+email e
+ * promove o status para `ready` (mesmo nível que o workspace conta como feito).
+ *
+ * Idempotente e não-rebaixante: só promove de draft/in_progress/copy_ready →
+ * ready; nunca rebaixa um email já `ready`/`approved`/`live`. Falhas são
+ * logadas mas não derrubam o caller (fire-and-forget pelo pre-fill).
+ */
+export async function markPreviewEmailReady(
+  storeId: string,
+  flowType: FlowType,
+  emailNumber: number,
+): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    const flowId = await ensureFlow(admin, storeId, flowType)
+    if (!flowId) return
+    const emailId = await ensureEmail(admin, flowId, emailNumber)
+
+    const { data: email } = await admin
+      .from("email_flow_emails")
+      .select("status")
+      .eq("id", emailId)
+      .maybeSingle()
+    // Não rebaixa estados terminais/avançados.
+    const terminal = ["ready", "approved", "live"]
+    if (email && terminal.includes(email.status as string)) return
+
+    await admin
+      .from("email_flow_emails")
+      .update({ status: "ready" })
+      .eq("id", emailId)
+      .not("status", "in", `(${terminal.join(",")})`)
+    log.info("preview email → ready", { storeId, flowType, emailNumber })
+  } catch (e) {
+    log.error("markPreviewEmailReady failed", { storeId, flowType, emailNumber, error: e })
+  }
+}
 
 export interface SyncFromEmailArgs {
   flowId: string
