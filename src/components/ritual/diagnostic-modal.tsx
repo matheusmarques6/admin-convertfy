@@ -229,7 +229,7 @@ export function RitualDiagnosticModal({
         emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
       }
       pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number; actions: Array<{ title: string; owner: string; effort: string; impact: string }> }>
-      history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+      history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string; trend: number[] }>
       campaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }>
       automations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }>
       currencySymbol?: string
@@ -1292,51 +1292,48 @@ function ParetoCard({ item, top, defaultOpen }: { item: ParetoItemT; top: boolea
 
 function HistoricoTab({ reports, diag }: {
   reports: Array<{ week_start: string; ai_summary?: string | null }>
-  diag?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+  diag?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string; trend: number[] }>
 }) {
   const rows = diag ?? []
   if (rows.length === 0 && reports.length === 0) {
     return <EmptyTab>Sem histórico semanal ainda.</EmptyTab>
   }
-  if (rows.length > 0) {
-    return (
-      <div>
-        <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Atual vs média das últimas semanas.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {rows.map((r, i) => {
-            const tone = r.deltaTone === "pos" ? C.pos : r.deltaTone === "neg" ? C.neg : C.g500
-            return (
-              <div key={i} style={{ padding: "14px 16px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{r.metric}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: tone, ...TNUM }}>
-                    {r.delta > 0 ? "+" : ""}{r.delta.toFixed(1)}%
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 20, fontSize: 12.5, color: C.g500 }}>
-                  <span>Atual: <strong style={{ color: C.g900, fontWeight: 600 }}>{r.now}</strong></span>
-                  <span>Média: <strong style={{ color: C.g700 }}>{r.avg}</strong></span>
-                </div>
-                {r.context && r.context !== "estável" && (
-                  <div style={{ marginTop: 6, fontSize: 11.5, color: C.g500, fontStyle: "italic" }}>{r.context}</div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
+  if (rows.length === 0) {
+    return <EmptyTab>Sem histórico suficiente para análise comparativa. Loja em ramp-up.</EmptyTab>
   }
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Últimas {reports.length} semanas.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {reports.slice(0, 8).map((r, i) => (
-          <div key={i} style={{ padding: "10px 14px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>{new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
-            <span style={{ fontSize: 11.5, color: C.g500 }}>{r.ai_summary?.slice(0, 60) ?? "—"}</span>
-          </div>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Comparativo histórico</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>esta semana vs média das últimas 8 semanas</div>
+        </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6 }}>admin · metrics_history</span>
+      </div>
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 80px 80px 90px 1.6fr", padding: "9px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          <span>Métrica</span>
+          <span style={{ textAlign: "right" }}>Sem. atual</span>
+          <span style={{ textAlign: "right" }}>Média 8 sem.</span>
+          <span style={{ textAlign: "center" }}>Trend</span>
+          <span>Contexto</span>
+        </div>
+        {rows.map((r, i) => {
+          const tone = r.deltaTone === "pos" ? C.pos : r.deltaTone === "neg" ? C.neg : C.g500
+          return (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 80px 80px 90px 1.6fr", padding: "11px 16px", alignItems: "center", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${C.g100}` }}>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: C.g700 }}>{r.metric}</span>
+              <span style={{ textAlign: "right", fontSize: 12.5, fontWeight: 700, color: tone, ...TNUM }}>{r.now}</span>
+              <span style={{ textAlign: "right", fontSize: 12, color: C.g500, ...TNUM }}>{r.avg}</span>
+              <span style={{ display: "flex", justifyContent: "center" }}>
+                {r.trend.length >= 2
+                  ? <Sparkline data={r.trend} tone={r.deltaTone === "pos" ? "pos" : "neg"} />
+                  : <span style={{ fontSize: 11, color: C.g300 }}>—</span>}
+              </span>
+              <span style={{ fontSize: 11.5, color: C.g500, lineHeight: 1.4, paddingLeft: 8 }}>{r.context}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
