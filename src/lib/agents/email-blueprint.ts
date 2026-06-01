@@ -196,15 +196,86 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   browse_abandonment: {
+    // Composição padrão universal (browse_abandonment 1-5) — fonte
+    // canônica espelha 20260627c_browse_abandonment_blueprints_default.sql.
     1: {
-      objective: "Mostrar produtos que o visitante navegou",
-      messaging: "Personalização com produtos vistos, recomendação complementar",
-      subject_hint: "Vimos que você gostou de...",
+      objective:
+        "Reengajar visitante que navegou produtos sem comprar. Tom amigável, sem pressão.",
+      messaging:
+        "Lembrete suave do produto visto. Hero com produto + cupom + CTA pra voltar.",
+      subject_hint: "Algo chamou sua atenção?",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Referência à navegação recente" },
+        { type: "header", label: "Header / Logo", purpose: "Cabeçalho com logo da loja" },
+        { type: "hero", label: "Hero", purpose: "Hero com produto que o visitante navegou + headline + CTA interno", needs_image: true },
+        { type: "coupon", label: "Cupom", purpose: "Cupom incentivo pra fechar a compra" },
+        { type: "cta", label: "CTA", purpose: "CTA logo após o cupom" },
         { type: "products", label: "Produtos", purpose: "Produtos navegados + similares" },
-        { type: "cta", label: "CTA", purpose: "Continuar comprando" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "cta", label: "CTA", purpose: "CTA final pra explorar produtos" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    2: {
+      objective:
+        "Segundo toque com razões objetivas pra decidir. Foca em desfazer dúvidas.",
+      messaging:
+        "Hero + produtos + cupom + 3 razões pra escolher + urgência leve.",
+      subject_hint: "Ainda pensando naqueles produtos?",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com produto navegado em destaque", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos navegados ou recomendados" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom de incentivo" },
+        { type: "cta", label: "CTA", purpose: "CTA após cupom" },
+        { type: "text", label: "3 Reasons", purpose: "Seção com 3 razões objetivas pra escolher (qualidade, garantia, prazo)" },
+        { type: "urgency", label: "Box Urgência", purpose: "Bloco destacado de urgência (estoque limitado ou cupom expirando)" },
+        { type: "cta", label: "CTA", purpose: "CTA final urgente" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    3: {
+      objective:
+        "Terceiro toque com urgência maior + prova social. Reward + review + fechamento emocional.",
+      messaging:
+        "Barra de urgência + recompensa + cupom + cards de review + texto de fechamento.",
+      subject_hint: "Seu produto está esperando por você",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com produto em destaque", needs_image: true },
+        { type: "urgency", label: "Barra de Urgência", purpose: "Barra fina de urgência no topo (últimas unidades ou countdown)" },
+        { type: "text", label: "Reward", purpose: "Bloco de recompensa/bônus pra incentivar a compra (frete grátis, brinde, etc.)" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom de desconto com código" },
+        { type: "cta", label: "CTA", purpose: "CTA após cupom" },
+        { type: "products", label: "Produtos", purpose: "Produtos navegados ou similares" },
+        { type: "testimonials", label: "Review", purpose: "Cards de review/depoimento de clientes que compraram" },
+        { type: "text", label: "Fechamento", purpose: "Texto curto de fechamento emocional pra reforçar urgência" },
+        { type: "cta", label: "CTA", purpose: "CTA final" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    4: {
+      objective:
+        "Surpresa positiva pra reativar lead frio. Tom leve, foco em produto + trust badges.",
+      messaging:
+        "Formato curto: hero + produtos + selos de confiança. Sem cupom — só lembrança visual.",
+      subject_hint: "Surpresa pra você",
+      blocks: [
+        { type: "header", label: "Header / Logo", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero", purpose: "Hero com produto novo ou destaque surpresa", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos navegados ou novidades" },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança (frete grátis, troca grátis, pagamento seguro)" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    5: {
+      objective:
+        "Última tentativa de reengajamento. Foco em produto + trust badges, sem cupom.",
+      messaging:
+        "Mesmo formato do E4 (hero + produtos + trust badges) mas com tom de última chamada.",
+      subject_hint: "Última chance — não perca essa oportunidade",
+      blocks: [
+        { type: "header", label: "Header / Logo", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero", purpose: "Hero com produto em destaque (tom de última chance)", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos navegados ou recomendados" },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
       ],
     },
   },
