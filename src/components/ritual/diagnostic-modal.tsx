@@ -1395,7 +1395,14 @@ interface AutomationRow {
 }
 
 function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[]; cs?: string }) {
-  if (automations.length === 0) {
+  // Dedup por flow_id (cache pode ter linhas repetidas), mantém maior receita
+  const dedupMap = new Map<string, AutomationRow>()
+  for (const a of automations) {
+    const ex = dedupMap.get(a.flow_id)
+    if (!ex || (a.conversion_value ?? 0) > (ex.conversion_value ?? 0)) dedupMap.set(a.flow_id, a)
+  }
+  const deduped = Array.from(dedupMap.values())
+  if (deduped.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
   // Ordena: problemas/pausadas primeiro
@@ -1405,7 +1412,7 @@ function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[
     if (a.click_rate != null && a.click_rate < 1 && (a.recipients ?? 0) > 50) return "CTR abaixo de 1% · revisar conteúdo/CTA"
     return null
   }
-  const sorted = [...automations].sort((a, b) => {
+  const sorted = [...deduped].sort((a, b) => {
     const pa = detectProblem(a) ? 0 : 1
     const pb = detectProblem(b) ? 0 : 1
     return pa - pb
