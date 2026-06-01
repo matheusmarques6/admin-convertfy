@@ -84,6 +84,7 @@ export interface HistoryRow {
   delta: number
   deltaTone: "pos" | "neg" | "neut"
   context: string
+  trend: number[]
 }
 
 export interface CampaignRow {
@@ -482,9 +483,9 @@ export async function buildHistory(
 
   if (weeks.length < 2) {
     return [
-      { metric: "Abertura média", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente" },
-      { metric: "Receita atribuída", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente" },
-      { metric: "CTR", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente" },
+      { metric: "Abertura média", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente · ramp-up", trend: [] },
+      { metric: "Receita atribuída", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente · ramp-up", trend: [] },
+      { metric: "CTR", now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Sem histórico suficiente · ramp-up", trend: [] },
     ]
   }
 
@@ -500,23 +501,36 @@ export async function buildHistory(
     return typeof val === "number" ? val : null
   }
 
-  const buildRow = (label: string, path: string, format: "pct" | "money"): HistoryRow => {
+  // "invert": métrica onde subir é ruim (descadastro). format "intK": milhar (4.2k)
+  const buildRow = (label: string, path: string, format: "pct" | "money" | "intK", invert = false): HistoryRow => {
     const current = extract(weeks[0]!, path)
     const prevValues = weeks.slice(1).map((w) => extract(w, path)).filter((v): v is number => v != null)
     const avg = prevValues.length > 0 ? prevValues.reduce((a, b) => a + b, 0) / prevValues.length : null
+    const trend = weeks.map((w) => extract(w, path)).filter((v): v is number => v != null).reverse()
 
     if (current == null || avg == null) {
-      return { metric: label, now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Dados insuficientes" }
+      return { metric: label, now: "—", avg: "—", delta: 0, deltaTone: "neut", context: "Dados insuficientes", trend }
     }
 
     const delta = avg > 0 ? ((current - avg) / avg) * 100 : 0
-    const tone: "pos" | "neg" | "neut" = Math.abs(delta) < 2 ? "neut" : delta > 0 ? "pos" : "neg"
-    const fmtNow = format === "pct" ? fmtPct(current) : fmtMoney(current, sym)
-    const fmtAvg = format === "pct" ? fmtPct(avg) : fmtMoney(avg, sym)
+    const improving = invert ? delta < 0 : delta > 0
+    const tone: "pos" | "neg" | "neut" = Math.abs(delta) < 2 ? "neut" : improving ? "pos" : "neg"
+    const fmtVal = (v: number) =>
+      format === "pct" ? fmtPct(v)
+      : format === "intK" ? (v >= 1000 ? `${(v / 1000).toFixed(1).replace(".", ",")}k` : Math.round(v).toLocaleString("pt-BR"))
+      : fmtMoney(v, sym)
+
+    let context = weeks[0]!.ai_summary?.slice(0, 70) ?? ""
+    if (!context) {
+      if (tone === "neut") context = "estável dentro do desvio padrão"
+      else if (label.includes("descadastro") && !improving) context = "subindo · sinal de irritação"
+      else if (label.includes("CTR") && improving) context = "sinal de qualidade do clique"
+      else context = improving ? "melhorando vs média" : "abaixo da média · revisar"
+    }
 
     return {
-      metric: label, now: fmtNow, avg: fmtAvg, delta: Math.round(delta * 10) / 10, deltaTone: tone,
-      context: weeks[0]!.ai_summary?.slice(0, 80) ?? (tone === "neut" ? "estável" : tone === "pos" ? "melhorando" : "em queda"),
+      metric: label, now: fmtVal(current), avg: fmtVal(avg),
+      delta: Math.round(delta * 10) / 10, deltaTone: tone, context, trend,
     }
   }
 
@@ -526,6 +540,8 @@ export async function buildHistory(
     buildRow("Recuperação cart", "revenue.flow", "money"),
     buildRow("CTR", "click_rate", "pct"),
     buildRow("Conversão do clique", "conversion_rate", "pct"),
+    buildRow("Lista engajados 30d", "engaged_leads", "intK"),
+    buildRow("Taxa de descadastro", "unsubscribe_rate", "pct", true),
   ]
 }
 
