@@ -129,7 +129,7 @@ export function renderEmailHtml(
       case "spacer":
         return `      <!-- SPACER -->
       <tr><td style="height:24px;line-height:24px;font-size:0;">&nbsp;</td></tr>`
-      // ── Expansão Ozoric 2026-06 ──
+      // ── Expansão welcome universal 2026-06 ──
       case "header": {
         const h = c as HeaderBlockContent
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->

@@ -220,7 +220,7 @@ export type BlockType =
   | "divider"
   | "spacer"
   | "social"
-  // ── Expansão Ozoric 2026-06 (20260627_block_types_expansion) ──
+  // ── Expansão welcome universal 2026-06 (20260627_block_types_expansion) ──
   | "header"
   | "headline"
   | "features"
@@ -253,7 +253,7 @@ export type BlockContent =
   | FooterBlockContent
   | ImageBlockContent
   | CtaBlockContent
-  // ── Expansão Ozoric 2026-06 ──
+  // ── Expansão welcome universal 2026-06 ──
   | HeaderBlockContent
   | HeadlineBlockContent
   | FeaturesBlockContent
@@ -336,7 +336,7 @@ export interface CtaBlockContent {
   style?: "primary" | "secondary" | "ghost"
 }
 
-// ── Block contents (expansão Ozoric 2026-06) ───────────────
+// ── Block contents (expansão welcome universal 2026-06) ───────────────
 // Schemas mínimos práticos — apenas campos que `renderEmailHtml` lê
 // no preview interno. A Fase 2 (LLM html.chain) é prompt-based e
 // aceita qualquer estrutura via JSONB.

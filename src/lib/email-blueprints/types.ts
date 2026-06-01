@@ -37,7 +37,7 @@ export const BLOCK_TYPE_OPTIONS = [
   { value: "image", label: "Image (banner sem texto)" },
   { value: "divider", label: "Divider (linha)" },
   { value: "spacer", label: "Spacer (espaço)" },
-  // ── Expansão Ozoric 2026-06 ──
+  // ── Expansão welcome universal 2026-06 ──
   { value: "header", label: "Header (cabeçalho com logo)" },
   { value: "headline", label: "Headline (título destacado)" },
   { value: "features", label: "Features (strip de ícones)" },

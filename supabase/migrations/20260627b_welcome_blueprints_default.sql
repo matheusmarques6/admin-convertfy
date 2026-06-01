@@ -1,8 +1,10 @@
 -- ============================================================
--- Welcome blueprints — composição Ozoric (welcome 1-8)
+-- Welcome blueprints — composição padrão universal (welcome 1-8)
 --
--- Substitui o `blocks` JSONB dos 8 emails do flow welcome pra refletir
--- a estrutura real usada nos emails da loja Ozoric (mandada pelo user).
+-- Define a estrutura `blocks` JSONB de cada um dos 8 emails do flow
+-- welcome como template default que toda loja nova herda via
+-- `seedBlocksFromBlueprint`. Não é específico de nenhuma loja —
+-- representa a receita genérica de welcome series do produto.
 --
 -- Os blocks usam os 9 tipos novos adicionados em
 -- `20260627_block_types_expansion.sql` (header, headline, features,
@@ -17,7 +19,7 @@
 -- Idempotente em ambiente novo (CI/db reset) e prod.
 -- ============================================================
 
--- E1 — Welcome to Ozoric (10 blocos)
+-- E1 — Welcome (10 blocos): boas-vindas + hero + cupom + produtos + social proof
 INSERT INTO email_blueprints (
   flow_type, email_number, objective, messaging, subject_hint, blocks
 )
@@ -47,7 +49,7 @@ SET
   blocks = EXCLUDED.blocks,
   updated_at = NOW();
 
--- E2 — Why Choose Ozoric (10 blocos)
+-- E2 — Why Choose (10 blocos): razões objetivas + manchete + produtos
 INSERT INTO email_blueprints (
   flow_type, email_number, objective, messaging, subject_hint, blocks
 )
@@ -59,7 +61,7 @@ VALUES (
   '[
     {"type":"header","label":"Header","purpose":"Cabeçalho com logo","needs_image":false},
     {"type":"hero","label":"Hero","purpose":"Banner com produto destaque + CTA interno","needs_image":true},
-    {"type":"headline","label":"Headline Block","purpose":"Manchete grandona destacada (ex: \"Why Choose Ozoric\")","needs_image":false},
+    {"type":"headline","label":"Headline Block","purpose":"Manchete grandona destacada (ex: \"Why Choose <brand>\")","needs_image":false},
     {"type":"text","label":"5 Reasons","purpose":"Seção com 5 razões pra escolher (numeradas)","needs_image":false},
     {"type":"coupon","label":"10% OFF Coupon","purpose":"Cupom de 10% OFF","needs_image":false},
     {"type":"cta","label":"CTA","purpose":"CTA logo após o cupom","needs_image":false},
@@ -143,7 +145,7 @@ INSERT INTO email_blueprints (
 VALUES (
   'welcome', 5,
   'Diferenciação via comparação direta com concorrentes. Mostra superioridade de forma objetiva.',
-  'Tabela comparativa Ozoric vs outras lojas. Tom direto, factual.',
+  'Tabela comparativa <brand> vs outras lojas. Tom direto, factual.',
   '<brand> vs outras lojas — você decide',
   '[
     {"type":"header","label":"Header","purpose":"Cabeçalho com logo","needs_image":false},
