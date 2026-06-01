@@ -14,7 +14,6 @@ import { logger } from "@/lib/logger"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
-  TopProduct,
 } from "@/types/email-workspace"
 
 const log = logger.child("EmailCopyWebhook")
@@ -66,6 +65,24 @@ interface ReferenceRow {
   html: string | null
 }
 
+interface TopProductRow {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  external_id: string | null
+  image_url: string | null
+  captured_at: string | null
+}
+
+interface CompetitorRow {
+  name: string
+  url: string | null
+  posicionamento: string | null
+  notas: string | null
+}
+
 export async function dispatchEmailCopyWebhook(
   storeId: string,
   options: DispatchEmailCopyOptions,
@@ -79,7 +96,7 @@ export async function dispatchEmailCopyWebhook(
   const admin = createAdminClient()
 
   // ── Buscar contexto da loja em paralelo
-  const [storeRes, brandRes, briefingRes] = await Promise.all([
+  const [storeRes, brandRes, briefingRes, topProductsRes, competitorsRes] = await Promise.all([
     admin
       .from("client_stores")
       .select(
@@ -89,7 +106,16 @@ export async function dispatchEmailCopyWebhook(
           icp_persona, icp_demographics, icp_day_in_life,
           icp_motivations, icp_frictions,
           tone_description, tone_do, tone_dont,
-          tone_use_words, tone_avoid_words
+          tone_use_words, tone_avoid_words,
+          slogan, diferencial, persona, tom_de_voz, posicionamento_preco, hashtags,
+          cores, fontes, brand_manual_url, research_doc_url,
+          store_story, store_milestones,
+          ads_score, ads_summary, ads_sub_scores, ads_strengths,
+          ads_opportunities, ads_risks, ads_reviewed_at,
+          ticket_medio_cents, taxa_conversao, faturamento_medio_cents,
+          margem_media, recorrencia, frete_medio_cents, frete_prazo, frete_cobertura,
+          lista_total, lista_engajados_30, lista_engajados_90,
+          lista_crescimento_mensal, sms_consent_pct
         `,
       )
       .eq("id", storeId)
@@ -108,6 +134,16 @@ export async function dispatchEmailCopyWebhook(
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    admin
+      .from("store_top_products")
+      .select("rank, title, price, currency, handle, external_id, image_url, captured_at")
+      .eq("store_id", storeId)
+      .order("rank", { ascending: true })
+      .limit(5),
+    admin
+      .from("client_competitors")
+      .select("name, url, posicionamento, notas")
+      .eq("store_id", storeId),
   ])
 
   if (storeRes.error || !storeRes.data) {
@@ -233,7 +269,8 @@ export async function dispatchEmailCopyWebhook(
   const store = storeRes.data as Record<string, unknown>
   const brand = (brandRes.data as StoreBrandIdentity | null) ?? null
   const briefing = (briefingRes.data as StoreBriefing | null) ?? null
-  const topProducts = (brand?.top_products as TopProduct[] | undefined) ?? []
+  const topProductsTable = (topProductsRes.data as TopProductRow[] | null) ?? []
+  const competitors = (competitorsRes.data as CompetitorRow[] | null) ?? []
 
   const payload = {
     event: "email_copy.requested" as const,
@@ -270,6 +307,50 @@ export async function dispatchEmailCopyWebhook(
         use_words: store.tone_use_words,
         avoid_words: store.tone_avoid_words,
       },
+      positioning: {
+        slogan: store.slogan ?? null,
+        diferencial: store.diferencial ?? null,
+        persona: store.persona ?? null,
+        tom_de_voz: store.tom_de_voz ?? null,
+        posicionamento_preco: store.posicionamento_preco ?? null,
+        hashtags: store.hashtags ?? [],
+      },
+      visual: {
+        cores: store.cores ?? [],
+        fontes: store.fontes ?? null,
+        brand_manual_url: store.brand_manual_url ?? null,
+        research_doc_url: store.research_doc_url ?? null,
+      },
+      story: {
+        story: store.store_story ?? null,
+        milestones: store.store_milestones ?? [],
+      },
+      ads_review: {
+        score: store.ads_score ?? null,
+        summary: store.ads_summary ?? null,
+        sub_scores: store.ads_sub_scores ?? null,
+        strengths: store.ads_strengths ?? [],
+        opportunities: store.ads_opportunities ?? [],
+        risks: store.ads_risks ?? [],
+        reviewed_at: store.ads_reviewed_at ?? null,
+      },
+      operations: {
+        ticket_medio_cents: store.ticket_medio_cents ?? null,
+        taxa_conversao: store.taxa_conversao ?? null,
+        faturamento_medio_cents: store.faturamento_medio_cents ?? null,
+        margem_media: store.margem_media ?? null,
+        recorrencia: store.recorrencia ?? null,
+        frete_medio_cents: store.frete_medio_cents ?? null,
+        frete_prazo: store.frete_prazo ?? null,
+        frete_cobertura: store.frete_cobertura ?? null,
+      },
+      audience: {
+        lista_total: store.lista_total ?? null,
+        lista_engajados_30: store.lista_engajados_30 ?? null,
+        lista_engajados_90: store.lista_engajados_90 ?? null,
+        lista_crescimento_mensal: store.lista_crescimento_mensal ?? null,
+        sms_consent_pct: store.sms_consent_pct ?? null,
+      },
     },
     brand_identity: brand
       ? {
@@ -287,11 +368,20 @@ export async function dispatchEmailCopyWebhook(
           briefing: briefing.briefing ?? {},
         }
       : null,
-    top_products: topProducts.slice(0, 5).map((p) => ({
-      name: p.name,
+    top_products: topProductsTable.map((p) => ({
+      name: p.title,
       price: p.price,
+      currency: p.currency,
       image_url: p.image_url,
-      url: p.url ?? null,
+      url: p.handle ? `${store.store_url ?? ""}/products/${p.handle}` : null,
+      external_id: p.external_id,
+      rank: p.rank,
+    })),
+    competitors: competitors.map((c) => ({
+      name: c.name,
+      url: c.url,
+      posicionamento: c.posicionamento,
+      notas: c.notas,
     })),
     flows: flows.map((f) => {
       const flowEmails = (emailsByFlow.get(f.id) ?? []).map((e) => {
