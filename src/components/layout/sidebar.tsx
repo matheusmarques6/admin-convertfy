@@ -313,6 +313,15 @@ const GERAL_NAV: NavGroup[] = [
         // produção precisa de role formal pra evitar quebra acidental.
         requiredFeatures: ["__admin_only__"],
       },
+      {
+        name: "Email / Blueprints",
+        href: ROUTES.ADMIN.EMAIL_BLUEPRINTS,
+        icon: Mail,
+        // Mesmo padrão dos prompts: link só pra admin/owner; devs com tag
+        // 'dev' acessam por URL direta. Quem edita blueprint afeta toda
+        // futura loja seedada, então requer role formal pro link na nav.
+        requiredFeatures: ["__admin_only__"],
+      },
     ],
   },
 ]

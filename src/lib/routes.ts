@@ -201,6 +201,8 @@ export const ROUTES = {
       PROMPTS: "/admin/agents/prompts",
     },
 
+    EMAIL_BLUEPRINTS: "/admin/email-blueprints",
+
     SETTINGS: {
       ROOT: "/admin/settings",
       BRIEFINGS: "/admin/settings/briefings",
