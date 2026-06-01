@@ -42,7 +42,8 @@ export interface EmailPerformance {
   bouncesRate: number
 }
 
-export interface FunnelResult {
+export interface SingleFunnel {
+  source: "campaign" | "automation"
   stages: FunnelStage[]
   gargaloLabel: string | null
   gargaloDelta: number | null
@@ -50,12 +51,19 @@ export interface FunnelResult {
   insightTitle: string
   insightBody: string
   revenueImpact: number
-  benchmarkOpen: number
-  benchmarkClick: number
-  benchmarkConvert: number
   expectedOpen: number
   realOpen: number
   openDeltaPp: number
+  totalRevenue: number
+  hasData: boolean
+}
+
+export interface FunnelResult {
+  campaign: SingleFunnel
+  automation: SingleFunnel
+  benchmarkOpen: number
+  benchmarkClick: number
+  benchmarkConvert: number
   dateRangeStart: string
   dateRangeEnd: string
   emailPerformance: EmailPerformance
@@ -206,6 +214,92 @@ async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: numbe
   }
 }
 
+type FunnelRow = Record<string, unknown>
+
+const sumRows = (rows: FunnelRow[] | null, key: string): number =>
+  (rows ?? []).reduce<number>((acc, r) => acc + (Number(r[key]) || 0), 0)
+
+// Converte de forma robusta: usa `conversions`; se vier 0 (Statistics API
+// pode falhar/rate-limit), cai pra contagem de itens com receita > 0 —
+// cada item que gerou receita teve pelo menos 1 conversão.
+function robustConversions(rows: FunnelRow[] | null): number {
+  const direct = sumRows(rows, "conversions")
+  if (direct > 0) return direct
+  return (rows ?? []).filter((r) => (Number(r.conversion_value) || 0) > 0).length
+}
+
+interface BenchSet { open: number; click: number; ctor: number; clickRate: number; convert: number; deliv: number }
+
+function computeFunnel(
+  source: "campaign" | "automation",
+  rows7d: FunnelRow[] | null,
+  rows30d: FunnelRow[] | null,
+  bench: BenchSet,
+  trends: { open: number[]; click: number[]; conv: number[]; sent: number[] },
+  sym: string,
+): SingleFunnel {
+  const sent7 = sumRows(rows7d, "recipients")
+  const deliv7 = sumRows(rows7d, "delivered")
+  const open7 = sumRows(rows7d, "opened")
+  const click7 = sumRows(rows7d, "clicked")
+  const conv7 = robustConversions(rows7d)
+  const rev7 = sumRows(rows7d, "conversion_value")
+
+  const sent30 = sumRows(rows30d, "recipients")
+  const deliv30 = sumRows(rows30d, "delivered")
+  const open30 = sumRows(rows30d, "opened")
+  const click30 = sumRows(rows30d, "clicked")
+  const conv30 = robustConversions(rows30d)
+
+  const delivPct7 = sent7 > 0 ? deliv7 / sent7 : 0
+  const openPct7 = deliv7 > 0 ? open7 / deliv7 : 0
+  const clickPct7 = open7 > 0 ? click7 / open7 : 0
+  const convPct7 = click7 > 0 ? conv7 / click7 : 0
+
+  const delivPct30 = sent30 > 0 ? deliv30 / sent30 : 0
+  const openPct30 = deliv30 > 0 ? open30 / deliv30 : 0
+  const clickPct30 = open30 > 0 ? click30 / open30 : 0
+  const convPct30 = click30 > 0 ? conv30 / click30 : 0
+
+  const stages: FunnelStage[] = [
+    { key: "sent", label: "Enviados", volume: sent7, pct: 1, delta: pctChange(sent7, sent30 / 4), isGargalo: false, trend: trends.sent, bench: null },
+    { key: "delivered", label: "Entregues", volume: deliv7, pct: delivPct7, delta: pctChange(delivPct7, delivPct30), isGargalo: false, trend: [], bench: bench.deliv },
+    { key: "opened", label: "Abertos", volume: open7, pct: openPct7, delta: pctChange(openPct7, openPct30), isGargalo: false, trend: trends.open, bench: bench.open },
+    { key: "clicked", label: "Clicaram", volume: click7, pct: clickPct7, delta: pctChange(clickPct7, clickPct30), isGargalo: false, trend: trends.click, bench: bench.click },
+    { key: "converted", label: "Converteram", volume: conv7, pct: convPct7, delta: pctChange(convPct7, convPct30), isGargalo: false, trend: trends.conv, bench: bench.convert },
+  ]
+
+  const gargalo = stages.slice(2)
+    .filter((s) => s.delta < -3)
+    .sort((a, b) => Math.abs(b.delta) * b.volume - Math.abs(a.delta) * a.volume)[0] ?? null
+  if (gargalo) gargalo.isGargalo = true
+
+  const avgRevPerConv = conv7 > 0 ? rev7 / conv7 : 0
+  const revenueImpact = gargalo && gargalo.pct > 0
+    ? Math.abs(gargalo.delta / 100) * (gargalo.volume / gargalo.pct) * avgRevPerConv
+    : 0
+
+  const label = source === "campaign" ? "campanhas" : "automações"
+
+  return {
+    source,
+    stages,
+    gargaloLabel: gargalo?.label ?? null,
+    gargaloDelta: gargalo?.delta ?? null,
+    gargaloKey: gargalo?.key ?? null,
+    insightTitle: gargalo ? `Gargalo: ${gargalo.label}` : `Funil de ${label} saudável`,
+    insightBody: gargalo
+      ? `${gargalo.label} caiu ${Math.abs(gargalo.delta).toFixed(1)}% vs média 30d nas ${label}. Receita estimada perdida: ${fmtMoney(revenueImpact, sym)}.`
+      : `Nenhum gargalo significativo nas ${label}.`,
+    revenueImpact,
+    expectedOpen: Math.round(deliv7 * (bench.open / 100)),
+    realOpen: open7,
+    openDeltaPp: (openPct7 * 100) - bench.open,
+    totalRevenue: rev7,
+    hasData: sent7 > 0 || sent30 > 0,
+  }
+}
+
 export async function buildFunnel(
   admin: SupabaseClient,
   storeId: string,
@@ -213,28 +307,30 @@ export async function buildFunnel(
 ): Promise<FunnelResult> {
   const sym = cs(currency)
 
-  const [campaignsRes, campaigns30dRes, bench, weeklyRes] = await Promise.all([
-    admin
-      .from("omnisend_campaign_metrics")
+  const [camp7Res, camp30Res, flow7Res, flow30Res, bench, weeklyRes] = await Promise.all([
+    admin.from("omnisend_campaign_metrics")
       .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
-      .eq("store_id", storeId)
-      .eq("period_label", "7d"),
-    admin
-      .from("omnisend_campaign_metrics")
+      .eq("store_id", storeId).eq("period_label", "7d"),
+    admin.from("omnisend_campaign_metrics")
       .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time, bounced")
-      .eq("store_id", storeId)
-      .eq("period_label", "30d"),
+      .eq("store_id", storeId).eq("period_label", "30d"),
+    admin.from("omnisend_flow_metrics")
+      .select("recipients, delivered, opened, clicked, conversions, conversion_value")
+      .eq("store_id", storeId).eq("period_label", "7d"),
+    admin.from("omnisend_flow_metrics")
+      .select("recipients, delivered, opened, clicked, conversions, conversion_value")
+      .eq("store_id", storeId).eq("period_label", "30d"),
     getNetworkBenchmark(admin),
-    admin
-      .from("weekly_reports")
+    admin.from("weekly_reports")
       .select("week_start, metrics")
       .eq("store_id", storeId)
-      .order("week_start", { ascending: false })
-      .limit(8),
+      .order("week_start", { ascending: false }).limit(8),
   ])
 
-  const campaigns = campaignsRes.data
-  const campaigns30d = campaigns30dRes.data
+  const campaigns7 = camp7Res.data as FunnelRow[] | null
+  const campaigns30 = camp30Res.data as FunnelRow[] | null
+  const flows7 = flow7Res.data as FunnelRow[] | null
+  const flows30 = flow30Res.data as FunnelRow[] | null
 
   // Sparklines de 8 semanas via weekly_reports (defensivo: JSONB incerto)
   const weeks = ((weeklyRes.data ?? []) as Array<{ week_start: string; metrics: Record<string, unknown> | null }>)
@@ -251,76 +347,38 @@ export async function buildFunnel(
       return typeof val === "number" ? val : null
     }).filter((v): v is number => v != null).reverse()
   }
-  const openTrend = metricSeries("open_rate")
-  const clickTrend = metricSeries("click_rate")
-  const convTrend = metricSeries("conversion_rate")
-  const sentTrend = metricSeries("sent")
+  const trends = {
+    open: metricSeries("open_rate"),
+    click: metricSeries("click_rate"),
+    conv: metricSeries("conversion_rate"),
+    sent: metricSeries("sent"),
+  }
+  // Automações não têm trend semanal separado no weekly_reports
+  const emptyTrends = { open: [], click: [], conv: [], sent: [] }
 
-  const sum = (rows: unknown[] | null, key: string): number =>
-    (rows ?? []).reduce<number>((acc, r) => acc + (Number((r as Record<string, unknown>)[key]) || 0), 0)
+  const campaignFunnel = computeFunnel("campaign", campaigns7, campaigns30, bench, trends, sym)
+  const automationFunnel = computeFunnel("automation", flows7, flows30, bench, emptyTrends, sym)
 
-  const sent7d = sum(campaigns, "recipients")
-  const deliv7d = sum(campaigns, "delivered")
-  const open7d = sum(campaigns, "opened")
-  const click7d = sum(campaigns, "clicked")
-  const conv7d = sum(campaigns, "conversions")
-  const rev7d = sum(campaigns, "conversion_value")
-
-  const sent30d = sum(campaigns30d, "recipients")
-  const deliv30d = sum(campaigns30d, "delivered")
-  const open30d = sum(campaigns30d, "opened")
-  const click30d = sum(campaigns30d, "clicked")
-  const conv30d = sum(campaigns30d, "conversions")
-
-  const delivPct7d = sent7d > 0 ? deliv7d / sent7d : 0
-  const openPct7d = deliv7d > 0 ? open7d / deliv7d : 0
-  const clickPct7d = open7d > 0 ? click7d / open7d : 0
-  const convPct7d = click7d > 0 ? conv7d / click7d : 0
-
-  const delivPct30d = sent30d > 0 ? deliv30d / sent30d : 0
-  const openPct30d = deliv30d > 0 ? open30d / deliv30d : 0
-  const clickPct30d = open30d > 0 ? click30d / open30d : 0
-  const convPct30d = click30d > 0 ? conv30d / click30d : 0
-
-  const stages: FunnelStage[] = [
-    { key: "sent", label: "Enviados", volume: sent7d, pct: 1, delta: pctChange(sent7d, sent30d / 4), isGargalo: false, trend: sentTrend, bench: null },
-    { key: "delivered", label: "Entregues", volume: deliv7d, pct: delivPct7d, delta: pctChange(delivPct7d, delivPct30d), isGargalo: false, trend: [], bench: bench.deliv },
-    { key: "opened", label: "Abertos", volume: open7d, pct: openPct7d, delta: pctChange(openPct7d, openPct30d), isGargalo: false, trend: openTrend, bench: bench.open },
-    { key: "clicked", label: "Clicaram", volume: click7d, pct: clickPct7d, delta: pctChange(clickPct7d, clickPct30d), isGargalo: false, trend: clickTrend, bench: bench.click },
-    { key: "converted", label: "Converteram", volume: conv7d, pct: convPct7d, delta: pctChange(convPct7d, convPct30d), isGargalo: false, trend: convTrend, bench: bench.convert },
-  ]
-
-  const candidates = stages.slice(2)
-  const gargalo = candidates
-    .filter((s) => s.delta < -3)
-    .sort((a, b) => Math.abs(b.delta) * b.volume - Math.abs(a.delta) * a.volume)[0] ?? null
-
-  if (gargalo) gargalo.isGargalo = true
-
-  const avgRevPerConv = conv7d > 0 ? rev7d / conv7d : 0
-  const revenueImpact = gargalo && gargalo.pct > 0
-    ? Math.abs(gargalo.delta / 100) * (gargalo.volume / gargalo.pct) * avgRevPerConv
-    : 0
-
-  const expectedOpen = Math.round(deliv7d * (bench.open / 100))
-  const openDeltaPp = (openPct7d * 100) - bench.open
-
-  // Performance de email (período 30d, vs benchmark da rede)
-  const bounces30d = sum(campaigns30d, "bounced")
+  // Performance de email (campanhas, período 30d, vs benchmark da rede)
+  const sent30 = sumRows(campaigns30, "recipients")
+  const deliv30 = sumRows(campaigns30, "delivered")
+  const open30 = sumRows(campaigns30, "opened")
+  const click30 = sumRows(campaigns30, "clicked")
+  const bounces30 = sumRows(campaigns30, "bounced")
   const emailPerformance: EmailPerformance = {
-    entregues: deliv30d,
-    entreguesRate: sent30d > 0 ? (deliv30d / sent30d) * 100 : 0,
-    abertura: openPct30d * 100,
+    entregues: deliv30,
+    entreguesRate: sent30 > 0 ? (deliv30 / sent30) * 100 : 0,
+    abertura: deliv30 > 0 ? (open30 / deliv30) * 100 : 0,
     aberturaBench: bench.open,
-    clique: deliv30d > 0 ? (click30d / deliv30d) * 100 : 0,
+    clique: deliv30 > 0 ? (click30 / deliv30) * 100 : 0,
     cliqueBench: bench.clickRate,
-    ctor: open30d > 0 ? (click30d / open30d) * 100 : 0,
+    ctor: open30 > 0 ? (click30 / open30) * 100 : 0,
     ctorBench: bench.ctor,
-    bounces: bounces30d,
-    bouncesRate: sent30d > 0 ? (bounces30d / sent30d) * 100 : 0,
+    bounces: bounces30,
+    bouncesRate: sent30 > 0 ? (bounces30 / sent30) * 100 : 0,
   }
 
-  const dates = ((campaigns ?? []) as Array<{ send_time: string | null }>)
+  const dates = ((campaigns7 ?? []) as Array<{ send_time?: string | null }>)
     .map((c) => c.send_time)
     .filter((d): d is string => !!d)
     .sort()
@@ -328,21 +386,11 @@ export async function buildFunnel(
   const dateEnd = dates[dates.length - 1] ? new Date(dates[dates.length - 1]!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : ""
 
   return {
-    stages,
-    gargaloLabel: gargalo?.label ?? null,
-    gargaloDelta: gargalo?.delta ?? null,
-    gargaloKey: gargalo?.key ?? null,
-    insightTitle: gargalo ? `Gargalo: ${gargalo.label}` : "Funil saudável",
-    insightBody: gargalo
-      ? `${gargalo.label} caiu ${Math.abs(gargalo.delta).toFixed(1)}% vs média 30d. Receita estimada perdida: ${fmtMoney(revenueImpact, sym)}.`
-      : "Nenhum gargalo significativo detectado.",
-    revenueImpact,
+    campaign: campaignFunnel,
+    automation: automationFunnel,
     benchmarkOpen: bench.open,
     benchmarkClick: bench.click,
     benchmarkConvert: bench.convert,
-    expectedOpen,
-    realOpen: open7d,
-    openDeltaPp,
     dateRangeStart: dateStart,
     dateRangeEnd: dateEnd,
     emailPerformance,
@@ -378,8 +426,10 @@ export async function buildPareto(
   })
 
   const problems: string[] = []
-  if (funnel.gargaloLabel) {
-    problems.push(`Funil: ${funnel.gargaloLabel} caiu ${Math.abs(funnel.gargaloDelta ?? 0).toFixed(1)}%`)
+  const fg = funnel.campaign.gargaloLabel ? funnel.campaign : funnel.automation.gargaloLabel ? funnel.automation : null
+  if (fg?.gargaloLabel) {
+    const src = fg.source === "campaign" ? "campanhas" : "automações"
+    problems.push(`Funil (${src}): ${fg.gargaloLabel} caiu ${Math.abs(fg.gargaloDelta ?? 0).toFixed(1)}%`)
   }
   for (const f of flows) {
     if (f.flow_status === "paused") problems.push(`Automação "${f.flow_name}" pausada`)
