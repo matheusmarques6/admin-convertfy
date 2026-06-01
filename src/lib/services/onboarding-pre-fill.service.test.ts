@@ -92,6 +92,20 @@ vi.mock("@/lib/logger", () => ({
   },
 }))
 
+// markPreviewEmailReady é testado isoladamente; aqui só verificamos que o
+// pre-fill o chama com (storeId, flowType, emailNumber) corretos quando há
+// store_id e o piloto tem file_url.
+const markPreviewEmailReady = vi.fn(
+  async (_storeId: string, _flowType: string, _emailNumber: number) => {},
+)
+vi.mock("./email-task-sync.service", () => ({
+  markPreviewEmailReady: (
+    storeId: string,
+    flowType: string,
+    emailNumber: number,
+  ) => markPreviewEmailReady(storeId, flowType, emailNumber),
+}))
+
 import { applyPreFillFromPreview } from "./onboarding-pre-fill.service"
 
 const ONB_ID = "onb-1"
@@ -104,10 +118,17 @@ function seed(opts?: {
   carrinhoSubItem1Completed?: boolean
   carrinhoSubItem1Manual?: boolean
   pilotoWelcomeFilled?: boolean
+  storeId?: string
 }) {
   resetTables()
   tables.onboardings = {
-    rows: [{ id: ONB_ID, current_version: 1 }],
+    rows: [
+      {
+        id: ONB_ID,
+        current_version: 1,
+        ...(opts?.storeId ? { store_id: opts.storeId } : {}),
+      },
+    ],
     updates: [],
   }
   tables.tasks = {
@@ -308,5 +329,37 @@ describe("applyPreFillFromPreview", () => {
     )
     const sub = (welcomeTask?.metadata as { sub_items: Array<{ completed?: boolean }> }).sub_items[0]
     expect(sub.completed).toBe(false)
+  })
+
+  it("propaga pilotos pro workspace (markPreviewEmailReady) quando ha store_id", async () => {
+    seed({ storeId: "store-1" })
+    await applyPreFillFromPreview(ONB_ID, "actor-1")
+
+    // 4 pilotos mapeados -> 4 chamadas, com flowType+emailNumber corretos
+    const calls = markPreviewEmailReady.mock.calls
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        ["store-1", "welcome", 1],
+        ["store-1", "abandoned_cart", 1],
+        ["store-1", "abandoned_cart", 2],
+        ["store-1", "upsell", 1],
+      ]),
+    )
+    expect(calls.length).toBe(4)
+  })
+
+  it("nao chama markPreviewEmailReady quando onboarding nao tem store_id", async () => {
+    seed()
+    await applyPreFillFromPreview(ONB_ID, "actor-1")
+    expect(markPreviewEmailReady).not.toHaveBeenCalled()
+  })
+
+  it("nao propaga piloto sem file_url", async () => {
+    seed({ storeId: "store-1", pilotoWelcomeFilled: false })
+    await applyPreFillFromPreview(ONB_ID, "actor-1")
+    // welcome (#1) nao deve ser propagado; os outros 3 sim
+    const calls = markPreviewEmailReady.mock.calls
+    expect(calls).not.toContainEqual(["store-1", "welcome", 1])
+    expect(calls.length).toBe(3)
   })
 })
