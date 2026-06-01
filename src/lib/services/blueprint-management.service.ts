@@ -19,6 +19,13 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/lib/api/errors"
+import type { BlueprintRow } from "@/lib/email-blueprints/types"
+
+export type { BlueprintRow } from "@/lib/email-blueprints/types"
+export {
+  BLOCK_TYPE_OPTIONS,
+  type BlueprintBlockType,
+} from "@/lib/email-blueprints/types"
 
 export interface BlueprintActor {
   id: string
@@ -30,19 +37,6 @@ export function canManageEmailBlueprints(actor: BlueprintActor): boolean {
   if (actor.role === "admin" || actor.role === "owner") return true
   if (actor.tags.includes("dev")) return true
   return false
-}
-
-export interface BlueprintRow {
-  id: string | null
-  flow_type: string
-  email_number: number
-  objective: string
-  messaging: string
-  subject_hint: string | null
-  blocks: BlueprintBlockDef[]
-  tone_override: string | null
-  updated_at: string | null
-  source: "db" | "default"
 }
 
 interface DbBlueprintRow {
@@ -118,19 +112,5 @@ export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
 
   return result
 }
-
-export const BLOCK_TYPE_OPTIONS = [
-  { value: "hero", label: "Hero (banner com imagem)" },
-  { value: "text", label: "Text (parágrafo)" },
-  { value: "coupon", label: "Coupon (código + CTA)" },
-  { value: "products", label: "Products (carrossel)" },
-  { value: "cta", label: "CTA (botão isolado)" },
-  { value: "footer", label: "Footer (links + copyright)" },
-  { value: "image", label: "Image (banner sem texto)" },
-  { value: "divider", label: "Divider (linha)" },
-  { value: "spacer", label: "Spacer (espaço)" },
-] as const
-
-export type BlueprintBlockType = (typeof BLOCK_TYPE_OPTIONS)[number]["value"]
 
 export { AppError, ConflictError, NotFoundError, ValidationError }

@@ -8,7 +8,7 @@
  *   - "DEFAULT" (cinza): vem de DEFAULT_BLUEPRINTS no código
  */
 import { cn } from "@/lib/utils"
-import type { BlueprintRow } from "@/lib/services/blueprint-management.service"
+import type { BlueprintRow } from "@/lib/email-blueprints/types"
 
 interface Props {
   blueprints: BlueprintRow[]

@@ -13,7 +13,7 @@
  */
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react"
 import type { BlueprintBlockDef } from "@/lib/agents/email-blueprint"
-import { BLOCK_TYPE_OPTIONS } from "@/lib/services/blueprint-management.service"
+import { BLOCK_TYPE_OPTIONS } from "@/lib/email-blueprints/types"
 
 interface Props {
   blocks: BlueprintBlockDef[]

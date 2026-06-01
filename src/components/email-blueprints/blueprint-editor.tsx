@@ -19,7 +19,7 @@ import { Loader2, RotateCcw, Save, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toast } from "@/lib/hooks/use-toast"
 import type { BlueprintBlockDef } from "@/lib/agents/email-blueprint"
-import type { BlueprintRow } from "@/lib/services/blueprint-management.service"
+import type { BlueprintRow } from "@/lib/email-blueprints/types"
 import { BlueprintBlocksEditor } from "./blueprint-blocks-editor"
 
 const BLOCK_TYPES = [
