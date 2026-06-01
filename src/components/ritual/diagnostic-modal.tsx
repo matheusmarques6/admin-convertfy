@@ -601,7 +601,11 @@ function FunilTab({ report, diag, cs = "R$" }: {
   }
 
   const maxVolume = Math.max(...stages.map((s) => s.volume), 1)
-  const fmtMoney = (v: number) => v >= 1000 ? `${cs} ${(v / 1000).toFixed(1)}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  // Formatação pt-BR: vírgula como separador decimal
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+  const fmt0 = (v: number) => v.toFixed(0)
+  const fmtMoney = (v: number) => v >= 1000 ? `${cs} ${fmt1(v / 1000)}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const openStage = stages.find((s) => s.key === "opened")
 
   return (
     <div>
@@ -610,23 +614,23 @@ function FunilTab({ report, diag, cs = "R$" }: {
         <KpiCard
           label="Gargalo"
           value={diag?.gargaloLabel ?? "Saudável"}
-          accent={diag?.gargaloDelta != null ? `${diag.gargaloDelta.toFixed(1)}%` : null}
+          accent={diag?.gargaloDelta != null ? `${fmt1(diag.gargaloDelta)}%` : null}
           accentTone="neg"
           sub="vs semana anterior"
         />
         <KpiCard
           label="Receita perdida est."
           value={diag?.revenueImpact ? fmtMoney(diag.revenueImpact) : "—"}
-          accent={diag?.gargaloDelta != null ? `${diag.gargaloDelta.toFixed(0)}%` : null}
+          accent={diag?.gargaloDelta != null ? `${fmt0(diag.gargaloDelta)}%` : null}
           accentTone="neg"
           sub="últimas 2 semanas"
         />
         <KpiCard
           label="vs benchmark Convertfy"
-          value={diag ? `Abert. ${(diag.realOpen > 0 && stages[2] ? stages[2].pct * 100 : 0).toFixed(1)}%` : "—"}
-          accent={diag?.openDeltaPp != null ? `${diag.openDeltaPp >= 0 ? "+" : ""}${diag.openDeltaPp.toFixed(1)}pp` : null}
+          value={diag && openStage ? `Abert. ${fmt1(openStage.pct * 100)}%` : "—"}
+          accent={diag?.openDeltaPp != null ? `${diag.openDeltaPp >= 0 ? "+" : ""}${fmt1(diag.openDeltaPp)}pp` : null}
           accentTone={diag?.openDeltaPp != null && diag.openDeltaPp < 0 ? "neg" : "pos"}
-          sub={`média rede: ${diag?.benchmarkOpen.toFixed(1)}%`}
+          sub={diag ? `média rede: ${fmt1(diag.benchmarkOpen)}%` : ""}
         />
       </div>
 
@@ -650,61 +654,77 @@ function FunilTab({ report, diag, cs = "R$" }: {
           </div>
         </div>
 
-        {/* Funil visual */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0", gap: 0 }}>
+        {/* Funil visual — trapézios contínuos centralizados */}
+        <div style={{ position: "relative", padding: "4px 0" }}>
           {stages.map((s, i) => {
-            const widthPct = Math.max((s.volume / maxVolume) * 100, 14)
-            const nextWidthPct = i < stages.length - 1
-              ? Math.max(((stages[i + 1]!.volume) / maxVolume) * 100, 14)
-              : widthPct * 0.6
+            // Largura proporcional ao volume: piso 13%, teto 72% (nunca colapsa nem enche tudo)
+            const widthFor = (vol: number) => 13 + (maxVolume > 0 ? vol / maxVolume : 0) * 59
+            const prevS = i > 0 ? stages[i - 1]! : null
+            const nextS = i < stages.length - 1 ? stages[i + 1]! : null
+            const thisW = widthFor(s.volume)
             const isGargalo = s.isGargalo
+            const nextIsGargalo = nextS?.isGargalo ?? false
+
+            // Top/bottom da trapézio centralizado:
+            //  - gargalo: começa largo (largura anterior) e estreita até a próxima → pescoço vermelho
+            //  - estágio antes do gargalo: reto (mantém largura) pra dar continuidade
+            //  - normal: estreita da própria largura até a próxima
+            let topW: number
+            let botW: number
+            if (isGargalo) {
+              topW = prevS ? widthFor(prevS.volume) : thisW
+              botW = nextS ? widthFor(nextS.volume) : thisW * 0.55
+            } else if (nextIsGargalo) {
+              topW = thisW
+              botW = thisW
+            } else {
+              topW = thisW
+              botW = nextS ? widthFor(nextS.volume) : thisW * 0.72
+            }
+
+            const lt = (100 - topW) / 2
+            const rt = (100 + topW) / 2
+            const lb = (100 - botW) / 2
+            const rb = (100 + botW) / 2
             const fill = isGargalo
-              ? "linear-gradient(180deg, #FCA5A5 0%, #EF4444 100%)"
-              : "linear-gradient(180deg, #DBEAFE 0%, #C7CDEF 100%)"
-            const stageHeight = 56
+              ? "linear-gradient(180deg, #F87171 0%, #EF4444 100%)"
+              : "linear-gradient(180deg, #E3E8F8 0%, #C5CEEC 100%)"
+            const stageHeight = isGargalo ? 78 : 66
+
+            // Conversão entrando neste estágio (volume atual / volume anterior)
+            const convPct = prevS && prevS.volume > 0 ? (s.volume / prevS.volume) * 100 : null
+            const critical = convPct != null && convPct < 40
+
             return (
-              <div key={s.key} style={{ width: "100%", position: "relative", display: "flex", justifyContent: "center" }}>
-                {/* Trapézio via clip-path */}
-                <div
-                  style={{
-                    width: `${widthPct}%`,
-                    height: stageHeight,
-                    background: fill,
-                    clipPath: `polygon(0 0, 100% 0, ${50 + (nextWidthPct / widthPct) * 50}% 100%, ${50 - (nextWidthPct / widthPct) * 50}% 100%)`,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: isGargalo ? "#fff" : C.g700,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase",
-                    position: "relative",
-                  }}
-                >
-                  <div style={{ opacity: 0.85 }}>{s.label}</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0, marginTop: 2, ...TNUM, color: isGargalo ? "#fff" : C.g900 }}>
-                    {s.volume.toLocaleString("pt-BR")}
-                  </div>
+              <div key={s.key} style={{ position: "relative", height: stageHeight, marginBottom: -1 }}>
+                {/* Trapézio */}
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: fill,
+                  clipPath: `polygon(${lt}% 0, ${rt}% 0, ${rb}% 100%, ${lb}% 100%)`,
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  <div style={{
+                    fontSize: 10.5, fontWeight: 600,
+                    letterSpacing: "0.08em", textTransform: "uppercase",
+                    color: isGargalo ? "rgba(255,255,255,0.92)" : "#4E62D8",
+                  }}>{s.label}</div>
+                  <div style={{
+                    fontSize: 19, fontWeight: 700, marginTop: 1, ...TNUM,
+                    color: isGargalo ? "#fff" : "#1E2A6B", letterSpacing: "-0.01em",
+                  }}>{s.volume.toLocaleString("pt-BR")}</div>
                 </div>
 
-                {/* Label de conversão à esquerda */}
-                {i > 0 && (
-                  <div style={{
-                    position: "absolute", left: 12, top: 4,
-                    fontSize: 10.5, fontWeight: 600, color: s.delta < -3 ? C.neg : C.g500, ...TNUM,
-                  }}>
-                    {s.pct < 1 && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: s.delta < -10 ? C.neg : C.g600 }}>
-                          ↓ {(s.pct * 100).toFixed(s.pct < 0.1 ? 1 : 0)}%
-                        </div>
-                        <div style={{ fontSize: 9, color: s.delta < -10 ? C.neg : C.g400, marginTop: 1 }}>
-                          {s.delta < -10 ? "queda crítica" : "conversão"}
-                        </div>
-                      </>
-                    )}
+                {/* Conversão à esquerda */}
+                {convPct != null && (
+                  <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", textAlign: "left" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: critical ? C.neg : C.g600, ...TNUM }}>
+                      ↓ {convPct < 10 ? fmt1(convPct) : fmt0(convPct)}%
+                    </div>
+                    <div style={{ fontSize: 9.5, color: critical ? C.neg : C.g400, marginTop: 1, letterSpacing: "0.02em" }}>
+                      {critical ? "queda crítica" : "conversão"}
+                    </div>
                   </div>
                 )}
 
@@ -712,22 +732,26 @@ function FunilTab({ report, diag, cs = "R$" }: {
                 {isGargalo && (
                   <div style={{
                     position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
-                    padding: "5px 10px", background: C.negBg, border: `1px solid ${C.negBorder}`,
-                    borderRadius: 6, fontSize: 10, fontWeight: 700, color: C.neg, letterSpacing: "0.06em",
-                    display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
+                    padding: "6px 11px", background: C.negBg, border: `1px solid ${C.negBorder}`,
+                    borderRadius: 8, color: C.neg,
+                    display: "flex", flexDirection: "column", gap: 2, maxWidth: 170,
                   }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.neg }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em" }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.neg }} />
                       GARGALO
                     </div>
-                    <div style={{ fontSize: 9.5, fontWeight: 500, letterSpacing: 0, ...TNUM }}>
-                      {s.delta.toFixed(1)}% vs sem. anterior
+                    <div style={{ fontSize: 10, fontWeight: 500, ...TNUM }}>
+                      {s.delta >= 0 ? "+" : ""}{fmt1(s.delta)}% vs sem. anterior
                     </div>
                   </div>
                 )}
               </div>
             )
           })}
+          {/* Seta final indicando saída do funil */}
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 4, color: C.g300 }}>
+            <ChevronDown size={16} />
+          </div>
         </div>
       </div>
 
@@ -743,7 +767,7 @@ function FunilTab({ report, diag, cs = "R$" }: {
             </div>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Fundo do funil · diagnóstico</div>
-              <div style={{ fontSize: 11, color: C.g500 }}>{diag.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{diag.gargaloDelta?.toFixed(1)}% vs sem. anterior</span></div>
+              <div style={{ fontSize: 11, color: C.g500 }}>{diag.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{diag.gargaloDelta != null ? fmt1(diag.gargaloDelta) : "—"}% vs sem. anterior</span></div>
             </div>
           </div>
 
@@ -752,12 +776,12 @@ function FunilTab({ report, diag, cs = "R$" }: {
             <div style={{ padding: 12, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.pos, letterSpacing: "0.06em", textTransform: "uppercase" }}>Esperado</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: C.pos, marginTop: 4, ...TNUM }}>{diag.expectedOpen.toLocaleString("pt-BR")}</div>
-              <div style={{ fontSize: 11, color: C.pos, marginTop: 2, opacity: 0.8 }}>benchmark {diag.benchmarkOpen.toFixed(1)}%</div>
+              <div style={{ fontSize: 11, color: C.pos, marginTop: 2, opacity: 0.8 }}>benchmark {fmt1(diag.benchmarkOpen)}%</div>
             </div>
             <div style={{ padding: 12, background: C.negBg, border: `1px solid ${C.negBorder}`, borderRadius: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.neg, letterSpacing: "0.06em", textTransform: "uppercase" }}>Real</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: C.neg, marginTop: 4, ...TNUM }}>{diag.realOpen.toLocaleString("pt-BR")}</div>
-              <div style={{ fontSize: 11, color: C.neg, marginTop: 2, opacity: 0.8 }}>{stages[2] ? (stages[2].pct * 100).toFixed(1) : "0"}% · abriu</div>
+              <div style={{ fontSize: 11, color: C.neg, marginTop: 2, opacity: 0.8 }}>{openStage ? fmt1(openStage.pct * 100) : "0"}% · abriu</div>
             </div>
           </div>
 
@@ -800,9 +824,9 @@ function FunilTab({ report, diag, cs = "R$" }: {
                 </div>
               </div>
               <span style={{ textAlign: "right", fontSize: 12, fontWeight: 500, color: C.g900, ...TNUM }}>{s.volume.toLocaleString("pt-BR")}</span>
-              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: C.g900, ...TNUM }}>{(s.pct * 100).toFixed(1)}%</span>
+              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: C.g900, ...TNUM }}>{fmt1(s.pct * 100)}%</span>
               <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: benchDelta == null ? C.g400 : benchDelta >= 0 ? C.pos : C.neg, ...TNUM }}>
-                {benchDelta == null ? "—" : `${benchDelta >= 0 ? "+" : ""}${benchDelta.toFixed(1)}pp`}
+                {benchDelta == null ? "—" : `${benchDelta >= 0 ? "+" : ""}${fmt1(benchDelta)}pp`}
               </span>
             </div>
           )
