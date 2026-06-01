@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, X, Zap, Send,
-  TrendingDown, TrendingUp,
+  ExternalLink, Download, Package, Box,
 } from "lucide-react"
 
 const C = {
@@ -91,11 +91,18 @@ interface RitualSession {
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
 const TABS = [
+  { id: "performance" as const, label: "Performance" },
   { id: "funil" as const, label: "Funil & gargalo" },
-  { id: "problemas" as const, label: "80/20 problemas", badge: true },
+  { id: "problemas" as const, label: "80/20 dos problemas", badge: true },
   { id: "comparativo" as const, label: "Comparativo histórico" },
-  { id: "campanhas" as const, label: "Campanhas", badge: true },
   { id: "automacoes" as const, label: "Automações", badge: true },
+]
+
+const PERIODS = [
+  { id: "7d" as const, label: "7d" },
+  { id: "30d" as const, label: "30d" },
+  { id: "90d" as const, label: "90d" },
+  { id: "12m" as const, label: "1A" },
 ]
 
 export function RitualDiagnosticModal({
@@ -109,7 +116,8 @@ export function RitualDiagnosticModal({
 }) {
   const router = useRouter()
   const [currentIdx, setCurrentIdx] = useState(session.current_store_index)
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("funil")
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("performance")
+  const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "12m">("30d")
   const [timerSec, setTimerSec] = useState(0)
   const [paused, setPaused] = useState(false)
   const storeId = session.store_ids[currentIdx] as string | undefined
@@ -121,7 +129,7 @@ export function RitualDiagnosticModal({
   }, [paused])
 
   useEffect(() => {
-    setActiveTab("funil")
+    setActiveTab("performance")
   }, [storeId])
 
   useEffect(() => {
@@ -192,6 +200,16 @@ export function RitualDiagnosticModal({
       click_rate: number | null
     }>
     diagnostic?: {
+      performance?: {
+        faturamentoTotal: number; faturamentoDelta: number | null
+        pedidos: number; pedidosDelta: number | null
+        faturamentoTrend: number[]; pedidosTrend: number[]
+        receitaAtribuida: number; atribuidaPercent: number; atribuidaPedidos: number
+        emailRevenue: number; emailPercent: number; smsRevenue: number; smsPercent: number
+        campanhasRevenue: number; campanhasEnvios: number; flowsRevenue: number; flowsAtivos: number
+        topCampaigns: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+        topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+      }
       funnel?: {
         stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
         gargaloLabel: string | null
@@ -218,7 +236,7 @@ export function RitualDiagnosticModal({
   }
 
   const { data: ritualData } = useSWR<RitualStoreResponse>(
-    storeId ? `/api/ritual/stores/${storeId}` : null,
+    storeId ? `/api/ritual/stores/${storeId}?period=${period}` : null,
     fetcher,
   )
 
@@ -227,7 +245,6 @@ export function RitualDiagnosticModal({
   const diag = ritualData?.diagnostic
   const latestReport = ritualData?.reports?.[0] ?? null
   const allReports = ritualData?.reports ?? []
-  const campaigns = ritualData?.campaigns ?? []
   const automations = ritualData?.automations ?? []
   const storeCurrency = storeInfo?.currency ?? "BRL"
   const currencySymbol = storeCurrency === "EUR" ? "€" : storeCurrency === "USD" ? "$" : "R$"
@@ -418,6 +435,9 @@ export function RitualDiagnosticModal({
             }}>
               {TABS.map((t) => {
                 const isActive = activeTab === t.id
+                const badgeCount = t.id === "problemas" ? (diag?.pareto?.length ?? 0)
+                  : t.id === "automacoes" ? (diag?.automations?.length ?? automations.length)
+                  : 0
                 return (
                   <div
                     key={t.id}
@@ -432,18 +452,60 @@ export function RitualDiagnosticModal({
                     }}
                   >
                     {t.label}
+                    {("badge" in t && t.badge) && badgeCount > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, padding: "0 5px",
+                        borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        background: isActive ? C.brand : C.g200, color: isActive ? "#fff" : C.g600, ...TNUM,
+                      }}>{badgeCount}</span>
+                    )}
                   </div>
                 )
               })}
             </div>
 
+            {/* Barra de período (Performance e Funil) */}
+            {(activeTab === "performance" || activeTab === "funil") && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 2, padding: 2, background: C.g100, borderRadius: 8 }}>
+                    {PERIODS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPeriod(p.id)}
+                        style={{
+                          padding: "5px 12px", fontSize: 12, fontWeight: 600,
+                          color: period === p.id ? C.g900 : C.g500,
+                          background: period === p.id ? C.white : "transparent",
+                          border: "none", borderRadius: 6, cursor: "pointer",
+                          boxShadow: period === p.id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                          ...TNUM,
+                        }}
+                      >{p.label}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 12, color: C.g500 }}>Comparando com</span>
+                  <span style={{ padding: "5px 10px", fontSize: 12, fontWeight: 500, color: C.brand, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 6 }}>Período anterior</span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <a href={storeId ? `/admin/stores/${storeId}?tab=performance` : "#"} target="_blank" rel="noreferrer" style={{ padding: "6px 12px", fontSize: 12, fontWeight: 500, color: C.g700, background: C.white, border: `1px solid ${C.g300}`, borderRadius: 6, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <ExternalLink size={13} /> Abrir relatório
+                  </a>
+                  <button type="button" style={{ padding: "6px 12px", fontSize: 12, fontWeight: 500, color: C.g700, background: C.white, border: `1px solid ${C.g300}`, borderRadius: 6, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Download size={13} /> Exportar PDF
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={latestReport} diag={diag?.funnel} cs={currencySymbol} />}
+              {activeTab === "performance" && <PerformanceTab diag={diag?.performance} cs={currencySymbol} />}
+              {activeTab === "funil" && <FunilTab diag={diag?.funnel} cs={currencySymbol} />}
               {activeTab === "problemas" && <ParetoTab report={latestReport} diag={diag?.pareto} />}
               {activeTab === "comparativo" && <HistoricoTab reports={allReports} diag={diag?.history} />}
-              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} diagCampaigns={diag?.campaigns} />}
-              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} diagAutomations={diag?.automations} />}
+              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} />}
             </div>
           </div>
 
@@ -581,10 +643,219 @@ function StoreHeader({
   )
 }
 
+/* ────────── Tab: Performance (financeiro) ────────── */
+
+interface PerfData {
+  faturamentoTotal: number; faturamentoDelta: number | null
+  pedidos: number; pedidosDelta: number | null
+  faturamentoTrend: number[]; pedidosTrend: number[]
+  receitaAtribuida: number; atribuidaPercent: number; atribuidaPedidos: number
+  emailRevenue: number; emailPercent: number; smsRevenue: number; smsPercent: number
+  campanhasRevenue: number; campanhasEnvios: number; flowsRevenue: number; flowsAtivos: number
+  topCampaigns: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+  topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+}
+
+function Sparkline({ data, tone }: { data: number[]; tone: "pos" | "neg" }) {
+  if (data.length < 2) return null
+  const max = Math.max(...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  const w = 72, h = 28
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w
+    const y = h - ((v - min) / range) * h
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(" ")
+  const color = tone === "pos" ? "#10B981" : "#EF4444"
+  return (
+    <svg width={w} height={h} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PerformanceTab({ diag, cs = "R$" }: { diag?: PerfData; cs?: string }) {
+  if (!diag) {
+    return <EmptyTab>Sem dados financeiros disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>
+  }
+  const fmtMoney = (v: number) => `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const fmtMoneyK = (v: number) => v >= 1000 ? `${cs} ${(v / 1000).toFixed(1).replace(".", ",")}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+  const campTotal = diag.campanhasRevenue + diag.flowsRevenue || 1
+
+  return (
+    <div>
+      {/* 2 cards: Faturamento + Pedidos */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ fontSize: 12, color: C.g500, display: "flex", alignItems: "center", gap: 6 }}>
+              <Package size={14} /> Faturamento total
+            </div>
+            {diag.faturamentoTrend.length >= 2 && <Sparkline data={diag.faturamentoTrend} tone={diag.faturamentoDelta != null && diag.faturamentoDelta >= 0 ? "pos" : "neg"} />}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: C.g900, marginTop: 8, letterSpacing: "-0.02em", ...TNUM }}>{fmtMoney(diag.faturamentoTotal)}</div>
+          <div style={{ fontSize: 12, color: C.g500, marginTop: 4 }}>
+            {diag.faturamentoDelta != null && (
+              <span style={{ color: diag.faturamentoDelta >= 0 ? C.pos : C.neg, fontWeight: 600, ...TNUM }}>
+                {diag.faturamentoDelta >= 0 ? "↑" : "↓"} {fmt1(Math.abs(diag.faturamentoDelta))}%{" "}
+              </span>
+            )}
+            vs período anterior
+          </div>
+        </div>
+        <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ fontSize: 12, color: C.g500, display: "flex", alignItems: "center", gap: 6 }}>
+              <Box size={14} /> Pedidos
+            </div>
+            {diag.pedidosTrend.length >= 2 && <Sparkline data={diag.pedidosTrend} tone={diag.pedidosDelta != null && diag.pedidosDelta >= 0 ? "pos" : "neg"} />}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: C.g900, marginTop: 8, letterSpacing: "-0.02em", ...TNUM }}>{diag.pedidos.toLocaleString("pt-BR")}</div>
+          <div style={{ fontSize: 12, color: C.g500, marginTop: 4 }}>
+            {diag.pedidosDelta != null && (
+              <span style={{ color: diag.pedidosDelta >= 0 ? C.pos : C.neg, fontWeight: 600, ...TNUM }}>
+                {diag.pedidosDelta >= 0 ? "↑" : "↓"} {fmt1(Math.abs(diag.pedidosDelta))}%{" "}
+              </span>
+            )}
+            vs período anterior
+          </div>
+        </div>
+      </div>
+
+      {/* Receita atribuída Convertfy */}
+      <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Receita atribuída Convertfy</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>Receita gerada pelos canais que gerenciamos</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 20, alignItems: "center" }}>
+          {/* Total + breakdown */}
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total atribuído</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: C.g900, marginTop: 4, letterSpacing: "-0.02em", ...TNUM }}>{fmtMoney(diag.receitaAtribuida)}</div>
+            <div style={{ fontSize: 12, color: C.brand, fontWeight: 600, marginTop: 2, ...TNUM }}>{fmt1(diag.atribuidaPercent)}% do faturamento total</div>
+            <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Pedidos</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{diag.atribuidaPedidos.toLocaleString("pt-BR")}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Email</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoneyK(diag.emailRevenue)}</div>
+                <div style={{ fontSize: 10, color: C.g400, ...TNUM }}>{fmt1(diag.emailPercent)}%</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>SMS</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoneyK(diag.smsRevenue)}</div>
+                <div style={{ fontSize: 10, color: C.g400, ...TNUM }}>{fmt1(diag.smsPercent)}%</div>
+              </div>
+            </div>
+          </div>
+          {/* Barras Campanhas / Flows */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 20, borderLeft: `1px solid ${C.border}` }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: C.g700 }}>Campanhas</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoney(diag.campanhasRevenue)}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
+                <div style={{ width: `${(diag.campanhasRevenue / campTotal) * 100}%`, height: "100%", background: C.brand, borderRadius: 4 }} />
+              </div>
+              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3, ...TNUM }}>{diag.campanhasEnvios} envios</div>
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: C.g700 }}>Flows</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoney(diag.flowsRevenue)}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
+                <div style={{ width: `${(diag.flowsRevenue / campTotal) * 100}%`, height: "100%", background: "#7C3AED", borderRadius: 4 }} />
+              </div>
+              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3, ...TNUM }}>{diag.flowsAtivos} ativos</div>
+            </div>
+          </div>
+          {/* Donut participação */}
+          <DonutPercent percent={diag.atribuidaPercent} />
+        </div>
+      </div>
+
+      {/* 2 tabelas: Top campanhas + Top flows */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <PerfTable title="Top campanhas por receita" sub={`${diag.campanhasEnvios} envios · neste período`} firstCol="Campanha" rows={diag.topCampaigns} cs={cs} />
+        <PerfTable title="Top flows por receita" sub={`${diag.flowsAtivos} flows ativos`} firstCol="Flow" rows={diag.topFlows} cs={cs} />
+      </div>
+    </div>
+  )
+}
+
+function DonutPercent({ percent }: { percent: number }) {
+  const r = 28, circ = 2 * Math.PI * r
+  const pct = Math.min(Math.max(percent, 0), 100)
+  const dash = (pct / 100) * circ
+  return (
+    <div style={{ position: "relative", width: 76, height: 76 }}>
+      <svg width={76} height={76} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={38} cy={38} r={r} fill="none" stroke="#E5E7EB" strokeWidth="7" />
+        <circle cx={38} cy={38} r={r} fill="none" stroke="#4E62D8" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${dash} ${circ}`} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{percent.toFixed(1).replace(".", ",")}%</span>
+        <span style={{ fontSize: 7.5, fontWeight: 600, color: C.g400, textTransform: "uppercase", letterSpacing: "0.04em" }}>Participação</span>
+      </div>
+    </div>
+  )
+}
+
+function PerfTable({ title, sub, firstCol, rows, cs }: { title: string; sub: string; firstCol: string; rows: PerfData["topCampaigns"]; cs: string }) {
+  const fmtMoney = (v: number) => `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>{title}</div>
+        <div style={{ fontSize: 11, color: C.g500, marginTop: 1 }}>{sub}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 56px 52px 72px", padding: "7px 14px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+        <span>{firstCol}</span>
+        <span style={{ textAlign: "right" }}>Envios</span>
+        <span style={{ textAlign: "right" }}>Abert.</span>
+        <span style={{ textAlign: "right" }}>Cliques</span>
+        <span style={{ textAlign: "right" }}>Receita</span>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: C.g400 }}>Sem dados neste período</div>
+      ) : rows.map((r, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 56px 56px 52px 72px", padding: "9px 14px", alignItems: "center", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${C.g100}`, fontSize: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span style={{ width: 18, height: 18, borderRadius: 4, background: C.g100, color: C.g500, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, ...TNUM }}>{i + 1}</span>
+            <span style={{ color: C.g900, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+            {r.isOutlier && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.warn, flexShrink: 0 }} />}
+          </div>
+          {r.paused ? (
+            <>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400, fontSize: 11 }}>pausado</span>
+            </>
+          ) : (
+            <>
+              <span style={{ textAlign: "right", color: C.g600, ...TNUM }}>{r.sends.toLocaleString("pt-BR")}</span>
+              <span style={{ textAlign: "right", color: r.isOutlier ? C.warn : C.g600, fontWeight: r.isOutlier ? 600 : 400, ...TNUM }}>{r.openRate != null ? `${r.openRate.toFixed(1).replace(".", ",")}%` : "—"}</span>
+              <span style={{ textAlign: "right", color: C.g600, ...TNUM }}>{r.clicks.toLocaleString("pt-BR")}</span>
+              <span style={{ textAlign: "right", color: C.g900, fontWeight: 600, ...TNUM }}>{fmtMoney(r.revenue)}</span>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ────────── Tab: Funil ────────── */
 
-function FunilTab({ report, diag, cs = "R$" }: {
-  report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null
+function FunilTab({ diag, cs = "R$" }: {
   diag?: {
     stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
     gargaloLabel: string | null; gargaloDelta: number | null; gargaloKey: string | null
@@ -952,86 +1223,6 @@ function HistoricoTab({ reports, diag }: {
   )
 }
 
-/* ────────── Tab: Campanhas (dados reais Omnisend) ────────── */
-
-interface CampaignRow {
-  campaign_id: string
-  campaign_name: string
-  send_time: string | null
-  subject: string | null
-  recipients: number | null
-  delivered: number | null
-  opened: number | null
-  clicked: number | null
-  conversions: number | null
-  conversion_value: number | null
-  open_rate: number | null
-  click_rate: number | null
-  bounce_rate: number | null
-}
-
-function CampanhasTab({ campaigns, cs = "R$", diagCampaigns }: { campaigns: CampaignRow[]; cs?: string; diagCampaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }> }) {
-  if (campaigns.length === 0) {
-    return <EmptyTab>Sem campanhas nos últimos 30 dias.</EmptyTab>
-  }
-  return (
-    <div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-          <thead>
-            <tr style={{ background: C.g50, borderBottom: `1px solid ${C.border}` }}>
-              <ThCell>Data</ThCell>
-              <ThCell>Campanha</ThCell>
-              <ThCell right>Enviados</ThCell>
-              <ThCell right>Abertura</ThCell>
-              <ThCell right>CTR</ThCell>
-              <ThCell right>Receita</ThCell>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c) => {
-              const isLowOpen = (c.open_rate ?? 0) < 20
-              return (
-                <tr key={c.campaign_id} style={{ borderBottom: `1px solid ${C.g100}` }}>
-                  <td style={{ padding: "10px 12px", color: C.g500, whiteSpace: "nowrap", ...TNUM }}>
-                    {c.send_time ? new Date(c.send_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", minWidth: 200 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: C.g900, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
-                      {c.campaign_name}
-                    </div>
-                    {c.subject && (
-                      <div style={{ fontSize: 11, color: C.g500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
-                        {c.subject}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
-                    {c.recipients?.toLocaleString("pt-BR") ?? "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", ...TNUM }}>
-                    <span style={{ color: isLowOpen ? C.neg : C.g700, fontWeight: isLowOpen ? 600 : 400 }}>
-                      {c.open_rate != null ? `${c.open_rate.toFixed(1)}%` : "—"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
-                    {c.click_rate != null ? `${c.click_rate.toFixed(1)}%` : "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: C.g900, ...TNUM }}>
-                    {c.conversion_value != null && c.conversion_value > 0
-                      ? `${cs} ${c.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                      : "—"}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
 /* ────────── Tab: Automações (dados reais Omnisend) ────────── */
 
 interface AutomationRow {
@@ -1049,7 +1240,7 @@ interface AutomationRow {
   click_rate: number | null
 }
 
-function AutomacoesTab({ automations, cs = "R$", diagAutomations }: { automations: AutomationRow[]; cs?: string; diagAutomations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }> }) {
+function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[]; cs?: string }) {
   if (automations.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
@@ -1098,16 +1289,6 @@ function MetricCell({ label, value, tone }: { label: string; value: string; tone
       <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 600, color, ...TNUM, marginTop: 2 }}>{value}</div>
     </div>
-  )
-}
-
-function ThCell({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return (
-    <th style={{
-      padding: "8px 12px", textAlign: right ? "right" : "left",
-      fontSize: 10.5, fontWeight: 600, color: C.g500,
-      letterSpacing: "0.06em", textTransform: "uppercase",
-    }}>{children}</th>
   )
 }
 
@@ -1497,14 +1678,6 @@ function FooterBtn({ children, onClick, disabled }: { children: React.ReactNode;
     >
       {children}
     </button>
-  )
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
-      {children}
-    </div>
   )
 }
 

@@ -117,10 +117,13 @@ export async function GET(
         .limit(10),
     ])
 
+    const periodParam = request.nextUrl.searchParams.get("period")
+    const period = (["7d", "30d", "90d", "12m"].includes(periodParam ?? "") ? periodParam : "30d") as "7d" | "30d" | "90d" | "12m"
+
     let diagnostic = null
     try {
-      diagnostic = await buildFullDiagnostic(admin, storeId, store.store_name, store.currency ?? "BRL")
-    } catch (e) {
+      diagnostic = await buildFullDiagnostic(admin, storeId, store.store_name, store.currency ?? "BRL", period)
+    } catch {
       diagnostic = null
     }
 
