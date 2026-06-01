@@ -211,7 +211,7 @@ export function RitualDiagnosticModal({
         topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
       }
       funnel?: {
-        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
+        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
         gargaloLabel: string | null
         gargaloDelta: number | null
         gargaloKey: string | null
@@ -226,6 +226,7 @@ export function RitualDiagnosticModal({
         openDeltaPp: number
         dateRangeStart: string
         dateRangeEnd: string
+        emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
       }
       pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
       history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
@@ -857,12 +858,13 @@ function PerfTable({ title, sub, firstCol, rows, cs }: { title: string; sub: str
 
 function FunilTab({ diag, cs = "R$" }: {
   diag?: {
-    stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null }>
+    stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
     gargaloLabel: string | null; gargaloDelta: number | null; gargaloKey: string | null
     insightTitle: string; insightBody: string
     revenueImpact: number; benchmarkOpen: number
     expectedOpen: number; realOpen: number; openDeltaPp: number
     dateRangeStart: string; dateRangeEnd: string
+    emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
   }
   cs?: string
 }) {
@@ -1064,38 +1066,51 @@ function FunilTab({ diag, cs = "R$" }: {
       )}
 
       {/* Tabela detalhada por estágio */}
-      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 14 }}>
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Detalhe por estágio</div>
-          <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>últimos 7 dias · vs média 30 dias · vs benchmark Convertfy</div>
+          <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>últimos 7 dias · vs média 8 semanas · vs benchmark Convertfy</div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 90px", padding: "8px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 70px 60px 84px 64px 64px", padding: "8px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
           <span>Estágio</span>
           <span></span>
           <span style={{ textAlign: "right" }}>Volume</span>
           <span style={{ textAlign: "right" }}>Taxa</span>
+          <span style={{ textAlign: "center" }}>Trend 8 sem.</span>
+          <span style={{ textAlign: "right" }}>vs sem.</span>
           <span style={{ textAlign: "right" }}>vs bench.</span>
         </div>
         {stages.map((s, i) => {
           const benchDelta = s.bench != null ? (s.pct * 100) - s.bench : null
           return (
             <div key={s.key} style={{
-              display: "grid", gridTemplateColumns: "120px 1fr 80px 80px 90px",
-              padding: "10px 16px", alignItems: "center",
+              display: "grid", gridTemplateColumns: "110px 1fr 70px 60px 84px 64px 64px",
+              padding: "9px 16px", alignItems: "center",
               borderBottom: i === stages.length - 1 ? "none" : `1px solid ${C.g100}`,
               background: s.isGargalo ? "rgba(254, 226, 226, 0.4)" : C.white,
             }}>
-              <span style={{ fontSize: 12.5, fontWeight: s.isGargalo ? 600 : 500, color: s.isGargalo ? C.neg : C.g700 }}>
+              <span style={{ fontSize: 12, fontWeight: s.isGargalo ? 600 : 500, color: s.isGargalo ? C.neg : C.g700, display: "flex", alignItems: "center", gap: 4 }}>
                 {s.label}
-                {s.isGargalo && <span style={{ fontSize: 9, fontWeight: 700, marginLeft: 6, padding: "1px 5px", background: C.negBg, color: C.neg, borderRadius: 3, letterSpacing: "0.06em" }}>GARGALO</span>}
+                {s.isGargalo && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.neg }} />}
               </span>
               <div style={{ paddingRight: 12 }}>
-                <div style={{ height: 6, borderRadius: 3, background: C.g100, overflow: "hidden" }}>
+                <div style={{ height: 6, borderRadius: 3, background: C.g100, overflow: "hidden", position: "relative" }}>
                   <div style={{ width: `${Math.min((s.volume / maxVolume) * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.neg : C.brand }} />
+                  {s.bench != null && (
+                    <div style={{ position: "absolute", top: -1, bottom: -1, left: `${Math.min(s.bench, 100)}%`, width: 2, background: C.g400 }} />
+                  )}
                 </div>
               </div>
               <span style={{ textAlign: "right", fontSize: 12, fontWeight: 500, color: C.g900, ...TNUM }}>{s.volume.toLocaleString("pt-BR")}</span>
               <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: C.g900, ...TNUM }}>{fmt1(s.pct * 100)}%</span>
+              <span style={{ display: "flex", justifyContent: "center" }}>
+                {s.trend.length >= 2
+                  ? <Sparkline data={s.trend} tone={s.delta >= 0 ? "pos" : "neg"} />
+                  : <span style={{ fontSize: 11, color: C.g300 }}>—</span>}
+              </span>
+              <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: s.delta >= 0 ? C.pos : C.neg, ...TNUM }}>
+                {s.delta >= 0 ? "+" : ""}{fmt1(s.delta)}%
+              </span>
               <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: benchDelta == null ? C.g400 : benchDelta >= 0 ? C.pos : C.neg, ...TNUM }}>
                 {benchDelta == null ? "—" : `${benchDelta >= 0 ? "+" : ""}${fmt1(benchDelta)}pp`}
               </span>
@@ -1103,6 +1118,47 @@ function FunilTab({ diag, cs = "R$" }: {
           )
         })}
       </div>
+
+      {/* Card: Performance de email */}
+      {diag?.emailPerformance && (
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Performance de email</div>
+            <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>Métricas de engajamento do período vs benchmark da rede Convertfy</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", padding: 16, gap: 12 }}>
+            <EmailMetric label="Entregues" value={diag.emailPerformance.entregues.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.entreguesRate)}% taxa`} />
+            <EmailMetric label="Abertura" value={`${fmt1(diag.emailPerformance.abertura)}%`} bench={diag.emailPerformance.aberturaBench} actual={diag.emailPerformance.abertura} gargalo={diag?.gargaloKey === "opened"} />
+            <EmailMetric label="Clique" value={`${fmt1(diag.emailPerformance.clique)}%`} bench={diag.emailPerformance.cliqueBench} actual={diag.emailPerformance.clique} />
+            <EmailMetric label="CTOR" value={`${fmt1(diag.emailPerformance.ctor)}%`} bench={diag.emailPerformance.ctorBench} actual={diag.emailPerformance.ctor} />
+            <EmailMetric label="Bounces" value={diag.emailPerformance.bounces.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.bouncesRate)}% taxa`} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmailMetric({ label, value, sub, bench, actual, gargalo }: { label: string; value: string; sub?: string; bench?: number; actual?: number; gargalo?: boolean }) {
+  const isBad = bench != null && actual != null && actual < bench
+  return (
+    <div style={{ padding: "12px 14px", background: gargalo ? C.warnBg : C.g25, border: `1px solid ${gargalo ? C.warnBorder : C.border}`, borderRadius: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</span>
+        {gargalo && <span style={{ fontSize: 8.5, fontWeight: 700, padding: "1px 5px", background: C.warn, color: "#fff", borderRadius: 3, letterSpacing: "0.04em" }}>GARGALO</span>}
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 700, color: gargalo ? C.warn : isBad ? C.neg : C.g900, ...TNUM, letterSpacing: "-0.01em" }}>{value}</div>
+      {bench != null && actual != null ? (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ height: 4, borderRadius: 2, background: C.g200, overflow: "hidden", position: "relative" }}>
+            <div style={{ width: `${Math.min((actual / Math.max(bench, actual)) * 100, 100)}%`, height: "100%", background: isBad ? (gargalo ? C.warn : C.neg) : C.pos }} />
+            <div style={{ position: "absolute", top: -1, bottom: -1, left: `${Math.min((bench / Math.max(bench, actual)) * 100, 100)}%`, width: 2, background: C.g500 }} />
+          </div>
+          <div style={{ fontSize: 10, color: C.g400, marginTop: 3, ...TNUM }}>benchmark {bench.toFixed(1).replace(".", ",")}%</div>
+        </div>
+      ) : sub ? (
+        <div style={{ fontSize: 10.5, color: C.g400, marginTop: 4, ...TNUM }}>{sub}</div>
+      ) : null}
     </div>
   )
 }

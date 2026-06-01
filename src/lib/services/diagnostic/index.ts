@@ -29,6 +29,19 @@ export interface FunnelStage {
   bench: number | null
 }
 
+export interface EmailPerformance {
+  entregues: number
+  entreguesRate: number
+  abertura: number
+  aberturaBench: number
+  clique: number
+  cliqueBench: number
+  ctor: number
+  ctorBench: number
+  bounces: number
+  bouncesRate: number
+}
+
 export interface FunnelResult {
   stages: FunnelStage[]
   gargaloLabel: string | null
@@ -45,6 +58,7 @@ export interface FunnelResult {
   openDeltaPp: number
   dateRangeStart: string
   dateRangeEnd: string
+  emailPerformance: EmailPerformance
 }
 
 export interface ParetoItem {
@@ -157,7 +171,7 @@ function pctChange(current: number, previous: number): number {
 
 /* ────────── ABA 1: Funil & Gargalo ────────── */
 
-async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: number; click: number; convert: number; deliv: number }> {
+async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: number; click: number; ctor: number; clickRate: number; convert: number; deliv: number }> {
   const { data } = await admin
     .from("omnisend_campaign_metrics")
     .select("recipients, delivered, opened, clicked, conversions")
@@ -165,7 +179,7 @@ async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: numbe
     .limit(500)
 
   const rows = (data ?? []) as Array<Record<string, number | null>>
-  if (rows.length === 0) return { open: 30, click: 35, convert: 8, deliv: 98 }
+  if (rows.length === 0) return { open: 30, click: 35, ctor: 11, clickRate: 3.8, convert: 8, deliv: 98 }
 
   const totSent = rows.reduce<number>((a, r) => a + (r.recipients || 0), 0)
   const totDeliv = rows.reduce<number>((a, r) => a + (r.delivered || 0), 0)
@@ -176,7 +190,9 @@ async function getNetworkBenchmark(admin: SupabaseClient): Promise<{ open: numbe
   return {
     deliv: totSent > 0 ? (totDeliv / totSent) * 100 : 98,
     open: totDeliv > 0 ? (totOpen / totDeliv) * 100 : 30,
-    click: totOpen > 0 ? (totClick / totOpen) * 100 : 35,
+    click: totOpen > 0 ? (totClick / totOpen) * 100 : 35, // CTOR (legacy field)
+    ctor: totOpen > 0 ? (totClick / totOpen) * 100 : 11,
+    clickRate: totDeliv > 0 ? (totClick / totDeliv) * 100 : 3.8,
     convert: totClick > 0 ? (totConv / totClick) * 100 : 8,
   }
 }
@@ -188,7 +204,7 @@ export async function buildFunnel(
 ): Promise<FunnelResult> {
   const sym = cs(currency)
 
-  const [campaignsRes, campaigns30dRes, bench] = await Promise.all([
+  const [campaignsRes, campaigns30dRes, bench, weeklyRes] = await Promise.all([
     admin
       .from("omnisend_campaign_metrics")
       .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
@@ -196,14 +212,40 @@ export async function buildFunnel(
       .eq("period_label", "7d"),
     admin
       .from("omnisend_campaign_metrics")
-      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time")
+      .select("recipients, delivered, opened, clicked, conversions, conversion_value, send_time, bounced")
       .eq("store_id", storeId)
       .eq("period_label", "30d"),
     getNetworkBenchmark(admin),
+    admin
+      .from("weekly_reports")
+      .select("week_start, metrics")
+      .eq("store_id", storeId)
+      .order("week_start", { ascending: false })
+      .limit(8),
   ])
 
   const campaigns = campaignsRes.data
   const campaigns30d = campaigns30dRes.data
+
+  // Sparklines de 8 semanas via weekly_reports (defensivo: JSONB incerto)
+  const weeks = ((weeklyRes.data ?? []) as Array<{ week_start: string; metrics: Record<string, unknown> | null }>)
+  const metricSeries = (path: string): number[] => {
+    return weeks.map((w) => {
+      const m = w.metrics
+      if (!m) return null
+      const parts = path.split(".")
+      let val: unknown = m
+      for (const p of parts) {
+        if (val == null || typeof val !== "object") return null
+        val = (val as Record<string, unknown>)[p]
+      }
+      return typeof val === "number" ? val : null
+    }).filter((v): v is number => v != null).reverse()
+  }
+  const openTrend = metricSeries("open_rate")
+  const clickTrend = metricSeries("click_rate")
+  const convTrend = metricSeries("conversion_rate")
+  const sentTrend = metricSeries("sent")
 
   const sum = (rows: unknown[] | null, key: string): number =>
     (rows ?? []).reduce<number>((acc, r) => acc + (Number((r as Record<string, unknown>)[key]) || 0), 0)
@@ -232,11 +274,11 @@ export async function buildFunnel(
   const convPct30d = click30d > 0 ? conv30d / click30d : 0
 
   const stages: FunnelStage[] = [
-    { key: "sent", label: "Enviados", volume: sent7d, pct: 1, delta: pctChange(sent7d, sent30d / 4), isGargalo: false, trend: [], bench: null },
+    { key: "sent", label: "Enviados", volume: sent7d, pct: 1, delta: pctChange(sent7d, sent30d / 4), isGargalo: false, trend: sentTrend, bench: null },
     { key: "delivered", label: "Entregues", volume: deliv7d, pct: delivPct7d, delta: pctChange(delivPct7d, delivPct30d), isGargalo: false, trend: [], bench: bench.deliv },
-    { key: "opened", label: "Abertos", volume: open7d, pct: openPct7d, delta: pctChange(openPct7d, openPct30d), isGargalo: false, trend: [], bench: bench.open },
-    { key: "clicked", label: "Clicaram", volume: click7d, pct: clickPct7d, delta: pctChange(clickPct7d, clickPct30d), isGargalo: false, trend: [], bench: bench.click },
-    { key: "converted", label: "Converteram", volume: conv7d, pct: convPct7d, delta: pctChange(convPct7d, convPct30d), isGargalo: false, trend: [], bench: bench.convert },
+    { key: "opened", label: "Abertos", volume: open7d, pct: openPct7d, delta: pctChange(openPct7d, openPct30d), isGargalo: false, trend: openTrend, bench: bench.open },
+    { key: "clicked", label: "Clicaram", volume: click7d, pct: clickPct7d, delta: pctChange(clickPct7d, clickPct30d), isGargalo: false, trend: clickTrend, bench: bench.click },
+    { key: "converted", label: "Converteram", volume: conv7d, pct: convPct7d, delta: pctChange(convPct7d, convPct30d), isGargalo: false, trend: convTrend, bench: bench.convert },
   ]
 
   const candidates = stages.slice(2)
@@ -253,6 +295,21 @@ export async function buildFunnel(
 
   const expectedOpen = Math.round(deliv7d * (bench.open / 100))
   const openDeltaPp = (openPct7d * 100) - bench.open
+
+  // Performance de email (período 30d, vs benchmark da rede)
+  const bounces30d = sum(campaigns30d, "bounced")
+  const emailPerformance: EmailPerformance = {
+    entregues: deliv30d,
+    entreguesRate: sent30d > 0 ? (deliv30d / sent30d) * 100 : 0,
+    abertura: openPct30d * 100,
+    aberturaBench: bench.open,
+    clique: deliv30d > 0 ? (click30d / deliv30d) * 100 : 0,
+    cliqueBench: bench.clickRate,
+    ctor: open30d > 0 ? (click30d / open30d) * 100 : 0,
+    ctorBench: bench.ctor,
+    bounces: bounces30d,
+    bouncesRate: sent30d > 0 ? (bounces30d / sent30d) * 100 : 0,
+  }
 
   const dates = ((campaigns ?? []) as Array<{ send_time: string | null }>)
     .map((c) => c.send_time)
@@ -279,6 +336,7 @@ export async function buildFunnel(
     openDeltaPp,
     dateRangeStart: dateStart,
     dateRangeEnd: dateEnd,
+    emailPerformance,
   }
 }
 
