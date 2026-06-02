@@ -20,13 +20,13 @@ const imageMapEntrySchema = z.object({
 })
 
 const postSchema = z.object({
-  flow_type: z.string().optional(),
+  flow_type: z.string().optional().nullable(),
   email_number: z.number().int().min(1).optional().nullable(),
   name: z.string().min(1),
-  html: z.string().optional(),
-  copy: z.string().optional(),
+  html: z.string().optional().nullable(),
+  copy: z.string().optional().nullable(),
   image_map: z.array(imageMapEntrySchema).optional().nullable(),
-  thumbnail: z.string().optional(),
+  thumbnail: z.string().optional().nullable(),
   tags: z.array(z.string()).default([]),
   is_active: z.boolean().default(true),
 })
