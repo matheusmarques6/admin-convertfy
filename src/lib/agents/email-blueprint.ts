@@ -391,14 +391,83 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   upsell: {
+    // Composição padrão universal (upsell 1-4) — fonte canônica
+    // espelha 20260627e_upsell_blueprints_default.sql.
     1: {
-      objective: "Cross-sell pós-compra",
-      messaging: "Produtos complementares à compra recente, dicas de uso",
-      subject_hint: "Combine com sua compra recente",
+      objective:
+        "Apresenta a próxima compra como continuação natural. Combina prova social forte + desconto destacado + countdown.",
+      messaging:
+        "Hero + stats + pílula de oferta + manchete de desconto + cupom + reviews + rating + produtos + countdown + reforço de coupon+cta + urgência de fechamento.",
+      subject_hint: "Seu próximo par está esperando",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Agradecimento e sugestão" },
-        { type: "products", label: "Produtos", purpose: "Produtos complementares" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo da loja" },
+        { type: "hero", label: "Hero Section", purpose: "Hero com produto destaque + headline de continuação", needs_image: true },
+        { type: "social_proof", label: "Stat Block", purpose: "Bloco com estatística forte (ex: \"412 clientes recompraram esta semana\")" },
+        { type: "urgency", label: "Exclusive Offer Pill", purpose: "Pílula/label destacada com tom de exclusividade (ex: \"OFERTA EXCLUSIVA\")" },
+        { type: "headline", label: "17% OFF Big Visual", purpose: "Manchete grandona com o desconto destacado (ex: \"17% OFF\")" },
+        { type: "cta", label: "CTA", purpose: "CTA principal logo após o desconto" },
+        { type: "coupon", label: "Coupon Block", purpose: "Cartão de cupom com código" },
+        { type: "headline", label: "Reviews Section Header", purpose: "Título da seção de depoimentos" },
+        { type: "testimonials", label: "4 Testimonial Cards", purpose: "Até 4 cards de depoimento (autor + quote + rating)" },
+        { type: "social_proof", label: "Big Rating Badge", purpose: "Selo de rating grandão (ex: \"4.9/5 com 1.2k avaliações\")" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos recomendados em grade 2x2" },
+        { type: "urgency", label: "Countdown Block", purpose: "Bloco de countdown com prazo do cupom" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom de reforço próximo do fim" },
+        { type: "cta", label: "CTA", purpose: "CTA logo após o cupom de reforço" },
+        { type: "urgency", label: "Closing Urgency", purpose: "Bloco de urgência de fechamento (última chamada)" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    2: {
+      objective:
+        "Reforço do desconto com countdown vivo. Combina cupom + lembrete + benefícios + visual grandão.",
+      messaging:
+        "Hero + cupom + CTA hero + reminder + countdown + cupom + CTA + benefícios + 17% OFF visual + produtos + CTA + social proof.",
+      subject_hint: "17% OFF expira em breve",
+      blocks: [
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero Section", purpose: "Hero com produto destaque", needs_image: true },
+        { type: "coupon", label: "Coupon Block", purpose: "Cupom destacado no topo" },
+        { type: "cta", label: "CTA Hero", purpose: "CTA principal do hero" },
+        { type: "text", label: "Reminder Section", purpose: "Seção de lembrete explicando a oferta" },
+        { type: "urgency", label: "Countdown Live", purpose: "Countdown vivo com tempo restante" },
+        { type: "coupon", label: "Coupon", purpose: "Cupom de reforço" },
+        { type: "cta", label: "CTA", purpose: "CTA após cupom" },
+        { type: "features", label: "Benefits", purpose: "Strip de benefícios (frete, garantia, troca)" },
+        { type: "headline", label: "17% OFF Big Visual", purpose: "Manchete grandona com o desconto destacado" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade 2x2" },
+        { type: "cta", label: "CTA", purpose: "CTA final após produtos" },
+        { type: "social_proof", label: "Social Proof Block", purpose: "Bloco de prova social (contagem ou rating)" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    3: {
+      objective:
+        "Última chance hoje. Tom de urgência máxima com 2 blocos de \"last chance\" cercando produtos.",
+      messaging:
+        "Hero + last chance + cupom + CTA + produtos + features + last chance + CTA final.",
+      subject_hint: "Última chance — expira hoje",
+      blocks: [
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero Section", purpose: "Hero com tom de última chamada", needs_image: true },
+        { type: "urgency", label: "Last Chance Big Block", purpose: "Bloco grandão de última chance (destaque vermelho/laranja)" },
+        { type: "coupon", label: "Coupon Block", purpose: "Cupom expirando hoje" },
+        { type: "cta", label: "CTA", purpose: "CTA após cupom" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade" },
+        { type: "features", label: "Features Icon Strip", purpose: "Strip de features (selos de confiança)" },
+        { type: "urgency", label: "Last Chance Block", purpose: "Segundo bloco de last chance (reforço)" },
+        { type: "cta", label: "Final CTA", purpose: "CTA final urgente" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    4: {
+      objective:
+        "Carta pessoal de fechamento. Quebra padrão comercial pra reconectar emocionalmente.",
+      messaging:
+        "Letter card único — tom íntimo, sem CTAs comerciais.",
+      subject_hint: "Uma mensagem pessoal pra você",
+      blocks: [
+        { type: "letter", label: "Letter Card", purpose: "Carta pessoal do fundador (greeting + body longo + assinatura)" },
       ],
     },
   },
