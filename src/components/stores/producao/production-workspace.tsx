@@ -1048,8 +1048,8 @@ function FlowItem({
   const isRealBlocked = mode !== "preview" && flow.status === "blocked"
   const isPreviewLocked = flow.preview_locked === true
   const isBlocked = isRealBlocked || isPreviewLocked
-  const expanded = !isBlocked
-  const [open, setOpen] = useState(expanded)
+  // Flows sempre iniciam fechados; o usuário expande o que quiser.
+  const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [unblocking, setUnblocking] = useState(false)
   const toast = useToast()
