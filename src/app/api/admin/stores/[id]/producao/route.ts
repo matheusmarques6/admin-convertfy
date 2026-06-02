@@ -8,6 +8,10 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import {
+  OTHER_LANGUAGE_LABEL,
+  languageCodeToLabel,
+} from "@/lib/i18n/store-language"
 
 const log = logger.child("StoreProducao")
 
@@ -51,8 +55,9 @@ export async function GET(
       )
     }
 
-    // Brand + Briefing + TopProducts + Flows em paralelo (todos independentes do `store`).
-    const [brandRes, briefingRes, topProductsRes, flowsRes] = await Promise.all([
+    // Brand + Briefing + TopProducts + Flows + Onboarding em paralelo
+    // (todos independentes do `store`).
+    const [brandRes, briefingRes, topProductsRes, flowsRes, onbRes] = await Promise.all([
       admin
         .from("store_brand_identity")
         .select("*")
@@ -88,12 +93,41 @@ export async function GET(
         `)
         .eq("store_id", storeId)
         .order("position", { ascending: true }),
+      // Onboarding mais recente da loja — pra resolver o idioma escolhido no
+      // formulário (cobre o caso "Outro", que não chega em client_stores.language).
+      admin
+        .from("onboardings")
+        .select("form_responses")
+        .eq("store_id", storeId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
 
     const brand = brandRes.data
     const briefing = briefingRes.data
     const topProducts = topProductsRes.data
     const flows = flowsRes.data
+
+    // Resolve o label do idioma selecionado pelo cliente. Prioridade:
+    // form_responses (a escolha real, inclui "Outro") → client_stores.language.
+    const formResponses = (onbRes.data?.form_responses ?? {}) as Record<
+      string,
+      unknown
+    >
+    const selectedLang =
+      typeof formResponses.store_language === "string"
+        ? formResponses.store_language.trim()
+        : ""
+    let language_label: string | null = null
+    if (selectedLang === OTHER_LANGUAGE_LABEL) {
+      const other = formResponses.store_language_other
+      language_label = typeof other === "string" && other.trim() ? other.trim() : null
+    } else if (selectedLang) {
+      language_label = selectedLang // já é o label amigável do formulário
+    } else if (store.language) {
+      language_label = languageCodeToLabel(store.language) ?? store.language
+    }
 
     const topProductsSync = (topProducts ?? []).length
       ? {
@@ -111,7 +145,7 @@ export async function GET(
     }))
 
     return successResponse(request, {
-      store,
+      store: { ...store, language_label },
       brand,
       briefing,
       flows: flowsOrdered,
