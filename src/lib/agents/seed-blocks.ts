@@ -114,3 +114,102 @@ export async function seedBlocksFromBlueprint(
   log.info("seed.done", { emailId, blockCount: blocks.length })
   return { blocks }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Auto-seed lazy (não destrutivo) — usado pelo dispatchEmailCopyWebhook
+// pra garantir que cada email do batch tem blocks materializados antes
+// de montar o payload pro n8n. Diferente de `seedBlocksFromBlueprint`,
+// NÃO deleta blocks existentes — só insere quando a tabela está vazia
+// pro `email_id`. Idempotente.
+// ──────────────────────────────────────────────────────────────
+
+export interface EnsureBlocksResult {
+  /** true se INSERT rolou; false se já tinha blocks (no-op). */
+  seeded: boolean
+  /** Total de blocks na tabela após a operação. */
+  count: number
+}
+
+export async function ensureBlocksSeeded(
+  emailId: string,
+  flowType: string,
+  emailNumber: number,
+): Promise<EnsureBlocksResult> {
+  const admin = createAdminClient()
+
+  // 1. Já tem blocks? Não toca em nada.
+  const { count: existing, error: countErr } = await admin
+    .from("email_blocks")
+    .select("id", { count: "exact", head: true })
+    .eq("email_id", emailId)
+
+  if (countErr) {
+    log.error("ensure.count_failed", { emailId, error: countErr.message })
+    throw new Error(`Falha ao contar blocos: ${countErr.message}`)
+  }
+  if ((existing ?? 0) > 0) {
+    return { seeded: false, count: existing ?? 0 }
+  }
+
+  // 2. Lookup blueprint (DB → DEFAULT_BLUEPRINTS → fallback mínimo)
+  let blockDefs: BlueprintBlockDef[] | null = null
+  try {
+    const { data: dbBlueprint } = await admin
+      .from("email_blueprints")
+      .select("blocks")
+      .eq("flow_type", flowType)
+      .eq("email_number", emailNumber)
+      .maybeSingle()
+
+    if (dbBlueprint?.blocks && Array.isArray(dbBlueprint.blocks)) {
+      blockDefs = dbBlueprint.blocks as BlueprintBlockDef[]
+    }
+  } catch (err) {
+    log.warn("ensure.blueprint_read_failed", {
+      flowType,
+      emailNumber,
+      error: (err as Error).message,
+    })
+  }
+
+  if (!blockDefs) {
+    const flowBlueprints = DEFAULT_BLUEPRINTS[flowType]
+    const blueprint = flowBlueprints?.[emailNumber]
+    if (blueprint) {
+      blockDefs = blueprint.blocks
+    } else {
+      blockDefs = [
+        { type: "hero", label: "Hero", purpose: "Banner principal do email", needs_image: true },
+        { type: "text", label: "Texto", purpose: "Corpo principal do email" },
+        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+      ]
+    }
+  }
+
+  // 3. INSERT direto (sem DELETE — está vazio mesmo)
+  const inserts = blockDefs.map((def, idx) => ({
+    email_id: emailId,
+    block_type: def.type,
+    label: def.label,
+    position: idx + 1,
+    content: {},
+    applied: false,
+  }))
+
+  const { error: insertErr } = await admin
+    .from("email_blocks")
+    .insert(inserts)
+
+  if (insertErr) {
+    log.error("ensure.insert_failed", { emailId, error: insertErr.message })
+    throw new Error(`Falha ao inserir blocos: ${insertErr.message}`)
+  }
+
+  log.info("ensure.seeded", {
+    emailId,
+    flowType,
+    emailNumber,
+    count: inserts.length,
+  })
+  return { seeded: true, count: inserts.length }
+}
