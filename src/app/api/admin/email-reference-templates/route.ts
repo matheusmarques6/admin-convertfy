@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
 
     const flowType = request.nextUrl.searchParams.get("flow_type")
+    const emailNumberRaw = request.nextUrl.searchParams.get("email_number")
+    const isActiveRaw = request.nextUrl.searchParams.get("is_active")
 
     let query = admin
       .from("email_reference_templates")
@@ -46,6 +48,19 @@ export async function GET(request: NextRequest) {
 
     if (flowType) {
       query = query.eq("flow_type", flowType)
+    }
+
+    if (emailNumberRaw !== null && emailNumberRaw !== "") {
+      const emailNumber = Number(emailNumberRaw)
+      if (Number.isInteger(emailNumber) && emailNumber >= 1) {
+        query = query.eq("email_number", emailNumber)
+      }
+    }
+
+    if (isActiveRaw === "true") {
+      query = query.eq("is_active", true)
+    } else if (isActiveRaw === "false") {
+      query = query.eq("is_active", false)
     }
 
     const { data, error } = await query
