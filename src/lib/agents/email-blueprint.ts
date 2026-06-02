@@ -293,14 +293,21 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   site_abandoned: {
+    // Composição padrão universal (site_abandoned 1) — fonte canônica
+    // espelha 20260627i_site_abandoned_blueprints_default.sql.
     1: {
-      objective: "Reengajar visitante que saiu do site",
-      messaging: "Destacar best-sellers, criar curiosidade, oferecer incentivo sutil",
-      subject_hint: "Sentimos sua falta! Confira as novidades",
+      objective:
+        "Reengajar visitante que saiu do site sem interagir. Tom convidativo + incentivo via cupom.",
+      messaging:
+        "Hero com tom de \"sentimos sua falta\" + cupom + produtos + trust badges + texto de fechamento.",
+      subject_hint: "Sentimos sua falta — volta a dar uma olhada",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Mensagem de re-engajamento" },
-        { type: "products", label: "Produtos", purpose: "Best-sellers da loja" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "hero", label: "Hero", purpose: "Hero convidativo com produto ou lifestyle da marca", needs_image: true },
+        { type: "coupon", label: "Cupom", purpose: "Cupom incentivo pra voltar e fechar a compra" },
+        { type: "products", label: "Produtos", purpose: "Best-sellers ou produtos navegados/recomendados" },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança (frete, garantia, troca)" },
+        { type: "text", label: "Texto", purpose: "Texto de fechamento amigável + tom da marca" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
       ],
     },
   },
