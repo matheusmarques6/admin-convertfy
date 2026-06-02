@@ -527,14 +527,90 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   shipping_stages: {
+    // Composição padrão universal (shipping_stages 1-5) — fonte canônica
+    // espelha 20260627h_shipping_stages_blueprints_default.sql.
+    //
+    // IMPORTANTE: blocos transacionais (Order Details, Totais) não são
+    // preenchidos pelo agente Copy. São renderizados pelo Omnisend com
+    // variáveis Liquid ({{order.number}}, {{order.total}}, etc).
+    // O `purpose` documenta isso explicitamente — o agente Copy deve
+    // pular esses blocos (gerar conteúdo vazio).
     1: {
-      objective: "Confirmar pagamento recebido",
-      messaging: "Confirmação de pagamento, próximos passos, prazo estimado",
-      subject_hint: "Pagamento confirmado! Seu pedido está a caminho",
+      objective:
+        "Confirmação de pagamento recebido. Tom de tranquilidade — pedido em andamento.",
+      messaging:
+        "Hero confirmando + order details (Omnisend) + produtos + totais (Omnisend) + trust badges + texto agradecimento.",
+      subject_hint: "Pagamento confirmado — seu pedido está sendo preparado",
       blocks: [
-        { type: "text", label: "Texto", purpose: "Confirmação de pagamento e próximos passos" },
-        { type: "cta", label: "CTA", purpose: "Acompanhar pedido" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "hero", label: "Hero", purpose: "Hero confirmando pagamento (ex: \"HAS BEEN APPROVED\")", needs_image: true },
+        { type: "text", label: "Order Details", purpose: "Placeholder Omnisend — bloco transacional. Renderizado com variáveis tipo {{order.number}}, {{order.date}}, {{order.shipping_address}}. IA NÃO gera conteúdo aqui." },
+        { type: "products", label: "Produtos", purpose: "Lista de produtos do pedido (preenchido pelo Omnisend com {{order.items}})" },
+        { type: "text", label: "Totais", purpose: "Placeholder Omnisend — totais do pedido. Variáveis tipo {{order.subtotal}}, {{order.shipping_cost}}, {{order.discount}}, {{order.total}}. IA NÃO gera conteúdo aqui." },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança (\"tem alguma dúvida?\" / \"trocas e devoluções\")" },
+        { type: "text", label: "Texto", purpose: "Texto de agradecimento + próximos passos (este sim a IA preenche, com tom da marca)" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    2: {
+      objective:
+        "Pedido em separação no estoque. Tom de progresso — engajamento + upsell sutil.",
+      messaging:
+        "Hero \"in preparation\" + order details (Omnisend) + produtos + totais (Omnisend) + trust badges + texto + sugestões de produtos.",
+      subject_hint: "Seu pedido está em separação",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero indicando \"IS IN PREPARATION\"", needs_image: true },
+        { type: "text", label: "Order Details", purpose: "Placeholder Omnisend — bloco transacional. Variáveis {{order.number}}, {{order.date}}, {{order.shipping_address}}. IA NÃO gera conteúdo aqui." },
+        { type: "products", label: "Produtos", purpose: "Lista de produtos do pedido (preenchido pelo Omnisend com {{order.items}})" },
+        { type: "text", label: "Totais", purpose: "Placeholder Omnisend — totais do pedido. Variáveis {{order.subtotal}}, {{order.shipping_cost}}, {{order.discount}}, {{order.total}}. IA NÃO gera conteúdo aqui." },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança" },
+        { type: "text", label: "Texto", purpose: "Texto explicando o status \"em separação\" + tempo estimado (IA preenche com tom da marca)" },
+        { type: "products", label: "Produtos", purpose: "Sugestões de produtos complementares (upsell sutil)" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    3: {
+      objective:
+        "Pedido coletado pela transportadora. Tom de progresso — pedido a caminho.",
+      messaging:
+        "Hero \"transporter\" + order details (Omnisend) + produtos + totais (Omnisend) + trust badges + texto + sugestões.",
+      subject_hint: "Seu pedido foi coletado pela transportadora",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero indicando \"TRANSPORTER\" / em coleta", needs_image: true },
+        { type: "text", label: "Order Details", purpose: "Placeholder Omnisend — bloco transacional. Variáveis {{order.number}}, {{order.tracking_code}}, {{order.tracking_url}}. IA NÃO gera conteúdo aqui." },
+        { type: "products", label: "Produtos", purpose: "Lista de produtos do pedido (preenchido pelo Omnisend com {{order.items}})" },
+        { type: "text", label: "Totais", purpose: "Placeholder Omnisend — totais do pedido. Variáveis {{order.subtotal}}, {{order.shipping_cost}}, {{order.discount}}, {{order.total}}. IA NÃO gera conteúdo aqui." },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança" },
+        { type: "text", label: "Texto", purpose: "Texto explicando \"em coleta\" + ETA (IA preenche com tom da marca)" },
+        { type: "products", label: "Produtos", purpose: "Sugestões de produtos complementares" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    4: {
+      objective:
+        "Aviso de atraso na entrega. Tom de transparência e empatia — só comunicação operacional.",
+      messaging:
+        "Email textual minimalista — apenas a comunicação do atraso + próximos passos. Sem produtos, sem upsell.",
+      subject_hint: "Aviso importante sobre seu pedido",
+      blocks: [
+        { type: "text", label: "Texto", purpose: "Texto único explicando o atraso + nova previsão de entrega + canais de suporte. Pode incluir variáveis Omnisend tipo {{order.number}}, {{order.tracking_url}}, {{order.new_eta}}. IA preenche tom + estrutura editorial; placeholders Omnisend ficam inline no texto." },
+      ],
+    },
+    5: {
+      objective:
+        "Pedido enviado com código de rastreio. Tom de comemoração — produto a caminho.",
+      messaging:
+        "Hero \"shipped\" + CTA pra rastreio + order details (Omnisend) + produtos + totais (Omnisend) + trust badges + texto + sugestões.",
+      subject_hint: "Seu pedido foi enviado 🚚",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero indicando \"SHIPPED\" / pedido a caminho", needs_image: true },
+        { type: "cta", label: "CTA", purpose: "CTA \"TRACK ORDER\" linkando pra rastreamento (link usa {{order.tracking_url}})" },
+        { type: "text", label: "Order Details", purpose: "Placeholder Omnisend — bloco transacional. Variáveis {{order.number}}, {{order.tracking_code}}, {{order.tracking_url}}, {{order.estimated_delivery}}. IA NÃO gera conteúdo aqui." },
+        { type: "products", label: "Produtos", purpose: "Lista de produtos do pedido (preenchido pelo Omnisend com {{order.items}})" },
+        { type: "text", label: "Totais", purpose: "Placeholder Omnisend — totais do pedido. Variáveis {{order.subtotal}}, {{order.shipping_cost}}, {{order.discount}}, {{order.total}}. IA NÃO gera conteúdo aqui." },
+        { type: "features", label: "Trust Badges", purpose: "Strip de selos de confiança" },
+        { type: "text", label: "Texto", purpose: "Texto explicando o envio + ETA + dicas pra rastrear (IA preenche com tom da marca)" },
+        { type: "products", label: "Produtos", purpose: "Sugestões de produtos complementares" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
       ],
     },
   },
