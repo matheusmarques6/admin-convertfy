@@ -473,16 +473,55 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   win_back: {
+    // Composição padrão universal (win_back 1-3) — fonte canônica
+    // espelha 20260627g_win_back_blueprints_default.sql.
     1: {
-      objective: "Reativar cliente inativo",
-      messaging: "Saudade, novidades, incentivo de retorno, cupom exclusivo",
-      subject_hint: "Faz tempo que não nos vemos...",
+      objective:
+        "Reativar cliente inativo com tom emocional + novidades. Sem cupom — foco em saudade e curiosidade.",
+      messaging:
+        "Hero emocional + novidades da loja + produtos + prova social via testimonials + urgência de fechamento.",
+      subject_hint: "Sentimos sua falta",
       blocks: [
-        { type: "hero", label: "Hero", purpose: "Imagem emocional de retorno", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Mensagem de saudade e novidades" },
-        { type: "coupon", label: "Cupom", purpose: "Cupom de retorno exclusivo" },
-        { type: "products", label: "Produtos", purpose: "Novidades da loja" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo da loja" },
+        { type: "hero", label: "Hero Section", purpose: "Hero emocional com tom de \"sentimos sua falta\"", needs_image: true },
+        { type: "cta", label: "Hero CTA", purpose: "CTA principal logo após o hero" },
+        { type: "text", label: "What's New Block", purpose: "Seção de novidades da loja desde a última visita do cliente" },
+        { type: "cta", label: "Shop New Arrivals CTA", purpose: "CTA pra explorar as novidades" },
+        { type: "products", label: "Product Grid 2 Produtos", purpose: "Grade com 2 produtos destaque (novidades ou best-sellers)" },
+        { type: "testimonials", label: "Customers Who Didn't Wait Section", purpose: "Cards de testimonials de clientes que voltaram e compraram (autor + quote + rating)" },
+        { type: "urgency", label: "Closing Urgency", purpose: "Bloco de urgência de fechamento (última chamada)" },
+        { type: "cta", label: "CTA", purpose: "CTA após urgência" },
+        { type: "features", label: "Features Icon Strip", purpose: "Strip de features (frete, garantia, troca)" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    2: {
+      objective:
+        "Segundo toque com cupom de 15% + countdown de 48h. Tom de oferta exclusiva pra retorno.",
+      messaging:
+        "Hero + cupom 15% + CTA hero + urgência 48h + benefícios + título + produtos + CTA final.",
+      subject_hint: "Sentimos sua falta — 15% OFF",
+      blocks: [
+        { type: "header", label: "Header", purpose: "Cabeçalho com logo" },
+        { type: "hero", label: "Hero Section", purpose: "Hero com tom de retorno + 15% OFF destacado", needs_image: true },
+        { type: "coupon", label: "Coupon Block", purpose: "Cupom de 15% OFF" },
+        { type: "cta", label: "Hero CTA", purpose: "CTA principal do hero" },
+        { type: "urgency", label: "48h Remaining Block", purpose: "Bloco destacado com countdown de 48 horas" },
+        { type: "features", label: "Features Icon Strip", purpose: "Strip de features (frete, garantia, troca)" },
+        { type: "headline", label: "Section Title", purpose: "Título da seção de produtos" },
+        { type: "products", label: "Product Grid 2x2", purpose: "4 produtos em grade 2x2" },
+        { type: "cta", label: "CTA Final", purpose: "CTA final urgente pra resgatar antes do prazo" },
+        { type: "footer", label: "Footer", purpose: "Rodapé padrão" },
+      ],
+    },
+    3: {
+      objective:
+        "Carta pessoal de fechamento. Quebra padrão comercial pra reconectar emocionalmente após 2 tentativas comerciais.",
+      messaging:
+        "Letter card único — tom íntimo, sem CTAs comerciais.",
+      subject_hint: "Uma mensagem pessoal pra você",
+      blocks: [
+        { type: "letter", label: "Letter Card", purpose: "Carta pessoal do fundador (greeting + body longo + assinatura)" },
       ],
     },
   },
