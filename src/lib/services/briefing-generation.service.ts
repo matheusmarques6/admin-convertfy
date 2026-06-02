@@ -19,6 +19,7 @@ import type {
   BriefingContent,
   BriefingSource,
 } from "@/types/onboarding-pipeline"
+import { sanitizeBriefingContent } from "@/lib/briefing/sanitize-briefing"
 
 const log = logger.child("BriefingGeneration")
 
@@ -49,7 +50,7 @@ const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marke
   "offers_and_differentials": "..."
 }
 
-Cada campo deve ter 2-5 frases em português, direto e prático. Use os dados das respostas. Se algum dado faltar, use bom senso. NÃO inclua nenhum texto fora do JSON.`
+Cada campo deve ter 2-5 frases em português, direto e prático. Use os dados das respostas. Se algum dado faltar, use bom senso. NÃO inclua nenhum texto fora do JSON. NUNCA inclua URLs, links ou caminhos de arquivo nos textos do briefing (o cliente lê esse conteúdo).`
 
 type FormResponses = Record<string, unknown>
 
@@ -190,8 +191,30 @@ async function markGenerating(onboardingId: string): Promise<void> {
     .eq("id", onboardingId)
 }
 
+// Campos do formulario que sao URLs de storage interno (Supabase) — nunca
+// devem entrar no contexto do LLM, pra evitar que ele copie o link nos textos.
+const STORAGE_URL_KEYS = ["logo_url", "brand_manual_url", "design_refs_url"]
+
+/** Remove chaves de storage e quaisquer valores que sejam URL de storage. */
+function stripStorageFromResponses(fr: FormResponses): FormResponses {
+  const out: FormResponses = {}
+  for (const [k, v] of Object.entries(fr)) {
+    if (STORAGE_URL_KEYS.includes(k)) continue
+    if (
+      typeof v === "string" &&
+      /https?:\/\//i.test(v) &&
+      /supabase|\/storage\/v1\/object\/|form-submissions\//i.test(v)
+    ) {
+      continue
+    }
+    out[k] = v
+  }
+  return out
+}
+
 function buildPrompt(ctx: Ctx): { system: string; user: string } {
-  const user = `Respostas do formulario:\n${JSON.stringify(ctx.formResponses, null, 2)}\n\nLoja:\n${JSON.stringify(ctx.store, null, 2)}\n\nCliente:\n${JSON.stringify(ctx.client, null, 2)}\n\nGere o briefing em JSON.`
+  const safeResponses = stripStorageFromResponses(ctx.formResponses)
+  const user = `Respostas do formulario:\n${JSON.stringify(safeResponses, null, 2)}\n\nLoja:\n${JSON.stringify(ctx.store, null, 2)}\n\nCliente:\n${JSON.stringify(ctx.client, null, 2)}\n\nGere o briefing em JSON.`
   return { system: SYSTEM_PROMPT, user }
 }
 
@@ -433,10 +456,13 @@ async function saveBriefing(
 ): Promise<void> {
   const admin = createAdminClient()
   const now = new Date().toISOString()
+  // Cinto-e-suspensório: ainda que o prompt já evite URLs, sanitiza antes de
+  // persistir pra garantir que nenhum link de storage chegue ao cliente.
+  const clean = sanitizeBriefingContent(briefing)
   // briefing_ai_original preserva a versão pura da IA (sem edições do
   // cliente). briefing recebe o mesmo conteúdo aqui — depois confirmBriefing
   // pode sobrescrever só briefing com as edições.
-  const aiVersion = { ...briefing, generated_at: now }
+  const aiVersion = { ...clean, generated_at: now }
   await admin
     .from("onboardings")
     .update({
