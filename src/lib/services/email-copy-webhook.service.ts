@@ -11,10 +11,10 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { ensureBlocksSeeded } from "@/lib/agents/seed-blocks"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
-  TopProduct,
 } from "@/types/email-workspace"
 
 const log = logger.child("EmailCopyWebhook")
@@ -58,11 +58,30 @@ interface BlueprintRow {
 }
 
 interface ReferenceRow {
+  id: string
   flow_type: string
   email_number: number | null
   name: string
   copy: string | null
   html: string | null
+}
+
+interface TopProductRow {
+  rank: number
+  title: string
+  price: number | null
+  currency: string | null
+  handle: string | null
+  external_id: string | null
+  image_url: string | null
+  captured_at: string | null
+}
+
+interface CompetitorRow {
+  name: string
+  url: string | null
+  posicionamento: string | null
+  notas: string | null
 }
 
 export async function dispatchEmailCopyWebhook(
@@ -78,7 +97,7 @@ export async function dispatchEmailCopyWebhook(
   const admin = createAdminClient()
 
   // ── Buscar contexto da loja em paralelo
-  const [storeRes, brandRes, briefingRes] = await Promise.all([
+  const [storeRes, brandRes, briefingRes, topProductsRes, competitorsRes] = await Promise.all([
     admin
       .from("client_stores")
       .select(
@@ -88,7 +107,16 @@ export async function dispatchEmailCopyWebhook(
           icp_persona, icp_demographics, icp_day_in_life,
           icp_motivations, icp_frictions,
           tone_description, tone_do, tone_dont,
-          tone_use_words, tone_avoid_words
+          tone_use_words, tone_avoid_words,
+          slogan, diferencial, persona, tom_de_voz, posicionamento_preco, hashtags,
+          cores, fontes, brand_manual_url, research_doc_url,
+          store_story, store_milestones,
+          ads_score, ads_summary, ads_sub_scores, ads_strengths,
+          ads_opportunities, ads_risks, ads_reviewed_at,
+          ticket_medio_cents, taxa_conversao, faturamento_medio_cents,
+          margem_media, recorrencia, frete_medio_cents, frete_prazo, frete_cobertura,
+          lista_total, lista_engajados_30, lista_engajados_90,
+          lista_crescimento_mensal, sms_consent_pct
         `,
       )
       .eq("id", storeId)
@@ -107,6 +135,16 @@ export async function dispatchEmailCopyWebhook(
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    admin
+      .from("store_top_products")
+      .select("rank, title, price, currency, handle, external_id, image_url, captured_at")
+      .eq("store_id", storeId)
+      .order("rank", { ascending: true })
+      .limit(5),
+    admin
+      .from("client_competitors")
+      .select("name, url, posicionamento, notas")
+      .eq("store_id", storeId),
   ])
 
   if (storeRes.error || !storeRes.data) {
@@ -163,7 +201,7 @@ export async function dispatchEmailCopyWebhook(
       .in("flow_type", flowTypes),
     admin
       .from("email_reference_templates")
-      .select("flow_type, email_number, name, copy, html")
+      .select("id, flow_type, email_number, name, copy, html")
       .in("flow_type", flowTypes)
       .eq("is_active", true)
       .order("created_at", { ascending: false }),
@@ -179,6 +217,32 @@ export async function dispatchEmailCopyWebhook(
     log.warn("email_copy.webhook.skip", { storeId, reason: "no_emails" })
     return { ok: false, flow_count: 0, email_count: 0, reason: "no_emails" }
   }
+
+  // AUTO-SEED LAZY: garante que cada email do batch tenha blocks
+  // materializados antes de montar o payload. Sem isso, lojas que nunca
+  // passaram pelo pipeline interno mandariam blocks:[] vazio pro n8n
+  // (mesmo com email_blueprints populado). `ensureBlocksSeeded` é
+  // idempotente: vira no-op pra emails que já têm blocks. Falhas
+  // individuais são logadas mas não bloqueiam o dispatch (degradação
+  // graceful — o SELECT abaixo decide).
+  const flowsById = new Map(flows.map((f) => [f.id, f]))
+  await Promise.all(
+    emails.map(async (e) => {
+      const flow = flowsById.get(e.flow_id)
+      if (!flow) return
+      try {
+        await ensureBlocksSeeded(e.id, flow.flow_type, e.number)
+      } catch (err) {
+        log.warn("email_copy.webhook.ensure_blocks_failed", {
+          storeId,
+          emailId: e.id,
+          flowType: flow.flow_type,
+          emailNumber: e.number,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }),
+  )
 
   const emailIds = emails.map((e) => e.id)
   const blocksRes = await admin
@@ -232,7 +296,8 @@ export async function dispatchEmailCopyWebhook(
   const store = storeRes.data as Record<string, unknown>
   const brand = (brandRes.data as StoreBrandIdentity | null) ?? null
   const briefing = (briefingRes.data as StoreBriefing | null) ?? null
-  const topProducts = (brand?.top_products as TopProduct[] | undefined) ?? []
+  const topProductsTable = (topProductsRes.data as TopProductRow[] | null) ?? []
+  const competitors = (competitorsRes.data as CompetitorRow[] | null) ?? []
 
   const payload = {
     event: "email_copy.requested" as const,
@@ -269,6 +334,50 @@ export async function dispatchEmailCopyWebhook(
         use_words: store.tone_use_words,
         avoid_words: store.tone_avoid_words,
       },
+      positioning: {
+        slogan: store.slogan ?? null,
+        diferencial: store.diferencial ?? null,
+        persona: store.persona ?? null,
+        tom_de_voz: store.tom_de_voz ?? null,
+        posicionamento_preco: store.posicionamento_preco ?? null,
+        hashtags: store.hashtags ?? [],
+      },
+      visual: {
+        cores: store.cores ?? [],
+        fontes: store.fontes ?? null,
+        brand_manual_url: store.brand_manual_url ?? null,
+        research_doc_url: store.research_doc_url ?? null,
+      },
+      story: {
+        story: store.store_story ?? null,
+        milestones: store.store_milestones ?? [],
+      },
+      ads_review: {
+        score: store.ads_score ?? null,
+        summary: store.ads_summary ?? null,
+        sub_scores: store.ads_sub_scores ?? null,
+        strengths: store.ads_strengths ?? [],
+        opportunities: store.ads_opportunities ?? [],
+        risks: store.ads_risks ?? [],
+        reviewed_at: store.ads_reviewed_at ?? null,
+      },
+      operations: {
+        ticket_medio_cents: store.ticket_medio_cents ?? null,
+        taxa_conversao: store.taxa_conversao ?? null,
+        faturamento_medio_cents: store.faturamento_medio_cents ?? null,
+        margem_media: store.margem_media ?? null,
+        recorrencia: store.recorrencia ?? null,
+        frete_medio_cents: store.frete_medio_cents ?? null,
+        frete_prazo: store.frete_prazo ?? null,
+        frete_cobertura: store.frete_cobertura ?? null,
+      },
+      audience: {
+        lista_total: store.lista_total ?? null,
+        lista_engajados_30: store.lista_engajados_30 ?? null,
+        lista_engajados_90: store.lista_engajados_90 ?? null,
+        lista_crescimento_mensal: store.lista_crescimento_mensal ?? null,
+        sms_consent_pct: store.sms_consent_pct ?? null,
+      },
     },
     brand_identity: brand
       ? {
@@ -286,11 +395,20 @@ export async function dispatchEmailCopyWebhook(
           briefing: briefing.briefing ?? {},
         }
       : null,
-    top_products: topProducts.slice(0, 5).map((p) => ({
-      name: p.name,
+    top_products: topProductsTable.map((p) => ({
+      name: p.title,
       price: p.price,
+      currency: p.currency,
       image_url: p.image_url,
-      url: p.url ?? null,
+      url: p.handle ? `${store.store_url ?? ""}/products/${p.handle}` : null,
+      external_id: p.external_id,
+      rank: p.rank,
+    })),
+    competitors: competitors.map((c) => ({
+      name: c.name,
+      url: c.url,
+      posicionamento: c.posicionamento,
+      notas: c.notas,
     })),
     flows: flows.map((f) => {
       const flowEmails = (emailsByFlow.get(f.id) ?? []).map((e) => {
@@ -325,7 +443,7 @@ export async function dispatchEmailCopyWebhook(
         flow_type: f.flow_type,
         flow_name: f.name,
         reference: ref
-          ? { name: ref.name, copy: ref.copy, html: ref.html }
+          ? { id: ref.id, name: ref.name }
           : null,
         emails: flowEmails,
       }

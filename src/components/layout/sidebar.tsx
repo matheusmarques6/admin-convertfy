@@ -37,7 +37,6 @@ import {
   Sun,
   Moon,
   LifeBuoy,
-  Bot,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -305,12 +304,14 @@ const GERAL_NAV: NavGroup[] = [
       { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
       { name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
       {
-        name: "Agentes / Prompts",
-        href: ROUTES.ADMIN.AGENTS.PROMPTS,
-        icon: Bot,
-        // Visibilidade restrita: o link só aparece pra admin/owner.
-        // Devs (tag) acessam por URL direto — quem mexe em prompts em
-        // produção precisa de role formal pra evitar quebra acidental.
+        name: "Geração de Emails",
+        href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION,
+        icon: Mail,
+        // Página consolidada: agentes (prompts), blueprints, configurações,
+        // referências e teste do pipeline AE. Link só pra admin/owner;
+        // devs com tag 'dev' acessam por URL direta (mesmo padrão dos
+        // antigos /admin/agents/prompts e /admin/email-blueprints, que
+        // agora redirecionam pra cá).
         requiredFeatures: ["__admin_only__"],
       },
     ],

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, X, Zap, Send,
-  TrendingDown, TrendingUp,
+  ExternalLink, Download, Package, Box,
 } from "lucide-react"
 
 const C = {
@@ -90,12 +90,35 @@ interface RitualSession {
 
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
+type SingleFunnelT = {
+  source: "campaign" | "automation"
+  stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean; bench: number | null; trend: number[] }>
+  gargaloLabel: string | null
+  gargaloDelta: number | null
+  gargaloKey: string | null
+  insightTitle: string
+  insightBody: string
+  revenueImpact: number
+  expectedOpen: number
+  realOpen: number
+  openDeltaPp: number
+  totalRevenue: number
+  hasData: boolean
+}
+
 const TABS = [
+  { id: "performance" as const, label: "Performance" },
   { id: "funil" as const, label: "Funil & gargalo" },
-  { id: "problemas" as const, label: "80/20 problemas", badge: true },
+  { id: "problemas" as const, label: "80/20 dos problemas", badge: true },
   { id: "comparativo" as const, label: "Comparativo histórico" },
-  { id: "campanhas" as const, label: "Campanhas", badge: true },
   { id: "automacoes" as const, label: "Automações", badge: true },
+]
+
+const PERIODS = [
+  { id: "7d" as const, label: "7d" },
+  { id: "30d" as const, label: "30d" },
+  { id: "90d" as const, label: "90d" },
+  { id: "12m" as const, label: "1A" },
 ]
 
 export function RitualDiagnosticModal({
@@ -109,7 +132,8 @@ export function RitualDiagnosticModal({
 }) {
   const router = useRouter()
   const [currentIdx, setCurrentIdx] = useState(session.current_store_index)
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("funil")
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("performance")
+  const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "12m">("30d")
   const [timerSec, setTimerSec] = useState(0)
   const [paused, setPaused] = useState(false)
   const storeId = session.store_ids[currentIdx] as string | undefined
@@ -121,7 +145,7 @@ export function RitualDiagnosticModal({
   }, [paused])
 
   useEffect(() => {
-    setActiveTab("funil")
+    setActiveTab("performance")
   }, [storeId])
 
   useEffect(() => {
@@ -192,15 +216,28 @@ export function RitualDiagnosticModal({
       click_rate: number | null
     }>
     diagnostic?: {
-      funnel?: {
-        stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>
-        gargaloLabel: string | null
-        gargaloDelta: number | null
-        insightTitle: string
-        insightBody: string
+      performance?: {
+        faturamentoTotal: number; faturamentoDelta: number | null
+        pedidos: number; pedidosDelta: number | null
+        faturamentoTrend: number[]; pedidosTrend: number[]
+        receitaAtribuida: number; atribuidaPercent: number; atribuidaPedidos: number
+        emailRevenue: number; emailPercent: number; smsRevenue: number; smsPercent: number
+        campanhasRevenue: number; campanhasEnvios: number; flowsRevenue: number; flowsAtivos: number
+        topCampaigns: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+        topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
       }
-      pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
-      history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+      funnel?: {
+        campaign: SingleFunnelT
+        automation: SingleFunnelT
+        benchmarkOpen: number
+        benchmarkClick: number
+        benchmarkConvert: number
+        dateRangeStart: string
+        dateRangeEnd: string
+        emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
+      }
+      pareto?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number; actions: Array<{ title: string; owner: string; effort: string; impact: string }> }>
+      history?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string; trend: number[] }>
       campaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }>
       automations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }>
       currencySymbol?: string
@@ -208,7 +245,7 @@ export function RitualDiagnosticModal({
   }
 
   const { data: ritualData } = useSWR<RitualStoreResponse>(
-    storeId ? `/api/ritual/stores/${storeId}` : null,
+    storeId ? `/api/ritual/stores/${storeId}?period=${period}` : null,
     fetcher,
   )
 
@@ -217,7 +254,6 @@ export function RitualDiagnosticModal({
   const diag = ritualData?.diagnostic
   const latestReport = ritualData?.reports?.[0] ?? null
   const allReports = ritualData?.reports ?? []
-  const campaigns = ritualData?.campaigns ?? []
   const automations = ritualData?.automations ?? []
   const storeCurrency = storeInfo?.currency ?? "BRL"
   const currencySymbol = storeCurrency === "EUR" ? "€" : storeCurrency === "USD" ? "$" : "R$"
@@ -408,6 +444,9 @@ export function RitualDiagnosticModal({
             }}>
               {TABS.map((t) => {
                 const isActive = activeTab === t.id
+                const badgeCount = t.id === "problemas" ? (diag?.pareto?.length ?? 0)
+                  : t.id === "automacoes" ? (diag?.automations?.length ?? automations.length)
+                  : 0
                 return (
                   <div
                     key={t.id}
@@ -422,18 +461,60 @@ export function RitualDiagnosticModal({
                     }}
                   >
                     {t.label}
+                    {("badge" in t && t.badge) && badgeCount > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, padding: "0 5px",
+                        borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        background: isActive ? C.brand : C.g200, color: isActive ? "#fff" : C.g600, ...TNUM,
+                      }}>{badgeCount}</span>
+                    )}
                   </div>
                 )
               })}
             </div>
 
+            {/* Barra de período (Performance e Funil) */}
+            {(activeTab === "performance" || activeTab === "funil") && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 2, padding: 2, background: C.g100, borderRadius: 8 }}>
+                    {PERIODS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPeriod(p.id)}
+                        style={{
+                          padding: "5px 12px", fontSize: 12, fontWeight: 600,
+                          color: period === p.id ? C.g900 : C.g500,
+                          background: period === p.id ? C.white : "transparent",
+                          border: "none", borderRadius: 6, cursor: "pointer",
+                          boxShadow: period === p.id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                          ...TNUM,
+                        }}
+                      >{p.label}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 12, color: C.g500 }}>Comparando com</span>
+                  <span style={{ padding: "5px 10px", fontSize: 12, fontWeight: 500, color: C.brand, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 6 }}>Período anterior</span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <a href={storeId ? `/admin/stores/${storeId}?tab=performance` : "#"} target="_blank" rel="noreferrer" style={{ padding: "6px 12px", fontSize: 12, fontWeight: 500, color: C.g700, background: C.white, border: `1px solid ${C.g300}`, borderRadius: 6, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <ExternalLink size={13} /> Abrir relatório
+                  </a>
+                  <button type="button" style={{ padding: "6px 12px", fontSize: 12, fontWeight: 500, color: C.g700, background: C.white, border: `1px solid ${C.g300}`, borderRadius: 6, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Download size={13} /> Exportar PDF
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Tab content */}
             <div style={{ flex: 1, overflow: "auto", paddingRight: 4, paddingBottom: 6 }}>
-              {activeTab === "funil" && <FunilTab report={latestReport} diag={diag?.funnel} />}
+              {activeTab === "performance" && <PerformanceTab diag={diag?.performance} cs={currencySymbol} />}
+              {activeTab === "funil" && <FunilTab diag={diag?.funnel} cs={currencySymbol} />}
               {activeTab === "problemas" && <ParetoTab report={latestReport} diag={diag?.pareto} />}
               {activeTab === "comparativo" && <HistoricoTab reports={allReports} diag={diag?.history} />}
-              {activeTab === "campanhas" && <CampanhasTab campaigns={campaigns} cs={currencySymbol} diagCampaigns={diag?.campaigns} />}
-              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} diagAutomations={diag?.automations} />}
+              {activeTab === "automacoes" && <AutomacoesTab automations={automations} cs={currencySymbol} />}
             </div>
           </div>
 
@@ -571,102 +652,676 @@ function StoreHeader({
   )
 }
 
-/* ────────── Tab: Funil ────────── */
+/* ────────── Tab: Performance (financeiro) ────────── */
 
-function FunilTab({ report, diag }: {
-  report?: { highlights: unknown[]; concerns: unknown[]; metrics: Record<string, unknown> | null; ai_summary: string | null } | null
-  diag?: { stages: Array<{ key: string; label: string; volume: number; pct: number; delta: number; isGargalo: boolean }>; gargaloLabel: string | null; gargaloDelta: number | null; insightTitle: string; insightBody: string }
-}) {
-  const stages = diag?.stages ?? []
+interface PerfData {
+  faturamentoTotal: number; faturamentoDelta: number | null
+  pedidos: number; pedidosDelta: number | null
+  faturamentoTrend: number[]; pedidosTrend: number[]
+  receitaAtribuida: number; atribuidaPercent: number; atribuidaPedidos: number
+  emailRevenue: number; emailPercent: number; smsRevenue: number; smsPercent: number
+  campanhasRevenue: number; campanhasEnvios: number; flowsRevenue: number; flowsAtivos: number
+  topCampaigns: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+  topFlows: Array<{ name: string; sends: number; openRate: number | null; clicks: number; revenue: number; isOutlier: boolean; paused: boolean }>
+}
+
+function Sparkline({ data, tone }: { data: number[]; tone: "pos" | "neg" }) {
+  if (data.length < 2) return null
+  const max = Math.max(...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  const w = 72, h = 28
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w
+    const y = h - ((v - min) / range) * h
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(" ")
+  const color = tone === "pos" ? "#10B981" : "#EF4444"
+  return (
+    <svg width={w} height={h} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PerformanceTab({ diag, cs = "R$" }: { diag?: PerfData; cs?: string }) {
+  if (!diag) {
+    return <EmptyTab>Sem dados financeiros disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>
+  }
+  const fmtMoney = (v: number) => `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const fmtMoneyK = (v: number) => v >= 1000 ? `${cs} ${(v / 1000).toFixed(1).replace(".", ",")}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+  const campTotal = diag.campanhasRevenue + diag.flowsRevenue || 1
+
   return (
     <div>
-      {diag?.insightBody && (
-        <div style={{ marginBottom: 16, padding: 14, background: diag.gargaloLabel ? C.warnBg : C.infoBg, border: `1px solid ${diag.gargaloLabel ? C.warnBorder : C.infoBorder}`, borderRadius: 8, fontSize: 13, color: C.g700, lineHeight: 1.55 }}>
-          <strong style={{ fontWeight: 600 }}>{diag.insightTitle}:</strong> {diag.insightBody}
+      {/* 2 cards: Faturamento + Pedidos */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ fontSize: 12, color: C.g500, display: "flex", alignItems: "center", gap: 6 }}>
+              <Package size={14} /> Faturamento total
+            </div>
+            {diag.faturamentoTrend.length >= 2 && <Sparkline data={diag.faturamentoTrend} tone={diag.faturamentoDelta != null && diag.faturamentoDelta >= 0 ? "pos" : "neg"} />}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: C.g900, marginTop: 8, letterSpacing: "-0.02em", ...TNUM }}>{fmtMoney(diag.faturamentoTotal)}</div>
+          <div style={{ fontSize: 12, color: C.g500, marginTop: 4 }}>
+            {diag.faturamentoDelta != null && (
+              <span style={{ color: diag.faturamentoDelta >= 0 ? C.pos : C.neg, fontWeight: 600, ...TNUM }}>
+                {diag.faturamentoDelta >= 0 ? "↑" : "↓"} {fmt1(Math.abs(diag.faturamentoDelta))}%{" "}
+              </span>
+            )}
+            vs período anterior
+          </div>
+        </div>
+        <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ fontSize: 12, color: C.g500, display: "flex", alignItems: "center", gap: 6 }}>
+              <Box size={14} /> Pedidos
+            </div>
+            {diag.pedidosTrend.length >= 2 && <Sparkline data={diag.pedidosTrend} tone={diag.pedidosDelta != null && diag.pedidosDelta >= 0 ? "pos" : "neg"} />}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: C.g900, marginTop: 8, letterSpacing: "-0.02em", ...TNUM }}>{diag.pedidos.toLocaleString("pt-BR")}</div>
+          <div style={{ fontSize: 12, color: C.g500, marginTop: 4 }}>
+            {diag.pedidosDelta != null && (
+              <span style={{ color: diag.pedidosDelta >= 0 ? C.pos : C.neg, fontWeight: 600, ...TNUM }}>
+                {diag.pedidosDelta >= 0 ? "↑" : "↓"} {fmt1(Math.abs(diag.pedidosDelta))}%{" "}
+              </span>
+            )}
+            vs período anterior
+          </div>
+        </div>
+      </div>
+
+      {/* Receita atribuída Convertfy */}
+      <div style={{ padding: 16, background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Receita atribuída Convertfy</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>Receita gerada pelos canais que gerenciamos</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 20, alignItems: "center" }}>
+          {/* Total + breakdown */}
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total atribuído</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: C.g900, marginTop: 4, letterSpacing: "-0.02em", ...TNUM }}>{fmtMoney(diag.receitaAtribuida)}</div>
+            <div style={{ fontSize: 12, color: C.brand, fontWeight: 600, marginTop: 2, ...TNUM }}>{fmt1(diag.atribuidaPercent)}% do faturamento total</div>
+            <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Pedidos</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{diag.atribuidaPedidos.toLocaleString("pt-BR")}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Email</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoneyK(diag.emailRevenue)}</div>
+                <div style={{ fontSize: 10, color: C.g400, ...TNUM }}>{fmt1(diag.emailPercent)}%</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, textTransform: "uppercase", letterSpacing: "0.04em" }}>SMS</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoneyK(diag.smsRevenue)}</div>
+                <div style={{ fontSize: 10, color: C.g400, ...TNUM }}>{fmt1(diag.smsPercent)}%</div>
+              </div>
+            </div>
+          </div>
+          {/* Barras Campanhas / Flows */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingLeft: 20, borderLeft: `1px solid ${C.border}` }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: C.g700 }}>Campanhas</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoney(diag.campanhasRevenue)}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
+                <div style={{ width: `${(diag.campanhasRevenue / campTotal) * 100}%`, height: "100%", background: C.brand, borderRadius: 4 }} />
+              </div>
+              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3, ...TNUM }}>{diag.campanhasEnvios} envios</div>
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: C.g700 }}>Flows</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.g900, ...TNUM }}>{fmtMoney(diag.flowsRevenue)}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
+                <div style={{ width: `${(diag.flowsRevenue / campTotal) * 100}%`, height: "100%", background: "#7C3AED", borderRadius: 4 }} />
+              </div>
+              <div style={{ fontSize: 10.5, color: C.g400, marginTop: 3, ...TNUM }}>{diag.flowsAtivos} ativos</div>
+            </div>
+          </div>
+          {/* Donut participação */}
+          <DonutPercent percent={diag.atribuidaPercent} />
+        </div>
+      </div>
+
+      {/* 2 tabelas: Top campanhas + Top flows */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <PerfTable title="Top campanhas por receita" sub={`${diag.campanhasEnvios} envios · neste período`} firstCol="Campanha" rows={diag.topCampaigns} cs={cs} />
+        <PerfTable title="Top flows por receita" sub={`${diag.flowsAtivos} flows ativos`} firstCol="Flow" rows={diag.topFlows} cs={cs} />
+      </div>
+    </div>
+  )
+}
+
+function DonutPercent({ percent }: { percent: number }) {
+  const r = 28, circ = 2 * Math.PI * r
+  const pct = Math.min(Math.max(percent, 0), 100)
+  const dash = (pct / 100) * circ
+  return (
+    <div style={{ position: "relative", width: 76, height: 76 }}>
+      <svg width={76} height={76} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={38} cy={38} r={r} fill="none" stroke="#E5E7EB" strokeWidth="7" />
+        <circle cx={38} cy={38} r={r} fill="none" stroke="#4E62D8" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${dash} ${circ}`} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.g900, ...TNUM }}>{percent.toFixed(1).replace(".", ",")}%</span>
+        <span style={{ fontSize: 7.5, fontWeight: 600, color: C.g400, textTransform: "uppercase", letterSpacing: "0.04em" }}>Participação</span>
+      </div>
+    </div>
+  )
+}
+
+function PerfTable({ title, sub, firstCol, rows, cs }: { title: string; sub: string; firstCol: string; rows: PerfData["topCampaigns"]; cs: string }) {
+  const fmtMoney = (v: number) => `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>{title}</div>
+        <div style={{ fontSize: 11, color: C.g500, marginTop: 1 }}>{sub}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 56px 52px 72px", padding: "7px 14px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+        <span>{firstCol}</span>
+        <span style={{ textAlign: "right" }}>Envios</span>
+        <span style={{ textAlign: "right" }}>Abert.</span>
+        <span style={{ textAlign: "right" }}>Cliques</span>
+        <span style={{ textAlign: "right" }}>Receita</span>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: C.g400 }}>Sem dados neste período</div>
+      ) : rows.map((r, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 56px 56px 52px 72px", padding: "9px 14px", alignItems: "center", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${C.g100}`, fontSize: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span style={{ width: 18, height: 18, borderRadius: 4, background: C.g100, color: C.g500, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, ...TNUM }}>{i + 1}</span>
+            <span style={{ color: C.g900, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+            {r.isOutlier && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.warn, flexShrink: 0 }} />}
+          </div>
+          {r.paused ? (
+            <>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400 }}>—</span>
+              <span style={{ textAlign: "right", color: C.g400, fontSize: 11 }}>pausado</span>
+            </>
+          ) : (
+            <>
+              <span style={{ textAlign: "right", color: C.g600, ...TNUM }}>{r.sends.toLocaleString("pt-BR")}</span>
+              <span style={{ textAlign: "right", color: r.isOutlier ? C.warn : C.g600, fontWeight: r.isOutlier ? 600 : 400, ...TNUM }}>{r.openRate != null ? `${r.openRate.toFixed(1).replace(".", ",")}%` : "—"}</span>
+              <span style={{ textAlign: "right", color: C.g600, ...TNUM }}>{r.clicks.toLocaleString("pt-BR")}</span>
+              <span style={{ textAlign: "right", color: C.g900, fontWeight: 600, ...TNUM }}>{fmtMoney(r.revenue)}</span>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ────────── Tab: Funil ────────── */
+
+function FunilTab({ diag, cs = "R$" }: {
+  diag?: {
+    campaign: SingleFunnelT
+    automation: SingleFunnelT
+    benchmarkOpen: number; benchmarkClick: number; benchmarkConvert: number
+    dateRangeStart: string; dateRangeEnd: string
+    emailPerformance: { entregues: number; entreguesRate: number; abertura: number; aberturaBench: number; clique: number; cliqueBench: number; ctor: number; ctorBench: number; bounces: number; bouncesRate: number }
+  }
+  cs?: string
+}) {
+  const [source, setSource] = useState<"campaign" | "automation">("campaign")
+  if (!diag) {
+    return <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>
+  }
+  const f = source === "campaign" ? diag.campaign : diag.automation
+  const stages = f.stages
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+  const fmt0 = (v: number) => v.toFixed(0)
+  const fmtMoney = (v: number) => v >= 1000 ? `${cs} ${fmt1(v / 1000)}k` : `${cs} ${Math.round(v).toLocaleString("pt-BR")}`
+  const maxVolume = Math.max(...stages.map((s) => s.volume), 1)
+  const openStage = stages.find((s) => s.key === "opened")
+
+  return (
+    <div>
+      {/* Toggle: Campanhas / Automações */}
+      <div style={{ display: "flex", gap: 2, padding: 2, background: C.g100, borderRadius: 8, marginBottom: 14, width: "fit-content" }}>
+        {([["campaign", "Campanhas"], ["automation", "Automações"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSource(id)}
+            style={{
+              padding: "6px 16px", fontSize: 12.5, fontWeight: 600,
+              color: source === id ? C.g900 : C.g500,
+              background: source === id ? C.white : "transparent",
+              border: "none", borderRadius: 6, cursor: "pointer",
+              boxShadow: source === id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {label}
+            <span style={{ fontSize: 10, fontWeight: 700, color: source === id ? C.brand : C.g400, ...TNUM }}>
+              {(id === "campaign" ? diag.campaign : diag.automation).stages[0]?.volume.toLocaleString("pt-BR") ?? "0"}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {!f.hasData ? (
+        <EmptyTab>
+          {source === "campaign" ? "Sem campanhas no período." : "Sem automações no período."}
+        </EmptyTab>
+      ) : (
+      <>
+      {/* 3 KPI cards no topo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+        <KpiCard
+          label="Gargalo"
+          value={f.gargaloLabel ?? "Saudável"}
+          accent={f.gargaloDelta != null ? `${fmt1(f.gargaloDelta)}%` : null}
+          accentTone="neg"
+          sub="vs semana anterior"
+        />
+        <KpiCard
+          label="Receita perdida est."
+          value={f.revenueImpact ? fmtMoney(f.revenueImpact) : "—"}
+          accent={f.gargaloDelta != null ? `${fmt0(f.gargaloDelta)}%` : null}
+          accentTone="neg"
+          sub="últimas 2 semanas"
+        />
+        <KpiCard
+          label="vs benchmark Convertfy"
+          value={openStage ? `Abert. ${fmt1(openStage.pct * 100)}%` : "—"}
+          accent={f.openDeltaPp != null ? `${f.openDeltaPp >= 0 ? "+" : ""}${fmt1(f.openDeltaPp)}pp` : null}
+          accentTone={f.openDeltaPp < 0 ? "neg" : "pos"}
+          sub={`média rede: ${fmt1(diag.benchmarkOpen)}%`}
+        />
+      </div>
+
+      {/* Card visual do funil */}
+      <div style={{
+        marginBottom: 14, padding: 16, background: C.white,
+        border: `1px solid ${C.border}`, borderRadius: 10,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Onde a receita está vazando · {source === "campaign" ? "campanhas" : "automações"}</div>
+            <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>largura proporcional ao volume · vermelho = gargalo</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, fontSize: 11, color: C.g500 }}>
+            <span style={{ padding: "3px 8px", background: C.g50, border: `1px solid ${C.border}`, borderRadius: 4 }}>Omnisend</span>
+            {diag?.dateRangeStart && (
+              <span style={{ padding: "3px 8px", background: C.g50, border: `1px solid ${C.border}`, borderRadius: 4, ...TNUM }}>
+                {diag.dateRangeStart} → {diag.dateRangeEnd}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Funil visual — trapézios contínuos centralizados */}
+        <div style={{ position: "relative", padding: "4px 0" }}>
+          {stages.map((s, i) => {
+            // Largura proporcional ao volume: piso 13%, teto 72% (nunca colapsa nem enche tudo)
+            const widthFor = (vol: number) => 13 + (maxVolume > 0 ? vol / maxVolume : 0) * 59
+            const prevS = i > 0 ? stages[i - 1]! : null
+            const nextS = i < stages.length - 1 ? stages[i + 1]! : null
+            const thisW = widthFor(s.volume)
+            const isGargalo = s.isGargalo
+            const nextIsGargalo = nextS?.isGargalo ?? false
+
+            // Top/bottom da trapézio centralizado:
+            //  - gargalo: começa largo (largura anterior) e estreita até a próxima → pescoço vermelho
+            //  - estágio antes do gargalo: reto (mantém largura) pra dar continuidade
+            //  - normal: estreita da própria largura até a próxima
+            let topW: number
+            let botW: number
+            if (isGargalo) {
+              topW = prevS ? widthFor(prevS.volume) : thisW
+              botW = nextS ? widthFor(nextS.volume) : thisW * 0.55
+            } else if (nextIsGargalo) {
+              topW = thisW
+              botW = thisW
+            } else {
+              topW = thisW
+              botW = nextS ? widthFor(nextS.volume) : thisW * 0.72
+            }
+
+            const lt = (100 - topW) / 2
+            const rt = (100 + topW) / 2
+            const lb = (100 - botW) / 2
+            const rb = (100 + botW) / 2
+            const fill = isGargalo
+              ? "linear-gradient(180deg, #F87171 0%, #EF4444 100%)"
+              : "linear-gradient(180deg, #E3E8F8 0%, #C5CEEC 100%)"
+            const stageHeight = isGargalo ? 78 : 66
+
+            // Conversão entrando neste estágio (volume atual / volume anterior)
+            const convPct = prevS && prevS.volume > 0 ? (s.volume / prevS.volume) * 100 : null
+            const critical = convPct != null && convPct < 40
+
+            return (
+              <div key={s.key} style={{ position: "relative", height: stageHeight, marginBottom: -1 }}>
+                {/* Trapézio */}
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: fill,
+                  clipPath: `polygon(${lt}% 0, ${rt}% 0, ${rb}% 100%, ${lb}% 100%)`,
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  <div style={{
+                    fontSize: 10.5, fontWeight: 600,
+                    letterSpacing: "0.08em", textTransform: "uppercase",
+                    color: isGargalo ? "rgba(255,255,255,0.92)" : "#4E62D8",
+                  }}>{s.label}</div>
+                  <div style={{
+                    fontSize: 19, fontWeight: 700, marginTop: 1, ...TNUM,
+                    color: isGargalo ? "#fff" : "#1E2A6B", letterSpacing: "-0.01em",
+                  }}>{s.volume.toLocaleString("pt-BR")}</div>
+                </div>
+
+                {/* Conversão à esquerda */}
+                {convPct != null && (
+                  <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", textAlign: "left" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: critical ? C.neg : C.g600, ...TNUM }}>
+                      ↓ {convPct < 10 ? fmt1(convPct) : fmt0(convPct)}%
+                    </div>
+                    <div style={{ fontSize: 9.5, color: critical ? C.neg : C.g400, marginTop: 1, letterSpacing: "0.02em" }}>
+                      {critical ? "queda crítica" : "conversão"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tag GARGALO à direita */}
+                {isGargalo && (
+                  <div style={{
+                    position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+                    padding: "6px 11px", background: C.negBg, border: `1px solid ${C.negBorder}`,
+                    borderRadius: 8, color: C.neg,
+                    display: "flex", flexDirection: "column", gap: 2, maxWidth: 170,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em" }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.neg }} />
+                      GARGALO
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 500, ...TNUM }}>
+                      {s.delta >= 0 ? "+" : ""}{fmt1(s.delta)}% vs sem. anterior
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {/* Seta final indicando saída do funil */}
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 4, color: C.g300 }}>
+            <ChevronDown size={16} />
+          </div>
+        </div>
+      </div>
+
+      {/* Painel de diagnóstico */}
+      {f.gargaloLabel && (
+        <div style={{
+          marginBottom: 14, padding: 16, background: C.white,
+          border: `1px solid ${C.border}`, borderRadius: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: C.brand, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <Zap size={14} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Fundo do funil · diagnóstico</div>
+              <div style={{ fontSize: 11, color: C.g500 }}>{f.gargaloLabel} <span style={{ color: C.neg, fontWeight: 600 }}>{f.gargaloDelta != null ? fmt1(f.gargaloDelta) : "—"}% vs sem. anterior</span></div>
+            </div>
+          </div>
+
+          {/* Esperado vs Real */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div style={{ padding: 12, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.pos, letterSpacing: "0.06em", textTransform: "uppercase" }}>Esperado</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.pos, marginTop: 4, ...TNUM }}>{f.expectedOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 11, color: C.pos, marginTop: 2, opacity: 0.8 }}>benchmark {fmt1(diag.benchmarkOpen)}%</div>
+            </div>
+            <div style={{ padding: 12, background: C.negBg, border: `1px solid ${C.negBorder}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.neg, letterSpacing: "0.06em", textTransform: "uppercase" }}>Real</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.neg, marginTop: 4, ...TNUM }}>{f.realOpen.toLocaleString("pt-BR")}</div>
+              <div style={{ fontSize: 11, color: C.neg, marginTop: 2, opacity: 0.8 }}>{openStage ? fmt1(openStage.pct * 100) : "0"}% · abriu</div>
+            </div>
+          </div>
+
+          {/* Insight body */}
+          <div style={{ padding: 12, background: C.warnBg, border: `1px solid ${C.warnBorder}`, borderRadius: 8, fontSize: 12.5, color: C.g700, lineHeight: 1.55 }}>
+            <strong style={{ fontWeight: 600, color: C.warn }}>{f.insightTitle}.</strong> {f.insightBody}
+          </div>
         </div>
       )}
-      {stages.length > 0 ? (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "8px 12px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: "8px 8px 0 0" }}>
-            <span>Estágio</span><span>Barra</span><span style={{ textAlign: "right" }}>Volume</span><span style={{ textAlign: "right" }}>Taxa</span><span style={{ textAlign: "right" }}>vs 30d</span>
-          </div>
-          {stages.map((s) => (
-            <div key={s.key} style={{ display: "grid", gridTemplateColumns: "100px 1fr 80px 70px 80px", padding: "10px 12px", alignItems: "center", borderBottom: `1px solid ${C.g100}`, background: s.isGargalo ? C.warnBg : C.white }}>
-              <span style={{ fontSize: 12.5, fontWeight: s.isGargalo ? 600 : 400, color: s.isGargalo ? C.warn : C.g700 }}>{s.label}{s.isGargalo ? " *" : ""}</span>
-              <div style={{ height: 8, borderRadius: 4, background: C.g100, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(s.pct * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.warn : C.brand, borderRadius: 4, transition: "width 200ms" }} />
+
+      {/* Tabela detalhada por estágio */}
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 14 }}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Detalhe por estágio</div>
+          <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>últimos 7 dias · vs média 8 semanas · vs benchmark Convertfy</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 70px 60px 84px 64px 64px", padding: "8px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          <span>Estágio</span>
+          <span></span>
+          <span style={{ textAlign: "right" }}>Volume</span>
+          <span style={{ textAlign: "right" }}>Taxa</span>
+          <span style={{ textAlign: "center" }}>Trend 8 sem.</span>
+          <span style={{ textAlign: "right" }}>vs sem.</span>
+          <span style={{ textAlign: "right" }}>vs bench.</span>
+        </div>
+        {stages.map((s, i) => {
+          const benchDelta = s.bench != null ? (s.pct * 100) - s.bench : null
+          return (
+            <div key={s.key} style={{
+              display: "grid", gridTemplateColumns: "110px 1fr 70px 60px 84px 64px 64px",
+              padding: "9px 16px", alignItems: "center",
+              borderBottom: i === stages.length - 1 ? "none" : `1px solid ${C.g100}`,
+              background: s.isGargalo ? "rgba(254, 226, 226, 0.4)" : C.white,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: s.isGargalo ? 600 : 500, color: s.isGargalo ? C.neg : C.g700, display: "flex", alignItems: "center", gap: 4 }}>
+                {s.label}
+                {s.isGargalo && <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.neg }} />}
+              </span>
+              <div style={{ paddingRight: 12 }}>
+                <div style={{ height: 6, borderRadius: 3, background: C.g100, overflow: "hidden", position: "relative" }}>
+                  <div style={{ width: `${Math.min((s.volume / maxVolume) * 100, 100)}%`, height: "100%", background: s.isGargalo ? C.neg : C.brand }} />
+                  {s.bench != null && (
+                    <div style={{ position: "absolute", top: -1, bottom: -1, left: `${Math.min(s.bench, 100)}%`, width: 2, background: C.g400 }} />
+                  )}
+                </div>
               </div>
               <span style={{ textAlign: "right", fontSize: 12, fontWeight: 500, color: C.g900, ...TNUM }}>{s.volume.toLocaleString("pt-BR")}</span>
-              <span style={{ textAlign: "right", fontSize: 12, color: C.g700, ...TNUM }}>{(s.pct * 100).toFixed(1)}%</span>
-              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: s.delta >= 0 ? C.pos : C.neg, ...TNUM }}>{s.delta >= 0 ? "+" : ""}{s.delta.toFixed(1)}%</span>
+              <span style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: C.g900, ...TNUM }}>{fmt1(s.pct * 100)}%</span>
+              <span style={{ display: "flex", justifyContent: "center" }}>
+                {s.trend.length >= 2
+                  ? <Sparkline data={s.trend} tone={s.delta >= 0 ? "pos" : "neg"} />
+                  : <span style={{ fontSize: 11, color: C.g300 }}>—</span>}
+              </span>
+              <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: s.delta >= 0 ? C.pos : C.neg, ...TNUM }}>
+                {s.delta >= 0 ? "+" : ""}{fmt1(s.delta)}%
+              </span>
+              <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: benchDelta == null ? C.g400 : benchDelta >= 0 ? C.pos : C.neg, ...TNUM }}>
+                {benchDelta == null ? "—" : `${benchDelta >= 0 ? "+" : ""}${fmt1(benchDelta)}pp`}
+              </span>
             </div>
-          ))}
-        </div>
-      ) : report ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <SectionLabel>Destaques</SectionLabel>
-            {(report.highlights ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum destaque.</div> : (report.highlights ?? []).map((h, i) => (
-              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
-                <TrendingUp size={12} style={{ color: C.pos, flexShrink: 0, marginTop: 2 }} />
-                <span>{typeof h === "string" ? h : JSON.stringify(h)}</span>
-              </div>
-            ))}
+          )
+        })}
+      </div>
+
+      {/* Card: Performance de email */}
+      {diag?.emailPerformance && (
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>Performance de email</div>
+            <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>Métricas de engajamento do período vs benchmark da rede Convertfy</div>
           </div>
-          <div>
-            <SectionLabel>Alertas</SectionLabel>
-            {(report.concerns ?? []).length === 0 ? <div style={{ fontSize: 12, color: C.g500 }}>Nenhum alerta.</div> : (report.concerns ?? []).map((c, i) => (
-              <div key={i} style={{ padding: "8px 0", fontSize: 12.5, color: C.g700, borderBottom: `1px solid ${C.g100}`, display: "flex", gap: 6 }}>
-                <TrendingDown size={12} style={{ color: C.neg, flexShrink: 0, marginTop: 2 }} />
-                <span>{typeof c === "string" ? c : JSON.stringify(c)}</span>
-              </div>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", padding: 16, gap: 12 }}>
+            <EmailMetric label="Entregues" value={diag.emailPerformance.entregues.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.entreguesRate)}% taxa`} />
+            <EmailMetric label="Abertura" value={`${fmt1(diag.emailPerformance.abertura)}%`} bench={diag.emailPerformance.aberturaBench} actual={diag.emailPerformance.abertura} gargalo={diag.campaign.gargaloKey === "opened"} />
+            <EmailMetric label="Clique" value={`${fmt1(diag.emailPerformance.clique)}%`} bench={diag.emailPerformance.cliqueBench} actual={diag.emailPerformance.clique} />
+            <EmailMetric label="CTOR" value={`${fmt1(diag.emailPerformance.ctor)}%`} bench={diag.emailPerformance.ctorBench} actual={diag.emailPerformance.ctor} />
+            <EmailMetric label="Bounces" value={diag.emailPerformance.bounces.toLocaleString("pt-BR")} sub={`${fmt1(diag.emailPerformance.bouncesRate)}% taxa`} />
           </div>
         </div>
-      ) : <EmptyTab>Sem dados de funil disponíveis. Verifique se o Omnisend está conectado.</EmptyTab>}
+      )}
+      </>
+      )}
+    </div>
+  )
+}
+
+function EmailMetric({ label, value, sub, bench, actual, gargalo }: { label: string; value: string; sub?: string; bench?: number; actual?: number; gargalo?: boolean }) {
+  const isBad = bench != null && actual != null && actual < bench
+  return (
+    <div style={{ padding: "12px 14px", background: gargalo ? C.warnBg : C.g25, border: `1px solid ${gargalo ? C.warnBorder : C.border}`, borderRadius: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</span>
+        {gargalo && <span style={{ fontSize: 8.5, fontWeight: 700, padding: "1px 5px", background: C.warn, color: "#fff", borderRadius: 3, letterSpacing: "0.04em" }}>GARGALO</span>}
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 700, color: gargalo ? C.warn : isBad ? C.neg : C.g900, ...TNUM, letterSpacing: "-0.01em" }}>{value}</div>
+      {bench != null && actual != null ? (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ height: 4, borderRadius: 2, background: C.g200, overflow: "hidden", position: "relative" }}>
+            <div style={{ width: `${Math.min((actual / Math.max(bench, actual)) * 100, 100)}%`, height: "100%", background: isBad ? (gargalo ? C.warn : C.neg) : C.pos }} />
+            <div style={{ position: "absolute", top: -1, bottom: -1, left: `${Math.min((bench / Math.max(bench, actual)) * 100, 100)}%`, width: 2, background: C.g500 }} />
+          </div>
+          <div style={{ fontSize: 10, color: C.g400, marginTop: 3, ...TNUM }}>benchmark {bench.toFixed(1).replace(".", ",")}%</div>
+        </div>
+      ) : sub ? (
+        <div style={{ fontSize: 10.5, color: C.g400, marginTop: 4, ...TNUM }}>{sub}</div>
+      ) : null}
+    </div>
+  )
+}
+
+function KpiCard({ label, value, accent, accentTone, sub }: { label: string; value: string; accent: string | null; accentTone: "pos" | "neg"; sub: string }) {
+  const accentColor = accentTone === "pos" ? C.pos : C.neg
+  return (
+    <div style={{
+      padding: "14px 16px", background: C.white,
+      border: `1px solid ${C.border}`, borderRadius: 10,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.g900, letterSpacing: "-0.02em", ...TNUM }}>{value}</span>
+        {accent && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: accentColor, ...TNUM }}>{accent}</span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: C.g500, marginTop: 4, ...TNUM }}>{sub}</div>
     </div>
   )
 }
 
 /* ────────── Tab: 80/20 Problemas ────────── */
 
+type ParetoItemT = { rank: number; title: string; detail: string; evidences: string[]; impactPercent: number; actions: Array<{ title: string; owner: string; effort: string; impact: string }> }
+
 function ParetoTab({ report, diag }: {
   report?: { concerns: unknown[] } | null
-  diag?: Array<{ rank: number; title: string; detail: string; evidences: string[]; impactPercent: number }>
+  diag?: ParetoItemT[]
 }) {
   const items = diag ?? []
   if (items.length === 0 && (!report?.concerns || (report.concerns as unknown[]).length === 0)) {
     return <EmptyTab>Sem problemas identificados. Loja performando bem.</EmptyTab>
   }
-  const useItems = items.length > 0 ? items : (report?.concerns ?? []).slice(0, 5).map((c, i) => ({
-    rank: i + 1, title: typeof c === "string" ? c : JSON.stringify(c), detail: "", evidences: [] as string[], impactPercent: Math.round(100 / Math.min((report?.concerns as unknown[]).length, 5)),
+  const useItems: ParetoItemT[] = items.length > 0 ? items : (report?.concerns ?? []).slice(0, 5).map((c, i) => ({
+    rank: i + 1, title: typeof c === "string" ? c : JSON.stringify(c), detail: "", evidences: [] as string[], impactPercent: Math.round(100 / Math.min((report?.concerns as unknown[]).length, 5)), actions: [],
   }))
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Problemas ranqueados por impacto. IA analisa dados reais da loja.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Causas-raiz do problema</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2, ...TNUM }}>{useItems.length} causas explicam 100% da queda · ataque por ordem de impacto</div>
+        </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6, display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Zap size={12} /> análise IA
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {useItems.map((item, i) => (
-          <div key={i} style={{ padding: "14px 16px", background: i === 0 ? C.warnBg : C.white, border: `1px solid ${i === 0 ? C.warnBorder : C.border}`, borderRadius: 10 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <span style={{ width: 26, height: 26, borderRadius: 8, background: i === 0 ? C.warn : C.g200, color: i === 0 ? "#fff" : C.g600, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{item.rank}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{item.title}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? C.warn : C.g500, ...TNUM }}>{item.impactPercent}%</span>
-                </div>
-                {item.detail && <div style={{ fontSize: 12.5, color: C.g600, lineHeight: 1.5, marginBottom: item.evidences.length > 0 ? 8 : 0 }}>{item.detail}</div>}
-                {item.evidences.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {item.evidences.map((e, ei) => (
-                      <span key={ei} style={{ fontSize: 11, padding: "3px 8px", background: i === 0 ? "rgba(146,64,14,0.08)" : C.g50, border: `1px solid ${C.border}`, borderRadius: 4, color: C.g600 }}>{e}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <ParetoCard key={i} item={item} top={i === 0} defaultOpen={i === 0} />
         ))}
       </div>
+    </div>
+  )
+}
+
+const OWNER_INITIAL: Record<string, { i: string; c: string; bg: string }> = {
+  Mariana: { i: "M", c: "#9D174D", bg: "#FCE7F3" },
+  Pedro: { i: "P", c: "#1E40AF", bg: "#DBEAFE" },
+  Jean: { i: "J", c: "#92400E", bg: "#FEF3C7" },
+  Ryan: { i: "R", c: "#065F46", bg: "#D1FAE5" },
+}
+
+function ParetoCard({ item, top, defaultOpen }: { item: ParetoItemT; top: boolean; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const hasActions = item.actions && item.actions.length > 0
+  return (
+    <div style={{
+      background: top ? C.warnBg : C.white,
+      border: `1px solid ${top ? C.warnBorder : C.border}`,
+      borderRadius: 10, overflow: "hidden",
+      borderLeft: top ? `3px solid ${C.warn}` : `1px solid ${C.border}`,
+    }}>
+      {/* Header */}
+      <div
+        onClick={() => hasActions && setOpen(!open)}
+        style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "flex-start", padding: "14px 16px", cursor: hasActions ? "pointer" : "default" }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 700, color: top ? C.warn : C.g400, ...TNUM, marginTop: 1 }}>#{item.rank}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{item.title}</span>
+            {top && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", background: C.warn, color: "#fff", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 3 }}><span style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />prioridade</span>}
+          </div>
+          {item.detail && <div style={{ fontSize: 12.5, color: C.g600, lineHeight: 1.5, marginBottom: item.evidences.length > 0 ? 8 : 0 }}>{item.detail}</div>}
+          {item.evidences.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {item.evidences.map((e, ei) => (
+                <span key={ei} style={{ fontSize: 11, padding: "3px 9px", background: top ? "rgba(146,64,14,0.08)" : C.g50, border: `1px solid ${C.border}`, borderRadius: 4, color: C.g600, display: "inline-flex", alignItems: "center", gap: 5 }}>{e}</span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>Impacto</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: top ? C.warn : C.g700, ...TNUM, letterSpacing: "-0.02em" }}>{item.impactPercent}%</div>
+        </div>
+      </div>
+      {/* Ações sugeridas */}
+      {hasActions && open && (
+        <div style={{ borderTop: `1px solid ${top ? C.warnBorder : C.g100}`, padding: "12px 16px", background: top ? "rgba(255,255,255,0.5)" : C.g25 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <Zap size={11} /> Ações sugeridas · {item.actions.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {item.actions.map((a, ai) => {
+              const o = OWNER_INITIAL[a.owner] ?? { i: a.owner[0]?.toUpperCase() ?? "?", c: C.g600, bg: C.g100 }
+              return (
+                <div key={ai} style={{ display: "grid", gridTemplateColumns: "20px 1fr auto auto auto", gap: 10, alignItems: "center", padding: "8px 10px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 6 }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 4, border: `1.5px solid ${C.g300}` }} />
+                  <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>{a.title}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.g600 }}>
+                    <span style={{ width: 18, height: 18, borderRadius: "50%", background: o.bg, color: o.c, fontSize: 9, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{o.i}</span>
+                    {a.owner}
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: C.g500, ...TNUM }}><Clock size={11} /> {a.effort}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: C.pos, ...TNUM }}>{a.impact}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -675,131 +1330,48 @@ function ParetoTab({ report, diag }: {
 
 function HistoricoTab({ reports, diag }: {
   reports: Array<{ week_start: string; ai_summary?: string | null }>
-  diag?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string }>
+  diag?: Array<{ metric: string; now: string; avg: string; delta: number; deltaTone: string; context: string; trend: number[] }>
 }) {
   const rows = diag ?? []
   if (rows.length === 0 && reports.length === 0) {
     return <EmptyTab>Sem histórico semanal ainda.</EmptyTab>
   }
-  if (rows.length > 0) {
-    return (
-      <div>
-        <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Atual vs média das últimas semanas.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {rows.map((r, i) => {
-            const tone = r.deltaTone === "pos" ? C.pos : r.deltaTone === "neg" ? C.neg : C.g500
-            return (
-              <div key={i} style={{ padding: "14px 16px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{r.metric}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: tone, ...TNUM }}>
-                    {r.delta > 0 ? "+" : ""}{r.delta.toFixed(1)}%
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 20, fontSize: 12.5, color: C.g500 }}>
-                  <span>Atual: <strong style={{ color: C.g900, fontWeight: 600 }}>{r.now}</strong></span>
-                  <span>Média: <strong style={{ color: C.g700 }}>{r.avg}</strong></span>
-                </div>
-                {r.context && r.context !== "estável" && (
-                  <div style={{ marginTop: 6, fontSize: 11.5, color: C.g500, fontStyle: "italic" }}>{r.context}</div>
-                )}
-              </div>
-            )
-          })}
+  if (rows.length === 0) {
+    return <EmptyTab>Sem histórico suficiente para análise comparativa. Loja em ramp-up.</EmptyTab>
+  }
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Comparativo histórico</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>esta semana vs média das últimas 8 semanas</div>
         </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6 }}>admin · metrics_history</span>
       </div>
-    )
-  }
-  return (
-    <div>
-      <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 14 }}>Últimas {reports.length} semanas.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {reports.slice(0, 8).map((r, i) => (
-          <div key={i} style={{ padding: "10px 14px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12.5, color: C.g700, fontWeight: 500 }}>{new Date(r.week_start).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
-            <span style={{ fontSize: 11.5, color: C.g500 }}>{r.ai_summary?.slice(0, 60) ?? "—"}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/* ────────── Tab: Campanhas (dados reais Omnisend) ────────── */
-
-interface CampaignRow {
-  campaign_id: string
-  campaign_name: string
-  send_time: string | null
-  subject: string | null
-  recipients: number | null
-  delivered: number | null
-  opened: number | null
-  clicked: number | null
-  conversions: number | null
-  conversion_value: number | null
-  open_rate: number | null
-  click_rate: number | null
-  bounce_rate: number | null
-}
-
-function CampanhasTab({ campaigns, cs = "R$", diagCampaigns }: { campaigns: CampaignRow[]; cs?: string; diagCampaigns?: Array<{ date: string; name: string; subject: string | null; size: number; openRate: number | null; ctr: number | null; revenue: number | null; isOutlier: boolean }> }) {
-  if (campaigns.length === 0) {
-    return <EmptyTab>Sem campanhas nos últimos 30 dias.</EmptyTab>
-  }
-  return (
-    <div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-          <thead>
-            <tr style={{ background: C.g50, borderBottom: `1px solid ${C.border}` }}>
-              <ThCell>Data</ThCell>
-              <ThCell>Campanha</ThCell>
-              <ThCell right>Enviados</ThCell>
-              <ThCell right>Abertura</ThCell>
-              <ThCell right>CTR</ThCell>
-              <ThCell right>Receita</ThCell>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c) => {
-              const isLowOpen = (c.open_rate ?? 0) < 20
-              return (
-                <tr key={c.campaign_id} style={{ borderBottom: `1px solid ${C.g100}` }}>
-                  <td style={{ padding: "10px 12px", color: C.g500, whiteSpace: "nowrap", ...TNUM }}>
-                    {c.send_time ? new Date(c.send_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", minWidth: 200 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: C.g900, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
-                      {c.campaign_name}
-                    </div>
-                    {c.subject && (
-                      <div style={{ fontSize: 11, color: C.g500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
-                        {c.subject}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
-                    {c.recipients?.toLocaleString("pt-BR") ?? "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", ...TNUM }}>
-                    <span style={{ color: isLowOpen ? C.neg : C.g700, fontWeight: isLowOpen ? 600 : 400 }}>
-                      {c.open_rate != null ? `${c.open_rate.toFixed(1)}%` : "—"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.g700, ...TNUM }}>
-                    {c.click_rate != null ? `${c.click_rate.toFixed(1)}%` : "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: C.g900, ...TNUM }}>
-                    {c.conversion_value != null && c.conversion_value > 0
-                      ? `${cs} ${c.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                      : "—"}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 80px 80px 90px 1.6fr", padding: "9px 16px", background: C.g50, borderBottom: `1px solid ${C.border}`, fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          <span>Métrica</span>
+          <span style={{ textAlign: "right" }}>Sem. atual</span>
+          <span style={{ textAlign: "right" }}>Média 8 sem.</span>
+          <span style={{ textAlign: "center" }}>Trend</span>
+          <span>Contexto</span>
+        </div>
+        {rows.map((r, i) => {
+          const tone = r.deltaTone === "pos" ? C.pos : r.deltaTone === "neg" ? C.neg : C.g500
+          return (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 80px 80px 90px 1.6fr", padding: "11px 16px", alignItems: "center", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${C.g100}` }}>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: C.g700 }}>{r.metric}</span>
+              <span style={{ textAlign: "right", fontSize: 12.5, fontWeight: 700, color: tone, ...TNUM }}>{r.now}</span>
+              <span style={{ textAlign: "right", fontSize: 12, color: C.g500, ...TNUM }}>{r.avg}</span>
+              <span style={{ display: "flex", justifyContent: "center" }}>
+                {r.trend.length >= 2
+                  ? <Sparkline data={r.trend} tone={r.deltaTone === "pos" ? "pos" : "neg"} />
+                  : <span style={{ fontSize: 11, color: C.g300 }}>—</span>}
+              </span>
+              <span style={{ fontSize: 11.5, color: C.g500, lineHeight: 1.4, paddingLeft: 8 }}>{r.context}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -822,44 +1394,111 @@ interface AutomationRow {
   click_rate: number | null
 }
 
-function AutomacoesTab({ automations, cs = "R$", diagAutomations }: { automations: AutomationRow[]; cs?: string; diagAutomations?: Array<{ name: string; status: string | null; triggerType: string | null; recipients: number | null; openRate: number | null; clickRate: number | null; revenue: number | null; problem: string | null }> }) {
-  if (automations.length === 0) {
+function AutomacoesTab({ automations, cs = "R$" }: { automations: AutomationRow[]; cs?: string }) {
+  // Dedup por flow_id (cache pode ter linhas repetidas), mantém maior receita
+  const dedupMap = new Map<string, AutomationRow>()
+  for (const a of automations) {
+    const ex = dedupMap.get(a.flow_id)
+    if (!ex || (a.conversion_value ?? 0) > (ex.conversion_value ?? 0)) dedupMap.set(a.flow_id, a)
+  }
+  const deduped = Array.from(dedupMap.values())
+  if (deduped.length === 0) {
     return <EmptyTab>Sem automações nos últimos 30 dias.</EmptyTab>
   }
+  // Ordena: problemas/pausadas primeiro
+  const detectProblem = (a: AutomationRow): string | null => {
+    if (a.flow_status === "paused") return "Pausada · revisar se deve reativar"
+    if (a.open_rate != null && a.open_rate < 15 && (a.recipients ?? 0) > 50) return `Abertura baixa (${a.open_rate.toFixed(1).replace(".", ",")}%) · revisar subject`
+    if (a.click_rate != null && a.click_rate < 1 && (a.recipients ?? 0) > 50) return "CTR abaixo de 1% · revisar conteúdo/CTA"
+    return null
+  }
+  const sorted = [...deduped].sort((a, b) => {
+    const pa = detectProblem(a) ? 0 : 1
+    const pb = detectProblem(b) ? 0 : 1
+    return pa - pb
+  })
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {automations.map((a) => {
-        const statusColor = a.flow_status === "active" ? C.pos : a.flow_status === "paused" ? C.warn : C.g500
-        const statusBg = a.flow_status === "active" ? C.posBg : a.flow_status === "paused" ? C.warnBg : C.g100
-        const statusLabel = a.flow_status === "active" ? "Ativo" : a.flow_status === "paused" ? "Pausado" : (a.flow_status ?? "—")
-        return (
-          <div key={a.flow_id} style={{
-            padding: "14px 16px", background: C.white,
-            border: `1px solid ${C.border}`, borderRadius: 10,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{a.flow_name}</span>
-                <span style={{
-                  fontSize: 10.5, fontWeight: 600, padding: "2px 8px",
-                  color: statusColor, background: statusBg,
-                  borderRadius: 999,
-                }}>{statusLabel}</span>
-              </div>
-              {a.trigger_type && (
-                <span style={{ fontSize: 11, color: C.g500 }}>Trigger: {a.trigger_type}</span>
-              )}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              <MetricCell label="Enviados" value={a.recipients?.toLocaleString("pt-BR") ?? "—"} />
-              <MetricCell label="Abertura" value={a.open_rate != null ? `${a.open_rate.toFixed(1)}%` : "—"} tone={a.open_rate != null && a.open_rate < 20 ? "neg" : undefined} />
-              <MetricCell label="CTR" value={a.click_rate != null ? `${a.click_rate.toFixed(1)}%` : "—"} />
-              <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
-              <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `${cs} ${a.conversion_value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
-            </div>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Automações</div>
+          <div style={{ fontSize: 11.5, color: C.g500, marginTop: 2 }}>flows ativos e pausados · métricas agregadas do período</div>
+        </div>
+        <span style={{ padding: "4px 9px", fontSize: 11, color: C.g500, background: C.g50, border: `1px solid ${C.border}`, borderRadius: 6 }}>omnisend · automations</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map((a) => (
+          <AutomationCardView key={a.flow_id} a={a} cs={cs} problem={detectProblem(a)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AutomationCardView({ a, cs, problem }: { a: AutomationRow; cs: string; problem: string | null }) {
+  const [open, setOpen] = useState(false)
+  const isPaused = a.flow_status === "paused"
+  const statusColor = isPaused ? C.warn : C.pos
+  const statusBg = isPaused ? C.warnBg : C.posBg
+  const statusLabel = isPaused ? "pausada" : "ativa"
+  const convRate = a.conversions != null && a.recipients != null && a.recipients > 0 ? (a.conversions / a.recipients) * 100 : null
+  const hasProblem = !!problem
+  const fmt1 = (v: number) => v.toFixed(1).replace(".", ",")
+
+  return (
+    <div style={{
+      background: hasProblem && !isPaused ? C.warnBg : C.white,
+      border: `1px solid ${hasProblem ? C.warnBorder : C.border}`,
+      borderRadius: 10, overflow: "hidden",
+    }}>
+      <div onClick={() => setOpen(!open)} style={{
+        display: "grid", gridTemplateColumns: "1fr auto auto auto 24px",
+        gap: 16, alignItems: "center", padding: "14px 16px", cursor: "pointer",
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.g900 }}>{a.flow_name}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 600, padding: "2px 8px", color: statusColor, background: statusBg, borderRadius: 999 }}>
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: statusColor }} />{statusLabel}
+            </span>
           </div>
-        )
-      })}
+          {a.trigger_type && <div style={{ fontSize: 11, color: C.g500 }}>{a.trigger_type}</div>}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>Abertura média</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: a.open_rate != null && a.open_rate < 20 ? C.warn : C.g900, ...TNUM }}>{a.open_rate != null ? `${fmt1(a.open_rate)}%` : "—"}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 600, color: C.g500, letterSpacing: "0.04em", textTransform: "uppercase" }}>Conversão</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.g900, ...TNUM }}>{convRate != null ? `${fmt1(convRate)}%` : "—"}</div>
+        </div>
+        <div>
+          {hasProblem ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, padding: "4px 9px", color: C.warn, background: C.white, border: `1px solid ${C.warnBorder}`, borderRadius: 6, maxWidth: 220 }}>
+              <Zap size={11} /> {problem}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, padding: "4px 9px", color: C.pos, background: C.posBg, border: `1px solid ${C.posBorder}`, borderRadius: 6 }}>
+              ✓ sem problemas
+            </span>
+          )}
+        </div>
+        <ChevronDown size={16} style={{ color: C.g400, transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+      </div>
+      {open && (
+        <div style={{ borderTop: `1px solid ${hasProblem ? C.warnBorder : C.g100}`, padding: 16, background: hasProblem && !isPaused ? "rgba(255,255,255,0.5)" : C.g25 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+            <MetricCell label="Enviados" value={a.recipients?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Entregues" value={a.delivered?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Cliques" value={a.clicked?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Conversões" value={a.conversions?.toLocaleString("pt-BR") ?? "—"} />
+            <MetricCell label="Receita" value={a.conversion_value != null && a.conversion_value > 0 ? `${cs} ${a.conversion_value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"} tone={a.conversion_value != null && a.conversion_value > 0 ? "pos" : undefined} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: C.g400, fontStyle: "italic" }}>
+            Performance toque-a-toque (D+0, D+2…) disponível ao vivo — pergunte no chat: &quot;detalhe os toques do {a.flow_name}&quot;.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -871,16 +1510,6 @@ function MetricCell({ label, value, tone }: { label: string; value: string; tone
       <div style={{ fontSize: 10, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 600, color, ...TNUM, marginTop: 2 }}>{value}</div>
     </div>
-  )
-}
-
-function ThCell({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return (
-    <th style={{
-      padding: "8px 12px", textAlign: right ? "right" : "left",
-      fontSize: 10.5, fontWeight: 600, color: C.g500,
-      letterSpacing: "0.06em", textTransform: "uppercase",
-    }}>{children}</th>
   )
 }
 
@@ -1270,14 +1899,6 @@ function FooterBtn({ children, onClick, disabled }: { children: React.ReactNode;
     >
       {children}
     </button>
-  )
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 10.5, fontWeight: 600, color: C.g500, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
-      {children}
-    </div>
   )
 }
 

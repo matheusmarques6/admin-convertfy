@@ -214,6 +214,7 @@ export const ROUTES = {
       CUSTOM_FIELDS: "/admin/settings/custom-fields",
       TAGS: "/admin/settings/tags",
       EMAIL_TEMPLATES: "/admin/settings/email-templates",
+      EMAIL_GENERATION: "/admin/settings/email-generation",
     },
   },
 
