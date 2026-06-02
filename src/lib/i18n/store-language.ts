@@ -36,3 +36,18 @@ export function languageLabelToCode(label: unknown): StoreLanguageCode | null {
   )
   return match ? match.value : null
 }
+
+/**
+ * Converte o código canônico (`client_stores.language`) para o label amigável.
+ * Retorna `null` quando não casa com nenhuma língua suportada — o caller decide
+ * o fallback (ex.: exibir o próprio código cru).
+ */
+export function languageCodeToLabel(code: unknown): string | null {
+  if (typeof code !== "string") return null
+  const normalized = code.trim().toLowerCase()
+  if (!normalized) return null
+  const match = STORE_LANGUAGE_OPTIONS.find(
+    (o) => o.value.toLowerCase() === normalized,
+  )
+  return match ? match.label : null
+}

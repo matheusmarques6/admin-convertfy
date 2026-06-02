@@ -44,6 +44,8 @@ export interface StoreSummary {
   store_url: string | null
   platform: string | null
   niche: string | null
+  /** Idioma escolhido pelo cliente no onboarding, já em label amigável. */
+  language_label?: string | null
 }
 
 // ── Drafts pra modo edit ──────────────────────────────────────────────
@@ -553,6 +555,7 @@ export function BrandResourceView({
   const niche = store?.niche ?? briefing?.marca?.nicho ?? null
   const platform = store?.platform ?? null
   const storeUrl = store?.store_url ?? null
+  const language = store?.language_label ?? null
   const posicionamentoRaw = briefing?.marca?.posicionamento ?? null
   const posicionamento =
     posicionamentoRaw === "popular"
@@ -819,6 +822,7 @@ export function BrandResourceView({
             <>
               <StoreField label="Segmento" value={niche} />
               <StoreField label="Plataforma" value={platform} />
+              <StoreField label="Idioma" value={language} />
               <StoreField
                 label="URL"
                 value={storeUrl}
@@ -835,6 +839,7 @@ export function BrandResourceView({
                 placeholder="Ex: Calçados esportivos · vôlei e basquete"
               />
               <StoreField label="Plataforma" value={platform} />
+              <StoreField label="Idioma" value={language} />
               <StoreField
                 label="URL"
                 value={storeUrl}

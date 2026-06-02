@@ -67,6 +67,7 @@ interface WorkspaceResponse {
     store_url: string | null
     platform: string | null
     niche: string | null
+    language_label: string | null
     created_at: string | null
     // Campos de marca canônicos em client_stores (lidos pela tab Marca).
     slogan: string | null
@@ -728,6 +729,7 @@ export function ProductionWorkspace({
                 store_url: store.store_url,
                 platform: store.platform,
                 niche: store.niche,
+                language_label: store.language_label,
               }}
               topProductsSync={topProductsSync}
               onChanged={() => mutate()}
