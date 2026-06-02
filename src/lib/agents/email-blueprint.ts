@@ -169,15 +169,125 @@ export const DEFAULT_BLUEPRINTS: Record<
   },
 
   abandoned_cart: {
+    // Composição padrão universal (abandoned_cart 1-8) — fonte canônica
+    // espelha 20260627d_abandoned_cart_blueprints_default.sql.
     1: {
-      objective: "Lembrar do carrinho abandonado com urgência leve",
-      messaging: "Produto esperando, link direto pro checkout, imagem do produto",
-      subject_hint: "Esqueceu algo no carrinho?",
+      objective:
+        "Primeiro lembrete amigável do carrinho com brinde/incentivo. Tom acolhedor, sem pressão.",
+      messaging:
+        "Hero do produto abandonado + produtos + cupom-brinde + review pra confiança + fechamento textual.",
+      subject_hint: "Você esqueceu algo no carrinho 🎁",
       blocks: [
-        { type: "hero", label: "Hero", purpose: "Imagem do produto abandonado", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Lembrete amigável do carrinho" },
-        { type: "cta", label: "CTA", purpose: "Voltar ao checkout" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+        { type: "hero", label: "Hero", purpose: "Hero com produto abandonado em destaque", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho abandonado" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom-brinde (\"golden gift\") pra fechar a compra" },
+        { type: "testimonials", label: "Review", purpose: "Cards de review/depoimento pra reforçar confiança" },
+        { type: "text", label: "Texto", purpose: "Texto de fechamento amigável" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    2: {
+      objective:
+        "Check-in pessoal e curto. Pergunta se ficou alguma dúvida — formato conversa, sem CTAs.",
+      messaging:
+        "Email textual minimalista. Tom de atendimento humano, oferta de ajuda.",
+      subject_hint: "Tudo certo por aí?",
+      blocks: [
+        { type: "text", label: "Texto", purpose: "Texto único de check-in (pergunta amigável: \"posso ajudar com algo?\"). Sem CTAs comerciais." },
+      ],
+    },
+    3: {
+      objective:
+        "Cria sensação de \"pedido prestes a sair\" pra acelerar decisão. Tom de antecipação positiva.",
+      messaging:
+        "Hero com energia + produtos do carrinho + cupom + produtos extras + trust badges.",
+      subject_hint: "Estamos preparando seu pedido...",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com energia de envio (caixa, embalagem, prep)", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho abandonado" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom pra fechar a compra antes do prazo" },
+        { type: "text", label: "Texto", purpose: "Texto explicativo sobre o pedido / prazo" },
+        { type: "products", label: "Produtos", purpose: "Sugestões complementares pra adicionar ao pedido" },
+        { type: "features", label: "Trust Badges", purpose: "Selos de confiança (frete, troca, pagamento seguro)" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    4: {
+      objective:
+        "Frete grátis como gatilho principal. Combina hero + produtos + prova social + review.",
+      messaging:
+        "Hero destacando frete grátis + produtos + CTA + trust badges + social proof + texto + review.",
+      subject_hint: "Frete grátis pra você — só hoje",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero destacando frete grátis", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho" },
+        { type: "cta", label: "CTA", purpose: "CTA pra resgatar frete grátis" },
+        { type: "features", label: "Trust Badges", purpose: "Selos de confiança" },
+        { type: "social_proof", label: "Social Proof", purpose: "Contagem de clientes ou rating médio" },
+        { type: "text", label: "Texto", purpose: "Texto curto reforçando o benefício de frete grátis" },
+        { type: "testimonials", label: "Review", purpose: "Cards de review de clientes" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    5: {
+      objective:
+        "Cupom de 10% como última chance antes de subir desconto. Inclui produtos do carrinho + similares.",
+      messaging:
+        "Hero + texto introdutório + cupom 10% + produtos do carrinho + produtos similares + reforço + trust badges.",
+      subject_hint: "Última chance — 10% OFF no seu carrinho",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com produto e tom de urgência leve", needs_image: true },
+        { type: "text", label: "Texto", purpose: "Texto introdutório explicando a oferta de 10%" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom de 10% OFF" },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho abandonado" },
+        { type: "products", label: "Produtos", purpose: "Produtos similares ou complementares" },
+        { type: "text", label: "Texto", purpose: "Texto reforçando urgência / prazo do cupom" },
+        { type: "features", label: "Trust Badges", purpose: "Selos de confiança" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    6: {
+      objective:
+        "Urgência forte com janela de 12 horas. Foco em fechar antes do cupom expirar.",
+      messaging:
+        "Hero + texto urgência + produtos + cupom + trust + reforço + sugestões extras.",
+      subject_hint: "Últimas 12 horas pro seu carrinho",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com tom de urgência (12 horas)", needs_image: true },
+        { type: "text", label: "Texto", purpose: "Texto curto destacando o prazo de 12h" },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom com expiração em 12h" },
+        { type: "features", label: "Trust Badges", purpose: "Selos de confiança" },
+        { type: "text", label: "Texto", purpose: "Texto reforçando escassez/urgência" },
+        { type: "products", label: "Produtos", purpose: "Produtos complementares pra adicionar" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    7: {
+      objective:
+        "Aviso final com cupom de 12% (último escalonamento de desconto). Foco em prova social pra desfazer dúvida.",
+      messaging:
+        "Hero + produtos + cupom 12% + social proof + review + sugestões complementares.",
+      subject_hint: "Aviso final — 12% OFF",
+      blocks: [
+        { type: "hero", label: "Hero", purpose: "Hero com tom de aviso final", needs_image: true },
+        { type: "products", label: "Produtos", purpose: "Produtos do carrinho" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom de 12% OFF (último escalonamento)" },
+        { type: "social_proof", label: "Social Proof", purpose: "Contagem de clientes ou rating" },
+        { type: "testimonials", label: "Review", purpose: "Cards de review pra desfazer dúvida" },
+        { type: "products", label: "Produtos", purpose: "Produtos complementares" },
+        { type: "footer", label: "Rodapé padrão", purpose: "Rodapé padrão" },
+      ],
+    },
+    8: {
+      objective:
+        "Último lembrete em formato textual curto + cupom destacado. Tom enxuto — só o essencial pra resgatar.",
+      messaging:
+        "Texto curto de despedida amigável + cupom destacado como código final. Sem hero, sem produtos.",
+      subject_hint: "Último aviso — seu código",
+      blocks: [
+        { type: "text", label: "Texto", purpose: "Texto curto de lembrete final amigável (\"última oportunidade pra usar seu desconto\")" },
+        { type: "coupon", label: "Cupom", purpose: "Cupom final destacado com código (ex: BACK15) e validade" },
       ],
     },
   },
