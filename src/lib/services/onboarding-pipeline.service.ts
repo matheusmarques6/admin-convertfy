@@ -1131,18 +1131,33 @@ export async function confirmBriefing(
   })()
 
   // Sincroniza o idioma escolhido no formulário → client_stores.language,
-  // fonte canônica usada pela geração de copy e pelo briefing estruturado
-  // (dados_loja.idioma). Feito antes do dispatch para o webhook já enxergar o
-  // idioma correto. Quando a escolha for "Outro", langCode é null e o update é
-  // pulado (mantém o default); o idioma livre fica em form_responses.
+  // fonte canônica usada pela geração de copy. Tenta primeiro casar com
+  // código ISO conhecido (15 idiomas em STORE_LANGUAGE_OPTIONS + aliases
+  // em pt/en); se não bater, faz FALLBACK pra texto livre (cleaned) —
+  // assim "Outro: norueguês" não fica preso no default 'pt-BR'. O agente
+  // Copy é LLM-based e entende rótulo humano. Limite de 32 chars + regex
+  // bate com VARCHAR(32) e bloqueia tentativas de injection.
   if (onb.store_id) {
-    const langCode = languageLabelToCode(
-      (onb.form_responses as Record<string, unknown> | null)?.store_language,
-    )
-    if (langCode) {
+    const rawLabel = (onb.form_responses as Record<string, unknown> | null)
+      ?.store_language
+    const langCode = languageLabelToCode(rawLabel)
+
+    let valueToPersist: string | null = langCode
+    if (!valueToPersist && typeof rawLabel === "string") {
+      const cleaned = rawLabel.trim().toLowerCase()
+      if (
+        cleaned.length >= 2 &&
+        cleaned.length <= 32 &&
+        /^[a-zà-ÿ\s-]+$/.test(cleaned)
+      ) {
+        valueToPersist = cleaned
+      }
+    }
+
+    if (valueToPersist) {
       await admin
         .from("client_stores")
-        .update({ language: langCode })
+        .update({ language: valueToPersist })
         .eq("id", onb.store_id)
     }
   }
