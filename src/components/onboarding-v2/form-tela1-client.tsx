@@ -58,6 +58,7 @@ import {
   Calendar,
 } from "lucide-react"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
+import { sanitizeBriefingContent } from "@/lib/briefing/sanitize-briefing"
 import { STORE_LANGUAGE_OPTIONS, OTHER_LANGUAGE_LABEL } from "@/lib/i18n/store-language"
 
 interface OnboardingContext {
@@ -1294,7 +1295,10 @@ function BriefingReviewInline({
         }
         setStatus(j.status)
         if (j.briefing) {
-          setBriefing(j.briefing)
+          // Defensivo p/ briefings já gerados: remove URLs de storage que a IA
+          // possa ter embutido nos textos antes de exibir/editar.
+          const cleanBriefing = sanitizeBriefingContent(j.briefing)
+          setBriefing(cleanBriefing)
           const incomingGeneratedAt: string | null = j.generated_at ?? null
           // Briefing novo? (primeira vez OU regenerado com generated_at diferente)
           const isNewBriefing =
@@ -1302,8 +1306,8 @@ function BriefingReviewInline({
             (incomingGeneratedAt !== null &&
               incomingGeneratedAt !== lastGeneratedAt)
           if (isNewBriefing) {
-            setEditable(j.briefing)
-            setClientAdditions(j.briefing.client_additions ?? "")
+            setEditable(cleanBriefing)
+            setClientAdditions(cleanBriefing.client_additions ?? "")
             setEditedFields(new Set())
             setLastGeneratedAt(incomingGeneratedAt)
           }
