@@ -20,6 +20,7 @@
  */
 
 import { NextRequest } from "next/server"
+import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse } from "@/lib/api/errors"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
@@ -28,6 +29,29 @@ import { logger } from "@/lib/logger"
 const log = logger.child("N8nReferenceTemplates")
 
 export const dynamic = "force-dynamic"
+
+const imageMapEntrySchema = z.object({
+  src: z.string(),
+  alt: z.string(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  type: z.enum(["logo", "product", "hero", "icon", "decorative", "custom"]),
+  product_index: z.number().optional(),
+  instruction: z.string().nullable().optional(),
+  image_prompt: z.string().nullable().optional(),
+})
+
+const postSchema = z.object({
+  flow_type: z.string().optional().nullable(),
+  email_number: z.number().int().min(1).optional().nullable(),
+  name: z.string().min(1),
+  html: z.string().optional().nullable(),
+  copy: z.string().optional().nullable(),
+  image_map: z.array(imageMapEntrySchema).optional().nullable(),
+  thumbnail: z.string().optional().nullable(),
+  tags: z.array(z.string()).default([]),
+  is_active: z.boolean().default(true),
+})
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,5 +91,45 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     log.error("get.error", error)
     return errorResponse(request, error, "n8n-ref-templates-get")
+  }
+}
+
+/**
+ * POST /api/n8n/email-reference-templates
+ *
+ * Cria uma nova reference template. Espelha o POST admin mas autentica
+ * via header `x-webhook-secret`. Campos obrigatórios: apenas `name`.
+ * Todos os outros (incluindo `copy`, `html`, `flow_type`, `email_number`)
+ * são opcionais — campos vazios podem vir como null ou ser omitidos.
+ *
+ * Retorna 201 com o template criado.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    requireWebhookSecret(request)
+    const admin = createAdminClient()
+
+    const body = await request.json()
+    const parsed = postSchema.parse(body)
+
+    const { data, error } = await admin
+      .from("email_reference_templates")
+      .insert(parsed)
+      .select("*")
+      .single()
+
+    if (error) throw error
+
+    log.info("post.ok", {
+      id: data?.id,
+      flow_type: parsed.flow_type,
+      email_number: parsed.email_number,
+      name: parsed.name,
+    })
+
+    return successResponse(request, { template: data }, { status: 201 })
+  } catch (error) {
+    log.error("post.error", error)
+    return errorResponse(request, error, "n8n-ref-templates-post")
   }
 }
