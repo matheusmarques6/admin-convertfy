@@ -3,8 +3,10 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchBriefingWebhook } from "@/lib/services/briefing-webhook.service"
-import { pesquisaToFullText } from "@/lib/briefing/briefing-text"
+import { pesquisaToFullText, briefingContentToFullText } from "@/lib/briefing/briefing-text"
+import { sanitizeBriefingContent } from "@/lib/briefing/sanitize-briefing"
 import type { StoreBriefing, BriefingData } from "@/types/onboarding"
+import type { BriefingContent } from "@/types/onboarding-pipeline"
 
 const log = logger.child("OnboardingStoreBriefing")
 
@@ -23,6 +25,42 @@ export async function GET(request: NextRequest) {
     }
 
     const adminClient = createAdminClient()
+
+    // Prioridade: o briefing CONFIRMADO pelo cliente na tela "revise e confirme"
+    // (onboardings.briefing) é a fonte canônica do que o cliente aprovou. O
+    // confirmBriefing grava só nessa coluna — store_briefings (markdown n8n)
+    // pode estar defasado. Quando há confirmação, ela vence.
+    const { data: confirmedOnb } = await adminClient
+      .from("onboardings")
+      .select("briefing, briefing_confirmed_at")
+      .eq("store_id", storeId)
+      .eq("briefing_confirmed_by_client", true)
+      .not("briefing", "is", null)
+      .order("briefing_confirmed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (confirmedOnb?.briefing) {
+      const sanitized = sanitizeBriefingContent(confirmedOnb.briefing as BriefingContent)
+      const text = briefingContentToFullText(sanitized).trim()
+      if (text) {
+        const confirmedAt =
+          (confirmedOnb.briefing_confirmed_at as string | null) ??
+          new Date().toISOString()
+        const confirmed: StoreBriefing = {
+          id: `confirmed:${storeId}`,
+          store_id: storeId,
+          onboarding_data_id: null,
+          briefing_data: { raw_text: text } as unknown as BriefingData,
+          version: 0,
+          status: "current",
+          generated_at: confirmedAt,
+          generated_by: "client_confirmed",
+          created_at: confirmedAt,
+        }
+        return successResponse(request, { briefing: confirmed })
+      }
+    }
 
     const { data: briefing } = await adminClient
       .from("store_briefings")

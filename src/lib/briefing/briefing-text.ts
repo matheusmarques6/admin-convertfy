@@ -1,4 +1,5 @@
 import type { BriefingData } from "@/types/onboarding"
+import type { BriefingContent } from "@/types/onboarding-pipeline"
 
 /**
  * When n8n sends raw text instead of structured JSON, the briefing is stored
@@ -125,6 +126,45 @@ export function briefingToFullText(data: BriefingData): string {
   // Análise de Anúncios (Record<string, unknown>)
   const anunciosLines = renderRecordSection("Análise de Anúncios", data.analise_anuncios)
   if (anunciosLines.length) blocks.push(anunciosLines.join("\n"))
+
+  return blocks.join("\n\n")
+}
+
+/**
+ * Converte o BriefingContent CONFIRMADO pelo cliente (onboardings.briefing —
+ * a versão revisada na tela "revise e confirme") no mesmo documento textual de
+ * seções "## Título" usado na aba Configurações. Campos vazios são omitidos;
+ * se tudo estiver vazio retorna "".
+ */
+export function briefingContentToFullText(b: BriefingContent): string {
+  const blocks: string[] = []
+
+  const aboutBrand = str(b.about_brand)
+  if (aboutBrand) blocks.push(["## Sobre a marca", aboutBrand].join("\n"))
+
+  const audience = str(b.audience)
+  if (audience) blocks.push(["## Público-alvo", audience].join("\n"))
+
+  const languageTone = str(b.language_tone)
+  if (languageTone) blocks.push(["## Tom de voz e idioma", languageTone].join("\n"))
+
+  // Identidade visual: paleta / fontes / referências (cada um opcional).
+  {
+    const lines: string[] = []
+    const palette = str(b.visual_identity?.palette)
+    const fonts = str(b.visual_identity?.fonts)
+    const references = str(b.visual_identity?.references)
+    if (palette) lines.push(`Paleta: ${palette}`)
+    if (fonts) lines.push(`Fontes: ${fonts}`)
+    if (references) lines.push(`Referências: ${references}`)
+    if (lines.length) blocks.push(["## Identidade visual", ...lines].join("\n"))
+  }
+
+  const offers = str(b.offers_and_differentials)
+  if (offers) blocks.push(["## Ofertas e diferenciais", offers].join("\n"))
+
+  const additions = str(b.client_additions)
+  if (additions) blocks.push(["## Observações do cliente", additions].join("\n"))
 
   return blocks.join("\n\n")
 }
