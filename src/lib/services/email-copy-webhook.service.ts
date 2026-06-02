@@ -11,6 +11,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { ensureBlocksSeeded } from "@/lib/agents/seed-blocks"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -216,6 +217,32 @@ export async function dispatchEmailCopyWebhook(
     log.warn("email_copy.webhook.skip", { storeId, reason: "no_emails" })
     return { ok: false, flow_count: 0, email_count: 0, reason: "no_emails" }
   }
+
+  // AUTO-SEED LAZY: garante que cada email do batch tenha blocks
+  // materializados antes de montar o payload. Sem isso, lojas que nunca
+  // passaram pelo pipeline interno mandariam blocks:[] vazio pro n8n
+  // (mesmo com email_blueprints populado). `ensureBlocksSeeded` é
+  // idempotente: vira no-op pra emails que já têm blocks. Falhas
+  // individuais são logadas mas não bloqueiam o dispatch (degradação
+  // graceful — o SELECT abaixo decide).
+  const flowsById = new Map(flows.map((f) => [f.id, f]))
+  await Promise.all(
+    emails.map(async (e) => {
+      const flow = flowsById.get(e.flow_id)
+      if (!flow) return
+      try {
+        await ensureBlocksSeeded(e.id, flow.flow_type, e.number)
+      } catch (err) {
+        log.warn("email_copy.webhook.ensure_blocks_failed", {
+          storeId,
+          emailId: e.id,
+          flowType: flow.flow_type,
+          emailNumber: e.number,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }),
+  )
 
   const emailIds = emails.map((e) => e.id)
   const blocksRes = await admin
