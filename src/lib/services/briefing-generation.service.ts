@@ -20,6 +20,10 @@ import type {
   BriefingSource,
 } from "@/types/onboarding-pipeline"
 import { sanitizeBriefingContent } from "@/lib/briefing/sanitize-briefing"
+import {
+  pesquisaToFullText,
+  type PesquisaFields,
+} from "@/lib/briefing/briefing-text"
 
 const log = logger.child("BriefingGeneration")
 
@@ -50,15 +54,41 @@ const SYSTEM_PROMPT = `Você é assistente da Convertfy (agência de email marke
   "offers_and_differentials": "..."
 }
 
-Cada campo deve ter 2-5 frases em português, direto e prático. Use os dados das respostas. Se algum dado faltar, use bom senso. NÃO inclua nenhum texto fora do JSON. NUNCA inclua URLs, links ou caminhos de arquivo nos textos do briefing (o cliente lê esse conteúdo).`
+Cada campo deve ter 2-5 frases em português, direto e prático.
+
+FONTE DOS DADOS (ordem de prioridade):
+1. O bloco "PESQUISA & DIAGNÓSTICO DA LOJA" é a FONTE PRIMÁRIA — dados reais e verificados sobre marca, história, cliente ideal (ICP) e tom de voz. Baseie about_brand, audience e language_tone PRINCIPALMENTE nele quando estiver presente.
+2. As "RESPOSTAS DO FORMULÁRIO" servem apenas para preencher lacunas que a pesquisa não cobre.
+
+REGRAS DE FIDELIDADE (não invente):
+- Respeite a MOEDA e o PAÍS informados em "DADOS DA LOJA". NUNCA assuma Real (R$) ou Brasil por padrão; se a loja for de outro país/moeda, não troque o símbolo nem converta valores. Se um ticket vier numa faixa, mantenha a faixa como veio.
+- Em "visual_identity", NÃO invente cores, paletas ou fontes específicas. Se não houver material visual real descrito nos dados, escreva algo como "A definir com base no manual da marca enviado pelo cliente" (palette/fonts) e, em "references", apenas constate se o cliente enviou referências — sem descrever uma estética imaginada.
+- Quando um dado não existir em nenhuma fonte, escreva "a definir" / "a confirmar com o cliente" em vez de inventar.
+
+NÃO inclua nenhum texto fora do JSON. NUNCA inclua URLs, links ou caminhos de arquivo nos textos do briefing (o cliente lê esse conteúdo).`
 
 type FormResponses = Record<string, unknown>
 
-interface Ctx {
+interface StoreLocale {
+  niche?: string | null
+  language?: string | null
+  country?: string | null
+  currency?: string | null
+  free_shipping_type?: string | null
+}
+
+export interface Ctx {
   onboardingId: string
   orgId: string
   formResponses: FormResponses
   store: { store_name?: string; store_url?: string; platform?: string } | null
+  /**
+   * Documento "Pesquisa & Diagnóstico" (client_stores) — fonte PRIMÁRIA do
+   * briefing. Quando preenchido, tem prioridade sobre form_responses.
+   */
+  research: PesquisaFields
+  /** Localização da loja (nicho/idioma/país/moeda) para coerência de contexto. */
+  locale: StoreLocale
   client: { name?: string } | null
 }
 
@@ -145,7 +175,7 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
   // ── T3: template determinístico (sempre roda) ─────────────────────────
   log.warn("raw_template.fallback", { onboardingId })
   try {
-    const briefing = buildRawTemplate(ctx.formResponses)
+    const briefing = buildRawTemplate(ctx)
     await saveBriefing(ctx, briefing, "raw_template")
     log.info("briefing.cascade.done", {
       onboardingId,
@@ -165,17 +195,48 @@ async function loadContext(onboardingId: string): Promise<Ctx | null> {
   const { data: onb } = await admin
     .from("onboardings")
     .select(
-      "id, org_id, form_responses, client_id, store_id, client:clients!onboardings_client_id_fkey(name), store:client_stores(store_name, store_url, platform)",
+      `id, org_id, form_responses, client_id, store_id,
+       client:clients!onboardings_client_id_fkey(name),
+       store:client_stores(
+         store_name, store_url, platform,
+         niche, language, country, currency, free_shipping_type,
+         brand_thesis, brand_about, brand_pillars, brand_presence,
+         store_story, store_milestones,
+         icp_persona, icp_demographics, icp_day_in_life,
+         icp_motivations, icp_frictions,
+         tone_description, tone_do, tone_dont,
+         tone_use_words, tone_avoid_words,
+         ads_score, ads_summary, ads_sub_scores,
+         ads_strengths, ads_opportunities, ads_risks, ads_reviewed_at
+       )`,
     )
     .eq("id", onboardingId)
     .maybeSingle()
   if (!onb) return null
 
+  const storeRow = (
+    Array.isArray(onb.store) ? onb.store[0] : onb.store
+  ) as Record<string, unknown> | null
+
   return {
     onboardingId,
     orgId: onb.org_id,
     formResponses: (onb.form_responses ?? {}) as FormResponses,
-    store: Array.isArray(onb.store) ? onb.store[0] : onb.store,
+    store: storeRow
+      ? {
+          store_name: storeRow.store_name as string | undefined,
+          store_url: storeRow.store_url as string | undefined,
+          platform: storeRow.platform as string | undefined,
+        }
+      : null,
+    research: (storeRow ?? {}) as PesquisaFields,
+    locale: {
+      niche: (storeRow?.niche as string | null) ?? null,
+      language: (storeRow?.language as string | null) ?? null,
+      country: (storeRow?.country as string | null) ?? null,
+      currency: (storeRow?.currency as string | null) ?? null,
+      free_shipping_type: (storeRow?.free_shipping_type as string | null) ?? null,
+    },
     client: Array.isArray(onb.client) ? onb.client[0] : onb.client,
   }
 }
@@ -212,10 +273,35 @@ function stripStorageFromResponses(fr: FormResponses): FormResponses {
   return out
 }
 
-function buildPrompt(ctx: Ctx): { system: string; user: string } {
+export function buildPrompt(ctx: Ctx): { system: string; user: string } {
   const safeResponses = stripStorageFromResponses(ctx.formResponses)
-  const user = `Respostas do formulario:\n${JSON.stringify(safeResponses, null, 2)}\n\nLoja:\n${JSON.stringify(ctx.store, null, 2)}\n\nCliente:\n${JSON.stringify(ctx.client, null, 2)}\n\nGere o briefing em JSON.`
-  return { system: SYSTEM_PROMPT, user }
+  // Documento de pesquisa renderizado (5 seções). Vazio => loja sem pesquisa,
+  // cai no formulário como fonte primária (comportamento de fallback).
+  const research = pesquisaToFullText(ctx.research)
+
+  const storeData = {
+    ...ctx.store,
+    nicho: ctx.locale.niche ?? undefined,
+    pais: ctx.locale.country ?? undefined,
+    moeda: ctx.locale.currency ?? undefined,
+    idioma: ctx.locale.language ?? undefined,
+    frete_gratis: ctx.locale.free_shipping_type ?? undefined,
+  }
+
+  const parts: string[] = []
+  if (research) {
+    parts.push(
+      `PESQUISA & DIAGNÓSTICO DA LOJA (FONTE PRIMÁRIA — dados reais e verificados; use preferencialmente):\n${research}`,
+    )
+  }
+  parts.push(`DADOS DA LOJA:\n${JSON.stringify(storeData, null, 2)}`)
+  parts.push(`CLIENTE:\n${JSON.stringify(ctx.client, null, 2)}`)
+  parts.push(
+    `RESPOSTAS DO FORMULÁRIO (use apenas para preencher lacunas que a pesquisa não cobre):\n${JSON.stringify(safeResponses, null, 2)}`,
+  )
+  parts.push("Gere o briefing em JSON.")
+
+  return { system: SYSTEM_PROMPT, user: parts.join("\n\n") }
 }
 
 // ── Step 1: Anthropic SDK ───────────────────────────────────────────────
@@ -358,12 +444,16 @@ async function tryOpenRouter(
 
 // ── Step 3: template determinístico ─────────────────────────────────────
 
-function buildRawTemplate(fr: FormResponses): BriefingContent {
-  const storeName = pick(fr, "store_name", "A loja")
-  const vertical = pick(fr, "vertical", "e-commerce")
+export function buildRawTemplate(ctx: Ctx): BriefingContent {
+  const fr = ctx.formResponses
+  const r = ctx.research
+
+  const storeName = s(ctx.store?.store_name) || pick(fr, "store_name", "A loja")
+  const vertical = s(ctx.locale.niche) || pick(fr, "vertical", "e-commerce")
   const positioning = pick(fr, "positioning", "a definir")
   const mainProducts = pick(fr, "main_products", "a confirmar com o cliente")
-  const platform = pick(fr, "platform_ecommerce", "plataforma própria")
+  const platform =
+    s(ctx.store?.platform) || pick(fr, "platform_ecommerce", "plataforma própria")
 
   const primaryPersona = pick(
     fr,
@@ -384,7 +474,8 @@ function buildRawTemplate(fr: FormResponses): BriefingContent {
       ? pick(fr, "store_language_other", "")
       : storeLanguageRaw
 
-  const shippingType = pick(fr, "shipping_type", "a confirmar")
+  const shippingType =
+    s(ctx.locale.free_shipping_type) || pick(fr, "shipping_type", "a confirmar")
   const ticketAvg = pick(fr, "ticket_avg", "a confirmar")
   const mainObjection = pick(fr, "main_objection", "a investigar")
   const mainGoal = pick(
@@ -395,10 +486,24 @@ function buildRawTemplate(fr: FormResponses): BriefingContent {
 
   const hasDesignRefs = !!pick(fr, "design_refs_url", "")
 
+  // Pesquisa & Diagnóstico tem prioridade sobre o formulário quando preenchida.
+  const brandText = s(r.brand_about) || s(r.brand_thesis)
+  const personaName = s(r.icp_persona?.name)
+  const motivations = (r.icp_motivations ?? []).map(s).filter(Boolean)
+  const toneDesc = s(r.tone_description)
+  const researchLanguage = s(ctx.locale.language) || storeLanguage
+
   return {
-    about_brand: `${storeName} atua no segmento de ${vertical} com posicionamento ${positioning}. Principais produtos: ${mainProducts}. Operação rodando em ${platform}.`,
-    audience: `Público principal: ${primaryPersona}. Principal motivador de compra: ${mainMotivator}. Sensibilidade: ${priceVsQuality}.`,
-    language_tone: `${storeLanguage ? `Idioma dos emails: ${storeLanguage}. ` : ""}Tom de voz declarado: ${toneOfVoice}. Aderente ao posicionamento ${positioning}. Comunicação deve respeitar essa diretriz em todos os disparos.`,
+    about_brand:
+      brandText ||
+      `${storeName} atua no segmento de ${vertical} com posicionamento ${positioning}. Principais produtos: ${mainProducts}. Operação rodando em ${platform}.`,
+    audience:
+      personaName || motivations.length
+        ? `Público principal: ${personaName || "a aprofundar com o cliente"}.${motivations.length ? ` Principais motivadores: ${motivations.join("; ")}.` : ""}`
+        : `Público principal: ${primaryPersona}. Principal motivador de compra: ${mainMotivator}. Sensibilidade: ${priceVsQuality}.`,
+    language_tone: toneDesc
+      ? `${researchLanguage ? `Idioma dos emails: ${researchLanguage}. ` : ""}${toneDesc}`
+      : `${storeLanguage ? `Idioma dos emails: ${storeLanguage}. ` : ""}Tom de voz declarado: ${toneOfVoice}. Aderente ao posicionamento ${positioning}. Comunicação deve respeitar essa diretriz em todos os disparos.`,
     visual_identity: {
       palette: "A definir com base no manual da marca enviado pelo cliente.",
       fonts:
@@ -414,6 +519,11 @@ function buildRawTemplate(fr: FormResponses): BriefingContent {
 function pick(fr: FormResponses, key: string, fallback: string): string {
   const v = fr?.[key]
   return typeof v === "string" && v.trim() ? v.trim() : fallback
+}
+
+/** Coage um valor desconhecido a uma string trimada não-vazia, ou "". */
+function s(v: unknown): string {
+  return typeof v === "string" && v.trim() ? v.trim() : ""
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
