@@ -155,3 +155,116 @@ export function languageCodeToLabel(code: unknown): string | null {
   )
   return match ? match.label : null
 }
+
+/**
+ * Resultado da resolução de idioma:
+ *   - `code`: valor a persistir em `client_stores.language` e enviar no webhook
+ *     como `store.language`. Pode ser código ISO (`nb`) OU texto livre
+ *     normalizado (`norueguês`) quando o usuário digitou idioma não-canônico.
+ *   - `label`: texto amigável pra exibir/prompt — sempre retorna algo.
+ *   - `source`: de onde o valor veio (debug/telemetria).
+ */
+export interface ResolvedStoreLanguage {
+  code: string
+  label: string
+  source: "form_other" | "form_main" | "store_fallback" | "default"
+}
+
+const FREE_TEXT_REGEX = /^[a-zà-ÿ\s-]+$/
+
+function cleanFreeText(input: unknown): string | null {
+  if (typeof input !== "string") return null
+  const cleaned = input.trim().toLowerCase()
+  if (
+    cleaned.length >= 2 &&
+    cleaned.length <= 32 &&
+    FREE_TEXT_REGEX.test(cleaned)
+  ) {
+    return cleaned
+  }
+  return null
+}
+
+/**
+ * Resolve o idioma efetivo de uma loja combinando múltiplas fontes em
+ * ordem de prioridade:
+ *
+ *   1. `form_responses.store_language === "Outro"` → usa
+ *      `form_responses.store_language_other` (campo de texto livre).
+ *      Tenta alias (ex: "norueguês" → "nb"); senão salva texto cru.
+ *   2. `form_responses.store_language` quando é label canônico ou alias
+ *      conhecido (ex: "Português (Brasil)" → "pt-BR").
+ *   3. `storeLanguageFallback` (geralmente `client_stores.language`) —
+ *      usado quando form_responses não tem nada útil.
+ *   4. Default `"pt-BR"` se nada bate.
+ *
+ * Reusado por `confirmBriefing` (sync ao salvar briefing) e
+ * `dispatchEmailCopyWebhook` (resolve na hora do dispatch, garante que
+ * `store.language` no payload pro n8n reflete o que o cliente escolheu).
+ */
+export function resolveStoreLanguage(
+  formResponses: Record<string, unknown> | null | undefined,
+  storeLanguageFallback?: string | null,
+): ResolvedStoreLanguage {
+  const formMain = formResponses?.store_language
+  const formOther = formResponses?.store_language_other
+
+  // 1. Caminho "Outro" + texto livre
+  if (
+    typeof formMain === "string" &&
+    formMain.trim() === OTHER_LANGUAGE_LABEL
+  ) {
+    const otherCode = languageLabelToCode(formOther)
+    if (otherCode) {
+      return {
+        code: otherCode,
+        label: languageCodeToLabel(otherCode) ?? otherCode,
+        source: "form_other",
+      }
+    }
+    const cleaned = cleanFreeText(formOther)
+    if (cleaned) {
+      return {
+        code: cleaned,
+        label: typeof formOther === "string" ? formOther.trim() : cleaned,
+        source: "form_other",
+      }
+    }
+  }
+
+  // 2. store_language com label canônico ou alias
+  const mainCode = languageLabelToCode(formMain)
+  if (mainCode) {
+    return {
+      code: mainCode,
+      label: languageCodeToLabel(mainCode) ?? mainCode,
+      source: "form_main",
+    }
+  }
+  const cleanedMain = cleanFreeText(formMain)
+  if (cleanedMain && cleanedMain !== OTHER_LANGUAGE_LABEL.toLowerCase()) {
+    return {
+      code: cleanedMain,
+      label: typeof formMain === "string" ? formMain.trim() : cleanedMain,
+      source: "form_main",
+    }
+  }
+
+  // 3. Fallback pro valor existente no DB (client_stores.language)
+  if (typeof storeLanguageFallback === "string" && storeLanguageFallback.trim()) {
+    const fallbackTrim = storeLanguageFallback.trim()
+    const fallbackCode = languageLabelToCode(fallbackTrim) ?? fallbackTrim
+    return {
+      code: fallbackCode,
+      label: languageCodeToLabel(fallbackCode) ?? fallbackCode,
+      source: "store_fallback",
+    }
+  }
+
+  // 4. Default pt-BR
+  return {
+    code: "pt-BR",
+    label: "Português (Brasil)",
+    source: "default",
+  }
+}
