@@ -19,7 +19,7 @@ import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import { dispatchBriefingWebhook } from "./briefing-webhook.service"
 import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
-import { languageLabelToCode } from "@/lib/i18n/store-language"
+import { languageLabelToCode, OTHER_LANGUAGE_LABEL } from "@/lib/i18n/store-language"
 import type {
   BriefingContent,
   OperationalPipelineColumn,
@@ -1131,27 +1131,48 @@ export async function confirmBriefing(
   })()
 
   // Sincroniza o idioma escolhido no formulário → client_stores.language,
-  // fonte canônica usada pela geração de copy. Tenta primeiro casar com
-  // código ISO conhecido (15 idiomas em STORE_LANGUAGE_OPTIONS + aliases
-  // em pt/en); se não bater, faz FALLBACK pra texto livre (cleaned) —
-  // assim "Outro: norueguês" não fica preso no default 'pt-BR'. O agente
-  // Copy é LLM-based e entende rótulo humano. Limite de 32 chars + regex
-  // bate com VARCHAR(32) e bloqueia tentativas de injection.
+  // fonte canônica usada pela geração de copy.
+  //
+  // Ordem de resolução:
+  //   1. form_responses.store_language → tenta map canônico (15 idiomas
+  //      + aliases pt/en). Se bater, salva código ISO.
+  //   2. Se store_language === "Outro", usa form_responses.store_language_other
+  //      (campo de texto livre digitado pelo usuário). Tenta map antes —
+  //      "norueguês" → "nb" via alias. Se não bater, salva o texto cru
+  //      (regex alfa+espaço+hífen, 2-32 chars).
+  //   3. Fallback genérico pra texto livre quando rawLabel é qualquer
+  //      string fora do mapa mas passa no regex.
+  //
+  // O agente Copy é LLM-based — entende tanto "nb" quanto "norueguês".
+  // Esse path resolve o gap em que a UI lia store_language_other e o
+  // webhook lia client_stores.language no default 'pt-BR'.
   if (onb.store_id) {
-    const rawLabel = (onb.form_responses as Record<string, unknown> | null)
-      ?.store_language
-    const langCode = languageLabelToCode(rawLabel)
+    const responses = onb.form_responses as Record<string, unknown> | null
+    const rawLabel = responses?.store_language
 
-    let valueToPersist: string | null = langCode
-    if (!valueToPersist && typeof rawLabel === "string") {
-      const cleaned = rawLabel.trim().toLowerCase()
+    const resolveFreeText = (input: unknown): string | null => {
+      if (typeof input !== "string") return null
+      const cleaned = input.trim().toLowerCase()
       if (
         cleaned.length >= 2 &&
         cleaned.length <= 32 &&
         /^[a-zà-ÿ\s-]+$/.test(cleaned)
       ) {
-        valueToPersist = cleaned
+        return cleaned
       }
+      return null
+    }
+
+    let valueToPersist: string | null = null
+
+    if (typeof rawLabel === "string" && rawLabel.trim() === OTHER_LANGUAGE_LABEL) {
+      // "Outro" → lê do campo de texto livre
+      const other = responses?.store_language_other
+      const otherCode = languageLabelToCode(other)
+      valueToPersist = otherCode ?? resolveFreeText(other)
+    } else {
+      const langCode = languageLabelToCode(rawLabel)
+      valueToPersist = langCode ?? resolveFreeText(rawLabel)
     }
 
     if (valueToPersist) {
