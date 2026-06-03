@@ -26,10 +26,25 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Prioridade: o briefing CONFIRMADO pelo cliente na tela "revise e confirme"
-    // (onboardings.briefing) é a fonte canônica do que o cliente aprovou. O
-    // confirmBriefing grava só nessa coluna — store_briefings (markdown n8n)
-    // pode estar defasado. Quando há confirmação, ela vence.
+    // Fonte primária: store_briefings (markdown rico do n8n / estruturado /
+    // manual). É a versão que a aba sempre exibiu — e o n8n a regenera DEPOIS da
+    // confirmação do cliente, incorporando-a, então costuma ser a mais completa.
+    const { data: briefing } = await adminClient
+      .from("store_briefings")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("status", "current")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (briefing) {
+      return successResponse(request, { briefing })
+    }
+
+    // Fallback: quando a loja ainda não tem store_briefings (n8n não gerou),
+    // usa o briefing CONFIRMADO pelo cliente na tela "revise e confirme"
+    // (onboardings.briefing), sanitizado (sem URL de storage).
     const { data: confirmedOnb } = await adminClient
       .from("onboardings")
       .select("briefing, briefing_confirmed_at")
@@ -60,19 +75,6 @@ export async function GET(request: NextRequest) {
         }
         return successResponse(request, { briefing: confirmed })
       }
-    }
-
-    const { data: briefing } = await adminClient
-      .from("store_briefings")
-      .select("*")
-      .eq("store_id", storeId)
-      .eq("status", "current")
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (briefing) {
-      return successResponse(request, { briefing })
     }
 
     // Fallback: a loja pode não ter linha em store_briefings mas ter o
