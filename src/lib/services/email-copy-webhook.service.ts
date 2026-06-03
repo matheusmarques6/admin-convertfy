@@ -12,6 +12,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { ensureBlocksSeeded } from "@/lib/agents/seed-blocks"
+import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -97,7 +98,7 @@ export async function dispatchEmailCopyWebhook(
   const admin = createAdminClient()
 
   // ── Buscar contexto da loja em paralelo
-  const [storeRes, brandRes, briefingRes, topProductsRes, competitorsRes] = await Promise.all([
+  const [storeRes, brandRes, briefingRes, topProductsRes, competitorsRes, onboardingRes] = await Promise.all([
     admin
       .from("client_stores")
       .select(
@@ -145,6 +146,17 @@ export async function dispatchEmailCopyWebhook(
       .from("client_competitors")
       .select("name, url, posicionamento, notas")
       .eq("store_id", storeId),
+    // Onboarding mais recente — fonte do idioma escolhido pelo cliente
+    // (form_responses.store_language e store_language_other). Usado por
+    // resolveStoreLanguage pra garantir que webhook envia o que a UI mostra.
+    admin
+      .from("onboardings")
+      .select("form_responses")
+      .eq("store_id", storeId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (storeRes.error || !storeRes.data) {
@@ -298,6 +310,51 @@ export async function dispatchEmailCopyWebhook(
   const briefing = (briefingRes.data as StoreBriefing | null) ?? null
   const topProductsTable = (topProductsRes.data as TopProductRow[] | null) ?? []
   const competitors = (competitorsRes.data as CompetitorRow[] | null) ?? []
+  const onboardingRow = onboardingRes.data as {
+    form_responses?: Record<string, unknown> | null
+  } | null
+
+  // Resolve idioma combinando form_responses (escolha do cliente) com o
+  // valor em client_stores.language como fallback. Quando o cliente
+  // escolheu "Outro" + digitou um idioma livre, isso vai pegar do campo
+  // store_language_other — caminho que o sync antigo do confirmBriefing
+  // não cobria, fazendo o webhook enviar 'pt-BR' default. Agora o
+  // dispatch garante consistência mesmo pra lojas sem backfill aplicado.
+  const resolvedLang = resolveStoreLanguage(
+    onboardingRow?.form_responses ?? null,
+    typeof store.language === "string" ? store.language : null,
+  )
+
+  // Auto-correct lazy: se client_stores.language está no default mas a
+  // resolução achou outro idioma a partir do form_responses, atualiza.
+  // Próximas leituras direto da tabela (sem passar pelo dispatch) já
+  // ficam corretas — UI, exports, queries de BI etc.
+  const currentStoreLang =
+    typeof store.language === "string" ? store.language.trim() : ""
+  if (
+    resolvedLang.source !== "default" &&
+    resolvedLang.source !== "store_fallback" &&
+    resolvedLang.code !== currentStoreLang &&
+    (!currentStoreLang || currentStoreLang === "pt-BR")
+  ) {
+    try {
+      await admin
+        .from("client_stores")
+        .update({ language: resolvedLang.code })
+        .eq("id", storeId)
+      log.info("email_copy.webhook.language_synced", {
+        storeId,
+        from: currentStoreLang || "(empty)",
+        to: resolvedLang.code,
+        source: resolvedLang.source,
+      })
+    } catch (err) {
+      log.warn("email_copy.webhook.language_sync_failed", {
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 
   const payload = {
     event: "email_copy.requested" as const,
@@ -312,7 +369,12 @@ export async function dispatchEmailCopyWebhook(
       store_name: store.store_name,
       store_url: store.store_url,
       platform: store.platform,
-      language: store.language ?? "pt-BR",
+      language: resolvedLang.code,
+      language_label: resolvedLang.label,
+      language_form_raw:
+        (onboardingRow?.form_responses?.store_language as string | undefined) ?? null,
+      language_form_other_raw:
+        (onboardingRow?.form_responses?.store_language_other as string | undefined) ?? null,
       niche: store.niche,
       brand: {
         thesis: store.brand_thesis,
