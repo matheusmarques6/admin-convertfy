@@ -42,10 +42,11 @@ import {
   renderImagePrompt,
 } from "./chains/image.chain"
 import {
-  createHtmlChain,
+  invokeHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
 } from "./chains/html.chain"
+import { buildHtmlPromptVars } from "./html/build-vars"
 import {
   logGenerationRun,
   computeCostCents,
@@ -67,7 +68,7 @@ function stringify(val: unknown): string {
   return String(val)
 }
 
-function buildAllVars(ctx: GenerationContext): Record<string, string> {
+function _buildAllVars(ctx: GenerationContext): Record<string, string> {
   const vars: Record<string, string> = {}
   const s = ctx.storeRaw
 
@@ -380,7 +381,7 @@ const BOOLEAN_LIKE_VARS = new Set([
 ])
 
 
-function fillMissingVars(
+function _fillMissingVars(
   inputVars: Record<string, string>,
   systemPrompt: string,
   userTemplate: string,
@@ -597,71 +598,34 @@ export async function generateEmail(
     const htmlT0 = Date.now()
     try {
       const htmlConfig = ctx.agentConfigs.html
-      const model = htmlConfig?.model ?? "claude-sonnet-4-5-20250514"
+      const model = htmlConfig?.model ?? "claude-opus-4-7"
       const temperature = htmlConfig?.temperature ?? 0.3
-      const maxTokens = htmlConfig?.max_tokens ?? 8192
+      const maxTokens = htmlConfig?.max_tokens ?? 16384
       const systemPrompt = htmlConfig?.system_prompt ?? DEFAULT_HTML_SYSTEM_PROMPT
       const userTemplate = htmlConfig?.user_template ?? DEFAULT_HTML_USER_TEMPLATE
 
-      // Reload blocks with updated content
-      const { data: updatedBlocks } = await admin
-        .from("email_blocks")
-        .select("*")
-        .eq("email_id", emailId)
-        .order("position", { ascending: true })
-
-      // Reload email for subject/preheader
-      const { data: updatedEmail } = await admin
-        .from("email_flow_emails")
-        .select("subject, preheader, name")
-        .eq("id", emailId)
-        .single()
-
-      // Build input vars from ALL data sources
-      const inputVars = buildAllVars(ctx)
-      // HTML-specific context
-      inputVars.email_name = updatedEmail?.name ?? ""
-      inputVars.subject = (updatedEmail?.subject as string) ?? ""
-      inputVars.preheader = (updatedEmail?.preheader as string) ?? ""
-      inputVars.copy_output = ""
-      inputVars.blocks_with_content = JSON.stringify(
-        (updatedBlocks ?? []).map((b: Record<string, unknown>) => ({
-          position: b.position,
-          type: b.block_type,
-          label: b.label,
-          content: b.content,
-        })),
-        null,
-        2,
-      )
-
-      fillMissingVars(inputVars, systemPrompt, userTemplate)
-
-      const chain = createHtmlChain({
-        model,
-        temperature,
-        max_tokens: maxTokens,
-        system_prompt: systemPrompt,
-        user_template: userTemplate,
+      const inputVars = await buildHtmlPromptVars({
+        emailId,
+        brand: ctx.brand,
+        briefing: ctx.briefing,
+        blueprint: ctx.blueprint,
+        topProducts: ctx.topProducts,
+        storeRaw: ctx.storeRaw,
+        flowType,
+        emailNumber,
+        admin,
       })
 
-      let rawHtml = await chain.invoke(inputVars)
-
-      // Strip markdown fences (qualquer posição)
-      rawHtml = rawHtml
-        .replace(/```(?:html)?\s*/gi, "")
-        .trim()
-
-      // Extrair somente o documento HTML se houver texto ao redor
-      const doctypeMatch = rawHtml.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
-      if (doctypeMatch) {
-        rawHtml = doctypeMatch[1]
-      }
-
-      // Estimate tokens
-      const promptText = systemPrompt + JSON.stringify(inputVars)
-      const tokensInput = Math.ceil(promptText.length / 4)
-      const tokensOutput = Math.ceil(rawHtml.length / 4)
+      const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({
+        config: {
+          model,
+          temperature,
+          max_tokens: maxTokens,
+          system_prompt: systemPrompt,
+          user_template: userTemplate,
+        },
+        vars: inputVars,
+      })
 
       // PATCH email.html
       await admin
