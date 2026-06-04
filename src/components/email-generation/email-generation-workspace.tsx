@@ -17,6 +17,7 @@ import {
   Clock,
   Store,
   Mail,
+  Eye,
 } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
@@ -969,6 +970,12 @@ function TestTab() {
   } | null>(null)
   const [steps, setSteps] = useState<RunStep[]>([])
   const [pollInterval, setPollInterval] = useState(0)
+  // ── Preview de vars HTML resolvidas (debug do Master Prompt v2) ─
+  const [previewingVars, setPreviewingVars] = useState(false)
+  const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(
+    null,
+  )
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const { data: producaoData, isLoading: loadingFlows } = useSWR<{ flows: FlowOption[] }>(
     selectedStoreId ? `/api/admin/stores/${selectedStoreId}/producao` : null,
@@ -1059,6 +1066,39 @@ function TestTab() {
       })
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handlePreviewVars = async () => {
+    if (!selectedStoreId || !selectedEmailId) return
+    setPreviewingVars(true)
+    setPreviewError(null)
+    setPreviewVars(null)
+    try {
+      const res = await fetch(
+        `/api/admin/stores/${selectedStoreId}/preview-html-vars`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emailId: selectedEmailId }),
+        },
+      )
+      const text = await res.text()
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        throw new Error(`Resposta inválida (HTTP ${res.status})`)
+      }
+      const data = (parsed?.data ?? parsed) as Record<string, unknown>
+      if (!res.ok) {
+        throw new Error((data?.error as string) || `HTTP ${res.status}`)
+      }
+      setPreviewVars(data.vars as Record<string, string>)
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Erro desconhecido")
+    } finally {
+      setPreviewingVars(false)
     }
   }
 
@@ -1191,8 +1231,8 @@ function TestTab() {
           )}
         </div>
 
-        {/* Generate button */}
-        <div className="pt-2">
+        {/* Generate + preview vars buttons */}
+        <div className="pt-2 flex items-center gap-2">
           <button
             type="button"
             onClick={handleGenerate}
@@ -1206,8 +1246,84 @@ function TestTab() {
             )}
             {generating ? "Gerando..." : "Executar geração"}
           </button>
+          <button
+            type="button"
+            onClick={handlePreviewVars}
+            disabled={previewingVars || !selectedStoreId || !selectedEmailId}
+            title="Mostra as 20 vars que o HTML Agent vai receber, sem invocar o LLM"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[13px] font-medium disabled:opacity-40 transition-opacity"
+          >
+            {previewingVars ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+            Pré-visualizar vars HTML
+          </button>
         </div>
       </div>
+
+      {/* Preview vars panel */}
+      {(previewVars || previewError) && (
+        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-slate-700 dark:text-white/80" />
+              <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                Vars resolvidas — HTML Agent v2
+              </h3>
+              {previewVars && (
+                <span className="text-[11px] text-slate-400 dark:text-white/40">
+                  {Object.keys(previewVars).length} keys
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewVars(null)
+                setPreviewError(null)
+              }}
+              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white/60"
+            >
+              fechar
+            </button>
+          </div>
+          {previewError ? (
+            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-3 py-2 text-[12px] text-red-800 dark:text-red-200">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{previewError}</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+              {previewVars &&
+                Object.entries(previewVars).map(([key, value]) => {
+                  const isEmpty = !value || value.trim() === ""
+                  const isLong = value.length > 200
+                  return (
+                    <details
+                      key={key}
+                      className="rounded-[4px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2"
+                      open={!isLong && !isEmpty}
+                    >
+                      <summary className="flex items-center justify-between cursor-pointer text-[12px]">
+                        <code className="font-mono font-semibold text-slate-800 dark:text-white/90">
+                          {`{{${key}}}`}
+                        </code>
+                        <span className="text-[10px] text-slate-400 dark:text-white/35">
+                          {isEmpty ? "vazio" : `${value.length} chars`}
+                        </span>
+                      </summary>
+                      <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-white/70 max-h-[300px] overflow-y-auto">
+                        {isEmpty ? "(vazio)" : value}
+                      </pre>
+                    </details>
+                  )
+                })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Progress / Result */}
       {(result || generating || statusInfo) && (
