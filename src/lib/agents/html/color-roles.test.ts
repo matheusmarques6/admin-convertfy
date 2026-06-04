@@ -1,0 +1,101 @@
+import { describe, expect, it } from "vitest"
+
+import { deriveColorRoles } from "./color-roles"
+
+describe("deriveColorRoles", () => {
+  it("paleta vazia → defaults seguros (bg branco, text preto)", () => {
+    const r = deriveColorRoles([], [])
+    expect(r.bg).toBe("#FFFFFF")
+    expect(r.text).toBe("#1F1F1F")
+    expect(r.heading).toBe("#1F1F1F")
+    expect(r.button_bg).toBe("#1F1F1F")
+    expect(r.button_text).toBe("#FFFFFF")
+    expect(r.accent).toBe("#1F1F1F")
+  })
+
+  it("usa role explicito Fundo / Principal / Destaque quando presente", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "#FFF5EE", name: "Creme", role: "Fundo" },
+        { hex: "#2C1810", name: "Cacau", role: "Principal" },
+        { hex: "#D4621A", name: "Laranja", role: "Destaque" },
+      ],
+      [],
+    )
+    expect(r.bg).toBe("#FFF5EE")
+    expect(r.text).toBe("#1F1F1F") // bg claro → texto preto
+    expect(r.heading).toBe("#2C1810") // Principal contrasta com bg claro
+    expect(r.button_bg).toBe("#2C1810")
+    expect(r.button_text).toBe("#FFFFFF") // button escuro → texto branco
+    expect(r.accent).toBe("#D4621A")
+  })
+
+  it("sem role definido cai em fallback: lightest=bg, primeira primaria=button", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "#000000", name: "Preto", role: "" },
+        { hex: "#F0F0F0", name: "Cinza", role: "" },
+      ],
+      [],
+    )
+    expect(r.bg).toBe("#F0F0F0") // mais clara
+    expect(r.button_bg).toBe("#000000") // primeira primaria
+    expect(r.button_text).toBe("#FFFFFF")
+  })
+
+  it("aceita hex sem # e shorthand 3-digits", () => {
+    const r = deriveColorRoles(
+      [{ hex: "fff", name: "Branco", role: "Fundo" }],
+      [{ hex: "000", name: "Preto", role: "Destaque" }],
+    )
+    expect(r.bg).toBe("#FFFFFF")
+    expect(r.accent).toBe("#000000")
+  })
+
+  it("descarta hex invalido sem quebrar derivacao", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "not-a-color", name: "Lixo", role: "Principal" },
+        { hex: "#3366FF", name: "Azul", role: "" },
+      ],
+      [],
+    )
+    expect(r.button_bg).toBe("#3366FF")
+  })
+
+  it("heading cai em text quando Principal nao contrasta com bg", () => {
+    // Principal cinza médio em bg cinza claro → contraste < 4.5 → heading = text
+    const r = deriveColorRoles(
+      [
+        { hex: "#FAFAFA", name: "Fundo", role: "Fundo" },
+        { hex: "#A0A0A0", name: "Cinza", role: "Principal" },
+      ],
+      [],
+    )
+    expect(r.heading).toBe(r.text)
+  })
+
+  it("accent cai em segunda primaria quando nao ha role=Destaque", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "#FFFFFF", name: "Branco", role: "Fundo" },
+        { hex: "#000000", name: "Preto", role: "Principal" },
+        { hex: "#FF6600", name: "Laranja", role: "" },
+      ],
+      [],
+    )
+    expect(r.accent).toBe("#FF6600")
+  })
+
+  it("fundo escuro → text e button_text invertem pra branco", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "#0A0A0A", name: "Preto", role: "Fundo" },
+        { hex: "#FFD700", name: "Ouro", role: "Principal" },
+      ],
+      [],
+    )
+    expect(r.bg).toBe("#0A0A0A")
+    expect(r.text).toBe("#FFFFFF")
+  })
+})

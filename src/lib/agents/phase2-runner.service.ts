@@ -52,10 +52,11 @@ import {
 } from "./image/mode-resolution"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import {
-  createHtmlChain,
   DEFAULT_HTML_SYSTEM_PROMPT,
   DEFAULT_HTML_USER_TEMPLATE,
+  invokeHtmlChain,
 } from "./chains/html.chain"
+import { buildHtmlPromptVars } from "./html/build-vars"
 import { runQaAgent } from "./chains/qa.chain"
 import {
   logGenerationRun,
@@ -610,84 +611,45 @@ export async function runPhase2InBackground(
     })
   }
 
-  // ── Step 2: HTML generation ──────────────────────────────────────────
+  // ── Step 2: HTML generation (Master Prompt v2) ──────────────────────
   const htmlT0 = Date.now()
   let finalHtml = ""
   try {
     const htmlConfig = ctx.htmlConfig
-    const model = htmlConfig?.model ?? "claude-sonnet-4-5-20250514"
+    const model = htmlConfig?.model ?? "claude-opus-4-7"
     const temperature = htmlConfig?.temperature ?? 0.3
-    const maxTokens = htmlConfig?.max_tokens ?? 8192
+    const maxTokens = htmlConfig?.max_tokens ?? 16384
     const systemPrompt = htmlConfig?.system_prompt ?? DEFAULT_HTML_SYSTEM_PROMPT
     const userTemplate = htmlConfig?.user_template ?? DEFAULT_HTML_USER_TEMPLATE
 
-    const { data: updatedBlocks } = await admin
-      .from("email_blocks")
-      .select("*")
-      .eq("email_id", emailId)
-      .order("position", { ascending: true })
-
-    const { data: updatedEmail } = await admin
-      .from("email_flow_emails")
-      .select("subject, preheader, name")
-      .eq("id", emailId)
-      .single()
-
-    // Reusa buildImagePromptVars para vars basicas — para HTML basta um mapa simples.
-    const baseVars = buildImagePromptVars({
+    const inputVars = await buildHtmlPromptVars({
+      emailId,
       brand: ctx.brand,
       briefing: ctx.briefing,
+      blueprint: ctx.blueprint,
       topProducts: ctx.topProducts,
       storeRaw: ctx.storeRaw,
-      blockPurpose: "html",
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      admin,
     })
-    const inputVars: Record<string, string> = {
-      ...baseVars,
-      email_name: (updatedEmail?.name as string) ?? "",
-      subject: (updatedEmail?.subject as string) ?? "",
-      preheader: (updatedEmail?.preheader as string) ?? "",
-      copy_output: "",
-      blocks_with_content: JSON.stringify(
-        (updatedBlocks ?? []).map((b: Record<string, unknown>) => ({
-          position: b.position,
-          type: b.block_type,
-          label: b.label,
-          content: b.content,
-        })),
-        null,
-        2,
-      ),
-    }
 
-    // Fill missing template vars to avoid Anthropic errors
-    const combined = systemPrompt + userTemplate
-    const varPattern = /\{(\w+)\}/g
-    let match: RegExpExecArray | null
-    while ((match = varPattern.exec(combined)) !== null) {
-      const key = match[1]
-      if (!(key in inputVars) || inputVars[key] === "") inputVars[key] = "(nenhum)"
-    }
-
-    const chain = createHtmlChain({
-      model,
-      temperature,
-      max_tokens: maxTokens,
-      system_prompt: systemPrompt,
-      user_template: userTemplate,
+    const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({
+      config: {
+        model,
+        temperature,
+        max_tokens: maxTokens,
+        system_prompt: systemPrompt,
+        user_template: userTemplate,
+      },
+      vars: inputVars,
     })
-    let rawHtml = await chain.invoke(inputVars)
-    rawHtml = rawHtml.replace(/```(?:html)?\s*/gi, "").trim()
-    const doctypeMatch = rawHtml.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
-    if (doctypeMatch) rawHtml = doctypeMatch[1]
 
     await admin
       .from("email_flow_emails")
       .update({ html: rawHtml, updated_at: new Date().toISOString() })
       .eq("id", emailId)
 
-    const promptText = systemPrompt + JSON.stringify(inputVars)
-    const tokensInput = Math.ceil(promptText.length / 4)
-    const tokensOutput = Math.ceil(rawHtml.length / 4)
     await logGenerationRun({
       storeId,
       flowId,
