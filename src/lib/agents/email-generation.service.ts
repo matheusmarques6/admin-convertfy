@@ -32,6 +32,9 @@ import { mapTomVozToMood } from "./image/mood-mapping"
 import { deriveCenario } from "./image/cenario-derivation"
 import { resolveNeutro } from "./image/neutro-resolution"
 import { deriveLogoStyle } from "./image/logo-style"
+import { deriveShotArchetype } from "./image/shot-archetype"
+import type { AspectKey } from "./image/aspect-ratio"
+import type { ImageMode } from "./image/mode-resolution"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
 import {
   generateEmailImage,
@@ -184,6 +187,16 @@ export interface ImagePromptVarsInput {
   // template envolve em {{#if INSTRUCAO_ADICIONAL}}...{{/if}} para
   // omitir o bloco quando vazio.
   instrucaoAdicional?: string
+  // ── Master Prompt v2 — contexto por bloco já resolvido pelo caller ─
+  // O caller (phase2-runner / resolve-block-prompt) já resolveu
+  // aspect/mode via os deriverssrc/lib/agents/image. Passa eles pra
+  // cá pra ficarem disponíveis ao template como vars (`aspect_ratio`,
+  // `mode`, `product_ref`) e pra alimentar `deriveShotArchetype`.
+  blockType?: string
+  blockLabel?: string
+  imageOverlayReserveBottom?: boolean
+  aspect?: AspectKey
+  mode?: ImageMode
 }
 
 /**
@@ -265,6 +278,23 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const IDIOMA = (input.storeRaw.language as string) ?? "pt-BR"
   const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
 
+  // ── Master Prompt v2 — vars por bloco ────────────────────
+  // `blueprint_purpose` é o `hint` do bloco específico no blueprint
+  // (granular por slot, não por email inteiro). Sem hint → "".
+  const blueprintPurpose = input.blockType
+    ? (blueprint?.blocks?.find((b) => b.type === input.blockType)?.hint ?? "")
+    : ""
+  const modeVal: ImageMode = input.mode ?? "text2img"
+  const aspectVal: string = input.aspect ?? ""
+  const shotArchetype = deriveShotArchetype({
+    blockType: input.blockType,
+    blockLabel: input.blockLabel,
+    blueprintPurpose,
+    mode: modeVal,
+    emailNumber: input.emailNumber,
+    flowType: input.flowType,
+  })
+
   return {
     brand_name: brandName,
     block_purpose: input.blockPurpose,
@@ -315,8 +345,39 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // handlebars-lite que casa snake_case com string).
     flow_type: input.flowType ?? "",
     email_number: input.emailNumber != null ? String(input.emailNumber) : "",
+
+    // ── Master Prompt v2 — contexto por bloco ──────────────
+    // block_type/block_label/blueprint_purpose ajudam o modelo a entender
+    // QUAL slot ele está renderizando dentro do email. shot_archetype é
+    // o enum derivado (8 valores) que o System Prompt v2 conhece. mode +
+    // aspect_ratio espelham o que o caller já decidiu via resolvers.
+    block_type: input.blockType ?? "",
+    block_label: input.blockLabel ?? "",
+    blueprint_purpose: blueprintPurpose,
+    image_overlay_reserve_bottom: input.imageOverlayReserveBottom
+      ? "true"
+      : "false",
+    aspect_ratio: aspectVal,
+    mode: modeVal,
+    // product_ref é boolean-like — `""` = falsy no renderer (vide
+    // BOOLEAN_LIKE_VARS abaixo). Quando true, vira `"true"` (truthy).
+    product_ref: modeVal === "product_ref" ? "true" : "",
+    shot_archetype: shotArchetype,
+    SHOT_ARCHETYPE: shotArchetype,
   }
 }
+
+/**
+ * Vars que precisam ficar literalmente `"true"` / `"false"` / `""`
+ * mesmo quando o template não as referencia explicitamente. Sem isso,
+ * `fillMissingVars` reescreve `""` como `"(nenhum)"` — que é truthy
+ * no renderer custom — quebrando `{{#if product_ref}}` e
+ * `{{#if image_overlay_reserve_bottom}}`.
+ */
+const BOOLEAN_LIKE_VARS = new Set([
+  "product_ref",
+  "image_overlay_reserve_bottom",
+])
 
 
 function fillMissingVars(
@@ -330,12 +391,15 @@ function fillMissingVars(
   while ((match = varPattern.exec(combined)) !== null) {
     const key = match[1]
     if (!(key in inputVars)) {
-      inputVars[key] = "(nenhum)"
+      inputVars[key] = BOOLEAN_LIKE_VARS.has(key) ? "" : "(nenhum)"
     }
   }
-  // Anthropic API rejeita text blocks vazios com cache_control
+  // Anthropic API rejeita text blocks vazios com cache_control. Vars
+  // boolean-like preservam `""` (`false` semântico no renderer).
   for (const key of Object.keys(inputVars)) {
-    if (inputVars[key] === "") inputVars[key] = "(nenhum)"
+    if (inputVars[key] === "" && !BOOLEAN_LIKE_VARS.has(key)) {
+      inputVars[key] = "(nenhum)"
+    }
   }
   return inputVars
 }

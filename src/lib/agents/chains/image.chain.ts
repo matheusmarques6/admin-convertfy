@@ -60,7 +60,24 @@ function isMultimodalUnsupportedError(body: string): boolean {
   )
 }
 
-type ChatMessage =
+/**
+ * Heuristica pra detectar erro "modelo nao aceita role=system" no body
+ * de uma resposta 4xx do OpenRouter. Quando dispara, a chain retry uma
+ * vez concatenando system_prompt + "\n\n" + user prompt no mesmo user
+ * message — sem perda de instrução, só perda da separação de roles.
+ */
+function isSystemRoleUnsupportedError(body: string): boolean {
+  const lower = body.toLowerCase()
+  return (
+    lower.includes("system role not supported") ||
+    lower.includes("system message not supported") ||
+    lower.includes("unsupported role") ||
+    lower.includes("role 'system'") ||
+    lower.includes('role "system"')
+  )
+}
+
+type UserMessage =
   | { role: "user"; content: string }
   | {
       role: "user"
@@ -69,29 +86,42 @@ type ChatMessage =
         | { type: "image_url"; image_url: { url: string } }
       >
     }
+type SystemMessage = { role: "system"; content: string }
+type ChatMessage = UserMessage | SystemMessage
+
+function buildUserMessage(
+  prompt: string,
+  referenceImageUrl?: string,
+): UserMessage {
+  if (referenceImageUrl) {
+    return {
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: referenceImageUrl } },
+        { type: "text", text: prompt },
+      ],
+    }
+  }
+  return { role: "user", content: prompt }
+}
 
 function buildMessages(
   prompt: string,
   referenceImageUrl?: string,
+  systemPrompt?: string,
 ): ChatMessage[] {
-  if (referenceImageUrl) {
-    return [
-      {
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: referenceImageUrl } },
-          { type: "text", text: prompt },
-        ],
-      },
-    ]
+  const userMsg = buildUserMessage(prompt, referenceImageUrl)
+  if (systemPrompt && systemPrompt.trim()) {
+    return [{ role: "system", content: systemPrompt }, userMsg]
   }
-  return [{ role: "user", content: prompt }]
+  return [userMsg]
 }
 
 async function callOpenRouterImage(
   apiKey: string,
   prompt: string,
   referenceImageUrl?: string,
+  systemPrompt?: string,
 ): Promise<Response> {
   return fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -101,7 +131,7 @@ async function callOpenRouterImage(
     },
     body: JSON.stringify({
       model: OPENROUTER_IMAGE_MODEL,
-      messages: buildMessages(prompt, referenceImageUrl),
+      messages: buildMessages(prompt, referenceImageUrl, systemPrompt),
       response_format: "b64_json",
     }),
   })
@@ -130,6 +160,14 @@ export async function generateEmailImage(
      * `resolveImageMode`, mas a chain tambem se defende).
      */
     referenceImageUrl?: string
+    /**
+     * Master Prompt v2: prompt de sistema do agente de imagem (Part A do
+     * `email_agent_configs.system_prompt`). Enviado como `role:"system"` na
+     * mensagem inicial. Se o modelo retornar 4xx com sinal de role não
+     * suportado, retry UMA vez concatenando `system + "\n\n" + user` no mesmo
+     * user message (sem perda de instrução).
+     */
+    systemPrompt?: string
   },
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY
@@ -137,6 +175,7 @@ export async function generateEmailImage(
 
   const mode = options?.mode ?? "text2img"
   const useMultimodal = mode === "product_ref" && !!options?.referenceImageUrl
+  const systemPrompt = options?.systemPrompt?.trim() || undefined
 
   log.info("image.generate.start", {
     storeId,
@@ -145,6 +184,8 @@ export async function generateEmailImage(
     overlayReserveBottom: options?.overlayReserveBottom,
     mode,
     useMultimodal,
+    hasSystemPrompt: !!systemPrompt,
+    systemPromptLength: systemPrompt?.length ?? 0,
   })
   const t0 = Date.now()
 
@@ -160,7 +201,42 @@ export async function generateEmailImage(
     apiKey,
     prompt,
     useMultimodal ? options?.referenceImageUrl : undefined,
+    systemPrompt,
   )
+
+  // Master Prompt v2: se o modelo rejeitou role=system, retry UMA vez
+  // concatenando system + user no mesmo user message. Decidido antes do
+  // fallback de multimodal pra evitar mascarar drift de role como drift
+  // de multimodal (logs ficam mais limpos pra ops).
+  if (
+    !res.ok &&
+    systemPrompt &&
+    res.status >= 400 &&
+    res.status < 500
+  ) {
+    const errText = await res.text().catch(() => "")
+    if (isSystemRoleUnsupportedError(errText)) {
+      log.warn("image.system_prompt.fallback_concatenated", {
+        storeId,
+        status: res.status,
+        errorSnippet: errText.slice(0, 200),
+      })
+      const concatenated = `${systemPrompt}\n\n${prompt}`
+      res = await callOpenRouterImage(
+        apiKey,
+        concatenated,
+        useMultimodal ? options?.referenceImageUrl : undefined,
+        undefined,
+      )
+    } else {
+      // Reembrulha pra cair na 4xx genérica abaixo sem perder o body
+      // (Response já foi consumida via .text() — recria sintética).
+      res = new Response(errText, {
+        status: res.status,
+        statusText: res.statusText,
+      })
+    }
+  }
 
   // AE-13: se multimodal foi tentado e o modelo nao aceita, retry
   // UMA vez em modo text2img puro. Apenas pra 4xx; 5xx propaga.
@@ -172,7 +248,7 @@ export async function generateEmailImage(
         status: res.status,
         errorSnippet: errText.slice(0, 200),
       })
-      res = await callOpenRouterImage(apiKey, prompt, undefined)
+      res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt)
     } else {
       // AE-13 review: se o body menciona "image" mas nao casa keywords
       // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra
