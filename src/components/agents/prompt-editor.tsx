@@ -10,7 +10,7 @@
  * (lista estática hardcoded). Botão "Validar template" extrai `{{var}}`
  * e cruza com a lista — avisa quando há vars não suportadas.
  */
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Loader2, Save, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "@/lib/hooks/use-toast"
 import type { AgentType } from "@/types/email-generation"
@@ -50,13 +50,29 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "block_purpose", desc: "Propósito do bloco (hero, etc)" },
   ],
   html: [
+    // ── Master Prompt v2 — sincronizado com `buildHtmlPromptVars`
+    // em `src/lib/agents/html/build-vars.ts`. 20 vars no contrato.
     { key: "brand_name", desc: "Nome da loja" },
-    { key: "primary_colors", desc: "Cores primárias" },
-    { key: "font_heading", desc: "Fonte heading" },
-    { key: "font_body", desc: "Fonte body" },
-    { key: "blocks_json", desc: "JSON com blocos (copy + imagens)" },
-    { key: "reference_html", desc: "HTML de referência" },
-    { key: "image_map", desc: "Mapa de imagens (JSON)" },
+    { key: "locale", desc: "Idioma da loja (ex: pt-BR)" },
+    { key: "color_bg", desc: "Cor de fundo (--bg)" },
+    { key: "color_text", desc: "Cor do texto corpo (--text)" },
+    { key: "color_heading", desc: "Cor dos headings (--heading)" },
+    { key: "color_button_bg", desc: "Cor de fundo do botão (--button-bg)" },
+    { key: "color_button_text", desc: "Cor do texto do botão (--button-text)" },
+    { key: "color_accent", desc: "Cor de destaque/accent (--accent)" },
+    { key: "font_heading", desc: "Fonte de heading (Google Fonts)" },
+    { key: "font_body", desc: "Fonte de body (Google Fonts)" },
+    { key: "logo_svg", desc: "SVG inline do logo" },
+    { key: "logo_width", desc: "Largura do logo em px" },
+    { key: "email_name", desc: "Nome interno do email" },
+    { key: "subject", desc: "Subject line" },
+    { key: "preheader", desc: "Preheader text" },
+    { key: "objective", desc: "Objetivo editorial do email (do blueprint)" },
+    { key: "messaging", desc: "Mensagem central do email (do blueprint)" },
+    { key: "reference_html", desc: "HTML de referência (autoridade de forma)" },
+    { key: "image_map_json", desc: "Array de imagens [{id,url,aspect_ratio,overlay}]" },
+    { key: "top_products_json", desc: "Array de produtos top da loja" },
+    { key: "blocks_with_content_json", desc: "Blocos com content + purpose por bloco" },
   ],
   qa: [
     { key: "brand_name", desc: "Nome da loja" },
@@ -106,22 +122,64 @@ export function PromptEditor({ agentType, activePrompt, onSaved }: Props) {
     [placeholders],
   )
 
-  const validateTemplate = () => {
+  // Extrai vars do template (system + user). Ignora handlebars-lite
+  // helpers `{{#if VAR}}...{{/if}}` e `{{#case VAR}}...{{/case}}` —
+  // captura apenas `{{VAR}}` simples.
+  const templateAnalysis = useMemo(() => {
     const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
     const found = new Set<string>()
     let m: RegExpExecArray | null
     const haystack = `${systemPrompt}\n${userTemplate}`
     while ((m = re.exec(haystack)) !== null) found.add(m[1])
-    const unknown = [...found].filter((k) => !knownKeys.has(k))
-    if (unknown.length === 0) {
+    const used = [...found]
+    const unknown = used.filter((k) => !knownKeys.has(k))
+    const knownUsed = used.filter((k) => knownKeys.has(k))
+    return {
+      totalUsed: used.length,
+      knownUsed: knownUsed.length,
+      unknown,
+      totalAvailable: knownKeys.size,
+    }
+  }, [systemPrompt, userTemplate, knownKeys])
+
+  // Auto-validacao: corre a cada mudanca (memoizada). Mensagem em
+  // tempo real ajuda o autor a evitar typo de var. Botao manual abaixo
+  // forca refresh do estado mesmo se o conteudo nao mudou.
+  useEffect(() => {
+    if (templateAnalysis.totalUsed === 0) {
+      setValidationMsg(null)
+      return
+    }
+    if (templateAnalysis.unknown.length === 0) {
       setValidationMsg({
         kind: "ok",
-        msg: `Template OK. ${found.size} variáveis encontradas, todas suportadas.`,
+        msg: `Template OK. ${templateAnalysis.knownUsed}/${templateAnalysis.totalAvailable} vars do contrato em uso.`,
       })
     } else {
       setValidationMsg({
         kind: "error",
-        msg: `Variáveis não documentadas: ${unknown.map((u) => `{{${u}}}`).join(", ")}.`,
+        msg: `Variáveis não documentadas: ${templateAnalysis.unknown.map((u) => `{{${u}}}`).join(", ")}. Em runtime, viram string vazia.`,
+      })
+    }
+  }, [templateAnalysis])
+
+  const validateTemplate = () => {
+    if (templateAnalysis.totalUsed === 0) {
+      setValidationMsg({
+        kind: "error",
+        msg: "Template sem variáveis. Use {{var_name}} no system ou user template.",
+      })
+      return
+    }
+    if (templateAnalysis.unknown.length === 0) {
+      setValidationMsg({
+        kind: "ok",
+        msg: `Template OK. ${templateAnalysis.knownUsed}/${templateAnalysis.totalAvailable} vars do contrato em uso.`,
+      })
+    } else {
+      setValidationMsg({
+        kind: "error",
+        msg: `Variáveis não documentadas: ${templateAnalysis.unknown.map((u) => `{{${u}}}`).join(", ")}. Em runtime, viram string vazia.`,
       })
     }
   }
@@ -130,6 +188,14 @@ export function PromptEditor({ agentType, activePrompt, onSaved }: Props) {
     if (!systemPrompt.trim() || !userTemplate.trim()) {
       toast({ variant: "destructive", title: "system_prompt e user_template obrigatórios" })
       return
+    }
+    if (templateAnalysis.unknown.length > 0) {
+      const confirmed = window.confirm(
+        `${templateAnalysis.unknown.length} variável(is) não documentada(s): ` +
+          `${templateAnalysis.unknown.map((u) => `{{${u}}}`).join(", ")}.\n\n` +
+          "Em runtime essas vars viram string vazia. Salvar mesmo assim?",
+      )
+      if (!confirmed) return
     }
     let outputSchema: unknown = null
     if (outputSchemaText.trim()) {
