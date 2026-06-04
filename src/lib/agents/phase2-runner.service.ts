@@ -269,7 +269,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     // ── Story AE-11: imagem agora carrega config + overrides do DB ─
     admin
       .from("email_agent_configs")
-      .select("user_template, model")
+      .select("system_prompt, user_template, model")
       .eq("agent_type", "image")
       .eq("is_active", true)
       .order("version", { ascending: false })
@@ -299,8 +299,11 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     storeOverrides:
       (storeOverridesRes.data as StoreImageOverrides | null) ?? null,
     imageConfig:
-      (imageConfigRes.data as { user_template: string; model: string } | null) ??
-      null,
+      (imageConfigRes.data as {
+        system_prompt: string | null
+        user_template: string
+        model: string
+      } | null) ?? null,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -401,30 +404,6 @@ export async function runPhase2InBackground(
             ? (blockContent.image_instruction as string)
             : undefined
 
-        const promptVars = buildImagePromptVars({
-          brand: ctx.brand,
-          briefing: ctx.briefing,
-          topProducts: ctx.topProducts,
-          storeRaw: ctx.storeRaw,
-          blockPurpose: (blk.label as string) ?? "hero",
-          // ── AE-11: vars niche-adaptive + contexto ─────────────
-          // emailNumber e flowType ja produzem `email_number` e `flow_type`
-          // (snake_case) no retorno — usados pelo switch do template
-          // handlebars-lite. Nao precisa mutacao posterior.
-          emailNumber: ctx.emailNumber ?? undefined,
-          flowType: ctx.flowType ?? undefined,
-          blueprint: ctx.blueprint,
-          storeOverrides: ctx.storeOverrides,
-          instrucaoAdicional,
-        })
-
-        // Se config existe no DB: renderImageTemplate (handlebars-lite,
-        // suporta switch + if). Sem config: fallback pro template
-        // hardcoded com o renderImagePrompt legacy (compat retroativa).
-        const prompt = ctx.imageConfig
-          ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
-          : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
-
         // ⚠️ SYNC CONTRACT WITH AE-16: a logica abaixo (aspect + mode +
         // fallback description + render final do prompt) deve ficar
         // identica a `src/lib/agents/image/resolve-block-prompt.service.ts`,
@@ -433,6 +412,12 @@ export async function runPhase2InBackground(
         // modal de preview na UI mostrara prompt diferente do que esta
         // rodando aqui (bug silencioso). Idealmente, extraia para um
         // helper compartilhado em uma proxima refatoracao.
+
+        // Master Prompt v2: aspect + mode são RESOLVIDOS ANTES do
+        // buildImagePromptVars pra ficarem disponíveis ao template como
+        // vars (`aspect_ratio`, `mode`, `product_ref`) e pra alimentar
+        // `deriveShotArchetype`. A reordenação muda só a sequência —
+        // o resultado final do prompt continua igual.
 
         // AE-12: resolve aspect ratio (blueprint override > matriz >
         // default) + inject instrucao textual no prompt. O resize final
@@ -471,8 +456,6 @@ export async function runPhase2InBackground(
           source: aspectSource,
         })
 
-        let promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
-
         // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
         const multimodalEnabled =
           process.env.IMAGE_MULTIMODAL_ENABLED === "true"
@@ -494,6 +477,38 @@ export async function runPhase2InBackground(
           source: modeSource,
           hasRefUrl: !!topProductImageUrl,
         })
+
+        const promptVars = buildImagePromptVars({
+          brand: ctx.brand,
+          briefing: ctx.briefing,
+          topProducts: ctx.topProducts,
+          storeRaw: ctx.storeRaw,
+          blockPurpose: (blk.label as string) ?? "hero",
+          // ── AE-11: vars niche-adaptive + contexto ─────────────
+          // emailNumber e flowType ja produzem `email_number` e `flow_type`
+          // (snake_case) no retorno — usados pelo switch do template
+          // handlebars-lite. Nao precisa mutacao posterior.
+          emailNumber: ctx.emailNumber ?? undefined,
+          flowType: ctx.flowType ?? undefined,
+          blueprint: ctx.blueprint,
+          storeOverrides: ctx.storeOverrides,
+          instrucaoAdicional,
+          // ── Master Prompt v2 — contexto por bloco ───────────
+          blockType: (blk.block_type as string) ?? undefined,
+          blockLabel: (blk.label as string) ?? undefined,
+          imageOverlayReserveBottom: reserveBottom,
+          aspect,
+          mode,
+        })
+
+        // Se config existe no DB: renderImageTemplate (handlebars-lite,
+        // suporta switch + if). Sem config: fallback pro template
+        // hardcoded com o renderImagePrompt legacy (compat retroativa).
+        const prompt = ctx.imageConfig
+          ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
+          : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
+
+        let promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
         // descricao textual rica do produto pra compensar a perda visual.
@@ -522,6 +537,10 @@ export async function runPhase2InBackground(
               mode === "product_ref" && topProductImageUrl
                 ? topProductImageUrl
                 : undefined,
+            // Master Prompt v2: Part A do email_agent_configs.system_prompt.
+            // Quando ausente (config v1 ainda ativa), generateEmailImage
+            // não envia role:"system" e mantém comportamento legacy.
+            systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
           },
         )
 

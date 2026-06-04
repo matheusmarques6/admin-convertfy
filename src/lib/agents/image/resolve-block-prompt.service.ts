@@ -221,7 +221,7 @@ export async function resolveBlockPrompt(
         .maybeSingle(),
       admin
         .from("email_agent_configs")
-        .select("user_template, model")
+        .select("system_prompt, user_template, model")
         .eq("agent_type", "image")
         .eq("is_active", true)
         .order("version", { ascending: false })
@@ -241,32 +241,17 @@ export async function resolveBlockPrompt(
   const storeRaw =
     (storeRes.data as Record<string, unknown>) ?? { store_name: "Loja" }
   const imageConfig =
-    (imageConfigRes.data as { user_template: string; model: string } | null) ??
-    null
+    (imageConfigRes.data as {
+      system_prompt: string | null
+      user_template: string
+      model: string
+    } | null) ?? null
   const storeOverrides =
     (storeOverridesRes.data as StoreImageOverrides | null) ?? null
   const topProducts = ((brand?.top_products ?? []) as TopProduct[]) ?? []
 
-  // ── 5. buildImagePromptVars (com INSTRUCAO_ADICIONAL do bloco) ─
-  const promptVars = buildImagePromptVars({
-    brand,
-    briefing,
-    topProducts,
-    storeRaw,
-    blockPurpose: (blk.label as string) ?? blk.block_type ?? "hero",
-    emailNumber: emailNumber ?? undefined,
-    flowType: flowType ?? undefined,
-    blueprint,
-    storeOverrides,
-    instrucaoAdicional,
-  })
-
-  // ── 6. Render do template (DB-config se existe, fallback hardcoded) ─
-  const basePrompt = imageConfig
-    ? renderImageTemplate(imageConfig.user_template, promptVars)
-    : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
-
-  // ── 7. Aspect ratio + appendix ─────────────────────────────────
+  // ── 5. Aspect ratio + mode (resolvidos ANTES do buildImagePromptVars
+  // pra ficarem disponíveis como vars do template no Master Prompt v2). ─
   const blueprintAspectRaw = blueprint?.image_aspect ?? null
   const blueprintAspectIsValid =
     !!blueprintAspectRaw && isAspectKey(blueprintAspectRaw)
@@ -284,9 +269,6 @@ export async function resolveBlockPrompt(
     emailNumber,
   })
 
-  let prompt = `${basePrompt}\n\n${aspectInstructionForPrompt(aspect, overlayReserveBottom)}`
-
-  // ── 8. Mode resolution (product_ref/text2img + fallbacks) ─────
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
   const topProductImageUrl = topProducts[0]?.image_url ?? null
   const { mode, source: modeSource } = resolveImageMode({
@@ -296,6 +278,32 @@ export async function resolveBlockPrompt(
     topProductImageUrl,
     multimodalEnabled,
   })
+
+  // ── 6. buildImagePromptVars (com INSTRUCAO_ADICIONAL do bloco + ctx v2) ─
+  const promptVars = buildImagePromptVars({
+    brand,
+    briefing,
+    topProducts,
+    storeRaw,
+    blockPurpose: (blk.label as string) ?? blk.block_type ?? "hero",
+    emailNumber: emailNumber ?? undefined,
+    flowType: flowType ?? undefined,
+    blueprint,
+    storeOverrides,
+    instrucaoAdicional,
+    blockType: (blk.block_type as string) ?? undefined,
+    blockLabel: (blk.label as string) ?? undefined,
+    imageOverlayReserveBottom: overlayReserveBottom,
+    aspect,
+    mode,
+  })
+
+  // ── 7. Render do template (DB-config se existe, fallback hardcoded) ─
+  const basePrompt = imageConfig
+    ? renderImageTemplate(imageConfig.user_template, promptVars)
+    : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
+
+  let prompt = `${basePrompt}\n\n${aspectInstructionForPrompt(aspect, overlayReserveBottom)}`
 
   // Se caiu em fallback text2img + temos top product, adicionar
   // descricao rica (mesma logica do phase2-runner).
