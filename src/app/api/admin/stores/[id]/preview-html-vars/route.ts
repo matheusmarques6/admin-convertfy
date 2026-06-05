@@ -74,12 +74,22 @@ export async function POST(
     const body = await request.json()
     const { emailId } = bodySchema.parse(body)
 
-    // Resolve flow_type + email_number do email
-    const { data: emailRow } = await admin
+    // Resolve flow_type + email_number do email.
+    // A coluna do numero do email se chama `number` (nao `email_number`)
+    // — alias pra manter a semantica abaixo.
+    const { data: emailRow, error: emailErr } = await admin
       .from("email_flow_emails")
-      .select("email_number, flow_id")
+      .select("number, flow_id")
       .eq("id", emailId)
       .maybeSingle()
+
+    if (emailErr) {
+      return errorResponse(
+        request,
+        new Error(`falha ao buscar email: ${emailErr.message}`),
+        "preview-html-vars",
+      )
+    }
 
     if (!emailRow) {
       return errorResponse(
@@ -90,7 +100,7 @@ export async function POST(
     }
 
     const flowId = emailRow.flow_id as string | null
-    const emailNumber = (emailRow.email_number as number | null) ?? null
+    const emailNumber = (emailRow.number as number | null) ?? null
 
     let flowType: string | null = null
     if (flowId) {
@@ -107,7 +117,7 @@ export async function POST(
       await Promise.all([
         admin.from("client_stores").select("*").eq("id", storeId).maybeSingle(),
         admin
-          .from("store_brand_identities")
+          .from("store_brand_identity")
           .select("*")
           .eq("store_id", storeId)
           .order("version", { ascending: false })
@@ -129,7 +139,7 @@ export async function POST(
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         admin
-          .from("store_brand_identities")
+          .from("store_brand_identity")
           .select("top_products")
           .eq("store_id", storeId)
           .order("version", { ascending: false })
