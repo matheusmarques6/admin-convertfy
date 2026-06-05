@@ -318,27 +318,33 @@ HAVING COUNT(*) > 1;
 -- brand identity) — entao podem rodar o pipeline ate o fim. Pegue
 -- um store_id e abra:
 --   https://app.convertfy.me/admin/stores/{store_id}/emails
+--
+-- Notas sobre o modelo:
+--   - email_flow_emails NAO tem store_id direto — vai via flow_id
+--     -> email_flows.store_id.
+--   - A coluna do numero do email se chama `number` (nao email_number).
 -- =============================================================
 
 SELECT
   e.id          AS email_id,
   e.name        AS email_name,
   e.status,
-  e.flow_type,
-  e.email_number,
+  f.flow_type,
+  e.number      AS email_number,
   s.id          AS store_id,
   s.store_name,
   e.updated_at
 FROM email_flow_emails e
-JOIN client_stores s ON s.id = e.store_id
+JOIN email_flows  f ON f.id = e.flow_id
+JOIN client_stores s ON s.id = f.store_id
 WHERE e.status IN ('draft', 'copy_ready', 'failed', 'ready')
   AND EXISTS (
     SELECT 1 FROM store_briefings
-    WHERE store_id = e.store_id AND status = 'confirmed'
+    WHERE store_id = f.store_id AND status = 'confirmed'
   )
   AND EXISTS (
     SELECT 1 FROM store_brand_identity
-    WHERE store_id = e.store_id
+    WHERE store_id = f.store_id
   )
 ORDER BY
   CASE e.status
