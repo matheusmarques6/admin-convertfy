@@ -20,7 +20,7 @@ export async function GET(
     const { data, error } = await admin
       .from("email_generation_runs")
       .select(
-        "*, client_stores!inner(name), email_flows(flow_type), email_flow_emails(name)",
+        "*, client_stores!inner(store_name), email_flows(flow_type), email_flow_emails(name)",
       )
       .eq("id", id)
       .single()
