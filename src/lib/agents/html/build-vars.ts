@@ -36,8 +36,13 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 
+import { precheckBrandReady, resolveBrandTokens } from "./brand-guards"
 import { deriveColorRoles } from "./color-roles"
 import { HtmlPromptVarsSchema } from "./contract"
+
+// Re-export pra que phase2-runner possa fazer instanceof sem importar
+// brand-guards diretamente — preserva o ponto unico de entrada do agente.
+export { BrandIncompleteError } from "./brand-guards"
 
 const log = logger.child("HtmlBuildVars")
 
@@ -176,12 +181,17 @@ function buildImageMap(
 function buildBlocksWithContent(
   blocks: EmailBlockRow[],
   blueprint: EmailBlueprint | null,
+  brandName: string,
 ): BlockWithContent[] {
   return blocks.map((blk) => ({
     position: blk.position,
     type: blk.block_type,
     label: blk.label,
-    content: blk.content ?? {},
+    // Defesa em camadas — webhook /api/webhooks/n8n/email-copy ja sanitiza
+    // antes de gravar, mas emails gerados antes do fix podem ter
+    // `{{BRAND_NAME}}` literal no DB. resolveBrandTokens e' no-op se nao
+    // encontrar nenhum token.
+    content: resolveBrandTokens(blk.content ?? {}, brandName) as Record<string, unknown>,
     purpose: purposeOf(blueprint, blk.position, blk.label),
   }))
 }
@@ -211,6 +221,12 @@ export async function buildHtmlPromptVars(
     emailNumber,
     admin,
   } = input
+
+  // Pre-check: brand identity precisa estar completa antes de gastar
+  // tokens no LLM. Lanca BrandIncompleteError com lista de campos
+  // faltantes — phase2-runner trata como `failure_reason='brand_incomplete'`.
+  const storeId = (storeRaw?.id as string | undefined) ?? null
+  precheckBrandReady(brand, storeId)
 
   // ── Queries paralelas: email row + blocks + reference template ────
   const [emailRes, blocksRes, refRes] = await Promise.all([
@@ -293,7 +309,7 @@ export async function buildHtmlPromptVars(
     image_map_json: JSON.stringify(buildImageMap(blocks, blueprint), null, 2),
     top_products_json: buildTopProductsJson(topProducts),
     blocks_with_content_json: JSON.stringify(
-      buildBlocksWithContent(blocks, blueprint),
+      buildBlocksWithContent(blocks, blueprint, brandName),
       null,
       2,
     ),

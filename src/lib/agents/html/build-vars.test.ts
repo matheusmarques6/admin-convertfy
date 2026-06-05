@@ -160,13 +160,47 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.logo_svg).toContain("<svg")
   })
 
-  it("brand null → defaults aplicados (cores brancas/pretas), schema ainda passa", async () => {
-    const vars = await setup({ brand: null })
-    expect(vars.color_bg).toBe("#FFFFFF")
-    expect(vars.color_text).toBe("#1F1F1F")
-    expect(vars.font_heading).toBe("Inter")
-    expect(vars.logo_svg).toBe("")
-    expect(() => HtmlPromptVarsSchema.parse(vars)).not.toThrow()
+  it("brand null → lanca BrandIncompleteError (precheck), nao gera com defaults", async () => {
+    await expect(setup({ brand: null })).rejects.toMatchObject({
+      name: "BrandIncompleteError",
+      missing: ["brand_identity"],
+    })
+  })
+
+  it("brand sem cores → lanca BrandIncompleteError listando 'colors'", async () => {
+    const semCores = { ...baseBrand, colors_primary: [], colors_secondary: [] }
+    await expect(setup({ brand: semCores })).rejects.toMatchObject({
+      name: "BrandIncompleteError",
+      missing: expect.arrayContaining(["colors"]),
+    })
+  })
+
+  it("brand sem logo_main_svg → lanca BrandIncompleteError listando 'logo_main_svg'", async () => {
+    const semLogo = { ...baseBrand, logo_main_svg: null }
+    await expect(setup({ brand: semLogo })).rejects.toMatchObject({
+      name: "BrandIncompleteError",
+      missing: expect.arrayContaining(["logo_main_svg"]),
+    })
+  })
+
+  it("content do bloco com {{BRAND_NAME}} → resolvido pelo brandName no JSON final", async () => {
+    const vars = await setup({
+      blocks: [
+        {
+          id: "blk1",
+          position: 1,
+          block_type: "hero",
+          label: "Hero",
+          content: {
+            headline: "Bem-vindo {{BRAND_NAME}}!",
+            body: "A {{ brand_name }} agradece sua visita.",
+          },
+        },
+      ],
+    })
+    const blocks = JSON.parse(vars.blocks_with_content_json)
+    expect(blocks[0].content.headline).toBe("Bem-vindo Loja Teste!")
+    expect(blocks[0].content.body).toBe("A Loja Teste agradece sua visita.")
   })
 
   it("blocks sem image_url → image_map_json vira []", async () => {

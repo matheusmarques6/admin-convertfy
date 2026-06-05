@@ -218,19 +218,30 @@ export function EmailCard({ email, storeId, isDev }: EmailCardProps) {
                 </div>
               )}
               <div className="mt-3">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleRetry}
-                  disabled={retrying}
-                >
-                  {retrying ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  )}
-                  Tentar de novo
-                </Button>
+                {email.failure_reason === "brand_incomplete" ? (
+                  // Brand incompleta nao se resolve com retry — direciona
+                  // o usuario pra completar a identidade visual primeiro.
+                  <a
+                    href={`/admin/stores/${storeId}/identity`}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+                  >
+                    Completar identidade visual
+                  </a>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleRetry}
+                    disabled={retrying}
+                  >
+                    {retrying ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Tentar de novo
+                  </Button>
+                )}
               </div>
             </div>
           </div>
