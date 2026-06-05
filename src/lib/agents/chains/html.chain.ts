@@ -154,13 +154,35 @@ export async function invokeHtmlChain(
   })
 
   const t0 = Date.now()
-  const res = await client.messages.create({
+
+  // Defesa em camadas:
+  // (a) Match de model id — pra evitar a chamada que ja sabemos que 400.
+  // (b) Catch do 400 "temperature is deprecated" — pra cobrir variantes
+  //     de model id que o regex nao previu (futuras versoes que removerem
+  //     o param, IDs com sufixo de variante, etc).
+  // Sem o temperature, model decide proprio nivel de criatividade.
+  const baseRequest = {
     model,
     max_tokens: config.max_tokens,
-    ...(supportsTemperature ? { temperature: config.temperature } : {}),
     system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  })
+    messages: [{ role: "user" as const, content: userMessage }],
+  }
+
+  let res
+  try {
+    res = await client.messages.create({
+      ...baseRequest,
+      ...(supportsTemperature ? { temperature: config.temperature } : {}),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const isTemperatureDeprecated =
+      err instanceof Anthropic.BadRequestError &&
+      /temperature.*deprecated|deprecated.*temperature/i.test(msg)
+    if (!isTemperatureDeprecated) throw err
+    log.warn("html.invoke.temperature_deprecated_retry", { model })
+    res = await client.messages.create(baseRequest)
+  }
 
   const durationMs = Date.now() - t0
 
