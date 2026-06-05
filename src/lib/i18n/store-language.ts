@@ -48,6 +48,15 @@ export const STORE_LANGUAGE_OPTIONS: { value: StoreLanguageCode; label: string }
   { value: "ko", label: "한국어" },
 ]
 
+// Tuple non-empty derivado de STORE_LANGUAGE_OPTIONS — usado pelo
+// z.enum() no PATCH `/api/admin/stores/[id]` e por qualquer validacao
+// que precise da lista canonica. Fonte unica: mexeu em
+// STORE_LANGUAGE_OPTIONS, este export atualiza junto.
+export const STORE_LANGUAGE_CODES = STORE_LANGUAGE_OPTIONS.map((o) => o.value) as [
+  StoreLanguageCode,
+  ...StoreLanguageCode[],
+]
+
 /**
  * Aliases comuns em português + inglês pra cobrir labels não-canônicos
  * que aparecem em formulários ("norueguês" → "nb"). Reduz fallback livre

@@ -139,8 +139,10 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
   return (
     <div className="flex flex-col">
       <StoreHero
+        storeId={store.id}
         storeName={store.store_name}
         storeUrl={store.store_url}
+        language={store.language}
         clientName={store.clients?.name ?? null}
         clientId={store.client_id ?? store.clients?.id ?? null}
         clientSince={clientSince}

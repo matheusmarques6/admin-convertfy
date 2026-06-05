@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/errors"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { STORE_LANGUAGE_CODES } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StorePatch")
@@ -28,6 +29,7 @@ export async function OPTIONS(request: NextRequest) {
 
 const patchSchema = z.object({
   niche: z.string().max(240).nullable().optional(),
+  language: z.enum(STORE_LANGUAGE_CODES).nullable().optional(),
 })
 
 export async function PATCH(
@@ -58,7 +60,7 @@ export async function PATCH(
       .from("client_stores")
       .update(updateData)
       .eq("id", id)
-      .select("id, store_name, store_url, platform, niche")
+      .select("id, store_name, store_url, platform, niche, language")
       .single()
 
     if (error) throw error
