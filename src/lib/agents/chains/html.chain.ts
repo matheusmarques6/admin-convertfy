@@ -28,21 +28,64 @@ const log = logger.child("HtmlChain")
 // agent_type='html'. A migration `20260630_html_agent_master_prompt_v2.sql`
 // insere a versao canonica do prompt — em prod o fallback abaixo nao
 // deve ser executado.
+//
+// Espelha as 21 vars do contrato emitido por `buildHtmlPromptVars`
+// (src/lib/agents/html/build-vars.ts) para que, mesmo na ausencia da
+// row do DB, a chain receba dados consistentes em vez de placeholders
+// obsoletos.
 
-export const DEFAULT_HTML_SYSTEM_PROMPT =
-  "Voce e um assembler de HTML de email para mock de Figma. Receba os blocos com copy e imagens ja prontas e monte HTML moderno com div+flex, 600px, sem tables, com CSS variables para color roles. Emita APENAS <!DOCTYPE html>...</html>."
+export const DEFAULT_HTML_SYSTEM_PROMPT = `You are the HTML Assembler for an email-design pipeline. Assemble a finished email design from copy + images already produced by upstream agents, importable into Figma via html.to.design.
 
-export const DEFAULT_HTML_USER_TEMPLATE = `{{brand_name}} - {{email_name}}
+Output: modern semantic HTML — div + flexbox only (NO tables), single 600px-wide container centered, every color sourced from CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) defined from color_roles. Fonts via @import from Google Fonts. Logo inline SVG. Emit ONLY <!DOCTYPE html>...</html>, no markdown fences.`
 
-color_bg: {{color_bg}}
-color_text: {{color_text}}
-color_button_bg: {{color_button_bg}}
+export const DEFAULT_HTML_USER_TEMPLATE = `<store>
+  <brand_name>{{brand_name}}</brand_name>
+  <locale>{{locale}}</locale>
+</store>
 
-blocks:
+<color_roles>
+  <bg>{{color_bg}}</bg>
+  <text>{{color_text}}</text>
+  <heading>{{color_heading}}</heading>
+  <button_bg>{{color_button_bg}}</button_bg>
+  <button_text>{{color_button_text}}</button_text>
+  <accent>{{color_accent}}</accent>
+</color_roles>
+
+<fonts>
+  <heading>{{font_heading}}</heading>
+  <body>{{font_body}}</body>
+</fonts>
+
+<logo width_px="{{logo_width}}">
+{{logo_svg}}
+</logo>
+
+<email>
+  <name>{{email_name}}</name>
+  <subject>{{subject}}</subject>
+  <preheader>{{preheader}}</preheader>
+  <objective>{{objective}}</objective>
+  <messaging>{{messaging}}</messaging>
+</email>
+
+<reference_html>
+{{reference_html}}
+</reference_html>
+
+<image_map>
+{{image_map_json}}
+</image_map>
+
+<top_products>
+{{top_products_json}}
+</top_products>
+
+<blocks_with_content>
 {{blocks_with_content_json}}
+</blocks_with_content>
 
-reference:
-{{reference_html}}`
+Assemble this email now. Emit ONLY the HTML, beginning with <!DOCTYPE html> and ending with </html>.`
 
 // ── Config ─────────────────────────────────────────────────────────────
 
@@ -94,7 +137,14 @@ export async function invokeHtmlChain(
     userMessageLength: userMessage.length,
   })
 
-  const client = new Anthropic({ apiKey })
+  // maxRetries: SDK ja faz backoff exponencial em 408/409/429/5xx.
+  // Default e' 2 — explicitar pra documentar a politica de robustez.
+  // timeout: teto bem abaixo do maxDuration: 300 do route serverless.
+  const client = new Anthropic({
+    apiKey,
+    maxRetries: 2,
+    timeout: 120_000,
+  })
 
   const t0 = Date.now()
   const res = await client.messages.create({

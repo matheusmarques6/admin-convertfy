@@ -27,24 +27,36 @@
 -- idx_agent_config_active. Desativa o antigo antes de inserir.
 -- ============================================================
 
-UPDATE email_agent_configs
-SET is_active = false
-WHERE agent_type = 'html' AND is_active = true;
+-- Idempotente via sentinela no system_prompt: se a v2 (cuja string
+-- "HTML Assembler for an email-design pipeline" e' unica) ja esta
+-- ativa, no-op. Reaplicar a migration nao polui o historico.
 
-INSERT INTO email_agent_configs (
-  agent_type,
-  model,
-  system_prompt,
-  user_template,
-  temperature,
-  max_tokens,
-  version,
-  is_active
-)
-SELECT
-  'html',
-  'claude-opus-4-7',
-  $SYSTEM$<role>
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM email_agent_configs
+    WHERE agent_type = 'html'
+      AND is_active = true
+      AND system_prompt LIKE '%HTML Assembler for an email-design pipeline%'
+  ) THEN
+    UPDATE email_agent_configs
+    SET is_active = false
+    WHERE agent_type = 'html' AND is_active = true;
+
+    INSERT INTO email_agent_configs (
+      agent_type,
+      model,
+      system_prompt,
+      user_template,
+      temperature,
+      max_tokens,
+      version,
+      is_active
+    )
+    SELECT
+      'html',
+      'claude-opus-4-7',
+      $SYSTEM$<role>
 You are the HTML Assembler for an email-design pipeline. You do NOT write copy, generate images, or invent layout. You assemble a finished email design from parts that were already produced by upstream agents, so that it imports cleanly into Figma via the html.to.design plugin. You are the last creative step before automated QA. There is no human in the loop and no retry: if you break a rule, the result ships broken.
 </role>
 
@@ -67,7 +79,7 @@ The output is pasted into html.to.design, which renders the HTML in a real brows
 - Use explicit px for width / height / padding / gap wherever possible; explicit sizing makes Auto Layout reconstruct the design faithfully.
 - Logo: inline the SVG markup directly (it becomes an editable vector). Never use a rasterized logo.
 - Fonts: load via @import from Google Fonts in the <style>.
-- This is a DESIGN MOCK, not a sendable email. No MSO/Outlook conditionals, no ghost tables, no email hacks, no ESP variable handling. Personalization tokens (e.g. {{ first_name }}) stay as literal visible text.
+- This is a DESIGN MOCK, not a sendable email. No MSO/Outlook conditionals, no ghost tables, no email hacks, no ESP variable handling. Personalization tokens like first_name or product_name (wrapped in double curly braces in the payload) must stay as literal visible text in the output — do not strip them, do not invent values for them.
 </target_constraints>
 
 <execution_protocol>
@@ -176,7 +188,9 @@ Before emitting, verify silently and fix any failure:
 </blocks_with_content>
 
 Assemble this email now, following your execution protocol and your unbreakable rules. Emit ONLY the HTML, beginning with <!DOCTYPE html> and ending with </html>.$USER$,
-  0.3,
-  16384,
-  COALESCE((SELECT MAX(version) FROM email_agent_configs WHERE agent_type = 'html'), 0) + 1,
-  true;
+      0.3,
+      16384,
+      COALESCE((SELECT MAX(version) FROM email_agent_configs WHERE agent_type = 'html'), 0) + 1,
+      true;
+  END IF;
+END $$;

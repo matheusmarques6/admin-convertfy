@@ -18,9 +18,15 @@ import {
   createAdminClient,
   createClient,
 } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import {
+  errorResponse,
+  ForbiddenError,
+  requireAuth,
+  successResponse,
+} from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildHtmlPromptVars } from "@/lib/agents/html/build-vars"
+import { canManagePrompts } from "@/lib/services/prompt-management.service"
 import type {
   EmailBlueprint,
 } from "@/types/email-generation"
@@ -46,12 +52,27 @@ export async function POST(
   try {
     const { id: storeId } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
+
+    const admin = createAdminClient()
+
+    // Gate: mesma policy de /admin/settings/email-generation —
+    // admin/owner OR tag 'dev'. Endpoint expoe brand, blueprint e
+    // produtos da loja; nao deve ser acessivel a usuarios comuns.
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id, role, tags")
+      .eq("id", user.id)
+      .maybeSingle()
+    const actor = {
+      id: user.id,
+      role: (profile as { role?: string | null } | null)?.role ?? null,
+      tags: ((profile as { tags?: string[] } | null)?.tags ?? []) as string[],
+    }
+    if (!canManagePrompts(actor)) throw new ForbiddenError()
 
     const body = await request.json()
     const { emailId } = bodySchema.parse(body)
-
-    const admin = createAdminClient()
 
     // Resolve flow_type + email_number do email
     const { data: emailRow } = await admin
