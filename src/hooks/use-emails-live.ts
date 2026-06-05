@@ -309,9 +309,11 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   copy_timeout: "Timeout na geracao da copy",
   copy_invalid_output: "Copy gerada nao validou no schema",
   rendering_failed: "Falha ao renderizar HTML/imagem",
+  html_failed: "Falha ao gerar o HTML",
   qa_failed: "QA reprovou (issues criticas)",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",
+  brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",
 }
 
 export function translateFailureReason(reason: string | null | undefined): string {

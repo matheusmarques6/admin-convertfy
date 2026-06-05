@@ -29,6 +29,7 @@ import {
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 
 const log = logger.child("N8nEmailCopy")
 
@@ -86,6 +87,17 @@ export async function POST(request: NextRequest) {
       throw new NotFoundError("Email não pertence a esta loja")
     }
 
+    // Busca store_name pra sanitizar tokens de brand que o n8n entrega
+    // nao-resolvidos (ex: headline: "Bem-vindo {{BRAND_NAME}}!"). A
+    // sanitizacao acontece ANTES do UPDATE em email_blocks.content, pra
+    // que o HTML Agent receba o nome real no payload.
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("store_name")
+      .eq("id", body.store_id)
+      .maybeSingle()
+    const brandName = (store?.store_name as string | undefined) || "Loja"
+
     // 1.5) AC AE-3.2 — idempotencia: callback duplicado para email ja
     // em status >= copy_ready vira no-op (200) sem disparar fase 2.
     const currentStatus = email.status as string | null
@@ -115,12 +127,15 @@ export async function POST(request: NextRequest) {
       .eq("id", body.email_id)
     if (updEmailErr) throw updEmailErr
 
-    // 3) PATCH email_blocks.content por block_id
+    // 3) PATCH email_blocks.content por block_id (com sanitizacao de tokens)
     let blocksWritten = 0
+    let blocksSanitized = 0
     for (const b of body.blocks) {
+      const cleaned = resolveBrandTokens(b.content, brandName) as Record<string, unknown>
+      if (JSON.stringify(cleaned) !== JSON.stringify(b.content)) blocksSanitized++
       const { error: blkErr } = await admin
         .from("email_blocks")
-        .update({ content: b.content })
+        .update({ content: cleaned })
         .eq("id", b.block_id)
         .eq("email_id", body.email_id)
       if (blkErr) {
@@ -157,7 +172,17 @@ export async function POST(request: NextRequest) {
       email_id: body.email_id,
       blocks_written: blocksWritten,
       blocks_total: body.blocks.length,
+      blocks_sanitized: blocksSanitized,
     })
+    if (blocksSanitized > 0) {
+      log.warn("email_copy.brand_tokens_resolved", {
+        email_id: body.email_id,
+        blocks_sanitized: blocksSanitized,
+        // Indica que o n8n entregou copy com `{{BRAND_NAME}}` nao-resolvido.
+        // Quando blocksSanitized for consistentemente > 0 em prod, abrir
+        // ticket no workflow n8n pra resolver na origem.
+      })
+    }
 
     // 5) AE-19: fase 2 (render) agora aguarda confirmacao da identidade
     // visual. O dispatcher (cron watchdog, front 1) vai chamar

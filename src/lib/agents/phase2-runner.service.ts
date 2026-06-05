@@ -668,7 +668,12 @@ export async function runPhase2InBackground(
     finalHtml = rawHtml
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no HTML"
-    log.error("phase2.html.error", { emailId, error: msg })
+    // BrandIncompleteError vira `failure_reason='brand_incomplete'` — UI
+    // mostra CTA "Completar brand identity" em vez de "Tentar de novo".
+    const isBrandIncomplete =
+      err instanceof Error && err.name === "BrandIncompleteError"
+    const failureReason = isBrandIncomplete ? "brand_incomplete" : "html_failed"
+    log.error("phase2.html.error", { emailId, error: msg, failureReason })
     await logGenerationRun({
       storeId,
       flowId,
@@ -680,8 +685,8 @@ export async function runPhase2InBackground(
       durationMs: Date.now() - htmlT0,
       errorMessage: msg,
     })
-    await markEmailFailed(emailId, "html_failed")
-    await safeNotifyEmailFailed(storeId, emailId, "html_failed", batchId || null)
+    await markEmailFailed(emailId, failureReason)
+    await safeNotifyEmailFailed(storeId, emailId, failureReason, batchId || null)
     if (batchId) {
       await rollupTotalCost(emailId, batchId).catch(() => {})
       await checkBatchTerminal(storeId, batchId).catch(() => {})
