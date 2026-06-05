@@ -15,6 +15,10 @@ import { Loader2, Save, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "@/lib/hooks/use-toast"
 import type { AgentType } from "@/types/email-generation"
 import type { PromptRow } from "@/lib/services/prompt-management.service"
+import {
+  HTML_PROMPT_VAR_KEYS,
+  HTML_PROMPT_VAR_DESCRIPTIONS,
+} from "@/lib/agents/html/contract"
 
 // ── Placeholders suportados por agent_type ────────────────
 // Lista mantida em sincronia com `email-generation.service.ts::buildAllVars`.
@@ -49,31 +53,12 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "product_2_name", desc: "Nome do produto 2" },
     { key: "block_purpose", desc: "Propósito do bloco (hero, etc)" },
   ],
-  html: [
-    // ── Master Prompt v2 — sincronizado com `buildHtmlPromptVars`
-    // em `src/lib/agents/html/build-vars.ts`. 20 vars no contrato.
-    { key: "brand_name", desc: "Nome da loja" },
-    { key: "locale", desc: "Idioma da loja (ex: pt-BR)" },
-    { key: "color_bg", desc: "Cor de fundo (--bg)" },
-    { key: "color_text", desc: "Cor do texto corpo (--text)" },
-    { key: "color_heading", desc: "Cor dos headings (--heading)" },
-    { key: "color_button_bg", desc: "Cor de fundo do botão (--button-bg)" },
-    { key: "color_button_text", desc: "Cor do texto do botão (--button-text)" },
-    { key: "color_accent", desc: "Cor de destaque/accent (--accent)" },
-    { key: "font_heading", desc: "Fonte de heading (Google Fonts)" },
-    { key: "font_body", desc: "Fonte de body (Google Fonts)" },
-    { key: "logo_svg", desc: "SVG inline do logo" },
-    { key: "logo_width", desc: "Largura do logo em px" },
-    { key: "email_name", desc: "Nome interno do email" },
-    { key: "subject", desc: "Subject line" },
-    { key: "preheader", desc: "Preheader text" },
-    { key: "objective", desc: "Objetivo editorial do email (do blueprint)" },
-    { key: "messaging", desc: "Mensagem central do email (do blueprint)" },
-    { key: "reference_html", desc: "HTML de referência (autoridade de forma)" },
-    { key: "image_map_json", desc: "Array de imagens [{id,url,aspect_ratio,overlay}]" },
-    { key: "top_products_json", desc: "Array de produtos top da loja" },
-    { key: "blocks_with_content_json", desc: "Blocos com content + purpose por bloco" },
-  ],
+  // Fonte unica: `HTML_PROMPT_VAR_KEYS` + descricoes em
+  // `src/lib/agents/html/contract.ts`. Mudou a lista la, mudou aqui.
+  html: HTML_PROMPT_VAR_KEYS.map((key) => ({
+    key,
+    desc: HTML_PROMPT_VAR_DESCRIPTIONS[key],
+  })),
   qa: [
     { key: "brand_name", desc: "Nome da loja" },
     { key: "html", desc: "HTML completo a validar" },
@@ -122,15 +107,19 @@ export function PromptEditor({ agentType, activePrompt, onSaved }: Props) {
     [placeholders],
   )
 
-  // Extrai vars do template (system + user). Ignora handlebars-lite
-  // helpers `{{#if VAR}}...{{/if}}` e `{{#case VAR}}...{{/case}}` —
-  // captura apenas `{{VAR}}` simples.
+  // Extrai vars do template (system + user) cobrindo as 2 formas que
+  // o template-renderer trata como variavel:
+  //   1) Substituicao simples: `{{var_name}}`
+  //   2) Helpers que tomam VAR como argumento: `{{#if VAR}}`, `{{#case VAR}}`
+  // Nao captura `{{#when LABEL}}` (LABEL e' literal, nao var; ler
+  // src/lib/agents/image/template-renderer.ts:78-86 pra o contrato).
   const templateAnalysis = useMemo(() => {
-    const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
+    const SIMPLE_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
+    const HELPER_RE = /\{\{\s*#(?:if|case)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
     const found = new Set<string>()
-    let m: RegExpExecArray | null
     const haystack = `${systemPrompt}\n${userTemplate}`
-    while ((m = re.exec(haystack)) !== null) found.add(m[1])
+    for (const m of haystack.matchAll(SIMPLE_RE)) found.add(m[1])
+    for (const m of haystack.matchAll(HELPER_RE)) found.add(m[1])
     const used = [...found]
     const unknown = used.filter((k) => !knownKeys.has(k))
     const knownUsed = used.filter((k) => knownKeys.has(k))

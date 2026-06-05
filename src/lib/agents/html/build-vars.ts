@@ -6,7 +6,8 @@
  * objective/messaging do blueprint, image_map_json com {id, url,
  * aspect_ratio, overlay}, blocks_with_content_json com `purpose`.
  *
- * Contrato (14 vars):
+ * Contrato (21 vars). Manter em sincronia com `PLACEHOLDERS_BY_AGENT.html`
+ * em src/components/agents/prompt-editor.tsx:
  *   brand_name, locale
  *   color_bg, color_text, color_heading, color_button_bg,
  *     color_button_text, color_accent
@@ -23,6 +24,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import { languageLabelToCode } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
 import type {
   BlueprintBlock,
@@ -35,6 +37,7 @@ import type {
 } from "@/types/email-workspace"
 
 import { deriveColorRoles } from "./color-roles"
+import { HtmlPromptVarsSchema } from "./contract"
 
 const log = logger.child("HtmlBuildVars")
 
@@ -78,36 +81,56 @@ interface BlockWithContent {
   purpose: string
 }
 
+type LogoFetchReason = "missing_url" | "non_ok" | "not_svg" | "timeout" | "network"
+
 /**
  * Fetch e inline do SVG markup a partir da URL do Supabase Storage.
- * Falha graciosamente: retorna string vazia em qualquer erro (404,
- * timeout, conteudo nao-SVG). O template trata logo_svg vazio mantendo
- * o slot sem logo (mock continua renderizavel).
+ * Falha graciosamente: retorna string vazia em qualquer erro. Log
+ * categoriza o motivo (`reason`) pra facilitar debug em prod — sem
+ * isso, "logo_svg vazio" e' indistinguivel de "brand sem logo" vs
+ * "URL invalida" vs "storage cold start timeout".
+ *
+ * Timeout 10s: 5s era apertado pra Supabase Storage cold start.
  */
 async function fetchLogoSvgInline(url: string | null | undefined): Promise<string> {
-  if (!url) return ""
+  if (!url) {
+    log.debug("logo_svg.skipped", { reason: "missing_url" satisfies LogoFetchReason })
+    return ""
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
     const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
     if (!res.ok) {
-      log.warn("logo_svg.fetch_non_ok", { url, status: res.status })
+      log.warn("logo_svg.fetch_failed", {
+        url,
+        reason: "non_ok" satisfies LogoFetchReason,
+        status: res.status,
+      })
       return ""
     }
     const text = await res.text()
     const trimmed = text.trim()
     if (!trimmed.toLowerCase().startsWith("<svg")) {
-      log.warn("logo_svg.fetch_not_svg", { url, head: trimmed.slice(0, 40) })
+      log.warn("logo_svg.fetch_failed", {
+        url,
+        reason: "not_svg" satisfies LogoFetchReason,
+        contentTypeHead: res.headers.get("content-type") ?? null,
+        head: trimmed.slice(0, 40),
+      })
       return ""
     }
     return trimmed
   } catch (err) {
-    log.warn("logo_svg.fetch_error", {
+    const isAbort = err instanceof Error && err.name === "AbortError"
+    log.warn("logo_svg.fetch_failed", {
       url,
+      reason: (isAbort ? "timeout" : "network") satisfies LogoFetchReason,
       error: err instanceof Error ? err.message : String(err),
     })
     return ""
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -127,8 +150,13 @@ function buildImageMap(
   blueprint: EmailBlueprint | null,
 ): ImageMapEntry[] {
   const aspect = blueprint?.image_aspect ?? "4:5"
+  // NULL/undefined cai em "needs_html_overlay" (default conservador):
+  // text overlay funciona sobre qualquer imagem, mas "burned" sobre
+  // uma imagem que precisa de overlay perde a copy. Blueprints legacy
+  // sem o campo (criados antes de 20260623) sao tratados como "precisa
+  // de overlay" ate o backfill rodar.
   const overlay: "needs_html_overlay" | "burned" =
-    blueprint?.image_overlay_reserve_bottom ? "needs_html_overlay" : "burned"
+    blueprint?.image_overlay_reserve_bottom === false ? "burned" : "needs_html_overlay"
 
   const entries: ImageMapEntry[] = []
   for (const blk of blocks) {
@@ -228,7 +256,16 @@ export async function buildHtmlPromptVars(
   const logoSvg = await fetchLogoSvgInline(brand?.logo_main_svg ?? null)
 
   // ── Locale ─────────────────────────────────────────────────────────
-  const locale = (storeRaw?.language as string | undefined) || DEFAULT_LOCALE
+  // Normaliza via languageLabelToCode (aceita "Portugues" -> "pt-BR",
+  // "Espanhol" -> "es-ES", etc) e cai pra valor cru se ja for codigo
+  // ISO bem-formado. Sem normalizar, valores como "Portugues" no DB
+  // vazariam pro prompt como labels nao-padrao.
+  const rawLanguage = storeRaw?.language as string | undefined
+  const normalizedCode = languageLabelToCode(rawLanguage)
+  const looksLikeIsoCode =
+    typeof rawLanguage === "string" && /^[a-z]{2}(-[A-Z]{2})?$/.test(rawLanguage)
+  const locale =
+    normalizedCode ?? (looksLikeIsoCode ? rawLanguage : DEFAULT_LOCALE)
 
   // ── Brand name ─────────────────────────────────────────────────────
   const brandName = (storeRaw?.store_name as string | undefined) || "Loja"
@@ -260,6 +297,21 @@ export async function buildHtmlPromptVars(
       null,
       2,
     ),
+  }
+
+  // Validacao runtime do contrato. Throw em dev/test forca o autor a
+  // alinhar a forma do output com o schema. Em prod, log warn sem
+  // throw — corretude do shape ja foi enforcada antes do deploy.
+  if (process.env.NODE_ENV !== "production") {
+    HtmlPromptVarsSchema.parse(vars)
+  } else {
+    const result = HtmlPromptVarsSchema.safeParse(vars)
+    if (!result.success) {
+      log.warn("contract.drift", {
+        emailId,
+        issues: result.error.issues.slice(0, 5),
+      })
+    }
   }
 
   return vars

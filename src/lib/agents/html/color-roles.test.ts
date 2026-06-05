@@ -10,7 +10,10 @@ describe("deriveColorRoles", () => {
     expect(r.heading).toBe("#1F1F1F")
     expect(r.button_bg).toBe("#1F1F1F")
     expect(r.button_text).toBe("#FFFFFF")
-    expect(r.accent).toBe("#1F1F1F")
+    // accent != button_bg por causa do luminance shift (fix P1.7).
+    // Em paleta vazia, button_bg cai em DEFAULT_DARK e o accent
+    // calculado em fallback colide com ele — shift garante variacao.
+    expect(r.accent).not.toBe(r.button_bg)
   })
 
   it("usa role explicito Fundo / Principal / Destaque quando presente", () => {
@@ -85,6 +88,28 @@ describe("deriveColorRoles", () => {
       [],
     )
     expect(r.accent).toBe("#FF6600")
+  })
+
+  it("paleta mono (so' uma cor preta) → accent NAO igual a button_bg", () => {
+    const r = deriveColorRoles(
+      [{ hex: "#000000", name: "Preto", role: "" }],
+      [],
+    )
+    expect(r.button_bg).toBe("#000000")
+    expect(r.accent).not.toBe(r.button_bg)
+    // accent deve ter mudado por shift de luminance (clareou pq button_bg e' escuro)
+    expect(r.accent).not.toBe("#000000")
+  })
+
+  it("paleta mono branca → accent escurece em vez de clarear", () => {
+    const r = deriveColorRoles(
+      [{ hex: "#FFFFFF", name: "Branco", role: "Principal" }],
+      [],
+    )
+    expect(r.button_bg).toBe("#FFFFFF")
+    expect(r.accent).not.toBe("#FFFFFF")
+    // accent deve ter ficado mais escuro
+    expect(r.accent).not.toBe(r.button_bg)
   })
 
   it("fundo escuro → text e button_text invertem pra branco", () => {
