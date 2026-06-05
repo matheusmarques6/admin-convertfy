@@ -23,7 +23,7 @@
 SELECT
   jsonb_array_elements(colors_primary)->>'role' AS role_value,
   COUNT(*) AS n
-FROM store_brand_identities
+FROM store_brand_identity
 GROUP BY role_value
 ORDER BY n DESC;
 
@@ -53,7 +53,7 @@ GROUP BY flow_type;
 SELECT
   COUNT(*) FILTER (WHERE logo_main_svg IS NULL) AS sem_svg,
   COUNT(*) FILTER (WHERE logo_main_svg IS NOT NULL) AS com_svg
-FROM store_brand_identities;
+FROM store_brand_identity;
 
 
 -- Q5: Confirma que a row vigente do HTML Agent tem o leak.
@@ -337,7 +337,7 @@ WHERE e.status IN ('draft', 'copy_ready', 'failed', 'ready')
     WHERE store_id = e.store_id AND status = 'confirmed'
   )
   AND EXISTS (
-    SELECT 1 FROM store_brand_identities
+    SELECT 1 FROM store_brand_identity
     WHERE store_id = e.store_id
   )
 ORDER BY
