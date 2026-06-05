@@ -129,9 +129,16 @@ export async function invokeHtmlChain(
   const systemPrompt = config.system_prompt.trim() || DEFAULT_HTML_SYSTEM_PROMPT
   const model = config.model || DEFAULT_MODEL
 
+  // Modelos claude-opus-4-7 e claude-opus-4-8 removeram os parametros
+  // de sampling (`temperature`, `top_p`, `top_k`) — enviar qualquer um
+  // retorna 400 ("'temperature' is deprecated for this model"). Para
+  // models legacy (opus-4-6, sonnet-4-x), o param continua valido.
+  // Pra controlar profundidade no 4.7+, usar `output_config.effort`.
+  const supportsTemperature = !/^claude-opus-4-(7|8)/.test(model)
+
   log.info("html.invoke.start", {
     model,
-    temperature: config.temperature,
+    temperature: supportsTemperature ? config.temperature : null,
     maxTokens: config.max_tokens,
     systemPromptLength: systemPrompt.length,
     userMessageLength: userMessage.length,
@@ -150,7 +157,7 @@ export async function invokeHtmlChain(
   const res = await client.messages.create({
     model,
     max_tokens: config.max_tokens,
-    temperature: config.temperature,
+    ...(supportsTemperature ? { temperature: config.temperature } : {}),
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   })
