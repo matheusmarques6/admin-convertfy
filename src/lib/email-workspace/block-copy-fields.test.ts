@@ -14,95 +14,137 @@ function mk(block_type: string, content: Record<string, unknown>): EmailBlock {
   } as unknown as EmailBlock
 }
 
-describe("blockCopyFields", () => {
-  it("hero: eyebrow, headline, body, cta_text", () => {
+describe("blockCopyFields (content-driven)", () => {
+  it("coupon novo {cta,body,text,headline} — antes ficava oculto", () => {
     const f = blockCopyFields(
-      mk("hero", { eyebrow: "Bem-vindo", headline: "Olá", body: "Texto", cta_text: "Comprar" }),
+      mk("coupon", {
+        cta: "RESGATAR 12% OFF",
+        body: "12% OFF adicional aplicado.",
+        text: "USE O CUPOM: EXCLUSIVO12",
+        headline: "SEU DESCONTO EXCLUSIVO",
+      }),
     )
-    expect(f.map((x) => x.key)).toEqual(["eyebrow", "headline", "body", "cta_text"])
-    expect(f.find((x) => x.key === "cta_text")?.value).toBe("Comprar")
+    const keys = f.map((x) => x.key)
+    expect(keys).toContain("headline")
+    expect(keys).toContain("body")
+    expect(keys).toContain("text")
+    expect(keys).toContain("cta")
+    expect(f.find((x) => x.key === "cta")?.value).toBe("RESGATAR 12% OFF")
   })
 
-  it("cta: usa a chave `text` (não cta_text) — antes ficava oculto", () => {
-    const f = blockCopyFields(mk("cta", { text: "Ver ofertas", url: "https://x" }))
-    expect(f).toHaveLength(1)
-    expect(f[0]).toMatchObject({ key: "text", label: "CTA", value: "Ver ofertas" })
-  })
-
-  it("features: lista items[{icon,label}] — antes ficava oculto", () => {
+  it("coupon antigo {code,hint,cta_text} — continua funcionando", () => {
     const f = blockCopyFields(
-      mk("features", { items: [{ icon: "🚚", label: "Frete grátis" }, { label: "Troca fácil" }] }),
+      mk("coupon", { code: "BEMVINDO10", hint: "expira hoje", cta_text: "Resgatar" }),
     )
-    expect(f).toHaveLength(1)
-    expect(f[0].key).toBe("items")
-    expect(f[0].value).toContain("Frete grátis")
-    expect(f[0].value).toContain("Troca fácil")
+    expect(f.map((x) => x.key)).toEqual(
+      expect.arrayContaining(["cta_text", "code", "hint"]),
+    )
+    expect(f.find((x) => x.key === "code")?.value).toBe("BEMVINDO10")
   })
 
-  it("testimonials: headline + um campo por depoimento", () => {
+  it("cta {cta,url,body,text,heading,headline} — mostra tudo menos url", () => {
+    const f = blockCopyFields(
+      mk("cta", {
+        cta: "USE MY DISCOUNT NOW",
+        url: "https://x.com",
+        body: "Code expires tonight.",
+        text: "Tap below.",
+        heading: "Your 10% off ends in hours.",
+        headline: "FINAL NOTICE",
+      }),
+    )
+    const keys = f.map((x) => x.key)
+    expect(keys).toContain("cta")
+    expect(keys).toContain("headline")
+    expect(keys).toContain("heading")
+    expect(keys).toContain("body")
+    expect(keys).toContain("text")
+    expect(keys).not.toContain("url") // url é skip
+  })
+
+  it("header {url,headline} — mostra headline, pula url", () => {
+    const f = blockCopyFields(mk("header", { url: "https://x.com", headline: "Royal Loom" }))
+    expect(f).toEqual([{ key: "headline", label: "Headline", value: "Royal Loom" }])
+  })
+
+  it("items como ARRAY DE STRINGS (features/comparison/social_proof)", () => {
+    const f = blockCopyFields(
+      mk("features", {
+        heading: "Our Guarantees:",
+        headline: "Shop With Confidence",
+        items: ["🔒 Secure Checkout", "↩️ Money Back", "📦 Guaranteed Delivery"],
+      }),
+    )
+    const items = f.find((x) => x.key === "items")
+    expect(items).toBeTruthy()
+    expect(items?.value).toContain("Secure Checkout")
+    expect(items?.value).toContain("Money Back")
+    expect(items?.value.split("\n")).toHaveLength(3)
+  })
+
+  it("items como ARRAY DE OBJETOS (testimonials) ainda formata", () => {
     const f = blockCopyFields(
       mk("testimonials", {
-        headline: "Depoimentos",
-        items: [
-          { author: "Ana", quote: "Amei", rating: 5 },
-          { author: "Beto", quote: "Top" },
-        ],
+        headline: "O que dizem",
+        items: [{ author: "Ana", quote: "Amei", rating: 5 }],
       }),
     )
-    expect(f.find((x) => x.key === "headline")?.value).toBe("Depoimentos")
-    expect(f.filter((x) => x.key.startsWith("testimonial_"))).toHaveLength(2)
-    expect(f.find((x) => x.key === "testimonial_0")?.value).toContain("Ana")
-    expect(f.find((x) => x.key === "testimonial_0")?.value).toContain("Amei")
+    const items = f.find((x) => x.key === "items")
+    expect(items?.value).toContain("Ana")
+    expect(items?.value).toContain("Amei")
   })
 
-  it("social_proof: number, label, rating, body", () => {
+  it("hero {headline,body,eyebrow,cta_text,image_url,image_alt} — pula imagem", () => {
     const f = blockCopyFields(
-      mk("social_proof", { number: "10k+", label: "clientes", rating: 4.8, body: "avaliações" }),
-    )
-    expect(f.map((x) => x.key)).toEqual(["number", "label", "rating", "body"])
-    expect(f.find((x) => x.key === "rating")?.value).toContain("4.8")
-  })
-
-  it("comparison: headline + linhas us/them", () => {
-    const f = blockCopyFields(
-      mk("comparison", {
-        headline: "Por que nós",
-        us_label: "Nós",
-        them_label: "Eles",
-        rows: [{ label: "Frete", us: "Grátis", them: "Pago" }],
+      mk("hero", {
+        eyebrow: "NOSSA HISTÓRIA",
+        headline: "DE UM SONHO",
+        body: "Em 2021...",
+        cta_text: "DESCOBRIR",
+        image_url: "",
+        image_alt: "Fundador",
       }),
     )
-    expect(f.find((x) => x.key === "rows")?.value).toContain("Frete")
-    expect(f.find((x) => x.key === "rows")?.value).toContain("Grátis")
+    const keys = f.map((x) => x.key)
+    expect(keys).toEqual(["eyebrow", "headline", "body", "cta_text"])
+    expect(keys).not.toContain("image_url")
+    expect(keys).not.toContain("image_alt")
   })
 
-  it("letter: greeting, body, signoff, author", () => {
+  it("footer {columns,copyright} — lista links + copyright", () => {
     const f = blockCopyFields(
-      mk("letter", { greeting: "Oi", body: "Corpo", signoff: "Abraços", author: "CEO" }),
+      mk("footer", {
+        copyright: "© 2026 LOJA",
+        columns: [{ links: [{ url: "#", label: "MASCULINO" }, { url: "#", label: "FEMININO" }] }],
+      }),
     )
-    expect(f.map((x) => x.key)).toEqual(["greeting", "body", "signoff", "author"])
+    expect(f.find((x) => x.key === "copyright")?.value).toBe("© 2026 LOJA")
+    expect(f.find((x) => x.key === "columns")?.value).toBe("MASCULINO · FEMININO")
   })
 
-  it("header: tagline", () => {
-    const f = blockCopyFields(mk("header", { logo_url: "x.png", tagline: "Slogan" }))
-    expect(f).toEqual([{ key: "tagline", label: "Tagline", value: "Slogan" }])
+  it("products {title,products[]} — lista numerada", () => {
+    const f = blockCopyFields(
+      mk("products", {
+        title: "NOSSOS FAVORITOS",
+        products: [{ name: "Tênis Pro", price: "49,95", cta_text: "BUY NOW" }],
+      }),
+    )
+    expect(f.find((x) => x.key === "title")?.value).toBe("NOSSOS FAVORITOS")
+    expect(f.find((x) => x.key === "products")?.value).toContain("1. Tênis Pro (49,95) — BUY NOW")
   })
 
-  it("image/divider/spacer: sem campos de copy", () => {
-    expect(blockCopyFields(mk("image", { image_url: "x.png" }))).toEqual([])
+  it("chave desconhecida com valor ainda aparece (humanizada)", () => {
+    const f = blockCopyFields(mk("text", { headline: "Oi", subtitulo_extra: "valor" }))
+    expect(f.find((x) => x.key === "subtitulo_extra")).toMatchObject({
+      label: "Subtitulo Extra",
+      value: "valor",
+    })
+  })
+
+  it("ignora campos vazios e content {}", () => {
     expect(blockCopyFields(mk("divider", {}))).toEqual([])
-    expect(blockCopyFields(mk("spacer", {}))).toEqual([])
-  })
-
-  it("ignora campos vazios", () => {
-    const f = blockCopyFields(mk("hero", { headline: "  ", body: "Só isso" }))
-    expect(f).toEqual([{ key: "body", label: "Body", value: "Só isso" }])
-  })
-
-  it("products: lista numerada com nome e preço", () => {
-    const f = blockCopyFields(
-      mk("products", { products: [{ name: "Tênis", price: 199, cta_text: "Ver" }] }),
-    )
-    expect(f.find((x) => x.key === "products")?.value).toContain("1. Tênis (199)")
+    expect(blockCopyFields(mk("hero", { headline: "  ", body: "Só isso" }))).toEqual([
+      { key: "body", label: "Body", value: "Só isso" },
+    ])
   })
 })
