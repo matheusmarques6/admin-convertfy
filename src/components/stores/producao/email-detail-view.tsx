@@ -35,6 +35,7 @@ import {
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
+import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import type {
   BlockType,
   EmailBlock,
@@ -2005,32 +2006,10 @@ function EmailCopyView({
 
   const blockSections = useMemo(() => {
     const sorted = [...blocks].sort((a, b) => a.position - b.position)
-    return sorted.map((b) => {
-      const content = (b.content ?? {}) as Record<string, unknown>
-      const fields: Array<{ key: string; label: string; value: string }> = []
-      const order: Array<[string, string]> = [
-        ["headline", "Headline"],
-        ["body", "Body"],
-        ["cta_text", "CTA"],
-        ["code", "Cupom"],
-        ["hint", "Validade"],
-      ]
-      for (const [k, label] of order) {
-        const v = content[k]
-        if (typeof v === "string" && v.trim()) {
-          fields.push({ key: k, label, value: v })
-        }
-      }
-      // Products: lista
-      const products = content.products
-      if (Array.isArray(products) && products.length > 0) {
-        const txt = (products as Array<Record<string, unknown>>)
-          .map((p, i) => `${i + 1}. ${p.name ?? ""} (${p.price ?? ""}) — ${p.cta_text ?? "Ver"}`)
-          .join("\n")
-        fields.push({ key: "products", label: "Produtos", value: txt })
-      }
-      return { block: b, fields }
-    })
+    // Extrai a copy por tipo de bloco (cobre os 18 tipos). Antes só lia chaves
+    // fixas (headline/body/cta_text/code/hint/products), ocultando tipos novos
+    // como cta/features/testimonials/social_proof/header/comparison/letter.
+    return sorted.map((b) => ({ block: b, fields: blockCopyFields(b) }))
   }, [blocks])
 
   const fullText = useMemo(() => {
@@ -2639,8 +2618,12 @@ function summarizeBlockContent(block: EmailBlock): string {
       (s, col) => s + (col.links?.length ?? 0),
       0,
     )
-    return `${totalLinks} links de navegação`
+    if (totalLinks > 0) return `${totalLinks} links de navegação`
   }
+  // Tipos novos (cta/features/testimonials/social_proof/header/headline/
+  // urgency/comparison/story/letter): resume pelo 1º campo de copy extraído.
+  const fields = blockCopyFields(block)
+  if (fields.length > 0) return fields[0].value
   return block.label
 }
 
