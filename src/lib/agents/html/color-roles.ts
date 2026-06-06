@@ -2,7 +2,7 @@
  * Derivacao das 6 color roles funcionais do HTML Agent v2.
  *
  * Entrada: arrays `colors_primary` / `colors_secondary` de
- * `store_brand_identities`, com `BrandColor { hex, name, role }`. O campo
+ * `store_brand_identity`, com `BrandColor { hex, name, role }`. O campo
  * `role` aceita rotulos livres mas a UI de captura aplica o vocabulario
  * "Principal" | "Fundo" | "Destaque".
  *

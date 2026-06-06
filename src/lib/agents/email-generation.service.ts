@@ -726,7 +726,7 @@ async function loadGenerationContext(
   ] = await Promise.all([
     // Brand identity
     admin
-      .from("store_brand_identities")
+      .from("store_brand_identity")
       .select("*")
       .eq("store_id", storeId)
       .order("version", { ascending: false })
@@ -752,7 +752,7 @@ async function loadGenerationContext(
 
     // Top products
     admin
-      .from("store_brand_identities")
+      .from("store_brand_identity")
       .select("top_products")
       .eq("store_id", storeId)
       .order("version", { ascending: false })

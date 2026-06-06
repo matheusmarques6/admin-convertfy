@@ -239,7 +239,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     storeOverridesRes,
   ] = await Promise.all([
     admin
-      .from("store_brand_identities")
+      .from("store_brand_identity")
       .select("*")
       .eq("store_id", storeId)
       .order("version", { ascending: false })
@@ -284,6 +284,18 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   ])
 
   const generateImages = (settingsRes.data?.generate_images as boolean | undefined) ?? true
+
+  // Defesa contra o bug recorrente "store_brand_identities" (plural —
+  // tabela nao existe). Supabase JS engole 42P01 em maybeSingle() e
+  // retorna data=null, que cai em "Loja sem brand identity" enganoso.
+  // Log explicito do .error reduz a chance de regressao silenciosa.
+  if (brandRes.error) {
+    log.error("phase2.context.brand_query_failed", {
+      storeId,
+      code: brandRes.error.code,
+      message: brandRes.error.message,
+    })
+  }
 
   const topProducts = ((brandRes.data?.top_products ?? []) as TopProduct[]) ?? []
 
