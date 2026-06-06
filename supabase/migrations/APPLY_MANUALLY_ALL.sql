@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS email_blocks (
   applied BOOLEAN NOT NULL DEFAULT false,
   applied_at TIMESTAMPTZ,
   applied_by UUID REFERENCES profiles(id),
+  needs_image BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (email_id, position)
 );

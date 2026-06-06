@@ -63,6 +63,7 @@ import {
   computeCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
+import { MAX_AI_IMAGES } from "./image/limits"
 
 const log = logger.child("Phase2Runner")
 
@@ -390,11 +391,30 @@ export async function runPhase2InBackground(
 
   // ── Step 1: Image generation (se habilitado) ─────────────────────────
   if (ctx.generateImages) {
+    // Seleção por needs_image (o checkbox "imagem" do blueprint), não mais
+    // por block_type hardcoded. Ordena por position (prioriza topo do email)
+    // e aplica o teto MAX_AI_IMAGES.
     const { data: imageBlocks } = await admin
       .from("email_blocks")
-      .select("id, block_type, label, content")
+      .select("id, block_type, label, content, position, needs_image")
       .eq("email_id", emailId)
-      .in("block_type", ["hero", "custom"])
+      .eq("needs_image", true)
+      .order("position", { ascending: true })
+      .limit(MAX_AI_IMAGES)
+
+    // Observabilidade: avisa se há mais blocos marcados do que o teto permite.
+    const { count: needsImageCount } = await admin
+      .from("email_blocks")
+      .select("id", { count: "exact", head: true })
+      .eq("email_id", emailId)
+      .eq("needs_image", true)
+    if ((needsImageCount ?? 0) > MAX_AI_IMAGES) {
+      log.warn("phase2.image.capped", {
+        emailId,
+        needsImageCount,
+        cap: MAX_AI_IMAGES,
+      })
+    }
 
     // ── AE-11: log de qual fonte do template (DB seed vs fallback) ─
     log.info("phase2.image.template_source", {

@@ -36,6 +36,7 @@ import { deriveShotArchetype } from "./image/shot-archetype"
 import type { AspectKey } from "./image/aspect-ratio"
 import type { ImageMode } from "./image/mode-resolution"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
+import { selectImageBlocks } from "./image/limits"
 import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
@@ -510,7 +511,11 @@ export async function generateEmail(
         })
         return
       }
-      const imageBlocks = seededBlocks.filter((b) => b.needs_image)
+      // Mesmo teto do caminho de produção (phase2-runner): prioriza por
+      // position e corta em MAX_AI_IMAGES.
+      const imageBlocks = selectImageBlocks(
+        seededBlocks.filter((b) => b.needs_image),
+      )
       log.info("generation.image.check", {
         emailId,
         generate_images: true,

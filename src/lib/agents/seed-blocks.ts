@@ -86,12 +86,15 @@ export async function seedBlocksFromBlueprint(
     position: idx + 1,
     content: {},
     applied: false,
+    // Persiste o flag do blueprint. `?? type==='hero'` preserva o
+    // comportamento default para blueprints antigos sem o campo.
+    needs_image: def.needs_image ?? def.type === "hero",
   }))
 
   const { data: inserted, error: insertErr } = await admin
     .from("email_blocks")
     .insert(inserts)
-    .select("id, block_type, position, label")
+    .select("id, block_type, position, label, needs_image")
 
   if (insertErr) {
     log.error("seed.insert_failed", { emailId, error: insertErr.message })
@@ -107,7 +110,12 @@ export async function seedBlocksFromBlueprint(
       position: row.position as number,
       label: row.label as string,
       purpose: def?.purpose ?? "",
-      needs_image: def?.needs_image ?? blockType === "hero",
+      // Deriva do que foi persistido (coluna needs_image), com fallback
+      // ao blueprint/hero por compat com linhas antigas.
+      needs_image:
+        (row.needs_image as boolean | undefined) ??
+        def?.needs_image ??
+        blockType === "hero",
     }
   })
 
@@ -194,6 +202,7 @@ export async function ensureBlocksSeeded(
     position: idx + 1,
     content: {},
     applied: false,
+    needs_image: def.needs_image ?? def.type === "hero",
   }))
 
   const { error: insertErr } = await admin

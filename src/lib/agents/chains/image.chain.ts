@@ -15,7 +15,7 @@ import {
 
 const log = logger.child("ImageChain")
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `Create a hero banner for an email marketing campaign.
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `Create a background banner image for an email marketing block ({block_purpose}).
 
 Brand: {brand_name}
 Niche: {nicho}
