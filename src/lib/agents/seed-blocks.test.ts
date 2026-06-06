@@ -1,7 +1,10 @@
 /**
- * Tests para seedBlocksFromBlueprint / ensureBlocksSeeded — foco no fix que
- * passou a PERSISTIR `needs_image` em email_blocks (antes o flag se perdia no
- * INSERT e o pipeline ignorava o checkbox "imagem" do blueprint).
+ * Tests para seedBlocksFromBlueprint / ensureBlocksSeeded / reconcileBlocksAdditive.
+ *
+ * Cobre:
+ *  - persistência de `needs_image` no INSERT (checkbox "imagem" do blueprint)
+ *  - reconciliação ADITIVA: adiciona blocos faltantes da blueprint preservando
+ *    a copy existente (carry-over por match de tipo), no-op quando já bate.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -11,11 +14,18 @@ import type { BlueprintBlockDef } from "./email-blueprint"
 
 let blueprintBlocks: BlueprintBlockDef[] | null = null
 let existingBlocksCount = 0
+let existingBlocksData: any[] = []
 const insertCalls: Array<Record<string, unknown>[]> = []
+let deleteCalls = 0
 
 function buildQuery(table: string): any {
   const self: any = {}
-  ;["select", "eq", "order", "limit"].forEach((m) => {
+  self.__cols = ""
+  self.select = (cols?: string) => {
+    self.__cols = String(cols ?? "")
+    return self
+  }
+  ;["eq", "order", "limit"].forEach((m) => {
     self[m] = () => self
   })
   // email_blueprints.select("blocks").eq().eq().maybeSingle()
@@ -28,14 +38,20 @@ function buildQuery(table: string): any {
     }
     return Promise.resolve({ data: null, error: null })
   }
-  // count: head select para ensureBlocksSeeded
-  self.then = (resolve: (v: { count: number; error: null }) => void) =>
-    resolve({ count: existingBlocksCount, error: null })
-  // delete().eq()
+  // await da query: email_blocks com "content" → leitura de blocos existentes
+  // (reconcile); senão → count head (ensureBlocksSeeded).
+  self.then = (resolve: (v: any) => void) => {
+    if (table === "email_blocks" && self.__cols.includes("content")) {
+      return resolve({ data: existingBlocksData, error: null })
+    }
+    return resolve({ count: existingBlocksCount, error: null })
+  }
   self.delete = () => ({
-    eq: () => Promise.resolve({ error: null }),
+    eq: () => {
+      deleteCalls++
+      return Promise.resolve({ error: null })
+    },
   })
-  // insert(arr).select(...) ou insert(arr) direto
   self.insert = (data: Record<string, unknown>[]) => {
     insertCalls.push(data)
     const echoRows = data.map((row, idx) => ({
@@ -60,7 +76,11 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }))
 
-import { seedBlocksFromBlueprint, ensureBlocksSeeded } from "./seed-blocks"
+import {
+  seedBlocksFromBlueprint,
+  ensureBlocksSeeded,
+  reconcileBlocksAdditive,
+} from "./seed-blocks"
 
 const BLOCKS: BlueprintBlockDef[] = [
   { type: "hero", label: "Hero", purpose: "Banner", needs_image: true },
@@ -72,16 +92,16 @@ const BLOCKS: BlueprintBlockDef[] = [
 beforeEach(() => {
   blueprintBlocks = BLOCKS
   existingBlocksCount = 0
+  existingBlocksData = []
   insertCalls.length = 0
+  deleteCalls = 0
 })
 
 describe("seedBlocksFromBlueprint", () => {
   it("persiste needs_image no INSERT conforme o blueprint", async () => {
     await seedBlocksFromBlueprint("email-1", "abandoned_cart", 5)
-
     expect(insertCalls).toHaveLength(1)
-    const rows = insertCalls[0]
-    expect(rows.map((r) => r.needs_image)).toEqual([true, false, true, false])
+    expect(insertCalls[0].map((r) => r.needs_image)).toEqual([true, false, true, false])
   })
 
   it("retorna os blocos com needs_image derivado do que foi persistido", async () => {
@@ -91,7 +111,7 @@ describe("seedBlocksFromBlueprint", () => {
 
   it("hero sem flag explícita assume needs_image=true", async () => {
     blueprintBlocks = [
-      { type: "hero", label: "Hero", purpose: "Banner" }, // sem needs_image
+      { type: "hero", label: "Hero", purpose: "Banner" },
       { type: "text", label: "Texto", purpose: "Corpo" },
     ]
     await seedBlocksFromBlueprint("email-1", "welcome", 2)
@@ -104,12 +124,7 @@ describe("ensureBlocksSeeded", () => {
     existingBlocksCount = 0
     await ensureBlocksSeeded("email-1", "abandoned_cart", 5)
     expect(insertCalls).toHaveLength(1)
-    expect(insertCalls[0].map((r) => r.needs_image)).toEqual([
-      true,
-      false,
-      true,
-      false,
-    ])
+    expect(insertCalls[0].map((r) => r.needs_image)).toEqual([true, false, true, false])
   })
 
   it("não insere nada quando já há blocos (idempotente)", async () => {
@@ -117,5 +132,72 @@ describe("ensureBlocksSeeded", () => {
     const res = await ensureBlocksSeeded("email-1", "abandoned_cart", 5)
     expect(res.seeded).toBe(false)
     expect(insertCalls).toHaveLength(0)
+  })
+})
+
+describe("reconcileBlocksAdditive", () => {
+  const BP5: BlueprintBlockDef[] = [
+    { type: "header", label: "Header", purpose: "H" },
+    { type: "hero", label: "Hero", purpose: "He", needs_image: true },
+    { type: "coupon", label: "Coupon", purpose: "C" },
+    { type: "cta", label: "CTA", purpose: "Ct" },
+    { type: "footer", label: "Footer", purpose: "F" },
+  ]
+
+  it("no-op quando a estrutura já bate com a blueprint", async () => {
+    blueprintBlocks = BP5
+    existingBlocksData = BP5.map((d, i) => ({
+      id: `x${i}`,
+      block_type: d.type,
+      position: i + 1,
+      label: d.label,
+      content: { headline: "x" },
+      applied: false,
+      applied_at: null,
+    }))
+    const res = await reconcileBlocksAdditive("email-1", "welcome", 4)
+    expect(res.reconciled).toBe(false)
+    expect(res.added).toBe(0)
+    expect(insertCalls).toHaveLength(0)
+    expect(deleteCalls).toBe(0)
+  })
+
+  it("adiciona os blocos faltantes preservando a copy existente (carry-over)", async () => {
+    blueprintBlocks = BP5
+    existingBlocksData = [
+      { id: "x1", block_type: "hero", position: 1, label: "Hero", content: { headline: "Olá" }, applied: false, applied_at: null },
+      { id: "x2", block_type: "coupon", position: 2, label: "Coupon", content: { code: "OFF10" }, applied: true, applied_at: "t" },
+      { id: "x3", block_type: "footer", position: 3, label: "Footer", content: { body: "rodapé" }, applied: false, applied_at: null },
+    ]
+    const res = await reconcileBlocksAdditive("email-1", "welcome", 4)
+    expect(res.reconciled).toBe(true)
+    expect(res.added).toBe(2) // header + cta
+    expect(res.total).toBe(5)
+    expect(deleteCalls).toBe(1)
+    const rows = insertCalls[0]
+    expect(rows.map((r) => r.block_type)).toEqual([
+      "header", "hero", "coupon", "cta", "footer",
+    ])
+    expect(rows.map((r) => r.position)).toEqual([1, 2, 3, 4, 5])
+    // carry-over de content
+    expect(rows[1].content).toEqual({ headline: "Olá" })
+    expect(rows[2].content).toEqual({ code: "OFF10" })
+    expect(rows[2].applied).toBe(true)
+    expect(rows[4].content).toEqual({ body: "rodapé" })
+    // novos ficam vazios
+    expect(rows[0].content).toEqual({})
+    expect(rows[3].content).toEqual({})
+    // needs_image vem da blueprint
+    expect(rows[1].needs_image).toBe(true)
+  })
+
+  it("email vazio → materializa toda a blueprint", async () => {
+    blueprintBlocks = BP5
+    existingBlocksData = []
+    const res = await reconcileBlocksAdditive("email-1", "welcome", 4)
+    expect(res.reconciled).toBe(true)
+    expect(res.added).toBe(5)
+    expect(insertCalls[0]).toHaveLength(5)
+    expect(insertCalls[0].every((r) => Object.keys(r.content as object).length === 0)).toBe(true)
   })
 })

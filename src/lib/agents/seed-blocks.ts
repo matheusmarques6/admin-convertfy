@@ -222,3 +222,148 @@ export async function ensureBlocksSeeded(
   })
   return { seeded: true, count: inserts.length }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Reconciliação ADITIVA com a blueprint (Story: emails legados/stale)
+//
+// Emails semeados sob uma composição antiga ficam "presos" com menos
+// blocos que a blueprint vigente (ensureBlocksSeeded é idempotente e
+// nunca atualiza estrutura existente). Esta função adiciona os blocos
+// FALTANTES da blueprint PRESERVANDO a copy já gerada dos blocos
+// existentes (carry-over de content/applied por match de tipo, na
+// ordem da blueprint).
+//
+// - Se a estrutura JÁ bate com a blueprint (mesma sequência de tipos):
+//   no-op (não toca em emails saudáveis — sem churn de IDs).
+// - Caso contrário: reescreve os blocos na ORDEM da blueprint, levando
+//   o content dos que casam por tipo e deixando os novos vazios ({}).
+// ──────────────────────────────────────────────────────────────
+
+/** Resolve os defs da blueprint: DB → DEFAULT_BLUEPRINTS → fallback mínimo. */
+async function resolveBlockDefs(
+  admin: ReturnType<typeof createAdminClient>,
+  flowType: string,
+  emailNumber: number,
+): Promise<BlueprintBlockDef[]> {
+  try {
+    const { data } = await admin
+      .from("email_blueprints")
+      .select("blocks")
+      .eq("flow_type", flowType)
+      .eq("email_number", emailNumber)
+      .maybeSingle()
+    if (data?.blocks && Array.isArray(data.blocks) && data.blocks.length > 0) {
+      return data.blocks as BlueprintBlockDef[]
+    }
+  } catch (err) {
+    log.warn("reconcile.blueprint_read_failed", {
+      flowType,
+      emailNumber,
+      error: (err as Error).message,
+    })
+  }
+  const fromDefault = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]?.blocks
+  if (fromDefault && fromDefault.length > 0) return fromDefault
+  return [
+    { type: "hero", label: "Hero", purpose: "Banner principal do email", needs_image: true },
+    { type: "text", label: "Texto", purpose: "Corpo principal do email" },
+    { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
+  ]
+}
+
+interface ExistingBlockRow {
+  id: string
+  block_type: string
+  position: number
+  label: string
+  content: Record<string, unknown> | null
+  applied: boolean
+  applied_at: string | null
+}
+
+export interface ReconcileResult {
+  /** true se a estrutura foi reescrita; false se já batia (no-op). */
+  reconciled: boolean
+  /** Quantidade de blocos novos (vazios) adicionados. */
+  added: number
+  /** Total de blocos após a operação. */
+  total: number
+}
+
+export async function reconcileBlocksAdditive(
+  emailId: string,
+  flowType: string,
+  emailNumber: number,
+): Promise<ReconcileResult> {
+  const admin = createAdminClient()
+  const blockDefs = await resolveBlockDefs(admin, flowType, emailNumber)
+
+  const { data: existingData, error: readErr } = await admin
+    .from("email_blocks")
+    .select("id, block_type, position, label, content, applied, applied_at")
+    .eq("email_id", emailId)
+    .order("position", { ascending: true })
+  if (readErr) {
+    log.error("reconcile.read_failed", { emailId, error: readErr.message })
+    throw new Error(`Falha ao ler blocos: ${readErr.message}`)
+  }
+  const existing = (existingData ?? []) as ExistingBlockRow[]
+
+  // No-op se a sequência de tipos já é idêntica à blueprint.
+  const sameSequence =
+    existing.length === blockDefs.length &&
+    existing.every((b, i) => b.block_type === blockDefs[i].type)
+  if (sameSequence) {
+    return { reconciled: false, added: 0, total: existing.length }
+  }
+
+  // Fila de blocos existentes por tipo (FIFO por position) para carry-over.
+  const poolByType = new Map<string, ExistingBlockRow[]>()
+  for (const b of existing) {
+    const arr = poolByType.get(b.block_type) ?? []
+    arr.push(b)
+    poolByType.set(b.block_type, arr)
+  }
+
+  let added = 0
+  const inserts = blockDefs.map((def, idx) => {
+    const match = poolByType.get(def.type)?.shift()
+    if (!match) added++
+    return {
+      email_id: emailId,
+      block_type: def.type,
+      label: def.label,
+      position: idx + 1,
+      content: match?.content ?? {},
+      applied: match?.applied ?? false,
+      applied_at: match?.applied_at ?? null,
+      needs_image: def.needs_image ?? def.type === "hero",
+    }
+  })
+
+  // Reescreve a estrutura (delete + insert) preservando a copy dos matches.
+  const { error: delErr } = await admin
+    .from("email_blocks")
+    .delete()
+    .eq("email_id", emailId)
+  if (delErr) {
+    log.error("reconcile.delete_failed", { emailId, error: delErr.message })
+    throw new Error(`Falha ao limpar blocos: ${delErr.message}`)
+  }
+  const { error: insErr } = await admin.from("email_blocks").insert(inserts)
+  if (insErr) {
+    log.error("reconcile.insert_failed", { emailId, error: insErr.message })
+    throw new Error(`Falha ao inserir blocos: ${insErr.message}`)
+  }
+
+  log.info("reconcile.done", {
+    emailId,
+    flowType,
+    emailNumber,
+    before: existing.length,
+    after: inserts.length,
+    added,
+  })
+  return { reconciled: true, added, total: inserts.length }
+}
+

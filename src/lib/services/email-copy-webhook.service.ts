@@ -11,7 +11,10 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { ensureBlocksSeeded } from "@/lib/agents/seed-blocks"
+import {
+  ensureBlocksSeeded,
+  reconcileBlocksAdditive,
+} from "@/lib/agents/seed-blocks"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import type {
   StoreBrandIdentity,
@@ -48,6 +51,35 @@ interface BlockRow {
   position: number
   block_type: string
   label: string | null
+  content: Record<string, unknown> | null
+}
+
+// Status finalizados — não reconciliar estrutura (preserva trabalho pronto).
+const FINALIZED_STATUSES = new Set(["ready", "approved", "live"])
+
+/** true se o bloco tem qualquer copy preenchida (carry-over já gerado). */
+function blockHasContent(content: Record<string, unknown> | null): boolean {
+  if (!content || typeof content !== "object") return false
+  for (const v of Object.values(content)) {
+    if (typeof v === "string" && v.trim()) return true
+    if (typeof v === "number") return true
+    if (Array.isArray(v) && v.length > 0) return true
+    if (v && typeof v === "object" && Object.keys(v).length > 0) return true
+  }
+  return false
+}
+
+/**
+ * Decide quais blocos do email vão pro n8n gerar copy:
+ * - email MISTO (alguns com copy, outros vazios → caso de reconciliação
+ *   aditiva): envia só os VAZIOS, preservando a copy já existente.
+ * - email todo vazio (geração nova) ou todo preenchido (regerar tudo):
+ *   envia TODOS — comportamento original inalterado.
+ */
+function selectBlocksForCopy(blocks: BlockRow[]): BlockRow[] {
+  const empty = blocks.filter((b) => !blockHasContent(b.content))
+  const mixed = empty.length > 0 && empty.length < blocks.length
+  return mixed ? empty : blocks
 }
 
 interface BlueprintRow {
@@ -230,20 +262,25 @@ export async function dispatchEmailCopyWebhook(
     return { ok: false, flow_count: 0, email_count: 0, reason: "no_emails" }
   }
 
-  // AUTO-SEED LAZY: garante que cada email do batch tenha blocks
-  // materializados antes de montar o payload. Sem isso, lojas que nunca
-  // passaram pelo pipeline interno mandariam blocks:[] vazio pro n8n
-  // (mesmo com email_blueprints populado). `ensureBlocksSeeded` é
-  // idempotente: vira no-op pra emails que já têm blocks. Falhas
-  // individuais são logadas mas não bloqueiam o dispatch (degradação
-  // graceful — o SELECT abaixo decide).
+  // AUTO-SEED + RECONCILIAÇÃO ADITIVA: garante que cada email do batch tenha
+  // os blocks da blueprint VIGENTE antes de montar o payload.
+  // - Emails finalizados (ready/approved/live): só `ensureBlocksSeeded`
+  //   (idempotente) — não mexe na estrutura pronta.
+  // - Demais: `reconcileBlocksAdditive` adiciona os blocos faltantes da
+  //   blueprint PRESERVANDO a copy existente (carry-over). No-op se a
+  //   estrutura já bate. Resolve lojas legadas presas com poucos blocos.
+  // Falhas individuais são logadas mas não bloqueiam o dispatch.
   const flowsById = new Map(flows.map((f) => [f.id, f]))
   await Promise.all(
     emails.map(async (e) => {
       const flow = flowsById.get(e.flow_id)
       if (!flow) return
       try {
-        await ensureBlocksSeeded(e.id, flow.flow_type, e.number)
+        if (FINALIZED_STATUSES.has(e.status)) {
+          await ensureBlocksSeeded(e.id, flow.flow_type, e.number)
+        } else {
+          await reconcileBlocksAdditive(e.id, flow.flow_type, e.number)
+        }
       } catch (err) {
         log.warn("email_copy.webhook.ensure_blocks_failed", {
           storeId,
@@ -259,7 +296,7 @@ export async function dispatchEmailCopyWebhook(
   const emailIds = emails.map((e) => e.id)
   const blocksRes = await admin
     .from("email_blocks")
-    .select("id, email_id, position, block_type, label")
+    .select("id, email_id, position, block_type, label, content")
     .in("email_id", emailIds)
     .order("position", { ascending: true })
 
@@ -486,12 +523,14 @@ export async function dispatchEmailCopyWebhook(
                 subject_hint: bp.subject_hint,
               }
             : null,
-          blocks: (blocksByEmail.get(e.id) ?? []).map((b) => ({
-            block_id: b.id,
-            position: b.position,
-            type: b.block_type,
-            label: b.label,
-          })),
+          blocks: selectBlocksForCopy(blocksByEmail.get(e.id) ?? []).map(
+            (b) => ({
+              block_id: b.id,
+              position: b.position,
+              type: b.block_type,
+              label: b.label,
+            }),
+          ),
         }
       })
 
