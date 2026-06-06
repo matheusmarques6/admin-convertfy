@@ -722,7 +722,7 @@ export function EmailDetailView({
           {viewMode === "render" && (
             <EmailRenderPreview
               email={email}
-              html={renderEmailHtml(email, blocks)}
+              html={email.html || renderEmailHtml(email, blocks)}
               width={width}
               onEditSubject={(v) => patchEmail({ subject: v || null })}
               onEditPreheader={(v) => patchEmail({ preheader: v || null })}
@@ -746,7 +746,7 @@ export function EmailDetailView({
           {viewMode === "html" && (
             <EmailHtmlView
               email={email}
-              html={renderEmailHtml(email, blocks)}
+              html={email.html || renderEmailHtml(email, blocks)}
               onCopyAll={(html) => copyToClipboard(html, "HTML completo")}
             />
           )}
