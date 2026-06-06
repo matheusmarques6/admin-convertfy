@@ -206,7 +206,7 @@ export async function resolveBlockPrompt(
     await Promise.all([
       admin.from("client_stores").select("*").eq("id", storeId).single(),
       admin
-        .from("store_brand_identities")
+        .from("store_brand_identity")
         .select("*")
         .eq("store_id", storeId)
         .order("version", { ascending: false })

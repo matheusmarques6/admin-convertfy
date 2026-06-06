@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const [storeRes, brandRes, briefingRes] = await Promise.all([
       admin.from("client_stores").select("*").eq("id", store_id).single(),
       admin
-        .from("store_brand_identities")
+        .from("store_brand_identity")
         .select("*")
         .eq("store_id", store_id)
         .order("version", { ascending: false })

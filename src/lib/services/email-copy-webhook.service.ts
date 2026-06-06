@@ -123,7 +123,7 @@ export async function dispatchEmailCopyWebhook(
       .eq("id", storeId)
       .maybeSingle(),
     admin
-      .from("store_brand_identities")
+      .from("store_brand_identity")
       .select("*")
       .eq("store_id", storeId)
       .order("version", { ascending: false })
