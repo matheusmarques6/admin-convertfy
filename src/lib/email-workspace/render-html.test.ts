@@ -154,4 +154,106 @@ describe("renderEmailHtml", () => {
     expect(out).toContain("CONTINUAR")
     expect(out).toContain('href="https://x"')
   })
+
+  // ── Chaves GENÉRICAS reais do gerador (antes quebravam) ──
+
+  it("cta novo: botão usa `cta` (não `text`) + mostra headline/body", () => {
+    const block = makeBlock("cta", {
+      cta: "USE MY DISCOUNT",
+      url: "https://x",
+      headline: "FINAL NOTICE",
+      body: "Code expires tonight.",
+      text: "Tap below.",
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("USE MY DISCOUNT") // botão
+    expect(out).toContain("FINAL NOTICE")
+    expect(out).toContain("Code expires tonight.")
+    expect(out).toContain('href="https://x"')
+  })
+
+  it("coupon novo {cta,body,text,headline} aparece (sem code)", () => {
+    const block = makeBlock("coupon", {
+      headline: "SEU DESCONTO",
+      body: "12% OFF aplicado.",
+      text: "USE O CUPOM: EXCLUSIVO12",
+      cta: "RESGATAR",
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("SEU DESCONTO")
+    expect(out).toContain("USE O CUPOM: EXCLUSIVO12")
+    expect(out).toContain("RESGATAR")
+    expect(out).not.toContain("{{coupon_code}}")
+  })
+
+  it("header {url,headline} mostra o headline (não {{brand_name}})", () => {
+    const block = makeBlock("header", { url: "https://x", headline: "Royal Loom" })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Royal Loom")
+    expect(out).not.toContain("{{brand_name}}")
+  })
+
+  it("features com items como STRINGS renderiza cada um", () => {
+    const block = makeBlock("features", {
+      heading: "Our Guarantees:",
+      items: ["🔒 Secure Checkout", "↩️ Money Back"],
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Secure Checkout")
+    expect(out).toContain("Money Back")
+  })
+
+  it("testimonials com items como STRINGS renderiza os cards", () => {
+    const block = makeBlock("testimonials", {
+      headline: "O que dizem",
+      items: ["⭐⭐⭐⭐⭐ | Ingrid — Oslo | Amei o produto"],
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Ingrid")
+    expect(out).toContain("Amei o produto")
+  })
+
+  it("social_proof genérico {headline,body,items[]} aparece", () => {
+    const block = makeBlock("social_proof", {
+      headline: "+10,000 clientes",
+      body: "Confiada por mulheres no UK.",
+      items: ["10,000+ pedidos", "4.9★ média"],
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("+10,000 clientes")
+    expect(out).toContain("10,000+ pedidos")
+    expect(out).toContain("4.9★ média")
+  })
+
+  it("comparison com items[] STRINGS renderiza linhas (sem rows)", () => {
+    const block = makeBlock("comparison", {
+      headline: "Nós vs. outros",
+      items: ["✅ Safira — Nós | ❌ Vidro — outros"],
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Nós vs. outros")
+    expect(out).toContain("Safira")
+  })
+
+  it("letter genérico {body,cta,url} mostra body + botão", () => {
+    const block = makeBlock("letter", {
+      body: "Olá, querida...",
+      cta: "Usar meu desconto",
+      url: "https://x",
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Olá, querida")
+    expect(out).toContain("Usar meu desconto")
+    expect(out).toContain('href="https://x"')
+  })
+
+  it("headline {headline,body} agora mostra o body também", () => {
+    const block = makeBlock("headline", {
+      headline: "Não acredite só na gente",
+      body: "Veja o que a comunidade diz.",
+    })
+    const out = renderEmailHtml(makeEmail(), [block])
+    expect(out).toContain("Não acredite só na gente")
+    expect(out).toContain("Veja o que a comunidade diz.")
+  })
 })

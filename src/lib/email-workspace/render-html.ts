@@ -9,21 +9,9 @@
  */
 
 import type {
-  ComparisonBlockContent,
-  CouponBlockContent,
   EmailBlock,
   EmailFlowEmail,
-  FeaturesBlockContent,
-  HeaderBlockContent,
-  HeadlineBlockContent,
-  HeroBlockContent,
-  LetterBlockContent,
   ProductsBlockContent,
-  SocialProofBlockContent,
-  StoryBlockContent,
-  TestimonialsBlockContent,
-  TextBlockContent,
-  UrgencyBlockContent,
 } from "@/types/email-workspace"
 
 export function renderEmailHtml(
@@ -47,34 +35,85 @@ export function renderEmailHtml(
 
   const renderBlock = (block: EmailBlock): string => {
     const c = block.content as Record<string, unknown>
+    // Leitura tolerante: o gerador grava chaves GENÉRICAS e em duas gerações
+    // (ex.: coupon `{code,hint}` antigo vs `{cta,body,text}` novo; cta com
+    // `{cta,url,body,text,heading,headline}`; items como STRINGS). `pick` pega
+    // a 1ª chave não-vazia; `list` lê arrays.
+    const pick = (...keys: string[]): string => {
+      for (const k of keys) {
+        const v = c[k]
+        if (typeof v === "string" && v.trim()) return v.trim()
+        if (typeof v === "number") return String(v)
+      }
+      return ""
+    }
+    const list = (key: string): unknown[] =>
+      Array.isArray(c[key]) ? (c[key] as unknown[]) : []
+    /** Coage um item de array (string ou objeto) a texto legível. */
+    const itemText = (it: unknown): string => {
+      if (typeof it === "string" || typeof it === "number") return String(it).trim()
+      if (it && typeof it === "object") {
+        const o = it as Record<string, unknown>
+        const quote = typeof o.quote === "string" ? o.quote : ""
+        const author = typeof o.author === "string" ? o.author : ""
+        if (quote || author) return `${quote}${author ? ` — ${author}` : ""}`.trim()
+        const label = typeof o.label === "string" ? o.label : ""
+        const icon = typeof o.icon === "string" ? o.icon : ""
+        if (label) return `${icon} ${label}`.trim()
+        return Object.values(o)
+          .filter((v): v is string => typeof v === "string")
+          .join(" — ")
+      }
+      return ""
+    }
+
     switch (block.block_type) {
       case "hero": {
-        const h = c as HeroBlockContent
+        const headline = pick("headline")
+        const body = pick("body", "text")
+        const eyebrow = pick("eyebrow", "heading")
+        const cta = pick("cta_text", "cta")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
-      <tr><td class="hero"><img src="${esc(h.image_url) || "{{hero_image_url}}"}" alt="${esc(h.image_alt ?? h.headline ?? "")}" width="600" style="display:block;width:100%;height:auto;border:0;"/></td></tr>
+      <tr><td class="hero"><img src="${esc(pick("image_url")) || "{{hero_image_url}}"}" alt="${esc(pick("image_alt") || headline)}" width="600" style="display:block;width:100%;height:auto;border:0;"/></td></tr>
       <tr><td style="padding:32px 36px 16px; text-align:center;">
-        ${h.eyebrow ? `<p style="margin:0; font:700 11px/1 'Inter'; letter-spacing:.22em;">${esc(h.eyebrow)}</p>` : ""}
-        ${h.headline ? `<h1 class="display" style="margin:10px 0 0;">${esc(h.headline)}</h1>` : ""}
+        ${eyebrow ? `<p style="margin:0; font:700 11px/1 'Inter'; letter-spacing:.22em;">${esc(eyebrow)}</p>` : ""}
+        ${headline ? `<h1 class="display" style="margin:10px 0 0;">${esc(headline)}</h1>` : ""}
       </td></tr>
-      ${h.body ? `<tr><td style="padding:14px 56px 28px; text-align:center;"><p style="margin:0; font-size:14px; line-height:1.65;">${esc(h.body)}</p></td></tr>` : ""}
-      ${h.cta_text ? `<tr><td style="padding:0 36px 36px; text-align:center;"><a href="${esc(h.cta_url) || "{{cta_url}}"}" class="cta">${esc(h.cta_text)}</a></td></tr>` : ""}`
+      ${body ? `<tr><td style="padding:14px 56px 28px; text-align:center;"><p style="margin:0; font-size:14px; line-height:1.65;">${esc(body)}</p></td></tr>` : ""}
+      ${cta ? `<tr><td style="padding:0 36px 36px; text-align:center;"><a href="${esc(pick("cta_url", "url")) || "{{cta_url}}"}" class="cta">${esc(cta)}</a></td></tr>` : ""}`
       }
-      case "text": {
-        const t = c as TextBlockContent
+      case "text":
+      case "headline": {
+        const eyebrow = pick("eyebrow")
+        const headline = pick("headline", "heading")
+        const body = pick("body", "text")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:40px 56px; text-align:center; border-top:1px solid #F0F0F0;">
-        ${t.headline ? `<h2 style="margin:0; font:900 32px/1 'Inter'; letter-spacing:-.02em; text-transform:uppercase;">${esc(t.headline)}</h2>` : ""}
-        ${t.body ? `<p style="margin:20px auto 0; max-width:440px; font-size:14px; line-height:1.65;">${esc(t.body)}</p>` : ""}
+        ${eyebrow ? `<p style="margin:0 0 10px; font:700 11px/1 'Inter'; letter-spacing:.22em; color:#666;">${esc(eyebrow)}</p>` : ""}
+        ${headline ? `<h2 style="margin:0; font:900 32px/1 'Inter'; letter-spacing:-.02em; text-transform:uppercase;">${esc(headline)}</h2>` : ""}
+        ${body ? `<p style="margin:20px auto 0; max-width:440px; font-size:14px; line-height:1.65;">${esc(body)}</p>` : ""}
       </td></tr>`
       }
       case "coupon": {
-        const co = c as CouponBlockContent
+        const headline = pick("headline", "title")
+        const body = pick("body")
+        const code = pick("code")
+        const text = pick("text")
+        const hint = pick("hint")
+        const cta = pick("cta", "cta_text")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:32px 56px; text-align:center; background:#FAFAFA; border-top:1px solid #F0F0F0;">
-        <p style="margin:0 0 8px; font:700 10px/1 'Inter'; letter-spacing:.22em; color:#666;">CUPOM</p>
-        <span class="coupon"><span class="code">${esc(co.code) || "{{coupon_code}}"}</span></span>
-        ${co.hint ? `<p style="margin:12px 0 0; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#666;">${esc(co.hint)}</p>` : ""}
-        ${co.cta_text ? `<a href="${esc(co.cta_url) || "{{cta_url}}"}" class="cta" style="margin-top:16px;">${esc(co.cta_text)}</a>` : ""}
+        ${headline ? `<p style="margin:0 0 8px; font:700 10px/1 'Inter'; letter-spacing:.22em; color:#666;">${esc(headline)}</p>` : `<p style="margin:0 0 8px; font:700 10px/1 'Inter'; letter-spacing:.22em; color:#666;">CUPOM</p>`}
+        ${body ? `<p style="margin:0 0 12px; font-size:13px; line-height:1.55;">${esc(body)}</p>` : ""}
+        ${
+          code
+            ? `<span class="coupon"><span class="code">${esc(code)}</span></span>`
+            : text
+              ? `<p style="margin:0; font:800 15px/1.2 'Inter'; letter-spacing:.04em;">${esc(text)}</p>`
+              : `<span class="coupon"><span class="code">{{coupon_code}}</span></span>`
+        }
+        ${hint ? `<p style="margin:12px 0 0; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#666;">${esc(hint)}</p>` : ""}
+        ${cta ? `<a href="${esc(pick("cta_url", "url")) || "{{cta_url}}"}" class="cta" style="margin-top:16px;">${esc(cta)}</a>` : ""}
       </td></tr>`
       }
       case "products": {
@@ -98,10 +137,9 @@ export function renderEmailHtml(
       </td></tr>`
       }
       case "footer": {
-        const f = c as Record<string, unknown>
-        const cols = (f.columns as Array<{ links?: Array<{ label: string; url: string }> }>) ?? []
+        const cols = (c.columns as Array<{ links?: Array<{ label: string; url: string }> }>) ?? []
         const links = cols.flatMap((col) => col.links ?? [])
-        const copyright = (f.copyright as string) ?? ""
+        const copyright = pick("copyright", "body")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:32px 24px 24px; background:#0F0F0F; color:#fff; text-align:center;">
         ${
@@ -119,9 +157,20 @@ export function renderEmailHtml(
       <tr><td>${i.link_url ? `<a href="${esc(i.link_url)}">${img}</a>` : img}</td></tr>`
       }
       case "cta": {
-        const ct = c as { text?: string; url?: string }
+        const headline = pick("headline")
+        const heading = pick("heading")
+        const body = pick("body")
+        const label = pick("cta", "cta_text") || pick("text") || "CONTINUAR"
+        const text = pick("text")
+        const showText = text && text !== label
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
-      <tr><td style="padding:24px 36px; text-align:center;"><a href="${esc(ct.url) || "{{cta_url}}"}" class="cta">${esc(ct.text) || "CONTINUAR"}</a></td></tr>`
+      <tr><td style="padding:24px 36px; text-align:center;">
+        ${heading ? `<p style="margin:0 0 8px; font:700 11px/1 'Inter'; letter-spacing:.18em; text-transform:uppercase; color:#666;">${esc(heading)}</p>` : ""}
+        ${headline ? `<h3 style="margin:0 0 10px; font:900 20px/1.1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(headline)}</h3>` : ""}
+        ${body ? `<p style="margin:0 0 14px; font-size:14px; line-height:1.6;">${esc(body)}</p>` : ""}
+        ${showText ? `<p style="margin:0 0 14px; font-size:13px; color:#666;">${esc(text)}</p>` : ""}
+        <a href="${esc(pick("url", "cta_url")) || "{{cta_url}}"}" class="cta">${esc(label)}</a>
+      </td></tr>`
       }
       case "divider":
         return `      <!-- DIVIDER -->
@@ -129,125 +178,144 @@ export function renderEmailHtml(
       case "spacer":
         return `      <!-- SPACER -->
       <tr><td style="height:24px;line-height:24px;font-size:0;">&nbsp;</td></tr>`
-      // ── Expansão welcome universal 2026-06 ──
       case "header": {
-        const h = c as HeaderBlockContent
+        const logo = pick("logo_url", "image_url")
+        const brand = pick("headline", "tagline")
+        const tagline = pick("tagline")
+        const url = pick("url")
+        const brandHtml = logo
+          ? `<img src="${esc(logo)}" alt="${esc(tagline || brand)}" style="height:32px; display:inline-block;"/>`
+          : `<span style="font:800 16px/1 'Inter'; letter-spacing:.08em; text-transform:uppercase;">${esc(brand) || "{{brand_name}}"}</span>`
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:20px 36px; text-align:center; border-bottom:1px solid #F0F0F0;">
-        ${h.logo_url ? `<img src="${esc(h.logo_url)}" alt="${esc(h.tagline ?? "")}" style="height:32px; display:inline-block;"/>` : `<span style="font:800 16px/1 'Inter'; letter-spacing:.08em; text-transform:uppercase;">{{brand_name}}</span>`}
-        ${h.tagline ? `<p style="margin:6px 0 0; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#888;">${esc(h.tagline)}</p>` : ""}
-      </td></tr>`
-      }
-      case "headline": {
-        const h = c as HeadlineBlockContent
-        return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
-      <tr><td style="padding:40px 36px 16px; text-align:center;">
-        ${h.eyebrow ? `<p style="margin:0 0 10px; font:700 11px/1 'Inter'; letter-spacing:.22em; color:#666;">${esc(h.eyebrow)}</p>` : ""}
-        ${h.headline ? `<h2 class="display" style="margin:0;">${esc(h.headline)}</h2>` : ""}
+        ${url ? `<a href="${esc(url)}" style="text-decoration:none; color:inherit;">${brandHtml}</a>` : brandHtml}
+        ${tagline && tagline !== brand ? `<p style="margin:6px 0 0; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#888;">${esc(tagline)}</p>` : ""}
       </td></tr>`
       }
       case "features": {
-        const f = c as FeaturesBlockContent
-        const items = f.items ?? []
+        const heading = pick("heading")
+        const headline = pick("headline")
+        const items = list("items").map(itemText).filter(Boolean)
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:24px 36px; background:#FAFAFA; border-top:1px solid #F0F0F0; border-bottom:1px solid #F0F0F0;">
-        <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+        ${heading ? `<p style="margin:0 0 6px; text-align:center; font:700 10px/1 'Inter'; letter-spacing:.18em; text-transform:uppercase; color:#666;">${esc(heading)}</p>` : ""}
+        ${headline ? `<h3 style="margin:0 0 16px; text-align:center; font:900 18px/1.1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(headline)}</h3>` : ""}
         ${items
           .map(
-            (it) => `<td style="text-align:center; padding:0 8px;">
-          ${it.icon ? `<div style="font-size:22px; line-height:1;">${esc(it.icon)}</div>` : ""}
-          <p style="margin:8px 0 0; font:600 11px/1.3 'Inter'; letter-spacing:.04em;">${esc(it.label)}</p>
-        </td>`,
+            (it) => `<p style="margin:0 0 8px; font:600 13px/1.4 'Inter'; text-align:center;">${esc(it)}</p>`,
           )
           .join("\n        ")}
-        </tr></table>
       </td></tr>`
       }
       case "social_proof": {
-        const sp = c as SocialProofBlockContent
-        const stars = sp.rating
-          ? "★".repeat(Math.round(sp.rating)) +
-            "☆".repeat(Math.max(0, 5 - Math.round(sp.rating)))
-          : ""
+        const heading = pick("heading")
+        const headline = pick("headline")
+        const number = pick("number")
+        const ratingRaw = c.rating
+        const stars =
+          typeof ratingRaw === "number" && ratingRaw > 0
+            ? "★".repeat(Math.round(ratingRaw)) +
+              "☆".repeat(Math.max(0, 5 - Math.round(ratingRaw)))
+            : ""
+        const body = pick("body")
+        const text = pick("text", "label")
+        const items = list("items").map(itemText).filter(Boolean)
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:32px 36px; text-align:center; background:#F8F8F8;">
-        ${sp.number ? `<p style="margin:0; font:900 28px/1 'Inter';">${esc(sp.number)}</p>` : ""}
+        ${heading ? `<p style="margin:0 0 6px; font:700 10px/1 'Inter'; letter-spacing:.18em; text-transform:uppercase; color:#666;">${esc(heading)}</p>` : ""}
+        ${headline ? `<h3 style="margin:0 0 10px; font:900 20px/1.1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(headline)}</h3>` : ""}
+        ${number ? `<p style="margin:0; font:900 28px/1 'Inter';">${esc(number)}</p>` : ""}
         ${stars ? `<p style="margin:8px 0 0; font-size:16px; letter-spacing:.06em; color:#F5A623;">${stars}</p>` : ""}
-        ${sp.label ? `<p style="margin:8px 0 0; font:600 12px/1.3 'Inter'; text-transform:uppercase; letter-spacing:.1em;">${esc(sp.label)}</p>` : ""}
-        ${sp.body ? `<p style="margin:6px 0 0; font-size:12px; color:#666;">${esc(sp.body)}</p>` : ""}
+        ${body ? `<p style="margin:8px 0 0; font-size:13px; line-height:1.5; color:#444;">${esc(body)}</p>` : ""}
+        ${text ? `<p style="margin:6px 0 0; font-size:12px; color:#666;">${esc(text)}</p>` : ""}
+        ${
+          items.length
+            ? `<div style="margin:14px 0 0;">${items.map((it) => `<p style="margin:0 0 6px; font-size:12px; color:#444;">${esc(it)}</p>`).join("")}</div>`
+            : ""
+        }
       </td></tr>`
       }
       case "testimonials": {
-        const t = c as TestimonialsBlockContent
-        const items = t.items ?? []
+        const headline = pick("headline", "heading")
+        const items = list("items").map(itemText).filter(Boolean)
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:32px 36px; border-top:1px solid #F0F0F0;">
-        ${t.headline ? `<h3 style="margin:0 0 18px; text-align:center; font:900 20px/1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(t.headline)}</h3>` : ""}
+        ${headline ? `<h3 style="margin:0 0 18px; text-align:center; font:900 20px/1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(headline)}</h3>` : ""}
         ${items
           .map(
             (it) => `<div style="background:#FAFAFA; border:1px solid #F0F0F0; border-radius:6px; padding:18px; margin-bottom:10px;">
-          ${it.rating ? `<p style="margin:0 0 8px; font-size:14px; color:#F5A623;">${"★".repeat(Math.round(it.rating))}</p>` : ""}
-          <p style="margin:0 0 10px; font-size:13px; line-height:1.55; font-style:italic;">&ldquo;${esc(it.quote)}&rdquo;</p>
-          <p style="margin:0; font:700 11px/1 'Inter'; letter-spacing:.06em; text-transform:uppercase; color:#666;">— ${esc(it.author)}</p>
+          <p style="margin:0; font-size:13px; line-height:1.55;">${esc(it)}</p>
         </div>`,
           )
           .join("\n        ")}
       </td></tr>`
       }
       case "urgency": {
-        const u = c as UrgencyBlockContent
+        const headline = pick("headline", "heading")
+        const body = pick("body")
+        const text = pick("text")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:24px 36px; background:#FFF4F0; border-top:1px solid #F5C4B0; border-bottom:1px solid #F5C4B0; text-align:center;">
-        ${u.headline ? `<p style="margin:0; font:800 16px/1.2 'Inter'; text-transform:uppercase; letter-spacing:.04em; color:#D94818;">${esc(u.headline)}</p>` : ""}
-        ${u.body ? `<p style="margin:8px 0 0; font-size:13px; line-height:1.5; color:#8B3414;">${esc(u.body)}</p>` : ""}
+        ${headline ? `<p style="margin:0; font:800 16px/1.2 'Inter'; text-transform:uppercase; letter-spacing:.04em; color:#D94818;">${esc(headline)}</p>` : ""}
+        ${body ? `<p style="margin:8px 0 0; font-size:13px; line-height:1.5; color:#8B3414;">${esc(body)}</p>` : ""}
+        ${text && text !== body ? `<p style="margin:8px 0 0; font-size:13px; line-height:1.5; color:#8B3414;">${esc(text)}</p>` : ""}
       </td></tr>`
       }
       case "comparison": {
-        const cmp = c as ComparisonBlockContent
-        const rows = cmp.rows ?? []
-        const us = cmp.us_label ?? "Nós"
-        const them = cmp.them_label ?? "Outros"
-        return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
-      <tr><td style="padding:32px 36px;">
-        ${cmp.headline ? `<h3 style="margin:0 0 18px; text-align:center; font:900 20px/1 'Inter'; text-transform:uppercase;">${esc(cmp.headline)}</h3>` : ""}
-        <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-collapse:collapse; font-size:12px;">
-          <tr style="background:#0F0F0F; color:#fff;">
-            <th style="padding:10px 12px; text-align:left; font:700 11px/1 'Inter'; letter-spacing:.06em; text-transform:uppercase;"></th>
-            <th style="padding:10px 12px; text-align:center; font:700 11px/1 'Inter'; letter-spacing:.06em; text-transform:uppercase;">${esc(us)}</th>
-            <th style="padding:10px 12px; text-align:center; font:700 11px/1 'Inter'; letter-spacing:.06em; text-transform:uppercase; opacity:.7;">${esc(them)}</th>
-          </tr>
+        const headline = pick("headline", "heading")
+        const rows = (c.rows as Array<{ label?: string; us?: string; them?: string }>) ?? []
+        const items = list("items").map(itemText).filter(Boolean)
+        const bodyHtml =
+          rows.length > 0
+            ? `<table cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-collapse:collapse; font-size:12px;">
           ${rows
             .map(
               (r, i) => `<tr style="background:${i % 2 ? "#FAFAFA" : "#fff"};">
             <td style="padding:10px 12px; border-bottom:1px solid #F0F0F0;">${esc(r.label)}</td>
-            <td style="padding:10px 12px; border-bottom:1px solid #F0F0F0; text-align:center; font-weight:700; color:#0F0F0F;">${esc(r.us)}</td>
+            <td style="padding:10px 12px; border-bottom:1px solid #F0F0F0; text-align:center; font-weight:700;">${esc(r.us)}</td>
             <td style="padding:10px 12px; border-bottom:1px solid #F0F0F0; text-align:center; color:#888;">${esc(r.them)}</td>
           </tr>`,
             )
             .join("\n          ")}
-        </table>
+        </table>`
+            : items
+                .map(
+                  (it) => `<p style="margin:0 0 8px; padding:10px 12px; background:#FAFAFA; border:1px solid #F0F0F0; border-radius:4px; font-size:12px; line-height:1.5;">${esc(it)}</p>`,
+                )
+                .join("\n        ")
+        return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
+      <tr><td style="padding:32px 36px;">
+        ${headline ? `<h3 style="margin:0 0 18px; text-align:center; font:900 20px/1 'Inter'; text-transform:uppercase;">${esc(headline)}</h3>` : ""}
+        ${bodyHtml}
       </td></tr>`
       }
       case "story": {
-        const st = c as StoryBlockContent
+        const headline = pick("headline", "heading")
+        const body = pick("body", "text")
+        const cta = pick("cta_text", "cta")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:32px 36px;">
         <div style="background:#FAFAFA; border:1px solid #F0F0F0; border-radius:8px; padding:32px;">
-          ${st.image_url ? `<img src="${esc(st.image_url)}" alt="" style="display:block; width:100%; height:auto; border-radius:6px; margin:0 0 18px;"/>` : ""}
-          ${st.headline ? `<h3 style="margin:0 0 12px; font:900 22px/1.1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(st.headline)}</h3>` : ""}
-          ${st.body ? `<p style="margin:0 0 18px; font-size:13px; line-height:1.7; color:#333;">${esc(st.body)}</p>` : ""}
-          ${st.cta_text ? `<a href="${esc(st.cta_url) || "{{cta_url}}"}" class="cta">${esc(st.cta_text)}</a>` : ""}
+          ${pick("image_url") ? `<img src="${esc(pick("image_url"))}" alt="" style="display:block; width:100%; height:auto; border-radius:6px; margin:0 0 18px;"/>` : ""}
+          ${headline ? `<h3 style="margin:0 0 12px; font:900 22px/1.1 'Inter'; text-transform:uppercase; letter-spacing:-.01em;">${esc(headline)}</h3>` : ""}
+          ${body ? `<p style="margin:0 0 18px; font-size:13px; line-height:1.7; color:#333; white-space:pre-wrap;">${esc(body)}</p>` : ""}
+          ${cta ? `<a href="${esc(pick("cta_url", "url")) || "{{cta_url}}"}" class="cta">${esc(cta)}</a>` : ""}
         </div>
       </td></tr>`
       }
       case "letter": {
-        const l = c as LetterBlockContent
+        const greeting = pick("greeting")
+        const body = pick("body", "text")
+        const signoff = pick("signoff")
+        const author = pick("author")
+        const cta = pick("cta", "cta_text")
         return `      <!-- ${block.block_type.toUpperCase()} · ${esc(block.label)} -->
       <tr><td style="padding:48px 56px;">
-        ${l.greeting ? `<p style="margin:0 0 18px; font-size:14px; line-height:1.65;">${esc(l.greeting)}</p>` : ""}
-        ${l.body ? `<p style="margin:0 0 24px; font-size:14px; line-height:1.75; white-space:pre-wrap;">${esc(l.body)}</p>` : ""}
-        ${l.signoff ? `<p style="margin:0 0 6px; font-size:14px; line-height:1.5;">${esc(l.signoff)}</p>` : ""}
-        ${l.author ? `<p style="margin:0; font:700 13px/1 'Inter'; letter-spacing:.04em;">${esc(l.author)}</p>` : ""}
+        ${greeting ? `<p style="margin:0 0 18px; font-size:14px; line-height:1.65;">${esc(greeting)}</p>` : ""}
+        ${body ? `<p style="margin:0 0 24px; font-size:14px; line-height:1.75; white-space:pre-wrap;">${esc(body)}</p>` : ""}
+        ${signoff ? `<p style="margin:0 0 6px; font-size:14px; line-height:1.5;">${esc(signoff)}</p>` : ""}
+        ${author ? `<p style="margin:0 0 18px; font:700 13px/1 'Inter'; letter-spacing:.04em;">${esc(author)}</p>` : ""}
+        ${cta ? `<a href="${esc(pick("url", "cta_url")) || "{{cta_url}}"}" class="cta">${esc(cta)}</a>` : ""}
       </td></tr>`
       }
       default:
