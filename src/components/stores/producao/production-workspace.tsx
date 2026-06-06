@@ -14,6 +14,7 @@ import {
   Mail,
   Package,
   Plus,
+  RefreshCw,
   Send,
   ShoppingCart,
   Sparkles,
@@ -580,6 +581,11 @@ export function ProductionWorkspace({
             <DispatchEmailCopiesButton storeId={store.id} flows={flows} />
           </div>
 
+          {/* Re-sincronizar estrutura com a blueprint (sem gerar copy) */}
+          <div style={{ padding: "0 12px 4px" }}>
+            <ReconcileStructureButton storeId={store.id} onDone={() => mutate()} />
+          </div>
+
           {/* Recursos do projeto */}
           <div style={{ padding: "12px 12px 8px" }}>
             <SidebarSectionLabel>Recursos do projeto</SidebarSectionLabel>
@@ -952,6 +958,73 @@ function DispatchEmailCopiesButton({
         </div>
       )}
     </>
+  )
+}
+
+function ReconcileStructureButton({
+  storeId,
+  onDone,
+}: {
+  storeId: string
+  onDone: () => void
+}) {
+  const { toast } = useToast()
+  const [submitting, setSubmitting] = useState(false)
+
+  const run = async () => {
+    setSubmitting(true)
+    try {
+      const res = await fetch(
+        `/api/admin/stores/${storeId}/reconcile-blocks`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      )
+      const text = await res.text()
+      let body: Record<string, unknown> = {}
+      try {
+        body = JSON.parse(text)
+      } catch {
+        throw new Error(`Resposta inválida (HTTP ${res.status})`)
+      }
+      const data = (body?.data ?? body) as Record<string, unknown>
+      if (!res.ok || data?.ok === false) {
+        throw new Error((data?.error as string) || `HTTP ${res.status}`)
+      }
+      const reconciled = (data.emails_reconciled as number) ?? 0
+      const added = (data.blocks_added as number) ?? 0
+      toast({
+        title: reconciled > 0 ? "Estrutura atualizada" : "Já estava em dia",
+        description:
+          reconciled > 0
+            ? `${reconciled} email(s) reconciliado(s) · ${added} bloco(s) adicionado(s). A copy existente foi preservada.`
+            : "Nenhum email estava defasado em relação à blueprint.",
+      })
+      onDone()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Falha ao re-sincronizar",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={run}
+      disabled={submitting}
+      title="Adiciona à estrutura os blocos que faltam da blueprint, sem gerar copy (preserva a copy existente)."
+      className="w-full inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px] border border-black/[0.12] bg-white text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {submitting ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <RefreshCw className="h-3.5 w-3.5" />
+      )}
+      Re-sincronizar estrutura
+    </button>
   )
 }
 
