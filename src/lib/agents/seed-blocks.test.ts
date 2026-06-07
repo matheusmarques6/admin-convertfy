@@ -17,6 +17,7 @@ let existingBlocksCount = 0
 let existingBlocksData: any[] = []
 const insertCalls: Array<Record<string, unknown>[]> = []
 let deleteCalls = 0
+const updateCalls: Array<{ id: string; patch: Record<string, unknown> }> = []
 
 function buildQuery(table: string): any {
   const self: any = {}
@@ -49,6 +50,12 @@ function buildQuery(table: string): any {
   self.delete = () => ({
     eq: () => {
       deleteCalls++
+      return Promise.resolve({ error: null })
+    },
+  })
+  self.update = (patch: Record<string, unknown>) => ({
+    eq: (_col: string, id: string) => {
+      updateCalls.push({ id, patch })
       return Promise.resolve({ error: null })
     },
   })
@@ -95,6 +102,7 @@ beforeEach(() => {
   existingBlocksData = []
   insertCalls.length = 0
   deleteCalls = 0
+  updateCalls.length = 0
 })
 
 describe("seedBlocksFromBlueprint", () => {
@@ -144,7 +152,7 @@ describe("reconcileBlocksAdditive", () => {
     { type: "footer", label: "Footer", purpose: "F" },
   ]
 
-  it("no-op quando a estrutura já bate com a blueprint", async () => {
+  it("no-op quando a estrutura já bate com a blueprint (e needs_image já correto)", async () => {
     blueprintBlocks = BP5
     existingBlocksData = BP5.map((d, i) => ({
       id: `x${i}`,
@@ -154,12 +162,41 @@ describe("reconcileBlocksAdditive", () => {
       content: { headline: "x" },
       applied: false,
       applied_at: null,
+      // já reflete o desejado da blueprint: só o hero precisa de imagem
+      needs_image: d.type === "hero",
     }))
     const res = await reconcileBlocksAdditive("email-1", "welcome", 4)
     expect(res.reconciled).toBe(false)
     expect(res.added).toBe(0)
     expect(insertCalls).toHaveLength(0)
     expect(deleteCalls).toBe(0)
+    expect(updateCalls).toHaveLength(0)
+  })
+
+  it("sameSequence mas needs_image divergente → backfilla o flag sem reordenar", async () => {
+    blueprintBlocks = BP5
+    // Cenário do bug: blocos semeados por SQL antigo nasceram com needs_image=false
+    // em TODOS (inclusive o hero). Estrutura bate com a blueprint.
+    existingBlocksData = BP5.map((d, i) => ({
+      id: `x${i}`,
+      block_type: d.type,
+      position: i + 1,
+      label: d.label,
+      content: { headline: "x" },
+      applied: false,
+      applied_at: null,
+      needs_image: false,
+    }))
+    const res = await reconcileBlocksAdditive("email-1", "welcome", 4)
+    expect(res.reconciled).toBe(true)
+    expect(res.added).toBe(0)
+    // sem reescrita estrutural: nada de delete/insert
+    expect(deleteCalls).toBe(0)
+    expect(insertCalls).toHaveLength(0)
+    // só o hero (índice 1 em BP5) é corrigido pra true
+    expect(updateCalls).toHaveLength(1)
+    expect(updateCalls[0].id).toBe("x1")
+    expect(updateCalls[0].patch).toEqual({ needs_image: true })
   })
 
   it("adiciona os blocos faltantes preservando a copy existente (carry-over)", async () => {

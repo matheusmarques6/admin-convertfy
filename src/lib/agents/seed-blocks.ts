@@ -279,6 +279,12 @@ interface ExistingBlockRow {
   content: Record<string, unknown> | null
   applied: boolean
   applied_at: string | null
+  needs_image: boolean
+}
+
+/** Flag de imagem desejado pra um def da blueprint (default: hero precisa). */
+function desiredNeedsImage(def: BlueprintBlockDef): boolean {
+  return def.needs_image ?? def.type === "hero"
 }
 
 export interface ReconcileResult {
@@ -300,7 +306,7 @@ export async function reconcileBlocksAdditive(
 
   const { data: existingData, error: readErr } = await admin
     .from("email_blocks")
-    .select("id, block_type, position, label, content, applied, applied_at")
+    .select("id, block_type, position, label, content, applied, applied_at, needs_image")
     .eq("email_id", emailId)
     .order("position", { ascending: true })
   if (readErr) {
@@ -309,12 +315,37 @@ export async function reconcileBlocksAdditive(
   }
   const existing = (existingData ?? []) as ExistingBlockRow[]
 
-  // No-op se a sequência de tipos já é idêntica à blueprint.
+  // No-op estrutural se a sequência de tipos já é idêntica à blueprint — mas
+  // ainda assim BACKFILLA `needs_image` divergente. Blocos semeados por SQL
+  // antigo nasceram com `needs_image=false` (default da coluna); sem corrigir
+  // aqui, a fase 2 nunca seleciona o hero pra gerar imagem. UPDATE targeted por
+  // id (sem churn de IDs nem mexer em content/applied).
   const sameSequence =
     existing.length === blockDefs.length &&
     existing.every((b, i) => b.block_type === blockDefs[i].type)
   if (sameSequence) {
-    return { reconciled: false, added: 0, total: existing.length }
+    let fixed = 0
+    for (let i = 0; i < existing.length; i++) {
+      const want = desiredNeedsImage(blockDefs[i])
+      if (existing[i].needs_image === want) continue
+      const { error: updErr } = await admin
+        .from("email_blocks")
+        .update({ needs_image: want })
+        .eq("id", existing[i].id)
+      if (updErr) {
+        log.error("reconcile.needs_image_update_failed", {
+          emailId,
+          blockId: existing[i].id,
+          error: updErr.message,
+        })
+        throw new Error(`Falha ao corrigir needs_image: ${updErr.message}`)
+      }
+      fixed++
+    }
+    if (fixed > 0) {
+      log.info("reconcile.needs_image_backfilled", { emailId, fixed })
+    }
+    return { reconciled: fixed > 0, added: 0, total: existing.length }
   }
 
   // Fila de blocos existentes por tipo (FIFO por position) para carry-over.
@@ -337,7 +368,7 @@ export async function reconcileBlocksAdditive(
       content: match?.content ?? {},
       applied: match?.applied ?? false,
       applied_at: match?.applied_at ?? null,
-      needs_image: def.needs_image ?? def.type === "hero",
+      needs_image: desiredNeedsImage(def),
     }
   })
 
