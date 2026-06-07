@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import {
   DragDropContext,
@@ -1962,28 +1962,103 @@ function EmailRenderPreview({
       </div>
 
       <SectionLabel>Corpo do e-mail</SectionLabel>
+      <ScaledEmailFrame html={html} baseWidth={width} />
+    </div>
+  )
+}
+
+/**
+ * Preview do email que SEMPRE cabe na largura disponível, sem scroll lateral.
+ *
+ * O email tem largura fixa (`baseWidth`, default 600px). Em telas onde a coluna
+ * central é mais estreita que isso (lista de flows + painel direito comem
+ * espaço), o iframe de 600px gerava scroll horizontal. Aqui medimos a largura
+ * disponível e aplicamos `transform: scale` pra encaixar o email inteiro:
+ *  - coluna >= baseWidth → escala 1 (mostra no tamanho natural, centralizado)
+ *  - coluna <  baseWidth → escala < 1 (encaixa tudo, sem scroll lateral)
+ *
+ * A altura é automática: lemos o `scrollHeight` do conteúdo (precisa de
+ * `sandbox="allow-same-origin"`; scripts seguem bloqueados — emails não rodam
+ * JS) e dimensionamos o wrapper, eliminando também o scroll vertical interno.
+ */
+function ScaledEmailFrame({
+  html,
+  baseWidth,
+}: {
+  html: string
+  baseWidth: number
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [avail, setAvail] = useState(baseWidth)
+  const [contentHeight, setContentHeight] = useState(baseWidth)
+
+  // Largura disponível da coluna (reativo a resize da janela/painéis).
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    setAvail(el.clientWidth)
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setAvail(e.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Altura real do conteúdo do email (auto-size, sem scroll vertical interno).
+  const measureHeight = useCallback(() => {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc?.body) return
+    const h = Math.max(
+      doc.body.scrollHeight,
+      doc.documentElement?.scrollHeight ?? 0,
+    )
+    if (h > 0) setContentHeight(h)
+  }, [])
+
+  // Re-mede ao trocar o html e algumas vezes depois (imagens carregam tarde).
+  useEffect(() => {
+    measureHeight()
+    const timers = [80, 300, 900].map((ms) => setTimeout(measureHeight, ms))
+    return () => timers.forEach(clearTimeout)
+  }, [html, avail, measureHeight])
+
+  const scale = Math.min(1, avail / baseWidth)
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        width: "100%",
+        overflow: "hidden",
+        background: "#fff",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 10,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}
+    >
       <div
         style={{
-          width,
-          maxWidth: "100%",
+          width: baseWidth * scale,
+          height: contentHeight * scale,
           margin: "0 auto",
-          background: "#fff",
-          border: "1px solid var(--crm-border)",
-          borderRadius: 10,
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}
       >
         <iframe
+          ref={iframeRef}
           title="email-render-preview"
           srcDoc={html}
-          sandbox=""
+          sandbox="allow-same-origin"
+          onLoad={measureHeight}
+          scrolling="no"
           style={{
-            width: "100%",
-            minHeight: 600,
+            width: baseWidth,
+            height: contentHeight,
             border: 0,
             display: "block",
             background: "#fff",
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
           }}
         />
       </div>
