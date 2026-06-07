@@ -2026,22 +2026,21 @@ function ScaledEmailFrame({
   const scale = Math.min(1, avail / baseWidth)
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        overflow: "hidden",
-        background: "#fff",
-        border: "1px solid var(--crm-border)",
-        borderRadius: 10,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-      }}
-    >
+    // Div externa: mede a largura disponível (transparente, ocupa a coluna).
+    <div ref={containerRef} style={{ width: "100%" }}>
+      {/* Caixa visível: largura EXATA do email (600px, ou escalada quando a
+          coluna é menor) — sem margem branca interna; o fundo da coluna
+          aparece em volta. */}
       <div
         style={{
           width: baseWidth * scale,
           height: contentHeight * scale,
           margin: "0 auto",
+          overflow: "hidden",
+          background: "#fff",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 10,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}
       >
         <iframe
