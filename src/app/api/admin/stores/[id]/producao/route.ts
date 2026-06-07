@@ -86,9 +86,9 @@ export async function GET(
           assignee:profiles!email_flows_assigned_to_fkey (id, name, avatar_url),
           emails:email_flow_emails (
             id, flow_id, number, name, from_name, from_email, subject, preheader,
-            delay_hours, status, progress_percent, klaviyo_message_id,
+            delay_hours, status, progress_percent, klaviyo_message_id, html,
             created_at, updated_at,
-            blocks:email_blocks (id, block_type, label, position)
+            blocks:email_blocks (id, email_id, block_type, position, label, content, applied, applied_at, applied_by, created_at)
           )
         `)
         .eq("store_id", storeId)
