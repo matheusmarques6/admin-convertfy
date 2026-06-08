@@ -16,6 +16,7 @@ interface BlueprintRow {
   email_number: number
   objective: string
   messaging: string
+  subject_hint: string | null
   blocks: unknown
   source: string
   model: string | null
@@ -51,7 +52,7 @@ export async function GET(
       admin
         .from("store_email_blueprints")
         .select(
-          "flow_type, email_number, objective, messaging, blocks, source, model, updated_at",
+          "flow_type, email_number, objective, messaging, subject_hint, blocks, source, model, updated_at",
         )
         .eq("store_id", storeId),
       admin

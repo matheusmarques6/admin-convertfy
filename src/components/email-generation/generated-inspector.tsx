@@ -14,6 +14,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 interface BpBlock {
   type: string
   label?: string
+  purpose?: string
   needs_image?: boolean
 }
 interface GeneratedItem {
@@ -22,6 +23,8 @@ interface GeneratedItem {
   blueprint: {
     blocks?: BpBlock[]
     objective?: string
+    messaging?: string
+    subject_hint?: string | null
     source?: string
     model?: string | null
   } | null
@@ -57,6 +60,7 @@ export function GeneratedInspector() {
   const [selKey, setSelKey] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [htmlView, setHtmlView] = useState<"preview" | "code">("preview")
 
   const { data, isLoading, mutate } = useSWR<{ items: GeneratedItem[] }>(
     storeId ? `/api/admin/stores/${storeId}/generated` : null,
@@ -176,21 +180,45 @@ export function GeneratedInspector() {
                   <SourceBadge source={selected.blueprint?.source} />
                 </h4>
                 {selected.blueprint?.objective && (
-                  <p className="mb-2 text-[12px] text-slate-500">
+                  <p className="mb-1 text-[12px] text-slate-600 dark:text-white/60">
+                    <span className="font-semibold">Objetivo:</span>{" "}
                     {selected.blueprint.objective}
+                  </p>
+                )}
+                {selected.blueprint?.messaging && (
+                  <p className="mb-1 text-[12px] text-slate-500">
+                    <span className="font-semibold">Mensagem:</span>{" "}
+                    {selected.blueprint.messaging}
+                  </p>
+                )}
+                {selected.blueprint?.subject_hint && (
+                  <p className="mb-2 text-[12px] text-slate-500">
+                    <span className="font-semibold">Subject:</span>{" "}
+                    {selected.blueprint.subject_hint}
                   </p>
                 )}
                 <ol className="space-y-1 text-[12px]">
                   {(selected.blueprint?.blocks ?? []).map((b, i) => (
                     <li
                       key={i}
-                      className="flex items-center gap-2 rounded bg-slate-50 px-2 py-1 dark:bg-white/[0.03]"
+                      className="rounded bg-slate-50 px-2 py-1.5 dark:bg-white/[0.03]"
                     >
-                      <span className="font-mono text-slate-700 dark:text-white/80">
-                        {b.type}
-                      </span>
-                      {b.needs_image && <span title="precisa de imagem">🖼</span>}
-                      <span className="truncate text-slate-400">{b.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-slate-700 dark:text-white/80">
+                          {b.type}
+                        </span>
+                        {b.needs_image && (
+                          <span title="precisa de imagem">🖼</span>
+                        )}
+                        {b.label && (
+                          <span className="truncate text-slate-400">{b.label}</span>
+                        )}
+                      </div>
+                      {b.purpose && (
+                        <p className="mt-0.5 text-[11px] text-slate-400">
+                          {b.purpose}
+                        </p>
+                      )}
                     </li>
                   ))}
                   {(!selected.blueprint ||
@@ -201,19 +229,65 @@ export function GeneratedInspector() {
               </div>
 
               <div className="space-y-1">
-                <h4 className="text-[13px] font-semibold">
-                  HTML montado
-                  <SourceBadge source={selected.reference?.source} />
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[13px] font-semibold">
+                    HTML montado
+                    <SourceBadge source={selected.reference?.source} />
+                  </h4>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setHtmlView("preview")}
+                      className={`rounded-[4px] px-2 py-0.5 text-[11px] ${
+                        htmlView === "preview"
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-black"
+                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHtmlView("code")}
+                      className={`rounded-[4px] px-2 py-0.5 text-[11px] ${
+                        htmlView === "code"
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-black"
+                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      Código
+                    </button>
+                    {selected.reference?.html && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigator.clipboard
+                            ?.writeText(selected.reference?.html ?? "")
+                            .catch(() => {})
+                        }
+                        title="Copiar HTML"
+                        className="rounded-[4px] px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                      >
+                        Copiar
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="overflow-hidden rounded-[6px] border border-slate-200 dark:border-white/[0.08]">
-                  <iframe
-                    title="reference"
-                    srcDoc={
-                      selected.reference?.html ||
-                      "<p style='font-family:sans-serif;color:#94a3b8;padding:16px'>Sem reference montado (caiu no template global).</p>"
-                    }
-                    className="h-[420px] w-full bg-white"
-                  />
+                  {htmlView === "preview" ? (
+                    <iframe
+                      title="reference"
+                      srcDoc={
+                        selected.reference?.html ||
+                        "<p style='font-family:sans-serif;color:#94a3b8;padding:16px'>Sem reference montado (caiu no template global).</p>"
+                      }
+                      className="h-[420px] w-full bg-white"
+                    />
+                  ) : (
+                    <pre className="h-[420px] overflow-auto bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700 dark:bg-white/[0.02] dark:text-white/70">
+                      {selected.reference?.html || "// Sem reference montado."}
+                    </pre>
+                  )}
                 </div>
               </div>
             </div>
