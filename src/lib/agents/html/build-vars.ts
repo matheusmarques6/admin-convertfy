@@ -147,7 +147,7 @@ function purposeOf(
   if (!blueprint) return fallbackLabel
   const idx = position - 1
   const bp: BlueprintBlock | undefined = blueprint.blocks?.[idx]
-  return bp?.hint?.trim() || fallbackLabel
+  return bp?.purpose?.trim() || fallbackLabel
 }
 
 function buildImageMap(

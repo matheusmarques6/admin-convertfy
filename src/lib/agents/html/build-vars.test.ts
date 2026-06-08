@@ -72,8 +72,8 @@ const baseBlueprint: EmailBlueprint = {
   messaging: "Tom aspiracional",
   subject_hint: null,
   blocks: [
-    { type: "hero", label: "Hero", hint: "Banner principal com produto" },
-    { type: "cta", label: "CTA", hint: "Botão principal" },
+    { type: "hero", label: "Hero", purpose: "Banner principal com produto" },
+    { type: "cta", label: "CTA", purpose: "Botão principal" },
   ],
   tone_override: null,
   updated_at: "",

@@ -1,7 +1,11 @@
 export interface BlueprintBlock {
   type: string
   label: string
-  hint?: string
+  // Descrição/intenção do bloco. MESMA chave que `BlueprintBlockDef.purpose`
+  // (email-blueprint.ts) — é o que os dados (consts, migrations e a UI)
+  // gravam no JSONB `email_blueprints.blocks`. Antes era lido como `hint`
+  // (chave inexistente) e vinha sempre vazio.
+  purpose?: string
 }
 
 export interface EmailBlueprint {

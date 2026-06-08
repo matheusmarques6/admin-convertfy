@@ -282,10 +282,10 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
 
   // ── Master Prompt v2 — vars por bloco ────────────────────
-  // `blueprint_purpose` é o `hint` do bloco específico no blueprint
-  // (granular por slot, não por email inteiro). Sem hint → "".
+  // `blueprint_purpose` é o `purpose` do bloco específico no blueprint
+  // (granular por slot, não por email inteiro). Sem purpose → "".
   const blueprintPurpose = input.blockType
-    ? (blueprint?.blocks?.find((b) => b.type === input.blockType)?.hint ?? "")
+    ? (blueprint?.blocks?.find((b) => b.type === input.blockType)?.purpose ?? "")
     : ""
   const modeVal: ImageMode = input.mode ?? "text2img"
   const aspectVal: string = input.aspect ?? ""
@@ -342,6 +342,9 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     IDIOMA,
     MOEDA,
     INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
+    // Briefing visual por email (blueprint.image_brief) — instrução
+    // autoritativa de arte. Antes era coluna morta (nunca lida pelo prompt).
+    IMAGE_BRIEF: blueprint?.image_brief?.trim() ?? "",
 
     // Contexto pro switch do template (snake_case porque o template usa
     // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser

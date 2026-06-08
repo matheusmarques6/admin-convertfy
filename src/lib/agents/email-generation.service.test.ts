@@ -100,6 +100,44 @@ describe("buildImagePromptVars — backwards compatibility", () => {
   })
 })
 
+describe("buildImagePromptVars — IMAGE_BRIEF + blueprint_purpose", () => {
+  const blueprintWithBrief: EmailBlueprint = {
+    id: "bp1",
+    flow_type: "welcome",
+    email_number: 1,
+    objective: "Boas-vindas",
+    messaging: "Aspiracional",
+    subject_hint: null,
+    blocks: [{ type: "hero", label: "Hero", purpose: "Banner com produto" }],
+    tone_override: null,
+    updated_at: "",
+    updated_by: null,
+    image_brief: "Foto editorial do produto em uso, luz natural",
+  }
+
+  it("expõe IMAGE_BRIEF a partir de blueprint.image_brief", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      blueprint: blueprintWithBrief,
+      blockType: "hero",
+    })
+    expect(vars.IMAGE_BRIEF).toBe("Foto editorial do produto em uso, luz natural")
+  })
+
+  it("IMAGE_BRIEF vazio quando o blueprint não tem brief", () => {
+    expect(buildImagePromptVars(BASE_INPUT).IMAGE_BRIEF).toBe("")
+  })
+
+  it("blueprint_purpose lê o `purpose` do bloco (não o antigo `hint`)", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      blueprint: blueprintWithBrief,
+      blockType: "hero",
+    })
+    expect(vars.blueprint_purpose).toBe("Banner com produto")
+  })
+})
+
 describe("buildImagePromptVars — IDIOMA respects store language", () => {
   it("uses storeRaw.language when present", () => {
     const vars = buildImagePromptVars(BASE_INPUT)
