@@ -700,7 +700,10 @@ export async function generateEmail(
         status: "success",
         model,
         inputVars,
-        rawOutput: rawHtml.slice(0, 2000),
+        // HTML completo na telemetria (antes era slice(0,2000), o que fazia o
+        // "OUTPUT BRUTO" aparecer cortado mesmo com o email integro). O tamanho
+        // e' limitado pelo max_tokens do agente, entao guardar full e' seguro.
+        rawOutput: rawHtml,
         tokensInput,
         tokensOutput,
         costCents: computeCostCents(model, tokensInput, tokensOutput),

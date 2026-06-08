@@ -725,6 +725,9 @@ export async function runPhase2InBackground(
       agentConfigId: htmlConfig?.id,
       status: "success",
       model,
+      // HTML completo na telemetria — antes o caminho de producao nem gravava
+      // raw_output, deixando o "OUTPUT BRUTO" vazio. Limitado pelo max_tokens.
+      rawOutput: rawHtml,
       tokensInput,
       tokensOutput,
       costCents: computeCostCents(model, tokensInput, tokensOutput),
