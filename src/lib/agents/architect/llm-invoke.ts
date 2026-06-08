@@ -65,11 +65,24 @@ export async function invokeAgent(
   const userMessage = renderImageTemplate(config.user_template, vars)
   const supportsTemperature = !/^claude-opus-4-(7|8)/.test(config.model)
 
+  // Prompt caching: marca o system (fixo entre lojas do mesmo batch) como
+  // cacheável. A API só cacheia ACIMA do mínimo do modelo (2048 tokens p/
+  // Sonnet 4.x, 4096 p/ Opus 4.x); abaixo disso ela IGNORA silenciosamente,
+  // sem erro — então marcar é sempre seguro. Com os prompts atuais (~1k
+  // tokens) fica inativo no Sonnet 4.6; ativa sozinho se eles crescerem.
+  const system = [
+    {
+      type: "text" as const,
+      text: config.system_prompt,
+      cache_control: { type: "ephemeral" as const },
+    },
+  ]
+
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 60_000 })
   const baseReq = {
     model: config.model,
     max_tokens: config.max_tokens,
-    system: config.system_prompt,
+    system,
     messages: [{ role: "user" as const, content: userMessage }],
   }
 
@@ -83,6 +96,18 @@ export async function invokeAgent(
     .map((b) => (b.type === "text" ? b.text : ""))
     .join("")
     .trim()
+
+  const usage = res.usage as typeof res.usage & {
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  }
+  if (usage.cache_read_input_tokens || usage.cache_creation_input_tokens) {
+    log.info("prompt_cache", {
+      model: config.model,
+      read: usage.cache_read_input_tokens ?? 0,
+      created: usage.cache_creation_input_tokens ?? 0,
+    })
+  }
 
   return {
     raw,

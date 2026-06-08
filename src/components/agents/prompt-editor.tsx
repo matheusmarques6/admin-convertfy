@@ -85,9 +85,12 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "nicho", desc: "Nicho do negócio" },
     { key: "posicionamento", desc: "Posicionamento de preço" },
+    { key: "persona", desc: "Persona-alvo (ICP)" },
+    { key: "tom_voz", desc: "Tom de voz" },
     { key: "mood", desc: "Mood derivado do tom de voz" },
-    { key: "blocks_json", desc: "Blocos do blueprint (ordenados)" },
-    { key: "candidates_json", desc: "Variantes finalistas por bloco" },
+    { key: "briefing_json", desc: "Briefing da marca (JSON)" },
+    { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
+    { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],
 }
 

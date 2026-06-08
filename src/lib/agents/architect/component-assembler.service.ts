@@ -42,6 +42,8 @@ Escolha a melhor variante de cada bloco. Responda apenas o JSON array.`
 export interface AssemblerChoice {
   block_index: number
   variant_id: string
+  reasoning?: string
+  brand_evidence?: string
 }
 
 // ── Parsing + resolução (puro, testável) ───────────────────────────
@@ -53,16 +55,39 @@ export function parseAssemblerOutput(raw: string): AssemblerChoice[] {
     if (!Array.isArray(json)) return []
     return json
       .filter(
-        (c): c is { block_index: number; variant_id: string } =>
+        (c): c is Record<string, unknown> =>
           !!c &&
           typeof c === "object" &&
           typeof (c as Record<string, unknown>).block_index === "number" &&
           typeof (c as Record<string, unknown>).variant_id === "string",
       )
-      .map((c) => ({ block_index: c.block_index, variant_id: c.variant_id }))
+      .map((c) => ({
+        block_index: c.block_index as number,
+        variant_id: c.variant_id as string,
+        // Campos auxiliares opcionais (telemetria/auditoria) — ignorados na
+        // montagem, guardados para inspeção.
+        ...(typeof c.reasoning === "string" ? { reasoning: c.reasoning } : {}),
+        ...(typeof c.brand_evidence === "string"
+          ? { brand_evidence: c.brand_evidence }
+          : {}),
+      }))
   } catch {
     return []
   }
+}
+
+/**
+ * Fisher-Yates: retorna uma NOVA array embaralhada (não muta a original).
+ * Usado para apresentar os candidatos ao LLM sem viés de posição — o
+ * fallback determinístico continua usando a ordem por score.
+ */
+export function shuffle<T>(arr: readonly T[]): T[] {
+  const out = arr.slice()
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
 }
 
 /**
@@ -115,6 +140,9 @@ export interface AssembleReferenceInput {
   posicionamento: string
   tomVoz: string
   mood: string
+  persona: string
+  // Briefing da marca (JSON serializado) — ancora as escolhas no briefing.
+  briefingJson: string
   // Seções (8) vindas do outline (estrutura geral), na ordem.
   sections: string[]
 }
@@ -203,7 +231,7 @@ export async function assembleStoreReference(
     candidatesByBlock.map((finalists, i) => ({
       block_index: i,
       section: input.sections[i],
-      candidates: finalists.map((v) => ({
+      candidates: shuffle(finalists).map((v) => ({
         variant_id: v.id,
         name: v.name,
         density: v.density,
@@ -216,7 +244,10 @@ export async function assembleStoreReference(
     brand_name: input.brandName,
     nicho: input.nicho,
     posicionamento: input.posicionamento,
+    persona: input.persona,
+    tom_voz: input.tomVoz,
     mood: input.mood,
+    briefing_json: input.briefingJson,
     blocks_json: blocksJson,
     candidates_json: candidatesJson,
   }
@@ -258,7 +289,16 @@ export async function assembleStoreReference(
     model: usedLlm ? config.model : "fallback",
     inputVars: { sections: input.sections.length },
     rawOutput: rawOutput.slice(0, 4000),
-    parsedOutput: { chosen: variantIds.length, used_llm: usedLlm },
+    parsedOutput: {
+      chosen: variantIds.length,
+      used_llm: usedLlm,
+      choices: llmChoices.map((c) => ({
+        block_index: c.block_index,
+        variant_id: c.variant_id,
+        reasoning: c.reasoning ?? null,
+        brand_evidence: c.brand_evidence ?? null,
+      })),
+    },
     tokensInput,
     tokensOutput,
     costCents: usedLlm

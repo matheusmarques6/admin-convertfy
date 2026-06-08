@@ -124,6 +124,8 @@ export async function generateBlueprintAndReference(
     posicionamento,
     tomVoz,
     mood,
+    persona,
+    briefingJson: JSON.stringify(marca),
     sections,
   })
 

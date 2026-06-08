@@ -10,6 +10,7 @@ import {
   parseAssemblerOutput,
   resolveChoices,
   assembleReferenceHtml,
+  shuffle,
 } from "./component-assembler.service"
 
 function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
@@ -46,6 +47,28 @@ describe("parseAssemblerOutput", () => {
   it("retorna [] para inválido ou não-array", () => {
     expect(parseAssemblerOutput("xpto")).toEqual([])
     expect(parseAssemblerOutput('{"x":1}')).toEqual([])
+  })
+  it("captura reasoning e brand_evidence quando presentes", () => {
+    expect(
+      parseAssemblerOutput(
+        '[{"block_index":0,"variant_id":"a","reasoning":"r","brand_evidence":"e"}]',
+      ),
+    ).toEqual([
+      { block_index: 0, variant_id: "a", reasoning: "r", brand_evidence: "e" },
+    ])
+  })
+})
+
+describe("shuffle", () => {
+  it("preserva todos os elementos (sem perder nem duplicar)", () => {
+    const out = shuffle([1, 2, 3, 4, 5])
+    expect(out).toHaveLength(5)
+    expect([...out].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
+  })
+  it("não muta a array original", () => {
+    const arr = [1, 2, 3]
+    shuffle(arr)
+    expect(arr).toEqual([1, 2, 3])
   })
 })
 
