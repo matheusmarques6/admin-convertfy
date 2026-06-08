@@ -77,6 +77,24 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
   const [email, setEmail] = useState("")
   const [role, setRole] = useState("member")
   const [sending, setSending] = useState(false)
+  // Senha provisória retornada pela API (quando um novo usuário é criado).
+  // Exibida pro admin copiar caso o e-mail de boas-vindas não chegue.
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [invitedEmail, setInvitedEmail] = useState("")
+
+  function resetAndClose() {
+    setEmail("")
+    setRole("member")
+    setTempPassword(null)
+    setInvitedEmail("")
+    onClose()
+  }
+
+  function copyPassword() {
+    if (!tempPassword) return
+    navigator.clipboard.writeText(tempPassword)
+    toast({ title: "Copiado!", description: "Senha copiada para a área de transferência" })
+  }
 
   async function handleInvite() {
     if (!email) return
@@ -87,15 +105,20 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
       })
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const data = await response.json()
         throw new Error(data.error || "Erro ao enviar convite")
       }
-      toast({ title: "Convite enviado!", description: `Convite enviado para ${email}` })
-      setEmail("")
-      setRole("member")
       onInvited()
-      onClose()
+      const pwd = data.data?.temp_password || data.temp_password || null
+      if (pwd) {
+        // Mostra a senha provisória — não fecha o modal ainda
+        setInvitedEmail(email)
+        setTempPassword(pwd)
+      } else {
+        toast({ title: "Convite enviado!", description: `Convite enviado para ${email}` })
+        resetAndClose()
+      }
     } catch (err) {
       toast({ variant: "destructive", title: "Erro", description: err instanceof Error ? err.message : "Erro ao enviar convite" })
     } finally {
@@ -104,38 +127,63 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={resetAndClose}>
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Convidar membro</DialogTitle>
+          <DialogTitle>{tempPassword ? "Membro criado" : "Convidar membro"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <FormField label="Email" required>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@empresa.com" />
-          </FormField>
-
-          <FormField label="Role" required>
-            <SegmentedTabs value={role} onValueChange={setRole}>
-              <SegmentedTabItem value="admin">Admin</SegmentedTabItem>
-              <SegmentedTabItem value="manager">Manager</SegmentedTabItem>
-              <SegmentedTabItem value="member">Membro</SegmentedTabItem>
-            </SegmentedTabs>
-            <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-2">
-              {role === "admin" && "Acesso total ao sistema, incluindo configurações e equipe."}
-              {role === "manager" && "Gerencia clientes, lojas e campanhas. Sem acesso a configurações."}
-              {role === "member" && "Acesso limitado às lojas atribuídas. Sem financeiro ou equipe."}
+        {tempPassword ? (
+          <div className="space-y-4 py-4">
+            <p className="text-[13px] text-gray-600 dark:text-[#8B92A5]">
+              Convite criado para <span className="font-medium">{invitedEmail}</span>. Anote a senha
+              provisória abaixo — será solicitada a troca no primeiro acesso.
             </p>
-          </FormField>
-        </div>
+            <div className="flex items-center gap-2 p-3 rounded-[6px] bg-gray-50 dark:bg-[#242836] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+              <code className="flex-1 text-[15px] font-mono font-semibold tracking-wide text-gray-900 dark:text-[#EAEDF3] break-all">
+                {tempPassword}
+              </code>
+              <Button variant="secondary" size="sm" onClick={copyPassword}>
+                <Key className="h-4 w-4 mr-1.5" />
+                Copiar
+              </Button>
+            </div>
+            <DialogFooter>
+              <Button variant="primary" size="md" onClick={resetAndClose} className="w-full sm:w-auto">
+                Fechar
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4 py-4">
+              <FormField label="Email" required>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@empresa.com" />
+              </FormField>
 
-        <DialogFooter className="flex flex-col sm:flex-row gap-2">
-          <Button variant="ghost" size="md" onClick={onClose} className="w-full sm:w-auto">Cancelar</Button>
-          <Button variant="primary" size="md" onClick={handleInvite} disabled={!email || sending} className="w-full sm:w-auto">
-            {sending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Enviar convite
-          </Button>
-        </DialogFooter>
+              <FormField label="Role" required>
+                <SegmentedTabs value={role} onValueChange={setRole}>
+                  <SegmentedTabItem value="admin">Admin</SegmentedTabItem>
+                  <SegmentedTabItem value="manager">Manager</SegmentedTabItem>
+                  <SegmentedTabItem value="member">Membro</SegmentedTabItem>
+                </SegmentedTabs>
+                <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-2">
+                  {role === "admin" && "Acesso total ao sistema, incluindo configurações e equipe."}
+                  {role === "manager" && "Gerencia clientes, lojas e campanhas. Sem acesso a configurações."}
+                  {role === "member" && "Acesso limitado às lojas atribuídas. Sem financeiro ou equipe."}
+                </p>
+              </FormField>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="ghost" size="md" onClick={resetAndClose} className="w-full sm:w-auto">Cancelar</Button>
+              <Button variant="primary" size="md" onClick={handleInvite} disabled={!email || sending} className="w-full sm:w-auto">
+                {sending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Enviar convite
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )
