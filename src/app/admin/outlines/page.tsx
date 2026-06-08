@@ -1,12 +1,12 @@
 /**
- * /admin/outlines — Estrutura geral (input do Component Assembler).
- * Camada de alto nível por (flow_type × email) que a IA expande no
- * blueprint detalhado de cada loja.
+ * /admin/outlines — redirect para a aba "Estrutura geral" do hub de geração.
+ * O workspace vive em `src/components/email-outlines/*`.
  */
-import { OutlinesWorkspace } from "@/components/email-outlines/outlines-workspace"
+import { redirect } from "next/navigation"
+import { ROUTES } from "@/lib/routes"
 
 export const dynamic = "force-dynamic"
 
-export default function OutlinesPage() {
-  return <OutlinesWorkspace />
+export default function OutlinesRedirect() {
+  redirect(`${ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION}?tab=outlines`)
 }

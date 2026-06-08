@@ -64,6 +64,8 @@ export default async function EmailGenerationSettingsPage({
       initialTab={
         initialTab === "agents" ||
         initialTab === "blueprints" ||
+        initialTab === "outlines" ||
+        initialTab === "components" ||
         initialTab === "settings" ||
         initialTab === "references" ||
         initialTab === "test"

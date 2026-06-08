@@ -1,11 +1,12 @@
 /**
- * /admin/components — Biblioteca de componentes do Component Assembler.
- * As variantes catalogadas aqui são o acervo que o agente escolhe por bloco.
+ * /admin/components — redirect para a aba "Componentes" do hub de geração.
+ * O workspace vive em `src/components/email-components/*`.
  */
-import { ComponentsWorkspace } from "@/components/email-components/components-workspace"
+import { redirect } from "next/navigation"
+import { ROUTES } from "@/lib/routes"
 
 export const dynamic = "force-dynamic"
 
-export default function ComponentsPage() {
-  return <ComponentsWorkspace />
+export default function ComponentsRedirect() {
+  redirect(`${ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION}?tab=components`)
 }

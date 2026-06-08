@@ -34,6 +34,8 @@ import type { ListPromptsResult } from "@/lib/services/prompt-management.service
 import type { BlueprintRow } from "@/lib/email-blueprints/types"
 import { PromptsWorkspace } from "@/components/agents/prompts-workspace"
 import { BlueprintsWorkspace } from "@/components/email-blueprints/blueprints-workspace"
+import { ComponentsWorkspace } from "@/components/email-components/components-workspace"
+import { OutlinesWorkspace } from "@/components/email-outlines/outlines-workspace"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -49,7 +51,15 @@ const FLOW_TYPE_LABELS: Record<string, string> = {
   custom: "Personalizado",
 }
 
-const TABS = ["agents", "blueprints", "settings", "references", "test"] as const
+const TABS = [
+  "agents",
+  "blueprints",
+  "outlines",
+  "components",
+  "settings",
+  "references",
+  "test",
+] as const
 type Tab = (typeof TABS)[number]
 
 function parseTab(value: string | null | undefined): Tab {
@@ -93,6 +103,8 @@ export function EmailGenerationWorkspace({
       <SegmentedTabs value={tab} onValueChange={(v) => onTabChange(v as Tab)}>
         <SegmentedTabItem value="agents">Agentes</SegmentedTabItem>
         <SegmentedTabItem value="blueprints">Blueprints</SegmentedTabItem>
+        <SegmentedTabItem value="outlines">Estrutura geral</SegmentedTabItem>
+        <SegmentedTabItem value="components">Componentes</SegmentedTabItem>
         <SegmentedTabItem value="settings">Configurações</SegmentedTabItem>
         <SegmentedTabItem value="references">Referências</SegmentedTabItem>
         <SegmentedTabItem value="test">Testar</SegmentedTabItem>
@@ -100,6 +112,8 @@ export function EmailGenerationWorkspace({
 
       {tab === "agents" && <PromptsWorkspace initial={prompts} />}
       {tab === "blueprints" && <BlueprintsWorkspace initial={blueprints} />}
+      {tab === "outlines" && <OutlinesWorkspace />}
+      {tab === "components" && <ComponentsWorkspace />}
       {tab === "settings" && <SettingsTab />}
       {tab === "references" && <ReferencesTab />}
       {tab === "test" && <TestTab />}
@@ -1118,10 +1132,6 @@ function TestTab() {
       default: return <Clock className="h-4 w-4 text-slate-300 dark:text-white/20" />
     }
   }
-
-  const runSteps: RunStep[] = statusInfo?.agents
-    ? (statusInfo.agents as RunStep[])
-    : steps
 
   return (
     <div className="max-w-[700px] space-y-5">
