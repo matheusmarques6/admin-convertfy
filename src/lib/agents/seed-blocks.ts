@@ -28,44 +28,17 @@ export async function seedBlocksFromBlueprint(
   emailId: string,
   flowType: string,
   emailNumber: number,
+  storeId?: string,
 ): Promise<{ blocks: SeededBlock[] }> {
   const admin = createAdminClient()
 
-  // 1. Tentar ler blueprint do banco
-  let blockDefs: BlueprintBlockDef[] | null = null
-  try {
-    const { data: dbBlueprint } = await admin
-      .from("email_blueprints")
-      .select("blocks")
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle()
-
-    if (dbBlueprint?.blocks && Array.isArray(dbBlueprint.blocks)) {
-      blockDefs = dbBlueprint.blocks as BlueprintBlockDef[]
-      log.info("blueprint.from_db", { flowType, emailNumber, blockCount: blockDefs.length })
-    }
-  } catch (err) {
-    log.warn("blueprint.db_read_failed", { flowType, emailNumber, error: (err as Error).message })
-  }
-
-  // 2. Fallback pra DEFAULT_BLUEPRINTS
-  if (!blockDefs) {
-    const flowBlueprints = DEFAULT_BLUEPRINTS[flowType]
-    const blueprint = flowBlueprints?.[emailNumber]
-    if (blueprint) {
-      blockDefs = blueprint.blocks
-      log.info("blueprint.from_default", { flowType, emailNumber, blockCount: blockDefs.length })
-    } else {
-      // Fallback mínimo: hero + text + footer
-      blockDefs = [
-        { type: "hero", label: "Hero", purpose: "Banner principal do email", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Corpo principal do email" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé com links" },
-      ]
-      log.info("blueprint.fallback_minimal", { flowType, emailNumber })
-    }
-  }
+  // Blueprint por loja (Component Assembler) → global → default → mínimo.
+  const blockDefs = await resolveStoreOrGlobalBlockDefs(
+    admin,
+    storeId,
+    flowType,
+    emailNumber,
+  )
 
   // 3. Deletar blocos existentes
   const { error: deleteErr } = await admin
@@ -102,7 +75,7 @@ export async function seedBlocksFromBlueprint(
   }
 
   const blocks: SeededBlock[] = (inserted ?? []).map((row, idx) => {
-    const def = blockDefs![idx]
+    const def = blockDefs[idx]
     const blockType = row.block_type as string
     return {
       id: row.id as string,
@@ -142,6 +115,7 @@ export async function ensureBlocksSeeded(
   emailId: string,
   flowType: string,
   emailNumber: number,
+  storeId?: string,
 ): Promise<EnsureBlocksResult> {
   const admin = createAdminClient()
 
@@ -159,40 +133,13 @@ export async function ensureBlocksSeeded(
     return { seeded: false, count: existing ?? 0 }
   }
 
-  // 2. Lookup blueprint (DB → DEFAULT_BLUEPRINTS → fallback mínimo)
-  let blockDefs: BlueprintBlockDef[] | null = null
-  try {
-    const { data: dbBlueprint } = await admin
-      .from("email_blueprints")
-      .select("blocks")
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle()
-
-    if (dbBlueprint?.blocks && Array.isArray(dbBlueprint.blocks)) {
-      blockDefs = dbBlueprint.blocks as BlueprintBlockDef[]
-    }
-  } catch (err) {
-    log.warn("ensure.blueprint_read_failed", {
-      flowType,
-      emailNumber,
-      error: (err as Error).message,
-    })
-  }
-
-  if (!blockDefs) {
-    const flowBlueprints = DEFAULT_BLUEPRINTS[flowType]
-    const blueprint = flowBlueprints?.[emailNumber]
-    if (blueprint) {
-      blockDefs = blueprint.blocks
-    } else {
-      blockDefs = [
-        { type: "hero", label: "Hero", purpose: "Banner principal do email", needs_image: true },
-        { type: "text", label: "Texto", purpose: "Corpo principal do email" },
-        { type: "footer", label: "Rodapé", purpose: "Rodapé padrão" },
-      ]
-    }
-  }
+  // 2. Lookup blueprint (loja → global → default → mínimo)
+  const blockDefs = await resolveStoreOrGlobalBlockDefs(
+    admin,
+    storeId,
+    flowType,
+    emailNumber,
+  )
 
   // 3. INSERT direto (sem DELETE — está vazio mesmo)
   const inserts = blockDefs.map((def, idx) => ({
@@ -239,12 +186,40 @@ export async function ensureBlocksSeeded(
 //   o content dos que casam por tipo e deixando os novos vazios ({}).
 // ──────────────────────────────────────────────────────────────
 
-/** Resolve os defs da blueprint: DB → DEFAULT_BLUEPRINTS → fallback mínimo. */
-async function resolveBlockDefs(
+/**
+ * Resolve os defs de bloco de um email, em cascata:
+ *   store_email_blueprints (gerado por loja) → email_blueprints (global)
+ *   → DEFAULT_BLUEPRINTS → fallback mínimo.
+ */
+async function resolveStoreOrGlobalBlockDefs(
   admin: ReturnType<typeof createAdminClient>,
+  storeId: string | undefined,
   flowType: string,
   emailNumber: number,
 ): Promise<BlueprintBlockDef[]> {
+  // 1. Blueprint gerado por loja (Component Assembler).
+  if (storeId) {
+    try {
+      const { data } = await admin
+        .from("store_email_blueprints")
+        .select("blocks")
+        .eq("store_id", storeId)
+        .eq("flow_type", flowType)
+        .eq("email_number", emailNumber)
+        .maybeSingle()
+      if (data?.blocks && Array.isArray(data.blocks) && data.blocks.length > 0) {
+        return data.blocks as BlueprintBlockDef[]
+      }
+    } catch (err) {
+      log.warn("blueprint.store_read_failed", {
+        storeId,
+        flowType,
+        emailNumber,
+        error: (err as Error).message,
+      })
+    }
+  }
+  // 2. Blueprint global curado.
   try {
     const { data } = await admin
       .from("email_blueprints")
@@ -256,14 +231,16 @@ async function resolveBlockDefs(
       return data.blocks as BlueprintBlockDef[]
     }
   } catch (err) {
-    log.warn("reconcile.blueprint_read_failed", {
+    log.warn("blueprint.global_read_failed", {
       flowType,
       emailNumber,
       error: (err as Error).message,
     })
   }
+  // 3. DEFAULT_BLUEPRINTS in-code.
   const fromDefault = DEFAULT_BLUEPRINTS[flowType]?.[emailNumber]?.blocks
   if (fromDefault && fromDefault.length > 0) return fromDefault
+  // 4. Fallback mínimo.
   return [
     { type: "hero", label: "Hero", purpose: "Banner principal do email", needs_image: true },
     { type: "text", label: "Texto", purpose: "Corpo principal do email" },
@@ -300,9 +277,15 @@ export async function reconcileBlocksAdditive(
   emailId: string,
   flowType: string,
   emailNumber: number,
+  storeId?: string,
 ): Promise<ReconcileResult> {
   const admin = createAdminClient()
-  const blockDefs = await resolveBlockDefs(admin, flowType, emailNumber)
+  const blockDefs = await resolveStoreOrGlobalBlockDefs(
+    admin,
+    storeId,
+    flowType,
+    emailNumber,
+  )
 
   const { data: existingData, error: readErr } = await admin
     .from("email_blocks")

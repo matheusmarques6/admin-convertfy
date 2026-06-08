@@ -9,12 +9,18 @@
  * Padrão fire-and-forget igual a dispatchBriefingWebhook.
  */
 
+import { randomUUID } from "crypto"
+
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import {
   ensureBlocksSeeded,
   reconcileBlocksAdditive,
 } from "@/lib/agents/seed-blocks"
+import {
+  generateForEmails,
+  isArchitectConfigured,
+} from "@/lib/agents/architect/generate.service"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import type {
   StoreBrandIdentity,
@@ -271,15 +277,46 @@ export async function dispatchEmailCopyWebhook(
   //   estrutura já bate. Resolve lojas legadas presas com poucos blocos.
   // Falhas individuais são logadas mas não bloqueiam o dispatch.
   const flowsById = new Map(flows.map((f) => [f.id, f]))
+
+  // Component Assembler (Epic AE): gera blueprint + reference por (loja×email)
+  // ANTES do seed, para que os blocos venham do blueprint gerado por loja.
+  // Guard evita latência quando a biblioteca não está configurada; o try/catch
+  // garante que falha aqui não bloqueia o onboarding (seed cai no global/default).
+  try {
+    if (await isArchitectConfigured()) {
+      const architectEmails = emails
+        .map((e) => {
+          const flow = flowsById.get(e.flow_id)
+          return flow
+            ? { flowType: flow.flow_type, emailNumber: e.number }
+            : null
+        })
+        .filter(
+          (x): x is { flowType: string; emailNumber: number } => x !== null,
+        )
+      await generateForEmails(
+        storeId,
+        randomUUID(),
+        architectEmails,
+        options.triggeredBy,
+      )
+    }
+  } catch (err) {
+    log.warn("email_copy.webhook.architect_failed", {
+      storeId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   await Promise.all(
     emails.map(async (e) => {
       const flow = flowsById.get(e.flow_id)
       if (!flow) return
       try {
         if (FINALIZED_STATUSES.has(e.status)) {
-          await ensureBlocksSeeded(e.id, flow.flow_type, e.number)
+          await ensureBlocksSeeded(e.id, flow.flow_type, e.number, storeId)
         } else {
-          await reconcileBlocksAdditive(e.id, flow.flow_type, e.number)
+          await reconcileBlocksAdditive(e.id, flow.flow_type, e.number, storeId)
         }
       } catch (err) {
         log.warn("email_copy.webhook.ensure_blocks_failed", {

@@ -228,8 +228,10 @@ export async function buildHtmlPromptVars(
   const storeId = (storeRaw?.id as string | undefined) ?? null
   precheckBrandReady(brand, storeId)
 
-  // ── Queries paralelas: email row + blocks + reference template ────
-  const [emailRes, blocksRes, refRes] = await Promise.all([
+  // ── Queries paralelas: email row + blocks + reference ─────────────
+  // O reference montado por loja (store_email_references, Component
+  // Assembler) tem precedência sobre o template global curado.
+  const [emailRes, blocksRes, storeRefRes, refRes] = await Promise.all([
     admin
       .from("email_flow_emails")
       .select("name, subject, preheader")
@@ -240,6 +242,15 @@ export async function buildHtmlPromptVars(
       .select("id, position, block_type, label, content")
       .eq("email_id", emailId)
       .order("position", { ascending: true }),
+    storeId && flowType && emailNumber != null
+      ? admin
+          .from("store_email_references")
+          .select("html")
+          .eq("store_id", storeId)
+          .eq("flow_type", flowType)
+          .eq("email_number", emailNumber)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     flowType && emailNumber != null
       ? admin
           .from("email_reference_templates")
@@ -257,10 +268,15 @@ export async function buildHtmlPromptVars(
     | { name: string; subject: string; preheader: string }
     | null
   const blocks = (blocksRes.data as EmailBlockRow[] | null) ?? []
-  const referenceHtml =
+  // Reference por loja (assembler) vence; fallback no template global.
+  const storeRefHtml =
+    ((storeRefRes as { data: { html?: string | null } | null }).data
+      ?.html as string | null) ?? null
+  const globalRefHtml =
     ((refRes as { data: { html?: string | null } | null }).data?.html as
       | string
-      | null) ?? ""
+      | null) ?? null
+  const referenceHtml = storeRefHtml || globalRefHtml || ""
 
   // ── Color roles ────────────────────────────────────────────────────
   const roles = deriveColorRoles(
