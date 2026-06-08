@@ -1003,8 +1003,9 @@ function TestTab() {
   const [generating, setGenerating] = useState(false)
   const [batchId, setBatchId] = useState<string | null>(null)
   const [result, setResult] = useState<{
-    status: "done" | "error"
+    status: "done" | "error" | "dispatched"
     error?: string
+    message?: string
     batchId?: string
     emailId?: string
   } | null>(null)
@@ -1054,6 +1055,8 @@ function TestTab() {
     setResult(null)
     setBatchId(null)
     setSteps([
+      { agent: "assembler", status: "pending" },
+      { agent: "blueprint", status: "pending" },
       { agent: "seed", status: "pending" },
       { agent: "copy", status: "pending" },
       { agent: "image", status: "pending" },
@@ -1089,18 +1092,25 @@ function TestTab() {
         throw new Error(errText(responseData?.error) || `HTTP ${res.status}`)
       }
 
-      const isError = (responseData.status as string) === "error"
+      const respStatus = responseData.status as string
+      const isError = respStatus === "error"
+      const isDispatched = respStatus === "dispatched"
       const errMsg =
         responseData.error != null ? errText(responseData.error) : undefined
       setResult({
-        status: isError ? "error" : "done",
+        status: isError ? "error" : isDispatched ? "dispatched" : "done",
         error: isError
           ? errMsg || "Falha na geração (sem detalhe retornado)"
           : errMsg,
+        message: isDispatched
+          ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem/HTML/QA) virá depois, após o callback da copy."
+          : undefined,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
       })
-      if (responseData.batchId) {
+      // Polling só no caminho síncrono (com copy). No "dispatched" o render é
+      // assíncrono e roda sob outro batch.
+      if (responseData.batchId && !isDispatched) {
         setBatchId(responseData.batchId as string)
         setPollInterval(2000)
       }
@@ -1148,6 +1158,8 @@ function TestTab() {
   }
 
   const agentLabels: Record<string, string> = {
+    assembler: "Montador",
+    blueprint: "Blueprint (estrutura)",
     seed: "Seed Blocos",
     copy: "Copy (IA)",
     image: "Imagem (IA)",
@@ -1174,7 +1186,9 @@ function TestTab() {
           </h3>
         </div>
         <p className="text-[12px] text-slate-500 dark:text-white/45">
-          Selecione uma loja e um email para executar o pipeline completo (seed → copy → image → html).
+          Verifica se o email tem copy. Com copy: Montador → Blueprint → render
+          (seed → imagem → HTML). Sem copy: Montador → Blueprint → N8N (a copy é
+          gerada e o render vem depois).
         </p>
 
         <div className="space-y-3">
@@ -1371,7 +1385,9 @@ function TestTab() {
         <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-4">
           {/* Status header */}
           <div className="flex items-center gap-2">
-            {statusInfo?.status === "done" || result?.status === "done" ? (
+            {result?.status === "dispatched" ? (
+              <Clock className="h-5 w-5 text-blue-500" />
+            ) : statusInfo?.status === "done" || result?.status === "done" ? (
               <CheckCircle2 className="h-5 w-5 text-emerald-500" />
             ) : statusInfo?.status === "error" || result?.status === "error" ? (
               <AlertCircle className="h-5 w-5 text-red-500" />
@@ -1379,18 +1395,20 @@ function TestTab() {
               <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
             )}
             <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
-              {statusInfo?.status === "done" || result?.status === "done"
-                ? "Geração concluída"
-                : statusInfo?.status === "error" || result?.status === "error"
-                  ? "Erro na geração"
-                  : "Gerando email..."}
+              {result?.status === "dispatched"
+                ? "Copy disparada ao N8N"
+                : statusInfo?.status === "done" || result?.status === "done"
+                  ? "Geração concluída"
+                  : statusInfo?.status === "error" || result?.status === "error"
+                    ? "Erro na geração"
+                    : "Gerando email..."}
             </h3>
           </div>
 
           {/* Agent steps */}
           {statusInfo?.runs && (
             <div className="space-y-1.5">
-              {(["seed", "copy", "image", "html"] as const).map((agent) => {
+              {(["assembler", "blueprint", "seed", "copy", "image", "html"] as const).map((agent) => {
                 const agentRuns = (statusInfo.runs as Array<{ agent: string; status: string; error_message?: string; duration_ms?: number; tokens_input?: number; tokens_output?: number; cost_cents?: number }>).filter(
                   (r) => r.agent === agent,
                 )
@@ -1450,6 +1468,15 @@ function TestTab() {
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Info message (caminho sem copy → N8N) */}
+          {result?.message && (
+            <div className="p-3 rounded-[4px] bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
+              <p className="text-[12px] text-blue-700 dark:text-blue-300">
+                {result.message}
+              </p>
             </div>
           )}
 

@@ -431,6 +431,8 @@ interface GenerateEmailParams {
   emailNumber: number
   triggeredBy: string
   batchId: string
+  /** Quando true, NÃO re-seedeia: preserva os blocos/copy existentes. */
+  skipSeed?: boolean
 }
 
 interface GenerationContext {
@@ -455,10 +457,39 @@ interface GenerationContext {
 
 // ── Main function ───────────────────────────────────────────
 
+/** Carrega os blocos já materializados de um email (forma SeededBlock), sem
+ * deletar — usado quando o seed é pulado para preservar a copy existente. */
+async function loadExistingBlocks(
+  admin: ReturnType<typeof createAdminClient>,
+  emailId: string,
+): Promise<SeededBlock[]> {
+  const { data } = await admin
+    .from("email_blocks")
+    .select("id, block_type, position, label, needs_image")
+    .eq("email_id", emailId)
+    .order("position")
+  return (
+    (data as Array<{
+      id: string
+      block_type: string
+      position: number
+      label: string | null
+      needs_image: boolean | null
+    }> | null) ?? []
+  ).map((row) => ({
+    id: row.id,
+    block_type: row.block_type,
+    position: row.position,
+    label: row.label ?? "",
+    purpose: "",
+    needs_image: row.needs_image ?? row.block_type === "hero",
+  }))
+}
+
 export async function generateEmail(
   params: GenerateEmailParams,
 ): Promise<{ status: "done" | "error"; error?: string }> {
-  const { storeId, flowId, emailId, flowType, emailNumber, triggeredBy, batchId } = params
+  const { storeId, flowId, emailId, flowType, emailNumber, triggeredBy, batchId, skipSeed } = params
   const admin = createAdminClient()
   log.info("generation.start", { storeId, flowId, emailId, flowType, emailNumber, batchId })
 
@@ -470,8 +501,13 @@ export async function generateEmail(
     const seedT0 = Date.now()
     let seededBlocks: SeededBlock[]
     try {
-      const seedResult = await seedBlocksFromBlueprint(emailId, flowType, emailNumber)
-      seededBlocks = seedResult.blocks
+      if (skipSeed) {
+        // Preserva a copy existente: carrega os blocos sem deletar.
+        seededBlocks = await loadExistingBlocks(admin, emailId)
+      } else {
+        const seedResult = await seedBlocksFromBlueprint(emailId, flowType, emailNumber)
+        seededBlocks = seedResult.blocks
+      }
       await logGenerationRun({
         storeId,
         flowId,
@@ -479,7 +515,7 @@ export async function generateEmail(
         triggeredBy,
         batchId,
         agent: "seed",
-        status: "success",
+        status: skipSeed ? "skipped" : "success",
         durationMs: Date.now() - seedT0,
         parsedOutput: { blockCount: seededBlocks.length },
       })

@@ -12,7 +12,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { generateEmail } from "@/lib/agents/email-generation.service"
+import { runTestGeneration } from "@/lib/agents/test-generation.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -47,7 +47,7 @@ export async function POST(
       triggeredBy: user.id,
     })
 
-    const result = await generateEmail({
+    const result = await runTestGeneration({
       storeId,
       flowId: parsed.flowId,
       emailId: parsed.emailId,
@@ -57,7 +57,7 @@ export async function POST(
       batchId,
     })
 
-    return successResponse(request, { batchId, ...result })
+    return successResponse(request, result)
   } catch (error) {
     log.error("generate-email.error", error)
     return errorResponse(request, error, "generate-email")
