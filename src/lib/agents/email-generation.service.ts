@@ -36,6 +36,7 @@ import { deriveShotArchetype } from "./image/shot-archetype"
 import type { AspectKey } from "./image/aspect-ratio"
 import type { ImageMode } from "./image/mode-resolution"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
+import { loadTopProducts } from "./top-products"
 import { selectImageBlocks } from "./image/limits"
 import {
   generateEmailImage,
@@ -717,13 +718,17 @@ async function loadGenerationContext(
     .single()
 
   const orgId = (storeRes.data as Record<string, unknown>)?.org_id as string | undefined
+  const storeUrl =
+    ((storeRes.data as Record<string, unknown>)?.store_url as
+      | string
+      | undefined) ?? null
 
   // Parallelizar demais queries (settings agora filtra por org_id)
   const [
     brandRes,
     briefingRes,
     blueprintRes,
-    topProductsRes,
+    topProducts,
     settingsRes,
     copyConfigRes,
     htmlConfigRes,
@@ -755,14 +760,8 @@ async function loadGenerationContext(
       .eq("email_number", emailNumber)
       .maybeSingle(),
 
-    // Top products
-    admin
-      .from("store_brand_identity")
-      .select("top_products")
-      .eq("store_id", storeId)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    // Top products — fonte única (tabela viva + fallback snapshot)
+    loadTopProducts(admin, storeId, storeUrl),
 
     // Generation settings — filtra por org_id da store
     orgId
@@ -811,7 +810,7 @@ async function loadGenerationContext(
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
     blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
-    topProducts: ((topProductsRes.data?.top_products as TopProduct[]) ?? []),
+    topProducts,
     referenceHtml: (refTemplateRes.data?.html as string | null) ?? null,
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,
     imageMap: (refTemplateRes.data?.image_map as GenerationContext["imageMap"]) ?? null,

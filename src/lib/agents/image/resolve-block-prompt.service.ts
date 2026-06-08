@@ -16,6 +16,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildImagePromptVars } from "@/lib/agents/email-generation.service"
+import { loadTopProducts } from "@/lib/agents/top-products"
 import {
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
   renderImagePrompt,
@@ -248,7 +249,12 @@ export async function resolveBlockPrompt(
     } | null) ?? null
   const storeOverrides =
     (storeOverridesRes.data as StoreImageOverrides | null) ?? null
-  const topProducts = ((brand?.top_products ?? []) as TopProduct[]) ?? []
+  // Fonte única: tabela viva store_top_products (fallback no snapshot).
+  const topProducts: TopProduct[] = await loadTopProducts(
+    admin,
+    storeId,
+    (storeRaw?.store_url as string | undefined) ?? null,
+  )
 
   // ── 5. Aspect ratio + mode (resolvidos ANTES do buildImagePromptVars
   // pra ficarem disponíveis como vars do template no Master Prompt v2). ─

@@ -64,6 +64,7 @@ import {
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES } from "./image/limits"
+import { loadTopProducts } from "./top-products"
 
 const log = logger.child("Phase2Runner")
 
@@ -298,7 +299,14 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     })
   }
 
-  const topProducts = ((brandRes.data?.top_products ?? []) as TopProduct[]) ?? []
+  // Fonte única: tabela viva store_top_products (fallback no snapshot).
+  const topProducts: TopProduct[] = await loadTopProducts(
+    admin,
+    storeId,
+    ((storeData as Record<string, unknown> | null)?.store_url as
+      | string
+      | undefined) ?? null,
+  )
 
   return {
     storeRaw: (storeData as Record<string, unknown>) ?? { store_name: "Loja" },

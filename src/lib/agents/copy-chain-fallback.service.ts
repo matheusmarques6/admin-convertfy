@@ -39,6 +39,7 @@ import {
 } from "./chains/copy.chain"
 import { logGenerationRun, computeCostCents } from "./callbacks/telemetry.callback"
 import { runPhase2InBackground } from "./phase2-runner.service"
+import { loadTopProducts } from "./top-products"
 
 const log = logger.child("CopyChainFallback")
 
@@ -172,13 +173,20 @@ async function loadContext(
         .maybeSingle(),
     ])
 
+  // Fonte única: tabela viva store_top_products (fallback no snapshot).
+  const storeUrl =
+    ((storeRes.data as Record<string, unknown> | null)?.store_url as
+      | string
+      | undefined) ?? null
+  const topProducts: TopProduct[] = await loadTopProducts(admin, storeId, storeUrl)
+
   return {
     storeRaw: (storeRes.data as Record<string, unknown> | null) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
     blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
     copyConfig: (copyConfigRes.data as EmailAgentConfig | null) ?? null,
-    topProducts: ((brandRes.data?.top_products as TopProduct[] | undefined) ?? []),
+    topProducts,
   }
 }
 

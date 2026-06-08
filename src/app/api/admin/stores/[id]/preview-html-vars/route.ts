@@ -26,6 +26,7 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildHtmlPromptVars } from "@/lib/agents/html/build-vars"
+import { loadTopProducts } from "@/lib/agents/top-products"
 import { canManagePrompts } from "@/lib/services/prompt-management.service"
 import type {
   EmailBlueprint,
@@ -33,7 +34,6 @@ import type {
 import type {
   StoreBrandIdentity,
   StoreBriefing,
-  TopProduct,
 } from "@/types/email-workspace"
 
 const log = logger.child("PreviewHtmlVars")
@@ -113,7 +113,7 @@ export async function POST(
     }
 
     // Carrega context base em paralelo
-    const [storeRes, brandRes, briefingRes, blueprintRes, topProductsRes] =
+    const [storeRes, brandRes, briefingRes, blueprintRes] =
       await Promise.all([
         admin.from("client_stores").select("*").eq("id", storeId).maybeSingle(),
         admin
@@ -138,22 +138,23 @@ export async function POST(
               .eq("email_number", emailNumber)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
-        admin
-          .from("store_brand_identity")
-          .select("top_products")
-          .eq("store_id", storeId)
-          .order("version", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
       ])
+
+    // Fonte única: tabela viva store_top_products (fallback no snapshot).
+    const topProducts = await loadTopProducts(
+      admin,
+      storeId,
+      ((storeRes.data as Record<string, unknown> | null)?.store_url as
+        | string
+        | undefined) ?? null,
+    )
 
     const vars = await buildHtmlPromptVars({
       emailId,
       brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
       briefing: (briefingRes.data as StoreBriefing | null) ?? null,
       blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
-      topProducts:
-        ((topProductsRes.data?.top_products as TopProduct[] | undefined) ?? []),
+      topProducts,
       storeRaw: (storeRes.data as Record<string, unknown>) ?? {},
       flowType,
       emailNumber,
