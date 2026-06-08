@@ -172,7 +172,14 @@ export function ComponentsWorkspace() {
       />
 
       <div className="overflow-x-auto pb-1">
-        <SegmentedTabs value={tab} onValueChange={(v) => setTab(v)}>
+        <SegmentedTabs
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v)
+            setSelectedId(null)
+            setForm(emptyForm(v))
+          }}
+        >
           {COMPONENT_CATEGORIES.map((c) => (
             <SegmentedTabItem key={c.key} value={c.key}>
               {c.label}

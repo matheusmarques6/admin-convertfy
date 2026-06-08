@@ -169,7 +169,14 @@ export function OutlinesWorkspace() {
       />
 
       <div className="overflow-x-auto pb-1">
-        <SegmentedTabs value={tab} onValueChange={(v) => setTab(v)}>
+        <SegmentedTabs
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v)
+            setSelectedId(null)
+            setForm(emptyForm(v))
+          }}
+        >
           {FLOW_TYPES.map((ft) => (
             <SegmentedTabItem key={ft} value={ft}>
               {ft}
