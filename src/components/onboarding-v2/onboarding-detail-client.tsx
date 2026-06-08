@@ -128,10 +128,14 @@ export function OnboardingDetailClient({ id }: { id: string }) {
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
+        const errMsg =
+          typeof j?.error === "string"
+            ? j.error
+            : j?.error?.message ?? "Verifique checklist e deliverables."
         toast.toast({
           variant: "destructive",
           title: "Nao foi possivel avancar",
-          description: j.error?.message ?? "Verifique checklist e deliverables.",
+          description: errMsg,
         })
       } else {
         toast.toast({ title: "Onboarding avancou de coluna" })

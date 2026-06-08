@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import {
@@ -82,22 +83,6 @@ async function guardEmailProductionCompletion(
 // Sem cache: mutations frequentes precisam reflectir imediato.
 export const dynamic = "force-dynamic"
 
-async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
-  const { data: orgMember } = await supabase
-    .from("org_members")
-    .select("org_id")
-    .eq("profile_id", userId)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
-
-  if (!orgMember?.org_id) {
-    throw new AppError("Acesso negado", 403)
-  }
-
-  return orgMember.org_id
-}
-
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
@@ -115,7 +100,7 @@ export async function GET(
     const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    const orgId = await resolveOrgId(supabase, user.id)
+    const orgId = await resolveOrgId(user.id)
 
     const adminClient = createAdminClient()
 
@@ -192,7 +177,7 @@ export async function PUT(
     const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    const orgId = await resolveOrgId(supabase, user.id)
+    const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
     const adminClient = createAdminClient()
@@ -209,6 +194,12 @@ export async function PUT(
       .single()
 
     if (fetchError || !existingTask) {
+      log.error("[Task] PUT fetch failed", {
+        taskId: id,
+        orgId,
+        code: fetchError?.code,
+        message: fetchError?.message,
+      })
       throw new AppError("Tarefa não encontrada", 404)
     }
 
@@ -282,7 +273,10 @@ export async function PUT(
 
     if (updateError) {
       log.error("[Task] Update error:", updateError)
-      throw new AppError("Erro ao atualizar tarefa", 500)
+      throw new AppError(
+        `Erro ao atualizar tarefa: ${updateError.message || updateError.code || "desconhecido"}`,
+        500,
+      )
     }
 
     // --- Onboarding sync (non-blocking) ---
@@ -354,7 +348,7 @@ export async function DELETE(
     const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    const orgId = await resolveOrgId(supabase, user.id)
+    const orgId = await resolveOrgId(user.id)
 
     const adminClient = createAdminClient()
 

@@ -325,11 +325,14 @@ export function OnboardingDrawer({
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
+        const errMsg =
+          typeof j?.error === "string"
+            ? j.error
+            : j?.error?.message ?? "Verifique checklist e entregáveis."
         toast.toast({
           variant: "destructive",
           title: "Não foi possível avançar",
-          description:
-            j.error?.message ?? "Verifique checklist e entregáveis.",
+          description: errMsg,
         })
         return
       }
@@ -351,13 +354,26 @@ export function OnboardingDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (!res.ok) throw new Error("falha")
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        const errMsg =
+          typeof j?.error === "string"
+            ? j.error
+            : j?.error?.message ?? `HTTP ${res.status}`
+        toast.toast({
+          variant: "destructive",
+          title: "Falha ao atualizar tarefa",
+          description: errMsg,
+        })
+        return
+      }
       mutate()
       onMutate?.()
-    } catch {
+    } catch (e) {
       toast.toast({
         variant: "destructive",
         title: "Falha ao atualizar tarefa",
+        description: e instanceof Error ? e.message : "Erro de rede",
       })
     }
   }
