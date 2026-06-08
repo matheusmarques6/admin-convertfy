@@ -67,6 +67,29 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "email_number", desc: "Número do email" },
     { key: "claims", desc: "Lista de claims/promessas extraídas" },
   ],
+  // ── Epic AE: Component Assembler ────────────────────────
+  blueprint: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "nicho", desc: "Nicho do negócio" },
+    { key: "posicionamento", desc: "Posicionamento de preço" },
+    { key: "persona", desc: "Persona-alvo (ICP)" },
+    { key: "tom_voz", desc: "Tom de voz" },
+    { key: "top_products", desc: "Produtos top da loja" },
+    { key: "flow_type", desc: "Tipo do flow" },
+    { key: "email_number", desc: "Número do email no flow" },
+    { key: "outline_objective", desc: "Objetivo geral do email (outline)" },
+    { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
+    { key: "suggested_blocks", desc: "Blocos sugeridos (outline)" },
+    { key: "allowed_block_types", desc: "Tipos de bloco permitidos" },
+  ],
+  assembler: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "nicho", desc: "Nicho do negócio" },
+    { key: "posicionamento", desc: "Posicionamento de preço" },
+    { key: "mood", desc: "Mood derivado do tom de voz" },
+    { key: "blocks_json", desc: "Blocos do blueprint (ordenados)" },
+    { key: "candidates_json", desc: "Variantes finalistas por bloco" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

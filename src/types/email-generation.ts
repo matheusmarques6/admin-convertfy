@@ -47,7 +47,16 @@ export interface StoreImageOverrides {
   updated_at?: string
 }
 
-export type AgentType = "copy" | "image" | "html" | "qa"
+export type AgentType =
+  | "copy"
+  | "image"
+  | "html"
+  | "qa"
+  // ── Epic AE: Component Assembler ────────────────────────
+  // blueprint: gera a estrutura detalhada do email a partir do outline.
+  // assembler: escolhe variantes de componente e monta o reference HTML.
+  | "blueprint"
+  | "assembler"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -125,7 +134,14 @@ export interface EmailGenerationSettings {
 }
 
 export type GenerationRunStatus = "running" | "success" | "error" | "skipped"
-export type GenerationRunAgent = "seed" | "copy" | "image" | "html" | "qa"
+export type GenerationRunAgent =
+  | "seed"
+  | "copy"
+  | "image"
+  | "html"
+  | "qa"
+  | "blueprint"
+  | "assembler"
 
 export interface EmailGenerationRun {
   id: string
@@ -182,4 +198,82 @@ export interface EmailReferenceTemplate {
   is_active: boolean
   created_at: string
   created_by: string | null
+}
+
+// ── Epic AE: Component Assembler (blueprint + reference por loja × email) ──
+export type ComponentDensity = "minimal" | "balanced" | "rich"
+export type GeneratedSource = "ai" | "manual"
+
+// Biblioteca global de variantes de componente, catalogadas por block_type.
+// As dimensões de matching (niche_affinity/positioning/mood/density) alimentam
+// o pré-filtro determinístico do assembler antes da escolha final pelo LLM.
+export interface EmailComponentVariant {
+  id: string
+  block_type: string
+  name: string
+  html: string
+  slots: string[]
+  niche_affinity: string[]
+  positioning: string[]
+  mood: string[]
+  density: ComponentDensity | null
+  tags: string[]
+  thumbnail: string | null
+  is_active: boolean
+  version: number
+  created_at: string
+  created_by: string | null
+}
+
+// Estrutura geral (INPUT) por email do flow — global, curável. Consumida
+// somente pelo agente gerador, que a expande no blueprint detalhado.
+export interface EmailOutlineTemplate {
+  id: string
+  flow_type: string
+  email_number: number
+  objective: string
+  guidance: string | null
+  suggested_blocks: string[]
+  tone_hint: string | null
+  is_active: boolean
+  version: number
+  created_at: string
+  created_by: string | null
+}
+
+// Blueprint detalhado GERADO por (loja × email). Mesmo shape lógico de
+// EmailBlueprint, porém escopado à loja e com proveniência (source).
+export interface StoreEmailBlueprint {
+  id: string
+  store_id: string
+  flow_type: string
+  email_number: number
+  objective: string
+  messaging: string
+  subject_hint: string | null
+  blocks: BlueprintBlock[]
+  image_brief: string | null
+  image_mode: "auto" | "product_ref" | "text2img" | null
+  image_aspect: "4:5" | "3:5" | "4:3" | "1:1" | "3:4" | null
+  source: GeneratedSource
+  model: string | null
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+// Reference HTML GERADO por (loja × email). Ocupa o papel do reference_html
+// consumido pelo HTML agent (build-vars.ts), com fallback ao template global.
+export interface StoreEmailReference {
+  id: string
+  store_id: string
+  flow_type: string
+  email_number: number
+  html: string
+  variant_ids: string[]
+  source: GeneratedSource
+  model: string | null
+  version: number
+  created_at: string
+  updated_at: string
 }
