@@ -33,6 +33,10 @@ interface GeneratedItem {
     variant_ids?: string[]
     source?: string
   } | null
+  consumed?: {
+    match: "loja" | "global" | "nenhum"
+    html?: string | null
+  }
 }
 
 function SourceBadge({ source }: { source?: string }) {
@@ -46,6 +50,33 @@ function SourceBadge({ source }: { source?: string }) {
       }`}
     >
       {source}
+    </span>
+  )
+}
+
+function ConsumedBadge({
+  match,
+}: {
+  match?: "loja" | "global" | "nenhum"
+}) {
+  if (!match) return null
+  const cfg = {
+    loja: {
+      label: "HTML agent usa este ✓",
+      cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
+    },
+    global: {
+      label: "HTML agent: template global ⚠",
+      cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+    },
+    nenhum: {
+      label: "HTML agent: sem reference ✕",
+      cls: "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300",
+    },
+  }[match]
+  return (
+    <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${cfg.cls}`}>
+      {cfg.label}
     </span>
   )
 }
@@ -229,10 +260,11 @@ export function GeneratedInspector() {
               </div>
 
               <div className="space-y-1">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-[13px] font-semibold">
                     HTML montado
                     <SourceBadge source={selected.reference?.source} />
+                    <ConsumedBadge match={selected.consumed?.match} />
                   </h4>
                   <div className="flex items-center gap-1">
                     <button
@@ -257,12 +289,16 @@ export function GeneratedInspector() {
                     >
                       Código
                     </button>
-                    {selected.reference?.html && (
+                    {(selected.consumed?.html ?? selected.reference?.html) && (
                       <button
                         type="button"
                         onClick={() =>
                           navigator.clipboard
-                            ?.writeText(selected.reference?.html ?? "")
+                            ?.writeText(
+                              selected.consumed?.html ??
+                                selected.reference?.html ??
+                                "",
+                            )
                             .catch(() => {})
                         }
                         title="Copiar HTML"
@@ -273,19 +309,31 @@ export function GeneratedInspector() {
                     )}
                   </div>
                 </div>
+                {selected.consumed?.match === "global" && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    O Montador não gerou reference para este email — o HTML agent
+                    cai no template global (mostrado abaixo).
+                  </p>
+                )}
+                {selected.consumed?.match === "nenhum" && (
+                  <p className="text-[11px] text-red-600 dark:text-red-400">
+                    Sem reference (loja nem global) — o HTML agent gera do zero.
+                  </p>
+                )}
                 <div className="overflow-hidden rounded-[6px] border border-slate-200 dark:border-white/[0.08]">
                   {htmlView === "preview" ? (
                     <iframe
                       title="reference"
                       srcDoc={
-                        selected.reference?.html ||
-                        "<p style='font-family:sans-serif;color:#94a3b8;padding:16px'>Sem reference montado (caiu no template global).</p>"
+                        (selected.consumed?.html ?? selected.reference?.html) ||
+                        "<p style='font-family:sans-serif;color:#94a3b8;padding:16px'>Sem reference — o HTML agent gera do zero.</p>"
                       }
                       className="h-[420px] w-full bg-white"
                     />
                   ) : (
                     <pre className="h-[420px] overflow-auto bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700 dark:bg-white/[0.02] dark:text-white/70">
-                      {selected.reference?.html || "// Sem reference montado."}
+                      {(selected.consumed?.html ?? selected.reference?.html) ||
+                        "// Sem reference."}
                     </pre>
                   )}
                 </div>

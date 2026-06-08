@@ -36,6 +36,11 @@ interface GeneratedItem {
   email_number: number
   blueprint: BlueprintRow | null
   reference: ReferenceRow | null
+  // Reference que o HTML agent EFETIVAMENTE recebe (loja > global > nenhum).
+  consumed?: {
+    match: "loja" | "global" | "nenhum"
+    html: string | null
+  }
 }
 
 export async function GET(
@@ -48,7 +53,7 @@ export async function GET(
     await requireAuth(sb)
     const admin = createAdminClient()
 
-    const [bpRes, refRes] = await Promise.all([
+    const [bpRes, refRes, globalRes] = await Promise.all([
       admin
         .from("store_email_blueprints")
         .select(
@@ -61,6 +66,12 @@ export async function GET(
           "flow_type, email_number, html, variant_ids, source, model, updated_at",
         )
         .eq("store_id", storeId),
+      // Reference global — o fallback que o HTML agent usa quando não há
+      // reference da loja (build-vars.ts: loja > global > vazio).
+      admin
+        .from("email_reference_templates")
+        .select("flow_type, email_number, html")
+        .eq("is_active", true),
     ])
     if (bpRes.error) throw bpRes.error
     if (refRes.error) throw refRes.error
@@ -85,6 +96,26 @@ export async function GET(
       }
       cur.reference = r
       map.set(k, cur)
+    }
+
+    // Espelha a resolução do build-vars: loja > global > nenhum.
+    const globalMap = new Map<string, string>()
+    for (const g of (globalRes.data as Array<{
+      flow_type: string
+      email_number: number
+      html: string
+    }> | null) ?? []) {
+      globalMap.set(`${g.flow_type}:${g.email_number}`, g.html)
+    }
+    for (const item of map.values()) {
+      const storeHtml = item.reference?.html ?? null
+      const globalHtml =
+        globalMap.get(`${item.flow_type}:${item.email_number}`) ?? null
+      item.consumed = storeHtml
+        ? { match: "loja", html: storeHtml }
+        : globalHtml
+          ? { match: "global", html: globalHtml }
+          : { match: "nenhum", html: null }
     }
 
     const items = Array.from(map.values()).sort((a, b) =>
