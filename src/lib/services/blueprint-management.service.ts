@@ -49,6 +49,11 @@ interface DbBlueprintRow {
   blocks: BlueprintBlockDef[] | null
   tone_override: string | null
   updated_at: string
+  image_brief: string | null
+  image_produto_heroi_hint: string | null
+  image_aspect: "4:5" | "3:5" | "4:3" | "1:1" | "3:4" | null
+  image_mode: "auto" | "product_ref" | "text2img" | null
+  image_overlay_reserve_bottom: boolean | null
 }
 
 export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
@@ -56,7 +61,7 @@ export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
   const { data, error } = await admin
     .from("email_blueprints")
     .select(
-      "id, flow_type, email_number, objective, messaging, subject_hint, blocks, tone_override, updated_at",
+      "id, flow_type, email_number, objective, messaging, subject_hint, blocks, tone_override, updated_at, image_brief, image_produto_heroi_hint, image_aspect, image_mode, image_overlay_reserve_bottom",
     )
     .order("flow_type")
     .order("email_number")
@@ -81,6 +86,11 @@ export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
       tone_override: r.tone_override,
       updated_at: r.updated_at,
       source: "db",
+      image_brief: r.image_brief,
+      image_produto_heroi_hint: r.image_produto_heroi_hint,
+      image_aspect: r.image_aspect,
+      image_mode: r.image_mode,
+      image_overlay_reserve_bottom: r.image_overlay_reserve_bottom,
     })
   }
 

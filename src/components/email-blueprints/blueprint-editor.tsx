@@ -41,6 +41,17 @@ const blockSchema = z.object({
   needs_image: z.boolean().optional(),
 })
 
+// ── Opções dos campos de imagem (story AE-10) ──
+type ImageAspect = NonNullable<BlueprintRow["image_aspect"]>
+type ImageMode = NonNullable<BlueprintRow["image_mode"]>
+
+const IMAGE_ASPECT_OPTIONS: ImageAspect[] = ["4:5", "3:5", "4:3", "1:1", "3:4"]
+const IMAGE_MODE_OPTIONS: { value: ImageMode; label: string }[] = [
+  { value: "auto", label: "Auto (decide pelo email)" },
+  { value: "product_ref", label: "Product ref (usa foto do produto)" },
+  { value: "text2img", label: "Text2img (gera do zero)" },
+]
+
 interface Props {
   blueprint: BlueprintRow
   onSaved: () => void
@@ -53,6 +64,19 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
   const [toneOverride, setToneOverride] = useState(
     blueprint.tone_override ?? "",
   )
+  const [imageBrief, setImageBrief] = useState(blueprint.image_brief ?? "")
+  const [imageProdutoHeroiHint, setImageProdutoHeroiHint] = useState(
+    blueprint.image_produto_heroi_hint ?? "",
+  )
+  const [imageAspect, setImageAspect] = useState<ImageAspect>(
+    blueprint.image_aspect ?? "4:5",
+  )
+  const [imageMode, setImageMode] = useState<ImageMode>(
+    blueprint.image_mode ?? "auto",
+  )
+  const [imageOverlayReserveBottom, setImageOverlayReserveBottom] = useState(
+    blueprint.image_overlay_reserve_bottom ?? true,
+  )
   const [blocks, setBlocks] = useState<BlueprintBlockDef[]>(blueprint.blocks)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -64,6 +88,11 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
     setMessaging(blueprint.messaging)
     setSubjectHint(blueprint.subject_hint ?? "")
     setToneOverride(blueprint.tone_override ?? "")
+    setImageBrief(blueprint.image_brief ?? "")
+    setImageProdutoHeroiHint(blueprint.image_produto_heroi_hint ?? "")
+    setImageAspect(blueprint.image_aspect ?? "4:5")
+    setImageMode(blueprint.image_mode ?? "auto")
+    setImageOverlayReserveBottom(blueprint.image_overlay_reserve_bottom ?? true)
     setBlocks(blueprint.blocks)
   }
 
@@ -103,6 +132,11 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
         messaging: messaging.trim(),
         subject_hint: subjectHint.trim() || null,
         tone_override: toneOverride.trim() || null,
+        image_brief: imageBrief.trim() || null,
+        image_produto_heroi_hint: imageProdutoHeroiHint.trim() || null,
+        image_aspect: imageAspect,
+        image_mode: imageMode,
+        image_overlay_reserve_bottom: imageOverlayReserveBottom,
         blocks: cleanBlocks,
       }
 
@@ -279,6 +313,80 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
           className="crm-input w-full text-[12px]"
           placeholder="Mensagem central + tópicos a cobrir"
         />
+      </div>
+
+      {/* ── Imagem (geração) — instruções pro agente de imagem ── */}
+      <div className="space-y-3 rounded-[6px] border border-slate-200 p-3 dark:border-white/[0.08]">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">
+          Imagem (geração)
+        </p>
+        <div className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">
+            Image brief (instrução de arte autoritativa)
+          </label>
+          <textarea
+            value={imageBrief}
+            onChange={(e) => setImageBrief(e.target.value)}
+            rows={2}
+            className="crm-input w-full text-[12px]"
+            placeholder="Ex: Fachada de loja física com vitrine que sugere o nicho; placa em branco p/ o logo."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">
+            Produto-herói (hint, opcional)
+          </label>
+          <input
+            type="text"
+            value={imageProdutoHeroiHint}
+            onChange={(e) => setImageProdutoHeroiHint(e.target.value)}
+            placeholder="Ex: sapato social masculino de couro preto"
+            className="crm-input w-full text-[12px]"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">
+              Aspect ratio
+            </label>
+            <select
+              value={imageAspect}
+              onChange={(e) => setImageAspect(e.target.value as ImageAspect)}
+              className="crm-input w-full text-[12px]"
+            >
+              {IMAGE_ASPECT_OPTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">
+              Modo
+            </label>
+            <select
+              value={imageMode}
+              onChange={(e) => setImageMode(e.target.value as ImageMode)}
+              className="crm-input w-full text-[12px]"
+            >
+              {IMAGE_MODE_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-white/60">
+          <input
+            type="checkbox"
+            checked={imageOverlayReserveBottom}
+            onChange={(e) => setImageOverlayReserveBottom(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          Reservar área inferior da imagem para overlay de texto
+        </label>
       </div>
 
       <BlueprintBlocksEditor blocks={blocks} onChange={setBlocks} />

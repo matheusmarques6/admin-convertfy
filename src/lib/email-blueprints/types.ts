@@ -12,7 +12,21 @@
  * mantém só funções que rodam no server.
  */
 
+import { z } from "zod"
 import type { BlueprintBlockDef } from "@/lib/agents/email-blueprint"
+
+/**
+ * Validadores Zod dos campos de instrução de IMAGEM do blueprint (story AE-10).
+ * Fonte única reusada pelos schemas PATCH e POST das rotas de email-blueprints,
+ * pra não duplicar as regras nos dois endpoints.
+ */
+export const blueprintImageFields = {
+  image_brief: z.string().nullable().optional(),
+  image_produto_heroi_hint: z.string().nullable().optional(),
+  image_aspect: z.enum(["4:5", "3:5", "4:3", "1:1", "3:4"]).nullable().optional(),
+  image_mode: z.enum(["auto", "product_ref", "text2img"]).nullable().optional(),
+  image_overlay_reserve_bottom: z.boolean().nullable().optional(),
+}
 
 export interface BlueprintRow {
   id: string | null
@@ -25,6 +39,13 @@ export interface BlueprintRow {
   tone_override: string | null
   updated_at: string | null
   source: "db" | "default"
+  // ── Instrução de geração de imagem por email (story AE-10) ──
+  // Opcionais: rows 'default' e legacy não têm esses campos.
+  image_brief?: string | null
+  image_produto_heroi_hint?: string | null
+  image_aspect?: "4:5" | "3:5" | "4:3" | "1:1" | "3:4" | null
+  image_mode?: "auto" | "product_ref" | "text2img" | null
+  image_overlay_reserve_bottom?: boolean | null
 }
 
 export const BLOCK_TYPE_OPTIONS = [
