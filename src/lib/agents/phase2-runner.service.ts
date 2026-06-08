@@ -397,6 +397,30 @@ export async function runPhase2InBackground(
     return
   }
 
+  // ── Guard 2: dados da loja incompletos (sem nicho ou sem produtos) ──
+  // Sem nicho/produtos reais o agente de imagem gera algo genérico e a copy
+  // cai em placeholders ({{product_name}}). Falha ALTO antes de gastar tokens,
+  // com failure_reason='store_data_incomplete' (mesma rota de alerta da tag
+  // cto), em vez de produzir um email degradado em silêncio.
+  const niche = (ctx.storeRaw as Record<string, unknown>)?.niche
+  const hasNiche = typeof niche === "string" && niche.trim().length > 0
+  if (!hasNiche || ctx.topProducts.length === 0) {
+    const missing = [
+      !hasNiche ? "niche" : null,
+      ctx.topProducts.length === 0 ? "products" : null,
+    ].filter(Boolean)
+    log.error("phase2.store_data_incomplete", { emailId, storeId, missing })
+    await markEmailFailed(emailId, "store_data_incomplete")
+    await safeNotifyEmailFailed(
+      storeId,
+      emailId,
+      "store_data_incomplete",
+      batchId || null,
+    )
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    return
+  }
+
   // ── Step 1: Image generation (se habilitado) ─────────────────────────
   if (ctx.generateImages) {
     // Seleção por needs_image (o checkbox "imagem" do blueprint), não mais

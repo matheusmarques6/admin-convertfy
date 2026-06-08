@@ -314,6 +314,7 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",
   brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",
+  store_data_incomplete: "Loja sem dados pra gerar (nicho e/ou produtos)",
 }
 
 export function translateFailureReason(reason: string | null | undefined): string {
