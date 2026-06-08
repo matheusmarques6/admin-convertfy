@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS email_outline_templates (
 -- determinístico antes da escolha final pelo LLM.
 CREATE TABLE IF NOT EXISTS email_component_variants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Seções de negócio da biblioteca (não os 19 block_types técnicos do
+  -- blueprint). O assembler traduz bloco→seção via blockTypeToCategory.
   block_type TEXT NOT NULL CHECK (block_type IN (
-    'hero','text','coupon','products','footer','image','cta','divider',
-    'spacer','social','header','headline','features','social_proof',
-    'testimonials','urgency','comparison','story','letter'
+    'header','hero','body','products','reviews','cta','offer','footer'
   )),
   name TEXT NOT NULL,
   html TEXT NOT NULL,

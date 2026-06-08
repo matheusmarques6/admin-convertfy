@@ -63,9 +63,7 @@ SELECT
   true,
   1
 FROM unnest(ARRAY[
-  'hero','text','coupon','products','footer','image','cta','divider','spacer',
-  'social','header','headline','features','social_proof','testimonials',
-  'urgency','comparison','story','letter'
+  'header','hero','body','products','reviews','cta','offer','footer'
 ]) AS bt
 WHERE NOT EXISTS (
   SELECT 1 FROM email_component_variants v

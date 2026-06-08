@@ -21,6 +21,7 @@ import {
   prefilterCandidates,
   DEFAULT_TOP_K,
 } from "./component-deriver"
+import { blockTypeToCategory } from "../shared/component-categories"
 import {
   invokeAgent,
   loadActiveAgentConfig,
@@ -161,9 +162,13 @@ export async function assembleStoreReference(
   })
 
   const poolByType = await loadActiveVariantsByType()
-  const candidatesByBlock: EmailComponentVariant[][] = input.blocks.map((b) =>
-    prefilterCandidates(poolByType.get(b.type) ?? [], matchCtx, DEFAULT_TOP_K),
-  )
+  const candidatesByBlock: EmailComponentVariant[][] = input.blocks.map((b) => {
+    // Traduz o tipo técnico do blueprint para a seção de negócio da
+    // biblioteca; blocos sem seção (divider/spacer) ficam sem candidato.
+    const category = blockTypeToCategory(b.type)
+    const pool = category ? (poolByType.get(category) ?? []) : []
+    return prefilterCandidates(pool, matchCtx, DEFAULT_TOP_K)
+  })
 
   const hasAnyCandidate = candidatesByBlock.some((c) => c.length > 0)
   if (!hasAnyCandidate) {

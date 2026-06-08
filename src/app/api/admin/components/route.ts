@@ -7,35 +7,14 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 
 const log = logger.child("EmailComponents")
 
 export const dynamic = "force-dynamic"
 
-const BLOCK_TYPES = [
-  "hero",
-  "text",
-  "coupon",
-  "products",
-  "footer",
-  "image",
-  "cta",
-  "divider",
-  "spacer",
-  "social",
-  "header",
-  "headline",
-  "features",
-  "social_proof",
-  "testimonials",
-  "urgency",
-  "comparison",
-  "story",
-  "letter",
-] as const
-
 const postSchema = z.object({
-  block_type: z.enum(BLOCK_TYPES),
+  block_type: z.enum(COMPONENT_CATEGORY_KEYS as [string, ...string[]]),
   name: z.string().min(1),
   html: z.string().min(1),
   slots: z.array(z.string()).default([]),

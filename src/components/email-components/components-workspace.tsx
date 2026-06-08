@@ -13,28 +13,9 @@ import { Blocks } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import type { EmailComponentVariant } from "@/types/email-generation"
+import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 
-const BLOCK_TYPES = [
-  "hero",
-  "text",
-  "coupon",
-  "products",
-  "footer",
-  "image",
-  "cta",
-  "divider",
-  "spacer",
-  "social",
-  "header",
-  "headline",
-  "features",
-  "social_proof",
-  "testimonials",
-  "urgency",
-  "comparison",
-  "story",
-  "letter",
-] as const
+const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
 
 const DENSITIES = ["", "minimal", "balanced", "rich"] as const
 
@@ -79,9 +60,9 @@ const inputCls =
 export function ComponentsWorkspace() {
   const [variants, setVariants] = useState<EmailComponentVariant[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<string>("hero")
+  const [tab, setTab] = useState<string>(FIRST_CATEGORY)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm("hero"))
+  const [form, setForm] = useState<FormState>(emptyForm(FIRST_CATEGORY))
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -192,9 +173,9 @@ export function ComponentsWorkspace() {
 
       <div className="overflow-x-auto pb-1">
         <SegmentedTabs value={tab} onValueChange={(v) => setTab(v)}>
-          {BLOCK_TYPES.map((bt) => (
-            <SegmentedTabItem key={bt} value={bt}>
-              {bt}
+          {COMPONENT_CATEGORIES.map((c) => (
+            <SegmentedTabItem key={c.key} value={c.key}>
+              {c.label}
             </SegmentedTabItem>
           ))}
         </SegmentedTabs>
