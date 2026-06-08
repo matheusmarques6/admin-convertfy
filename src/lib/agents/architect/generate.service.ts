@@ -12,6 +12,10 @@ import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 import { mapTomVozToMood } from "../image/mood-mapping"
+import {
+  blockTypeToCategory,
+  COMPONENT_CATEGORY_KEYS,
+} from "../shared/component-categories"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { assembleStoreReference } from "./component-assembler.service"
 
@@ -50,6 +54,26 @@ export async function isArchitectConfigured(): Promise<boolean> {
       .eq("is_active", true),
   ])
   return (outlines.count ?? 0) > 0 || (variants.count ?? 0) > 0
+}
+
+/**
+ * Normaliza as seções do outline (estrutura geral) para as 8 categorias da
+ * biblioteca, preservando ordem e repetições. Aceita tanto seções (8) quanto
+ * tipos técnicos (19, mapeados). Fallback p/ estrutura mínima se vazio.
+ */
+function resolveSections(outline: EmailOutlineTemplate | null): string[] {
+  const out: string[] = []
+  for (const item of outline?.suggested_blocks ?? []) {
+    const key = item.trim().toLowerCase()
+    const section = COMPONENT_CATEGORY_KEYS.includes(key)
+      ? key
+      : blockTypeToCategory(key)
+    if (section) out.push(section)
+  }
+  if (out.length === 0) {
+    return ["header", "hero", "body", "products", "footer"]
+  }
+  return out
 }
 
 export async function generateBlueprintAndReference(
@@ -110,8 +134,24 @@ export async function generateBlueprintAndReference(
   const topProductNames = products.map((p) => p.title).filter(Boolean)
   const mood = mapTomVozToMood(tomVoz)
 
-  // Passo A — blueprint detalhado (alimenta copy, imagem e o passo B).
-  const { blueprint } = await generateStoreBlueprint({
+  // Passo 1 — Montador: monta o HTML a partir das seções do outline.
+  const sections = resolveSections(outline)
+  const { html } = await assembleStoreReference({
+    storeId: input.storeId,
+    flowType: input.flowType,
+    emailNumber: input.emailNumber,
+    batchId: input.batchId,
+    triggeredBy: input.triggeredBy,
+    brandName,
+    nicho,
+    posicionamento,
+    tomVoz,
+    mood,
+    sections,
+  })
+
+  // Passo 2 — Blueprint: extrai a estrutura do HTML montado.
+  await generateStoreBlueprint({
     storeId: input.storeId,
     flowType: input.flowType,
     emailNumber: input.emailNumber,
@@ -124,21 +164,7 @@ export async function generateBlueprintAndReference(
     tomVoz,
     topProductNames,
     outline,
-  })
-
-  // Passo B — reference HTML a partir dos blocos do blueprint.
-  await assembleStoreReference({
-    storeId: input.storeId,
-    flowType: input.flowType,
-    emailNumber: input.emailNumber,
-    batchId: input.batchId,
-    triggeredBy: input.triggeredBy,
-    brandName,
-    nicho,
-    posicionamento,
-    tomVoz,
-    mood,
-    blocks: blueprint.blocks,
+    referenceHtml: html ?? "",
   })
 }
 

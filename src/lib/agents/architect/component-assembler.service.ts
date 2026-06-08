@@ -21,14 +21,12 @@ import {
   prefilterCandidates,
   DEFAULT_TOP_K,
 } from "./component-deriver"
-import { blockTypeToCategory } from "../shared/component-categories"
 import {
   invokeAgent,
   loadActiveAgentConfig,
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
-import type { GeneratedBlock } from "./blueprint-generator.service"
 
 const log = logger.child("ComponentAssembler")
 
@@ -117,7 +115,8 @@ export interface AssembleReferenceInput {
   posicionamento: string
   tomVoz: string
   mood: string
-  blocks: GeneratedBlock[]
+  // Seções (8) vindas do outline (estrutura geral), na ordem.
+  sections: string[]
 }
 
 export interface AssembleReferenceResult {
@@ -162,13 +161,10 @@ export async function assembleStoreReference(
   })
 
   const poolByType = await loadActiveVariantsByType()
-  const candidatesByBlock: EmailComponentVariant[][] = input.blocks.map((b) => {
-    // Traduz o tipo técnico do blueprint para a seção de negócio da
-    // biblioteca; blocos sem seção (divider/spacer) ficam sem candidato.
-    const category = blockTypeToCategory(b.type)
-    const pool = category ? (poolByType.get(category) ?? []) : []
-    return prefilterCandidates(pool, matchCtx, DEFAULT_TOP_K)
-  })
+  const candidatesByBlock: EmailComponentVariant[][] = input.sections.map(
+    (section) =>
+      prefilterCandidates(poolByType.get(section) ?? [], matchCtx, DEFAULT_TOP_K),
+  )
 
   const hasAnyCandidate = candidatesByBlock.some((c) => c.length > 0)
   if (!hasAnyCandidate) {
@@ -198,17 +194,15 @@ export async function assembleStoreReference(
       }
 
   const blocksJson = JSON.stringify(
-    input.blocks.map((b, i) => ({
+    input.sections.map((section, i) => ({
       block_index: i,
-      type: b.type,
-      label: b.label,
-      purpose: b.purpose,
+      section,
     })),
   )
   const candidatesJson = JSON.stringify(
     candidatesByBlock.map((finalists, i) => ({
       block_index: i,
-      block_type: input.blocks[i]?.type,
+      section: input.sections[i],
       candidates: finalists.map((v) => ({
         variant_id: v.id,
         name: v.name,
@@ -262,7 +256,7 @@ export async function assembleStoreReference(
     agentConfigId: cfgRow?.id,
     status: usedLlm ? "success" : "skipped",
     model: usedLlm ? config.model : "fallback",
-    inputVars: { blocks: input.blocks.length },
+    inputVars: { sections: input.sections.length },
     rawOutput: rawOutput.slice(0, 4000),
     parsedOutput: { chosen: variantIds.length, used_llm: usedLlm },
     tokensInput,

@@ -66,18 +66,18 @@ const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 // Fallback usado apenas se email_agent_configs não tiver row ativa para
 // agent_type='blueprint' (a migration 20260708b semeia a versão canônica).
-const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails de marketing de e-commerce. A partir de uma ESTRUTURA GERAL (outline) e do contexto da loja, gere o BLUEPRINT DETALHADO do email: lista ordenada de blocos com tipo, label, propósito e needs_image, mais objective/messaging/subject_hint específicos da loja. Use SOMENTE os tipos permitidos. Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image"}]}.`
+const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Você recebe o HTML JÁ MONTADO de um email (a forma final) e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — a lista ordenada de blocos que o HTML contém, cada um com tipo técnico, label, propósito e needs_image. A estrutura deve REFLETIR o HTML (mesma ordem e seções); não invente blocos ausentes. Mapeie cada seção do HTML para o tipo técnico mais adequado (ex.: seção de reviews → testimonials; cupom → coupon). hero/image têm needs_image=true. Use SOMENTE os tipos permitidos. Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image"}]}.`
 
-const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}}
-NICHO: {{nicho}}
-POSICIONAMENTO: {{posicionamento}}
-PERSONA: {{persona}}
-TOM DE VOZ: {{tom_voz}}
-PRODUTOS TOP: {{top_products}}
+const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
+PERSONA: {{persona}} — TOM DE VOZ: {{tom_voz}}
 FLOW: {{flow_type}} — EMAIL #{{email_number}}
-OUTLINE: {{outline_objective}} | {{outline_guidance}} | blocos sugeridos: {{suggested_blocks}}
+OUTLINE: {{outline_objective}} | {{outline_guidance}}
 TIPOS PERMITIDOS: {{allowed_block_types}}
-Gere o blueprint detalhado. Responda apenas o JSON.`
+
+HTML MONTADO (extraia a estrutura DELE):
+{{reference_html}}
+
+Extraia o blueprint detalhado que reflete este HTML. Responda apenas o JSON.`
 
 // ── Parsing + fallback (puro, testável) ────────────────────────────
 
@@ -156,6 +156,8 @@ export interface GenerateBlueprintInput {
   tomVoz: string
   topProductNames: string[]
   outline: EmailOutlineTemplate | null
+  // HTML montado pelo Montador — o blueprint é extraído dele.
+  referenceHtml: string
 }
 
 export interface GenerateBlueprintResult {
@@ -201,6 +203,7 @@ export async function generateStoreBlueprint(
     outline_guidance: input.outline?.guidance ?? "",
     suggested_blocks: (input.outline?.suggested_blocks ?? []).join(", "),
     allowed_block_types: Array.from(ALLOWED_BLOCK_TYPES).join(", "),
+    reference_html: input.referenceHtml,
   }
 
   const t0 = Date.now()
