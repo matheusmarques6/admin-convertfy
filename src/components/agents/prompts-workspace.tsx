@@ -6,7 +6,14 @@
  */
 import { useState } from "react"
 import useSWR from "swr"
-import { Bot, Image as ImageIcon, Code2, ShieldCheck } from "lucide-react"
+import {
+  Bot,
+  Image as ImageIcon,
+  Code2,
+  ShieldCheck,
+  LayoutTemplate,
+  Blocks,
+} from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
@@ -20,6 +27,8 @@ const AGENT_LABELS: Record<AgentType, string> = {
   image: "Imagens",
   html: "HTML",
   qa: "QA",
+  blueprint: "Blueprint",
+  assembler: "Montador",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -27,6 +36,8 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   image: ImageIcon,
   html: Code2,
   qa: ShieldCheck,
+  blueprint: LayoutTemplate,
+  assembler: Blocks,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

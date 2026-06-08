@@ -43,7 +43,14 @@ export interface ListPromptsResult {
   by_type: Record<AgentType, PromptListGroup>
 }
 
-const ALL_AGENT_TYPES: AgentType[] = ["copy", "image", "html", "qa"]
+const ALL_AGENT_TYPES: AgentType[] = [
+  "copy",
+  "image",
+  "html",
+  "qa",
+  "blueprint",
+  "assembler",
+]
 
 // ── Validação de output_schema ─────────────────────────────
 //
@@ -133,6 +140,8 @@ export async function listPrompts(opts: {
     image: { active: null, history: [] },
     html: { active: null, history: [] },
     qa: { active: null, history: [] },
+    blueprint: { active: null, history: [] },
+    assembler: { active: null, history: [] },
   }
 
   for (const row of rows) {
