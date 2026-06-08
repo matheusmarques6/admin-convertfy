@@ -83,6 +83,7 @@ export function PromptsWorkspace({ initial }: Props) {
       </SegmentedTabs>
 
       <PromptEditor
+        key={tab}
         agentType={tab}
         activePrompt={group.active}
         onSaved={() => mutate()}
