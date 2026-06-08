@@ -197,6 +197,10 @@ export interface ImagePromptVarsInput {
   // `mode`, `product_ref`) e pra alimentar `deriveShotArchetype`.
   blockType?: string
   blockLabel?: string
+  // Posição (1-based) do bloco no email. Usada pra casar o bloco do blueprint
+  // pelo índice (robusto a múltiplos blocos do mesmo tipo) e ler o prompt de
+  // imagem daquele bloco (image_brief). Fallback: match por tipo.
+  blockPosition?: number
   imageOverlayReserveBottom?: boolean
   aspect?: AspectKey
   mode?: ImageMode
@@ -282,11 +286,16 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
 
   // ── Master Prompt v2 — vars por bloco ────────────────────
-  // `blueprint_purpose` é o `purpose` do bloco específico no blueprint
-  // (granular por slot, não por email inteiro). Sem purpose → "".
-  const blueprintPurpose = input.blockType
-    ? (blueprint?.blocks?.find((b) => b.type === input.blockType)?.purpose ?? "")
-    : ""
+  // Resolve o bloco do blueprint DESTE slot. Prioriza a POSIÇÃO (robusto a
+  // múltiplos blocos do mesmo tipo); cai pra match por tipo se o caller não
+  // passou position. Dele saem `blueprint_purpose` e o prompt de imagem.
+  const bpBlock =
+    input.blockPosition != null
+      ? blueprint?.blocks?.[input.blockPosition - 1]
+      : input.blockType
+        ? blueprint?.blocks?.find((b) => b.type === input.blockType)
+        : undefined
+  const blueprintPurpose = bpBlock?.purpose ?? ""
   const modeVal: ImageMode = input.mode ?? "text2img"
   const aspectVal: string = input.aspect ?? ""
   const shotArchetype = deriveShotArchetype({
@@ -342,9 +351,11 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     IDIOMA,
     MOEDA,
     INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
-    // Briefing visual por email (blueprint.image_brief) — instrução
-    // autoritativa de arte. Antes era coluna morta (nunca lida pelo prompt).
-    IMAGE_BRIEF: blueprint?.image_brief?.trim() ?? "",
+    // Prompt da imagem DESTE bloco (blueprint blocks[].image_brief), editado
+    // no popup do editor de blueprints. Fallback: image_brief nível-email
+    // (legado). Entra como direção de arte autoritativa no template.
+    IMAGE_BRIEF:
+      bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || "",
 
     // Contexto pro switch do template (snake_case porque o template usa
     // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser

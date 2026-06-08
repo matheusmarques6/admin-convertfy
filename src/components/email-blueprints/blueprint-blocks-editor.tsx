@@ -11,9 +11,18 @@
  * O `purpose` é texto curto exibido em input single-line; expandir pra
  * textarea fica como evolução.
  */
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { ArrowDown, ArrowUp, Image as ImageIcon, Plus, Trash2 } from "lucide-react"
 import type { BlueprintBlockDef } from "@/lib/agents/email-blueprint"
 import { BLOCK_TYPE_OPTIONS } from "@/lib/email-blueprints/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 
 interface Props {
   blocks: BlueprintBlockDef[]
@@ -23,6 +32,22 @@ interface Props {
 export function BlueprintBlocksEditor({ blocks, onChange }: Props) {
   const updateAt = (idx: number, patch: Partial<BlueprintBlockDef>) => {
     onChange(blocks.map((b, i) => (i === idx ? { ...b, ...patch } : b)))
+  }
+
+  // Popup do prompt da imagem (por bloco). `editing` = índice do bloco
+  // em edição; `draft` = texto temporário até o usuário aplicar.
+  const [editing, setEditing] = useState<number | null>(null)
+  const [draft, setDraft] = useState("")
+
+  const openImageEditor = (idx: number) => {
+    setDraft(blocks[idx].image_brief ?? "")
+    setEditing(idx)
+  }
+
+  const applyImageBrief = () => {
+    if (editing == null) return
+    updateAt(editing, { image_brief: draft.trim() || null })
+    setEditing(null)
   }
 
   const removeAt = (idx: number) => {
@@ -65,7 +90,7 @@ export function BlueprintBlocksEditor({ blocks, onChange }: Props) {
         {blocks.map((b, idx) => (
           <div
             key={idx}
-            className="grid grid-cols-[28px_140px_140px_minmax(0,1fr)_90px_80px] items-center gap-2 rounded-[4px] border border-slate-200 bg-white px-2 py-1.5 dark:border-white/[0.08] dark:bg-white/[0.02]"
+            className="grid grid-cols-[28px_140px_140px_minmax(0,1fr)_90px_28px_80px] items-center gap-2 rounded-[4px] border border-slate-200 bg-white px-2 py-1.5 dark:border-white/[0.08] dark:bg-white/[0.02]"
           >
             <span className="text-center text-[11px] font-mono text-slate-400">
               {idx + 1}
@@ -111,6 +136,17 @@ export function BlueprintBlocksEditor({ blocks, onChange }: Props) {
               imagem
             </label>
 
+            <div className="flex items-center justify-center">
+              {b.needs_image && (
+                <IconButton
+                  onClick={() => openImageEditor(idx)}
+                  title="Editar prompt da imagem"
+                >
+                  <ImageIcon className="h-3 w-3" />
+                </IconButton>
+              )}
+            </div>
+
             <div className="flex items-center justify-end gap-0.5">
               <IconButton
                 disabled={idx === 0}
@@ -143,6 +179,43 @@ export function BlueprintBlocksEditor({ blocks, onChange }: Props) {
           </p>
         )}
       </div>
+
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Prompt da imagem</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={6}
+            autoFocus
+            placeholder="Descreva a imagem deste bloco. Ex: Fachada de loja física com vitrine que sugere o nicho; placa em branco para o logo."
+          />
+          <p className="text-[11px] text-slate-400 dark:text-white/40">
+            Aplica ao bloco. Salve o blueprint para persistir.
+          </p>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="inline-flex items-center gap-1 rounded-[4px] border border-slate-300 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-white/80 dark:hover:bg-white/[0.08]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={applyImageBrief}
+              className="inline-flex items-center gap-1 rounded-[4px] bg-slate-900 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+            >
+              Aplicar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

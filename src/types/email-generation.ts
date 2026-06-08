@@ -6,6 +6,9 @@ export interface BlueprintBlock {
   // gravam no JSONB `email_blueprints.blocks`. Antes era lido como `hint`
   // (chave inexistente) e vinha sempre vazio.
   purpose?: string
+  // Prompt da imagem deste bloco (JSONB blocks[].image_brief). Lido por
+  // buildImagePromptVars → var IMAGE_BRIEF, casando pela posição do bloco.
+  image_brief?: string | null
 }
 
 export interface EmailBlueprint {

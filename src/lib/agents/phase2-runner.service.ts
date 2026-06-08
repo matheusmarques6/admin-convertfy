@@ -561,6 +561,7 @@ export async function runPhase2InBackground(
           // ── Master Prompt v2 — contexto por bloco ───────────
           blockType: (blk.block_type as string) ?? undefined,
           blockLabel: (blk.label as string) ?? undefined,
+          blockPosition: (blk.position as number) ?? undefined,
           imageOverlayReserveBottom: reserveBottom,
           aspect,
           mode,

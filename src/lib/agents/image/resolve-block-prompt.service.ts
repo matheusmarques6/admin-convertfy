@@ -144,7 +144,7 @@ export async function resolveBlockPrompt(
   // ── 1. Bloco + email_id ────────────────────────────────────────
   const { data: blk, error: blkErr } = await admin
     .from("email_blocks")
-    .select("id, block_type, label, content, email_id")
+    .select("id, block_type, label, content, email_id, position")
     .eq("id", blockId)
     .maybeSingle()
 
@@ -299,6 +299,7 @@ export async function resolveBlockPrompt(
     instrucaoAdicional,
     blockType: (blk.block_type as string) ?? undefined,
     blockLabel: (blk.label as string) ?? undefined,
+    blockPosition: (blk.position as number) ?? undefined,
     imageOverlayReserveBottom: overlayReserveBottom,
     aspect,
     mode,

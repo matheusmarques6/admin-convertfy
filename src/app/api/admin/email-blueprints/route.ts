@@ -3,7 +3,6 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { blueprintImageFields } from "@/lib/email-blueprints/types"
 
 const log = logger.child("EmailBlueprints")
 
@@ -17,8 +16,6 @@ const postSchema = z.object({
   subject_hint: z.string().optional(),
   blocks: z.array(z.record(z.string(), z.unknown())).default([]),
   tone_override: z.string().optional(),
-  // ── Instrução de geração de imagem por email (fonte única) ──
-  ...blueprintImageFields,
 })
 
 export async function GET(request: NextRequest) {

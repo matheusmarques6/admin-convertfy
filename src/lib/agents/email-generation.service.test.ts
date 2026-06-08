@@ -138,6 +138,50 @@ describe("buildImagePromptVars — IMAGE_BRIEF + blueprint_purpose", () => {
   })
 })
 
+describe("buildImagePromptVars — IMAGE_BRIEF por bloco (blockPosition)", () => {
+  const blueprintPerBlock: EmailBlueprint = {
+    id: "bp2",
+    flow_type: "welcome",
+    email_number: 1,
+    objective: "Boas-vindas",
+    messaging: "Aspiracional",
+    subject_hint: null,
+    blocks: [
+      { type: "hero", label: "Hero", purpose: "Banner" },
+      {
+        type: "products",
+        label: "Produtos",
+        purpose: "Carrossel",
+        image_brief: "Flat lay dos 3 produtos sobre mármore",
+      },
+    ],
+    tone_override: null,
+    updated_at: "",
+    updated_by: null,
+    image_brief: "Fallback nível-email",
+  }
+
+  it("usa o image_brief DO bloco quando blockPosition aponta pra ele", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      blueprint: blueprintPerBlock,
+      blockType: "products",
+      blockPosition: 2,
+    })
+    expect(vars.IMAGE_BRIEF).toBe("Flat lay dos 3 produtos sobre mármore")
+  })
+
+  it("cai no fallback nível-email quando o bloco não tem image_brief", () => {
+    const vars = buildImagePromptVars({
+      ...BASE_INPUT,
+      blueprint: blueprintPerBlock,
+      blockType: "hero",
+      blockPosition: 1,
+    })
+    expect(vars.IMAGE_BRIEF).toBe("Fallback nível-email")
+  })
+})
+
 describe("buildImagePromptVars — IDIOMA respects store language", () => {
   it("uses storeRaw.language when present", () => {
     const vars = buildImagePromptVars(BASE_INPUT)

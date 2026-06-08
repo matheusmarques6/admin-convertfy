@@ -11,6 +11,10 @@ export interface BlueprintBlockDef {
   label: string
   purpose: string
   needs_image?: boolean
+  // Prompt da imagem DESTE bloco (só relevante quando needs_image=true).
+  // Editável no popup do editor de blueprints; usado como direção de arte
+  // autoritativa na geração da imagem (var IMAGE_BRIEF).
+  image_brief?: string | null
 }
 
 export interface BlueprintDef {
