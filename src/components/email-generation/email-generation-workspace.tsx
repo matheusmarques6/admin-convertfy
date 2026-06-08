@@ -968,6 +968,28 @@ interface RunStep {
   cost?: number
 }
 
+/**
+ * Normaliza qualquer payload de erro (string, Error-like, objeto da API) para
+ * texto legível. Evita o clássico "[object Object]" quando a resposta traz o
+ * erro como objeto (ex.: { error: { message, code } } ou um PostgrestError).
+ */
+function errText(x: unknown): string {
+  if (x == null) return ""
+  if (typeof x === "string") return x
+  if (typeof x === "object") {
+    const o = x as Record<string, unknown>
+    for (const k of ["error", "message", "reason", "failure_reason", "detail"]) {
+      if (typeof o[k] === "string") return o[k] as string
+    }
+    try {
+      return JSON.stringify(x)
+    } catch {
+      return String(x)
+    }
+  }
+  return String(x)
+}
+
 function TestTab() {
   const { data: storesData, isLoading: loadingStores } = useSWR<{ stores: StoreOption[] }>(
     "/api/admin/stores",
@@ -1064,12 +1086,17 @@ function TestTab() {
       const responseData = (parsed?.data ?? parsed) as Record<string, unknown>
 
       if (!res.ok) {
-        throw new Error((responseData?.error as string) || `HTTP ${res.status}`)
+        throw new Error(errText(responseData?.error) || `HTTP ${res.status}`)
       }
 
+      const isError = (responseData.status as string) === "error"
+      const errMsg =
+        responseData.error != null ? errText(responseData.error) : undefined
       setResult({
-        status: (responseData.status as string) === "error" ? "error" : "done",
-        error: responseData.error as string | undefined,
+        status: isError ? "error" : "done",
+        error: isError
+          ? errMsg || "Falha na geração (sem detalhe retornado)"
+          : errMsg,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
       })
@@ -1110,7 +1137,7 @@ function TestTab() {
       }
       const data = (parsed?.data ?? parsed) as Record<string, unknown>
       if (!res.ok) {
-        throw new Error((data?.error as string) || `HTTP ${res.status}`)
+        throw new Error(errText(data?.error) || `HTTP ${res.status}`)
       }
       setPreviewVars(data.vars as Record<string, string>)
     } catch (err) {
