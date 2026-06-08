@@ -36,6 +36,7 @@ import { PromptsWorkspace } from "@/components/agents/prompts-workspace"
 import { BlueprintsWorkspace } from "@/components/email-blueprints/blueprints-workspace"
 import { ComponentsWorkspace } from "@/components/email-components/components-workspace"
 import { OutlinesWorkspace } from "@/components/email-outlines/outlines-workspace"
+import { GeneratedInspector } from "@/components/email-generation/generated-inspector"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -56,6 +57,7 @@ const TABS = [
   "blueprints",
   "outlines",
   "components",
+  "generated",
   "settings",
   "references",
   "test",
@@ -105,6 +107,7 @@ export function EmailGenerationWorkspace({
         <SegmentedTabItem value="blueprints">Blueprints</SegmentedTabItem>
         <SegmentedTabItem value="outlines">Estrutura geral</SegmentedTabItem>
         <SegmentedTabItem value="components">Componentes</SegmentedTabItem>
+        <SegmentedTabItem value="generated">Geradas</SegmentedTabItem>
         <SegmentedTabItem value="settings">Configurações</SegmentedTabItem>
         <SegmentedTabItem value="references">Referências</SegmentedTabItem>
         <SegmentedTabItem value="test">Testar</SegmentedTabItem>
@@ -114,6 +117,7 @@ export function EmailGenerationWorkspace({
       {tab === "blueprints" && <BlueprintsWorkspace initial={blueprints} />}
       {tab === "outlines" && <OutlinesWorkspace />}
       {tab === "components" && <ComponentsWorkspace />}
+      {tab === "generated" && <GeneratedInspector />}
       {tab === "settings" && <SettingsTab />}
       {tab === "references" && <ReferencesTab />}
       {tab === "test" && <TestTab />}
