@@ -52,10 +52,11 @@ Vá seção por seção, na ordem recebida. Para cada uma: releia o tipo da seç
 
 ## Formato de saída
 
-Responda APENAS um array JSON, uma entrada por seção, na ordem recebida:
-[{"block_index": 0, "variant_id": "<id escolhido>"}, {"block_index": 1, "variant_id": "<id escolhido>"}]
+Responda APENAS um array JSON, uma entrada por seção, na ordem recebida. Pense ANTES de decidir: escreva o reasoning e só então o variant_id.
+[{"block_index": 0, "reasoning": "<1 frase: por que essa variante encaixa na loja>", "variant_id": "<id escolhido>"}]
 
 - block_index: o índice da seção (0-based, igual ao recebido em <sections>).
+- reasoning: 1 frase curta justificando a escolha (pense antes de decidir).
 - variant_id: estritamente um dos IDs apresentados naquela seção.
 Sem comentários, sem markdown, sem texto fora do array.$SYS$,
   user_template = $USR$<store>
@@ -77,7 +78,7 @@ Sem comentários, sem markdown, sem texto fora do array.$SYS$,
 
 Para cada seção em <sections>, escolha 1 variante entre os candidatos do MESMO block_index em <candidates>. Mantenha a ordem.
 
-Retorne APENAS o array JSON [{"block_index","variant_id"}], um item por seção. Cada variant_id deve ser estritamente um dos IDs apresentados naquela seção.$USR$
+Retorne APENAS o array JSON [{"block_index","reasoning","variant_id"}], um item por seção. Cada variant_id deve ser estritamente um dos IDs apresentados naquela seção.$USR$
 WHERE agent_type = 'assembler' AND is_active = true;
 
 
