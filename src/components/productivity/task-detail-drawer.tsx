@@ -915,7 +915,10 @@ export function TaskDetailDrawer({
         }
         setWorkspaceModal({
           storeId: payload.storeId,
-          mode: payload.target.kind === "email" ? "preview" : "full",
+          mode:
+          payload.target.kind === "checkbox-only"
+            ? "full"
+            : payload.target.mode,
           allowedEmails: buildAllowedEmails(payload.target),
           flowId: payload.flowId,
           emailId: payload.emailId,
@@ -1016,7 +1019,10 @@ export function TaskDetailDrawer({
       setWorkspaceTarget(payload.target)
       setWorkspaceModal({
         storeId: payload.storeId,
-        mode: payload.target.kind === "email" ? "preview" : "full",
+        mode:
+          payload.target.kind === "checkbox-only"
+            ? "full"
+            : payload.target.mode,
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,
@@ -1049,7 +1055,10 @@ export function TaskDetailDrawer({
       }
       setWorkspaceModal({
         storeId: payload.storeId,
-        mode: payload.target.kind === "email" ? "preview" : "full",
+        mode:
+          payload.target.kind === "checkbox-only"
+            ? "full"
+            : payload.target.mode,
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,

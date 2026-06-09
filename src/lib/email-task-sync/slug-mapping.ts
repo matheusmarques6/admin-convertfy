@@ -7,7 +7,7 @@
 
 import type { FlowType } from "@/types/email-workspace"
 
-export type WorkspaceMode = "preview" | "full"
+export type WorkspaceMode = "preview" | "full" | "implementation"
 
 export interface EmailTarget {
   kind: "email"
@@ -117,6 +117,63 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
     flowType: "shipping_stages",
     subItems: subItems("envio_email", 5),
   },
+
+  // Etapa 6 — Implementação na Omnisend (role ops). Cada item "Configurar a
+  // automação de X Flow e subir os e-mails" abre o workspace em modo
+  // `implementation` (handoff read-only + copiar): setup de disparo,
+  // remetente, cupons, copy completa e mapa render↔copy do flow inteiro.
+  // mode `implementation` é filtrado no reverse-lookup (resolveSlugForEmail)
+  // pra não interferir no sync de status dos flows `full`/`preview`.
+  impl_welcome: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "welcome",
+    subItems: subItems("impl_welcome_email", 8),
+  },
+  impl_carrinho: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "abandoned_cart",
+    subItems: subItems("impl_carrinho_email", 8),
+  },
+  impl_site_abandonado: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "site_abandoned",
+    subItems: subItems("impl_site_abandonado_email", 1),
+  },
+  impl_browse_abandonado: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "browse_abandonment",
+    subItems: subItems("impl_browse_abandonado_email", 5),
+  },
+  impl_post_purchase: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "upsell",
+    subItems: subItems("impl_post_purchase_email", 4),
+  },
+  impl_winback: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "win_back",
+    subItems: subItems("impl_winback_email", 3),
+  },
+  impl_pedido_pago: {
+    kind: "email-list",
+    mode: "implementation",
+    flowType: "shipping_stages",
+    subItems: subItems("impl_pedido_pago_email", 5),
+  },
+
+  // Itens da Etapa 6 SEM workspace de email (config técnica / verificação).
+  // Mapeados explicitamente como `null` pra documentar a intenção e satisfazer
+  // o contrato com o bootstrap. "Iniciar" nesses itens cai no 422 silencioso.
+  impl_acesso_instrucoes: null,
+  impl_dns: null,
+  impl_popup: null,
+  impl_teste_e2e: null,
 }
 
 export function resolveTaskWorkspaceTarget(
@@ -199,6 +256,11 @@ export function resolveSlugForEmail(
 ): { parentSlug: string; subItemSlug?: string } | null {
   for (const [slug, target] of Object.entries(TASK_SLUG_MAP)) {
     if (!target) continue
+    // `implementation` é um handoff read-only — nunca é dono do email pro sync
+    // de status. A posse fica com os targets `preview` (1:1) e `full` (flow).
+    if (target.kind !== "checkbox-only" && target.mode === "implementation") {
+      continue
+    }
     if (
       target.kind === "email" &&
       target.flowType === flowType &&

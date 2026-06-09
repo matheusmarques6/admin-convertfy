@@ -9,12 +9,14 @@ import {
 } from "./slug-mapping"
 
 // Slugs do bootstrap que NÃO devem ter target de workspace (são tasks de outras
-// etapas: entrada, formulario, aprovação, implementação, finalização).
+// etapas: entrada, formulario, aprovação, finalização). A `implementacao`
+// (Etapa 6) é parcialmente mapeada: os 7 itens "subir os e-mails" abrem o
+// workspace em modo implementation; os 4 técnicos (acesso/dns/popup/teste)
+// ficam como `null` — todos PRESENTES no mapa, por isso fora desta lista.
 const NON_WORKSPACE_STAGES = new Set([
   "entrada",
   "cliente_formulario",
   "preview_aprovacao",
-  "implementacao",
   "cliente_ativo",
 ])
 
@@ -138,6 +140,33 @@ describe("resolveTaskWorkspaceTarget", () => {
   it("retorna null para slug desconhecido ou legado", () => {
     expect(resolveTaskWorkspaceTarget("flow_inexistente")).toBeNull()
   })
+
+  it("mapeia os itens de flow da Etapa 6 para email-list em modo implementation", () => {
+    const cases: Array<[string, string, number]> = [
+      ["impl_welcome", "welcome", 8],
+      ["impl_carrinho", "abandoned_cart", 8],
+      ["impl_site_abandonado", "site_abandoned", 1],
+      ["impl_browse_abandonado", "browse_abandonment", 5],
+      ["impl_post_purchase", "upsell", 4],
+      ["impl_winback", "win_back", 3],
+      ["impl_pedido_pago", "shipping_stages", 5],
+    ]
+    for (const [slug, flowType, count] of cases) {
+      const t = resolveTaskWorkspaceTarget(slug)
+      expect(t?.kind, slug).toBe("email-list")
+      if (t?.kind === "email-list") {
+        expect(t.mode, slug).toBe("implementation")
+        expect(t.flowType, slug).toBe(flowType)
+        expect(t.subItems, slug).toHaveLength(count)
+      }
+    }
+  })
+
+  it("itens técnicos da Etapa 6 ficam sem workspace (null/422)", () => {
+    for (const slug of ["impl_acesso_instrucoes", "impl_dns", "impl_popup", "impl_teste_e2e"]) {
+      expect(resolveTaskWorkspaceTarget(slug), slug).toBeNull()
+    }
+  })
 })
 
 describe("resolveSubItemEmailTarget", () => {
@@ -189,6 +218,18 @@ describe("resolveSlugForEmail (caminho reverso)", () => {
 
   it("retorna null para combinação não mapeada", () => {
     expect(resolveSlugForEmail("custom", 1)).toBeNull()
+  })
+
+  it("nunca atribui a posse do email a um slug de implementação", () => {
+    // shipping_stages só tem flow `full` (etapas_envio) — impl_pedido_pago
+    // (implementation) deve ser ignorado no reverse-lookup.
+    expect(resolveSlugForEmail("shipping_stages", 1)?.parentSlug).toBe(
+      "flow_etapas_envio",
+    )
+    // browse_abandonment idem: flow_browse_abandoned, nunca impl_browse_abandonado.
+    expect(resolveSlugForEmail("browse_abandonment", 2)?.parentSlug).toBe(
+      "flow_browse_abandoned",
+    )
   })
 })
 
