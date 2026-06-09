@@ -33,10 +33,21 @@ export interface CheckboxOnlyTarget {
   resource?: "brand" | "briefing"
 }
 
+/**
+ * Visão geral de implementação: abre o workspace em modo `implementation` com
+ * TODOS os flows (sem filtro por flow). Usado pela task âncora da Etapa 6
+ * ("Enviar instruções…"), que é o ponto de entrada da etapa — o ops vê todos
+ * os flows na sidebar e navega entre eles. Não tem flowType nem subItems.
+ */
+export interface ImplementationOverviewTarget {
+  kind: "implementation-overview"
+}
+
 export type TaskWorkspaceTarget =
   | EmailTarget
   | EmailListTarget
   | CheckboxOnlyTarget
+  | ImplementationOverviewTarget
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1)
 
@@ -148,10 +159,13 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
   impl_winback: implListTarget("win_back", 3, "impl_winback_email"),
   impl_pedido_pago: implListTarget("shipping_stages", 5, "impl_pedido_pago_email"),
 
+  // Task âncora da Etapa 6 — ponto de entrada que o ops clica. Abre o handoff
+  // completo (todos os flows) em modo implementation.
+  impl_acesso_instrucoes: { kind: "implementation-overview" },
+
   // Itens da Etapa 6 SEM workspace de email (config técnica / verificação).
   // Mapeados explicitamente como `null` pra documentar a intenção e satisfazer
-  // o contrato com o bootstrap. "Iniciar" nesses itens cai no 422 silencioso.
-  impl_acesso_instrucoes: null,
+  // o contrato com o bootstrap. "Iniciar" nesses itens cai no 422 (com toast).
   impl_dns: null,
   impl_popup: null,
   impl_teste_e2e: null,
@@ -226,6 +240,12 @@ const TITLE_FALLBACK_RULES: Array<{
     match: /configurar.*pedido\s*pago/i,
     target: implListTarget("shipping_stages", 5, "impl_pedido_pago_email"),
   },
+  // Task âncora da Etapa 6 — "Enviar instruções … criar conta Klaviyo/Omnisend".
+  // Abre a visão geral (todos os flows). Cobre cards legados com slug NULL.
+  {
+    match: /(instru[cç][õo]es|criar\s*conta).*(klaviyo|omnisend)/i,
+    target: { kind: "implementation-overview" },
+  },
 ]
 
 export function resolveTaskWorkspaceTargetByTitle(
@@ -271,7 +291,10 @@ export function resolveSlugForEmail(
     if (!target) continue
     // `implementation` é um handoff read-only — nunca é dono do email pro sync
     // de status. A posse fica com os targets `preview` (1:1) e `full` (flow).
-    if (target.kind !== "checkbox-only" && target.mode === "implementation") {
+    if (
+      (target.kind === "email" || target.kind === "email-list") &&
+      target.mode === "implementation"
+    ) {
       continue
     }
     if (

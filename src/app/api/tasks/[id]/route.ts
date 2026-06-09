@@ -29,7 +29,13 @@ async function guardEmailProductionCompletion(
   const target =
     resolveTaskWorkspaceTarget(task.slug as string | null) ??
     resolveTaskWorkspaceTargetByTitle(task.title as string | null)
-  if (!target || target.kind === "checkbox-only") return null
+  if (
+    !target ||
+    target.kind === "checkbox-only" ||
+    target.kind === "implementation-overview"
+  ) {
+    return null
+  }
 
   // Resolve storeId
   let storeId = (task.store_id as string | null) ?? null

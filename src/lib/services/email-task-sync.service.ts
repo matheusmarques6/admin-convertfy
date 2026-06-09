@@ -87,7 +87,12 @@ export async function resolveTaskWorkspace(
   const storeId = await resolveStoreId(admin, task)
   if (!storeId) return { ok: false, reason: "no_store_id" }
 
-  if (target.kind === "checkbox-only") {
+  // Sem flow específico: checkbox (brand/briefing) e a visão geral de
+  // implementação (todos os flows) só precisam do storeId.
+  if (
+    target.kind === "checkbox-only" ||
+    target.kind === "implementation-overview"
+  ) {
     return { ok: true, target, storeId }
   }
 
@@ -157,7 +162,12 @@ export async function startTaskEmailProduction(
   const storeId = await resolveStoreId(admin, task)
   if (!storeId) return { ok: false, reason: "no_store_id" }
 
-  if (target.kind === "checkbox-only") {
+  // Sem flow específico: não há o que garantir no banco — o workspace carrega
+  // todos os flows existentes via /producao.
+  if (
+    target.kind === "checkbox-only" ||
+    target.kind === "implementation-overview"
+  ) {
     return { ok: true, target, storeId }
   }
 

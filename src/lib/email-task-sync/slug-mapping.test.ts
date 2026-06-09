@@ -162,8 +162,14 @@ describe("resolveTaskWorkspaceTarget", () => {
     }
   })
 
+  it("a task âncora da Etapa 6 abre a visão geral de implementação", () => {
+    expect(resolveTaskWorkspaceTarget("impl_acesso_instrucoes")).toEqual({
+      kind: "implementation-overview",
+    })
+  })
+
   it("itens técnicos da Etapa 6 ficam sem workspace (null/422)", () => {
-    for (const slug of ["impl_acesso_instrucoes", "impl_dns", "impl_popup", "impl_teste_e2e"]) {
+    for (const slug of ["impl_dns", "impl_popup", "impl_teste_e2e"]) {
       expect(resolveTaskWorkspaceTarget(slug), slug).toBeNull()
     }
   })
@@ -318,10 +324,13 @@ describe("resolveTaskWorkspaceTargetByTitle (fallback p/ tasks legadas)", () => 
     }
   })
 
-  it("NÃO resolve os itens técnicos da Etapa 6 pelo título", () => {
+  it("resolve a âncora da Etapa 6 (instruções de conta) como visão geral", () => {
     expect(
       resolveTaskWorkspaceTargetByTitle("Enviar instrucoes pra cliente criar conta Klaviyo/Omnisend"),
-    ).toBeNull()
+    ).toEqual({ kind: "implementation-overview" })
+  })
+
+  it("NÃO resolve os itens técnicos (DNS/popup) da Etapa 6 pelo título", () => {
     expect(resolveTaskWorkspaceTargetByTitle("Ensinar a configurar dominio + DKIM/SPF")).toBeNull()
     expect(resolveTaskWorkspaceTargetByTitle("Implementar popup")).toBeNull()
   })

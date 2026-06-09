@@ -918,7 +918,9 @@ export function TaskDetailDrawer({
           mode:
           payload.target.kind === "checkbox-only"
             ? "full"
-            : payload.target.mode,
+            : payload.target.kind === "implementation-overview"
+              ? "implementation"
+              : payload.target.mode,
           allowedEmails: buildAllowedEmails(payload.target),
           flowId: payload.flowId,
           emailId: payload.emailId,
@@ -998,14 +1000,28 @@ export function TaskDetailDrawer({
     try {
       const r = await fetch(`/api/tasks/${task.id}/start`, { method: "POST" })
       if (!r.ok) {
-        // 422 = slug não mapeado pra workspace. É esperado pra tasks que
-        // não são de produção de email. Silencioso pra não confundir.
-        if (r.status !== 422) {
-          console.warn(
-            "[drawer] /start retornou",
-            r.status,
-            "— prossegue sem abrir modal",
+        // Em vez de falhar em silêncio, explica o motivo. O corpo traz
+        // `{ error: "start_failed:<reason>" }`.
+        let reason = ""
+        try {
+          const b = await r.json()
+          reason = String(b?.error ?? "").replace(/^(start|resolve)_failed:/, "")
+        } catch {
+          /* corpo não-JSON */
+        }
+        const colSlug = (task.metadata?.column_slug as string) ?? ""
+        if (reason === "no_store_id") {
+          setShowToast("Esta tarefa não tem loja vinculada — não dá pra abrir o workspace.")
+        } else if (reason === "unsupported_flow") {
+          setShowToast("Não foi possível preparar o flow desta tarefa. Tente novamente.")
+        } else if (r.status === 422 && colSlug === "implementacao") {
+          // Etapa de implementação: o usuário espera uma tela. Os itens
+          // técnicos (DNS, popup, teste) não têm — explica e aponta o caminho.
+          setShowToast(
+            'Esta etapa técnica não tem tela de e-mail. Abra uma tarefa "Configurar a automação de [flow]" pra ver o handoff.',
           )
+        } else if (r.status !== 422) {
+          console.warn("[drawer] /start retornou", r.status, "— sem modal")
         }
         return null
       }
@@ -1022,7 +1038,9 @@ export function TaskDetailDrawer({
         mode:
           payload.target.kind === "checkbox-only"
             ? "full"
-            : payload.target.mode,
+            : payload.target.kind === "implementation-overview"
+              ? "implementation"
+              : payload.target.mode,
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,
@@ -1058,7 +1076,9 @@ export function TaskDetailDrawer({
         mode:
           payload.target.kind === "checkbox-only"
             ? "full"
-            : payload.target.mode,
+            : payload.target.kind === "implementation-overview"
+              ? "implementation"
+              : payload.target.mode,
         allowedEmails: buildAllowedEmails(payload.target),
         flowId: payload.flowId,
         emailId: payload.emailId,
