@@ -130,3 +130,65 @@ export function ListEditor({
     </div>
   )
 }
+
+export function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  placeholder,
+}: {
+  value: number
+  onChange: (v: number) => void
+  min?: number
+  max?: number
+  placeholder?: string
+}) {
+  const clamp = (n: number) => {
+    if (Number.isNaN(n)) return min ?? 0
+    let r = n
+    if (min != null) r = Math.max(min, r)
+    if (max != null) r = Math.min(max, r)
+    return r
+  }
+  return (
+    <input
+      type="number"
+      value={Number.isFinite(value) ? value : ""}
+      min={min}
+      max={max}
+      placeholder={placeholder}
+      onChange={(e) => onChange(clamp(Number(e.target.value)))}
+      className="w-full h-9 px-3 rounded-md border text-[13px] tabular-nums outline-none focus:border-brand-500"
+      style={{ borderColor: "rgba(0,0,0,0.10)" }}
+    />
+  )
+}
+
+export function Select({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full h-9 px-3 rounded-md border text-[13px] bg-white outline-none focus:border-brand-500"
+      style={{ borderColor: "rgba(0,0,0,0.10)" }}
+    >
+      {placeholder != null && <option value="">{placeholder}</option>}
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  )
+}
