@@ -9,11 +9,10 @@
  * briefing_data porque o schema da tabela não tem colunas dedicadas.
  */
 
-import { NextRequest, after } from "next/server"
+import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
-import { dispatchEmailCopyWebhook } from "@/lib/services/email-copy-webhook.service"
 import { resolveMarkdownWrite, type BriefingMarkdownRow } from "./dedup"
 import {
   errorResponse,
@@ -24,7 +23,6 @@ import {
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300
 
 const schema = z.object({
   store_id: z.string().uuid(),
@@ -107,23 +105,9 @@ export async function POST(request: NextRequest) {
       mode: body.mode,
     })
 
-    // Gatilho: este é o passo FINAL do workflow do n8n — a Pesquisa &
-    // Diagnóstico está completa. Dispara Architect + seed + copy em background
-    // (sem depender da confirmação manual). Falha não derruba o 200.
-    after(async () => {
-      try {
-        await dispatchEmailCopyWebhook(body.store_id, {
-          triggerSource: "pesquisa_completa",
-          triggeredBy: "n8n:briefing-markdown",
-        })
-      } catch (err) {
-        logger.error("[n8n:briefing-markdown] dispatch_failed", {
-          store_id: body.store_id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    })
-
+    // NB: o disparo da geração de email NÃO acontece aqui. O n8n sinaliza a
+    // conclusão da Pesquisa & Diagnóstico via webhook dedicado
+    // (/api/webhooks/n8n/pesquisa-completa), que é o gatilho do Architect+copy.
     return successResponse(request, {
       data: { store_id: body.store_id, briefing_id: inserted?.id },
     })

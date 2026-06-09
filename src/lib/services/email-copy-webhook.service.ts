@@ -270,17 +270,22 @@ export async function dispatchEmailCopyWebhook(
   }
 
   // Idempotência do gatilho automático (Pesquisa & Diagnóstico): não re-dispara
-  // se já houver um batch em andamento para a loja — evita batch duplicado num
-  // re-callback do n8n com markdown novo.
+  // se já houver um batch em andamento/concluído — evita batch duplicado num
+  // re-callback do n8n. Só dispara se os emails estão em draft/failed.
   if (options.triggerSource === "pesquisa_completa") {
-    const inProgress = emails.some((e) =>
-      [
-        "copy_generating",
-        "copy_generating_recovery",
-        "rendering",
-        "qa_running",
-      ].includes(e.status),
-    )
+    const ACTIVE_STATUSES = [
+      "pending",
+      "in_progress",
+      "copy_generating",
+      "copy_generating_recovery",
+      "copy_ready",
+      "rendering",
+      "qa_running",
+      "ready",
+      "approved",
+      "live",
+    ]
+    const inProgress = emails.some((e) => ACTIVE_STATUSES.includes(e.status))
     if (inProgress) {
       log.info("email_copy.webhook.skip", { storeId, reason: "batch_in_progress" })
       return {

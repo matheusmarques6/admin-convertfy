@@ -59,6 +59,7 @@ Em cada HTTP Request:
 | `POST /api/webhooks/n8n/top-products` | Operação & catálogo | `store_top_products` (tabela) | `tab-contexto.tsx` (seção "Operação") |
 | `POST /api/webhooks/n8n/competitors` | Concorrência | `client_competitors` (preserva `source='manual'`) | `tab-contexto.tsx` (seção "Concorrência") |
 | `POST /api/webhooks/n8n/briefing-markdown` | Briefing completo (IA) | `store_briefings.briefing_data` (versionado) | `store-briefing-tab.tsx` |
+| `POST /api/webhooks/n8n/pesquisa-completa` | — (gatilho) | — (dispara Architect + geração de email) | — |
 
 ---
 
@@ -414,6 +415,11 @@ versionando em `store_briefings`.
 2. INSERT novo registro com `status = 'current'`, `generated_by = 'n8n:briefing-markdown'`
 3. Metadados (`mode`, `model_used`, `tokens_used`) ficam dentro do
    `briefing_data` jsonb pois a tabela não tem colunas dedicadas.
+4. **Dedup:** se o `markdown` for idêntico ao `current` do n8n, é no-op (não
+   arquiva, não insere). `version = max(version)+1`.
+
+> Este endpoint **não dispara** a geração de email. O gatilho do Architect +
+> copy é o `pesquisa-completa` (seção 9).
 
 **Estrutura final de `briefing_data`:**
 ```json
@@ -441,6 +447,43 @@ curl -X POST https://admin.convertfy.com.br/api/webhooks/n8n/briefing-markdown \
     "model_used": "claude-haiku-4-5",
     "tokens_used": 4231
   }'
+```
+
+---
+
+## 9. `POST /api/webhooks/n8n/pesquisa-completa` — Gatilho da geração de email
+
+Sinal explícito de que a **Pesquisa & Diagnóstico** (5 pilares: marca/loja/ICP/
+tom/ads) terminou. **Deve ser o ÚLTIMO passo** do workflow de pesquisa, chamado
+depois de `brand` + `store-story` + `icp` + `tone` + `ads-analyzer`.
+
+Dispara, em background (`after`), o `dispatchEmailCopyWebhook`:
+1. **Architect** — Montador monta o HTML de referência + Blueprint extrai a
+   estrutura, ambos usando a Pesquisa & Diagnóstico serializada
+   (`pesquisaToFullText`). Grava `store_email_references` + `store_email_blueprints`.
+2. Seed/reconcile dos blocks da blueprint.
+3. POST do payload rico (com `pesquisa_diagnostico`) ao `N8N_EMAIL_COPY_WEBHOOK_URL`
+   → emails `draft → in_progress`.
+
+**Idempotência:** não re-dispara se a loja já tem um batch em andamento/concluído
+(emails fora de `draft`/`failed`) — retorna `{ ok:false, reason:"batch_in_progress" }`.
+
+**Body:**
+```ts
+{
+  store_id: string (uuid),
+}
+```
+
+**Resposta:** `200 { store_id, triggered: true }` (o disparo roda em background;
+falha do dispatch não derruba o 200).
+
+**Exemplo cURL:**
+```bash
+curl -X POST https://admin.convertfy.com.br/api/webhooks/n8n/pesquisa-completa \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-secret: $N8N_WEBHOOK_SECRET" \
+  -d '{ "store_id": "5b33926a-..." }'
 ```
 
 ---
