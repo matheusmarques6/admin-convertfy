@@ -1039,7 +1039,7 @@ function TestTab() {
       } catch {
         throw new Error(
           res.status === 504 || text.includes("timed out")
-            ? "Timeout: a geração está demorando mais que o esperado. Tente novamente."
+            ? "Timeout: a função do servidor expirou (300s). Verifique qual fase travou em /admin/tools/email-generation-logs e tente novamente."
             : `Resposta inválida do servidor (HTTP ${res.status})`,
         )
       }

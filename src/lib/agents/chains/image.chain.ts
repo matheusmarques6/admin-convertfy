@@ -45,6 +45,22 @@ export function renderImagePrompt(
 
 const OPENROUTER_IMAGE_MODEL = "openai/gpt-5.4-image-2"
 
+const OPENROUTER_IMAGE_TIMEOUT_MS = 90_000
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  ms: number,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 /**
  * Heuristica pra detectar erro "modelo nao suporta multimodal" no body
  * de uma resposta 4xx do OpenRouter. Conservadora: so dispara retry
@@ -123,18 +139,36 @@ async function callOpenRouterImage(
   referenceImageUrl?: string,
   systemPrompt?: string,
 ): Promise<Response> {
-  return fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_IMAGE_MODEL,
-      messages: buildMessages(prompt, referenceImageUrl, systemPrompt),
-      response_format: "b64_json",
-    }),
-  })
+  try {
+    return await fetchWithTimeout(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: OPENROUTER_IMAGE_MODEL,
+          messages: buildMessages(prompt, referenceImageUrl, systemPrompt),
+          response_format: "b64_json",
+        }),
+      },
+      OPENROUTER_IMAGE_TIMEOUT_MS,
+    )
+  } catch (err) {
+    // AbortError do timeout vira mensagem previsivel pra phase2-runner
+    // decidir marcar failure_reason='image_failed'.
+    if (
+      err instanceof Error &&
+      (err.name === "AbortError" || err.message === "The operation was aborted.")
+    ) {
+      throw new Error(
+        `image_timeout: OpenRouter excedeu ${OPENROUTER_IMAGE_TIMEOUT_MS / 1000}s`,
+      )
+    }
+    throw err
+  }
 }
 
 export async function generateEmailImage(
