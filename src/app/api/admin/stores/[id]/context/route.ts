@@ -96,6 +96,39 @@ const patchSchema = z.object({
   icp_day_in_life: z.string().nullable().optional(),
   icp_motivations: z.array(z.string()).nullable().optional(),
   icp_frictions: z.array(z.string()).nullable().optional(),
+  // 3b. ICP avançado (blocos analíticos)
+  icp_awareness: z.object({
+    dominant: z.string(),
+    levels: z.array(z.object({
+      key: z.string(),
+      label: z.string(),
+      pct: z.number(),
+    })),
+    copy_implication: z.string(),
+  }).nullable().optional(),
+  icp_starving_crowd: z.object({
+    verdict: z.string(),
+    scores: z.array(z.object({
+      key: z.string(),
+      label: z.string(),
+      value: z.number(),
+      note: z.string(),
+    })),
+    total: z.number(),
+  }).nullable().optional(),
+  icp_unique_mechanism: z.object({
+    headline: z.string(),
+    body: z.string(),
+  }).nullable().optional(),
+  icp_objections: z.array(z.object({
+    objection: z.string(),
+    treatment: z.string(),
+  })).nullable().optional(),
+  icp_vocabulary: z.array(z.object({
+    type: z.enum(["Dor", "Desejo", "Objeção", "Marca"]),
+    channel: z.string(),
+    quote: z.string(),
+  })).nullable().optional(),
   // 4. Tom de Comunicação
   tone_description: z.string().nullable().optional(),
   tone_do: z.array(z.string()).nullable().optional(),

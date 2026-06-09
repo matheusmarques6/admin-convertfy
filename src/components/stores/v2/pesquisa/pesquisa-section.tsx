@@ -32,6 +32,11 @@ import {
   ScoreGauge,
   SubScore,
   ReviewBlock,
+  AwarenessLadder,
+  StarvingCrowdScorecard,
+  UniqueMechanism,
+  ObjectionList,
+  VocabularyList,
 } from "./primitives"
 import { EditMarcaModal } from "./editors/edit-marca"
 import { EditLojaModal } from "./editors/edit-loja"
@@ -77,6 +82,24 @@ export interface PesquisaData {
   icp_day_in_life?: string | null
   icp_motivations?: string[] | null
   icp_frictions?: string[] | null
+  // 3b. ICP avançado (blocos analíticos)
+  icp_awareness?: {
+    dominant: string
+    levels: { key: string; label: string; pct: number }[]
+    copy_implication: string
+  } | null
+  icp_starving_crowd?: {
+    verdict: string
+    scores: { key: string; label: string; value: number; note: string }[]
+    total: number
+  } | null
+  icp_unique_mechanism?: { headline: string; body: string } | null
+  icp_objections?: { objection: string; treatment: string }[] | null
+  icp_vocabulary?: {
+    type: "Dor" | "Desejo" | "Objeção" | "Marca"
+    channel: string
+    quote: string
+  }[] | null
   // 4. Tom
   tone_description?: string | null
   tone_do?: string[] | null
@@ -149,6 +172,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [regenerating, setRegenerating] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [regeneratingAll, setRegeneratingAll] = useState(false)
+  const [regeneratingObjections, setRegeneratingObjections] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -204,6 +228,35 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
     } finally {
       setRegeneratingAll(false)
+    }
+  }
+
+  // Regenera APENAS as objeções via IA in-process (Anthropic direto).
+  // Atualiza o estado local com o retorno; cai pro reload se o payload vier vazio.
+  const regenerateObjections = async () => {
+    setRegeneratingObjections(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/regenerate-objections`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        const j = await res.json().catch(() => ({}))
+        const objections = (j.data?.objections ?? j.objections) as PesquisaData["icp_objections"]
+        if (objections && objections.length > 0) {
+          setData((prev) => ({ ...prev, icp_objections: objections }))
+        } else {
+          await reload()
+        }
+        toast({ title: "Objeções regeradas", description: "As 5 objeções foram atualizadas com IA." })
+      } else {
+        const err = await res.json().catch(() => ({}))
+        const msg = (err as Record<string, unknown>).error ?? (err as Record<string, unknown>).message ?? `HTTP ${res.status}`
+        toast({ variant: "destructive", title: "Erro ao regerar objeções", description: String(msg) })
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
+    } finally {
+      setRegeneratingObjections(false)
     }
   }
 
@@ -486,6 +539,43 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
                 <MotivCard tone="warn" title="O que a faz hesitar" items={data.icp_frictions ?? []} />
               </div>
             </div>
+          )}
+
+          {/* Blocos analíticos avançados */}
+          {data.icp_awareness && (data.icp_awareness.levels?.length ?? 0) > 0 && (
+            <AwarenessLadder
+              dominant={data.icp_awareness.dominant}
+              levels={data.icp_awareness.levels}
+              copyImplication={data.icp_awareness.copy_implication}
+            />
+          )}
+
+          {data.icp_starving_crowd && (data.icp_starving_crowd.scores?.length ?? 0) > 0 && (
+            <StarvingCrowdScorecard
+              verdict={data.icp_starving_crowd.verdict}
+              scores={data.icp_starving_crowd.scores}
+              total={data.icp_starving_crowd.total}
+            />
+          )}
+
+          {data.icp_unique_mechanism?.body && (
+            <UniqueMechanism
+              headline={data.icp_unique_mechanism.headline}
+              body={data.icp_unique_mechanism.body}
+            />
+          )}
+
+          {/* Objeções: aparecem se já existem OU se há persona (permite gerar com IA) */}
+          {((data.icp_objections?.length ?? 0) > 0 || data.icp_persona) && (
+            <ObjectionList
+              items={data.icp_objections ?? []}
+              onRegenerate={regenerateObjections}
+              regenerating={regeneratingObjections}
+            />
+          )}
+
+          {(data.icp_vocabulary?.length ?? 0) > 0 && (
+            <VocabularyList items={data.icp_vocabulary ?? []} />
           )}
         </PesquisaCard>
 
