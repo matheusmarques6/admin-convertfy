@@ -74,6 +74,10 @@ FLOW: {{flow_type}} — EMAIL #{{email_number}}
 OUTLINE: {{outline_objective}} | {{outline_guidance}}
 TIPOS PERMITIDOS: {{allowed_block_types}}
 
+<pesquisa_diagnostico>
+{{pesquisa_diagnostico}}
+</pesquisa_diagnostico>
+
 HTML MONTADO (extraia a estrutura DELE):
 {{reference_html}}
 
@@ -158,6 +162,8 @@ export interface GenerateBlueprintInput {
   outline: EmailOutlineTemplate | null
   // HTML montado pelo Montador — o blueprint é extraído dele.
   referenceHtml: string
+  // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
+  pesquisa: string
 }
 
 export interface GenerateBlueprintResult {
@@ -204,6 +210,7 @@ export async function generateStoreBlueprint(
     suggested_blocks: (input.outline?.suggested_blocks ?? []).join(", "),
     allowed_block_types: Array.from(ALLOWED_BLOCK_TYPES).join(", "),
     reference_html: input.referenceHtml,
+    pesquisa_diagnostico: input.pesquisa,
   }
 
   const t0 = Date.now()

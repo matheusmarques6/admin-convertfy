@@ -80,6 +80,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
     { key: "allowed_block_types", desc: "Tipos de bloco permitidos" },
     { key: "reference_html", desc: "HTML montado pelo Montador (extrair daqui)" },
+    { key: "pesquisa_diagnostico", desc: "Pesquisa & Diagnóstico (marca/ICP/tom/ads)" },
   ],
   assembler: [
     { key: "brand_name", desc: "Nome da loja/marca" },
@@ -89,6 +90,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "tom_voz", desc: "Tom de voz" },
     { key: "mood", desc: "Mood derivado do tom de voz" },
     { key: "briefing_json", desc: "Briefing da marca (JSON)" },
+    { key: "pesquisa_diagnostico", desc: "Pesquisa & Diagnóstico (marca/ICP/tom/ads)" },
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],

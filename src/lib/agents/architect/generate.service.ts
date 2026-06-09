@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
+import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { mapTomVozToMood } from "../image/mood-mapping"
 import { resolveSections } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
@@ -60,9 +61,7 @@ export async function generateBlueprintAndReference(
   const [storeRes, briefingRes, productsRes, outlineRes] = await Promise.all([
     admin
       .from("client_stores")
-      .select(
-        "store_name, niche, posicionamento_preco, icp_persona, persona, tone_description, tom_de_voz",
-      )
+      .select("*")
       .eq("id", input.storeId)
       .maybeSingle(),
     admin
@@ -110,6 +109,8 @@ export async function generateBlueprintAndReference(
     ""
   const topProductNames = products.map((p) => p.title).filter(Boolean)
   const mood = mapTomVozToMood(tomVoz)
+  // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica p/ os agentes.
+  const pesquisa = pesquisaToFullText(store as PesquisaFields)
 
   // Passo 1 — Montador: monta o HTML a partir das seções do outline.
   const sections = resolveSections(outline)
@@ -126,6 +127,7 @@ export async function generateBlueprintAndReference(
     mood,
     persona,
     briefingJson: JSON.stringify(marca),
+    pesquisa,
     sections,
   })
 
@@ -143,6 +145,7 @@ export async function generateBlueprintAndReference(
     tomVoz,
     topProductNames,
     outline,
+    pesquisa,
     referenceHtml: html ?? "",
   })
 }

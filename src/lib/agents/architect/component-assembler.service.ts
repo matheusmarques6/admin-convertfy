@@ -35,6 +35,11 @@ const DEFAULT_MODEL = "claude-sonnet-4-6"
 const DEFAULT_ASSEMBLER_SYSTEM = `Você é o montador de referência visual de emails. Para cada bloco, recebe VARIANTES FINALISTAS (já pré-filtradas) e escolhe a que melhor combina com a loja/produto/marca, mantendo coerência visual entre os blocos. Escolha sempre um variant_id presente nos finalistas. Retorne APENAS um JSON array [{"block_index","variant_id"}].`
 
 const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}} — MOOD: {{mood}}
+
+<pesquisa_diagnostico>
+{{pesquisa_diagnostico}}
+</pesquisa_diagnostico>
+
 BLOCOS: {{blocks_json}}
 FINALISTAS POR BLOCO: {{candidates_json}}
 Escolha a melhor variante de cada bloco. Responda apenas o JSON array.`
@@ -143,6 +148,8 @@ export interface AssembleReferenceInput {
   persona: string
   // Briefing da marca (JSON serializado) — ancora as escolhas no briefing.
   briefingJson: string
+  // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
+  pesquisa: string
   // Seções (8) vindas do outline (estrutura geral), na ordem.
   sections: string[]
 }
@@ -248,6 +255,7 @@ export async function assembleStoreReference(
     tom_voz: input.tomVoz,
     mood: input.mood,
     briefing_json: input.briefingJson,
+    pesquisa_diagnostico: input.pesquisa,
     blocks_json: blocksJson,
     candidates_json: candidatesJson,
   }

@@ -9,10 +9,12 @@
  * briefing_data porque o schema da tabela não tem colunas dedicadas.
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
+import { dispatchEmailCopyWebhook } from "@/lib/services/email-copy-webhook.service"
+import { resolveMarkdownWrite, type BriefingMarkdownRow } from "./dedup"
 import {
   errorResponse,
   successResponse,
@@ -22,6 +24,7 @@ import {
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 300
 
 const schema = z.object({
   store_id: z.string().uuid(),
@@ -47,6 +50,27 @@ export async function POST(request: NextRequest) {
 
     const generatedAt = body.generated_at ?? new Date().toISOString()
 
+    // Lê versões existentes p/ dedup + version=max+1 (defensivo).
+    const { data: existing } = await admin
+      .from("store_briefings")
+      .select("version, briefing_data, generated_by, status")
+      .eq("store_id", body.store_id)
+      .order("version", { ascending: false })
+
+    const rows = (existing ?? []) as BriefingMarkdownRow[]
+    const { deduped, nextVersion } = resolveMarkdownWrite(rows, body.markdown)
+
+    // Idempotência: markdown idêntico ao current → no-op (não arquiva, não
+    // insere, não dispara a geração).
+    if (deduped) {
+      logger.info("[n8n:briefing-markdown] dedup_noop", {
+        store_id: body.store_id,
+      })
+      return successResponse(request, {
+        data: { store_id: body.store_id, deduped: true },
+      })
+    }
+
     // Arquiva versão atual
     const { error: archErr } = await admin
       .from("store_briefings")
@@ -55,7 +79,7 @@ export async function POST(request: NextRequest) {
       .eq("status", "current")
     if (archErr) throw archErr
 
-    // Insere nova como current
+    // Insere nova como current (version = max+1)
     const briefingData = {
       markdown: body.markdown,
       mode: body.mode,
@@ -68,6 +92,7 @@ export async function POST(request: NextRequest) {
       .insert({
         store_id: body.store_id,
         briefing_data: briefingData,
+        version: nextVersion,
         generated_at: generatedAt,
         generated_by: "n8n:briefing-markdown",
         status: "current",
@@ -81,6 +106,24 @@ export async function POST(request: NextRequest) {
       briefing_id: inserted?.id,
       mode: body.mode,
     })
+
+    // Gatilho: este é o passo FINAL do workflow do n8n — a Pesquisa &
+    // Diagnóstico está completa. Dispara Architect + seed + copy em background
+    // (sem depender da confirmação manual). Falha não derruba o 200.
+    after(async () => {
+      try {
+        await dispatchEmailCopyWebhook(body.store_id, {
+          triggerSource: "pesquisa_completa",
+          triggeredBy: "n8n:briefing-markdown",
+        })
+      } catch (err) {
+        logger.error("[n8n:briefing-markdown] dispatch_failed", {
+          store_id: body.store_id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    })
+
     return successResponse(request, {
       data: { store_id: body.store_id, briefing_id: inserted?.id },
     })

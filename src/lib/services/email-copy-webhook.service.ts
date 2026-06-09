@@ -22,6 +22,7 @@ import {
   isArchitectConfigured,
 } from "@/lib/agents/architect/generate.service"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
+import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -31,7 +32,7 @@ const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
 
 export interface DispatchEmailCopyOptions {
-  triggerSource: "briefing_confirmed" | "manual_store_button"
+  triggerSource: "briefing_confirmed" | "manual_store_button" | "pesquisa_completa"
   flowIds?: string[]
   triggeredBy?: string
   onlyDrafts?: boolean
@@ -266,6 +267,29 @@ export async function dispatchEmailCopyWebhook(
   if (emails.length === 0) {
     log.warn("email_copy.webhook.skip", { storeId, reason: "no_emails" })
     return { ok: false, flow_count: 0, email_count: 0, reason: "no_emails" }
+  }
+
+  // Idempotência do gatilho automático (Pesquisa & Diagnóstico): não re-dispara
+  // se já houver um batch em andamento para a loja — evita batch duplicado num
+  // re-callback do n8n com markdown novo.
+  if (options.triggerSource === "pesquisa_completa") {
+    const inProgress = emails.some((e) =>
+      [
+        "copy_generating",
+        "copy_generating_recovery",
+        "rendering",
+        "qa_running",
+      ].includes(e.status),
+    )
+    if (inProgress) {
+      log.info("email_copy.webhook.skip", { storeId, reason: "batch_in_progress" })
+      return {
+        ok: false,
+        flow_count: 0,
+        email_count: 0,
+        reason: "batch_in_progress",
+      }
+    }
   }
 
   // AUTO-SEED + RECONCILIAÇÃO ADITIVA: garante que cada email do batch tenha
@@ -531,6 +555,8 @@ export async function dispatchEmailCopyWebhook(
           briefing: briefing.briefing ?? {},
         }
       : null,
+    // Pesquisa & Diagnóstico (5 pilares) serializada — contexto rico p/ a copy.
+    pesquisa_diagnostico: pesquisaToFullText(store as PesquisaFields),
     top_products: topProductsTable.map((p) => ({
       name: p.title,
       price: p.price,
