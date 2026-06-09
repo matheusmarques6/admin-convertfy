@@ -46,6 +46,22 @@ const subItems = (
 ): EmailListSubItem[] =>
   range(count).map((n) => ({ slug: `${prefix}_${n}`, emailNumber: n }))
 
+/**
+ * Factory dos targets de implementação (Etapa 6): email-list em modo
+ * `implementation` cobrindo todos os e-mails do flow. Reusado pelo
+ * TASK_SLUG_MAP e pelo fallback por título (tasks legadas com slug NULL).
+ */
+const implListTarget = (
+  flowType: FlowType,
+  count: number,
+  prefix: string,
+): EmailListTarget => ({
+  kind: "email-list",
+  mode: "implementation",
+  flowType,
+  subItems: subItems(prefix, count),
+})
+
 export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
   // Etapa 3 — Designer cria pilotos
   preview_brand_brain: { kind: "checkbox-only", resource: "briefing" },
@@ -124,48 +140,13 @@ export const TASK_SLUG_MAP: Record<string, TaskWorkspaceTarget | null> = {
   // remetente, cupons, copy completa e mapa render↔copy do flow inteiro.
   // mode `implementation` é filtrado no reverse-lookup (resolveSlugForEmail)
   // pra não interferir no sync de status dos flows `full`/`preview`.
-  impl_welcome: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "welcome",
-    subItems: subItems("impl_welcome_email", 8),
-  },
-  impl_carrinho: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "abandoned_cart",
-    subItems: subItems("impl_carrinho_email", 8),
-  },
-  impl_site_abandonado: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "site_abandoned",
-    subItems: subItems("impl_site_abandonado_email", 1),
-  },
-  impl_browse_abandonado: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "browse_abandonment",
-    subItems: subItems("impl_browse_abandonado_email", 5),
-  },
-  impl_post_purchase: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "upsell",
-    subItems: subItems("impl_post_purchase_email", 4),
-  },
-  impl_winback: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "win_back",
-    subItems: subItems("impl_winback_email", 3),
-  },
-  impl_pedido_pago: {
-    kind: "email-list",
-    mode: "implementation",
-    flowType: "shipping_stages",
-    subItems: subItems("impl_pedido_pago_email", 5),
-  },
+  impl_welcome: implListTarget("welcome", 8, "impl_welcome_email"),
+  impl_carrinho: implListTarget("abandoned_cart", 8, "impl_carrinho_email"),
+  impl_site_abandonado: implListTarget("site_abandoned", 1, "impl_site_abandonado_email"),
+  impl_browse_abandonado: implListTarget("browse_abandonment", 5, "impl_browse_abandonado_email"),
+  impl_post_purchase: implListTarget("upsell", 4, "impl_post_purchase_email"),
+  impl_winback: implListTarget("win_back", 3, "impl_winback_email"),
+  impl_pedido_pago: implListTarget("shipping_stages", 5, "impl_pedido_pago_email"),
 
   // Itens da Etapa 6 SEM workspace de email (config técnica / verificação).
   // Mapeados explicitamente como `null` pra documentar a intenção e satisfazer
@@ -212,6 +193,38 @@ const TITLE_FALLBACK_RULES: Array<{
   {
     match: /(email[-\s]?piloto\s*3[:\s].*pos|piloto.*pos[-\s]compra|piloto.*upsell)/i,
     target: { kind: "email", mode: "preview", flowType: "upsell", emailNumber: 1 },
+  },
+  // Etapa 6 — tasks "Configurar a automação de [flow] e subir os e-mails".
+  // Cobre cards legados cujas tasks foram criadas com slug NULL (antes dos
+  // slugs impl_* existirem no template). Ancorado em "configurar" pra não
+  // colidir com os títulos de piloto ("Criar email-piloto...").
+  {
+    match: /configurar.*welcome/i,
+    target: implListTarget("welcome", 8, "impl_welcome_email"),
+  },
+  {
+    match: /configurar.*(carrinho|checkout)/i,
+    target: implListTarget("abandoned_cart", 8, "impl_carrinho_email"),
+  },
+  {
+    match: /configurar.*site\s*abandonad/i,
+    target: implListTarget("site_abandoned", 1, "impl_site_abandonado_email"),
+  },
+  {
+    match: /configurar.*browse\s*abandonad/i,
+    target: implListTarget("browse_abandonment", 5, "impl_browse_abandonado_email"),
+  },
+  {
+    match: /configurar.*(post[-\s]?purchase|p[oó]s[-\s]?compra)/i,
+    target: implListTarget("upsell", 4, "impl_post_purchase_email"),
+  },
+  {
+    match: /configurar.*win[-\s]?back/i,
+    target: implListTarget("win_back", 3, "impl_winback_email"),
+  },
+  {
+    match: /configurar.*pedido\s*pago/i,
+    target: implListTarget("shipping_stages", 5, "impl_pedido_pago_email"),
   },
 ]
 

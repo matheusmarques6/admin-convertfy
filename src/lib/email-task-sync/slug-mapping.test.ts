@@ -296,4 +296,33 @@ describe("resolveTaskWorkspaceTargetByTitle (fallback p/ tasks legadas)", () => 
     expect(resolveTaskWorkspaceTargetByTitle("")).toBeNull()
     expect(resolveTaskWorkspaceTargetByTitle(null)).toBeNull()
   })
+
+  it("resolve tasks de implementação (Etapa 6) pelo título — cobre slug NULL legado", () => {
+    const cases: Array<[string, string, number]> = [
+      ["Configurar a automacao de Welcome Flow e subir os e-mails", "welcome", 8],
+      ["Configurar a automacao de Carrinho/checkout abandonado Flow e subir os e-mails", "abandoned_cart", 8],
+      ["Configurar a automacao de Site abandonado Flow e subir os e-mails", "site_abandoned", 1],
+      ["Configurar a automacao de Browse abandonado Flow e subir os e-mails", "browse_abandonment", 5],
+      ["Configurar a automacao de Post Purchase e subir os e-mails", "upsell", 4],
+      ["Configurar a automacao de Winback e subir os e-mails", "win_back", 3],
+      ["Configurar a automacao de Pedido pago e subir os e-mails", "shipping_stages", 5],
+    ]
+    for (const [title, flowType, count] of cases) {
+      const t = resolveTaskWorkspaceTargetByTitle(title)
+      expect(t?.kind, title).toBe("email-list")
+      if (t?.kind === "email-list") {
+        expect(t.mode, title).toBe("implementation")
+        expect(t.flowType, title).toBe(flowType)
+        expect(t.subItems, title).toHaveLength(count)
+      }
+    }
+  })
+
+  it("NÃO resolve os itens técnicos da Etapa 6 pelo título", () => {
+    expect(
+      resolveTaskWorkspaceTargetByTitle("Enviar instrucoes pra cliente criar conta Klaviyo/Omnisend"),
+    ).toBeNull()
+    expect(resolveTaskWorkspaceTargetByTitle("Ensinar a configurar dominio + DKIM/SPF")).toBeNull()
+    expect(resolveTaskWorkspaceTargetByTitle("Implementar popup")).toBeNull()
+  })
 })
