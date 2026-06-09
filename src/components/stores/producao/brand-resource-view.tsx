@@ -741,19 +741,60 @@ export function BrandResourceView({
             </button>
           )}
           {mode === "edit" && (
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--crm-brand)",
-                padding: "6px 10px",
-                background: "var(--crm-blue-50)",
-                border: "1px solid var(--crm-blue-100)",
-                borderRadius: 6,
-              }}
-            >
-              Editando · alteracoes pendentes
-            </span>
+            <>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--crm-brand)",
+                  padding: "6px 10px",
+                  background: "var(--crm-blue-50)",
+                  border: "1px solid var(--crm-blue-100)",
+                  borderRadius: 6,
+                }}
+              >
+                Editando · alteracoes pendentes
+              </span>
+              <button
+                onClick={cancelEditMode}
+                disabled={savingEdits}
+                className="cf-focusable"
+                style={{
+                  height: 32,
+                  padding: "0 14px",
+                  background: "var(--crm-gray-0)",
+                  border: "1px solid var(--crm-border)",
+                  borderRadius: 6,
+                  color: "var(--crm-gray-700)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: savingEdits ? "default" : "pointer",
+                  opacity: savingEdits ? 0.55 : 1,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEdits}
+                disabled={savingEdits}
+                className="cf-focusable inline-flex items-center gap-1.5"
+                style={{
+                  height: 32,
+                  padding: "0 14px",
+                  background: "var(--crm-brand)",
+                  color: "var(--crm-brand-fg)",
+                  border: 0,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: savingEdits ? "default" : "pointer",
+                  opacity: savingEdits ? 0.7 : 1,
+                }}
+              >
+                <Check className="h-3 w-3" />
+                {savingEdits ? "Salvando..." : "Salvar alterações"}
+              </button>
+            </>
           )}
         </div>
       </div>
