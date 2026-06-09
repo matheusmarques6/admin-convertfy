@@ -31,7 +31,7 @@ export async function GET(
     const { data: store, error: storeErr } = await admin
       .from("client_stores")
       .select(`
-        id, store_name, store_url, platform, niche, country, language,
+        id, store_name, store_url, platform, email_platform, niche, country, language,
         is_active, created_at, client_id,
         slogan, diferencial, persona, posicionamento_preco, hashtags,
         brand_thesis, brand_about, brand_pillars,

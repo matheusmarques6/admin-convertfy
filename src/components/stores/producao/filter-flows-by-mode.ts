@@ -15,6 +15,15 @@ export function filterFlowsByMode(
   mode: WorkspaceMode,
   allowedEmails?: AllowedEmailRef[],
 ): EmailFlow[] {
+  // Modo implementação: handoff focado num flow. Mantém SÓ os flows que têm
+  // emails permitidos (o flow da subtask `impl_*`), todos os emails visíveis e
+  // navegáveis (sem cadeado — é read-only por natureza). Sem allowedEmails,
+  // comporta-se como full (mostra tudo).
+  if (mode === "implementation") {
+    if (!allowedEmails || allowedEmails.length === 0) return flows
+    const types = new Set(allowedEmails.map((r) => r.flowType))
+    return flows.filter((f) => types.has(f.flow_type))
+  }
   if (mode !== "preview" || !allowedEmails || allowedEmails.length === 0) {
     return flows
   }

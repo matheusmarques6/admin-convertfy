@@ -32,6 +32,7 @@ import type {
   StoreBriefing,
 } from "@/types/email-workspace"
 import { EmailDetailView } from "./email-detail-view"
+import { ImplementationView } from "./implementation-view"
 import { BrandResourceView } from "./brand-resource-view"
 import { BriefingResourceView } from "./briefing-resource-view"
 import { StartOnboardingButton } from "@/components/stores/start-onboarding-button"
@@ -67,6 +68,8 @@ interface WorkspaceResponse {
     store_name: string
     store_url: string | null
     platform: string | null
+    /** ESP onde os flows são montados (Etapa 6 / implementação). */
+    email_platform: "klaviyo" | "omnisend" | null
     niche: string | null
     language_label: string | null
     created_at: string | null
@@ -189,7 +192,7 @@ export function ProductionWorkspace({
   // Em modo preview, prioriza email (motivo de abrir o workspace) sobre recursos.
   useEffect(() => {
     if (!resp || selection.kind !== "none") return
-    if (mode === "preview") {
+    if (mode === "preview" || mode === "implementation") {
       const firstFlowWithEmails = flows.find(
         (f) => (f.emails ?? []).length > 0,
       )
@@ -405,7 +408,11 @@ export function ProductionWorkspace({
           </Link>
           <ChevronRight className="h-3 w-3" style={{ color: "var(--crm-gray-300)" }} />
           <span style={{ color: "var(--crm-gray-700)", fontWeight: 500 }}>
-            {mode === "preview" ? "Produção piloto" : "Workspace de produção"}
+            {mode === "preview"
+              ? "Produção piloto"
+              : mode === "implementation"
+                ? "Modo implementação"
+                : "Workspace de produção"}
             {currentFlow ? ` · ${currentFlow.name}` : ""}
           </span>
           {currentFlow?.assignee?.name && (
@@ -481,11 +488,13 @@ export function ProductionWorkspace({
               Quando ha flow selecionado (selection.kind==='email'),
               dropdown oferece ambos os escopos. Caso contrario, so
               "loja inteira". */}
-          <RerenderButton
-            storeId={store.id}
-            flowId={currentFlow?.id}
-            flowName={currentFlow?.name}
-          />
+          {mode !== "implementation" && (
+            <RerenderButton
+              storeId={store.id}
+              flowId={currentFlow?.id}
+              flowName={currentFlow?.name}
+            />
+          )}
           <button
             onClick={
               onClose
@@ -567,24 +576,30 @@ export function ProductionWorkspace({
             </div>
           </div>
 
-          {/* Iniciar Onboarding (Epic AE) — pipeline completo de geracao */}
-          <div style={{ padding: "12px 12px 4px" }}>
-            <StartOnboardingButton
-              storeId={store.id}
-              briefingConfirmed={briefing?.status === "confirmed"}
-              className="w-full"
-            />
-          </div>
+          {/* Ações de geração — ocultas no handoff de implementação (ops só
+              consome o que os designers produziram, não dispara geração). */}
+          {mode !== "implementation" && (
+            <>
+              {/* Iniciar Onboarding (Epic AE) — pipeline completo de geracao */}
+              <div style={{ padding: "12px 12px 4px" }}>
+                <StartOnboardingButton
+                  storeId={store.id}
+                  briefingConfirmed={briefing?.status === "confirmed"}
+                  className="w-full"
+                />
+              </div>
 
-          {/* Gerar copies via n8n (legacy — apenas copy via webhook direto) */}
-          <div style={{ padding: "4px 12px 4px" }}>
-            <DispatchEmailCopiesButton storeId={store.id} flows={flows} />
-          </div>
+              {/* Gerar copies via n8n (legacy — apenas copy via webhook direto) */}
+              <div style={{ padding: "4px 12px 4px" }}>
+                <DispatchEmailCopiesButton storeId={store.id} flows={flows} />
+              </div>
 
-          {/* Re-sincronizar estrutura com a blueprint (sem gerar copy) */}
-          <div style={{ padding: "0 12px 4px" }}>
-            <ReconcileStructureButton storeId={store.id} onDone={() => mutate()} />
-          </div>
+              {/* Re-sincronizar estrutura com a blueprint (sem gerar copy) */}
+              <div style={{ padding: "0 12px 4px" }}>
+                <ReconcileStructureButton storeId={store.id} onDone={() => mutate()} />
+              </div>
+            </>
+          )}
 
           {/* Recursos do projeto */}
           <div style={{ padding: "12px 12px 8px" }}>
@@ -749,7 +764,31 @@ export function ProductionWorkspace({
               onChanged={() => mutate()}
             />
           )}
-          {selection.kind === "email" && currentEmail && currentFlow && (
+          {selection.kind === "email" &&
+            currentEmail &&
+            currentFlow &&
+            mode === "implementation" && (
+              <ImplementationView
+                key={selection.emailId}
+                flow={currentFlow}
+                emailId={selection.emailId}
+                esp={store.email_platform}
+                storeUrl={store.store_url}
+                languageLabel={store.language_label}
+                onEmailUpdated={() => mutate()}
+                onNavigate={(emailId) =>
+                  setSelection({
+                    kind: "email",
+                    flowId: currentFlow.id,
+                    emailId,
+                  })
+                }
+              />
+            )}
+          {selection.kind === "email" &&
+            currentEmail &&
+            currentFlow &&
+            mode !== "implementation" && (
             <EmailDetailView
               key={selection.emailId}
               storeId={storeId}

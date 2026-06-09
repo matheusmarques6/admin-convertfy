@@ -1491,7 +1491,7 @@ function SectionLabel({
 
 // ─── Block renderers ──────────────────────────────────────
 
-function RenderedBlock({ block }: { block: EmailBlock }) {
+export function RenderedBlock({ block }: { block: EmailBlock }) {
   switch (block.block_type) {
     case "hero":
       return <RenderHero content={block.content as HeroBlockContent} />
@@ -1981,7 +1981,7 @@ function EmailRenderPreview({
  * `sandbox="allow-same-origin"`; scripts seguem bloqueados — emails não rodam
  * JS) e dimensionamos o wrapper, eliminando também o scroll vertical interno.
  */
-function ScaledEmailFrame({
+export function ScaledEmailFrame({
   html,
   baseWidth,
 }: {
@@ -2256,7 +2256,7 @@ function CopyCard({ label, value, onCopy }: { label: string; value: string; onCo
   )
 }
 
-function EmailHtmlView({
+export function EmailHtmlView({
   email,
   html,
   onCopyAll,
