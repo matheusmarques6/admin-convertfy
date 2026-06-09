@@ -75,24 +75,34 @@ export class BrandIncompleteError extends Error {
  * Lanca BrandIncompleteError com lista de campos faltantes — sem isso,
  * o HTML Agent gera com defaults e o output sai inutilizavel.
  *
- * Criterios minimos:
+ * Criterios minimos (produção):
  *   - brand identity existe (row em `store_brand_identity`)
  *   - pelo menos 1 cor (primary OU secondary)
- *   - logo_main_svg presente (URL — fetch pode falhar depois, mas o slot existe)
+ *   - pelo menos 1 logo (SVG OU PNG — UX sobe so um dos dois)
+ *
+ * Modo `relaxed` (TestTab): pula validacao de partials. So falha se a
+ * row de brand identity for completamente ausente — cores e logo
+ * faltando degradam pra defaults (cores via deriveColorRoles, logo
+ * via string vazia no markup).
  */
 export function precheckBrandReady(
   brand: StoreBrandIdentity | null,
   storeId: string | null,
+  opts: { relaxed?: boolean } = {},
 ): void {
-  const missing: string[] = []
   if (!brand) {
-    missing.push("brand_identity")
-  } else {
-    const totalColors =
-      (brand.colors_primary?.length ?? 0) + (brand.colors_secondary?.length ?? 0)
-    if (totalColors === 0) missing.push("colors")
-    if (!brand.logo_main_svg) missing.push("logo_main_svg")
+    throw new BrandIncompleteError(
+      `Loja sem brand identity. Crie uma em /admin/stores/${storeId ?? "{id}"}/identity.`,
+      { missing: ["brand_identity"], storeId },
+    )
   }
+  if (opts.relaxed) return
+
+  const missing: string[] = []
+  const totalColors =
+    (brand.colors_primary?.length ?? 0) + (brand.colors_secondary?.length ?? 0)
+  if (totalColors === 0) missing.push("colors")
+  if (!brand.logo_main_svg && !brand.logo_main_png) missing.push("logo")
   if (missing.length > 0) {
     throw new BrandIncompleteError(
       `Loja sem brand identity completa. Faltam: ${missing.join(", ")}. ` +

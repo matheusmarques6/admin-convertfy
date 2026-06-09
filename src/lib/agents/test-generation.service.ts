@@ -33,6 +33,13 @@ export interface TestGenerationResult {
   error?: string
   batchId: string
   emailId: string
+  /**
+   * True quando o path síncrono rodou com precheck relaxado (TestTab).
+   * UI mostra banner informativo de que brand pode estar incompleta.
+   * No path "without_copy" a flag não se propaga (phase2 roda em
+   * background via callback do n8n).
+   */
+  relaxedBrand?: boolean
 }
 
 /** Um bloco "tem copy" quando seu content é um objeto com pelo menos 1 chave. */
@@ -83,6 +90,9 @@ export async function runTestGeneration(
       triggeredBy,
       batchId,
       skipSeed: true, // preserva a copy existente (não re-seedeia)
+      // TestTab: brand draft (sem confirm, partials) gera mesmo assim.
+      // Cores/logo faltando degradam pra defaults em vez de bloquear.
+      relaxedBrandCheck: true,
     })
     return {
       status: r.status,
@@ -91,6 +101,7 @@ export async function runTestGeneration(
       error: r.error,
       batchId,
       emailId,
+      relaxedBrand: true,
     }
   }
 

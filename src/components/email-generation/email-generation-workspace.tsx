@@ -1008,6 +1008,7 @@ function TestTab() {
     message?: string
     batchId?: string
     emailId?: string
+    relaxedBrand?: boolean
   } | null>(null)
   const [steps, setSteps] = useState<RunStep[]>([])
   const [pollInterval, setPollInterval] = useState(0)
@@ -1107,6 +1108,7 @@ function TestTab() {
           : undefined,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
+        relaxedBrand: responseData.relaxedBrand === true,
       })
       // Polling só no caminho síncrono (com copy). No "dispatched" o render é
       // assíncrono e roda sob outro batch.
@@ -1404,6 +1406,13 @@ function TestTab() {
                     : "Gerando email..."}
             </h3>
           </div>
+
+          {/* Banner modo teste tolerante */}
+          {result?.relaxedBrand && (
+            <div className="rounded-[4px] border border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/5 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-200">
+              ℹ️ Modo teste tolerante: brand identity da loja pode estar incompleta. O email gerado pode ficar sem logo ou com cores em default. Confirme a brand antes de promover pro fluxo real.
+            </div>
+          )}
 
           {/* Agent steps */}
           {statusInfo?.runs && (

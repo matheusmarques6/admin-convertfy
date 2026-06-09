@@ -107,6 +107,7 @@ function setup(overrides: {
   brand?: StoreBrandIdentity | null
   blueprint?: EmailBlueprint | null
   storeRaw?: Record<string, unknown>
+  relaxedBrandCheck?: boolean
 }) {
   const supa = makeSupabaseMock({
     email_flow_emails: {
@@ -132,6 +133,7 @@ function setup(overrides: {
     flowType: "welcome",
     emailNumber: 1,
     admin: supa,
+    relaxedBrandCheck: overrides.relaxedBrandCheck,
   })
 }
 
@@ -175,11 +177,51 @@ describe("buildHtmlPromptVars", () => {
     })
   })
 
-  it("brand sem logo_main_svg → lanca BrandIncompleteError listando 'logo_main_svg'", async () => {
-    const semLogo = { ...baseBrand, logo_main_svg: null }
+  it("brand sem logo SVG nem PNG → lanca BrandIncompleteError listando 'logo'", async () => {
+    const semLogo = { ...baseBrand, logo_main_svg: null, logo_main_png: null }
     await expect(setup({ brand: semLogo })).rejects.toMatchObject({
       name: "BrandIncompleteError",
-      missing: expect.arrayContaining(["logo_main_svg"]),
+      missing: expect.arrayContaining(["logo"]),
+    })
+  })
+
+  it("brand so com logo_main_png (sem SVG) → passa precheck, logo_svg vem como <img data:image/png;base64", async () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => "image/png" },
+      arrayBuffer: async () => pngBytes.buffer,
+    })
+    const soPng = {
+      ...baseBrand,
+      logo_main_svg: null,
+      logo_main_png: "https://storage.example/logo.png",
+    }
+    const vars = await setup({ brand: soPng })
+    expect(vars.logo_svg).toContain('<img src="data:image/png;base64,')
+    expect(vars.logo_svg).toContain('iVBORw0KGgo=')
+  })
+
+  it("relaxedBrandCheck=true + brand sem cores nem logo → nao joga, logo_svg vazio", async () => {
+    const vazia = {
+      ...baseBrand,
+      logo_main_svg: null,
+      logo_main_png: null,
+      colors_primary: [],
+      colors_secondary: [],
+    }
+    const vars = await setup({ brand: vazia, relaxedBrandCheck: true })
+    expect(vars.logo_svg).toBe("")
+    expect(vars.color_bg).toBe("#FFFFFF") // default via deriveColorRoles
+  })
+
+  it("relaxedBrandCheck=true + brand=null → AINDA joga (sem brand identity nenhuma)", async () => {
+    await expect(
+      setup({ brand: null, relaxedBrandCheck: true }),
+    ).rejects.toMatchObject({
+      name: "BrandIncompleteError",
+      missing: ["brand_identity"],
     })
   })
 

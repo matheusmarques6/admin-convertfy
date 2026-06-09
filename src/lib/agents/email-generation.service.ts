@@ -433,6 +433,11 @@ interface GenerateEmailParams {
   batchId: string
   /** Quando true, NÃO re-seedeia: preserva os blocos/copy existentes. */
   skipSeed?: boolean
+  /**
+   * Quando true (TestTab), precheckBrandReady só falha se brand=null.
+   * Cores/logo faltando degradam pra defaults sem bloquear geração.
+   */
+  relaxedBrandCheck?: boolean
 }
 
 interface GenerationContext {
@@ -489,7 +494,7 @@ async function loadExistingBlocks(
 export async function generateEmail(
   params: GenerateEmailParams,
 ): Promise<{ status: "done" | "error"; error?: string }> {
-  const { storeId, flowId, emailId, flowType, emailNumber, triggeredBy, batchId, skipSeed } = params
+  const { storeId, flowId, emailId, flowType, emailNumber, triggeredBy, batchId, skipSeed, relaxedBrandCheck } = params
   const admin = createAdminClient()
   log.info("generation.start", { storeId, flowId, emailId, flowType, emailNumber, batchId })
 
@@ -670,6 +675,7 @@ export async function generateEmail(
         flowType,
         emailNumber,
         admin,
+        relaxedBrandCheck,
       })
 
       const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({

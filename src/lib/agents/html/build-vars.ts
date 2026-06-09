@@ -61,6 +61,11 @@ export interface HtmlPromptVarsInput {
   flowType: string | null
   emailNumber: number | null
   admin: SupabaseClient
+  /**
+   * Quando true (TestTab), o precheck so falha se brand=null. Cores e
+   * logo faltando degradam pra defaults em vez de bloquear a geracao.
+   */
+  relaxedBrandCheck?: boolean
 }
 
 interface EmailBlockRow {
@@ -137,6 +142,60 @@ async function fetchLogoSvgInline(url: string | null | undefined): Promise<strin
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Fetch do PNG e conversao pra data URI inline (base64). Usado quando
+ * a loja so subiu logo PNG (sem SVG). Inline base64 funciona em todos
+ * os clients modernos (Gmail, Outlook, Apple Mail) e elimina dependencia
+ * de URL remota — image hotlinking e bloqueado por padrao em muitos
+ * clients de email.
+ *
+ * Warning em logs se PNG > 80KB: Gmail clipa mensagens em ~102KB total,
+ * e base64 cresce ~33%. Logo > 80KB pode comer espaco do resto do email.
+ */
+async function fetchPngAsDataUriImg(url: string): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    if (!res.ok) {
+      log.warn("logo_png.fetch_failed", { url, status: res.status })
+      return ""
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > 80 * 1024) {
+      log.warn("logo_png.too_large_for_gmail", { url, bytes: buf.length })
+    }
+    const b64 = buf.toString("base64")
+    return `<img src="data:image/png;base64,${b64}" alt="" style="display:block;max-width:100%;height:auto;" />`
+  } catch (err) {
+    log.warn("logo_png.fetch_failed", {
+      url,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return ""
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Decide o formato do markup do logo: SVG inline se disponivel,
+ * <img> com data URI base64 se so PNG, string vazia se nenhum.
+ * A var `logo_svg` no contract aceita qualquer markup HTML.
+ */
+async function fetchLogoMarkup(
+  brand: StoreBrandIdentity | null,
+): Promise<string> {
+  if (!brand) return ""
+  if (brand.logo_main_svg) {
+    return await fetchLogoSvgInline(brand.logo_main_svg)
+  }
+  if (brand.logo_main_png) {
+    return await fetchPngAsDataUriImg(brand.logo_main_png)
+  }
+  return ""
 }
 
 function purposeOf(
@@ -220,13 +279,15 @@ export async function buildHtmlPromptVars(
     flowType,
     emailNumber,
     admin,
+    relaxedBrandCheck,
   } = input
 
   // Pre-check: brand identity precisa estar completa antes de gastar
   // tokens no LLM. Lanca BrandIncompleteError com lista de campos
   // faltantes — phase2-runner trata como `failure_reason='brand_incomplete'`.
+  // Em modo relaxed (TestTab) so falha se brand=null.
   const storeId = (storeRaw?.id as string | undefined) ?? null
-  precheckBrandReady(brand, storeId)
+  precheckBrandReady(brand, storeId, { relaxed: relaxedBrandCheck })
 
   // ── Queries paralelas: email row + blocks + reference ─────────────
   // O reference montado por loja (store_email_references, Component
@@ -284,8 +345,8 @@ export async function buildHtmlPromptVars(
     brand?.colors_secondary ?? [],
   )
 
-  // ── Logo SVG inline ────────────────────────────────────────────────
-  const logoSvg = await fetchLogoSvgInline(brand?.logo_main_svg ?? null)
+  // ── Logo markup (SVG inline OU PNG como data URI img) ──────────────
+  const logoSvg = await fetchLogoMarkup(brand)
 
   // ── Locale ─────────────────────────────────────────────────────────
   // Normaliza via languageLabelToCode (aceita "Portugues" -> "pt-BR",
