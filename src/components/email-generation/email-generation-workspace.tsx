@@ -1044,10 +1044,46 @@ function TestTab() {
 
   useEffect(() => {
     if (statusInfo && pollInterval > 0) {
-      if (statusInfo.status === "done" || statusInfo.status === "error") {
+      const isTerminal =
+        statusInfo.status === "done" ||
+        statusInfo.status === "error" ||
+        statusInfo.email_status === "failed" ||
+        statusInfo.email_status === "ready"
+      if (isTerminal) {
         setPollInterval(0)
       }
     }
+  }, [statusInfo, pollInterval])
+
+  // Detecta inatividade — se o pipeline esta numa fase in-flight (rendering,
+  // image_done, qa_running) e nao houve atualizacao ha >3min, mostra warning
+  // pro usuario explicando que o watchdog vai limpar em breve.
+  const [showStaleWarning, setShowStaleWarning] = useState(false)
+
+  useEffect(() => {
+    if (!statusInfo || pollInterval === 0) {
+      setShowStaleWarning(false)
+      return
+    }
+
+    const checkStale = () => {
+      const runs = (statusInfo.runs ?? []) as Array<{ created_at?: string }>
+      const lastRun = runs[runs.length - 1]
+      const lastTs = lastRun?.created_at ?? statusInfo.email_updated_at
+      if (!lastTs) {
+        setShowStaleWarning(false)
+        return
+      }
+      const ageMs = Date.now() - new Date(lastTs).getTime()
+      const isInFlight = ["rendering", "image_done", "qa_running"].includes(
+        statusInfo.email_status ?? "",
+      )
+      setShowStaleWarning(isInFlight && ageMs > 3 * 60 * 1000)
+    }
+
+    checkStale()
+    const interval = setInterval(checkStale, 30_000)
+    return () => clearInterval(interval)
   }, [statusInfo, pollInterval])
 
   const handleGenerate = async () => {
@@ -1425,6 +1461,27 @@ function TestTab() {
             </div>
           )}
 
+          {/* Banner geracao travada — watchdog vai limpar em breve */}
+          {showStaleWarning && (() => {
+            const faseMap: Record<string, string> = {
+              rendering: "imagem",
+              image_done: "HTML",
+              qa_running: "QA",
+            }
+            const fase = faseMap[statusInfo?.email_status ?? ""] ?? statusInfo?.email_status ?? "atual"
+            return (
+              <div className="rounded-[4px] border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10 px-3 py-2 text-[12px] text-amber-900 dark:text-amber-200">
+                ⚠️ Geração parece travada na fase {fase}. Watchdog vai limpar em alguns minutos. Veja logs em{" "}
+                <a
+                  href="/admin/tools/email-generation-logs"
+                  className="underline font-medium"
+                >
+                  /admin/tools/email-generation-logs
+                </a>
+              </div>
+            )
+          })()}
+
           {/* Agent steps — default mostra só runs do batch atual.
               Toggle revela histórico (runs de batches anteriores agrupados). */}
           {statusInfo?.runs && (() => {
@@ -1593,6 +1650,25 @@ function TestTab() {
               <p className="text-[12px] text-red-700 dark:text-red-400 font-mono break-all">
                 {result.error}
               </p>
+            </div>
+          )}
+
+          {/* Botao "Tentar de novo" — disponivel quando deu erro ou email_status=failed */}
+          {(result?.status === "error" || statusInfo?.email_status === "failed") && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
+                className="inline-flex items-center gap-2 h-8 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[12px] font-medium disabled:opacity-40 transition-opacity"
+              >
+                {generating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+                Tentar de novo
+              </button>
             </div>
           )}
 

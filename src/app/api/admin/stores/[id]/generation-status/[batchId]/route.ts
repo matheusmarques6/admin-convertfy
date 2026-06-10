@@ -33,10 +33,13 @@ export async function GET(
     //    fallback: olhar a tabela de runs pra descobrir o email.
     let emailId: string | null = null
     let currentBatchId: string = batchId
+    let emailStatus: string | null = null
+    let emailFailureReason: string | null = null
+    let emailUpdatedAt: string | null = null
 
     const { data: emailByBatch, error: emailLookupErr } = await admin
       .from("email_flow_emails")
-      .select("id, generation_batch_id")
+      .select("id, generation_batch_id, status, failure_reason, updated_at")
       .eq("generation_batch_id", batchId)
       .maybeSingle()
     if (emailLookupErr) throw emailLookupErr
@@ -44,6 +47,9 @@ export async function GET(
     if (emailByBatch) {
       emailId = emailByBatch.id as string
       currentBatchId = (emailByBatch.generation_batch_id as string | null) ?? batchId
+      emailStatus = (emailByBatch.status as string | null) ?? null
+      emailFailureReason = (emailByBatch.failure_reason as string | null) ?? null
+      emailUpdatedAt = (emailByBatch.updated_at as string | null) ?? null
     } else {
       // Fallback: o email pode ter sido sobrescrito por um batch mais novo.
       // Localiza pelo run e pega o `generation_batch_id` atual do email.
@@ -58,11 +64,14 @@ export async function GET(
         emailId = runHit.email_id as string
         const { data: emailRow } = await admin
           .from("email_flow_emails")
-          .select("generation_batch_id")
+          .select("generation_batch_id, status, failure_reason, updated_at")
           .eq("id", emailId)
           .maybeSingle()
         currentBatchId =
           (emailRow?.generation_batch_id as string | null) ?? batchId
+        emailStatus = (emailRow?.status as string | null) ?? null
+        emailFailureReason = (emailRow?.failure_reason as string | null) ?? null
+        emailUpdatedAt = (emailRow?.updated_at as string | null) ?? null
       }
     }
 
@@ -77,6 +86,9 @@ export async function GET(
         errors: [],
         runs: [],
         summary: { totalCost: 0, totalDuration: 0, tokensTotal: 0 },
+        email_status: null,
+        email_failure_reason: null,
+        email_updated_at: null,
       })
     }
 
@@ -177,6 +189,9 @@ export async function GET(
         totalDuration,
         tokensTotal: totalTokens,
       },
+      email_status: emailStatus,
+      email_failure_reason: emailFailureReason,
+      email_updated_at: emailUpdatedAt,
     })
   } catch (error) {
     log.error("generation-status.error", error)
