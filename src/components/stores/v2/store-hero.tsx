@@ -16,6 +16,7 @@
 import { ExternalLink, Calendar } from "lucide-react"
 import { Avatar, Badge, C, ChannelIcon, HealthRing, StoreLogo, TNUM } from "./_primitives"
 import { StoreLanguagePopover } from "./store-language-popover"
+import { StoreCountryPopover } from "./store-country-popover"
 
 interface KpiDelta {
   label: string
@@ -29,6 +30,7 @@ interface StoreHeroProps {
   storeName: string
   storeUrl: string | null
   language: string | null
+  country: string | null
   clientName: string | null
   clientId?: string | null
   clientSince: string | null
@@ -52,6 +54,7 @@ export function StoreHero({
   storeName,
   storeUrl,
   language,
+  country,
   clientName,
   clientId,
   clientSince,
@@ -85,6 +88,7 @@ export function StoreHero({
             </Badge>
             {planLabel && <Badge tone="info">{planLabel}</Badge>}
             <StoreLanguagePopover storeId={storeId} language={language} />
+            <StoreCountryPopover storeId={storeId} country={country} />
             {mrrCents != null && (
               <span className="text-[11px] text-slate-400 ml-1" style={TNUM}>
                 MRR {formatMRR(mrrCents)}

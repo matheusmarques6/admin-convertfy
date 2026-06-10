@@ -143,6 +143,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         storeName={store.store_name}
         storeUrl={store.store_url}
         language={store.language}
+        country={store.country ?? null}
         clientName={store.clients?.name ?? null}
         clientId={store.client_id ?? store.clients?.id ?? null}
         clientSince={clientSince}
