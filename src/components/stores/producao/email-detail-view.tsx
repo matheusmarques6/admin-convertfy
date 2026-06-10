@@ -2067,7 +2067,7 @@ export function ScaledEmailFrame({
 
 // ─── Copy View ─────────────────────────────────────────────
 
-function EmailCopyView({
+export function EmailCopyView({
   email,
   blocks,
   copyToClipboard,

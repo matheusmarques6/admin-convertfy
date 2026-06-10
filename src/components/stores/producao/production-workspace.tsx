@@ -770,6 +770,7 @@ export function ProductionWorkspace({
             mode === "implementation" && (
               <ImplementationView
                 key={selection.emailId}
+                storeId={storeId}
                 flow={currentFlow}
                 emailId={selection.emailId}
                 esp={store.email_platform}

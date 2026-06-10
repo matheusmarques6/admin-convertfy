@@ -22,14 +22,18 @@ import { renderEmailHtml } from "@/lib/email-workspace/render-html"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import { emailCoupons } from "@/lib/email-workspace/implementation/coupon-info"
 import { emailUtm, applyUtm } from "@/lib/email-workspace/implementation/utm"
-import { flowImplementationMeta } from "@/lib/email-workspace/implementation/flow-meta"
+import {
+  resolveFlowSetupFor,
+  type FlowSetupConfig,
+  type ResolvedFlowSetup,
+} from "@/lib/email-workspace/implementation/flow-settings"
 import type {
   EmailBlock,
   EmailFlow,
   EmailFlowEmail,
   EmailQAItem,
 } from "@/types/email-workspace"
-import { ScaledEmailFrame, EmailHtmlView, RenderedBlock } from "./email-detail-view"
+import { EmailCopyView, EmailHtmlView, RenderedBlock } from "./email-detail-view"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -48,6 +52,7 @@ interface EmailDetailResponse {
 }
 
 interface ImplementationViewProps {
+  storeId: string
   flow: EmailFlow
   emailId: string
   /** ESP onde o flow será montado (client_stores.email_platform). */
@@ -64,6 +69,7 @@ const ESP_LABEL: Record<string, string> = {
 }
 
 export function ImplementationView({
+  storeId,
   flow,
   emailId,
   esp,
@@ -76,6 +82,16 @@ export function ImplementationView({
   const { data, mutate } = useSWR<
     { data?: EmailDetailResponse } & EmailDetailResponse
   >(`/api/admin/email-flows/${flow.id}/emails/${emailId}`, fetcher)
+
+  // Config global do setup (Gatilho/Público/Evento/UTM) — editável em
+  // Configurações. Fallback pros defaults enquanto carrega.
+  const { data: setupResp } = useSWR<
+    { data?: { flows: ResolvedFlowSetup } } & { flows?: ResolvedFlowSetup }
+  >("/api/settings/implementation-flow", fetcher)
+  const setup: FlowSetupConfig = useMemo(() => {
+    const flows = setupResp?.data?.flows ?? setupResp?.flows
+    return flows?.[flow.flow_type] ?? resolveFlowSetupFor(flow.flow_type)
+  }, [setupResp, flow.flow_type])
 
   const email = data?.data?.email ?? data?.email
   const blocks = useMemo(
@@ -94,8 +110,21 @@ export function ImplementationView({
       ? emails[currentIdx + 1]
       : null
 
-  const meta = flowImplementationMeta(flow.flow_type)
-  const utm = email ? emailUtm(flow.flow_type, email.number) : null
+  const meta = useMemo(
+    () => ({
+      trigger: setup.trigger,
+      audience: setup.audience,
+      metricEvent: setup.metricEvent,
+    }),
+    [setup],
+  )
+  const utm = email
+    ? emailUtm(flow.flow_type, email.number, {
+        source: setup.utmSource,
+        medium: setup.utmMedium,
+        campaign: setup.utmCampaign,
+      })
+    : null
   const coupons = useMemo(() => emailCoupons(blocks), [blocks])
 
   const blockSections = useMemo(
@@ -118,6 +147,28 @@ export function ImplementationView({
     }
     await mutate()
     onEmailUpdated()
+  }
+
+  // Remetente é config de loja: editar aqui aplica a TODOS os e-mails da loja.
+  const patchSender = async (update: {
+    from_name?: string | null
+    from_email?: string | null
+  }) => {
+    const res = await fetch(`/api/admin/stores/${storeId}/email-sender`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+    }
+    await mutate()
+    onEmailUpdated()
+    toast.toast({
+      title: "Remetente atualizado",
+      description: "Aplicado a todos os e-mails desta loja.",
+    })
   }
 
   const copy = async (text: string, label = "Conteúdo") => {
@@ -248,7 +299,18 @@ export function ImplementationView({
         ) : (
           <div style={{ padding: "24px 32px 48px", maxWidth: 1080, margin: "0 auto" }}>
             {/* Setup cards */}
-            <SectionLabel>Setup do disparo</SectionLabel>
+            <div className="flex items-baseline justify-between">
+              <SectionLabel>Setup do disparo</SectionLabel>
+              <a
+                href="/admin/settings/implementation"
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 11, color: "var(--crm-gray-500)", textDecoration: "underline" }}
+                title="Gatilho, público, evento e UTM são globais — editar em Configurações"
+              >
+                Gerenciar em Configurações
+              </a>
+            </div>
             <div
               style={{
                 display: "grid",
@@ -291,19 +353,20 @@ export function ImplementationView({
                   icon={<Mail className="h-3 w-3" />}
                   label="Remetente"
                   editable
+                  hint="Aplica a todos os e-mails desta loja"
                   editSlot={
                     <span style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}>
                       <InlineEditField
                         value={email.from_name}
                         placeholder="Nome do remetente"
-                        onSave={(v) => patchEmail({ from_name: v || null })}
+                        onSave={(v) => patchSender({ from_name: v || null })}
                       />
                       <span style={{ color: "var(--crm-gray-500)", marginLeft: 6 }}>
                         &lt;
                         <InlineEditField
                           value={email.from_email}
                           placeholder="email@dominio.com"
-                          onSave={(v) => patchEmail({ from_email: v || null })}
+                          onSave={(v) => patchSender({ from_email: v || null })}
                         />
                         &gt;
                       </span>
@@ -498,9 +561,18 @@ export function ImplementationView({
               ))}
             </div>
 
-            {/* Render completo (referência) */}
-            <SectionLabel style={{ marginTop: 24 }}>E-mail completo (referência)</SectionLabel>
-            <ScaledEmailFrame html={html} baseWidth={600} />
+            {/* Copy completa do e-mail — mesmo formato que os designers veem */}
+            <SectionLabel style={{ marginTop: 24 }}>Copy do e-mail</SectionLabel>
+            <div
+              style={{
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 8,
+                overflow: "hidden",
+              }}
+            >
+              <EmailCopyView email={email} blocks={blocks} copyToClipboard={copy} />
+            </div>
           </div>
         )}
       </div>
