@@ -53,6 +53,10 @@ export interface GeneratedBlock {
   label: string
   purpose: string
   needs_image: boolean
+  // Instrução de COMO gerar a imagem deste bloco (só p/ needs_image=true),
+  // derivada da intenção do email + nicho. Persistida em blocks[].image_brief
+  // e lida por buildImagePromptVars → var IMAGE_BRIEF (casando por posição).
+  image_brief?: string | null
 }
 
 export interface GeneratedBlueprint {
@@ -66,7 +70,7 @@ const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 // Fallback usado apenas se email_agent_configs não tiver row ativa para
 // agent_type='blueprint' (a migration 20260708b semeia a versão canônica).
-const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Você recebe o HTML JÁ MONTADO de um email (a forma final) e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — a lista ordenada de blocos que o HTML contém, cada um com tipo técnico, label, propósito e needs_image. A estrutura deve REFLETIR o HTML (mesma ordem e seções); não invente blocos ausentes. Mapeie cada seção do HTML para o tipo técnico mais adequado (ex.: seção de reviews → testimonials; cupom → coupon). hero/image têm needs_image=true. Use SOMENTE os tipos permitidos. Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image"}]}.`
+const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Você recebe o HTML JÁ MONTADO de um email (a forma final) e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — a lista ordenada de blocos que o HTML contém, cada um com tipo técnico, label, propósito, needs_image e, quando needs_image=true, image_brief. A estrutura deve REFLETIR o HTML (mesma ordem e seções); não invente blocos ausentes. Mapeie cada seção do HTML para o tipo técnico mais adequado (ex.: seção de reviews → testimonials; cupom → coupon). hero/image têm needs_image=true. Para CADA bloco com needs_image=true, escreva image_brief: 1-2 frases (no idioma da loja) de COMO gerar a imagem daquele bloco — cena, assunto, enquadramento e mood — derivadas da INTENÇÃO do email (objetivo) e do NICHO da loja, sem texto na imagem. Blocos com needs_image=false: image_brief=null. Use SOMENTE os tipos permitidos. Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief"}]}.`
 
 const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
 PERSONA: {{persona}} — TOM DE VOZ: {{tom_voz}}
@@ -95,11 +99,15 @@ function normalizeBlock(raw: unknown): GeneratedBlock | null {
   const b = raw as Record<string, unknown>
   const type = typeof b.type === "string" ? b.type.trim() : ""
   if (!ALLOWED_BLOCK_TYPES.has(type)) return null
+  const needs_image = b.needs_image === true || IMAGE_BLOCKS.has(type)
+  const brief = typeof b.image_brief === "string" ? b.image_brief.trim() : ""
   return {
     type,
     label: typeof b.label === "string" && b.label.trim() ? b.label : type,
     purpose: asString(b.purpose),
-    needs_image: b.needs_image === true || IMAGE_BLOCKS.has(type),
+    needs_image,
+    // image_brief só faz sentido em bloco de imagem; nos demais fica null.
+    image_brief: needs_image && brief ? brief : null,
   }
 }
 
@@ -141,6 +149,7 @@ export function blueprintFromDefault(
       label: b.label,
       purpose: b.purpose,
       needs_image: b.needs_image === true || IMAGE_BLOCKS.has(b.type),
+      image_brief: b.image_brief ?? null,
     })),
   }
 }
@@ -191,7 +200,8 @@ export async function generateStoreBlueprint(
     : {
         model: DEFAULT_MODEL,
         temperature: 0.4,
-        max_tokens: 2048,
+        // 4096 p/ caber os image_brief por bloco de imagem.
+        max_tokens: 4096,
         system_prompt: DEFAULT_BLUEPRINT_SYSTEM,
         user_template: DEFAULT_BLUEPRINT_USER,
       }
