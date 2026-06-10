@@ -31,7 +31,7 @@ import type {
   StoreBriefing,
   TopProduct,
 } from "@/types/email-workspace"
-import type { EmailAgentConfig, EmailBlueprint } from "@/types/email-generation"
+import type { EmailAgentConfig } from "@/types/email-generation"
 import {
   createCopyChain,
   DEFAULT_COPY_SYSTEM_PROMPT,
@@ -40,6 +40,7 @@ import {
 import { logGenerationRun, computeCostCents } from "./callbacks/telemetry.callback"
 import { runPhase2InBackground } from "./phase2-runner.service"
 import { loadTopProducts } from "./top-products"
+import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 
 const log = logger.child("CopyChainFallback")
 
@@ -140,7 +141,7 @@ async function loadContext(
 ) {
   const admin = createAdminClient()
 
-  const [storeRes, brandRes, briefingRes, blueprintRes, copyConfigRes] =
+  const [storeRes, brandRes, briefingRes, blueprint, copyConfigRes] =
     await Promise.all([
       admin.from("client_stores").select("*").eq("id", storeId).single(),
       admin
@@ -157,12 +158,7 @@ async function loadContext(
         .order("version", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      admin
-        .from("email_blueprints")
-        .select("*")
-        .eq("flow_type", flowType)
-        .eq("email_number", emailNumber)
-        .maybeSingle(),
+      loadEffectiveBlueprint(admin, storeId, flowType, emailNumber),
       admin
         .from("email_agent_configs")
         .select("*")
@@ -184,7 +180,7 @@ async function loadContext(
     storeRaw: (storeRes.data as Record<string, unknown> | null) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
-    blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
+    blueprint: blueprint ?? null,
     copyConfig: (copyConfigRes.data as EmailAgentConfig | null) ?? null,
     topProducts,
   }

@@ -21,6 +21,7 @@ import {
   generateForEmails,
   isArchitectConfigured,
 } from "@/lib/agents/architect/generate.service"
+import { loadEffectiveBlueprintsBatch } from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import type {
@@ -244,12 +245,13 @@ export async function dispatchEmailCopyWebhook(
     emailsQuery = emailsQuery.eq("status", "draft")
   }
 
-  const [emailsRes, blueprintsRes, referencesRes] = await Promise.all([
+  // Blueprints: cascata store-specific -> global via helper batch.
+  // Mantemos paralelismo com emails/references; helper resolve as duas
+  // queries internas (globals + store overrides) e devolve um map ja
+  // mergeado.
+  const [emailsRes, effectiveBlueprints, referencesRes] = await Promise.all([
     emailsQuery,
-    admin
-      .from("email_blueprints")
-      .select("flow_type, email_number, objective, messaging, subject_hint")
-      .in("flow_type", flowTypes),
+    loadEffectiveBlueprintsBatch(admin, storeId, flowTypes),
     admin
       .from("email_reference_templates")
       .select("id, flow_type, email_number, name, copy, html")
@@ -372,7 +374,6 @@ export async function dispatchEmailCopyWebhook(
   }
 
   const blocks = (blocksRes.data ?? []) as BlockRow[]
-  const blueprints = (blueprintsRes.data ?? []) as BlueprintRow[]
   const references = (referencesRes.data ?? []) as ReferenceRow[]
 
   // ── Indexar para o payload
@@ -390,9 +391,20 @@ export async function dispatchEmailCopyWebhook(
     emailsByFlow.set(e.flow_id, arr)
   }
 
+  // Reindexa o map do helper batch (chave `flow_type__email_number`)
+  // pro formato consumido aqui (`flow_type:email_number`) e projeta pro
+  // shape minimo BlueprintRow — campos extras de store_email_blueprints
+  // (image_brief, version etc) sao descartados pois nao sao usados no
+  // payload do n8n.
   const blueprintByKey = new Map<string, BlueprintRow>()
-  for (const bp of blueprints) {
-    blueprintByKey.set(`${bp.flow_type}:${bp.email_number}`, bp)
+  for (const bp of effectiveBlueprints.values()) {
+    blueprintByKey.set(`${bp.flow_type}:${bp.email_number}`, {
+      flow_type: bp.flow_type,
+      email_number: bp.email_number,
+      objective: bp.objective ?? null,
+      messaging: bp.messaging ?? null,
+      subject_hint: bp.subject_hint ?? null,
+    })
   }
 
   // Reference: para cada flow_type, escolhe a referência ativa que casa com email_number

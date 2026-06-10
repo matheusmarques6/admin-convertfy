@@ -37,6 +37,7 @@ import type { AspectKey } from "./image/aspect-ratio"
 import type { ImageMode } from "./image/mode-resolution"
 import { seedBlocksFromBlueprint, type SeededBlock } from "./seed-blocks"
 import { loadTopProducts } from "./top-products"
+import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 import { selectImageBlocks } from "./image/limits"
 import {
   generateEmailImage,
@@ -786,7 +787,7 @@ async function loadGenerationContext(
   const [
     brandRes,
     briefingRes,
-    blueprintRes,
+    blueprintFull,
     topProducts,
     settingsRes,
     copyConfigRes,
@@ -811,13 +812,8 @@ async function loadGenerationContext(
       .limit(1)
       .maybeSingle(),
 
-    // Blueprint
-    admin
-      .from("email_blueprints")
-      .select("*")
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle(),
+    // Blueprint — cascata store_email_blueprints -> email_blueprints
+    loadEffectiveBlueprint(admin, storeId, flowType, emailNumber),
 
     // Top products — fonte única (tabela viva + fallback snapshot)
     loadTopProducts(admin, storeId, storeUrl),
@@ -868,7 +864,7 @@ async function loadGenerationContext(
   return {
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
-    blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
+    blueprint: blueprintFull,
     topProducts,
     referenceHtml: (refTemplateRes.data?.html as string | null) ?? null,
     referenceCopy: (refTemplateRes.data?.copy as string | null) ?? null,

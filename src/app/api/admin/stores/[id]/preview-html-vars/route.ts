@@ -26,6 +26,7 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildHtmlPromptVars } from "@/lib/agents/html/build-vars"
+import { loadEffectiveBlueprint } from "@/lib/agents/architect/blueprint-loader"
 import { loadTopProducts } from "@/lib/agents/top-products"
 import { canManagePrompts } from "@/lib/services/prompt-management.service"
 import type {
@@ -112,8 +113,10 @@ export async function POST(
       flowType = (flowRow?.flow_type as string | undefined) ?? null
     }
 
-    // Carrega context base em paralelo
-    const [storeRes, brandRes, briefingRes, blueprintRes] =
+    // Carrega context base em paralelo. Blueprint usa cascata
+    // store-specific -> global via helper (precisa de duas queries
+    // sequenciais internas, mas resolve em paralelo com o resto).
+    const [storeRes, brandRes, briefingRes, blueprint] =
       await Promise.all([
         admin.from("client_stores").select("*").eq("id", storeId).maybeSingle(),
         admin
@@ -131,13 +134,8 @@ export async function POST(
           .limit(1)
           .maybeSingle(),
         flowType && emailNumber != null
-          ? admin
-              .from("email_blueprints")
-              .select("*")
-              .eq("flow_type", flowType)
-              .eq("email_number", emailNumber)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+          ? loadEffectiveBlueprint(admin, storeId, flowType, emailNumber)
+          : Promise.resolve(null as EmailBlueprint | null),
       ])
 
     // Fonte única: tabela viva store_top_products (fallback no snapshot).
@@ -153,7 +151,7 @@ export async function POST(
       emailId,
       brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
       briefing: (briefingRes.data as StoreBriefing | null) ?? null,
-      blueprint: (blueprintRes.data as EmailBlueprint | null) ?? null,
+      blueprint: blueprint ?? null,
       topProducts,
       storeRaw: (storeRes.data as Record<string, unknown>) ?? {},
       flowType,

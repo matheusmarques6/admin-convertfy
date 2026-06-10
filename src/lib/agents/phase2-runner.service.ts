@@ -65,6 +65,7 @@ import {
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES } from "./image/limits"
 import { loadTopProducts } from "./top-products"
+import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 
 const log = logger.child("Phase2Runner")
 
@@ -220,14 +221,13 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   let blueprintObjective = ""
   let blueprintFull: EmailBlueprint | null = null
   if (flowTypeForBlueprint && emailNumberForBlueprint != null) {
-    const { data: bpRow } = await admin
-      .from("email_blueprints")
-      .select("*")
-      .eq("flow_type", flowTypeForBlueprint)
-      .eq("email_number", emailNumberForBlueprint)
-      .maybeSingle()
-    blueprintObjective = (bpRow?.objective as string | undefined) ?? ""
-    blueprintFull = (bpRow as EmailBlueprint | null) ?? null
+    blueprintFull = await loadEffectiveBlueprint(
+      admin,
+      storeId,
+      flowTypeForBlueprint,
+      emailNumberForBlueprint,
+    )
+    blueprintObjective = blueprintFull?.objective ?? ""
   }
 
   const orgId = (storeData as Record<string, unknown>)?.org_id as string | undefined

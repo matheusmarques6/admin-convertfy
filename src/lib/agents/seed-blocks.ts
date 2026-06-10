@@ -12,6 +12,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { DEFAULT_BLUEPRINTS, type BlueprintBlockDef } from "./email-blueprint"
+import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 
 const log = logger.child("SeedBlocks")
 
@@ -197,41 +198,18 @@ async function resolveStoreOrGlobalBlockDefs(
   flowType: string,
   emailNumber: number,
 ): Promise<BlueprintBlockDef[]> {
-  // 1. Blueprint gerado por loja (Component Assembler).
-  if (storeId) {
-    try {
-      const { data } = await admin
-        .from("store_email_blueprints")
-        .select("blocks")
-        .eq("store_id", storeId)
-        .eq("flow_type", flowType)
-        .eq("email_number", emailNumber)
-        .maybeSingle()
-      if (data?.blocks && Array.isArray(data.blocks) && data.blocks.length > 0) {
-        return data.blocks as BlueprintBlockDef[]
-      }
-    } catch (err) {
-      log.warn("blueprint.store_read_failed", {
-        storeId,
-        flowType,
-        emailNumber,
-        error: (err as Error).message,
-      })
-    }
-  }
-  // 2. Blueprint global curado.
+  // 1+2. Cascata store_email_blueprints -> email_blueprints via helper
+  // unificado. Mantém parity com o resto do pipeline (phase2-runner,
+  // email-generation.service) e garante que a loja com blueprint custom
+  // seja sempre preferida.
   try {
-    const { data } = await admin
-      .from("email_blueprints")
-      .select("blocks")
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle()
-    if (data?.blocks && Array.isArray(data.blocks) && data.blocks.length > 0) {
-      return data.blocks as BlueprintBlockDef[]
+    const bp = await loadEffectiveBlueprint(admin, storeId ?? null, flowType, emailNumber)
+    if (bp?.blocks && Array.isArray(bp.blocks) && bp.blocks.length > 0) {
+      return bp.blocks as unknown as BlueprintBlockDef[]
     }
   } catch (err) {
-    log.warn("blueprint.global_read_failed", {
+    log.warn("blueprint.effective_read_failed", {
+      storeId,
       flowType,
       emailNumber,
       error: (err as Error).message,

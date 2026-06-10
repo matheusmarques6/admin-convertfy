@@ -17,6 +17,7 @@ import { NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildImagePromptVars } from "@/lib/agents/email-generation.service"
 import { loadTopProducts } from "@/lib/agents/top-products"
+import { loadEffectiveBlueprint } from "@/lib/agents/architect/blueprint-loader"
 import {
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
   renderImagePrompt,
@@ -194,13 +195,12 @@ export async function resolveBlockPrompt(
   // ── 4. Blueprint, brand, briefing, image config, overrides ────
   let blueprint: EmailBlueprint | null = null
   if (flowType && emailNumber != null) {
-    const { data: bpRow } = await admin
-      .from("email_blueprints")
-      .select("*")
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle()
-    blueprint = (bpRow as EmailBlueprint | null) ?? null
+    blueprint = await loadEffectiveBlueprint(
+      admin,
+      storeId,
+      flowType,
+      emailNumber,
+    )
   }
 
   const [storeRes, brandRes, briefingRes, imageConfigRes, storeOverridesRes] =
