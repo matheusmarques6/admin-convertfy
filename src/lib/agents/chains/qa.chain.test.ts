@@ -115,6 +115,7 @@ import {
   runDeterministicChecks,
   runQaAgent,
   getBlockingSeverity,
+  getQaTimeoutMs,
 } from "./qa.chain"
 
 const VALID_HTML = `<!DOCTYPE html><html><body><a href="https://example.com">x</a></body></html>`
@@ -156,6 +157,7 @@ beforeEach(() => {
   fromMessagesMock.mockReset()
   process.env.EMAIL_QA_BLOCK_SEVERITY = "high"
   delete process.env.EMAIL_QA_VISION_ENABLED
+  delete process.env.EMAIL_QA_TIMEOUT_MS
 })
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -224,6 +226,23 @@ describe("getBlockingSeverity", () => {
   it("ignora valor invalido e cai pra 'high'", () => {
     process.env.EMAIL_QA_BLOCK_SEVERITY = "lixo"
     expect(getBlockingSeverity()).toBe("high")
+  })
+})
+
+describe("getQaTimeoutMs", () => {
+  it("retorna 60s por default", () => {
+    delete process.env.EMAIL_QA_TIMEOUT_MS
+    expect(getQaTimeoutMs()).toBe(60_000)
+  })
+
+  it("lê env var quando numérica positiva", () => {
+    process.env.EMAIL_QA_TIMEOUT_MS = "30000"
+    expect(getQaTimeoutMs()).toBe(30_000)
+  })
+
+  it("ignora valor inválido e cai pro default", () => {
+    process.env.EMAIL_QA_TIMEOUT_MS = "abc"
+    expect(getQaTimeoutMs()).toBe(60_000)
   })
 })
 
@@ -353,11 +372,12 @@ describe("runQaAgent — com config ativo", () => {
     }
   })
 
-  it("timeout 15s -> retorna qa_timeout high + model qa-timeout", async () => {
+  it("timeout (EMAIL_QA_TIMEOUT_MS) -> retorna qa_timeout high + model qa-timeout", async () => {
+    process.env.EMAIL_QA_TIMEOUT_MS = "15000"
     vi.useFakeTimers()
     try {
       // chain.invoke nunca resolve, mas rejeita com AbortError quando o
-      // signal e abortado pelo setTimeout interno de 15s.
+      // signal e abortado pelo setTimeout interno (15s via env neste teste).
       chainInvokeMock.mockImplementationOnce(
         (_input: unknown, opts: { signal?: AbortSignal } | undefined) =>
           new Promise((_resolve, reject) => {
@@ -386,6 +406,7 @@ describe("runQaAgent — com config ativo", () => {
       expect(result.meta.model).toBe("qa-timeout")
     } finally {
       vi.useRealTimers()
+      delete process.env.EMAIL_QA_TIMEOUT_MS
     }
   })
 

@@ -44,7 +44,7 @@ import { runQaVisionCheck } from "./qa-vision.chain"
 const log = logger.child("QaChain")
 
 // ── Constantes ─────────────────────────────────────────────────────────
-const QA_TIMEOUT_MS = 15_000
+const DEFAULT_QA_TIMEOUT_MS = 60_000
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 const DEFAULT_MAX_TOKENS = 1500
 const DEFAULT_TEMPERATURE = 0.2
@@ -87,6 +87,16 @@ export function getBlockingSeverity(): QaIssueSeverity {
   const raw = (process.env.EMAIL_QA_BLOCK_SEVERITY ?? "high").toLowerCase()
   if (raw === "low" || raw === "medium" || raw === "high") return raw
   return "high"
+}
+
+/**
+ * Timeout (ms) da chamada do QA ao LLM. Configurável via
+ * EMAIL_QA_TIMEOUT_MS; default 60s. O HTML agent imediatamente antes pode
+ * levar ~2min — 15s abortava QAs legítimos sobre HTML real + contexto.
+ */
+export function getQaTimeoutMs(): number {
+  const raw = Number(process.env.EMAIL_QA_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_QA_TIMEOUT_MS
 }
 
 function computePassed(issues: QaIssue[]): boolean {
@@ -344,7 +354,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
 
   // ── 4. Chama Claude com timeout 15s ─────────────────────────────────
   const controller = new AbortController()
-  const timeoutHandle = setTimeout(() => controller.abort(), QA_TIMEOUT_MS)
+  const timeoutHandle = setTimeout(() => controller.abort(), getQaTimeoutMs())
 
   let rawOutput = ""
   try {
@@ -410,7 +420,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   if (!parsed || !zod || !zod.success) {
     // Retry pedindo reformatacao estrita.
     const retryController = new AbortController()
-    const retryTimeout = setTimeout(() => retryController.abort(), QA_TIMEOUT_MS)
+    const retryTimeout = setTimeout(() => retryController.abort(), getQaTimeoutMs())
     try {
       const retryPrompt =
         userPrompt +
