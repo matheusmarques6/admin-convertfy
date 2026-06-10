@@ -128,6 +128,8 @@ export async function generateBlueprintAndReference(
     persona,
     briefingJson: JSON.stringify(marca),
     pesquisa,
+    outlineObjective: outline?.objective ?? "",
+    outlineGuidance: outline?.guidance ?? "",
     sections,
   })
 

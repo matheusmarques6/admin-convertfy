@@ -36,13 +36,18 @@ const DEFAULT_ASSEMBLER_SYSTEM = `Você é o montador de referência visual de e
 
 const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}} — MOOD: {{mood}}
 
+<outline>
+- objetivo: {{outline_objective}}
+- diretriz: {{outline_guidance}}
+</outline>
+
 <pesquisa_diagnostico>
 {{pesquisa_diagnostico}}
 </pesquisa_diagnostico>
 
 BLOCOS: {{blocks_json}}
 FINALISTAS POR BLOCO: {{candidates_json}}
-Escolha a melhor variante de cada bloco. Responda apenas o JSON array.`
+Escolha a melhor variante de cada bloco, alinhada ao objetivo do email. Responda apenas o JSON array.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -150,6 +155,9 @@ export interface AssembleReferenceInput {
   briefingJson: string
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
   pesquisa: string
+  // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance.
+  outlineObjective: string
+  outlineGuidance: string
   // Seções (8) vindas do outline (estrutura geral), na ordem.
   sections: string[]
 }
@@ -256,6 +264,8 @@ export async function assembleStoreReference(
     mood: input.mood,
     briefing_json: input.briefingJson,
     pesquisa_diagnostico: input.pesquisa,
+    outline_objective: input.outlineObjective,
+    outline_guidance: input.outlineGuidance,
     blocks_json: blocksJson,
     candidates_json: candidatesJson,
   }

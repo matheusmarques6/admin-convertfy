@@ -91,6 +91,8 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "mood", desc: "Mood derivado do tom de voz" },
     { key: "briefing_json", desc: "Briefing da marca (JSON)" },
     { key: "pesquisa_diagnostico", desc: "Pesquisa & Diagnóstico (marca/ICP/tom/ads)" },
+    { key: "outline_objective", desc: "Objetivo geral do email (outline)" },
+    { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],
