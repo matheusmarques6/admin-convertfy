@@ -19,6 +19,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { logger } from "@/lib/logger"
 
 import { renderImageTemplate } from "../image/template-renderer"
+import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
 
 const log = logger.child("HtmlChain")
 
@@ -123,10 +124,6 @@ export async function invokeHtmlChain(
   input: InvokeHtmlInput,
 ): Promise<InvokeHtmlResult> {
   const { config, vars } = input
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY nao configurada")
-  }
 
   const userMessage = renderImageTemplate(config.user_template, vars)
   const systemPrompt = config.system_prompt.trim() || DEFAULT_HTML_SYSTEM_PROMPT
@@ -137,7 +134,37 @@ export async function invokeHtmlChain(
   // retorna 400 ("'temperature' is deprecated for this model"). Para
   // models legacy (opus-4-6, sonnet-4-x), o param continua valido.
   // Pra controlar profundidade no 4.7+, usar `output_config.effort`.
-  const supportsTemperature = !/^claude-opus-4-(7|8)/.test(model)
+  const supportsTemperature = !/opus-4[.-](7|8)/i.test(model)
+
+  // Roteamento por id: "vendor/model" (ex.: anthropic/claude-sonnet-4.6) vai
+  // pelo OpenRouter; demais usam o SDK Anthropic direto.
+  if (isOpenRouterModel(model)) {
+    const t0 = Date.now()
+    const or = await invokeOpenRouter({
+      model,
+      systemPrompt,
+      userMessage,
+      maxTokens: config.max_tokens,
+      temperature: supportsTemperature ? config.temperature : undefined,
+      timeoutMs: 120_000,
+      title: "Convertfy Admin HTML",
+    })
+    const html = postProcessHtml(or.text)
+    log.info("html.invoke.success", {
+      model,
+      via: "openrouter",
+      durationMs: Date.now() - t0,
+      inputTokens: or.tokensInput,
+      outputTokens: or.tokensOutput,
+      htmlLength: html.length,
+    })
+    return { html, tokensInput: or.tokensInput, tokensOutput: or.tokensOutput }
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY nao configurada")
+  }
 
   log.info("html.invoke.start", {
     model,
@@ -192,22 +219,27 @@ export async function invokeHtmlChain(
   const textBlocks = res.content.filter(
     (b): b is Anthropic.TextBlock => b.type === "text",
   )
-  let raw = textBlocks.map((b) => b.text).join("")
-  raw = raw.replace(/```(?:html)?\s*/gi, "").trim()
-  const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
-  if (doctypeMatch) raw = doctypeMatch[1]
+  const html = postProcessHtml(textBlocks.map((b) => b.text).join(""))
 
   log.info("html.invoke.success", {
     model,
     durationMs,
     inputTokens: res.usage.input_tokens,
     outputTokens: res.usage.output_tokens,
-    htmlLength: raw.length,
+    htmlLength: html.length,
   })
 
   return {
-    html: raw,
+    html,
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
   }
+}
+
+/** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver. */
+function postProcessHtml(rawText: string): string {
+  let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
+  const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
+  if (doctypeMatch) raw = doctypeMatch[1]
+  return raw
 }

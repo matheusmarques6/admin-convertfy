@@ -39,6 +39,7 @@ import {
   computeCostCents,
   logGenerationRun,
 } from "../callbacks/telemetry.callback"
+import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
 import { runQaVisionCheck } from "./qa-vision.chain"
 
 const log = logger.child("QaChain")
@@ -222,6 +223,22 @@ async function invokeWithTimeout(
   signal: AbortSignal,
 ): Promise<string> {
   const isOpus = model.includes("opus")
+
+  // Roteamento por id: "vendor/model" (ex.: anthropic/claude-sonnet-4.6) vai
+  // pelo OpenRouter; demais usam o ChatAnthropic (SDK direto).
+  if (isOpenRouterModel(model)) {
+    const or = await invokeOpenRouter({
+      model,
+      systemPrompt,
+      userMessage: userPrompt,
+      maxTokens,
+      temperature: isOpus ? undefined : temperature,
+      timeoutMs: getQaTimeoutMs(),
+      title: "Convertfy Admin QA",
+    })
+    return or.text
+  }
+
   const chat = new ChatAnthropic({
     model,
     ...(isOpus ? {} : { temperature }),

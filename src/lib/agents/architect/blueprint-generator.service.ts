@@ -235,6 +235,7 @@ export async function generateStoreBlueprint(
   let tokensInput = 0
   let tokensOutput = 0
   let rawOutput = ""
+  let invokeError: string | null = null
 
   try {
     const res = await invokeAgent(config, vars)
@@ -242,12 +243,16 @@ export async function generateStoreBlueprint(
     tokensInput = res.tokensInput
     tokensOutput = res.tokensOutput
     blueprint = parseBlueprintOutput(res.raw)
+    // LLM respondeu mas o JSON não pôde ser parseado em um blueprint válido.
+    if (!blueprint) invokeError = "blueprint_unparseable_json"
   } catch (err) {
+    invokeError = err instanceof Error ? err.message : String(err)
     log.error("blueprint.invoke_failed", {
       storeId: input.storeId,
       flowType: input.flowType,
       emailNumber: input.emailNumber,
-      error: err instanceof Error ? err.message : String(err),
+      model: config.model,
+      error: invokeError,
     })
   }
 
@@ -284,9 +289,16 @@ export async function generateStoreBlueprint(
     agentConfigId: cfgRow?.id,
     status: source === "ai" ? "success" : "skipped",
     model: model ?? "fallback",
+    // Em fallback (skipped), registra o motivo + modelo tentado pra diagnóstico.
+    errorMessage: source === "ai" ? undefined : (invokeError ?? undefined),
     inputVars: vars,
     rawOutput: rawOutput.slice(0, 4000),
-    parsedOutput: { blocks: blueprint.blocks.length, source },
+    parsedOutput: {
+      blocks: blueprint.blocks.length,
+      source,
+      attempted_model: config.model,
+      invoke_error: invokeError,
+    },
     tokensInput,
     tokensOutput,
     costCents: model ? computeCostCents(model, tokensInput, tokensOutput) : 0,
