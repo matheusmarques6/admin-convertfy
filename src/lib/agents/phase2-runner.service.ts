@@ -375,7 +375,7 @@ export interface RunPhase2Params {
  *
  * Retorna:
  *   - `image_done`: imagem gerada com sucesso, pronto para fase HTML+QA
- *   - `failed`: erro fatal (context_load_failed, store_data_incomplete, image_failed)
+ *   - `failed`: erro fatal (context_load_failed, image_failed)
  *   - `skipped`: status nao estava em `copy_ready` (idempotente)
  */
 export async function runPhase2Image(
@@ -417,11 +417,10 @@ export async function runPhase2Image(
     return { status: "failed" }
   }
 
-  // ── Guard 2: dados da loja incompletos (sem nicho ou sem produtos) ──
-  // Sem nicho/produtos reais o agente de imagem gera algo genérico e a copy
-  // cai em placeholders ({{product_name}}). Falha ALTO antes de gastar tokens,
-  // com failure_reason='store_data_incomplete' (mesma rota de alerta da tag
-  // cto), em vez de produzir um email degradado em silêncio.
+  // Guard 2 removido (decisão de produto, jun/2026): geração prossegue
+  // mesmo sem niche ou top_products. Imagem pode ficar genérica nesses
+  // casos — aceitável, melhor que bloquear. Log warning preserva
+  // observabilidade pra ops detectar lojas mal-configuradas.
   const niche = (ctx.storeRaw as Record<string, unknown>)?.niche
   const hasNiche = typeof niche === "string" && niche.trim().length > 0
   if (!hasNiche || ctx.topProducts.length === 0) {
@@ -429,16 +428,7 @@ export async function runPhase2Image(
       !hasNiche ? "niche" : null,
       ctx.topProducts.length === 0 ? "products" : null,
     ].filter(Boolean)
-    log.error("phase2.store_data_incomplete", { emailId, storeId, missing })
-    await markEmailFailed(emailId, "store_data_incomplete")
-    await safeNotifyEmailFailed(
-      storeId,
-      emailId,
-      "store_data_incomplete",
-      batchId || null,
-    )
-    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    return { status: "failed" }
+    log.warn("phase2.store_data_partial", { emailId, storeId, missing })
   }
 
   // ── Step 1: Image generation (se habilitado) ─────────────────────────
