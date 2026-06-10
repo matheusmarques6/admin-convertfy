@@ -22,6 +22,10 @@ export const FLOW_UTM_SLUG: Record<FlowType, string> = {
   custom: "custom-flow",
 }
 
+/** Defaults de UTM (editáveis em Configurações). */
+export const UTM_SOURCE_DEFAULT = "email"
+export const UTM_MEDIUM_DEFAULT = "automation"
+
 export interface EmailUtm {
   source: string
   medium: string
@@ -34,11 +38,17 @@ export interface EmailUtm {
 /**
  * Gera os parâmetros UTM de um e-mail específico de um flow.
  * `utm_content` usa o número do e-mail com 2 dígitos (email-01, email-02…).
+ * `overrides` permite usar valores configurados (source/medium/campaign).
  */
-export function emailUtm(flowType: FlowType, emailNumber: number): EmailUtm {
-  const source = "email"
-  const medium = "automation"
-  const campaign = FLOW_UTM_SLUG[flowType] ?? FLOW_UTM_SLUG.custom
+export function emailUtm(
+  flowType: FlowType,
+  emailNumber: number,
+  overrides?: { source?: string; medium?: string; campaign?: string },
+): EmailUtm {
+  const source = overrides?.source?.trim() || UTM_SOURCE_DEFAULT
+  const medium = overrides?.medium?.trim() || UTM_MEDIUM_DEFAULT
+  const campaign =
+    overrides?.campaign?.trim() || FLOW_UTM_SLUG[flowType] || FLOW_UTM_SLUG.custom
   const content = `email-${String(emailNumber).padStart(2, "0")}`
   const query = new URLSearchParams({
     utm_source: source,

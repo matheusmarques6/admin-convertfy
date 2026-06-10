@@ -80,6 +80,23 @@ const META: Record<FlowType, FlowImplementationMeta> = {
   },
 }
 
+/** Defaults editáveis em Configurações (fallback quando não há override). */
+export const FLOW_META_DEFAULTS: Record<FlowType, FlowImplementationMeta> = META
+
+/**
+ * Flow types que aparecem na config de implementação (os 7 flows reais + post
+ * purchase; `custom` fica de fora da UI por não ter setup canônico).
+ */
+export const IMPLEMENTATION_FLOW_TYPES: FlowType[] = [
+  "welcome",
+  "site_abandoned",
+  "browse_abandonment",
+  "abandoned_cart",
+  "upsell",
+  "win_back",
+  "shipping_stages",
+]
+
 export function flowImplementationMeta(flowType: FlowType): FlowImplementationMeta {
   return META[flowType] ?? META.custom
 }
