@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { runTestGeneration } from "@/lib/agents/test-generation.service"
+import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -57,11 +58,17 @@ export async function POST(
       batchId,
     })
 
-    // Path with_copy: dispara phase2 em background. Usa o split novo
-    // (run-phase2-image -> run-phase2-html-qa) pra cada etapa caber no
-    // maxDuration=300s da Vercel — antes o monolito estourava ~355s
-    // e o html+qa nunca rodava (Bug 2). Cliente faz polling em
-    // /generation-status.
+    // Path with_copy: dispara phase2 em background.
+    //
+    // Preferência: fetch interno pro split run-phase2-image →
+    // run-phase2-html-qa, cada um com seu próprio orçamento de 300s.
+    // Sem isso, o monolito (image ~250s + html ~90s + qa ~15s) estoura
+    // o maxDuration=300s da Vercel.
+    //
+    // Fallback (sem INTERNAL_SECRET configurado, ou fetch falhando):
+    // chama runPhase2InBackground direto. Funciona mas tem risco de
+    // timeout no pior caso — preferência clara é configurar
+    // INTERNAL_SECRET em prod.
     if (result.triggerPhase2) {
       const secret = process.env.INTERNAL_SECRET
       const baseUrl = (
@@ -70,28 +77,50 @@ export async function POST(
         `https://${request.headers.get("host") ?? "localhost:3000"}`
       ).replace(/\/$/, "")
 
+      const fallbackDirect = async (reason: string) => {
+        log.warn("generate-email.phase2.fallback_direct", {
+          emailId: result.emailId,
+          reason,
+        })
+        try {
+          await runPhase2InBackground({
+            storeId,
+            emailId: result.emailId,
+            triggeredBy: user.id,
+            relaxedBrandCheck: result.relaxedBrand === true,
+          })
+        } catch (err) {
+          log.error("generate-email.phase2.fallback_direct_error", err)
+        }
+      }
+
       after(async () => {
         if (!secret) {
-          log.error("generate-email.phase2.no_internal_secret", {
-            emailId: result.emailId,
-          })
+          await fallbackDirect("no_internal_secret")
           return
         }
         try {
-          await fetch(`${baseUrl}/api/internal/run-phase2-image/${result.emailId}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-internal-secret": secret,
+          const resp = await fetch(
+            `${baseUrl}/api/internal/run-phase2-image/${result.emailId}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-internal-secret": secret,
+              },
+              body: JSON.stringify({
+                storeId,
+                triggeredBy: user.id,
+                relaxedBrandCheck: result.relaxedBrand === true,
+              }),
             },
-            body: JSON.stringify({
-              storeId,
-              triggeredBy: user.id,
-              relaxedBrandCheck: result.relaxedBrand === true,
-            }),
-          })
+          )
+          if (!resp.ok) {
+            await fallbackDirect(`fetch_non_ok_${resp.status}`)
+          }
         } catch (err) {
           log.error("generate-email.phase2.dispatch_error", err)
+          await fallbackDirect("fetch_error")
         }
       })
     }
