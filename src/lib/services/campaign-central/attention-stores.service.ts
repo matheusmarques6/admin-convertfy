@@ -16,7 +16,6 @@ const REVENUE_DROP_PCT = -20
 
 const ALERT_LABEL: Record<string, string> = {
   low_revenue: "Receita em queda",
-  klaviyo_account_error: "Erro de conta",
   campaign_failure: "Falha de campanha",
   low_recovery_rate: "Recuperação baixa",
   health_critical: "Health crítico",
@@ -24,6 +23,10 @@ const ALERT_LABEL: Record<string, string> = {
   feedback_received: "Feedback recebido",
   churn_recovery: "Risco de churn",
 }
+
+// Central é Omnisend-only: alerts do checker legado de Klaviyo são ruído
+// aqui (as lojas nem usam Klaviyo) — ignorados na derivação.
+const IGNORED_ALERT_TYPES = new Set(["klaviyo_account_error"])
 
 interface StoreRow {
   id: string
@@ -68,6 +71,7 @@ export async function loadAttentionStores(orgId: string): Promise<AttentionStore
 
   const alertsByStore = new Map<string, Array<{ type: string; severity: string; title: string }>>()
   for (const a of alertsRes.data ?? []) {
+    if (IGNORED_ALERT_TYPES.has(a.type as string)) continue
     const arr = alertsByStore.get(a.store_id as string) ?? []
     arr.push({
       type: a.type as string,
