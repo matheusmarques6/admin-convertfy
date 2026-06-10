@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluxo de Onboarding · Convertfy — Cadastro → Omnisend</title>
+<style>
+  :root{
+    --ink:#1F1F1F; --ink2:#3a3a3a; --muted:#6b6b6b; --line:#e3e3e3;
+    --bg:#f6f6f4; --card:#ffffff; --soft:#fafafa;
+    --ai:#1F1F1F; --ai-bg:#1F1F1F; --n8n:#0a7d5a; --manual:#8a6d1f; --gate:#a23b2d;
+    --radius:6px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:40px 28px 80px}
+  header.top{margin-bottom:8px}
+  h1{font-size:24px; font-weight:700; letter-spacing:-.3px; margin:0 0 4px}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:28px}
+
+  /* Legend */
+  .legend{display:flex; gap:18px; flex-wrap:wrap; padding:12px 16px; background:var(--card);
+    border:1px solid var(--line); border-radius:var(--radius); margin-bottom:32px; font-size:12px}
+  .legend span{display:inline-flex; align-items:center; gap:7px; color:var(--ink2)}
+  .dot{width:10px; height:10px; border-radius:3px; display:inline-block}
+  .dot.ai{background:var(--ai)} .dot.n8n{background:var(--n8n)}
+  .dot.manual{background:var(--manual)} .dot.gate{background:var(--gate)}
+
+  /* Timeline */
+  .timeline{position:relative; margin-left:18px; padding-left:34px;
+    border-left:2px solid var(--line)}
+  .phase{position:relative; margin-bottom:38px}
+  .phase::before{content:""; position:absolute; left:-43px; top:3px; width:18px; height:18px;
+    background:var(--ink); border:3px solid var(--bg); border-radius:50%}
+  .pnum{display:inline-block; font-size:11px; font-weight:700; letter-spacing:.5px;
+    color:var(--muted); text-transform:uppercase}
+  .ptitle{font-size:17px; font-weight:700; margin:2px 0 2px}
+  .prole{font-size:11px; color:var(--muted); margin-bottom:12px}
+  .prole b{color:var(--ink2); font-weight:600}
+  .pdesc{font-size:13px; color:var(--ink2); margin:0 0 14px; max-width:760px}
+
+  /* Cards */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:14px 16px; margin-bottom:12px}
+  .card.ai{border-left:4px solid var(--ai)}
+  .card.n8n{border-left:4px solid var(--n8n)}
+  .card.manual{border-left:4px solid var(--manual)}
+  .card-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; flex-wrap:wrap}
+  .card-name{font-size:14px; font-weight:700}
+  .tag{font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+    padding:3px 8px; border-radius:4px; color:#fff; white-space:nowrap}
+  .tag.ai{background:var(--ai)} .tag.n8n{background:var(--n8n)} .tag.manual{background:var(--manual)}
+  .model{font-size:11px; color:var(--muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .io{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px}
+  @media(max-width:640px){.io{grid-template-columns:1fr}}
+  .io-box{background:var(--soft); border:1px solid var(--line); border-radius:4px; padding:9px 11px}
+  .io-label{font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--muted); margin-bottom:5px}
+  .io-box.in .io-label{color:#5a6c7d}
+  .io-box.out .io-label{color:#1f6f53}
+  .io-box ul{margin:0; padding-left:15px}
+  .io-box li{font-size:12px; color:var(--ink2); margin-bottom:2px}
+  .io-box code{font-family:ui-monospace,Menlo,monospace; font-size:11px; background:#eee; padding:1px 4px; border-radius:3px}
+  .note{font-size:12px; color:var(--muted); margin-top:9px}
+
+  /* Gate banner */
+  .gate{display:flex; gap:12px; align-items:flex-start; background:#fbf1ef; border:1px solid #e8c9c2;
+    border-left:4px solid var(--gate); border-radius:var(--radius); padding:12px 16px; margin:0 0 14px}
+  .gate .gicon{font-size:18px; line-height:1}
+  .gate b{color:var(--gate)}
+  .gate .gtxt{font-size:12.5px; color:var(--ink2)}
+
+  /* State machine */
+  .states{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin:30px 0}
+  .states h3{margin:0 0 14px; font-size:14px; font-weight:700}
+  .chain{display:flex; flex-wrap:wrap; align-items:center; gap:6px}
+  .st{font-family:ui-monospace,Menlo,monospace; font-size:11px; padding:4px 9px; border-radius:4px;
+    background:var(--soft); border:1px solid var(--line); color:var(--ink2); white-space:nowrap}
+  .st.term{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .st.fail{background:#fbf1ef; color:var(--gate); border-color:#e8c9c2}
+  .arr{color:var(--muted); font-size:13px}
+  .st-by{display:block; font-size:9px; color:var(--muted); margin-top:2px; font-family:inherit}
+  .states .legend2{margin-top:14px; font-size:11.5px; color:var(--muted)}
+
+  .footer{margin-top:40px; padding-top:18px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted)}
+  .footer code{font-family:ui-monospace,Menlo,monospace}
+  .pill{display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; background:var(--soft); border:1px solid var(--line); color:var(--muted); margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Fluxo de Onboarding — do cadastro à implementação na Omnisend</h1>
+    <div class="sub">7 etapas no kanban · 8 agentes de IA + 1 workflow n8n · pipeline de geração em 2 fases com 2 gates manuais</div>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot ai"></i> Agente de IA (Claude / modelo de imagem)</span>
+    <span><i class="dot n8n"></i> Workflow n8n (externo)</span>
+    <span><i class="dot manual"></i> Ação humana / manual</span>
+    <span><i class="dot gate"></i> Gate de aprovação (bloqueia avanço)</span>
+  </div>
+
+  <div class="timeline">
+
+    <!-- ETAPA 1 -->
+    <section class="phase">
+      <div class="pnum">Etapa 1 · coluna <code style="font-family:ui-monospace,Menlo,monospace">entrada</code></div>
+      <div class="ptitle">Entrada</div>
+      <div class="prole">Responsável: <b>CS</b> · SLA 2h</div>
+      <p class="pdesc">Admin/CSM cadastra cliente + loja. Nasce o registro em <code style="font-family:ui-monospace,Menlo,monospace">onboardings</code> com <code style="font-family:ui-monospace,Menlo,monospace">form_token</code> (validade 30d) e a pipeline de 7 colunas é instanciada. Cliente recebe link do formulário por WhatsApp.</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Cadastro &amp; bootstrap</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>client_id, store_id, plano, MRR</li><li>WhatsApp do cliente</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output</div><ul><li>onboarding + form_token</li><li>7 colunas / tasks por checklist</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ETAPA 2 -->
+    <section class="phase">
+      <div class="pnum">Etapa 2 · coluna <code style="font-family:ui-monospace,Menlo,monospace">cliente_formulario</code></div>
+      <div class="ptitle">Formulário — cliente preenche o briefing</div>
+      <div class="prole">Responsável: <b>CS</b> · SLA 72h</div>
+      <p class="pdesc">Cliente abre <code style="font-family:ui-monospace,Menlo,monospace">/form/{token}</code> (sem login), responde ~24 perguntas e faz uploads (logo, manual de marca, referências). Ao completar seções, a IA gera o briefing; o cliente revisa, edita inline e confirma.</p>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">🤖 Agente · Geração de Briefing</span><span class="tag ai">IA — cascata</span></div>
+        <div class="model">claude-sonnet-4-6 (Anthropic) → fallback OpenRouter → fallback template determinístico</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul>
+            <li>respostas do formulário</li>
+            <li>Pesquisa &amp; Diagnóstico (brand_*, icp_*, tone_*, ads_*) — fonte primária</li>
+            <li>dados da loja (nicho, país, moeda, idioma)</li>
+          </ul></div>
+          <div class="io-box out"><div class="io-label">Output — BriefingContent (JSON)</div><ul>
+            <li>about_brand, audience, language_tone</li>
+            <li>visual_identity {palette, fonts, references}</li>
+            <li>offers_and_differentials</li>
+          </ul></div>
+        </div>
+        <div class="note">Grava em <code>onboardings.briefing</code> (+ versão pura da IA). Estado: <code>generating → generated_pending_review</code>.</div>
+      </div>
+
+      <div class="gate">
+        <div class="gicon">🔒</div>
+        <div class="gtxt"><b>GATE 1 — confirmação do briefing pelo cliente.</b> Ao confirmar, avança automático para a Etapa 3 e dispara (fire-and-forget) dois webhooks n8n: o de briefing e o de geração de copy dos emails.</div>
+      </div>
+    </section>
+
+    <!-- N8N PESQUISA (paralelo) -->
+    <section class="phase">
+      <div class="pnum">Paralelo · workflow externo</div>
+      <div class="ptitle">Pesquisa &amp; Diagnóstico + Ads Analyzer</div>
+      <div class="prole">Executa no <b>n8n</b> (fora do app) · alimenta o briefing e a copy</div>
+      <p class="pdesc">Workflow n8n investiga a marca e preenche os 5 pilares em <code style="font-family:ui-monospace,Menlo,monospace">client_stores</code>. Ao terminar, faz callback para o app.</p>
+
+      <div class="card n8n">
+        <div class="card-head"><span class="card-name">Workflow · Pesquisa (5 pilares) + Ads Analyzer</span><span class="tag n8n">n8n</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>store_id, marca, URL, produtos</li><li>dados de anúncios</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → client_stores</div><ul>
+            <li>brand_* · store_story · icp_* · tone_*</li>
+            <li>ads_score, strengths, risks, opportunities</li>
+          </ul></div>
+        </div>
+        <div class="note">Callback <code>POST /api/webhooks/n8n/pesquisa-completa</code> → dispara a geração de copy. Campo <code>regeneration:true</code> faz o callback <b>pular</b> a copy (só atualiza pesquisa).</div>
+      </div>
+    </section>
+
+    <!-- PIPELINE DE GERAÇÃO -->
+    <section class="phase">
+      <div class="pnum">Pipeline automático · Epic AE</div>
+      <div class="ptitle">Geração dos emails — Fase 1 (copy)</div>
+      <div class="prole">Disparado por briefing confirmado / pesquisa completa · orquestrado por <code style="font-family:ui-monospace,Menlo,monospace">dispatchEmailCopyWebhook</code></div>
+      <p class="pdesc">Antes da copy, o <b>Arquiteto</b> monta uma referência visual por loja×email e extrai a estrutura (blueprint). Depois a copy é escrita bloco a bloco.</p>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">🤖 Arquiteto · Montador (Component Assembler)</span><span class="tag ai">IA</span></div>
+        <div class="model">claude-sonnet-4-6</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>outline do email + nicho + persona</li><li>tom de voz, mood, produtos</li><li>biblioteca de variantes de componentes</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → store_email_references</div><ul><li>HTML de referência montado</li></ul></div>
+        </div>
+      </div>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">🤖 Arquiteto · Blueprint Generator</span><span class="tag ai">IA</span></div>
+        <div class="model">claude-sonnet-4-6</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>HTML de referência (do Montador)</li><li>contexto da marca + outline</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → store_email_blueprints</div><ul><li>objective, messaging, subject_hint</li><li>blocks [{type, label, purpose, needs_image}]</li></ul></div>
+        </div>
+        <div class="note">Fallback: blueprint default por flow_type se o JSON vier inválido.</div>
+      </div>
+
+      <div class="card n8n">
+        <div class="card-head"><span class="card-name">✍️ Copy — geração do texto dos blocos</span><span class="tag n8n">n8n (principal)</span></div>
+        <div class="model">fallback in-app: claude-sonnet-4-6 (watchdog após 15 min)</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input (payload Convertfy)</div><ul><li>briefing + brand + produtos</li><li>blueprints + blocos + referências</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → email_flow_emails / email_blocks</div><ul><li>subject, preheader</li><li>content de cada bloco</li></ul></div>
+        </div>
+        <div class="note">Callback <code>POST /api/webhooks/n8n/email-copy</code> → status <code>copy_ready</code>. <b>Não</b> dispara a Fase 2 — aguarda o gate de identidade visual.</div>
+      </div>
+
+      <div class="gate">
+        <div class="gicon">🔒</div>
+        <div class="gtxt"><b>GATE 2 — confirmação da identidade visual pelo designer.</b> Valida cores, fontes e logo. Ao confirmar, um trigger enfileira o sinal <code>render</code> e a Fase 2 roda automaticamente nos emails em <code>copy_ready</code>.</div>
+      </div>
+    </section>
+
+    <!-- FASE 2 -->
+    <section class="phase">
+      <div class="pnum">Pipeline automático · Epic AE</div>
+      <div class="ptitle">Geração dos emails — Fase 2 (imagem → HTML → QA)</div>
+      <div class="prole">Orquestrado por <code style="font-family:ui-monospace,Menlo,monospace">runPhase2InBackground</code> · watchdog recupera travamentos</div>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">🖼️ Imagem</span><span class="tag ai">IA — imagem</span></div>
+        <div class="model">openai/gpt-5.4-image-2 (via OpenRouter)</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>Master Prompt v2 (marca, nicho, paleta, persona)</li><li>imagem do produto (modo product_ref)</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → email_blocks.content</div><ul><li>image_url (signed) + image_alt</li></ul></div>
+        </div>
+        <div class="note">Só blocos com <code>needs_image=true</code> · limite de 6 imagens por email.</div>
+      </div>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">🧱 HTML</span><span class="tag ai">IA</span></div>
+        <div class="model">claude-opus-4-7</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input (21 variáveis)</div><ul><li>blocos + copy + image_map</li><li>cores, fontes, logo, reference_html</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → email_flow_emails.html</div><ul><li>HTML completo, email-safe</li></ul></div>
+        </div>
+      </div>
+
+      <div class="card ai">
+        <div class="card-head"><span class="card-name">✅ QA</span><span class="tag ai">IA</span></div>
+        <div class="model">claude-sonnet-4-6 (+ pré-checagens determinísticas)</div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>HTML final + blocos + objetivo</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output → email_flow_emails.qa_issues</div><ul><li>{ passed, issues[] }</li></ul></div>
+        </div>
+        <div class="note">QA passou → <code>ready</code>. Caso contrário → <code>failed</code> com as issues registradas.</div>
+      </div>
+    </section>
+
+    <!-- ETAPA 3 -->
+    <section class="phase">
+      <div class="pnum">Etapa 3 · coluna <code style="font-family:ui-monospace,Menlo,monospace">preview_producao</code></div>
+      <div class="ptitle">Preview — designer cria os pilotos</div>
+      <div class="prole">Responsável: <b>Designer</b> · SLA 48h</div>
+      <p class="pdesc">Designer trabalha no workspace de produção e entrega 4 pilotos (welcome, carrinho ×2, pós-compra) usando os emails gerados como base.</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Produção dos 4 pilotos</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>Brand Brain + emails gerados</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output</div><ul><li>4 pilotos (uploads no workspace)</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ETAPA 4 -->
+    <section class="phase">
+      <div class="pnum">Etapa 4 · coluna <code style="font-family:ui-monospace,Menlo,monospace">preview_aprovacao</code></div>
+      <div class="ptitle">Aprovação do preview</div>
+      <div class="prole">Responsável: <b>Estrategista</b> · SLA 48h</div>
+      <p class="pdesc">Pilotos enviados ao cliente. Se <b>aprovado</b> → avança. Se <b>ajustes solicitados</b> → volta à Etapa 3 (incrementa versão).</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Coleta de feedback + decisão</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>4 pilotos + feedback do cliente</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output</div><ul><li>aprovado / ajustes / sem resposta</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ETAPA 5 -->
+    <section class="phase">
+      <div class="pnum">Etapa 5 · coluna <code style="font-family:ui-monospace,Menlo,monospace">emails_finais</code></div>
+      <div class="ptitle">Emails finais em produção</div>
+      <div class="prole">Responsável: <b>Designer</b> · SLA 60h</div>
+      <p class="pdesc">7 tasks (uma por flow), cada uma listando os emails do flow. Os pilotos aprovados já entram marcados como ✓ (pré-fill). Designer finaliza os ~30 emails restantes. Ao concluir, gera o token de tutorial e cria a task de implementação.</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Finalização dos 7 flows (~30 emails)</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>pilotos aprovados (pré-preenchidos)</li><li>emails gerados pelo pipeline</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output</div><ul><li>todos os emails dos 7 flows prontos</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ETAPA 6 -->
+    <section class="phase">
+      <div class="pnum">Etapa 6 · coluna <code style="font-family:ui-monospace,Menlo,monospace">implementacao</code></div>
+      <div class="ptitle">Implementação na Omnisend</div>
+      <div class="prole">Responsável: <b>Ops</b> · SLA 36h</div>
+      <p class="pdesc">Time de implementação abre o <b>Modo Implementação</b> (handoff read-only) e monta as automações na Omnisend. Não há push automático — tudo é copiado/colado do handoff estruturado.</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Handoff &amp; montagem na Omnisend</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input — tela de handoff</div><ul>
+            <li>setup: gatilho, público, evento, espera</li>
+            <li>envelope: remetente, assunto, pré-cabeçalho</li>
+            <li>UTM (Source / Medium / Campaign)</li>
+            <li>cupons a criar + copy bloco-a-bloco</li>
+          </ul></div>
+          <div class="io-box out"><div class="io-label">Output — na Omnisend</div><ul>
+            <li>automações criadas e ativas</li>
+            <li>cupons criados</li>
+            <li>teste E2E (screenshots)</li>
+          </ul></div>
+        </div>
+        <div class="note">UTM Campaign = <code>automation: {Source} | {Flow} | {Loja} ({brandID Omnisend})</code> — brandID buscado ao vivo só se a Omnisend estiver conectada.</div>
+      </div>
+    </section>
+
+    <!-- ETAPA 7 -->
+    <section class="phase">
+      <div class="pnum">Etapa 7 · coluna <code style="font-family:ui-monospace,Menlo,monospace">cliente_ativo</code></div>
+      <div class="ptitle">Cliente ativo — handoff final</div>
+      <div class="prole">Responsável: <b>Estrategista</b> · SLA 8h</div>
+      <p class="pdesc">Email de "conta ativa" ao cliente, criação do registro de Acompanhamento e agendamento da call de 30 dias.</p>
+      <div class="card manual">
+        <div class="card-head"><span class="card-name">Ativação &amp; transição p/ CS</span><span class="tag manual">Manual</span></div>
+        <div class="io">
+          <div class="io-box in"><div class="io-label">Input</div><ul><li>automações ativas na Omnisend</li></ul></div>
+          <div class="io-box out"><div class="io-label">Output</div><ul><li>email de ativação + registro de Acompanhamento</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /timeline -->
+
+  <!-- STATE MACHINE -->
+  <div class="states">
+    <h3>Máquina de estados de cada email (<code>email_flow_emails.status</code>)</h3>
+    <div class="chain">
+      <span class="st">draft<span class="st-by">seed</span></span><span class="arr">→</span>
+      <span class="st">pending<span class="st-by">startOnboarding</span></span><span class="arr">→</span>
+      <span class="st">copy_generating<span class="st-by">n8n</span></span><span class="arr">→</span>
+      <span class="st">copy_ready<span class="st-by">copy</span></span>
+      <span class="arr">→🔒→</span>
+      <span class="st">rendering<span class="st-by">imagem</span></span><span class="arr">→</span>
+      <span class="st">image_done<span class="st-by">imagem</span></span><span class="arr">→</span>
+      <span class="st">qa_running<span class="st-by">html+QA</span></span><span class="arr">→</span>
+      <span class="st term">ready<span class="st-by">QA ok</span></span>
+      <span class="arr">/</span>
+      <span class="st fail">failed<span class="st-by">erro/QA</span></span>
+    </div>
+    <div class="legend2">🔒 = GATE 2 (identidade visual confirmada). O watchdog (cron a cada 5 min) recupera copy travada (&gt;15 min, via fallback Claude) e marca timeout na Fase 2 (&gt;10 min).</div>
+  </div>
+
+  <div class="footer">
+    Agentes de IA: <b>Briefing</b> (claude-sonnet-4-6, cascata) · <b>Arquiteto-Montador</b> e <b>Arquiteto-Blueprint</b> (claude-sonnet-4-6) · <b>Copy</b> (n8n; fallback claude-sonnet-4-6) · <b>Imagem</b> (openai/gpt-5.4-image-2) · <b>HTML</b> (claude-opus-4-7) · <b>QA</b> (claude-sonnet-4-6). &nbsp;·&nbsp; Telemetria de todos os runs em <code>email_generation_runs</code> (modelo, tokens, custo, duração).
+    <span class="pill">gerado em jun/2026</span>
+  </div>
+
+</div>
+</body>
+</html>
