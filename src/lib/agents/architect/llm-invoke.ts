@@ -52,18 +52,39 @@ export interface InvokeResult {
 }
 
 /**
- * Renderiza o user_template com as vars e invoca a Messages API.
- * Modelos opus-4-7/4-8 não aceitam `temperature` — omitido nesse caso.
+ * Renderiza o user_template com as vars e invoca o modelo configurado.
+ *
+ * Roteamento por id do modelo:
+ *   - id com "/" (ex.: "anthropic/claude-opus-4.8") → OpenRouter (OpenAI-compatible)
+ *   - id sem "/" (ex.: "claude-sonnet-4-6")        → SDK Anthropic direto
  */
 export async function invokeAgent(
   config: AgentInvokeConfig,
   vars: Record<string, string>,
 ): Promise<InvokeResult> {
+  const userMessage = renderImageTemplate(config.user_template, vars)
+  return config.model.includes("/")
+    ? invokeViaOpenRouter(config, userMessage)
+    : invokeViaAnthropic(config, userMessage)
+}
+
+/**
+ * Opus 4.7/4.8 não aceitam `temperature` (direto ou via OpenRouter). Cobre os
+ * dois formatos de id: `claude-opus-4-8` e `anthropic/claude-opus-4.8`.
+ */
+function modelSupportsTemperature(model: string): boolean {
+  return !/opus-4[.-](7|8)/i.test(model)
+}
+
+/** Invoca via SDK Anthropic (Messages API), com prompt caching no system. */
+async function invokeViaAnthropic(
+  config: AgentInvokeConfig,
+  userMessage: string,
+): Promise<InvokeResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY nao configurada")
 
-  const userMessage = renderImageTemplate(config.user_template, vars)
-  const supportsTemperature = !/^claude-opus-4-(7|8)/.test(config.model)
+  const supportsTemperature = modelSupportsTemperature(config.model)
 
   // Prompt caching: marca o system (fixo entre lojas do mesmo batch) como
   // cacheável. A API só cacheia ACIMA do mínimo do modelo (2048 tokens p/
@@ -113,6 +134,66 @@ export async function invokeAgent(
     raw,
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
+  }
+}
+
+/** Invoca via OpenRouter (OpenAI-compatible chat/completions). */
+async function invokeViaOpenRouter(
+  config: AgentInvokeConfig,
+  userMessage: string,
+): Promise<InvokeResult> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY nao configurada")
+
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 60_000)
+  try {
+    const body: Record<string, unknown> = {
+      model: config.model,
+      max_tokens: config.max_tokens,
+      messages: [
+        { role: "system", content: config.system_prompt },
+        { role: "user", content: userMessage },
+      ],
+    }
+    if (modelSupportsTemperature(config.model)) {
+      body.temperature = config.temperature
+    }
+
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://admin.convertfy.com.br",
+        "X-Title": "Convertfy Admin — Architect",
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => "")
+      throw new Error(`OpenRouter HTTP ${resp.status}: ${errBody.slice(0, 200)}`)
+    }
+
+    const data = (await resp.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
+    const raw = (data.choices?.[0]?.message?.content ?? "").trim()
+    return {
+      raw,
+      tokensInput: data.usage?.prompt_tokens ?? 0,
+      tokensOutput: data.usage?.completion_tokens ?? 0,
+    }
+  } catch (e) {
+    if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {
+      throw new Error("timeout")
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
 }
 

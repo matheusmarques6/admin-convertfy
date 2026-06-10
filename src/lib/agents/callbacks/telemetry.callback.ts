@@ -42,6 +42,8 @@ export interface LogGenerationRunParams {
  */
 export function computeCostCents(model: string, inputTokens: number, outputTokens: number): number {
   const pricing: Record<string, { input: number; output: number }> = {
+    "claude-opus-4-8": { input: 15.0, output: 75.0 },
+    "anthropic/claude-opus-4.8": { input: 15.0, output: 75.0 },
     "claude-opus-4-7": { input: 15.0, output: 75.0 },
     "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
     "claude-sonnet-4-5-20250514": { input: 3.0, output: 15.0 },
