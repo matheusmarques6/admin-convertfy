@@ -81,6 +81,12 @@ Note que existem **dois caminhos paralelos** após o briefing confirmado:
 
 Isso é redundância intencional: se o `after()` falhar (deploy reciclando, crash do worker), o watchdog cron pega o sinal pendente em até 5 min e re-dispatcha.
 
+### Regeração de briefing (campo `regeneration`)
+
+`dispatchBriefingWebhook` aceita `{ regeneration?: boolean }` (default `false`) e inclui esse campo no payload de saída do briefing webhook (`event: "onboarding.briefing_confirmed"`). Quando o briefing é **REGERADO** (reenvio manual via `POST /api/onboardings/[id]/resend-briefing-webhook` — default `true` — ou `mode="regenerate"` em `store-briefing`), o webhook sai com `regeneration: true`.
+
+O n8n deve **ECOAR** esse campo ao chamar o callback `POST /api/webhooks/n8n/pesquisa-completa`. Quando `regeneration: true`, esse callback apenas atualiza a Pesquisa & Diagnóstico e **NÃO re-dispara a geração de copy** (`dispatchEmailCopyWebhook`) — loga `skipped_due_to_regeneration`. Ausente ou `false` → comportamento normal (Architect + seed + copy). A primeira confirmação (`confirmBriefing`) usa o default `false`.
+
 ### Como observar
 
 ```sql
