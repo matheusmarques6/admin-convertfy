@@ -18,21 +18,14 @@ CREATE INDEX IF NOT EXISTS idx_commemorative_dates_source_external
 
 -- Aceita CC dos novos países do popover sem quebrar (FR, DE, IT, MX,
 -- AR, CO, CL, CA, AU, JP, GB). Mantém UK por back-compat do seed.
-DO $$
-DECLARE
-  cname text;
-BEGIN
-  SELECT conname INTO cname
-  FROM pg_constraint
-  WHERE conrelid = 'commemorative_dates'::regclass
-    AND contype = 'c'
-    AND pg_get_constraintdef(oid) ILIKE '%country%IN%';
-  IF cname IS NOT NULL THEN
-    EXECUTE format('ALTER TABLE commemorative_dates DROP CONSTRAINT %I', cname);
-  END IF;
-  ALTER TABLE commemorative_dates
-    ADD CONSTRAINT commemorative_dates_country_check
-    CHECK (country IN (
-      'BR','US','PT','UK','ES','MX','AR','CO','CL','DE','FR','IT','GB','CA','AU','JP'
-    ));
-END $$;
+-- Nota: DROP IF EXISTS direto pelo nome — a constraint nasceu inline no
+-- CREATE TABLE da 20260716, então o nome auto-gerado é determinístico.
+-- (Lookup dinâmico via pg_get_constraintdef ILIKE '%IN%' não funciona:
+-- o Postgres normaliza IN pra "= ANY (ARRAY[...])".)
+ALTER TABLE commemorative_dates
+  DROP CONSTRAINT IF EXISTS commemorative_dates_country_check;
+ALTER TABLE commemorative_dates
+  ADD CONSTRAINT commemorative_dates_country_check
+  CHECK (country IN (
+    'BR','US','PT','UK','ES','MX','AR','CO','CL','DE','FR','IT','GB','CA','AU','JP'
+  ));
