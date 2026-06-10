@@ -92,18 +92,42 @@ export async function GET(
       })
     }
 
-    // 2. Buscar TODOS os runs do email (histórico completo).
-    const { data: allRuns, error } = await admin
-      .from("email_generation_runs")
-      .select(
-        "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
-      )
-      .eq("email_id", emailId)
-      .order("created_at", { ascending: true })
+    // 2. Buscar runs do email + runs "batch-scoped" sem email_id.
+    //
+    // Os agentes Montador (assembler) e Blueprint operam por
+    // (storeId, flowType, emailNumber) e gravam runs com email_id=NULL.
+    // Filtrar só por email_id deixaria esses runs invisiveis, com a UI
+    // mostrando eles como "pending" eterno mesmo apos concluir.
+    const [byEmailRes, batchScopedRes] = await Promise.all([
+      admin
+        .from("email_generation_runs")
+        .select(
+          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
+        )
+        .eq("email_id", emailId)
+        .order("created_at", { ascending: true }),
+      admin
+        .from("email_generation_runs")
+        .select(
+          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
+        )
+        .eq("batch_id", currentBatchId)
+        .is("email_id", null)
+        .order("created_at", { ascending: true }),
+    ])
 
-    if (error) throw error
+    if (byEmailRes.error) throw byEmailRes.error
+    if (batchScopedRes.error) throw batchScopedRes.error
 
-    const runs = allRuns ?? []
+    const allRuns = [
+      ...(batchScopedRes.data ?? []),
+      ...(byEmailRes.data ?? []),
+    ]
+    const runs = allRuns.sort((a, b) => {
+      const at = new Date((a.created_at as string) ?? 0).getTime()
+      const bt = new Date((b.created_at as string) ?? 0).getTime()
+      return at - bt
+    })
 
     // 3. Status e summary são derivados SO dos runs do batch atual.
     const currentRuns = runs.filter((r) => r.batch_id === currentBatchId)
