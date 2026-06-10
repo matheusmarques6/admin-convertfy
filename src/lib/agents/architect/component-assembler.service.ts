@@ -1,13 +1,16 @@
 /**
  * Component Assembler (Epic AE — passo B).
  *
- * Para cada bloco do blueprint gerado, pré-filtra variantes de
- * `email_component_variants` (deriver determinístico), o LLM escolhe a
- * final entre os finalistas, e os snippets são concatenados num HTML de
- * referência por (loja × email), persistido em `store_email_references`.
- * Esse HTML passa a ocupar o papel do reference_html (build-vars.ts).
+ * GERA a estrutura HTML do email (a arquitetura: layout, ordem dos blocos,
+ * seções) com o LLM, usando como input: briefing, nicho, HTMLs de referência
+ * (curado), a biblioteca de componentes (`email_component_variants`) como
+ * inspiração e a estrutura geral (outline/sections). O HTML produzido é
+ * persistido em `store_email_references` e passa a ocupar o papel do
+ * reference_html (build-vars.ts) — o agente HTML downstream só repinta com a
+ * identidade da loja e despeja a copy, por isso roda em modelo barato.
  *
- * Degrade seguro: LLM falha → top-1 do pré-filtro; pool vazio → nenhum
+ * Degrade seguro: LLM falha / output não-HTML → fallback determinístico
+ * concatena o top-1 das variantes pré-filtradas; pool vazio → nenhum
  * reference é gravado e o consumidor cai no template global.
  */
 
@@ -32,9 +35,30 @@ const log = logger.child("ComponentAssembler")
 
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 
-const DEFAULT_ASSEMBLER_SYSTEM = `Você é o montador de referência visual de emails. Para cada bloco, recebe VARIANTES FINALISTAS (já pré-filtradas) e escolhe a que melhor combina com a loja/produto/marca, mantendo coerência visual entre os blocos. Escolha sempre um variant_id presente nos finalistas. Retorne APENAS um JSON array [{"block_index","variant_id"}].`
+const DEFAULT_ASSEMBLER_SYSTEM = `Você é o ARQUITETO de estrutura de emails. Sua tarefa é GERAR a estrutura HTML completa de um email — o esqueleto/arquitetura: layout, ordem dos blocos e seções — que um agente downstream vai apenas REPINTAR com a identidade da loja e PREENCHER com a copy. Por isso:
+- NÃO escreva a copy final: use placeholders curtos por bloco (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
+- NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
+- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — nunca hex fixo no markup.
+- Container único de 600px centralizado, div + flexbox (sem tabelas).
+Use os HTMLs de referência e a biblioteca de componentes como inspiração de TÉCNICA de construção, adaptando ao briefing, nicho e estrutura geral — não copie literalmente.
+Emita APENAS o HTML, começando em <!DOCTYPE html> e terminando em </html>, sem cercas markdown e sem comentários explicativos.`
 
-const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}} — MOOD: {{mood}}
+const DEFAULT_ASSEMBLER_USER = `<store>
+- marca: {{brand_name}}
+- nicho: {{nicho}}
+- posicionamento: {{posicionamento}}
+- persona: {{persona}}
+- tom de voz: {{tom_voz}}
+- mood: {{mood}}
+</store>
+
+<briefing>
+{{briefing_json}}
+</briefing>
+
+<pesquisa_diagnostico>
+{{pesquisa_diagnostico}}
+</pesquisa_diagnostico>
 
 <outline>
 - objetivo: {{outline_objective}}
@@ -42,17 +66,19 @@ const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — PO
 - tom sugerido: {{outline_tone_hint}}
 </outline>
 
-<pesquisa_diagnostico>
-{{pesquisa_diagnostico}}
-</pesquisa_diagnostico>
+<estrutura_geral_ordenada>
+{{blocks_json}}
+</estrutura_geral_ordenada>
 
-<referencia_curada>
+<htmls_referencia>
 {{reference_template_html}}
-</referencia_curada>
+</htmls_referencia>
 
-BLOCOS: {{blocks_json}}
-FINALISTAS POR BLOCO: {{candidates_json}}
-Use a <referencia_curada> (email comprovado deste flow) como guia de estrutura/estilo — NÃO copie, adapte à marca; se vazia, ignore. Escolha a melhor variante de cada bloco, alinhada ao objetivo do email. Responda apenas o JSON array.`
+<biblioteca_componentes>
+{{candidates_json}}
+</biblioteca_componentes>
+
+Gere AGORA a estrutura HTML completa do email seguindo a ordem de blocos em <estrutura_geral_ordenada>, usando placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -140,6 +166,26 @@ ${body}
 </div>
 </body>
 </html>`
+}
+
+/** Extrai o documento HTML do output do LLM (remove fences + prosa ao redor). */
+export function extractHtml(raw: string): string {
+  let s = raw.replace(/```(?:html)?\s*/gi, "").replace(/```/g, "").trim()
+  const doctype = s.search(/<!DOCTYPE html/i)
+  if (doctype > 0) {
+    s = s.slice(doctype)
+  } else {
+    const htmlOpen = s.search(/<html[\s>]/i)
+    if (htmlOpen > 0) s = s.slice(htmlOpen)
+  }
+  const end = s.toLowerCase().lastIndexOf("</html>")
+  if (end >= 0) s = s.slice(0, end + "</html>".length)
+  return s.trim()
+}
+
+/** Heurística: o output parece um documento HTML de email utilizável. */
+export function looksLikeHtml(s: string): boolean {
+  return /<\/html>/i.test(s) && /<(div|table|body)[\s>]/i.test(s)
 }
 
 // ── Orquestração (I/O) ─────────────────────────────────────────────
@@ -242,7 +288,9 @@ export async function assembleStoreReference(
     : {
         model: DEFAULT_MODEL,
         temperature: 0.3,
-        max_tokens: 1500,
+        // Gera um documento HTML inteiro — precisa de espaço (não os ~1.5k
+        // de quando só escolhia variantes).
+        max_tokens: 16384,
         system_prompt: DEFAULT_ASSEMBLER_SYSTEM,
         user_template: DEFAULT_ASSEMBLER_USER,
       }
@@ -253,16 +301,20 @@ export async function assembleStoreReference(
       section,
     })),
   )
+  // Biblioteca como inspiração: mostra o HTML de até 3 exemplos por seção
+  // (truncado p/ controlar tokens). O LLM se inspira na técnica, não copia.
   const candidatesJson = JSON.stringify(
     candidatesByBlock.map((finalists, i) => ({
       block_index: i,
       section: input.sections[i],
-      candidates: shuffle(finalists).map((v) => ({
-        variant_id: v.id,
-        name: v.name,
-        density: v.density,
-        mood: v.mood,
-      })),
+      exemplos: shuffle(finalists)
+        .slice(0, 3)
+        .map((v) => ({
+          name: v.name,
+          density: v.density,
+          mood: v.mood,
+          html: v.html.trim().slice(0, 1500),
+        })),
     })),
   )
 
@@ -284,10 +336,10 @@ export async function assembleStoreReference(
   }
 
   const t0 = Date.now()
-  let llmChoices: AssemblerChoice[] = []
   let tokensInput = 0
   let tokensOutput = 0
   let rawOutput = ""
+  let generatedHtml = ""
   let usedLlm = false
   let invokeError: string | null = null
 
@@ -296,10 +348,10 @@ export async function assembleStoreReference(
     rawOutput = res.raw
     tokensInput = res.tokensInput
     tokensOutput = res.tokensOutput
-    llmChoices = parseAssemblerOutput(res.raw)
-    usedLlm = llmChoices.length > 0
-    // LLM respondeu mas não veio nenhuma escolha parseável.
-    if (!usedLlm) invokeError = "llm_unparseable_or_empty_choices"
+    generatedHtml = extractHtml(res.raw)
+    usedLlm = looksLikeHtml(generatedHtml)
+    // LLM respondeu mas não veio um documento HTML utilizável.
+    if (!usedLlm) invokeError = "llm_output_not_html"
   } catch (err) {
     invokeError = err instanceof Error ? err.message : String(err)
     log.error("assembler.invoke_failed", {
@@ -309,9 +361,10 @@ export async function assembleStoreReference(
     })
   }
 
-  const chosen = resolveChoices(candidatesByBlock, llmChoices)
-  const html = assembleReferenceHtml(chosen)
-  const variantIds = chosen.map((v) => v.id)
+  // Fallback determinístico: concatena o top-1 das variantes pré-filtradas.
+  const fallbackChosen = resolveChoices(candidatesByBlock, [])
+  const html = usedLlm ? generatedHtml : assembleReferenceHtml(fallbackChosen)
+  const variantIds = usedLlm ? [] : fallbackChosen.map((v) => v.id)
 
   await upsertStoreReference(input, html, variantIds, usedLlm ? config.model : null)
 
@@ -323,22 +376,15 @@ export async function assembleStoreReference(
     agentConfigId: cfgRow?.id,
     status: usedLlm ? "success" : "skipped",
     model: usedLlm ? config.model : "fallback",
-    // Em skip, registra o motivo + o modelo tentado pra diagnóstico (o run
-    // mostrava "fallback" mudo, sem dizer por quê).
+    // Em skip, registra o motivo + o modelo tentado pra diagnóstico.
     errorMessage: usedLlm ? undefined : (invokeError ?? undefined),
     inputVars: { sections: input.sections.length },
-    rawOutput: rawOutput.slice(0, 4000),
+    rawOutput: rawOutput.slice(0, 8000),
     parsedOutput: {
-      chosen: variantIds.length,
       used_llm: usedLlm,
       attempted_model: config.model,
       invoke_error: invokeError,
-      choices: llmChoices.map((c) => ({
-        block_index: c.block_index,
-        variant_id: c.variant_id,
-        reasoning: c.reasoning ?? null,
-        brand_evidence: c.brand_evidence ?? null,
-      })),
+      html_chars: html.length,
     },
     tokensInput,
     tokensOutput,
