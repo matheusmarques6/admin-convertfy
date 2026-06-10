@@ -37,6 +37,7 @@ import {
   Sun,
   Moon,
   LifeBuoy,
+  Megaphone,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -222,6 +223,12 @@ const OPERACIONAL_NAV: NavGroup[] = [
     key: "marketing",
     label: "Marketing",
     items: [
+      {
+        name: "Central de Campanhas",
+        href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL,
+        icon: Megaphone,
+        requiredFeatures: ["campaign_control", "campaign_view"],
+      },
       {
         name: "Campanhas",
         href: ROUTES.ADMIN.CAMPAIGNS.LIST,

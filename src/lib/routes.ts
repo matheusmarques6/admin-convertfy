@@ -34,6 +34,7 @@ export const ROUTES = {
     CAMPAIGNS: {
       LIST: "/admin/campaigns",
       PIPELINE: "/admin/campaigns/pipeline",
+      CENTRAL: "/admin/campaigns/central",
     },
 
     AUTOMATIONS: {

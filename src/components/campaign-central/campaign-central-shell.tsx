@@ -1,0 +1,204 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
+import { SuggestionsTab } from "./suggestions-tab"
+import { ApprovedTab } from "./approved-tab"
+import type { CampaignSuggestion } from "@/types/campaign-central"
+
+type TabKey = "sugestoes" | "calendario" | "performance" | "aprovadas"
+
+const TABS: Array<{ key: TabKey; label: string; Icon: typeof Send }> = [
+  { key: "sugestoes", label: "Sugestões", Icon: Send },
+  { key: "calendario", label: "Calendário", Icon: Calendar },
+  { key: "performance", label: "Performance", Icon: Activity },
+  { key: "aprovadas", label: "Aprovadas", Icon: Check },
+]
+
+function formatRange(start: string | null | undefined, end: string | null | undefined) {
+  if (!start || !end) return null
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split("-")
+    return `${d}/${m}/${y}`
+  }
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+export function CampaignCentralShell() {
+  const central = useCampaignCentral()
+  const [tab, setTab] = useState<TabKey>("sugestoes")
+  const [regenerating, setRegenerating] = useState(false)
+
+  const { cycle, suggestions, counts, isLoading } = central
+
+  const isGenerating = cycle?.status === "generating"
+
+  const tabCounts = useMemo<Record<TabKey, number>>(
+    () => ({
+      sugestoes: counts.pending,
+      calendario: counts.dates_upcoming,
+      performance: counts.attention,
+      aprovadas: counts.approved,
+    }),
+    [counts],
+  )
+
+  const handleRegenerate = async () => {
+    setRegenerating(true)
+    try {
+      await central.regenerate()
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const handleCopyPanel = (_s: CampaignSuggestion) => {
+    // Placeholder até F4 — o painel de copy entra na próxima fase.
+    alert("O painel de geração de copy chega na F4 — por enquanto use o modal de detalhe.")
+  }
+  const handleOpen = (_s: CampaignSuggestion) => {
+    // Placeholder até F3 — modal de detalhe entra na próxima fase.
+    alert("O modal de detalhe chega na F3 — por enquanto aprove ou rejeite direto no card.")
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Header */}
+      <div className="border-b border-border pb-4">
+        <div className="mb-2 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span>Marketing</span>
+          <span className="text-muted-foreground/40">›</span>
+          <span className="font-medium text-foreground">Central de Campanhas</span>
+        </div>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-1.5 flex items-center gap-2.5">
+              <h1 className="text-[24px] font-semibold leading-none tracking-tight text-foreground">
+                Central de Campanhas
+              </h1>
+              {cycle ? (
+                <Badge variant="info" showDot>
+                  Ciclo {cycle.number}
+                </Badge>
+              ) : (
+                <Badge variant="neutral">Sem ciclo</Badge>
+              )}
+              {isGenerating && (
+                <Badge variant="warning" showDot>
+                  Gerando…
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
+              {cycle && (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-foreground/80">
+                    <Calendar size={13} /> {formatRange(cycle.range_start, cycle.range_end)}
+                  </span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>Gerado {formatDateTime(cycle.generated_at) ?? "—"}</span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>Próxima geração {formatDateTime(cycle.next_run_at) ?? "—"}</span>
+                </>
+              )}
+              {!cycle && !isLoading && <span>Nenhum ciclo gerado ainda.</span>}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={handleRegenerate}
+              disabled={regenerating || isGenerating}
+            >
+              {regenerating ? (
+                <Loader2 size={15} className="mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles size={15} className="mr-1.5" />
+              )}
+              Re-gerar
+            </Button>
+            <Button disabled>
+              <Plus size={15} className="mr-1.5" /> Nova campanha
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-border">
+        {TABS.map((t) => {
+          const Icon = t.Icon
+          const on = tab === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-[13.5px] transition-colors ${
+                on
+                  ? "border-foreground font-semibold text-foreground"
+                  : "border-transparent font-medium text-muted-foreground hover:text-foreground/80"
+              }`}
+            >
+              <Icon size={16} className={on ? "text-foreground" : "text-muted-foreground/70"} />
+              {t.label}
+              <span
+                className={`inline-flex h-4 min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
+                  on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {tabCounts[t.key]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Conteúdo */}
+      {isLoading && !cycle ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+          <Loader2 size={16} className="animate-spin" /> Carregando ciclo…
+        </div>
+      ) : tab === "sugestoes" ? (
+        <SuggestionsTab
+          suggestions={suggestions}
+          onApprove={central.approve}
+          onDismiss={central.dismiss}
+          onUndo={central.undo}
+          onGenerateCopy={handleCopyPanel}
+          onOpen={handleOpen}
+        />
+      ) : tab === "aprovadas" ? (
+        <ApprovedTab
+          suggestions={suggestions}
+          onUndo={central.undo}
+          onOpen={handleOpen}
+          onGenerateCopy={handleCopyPanel}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-2 rounded-[6px] border border-dashed border-border bg-card/50 px-6 py-12 text-center text-muted-foreground">
+          <div className="text-[13.5px] font-medium">
+            Esta sub-tela entra nas próximas fases ({tab === "calendario" ? "F5" : "F5"}).
+          </div>
+          <div className="text-[12px]">
+            Por enquanto, foque em Sugestões e Aprovadas — o fluxo do COO está completo.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
