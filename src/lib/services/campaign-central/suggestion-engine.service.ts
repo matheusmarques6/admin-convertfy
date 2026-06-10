@@ -22,6 +22,7 @@ import {
 } from "./cycle-context.service"
 import { loadAttentionStores } from "./attention-stores.service"
 import { loadBenchmarkEmails } from "./benchmark.service"
+import { captureTrends } from "./trends.service"
 import { callAnthropicJson } from "./anthropic-client"
 import { aiSuggestionsOutputSchema, type AiSuggestion } from "@/lib/validations/campaign-central"
 import type { AttentionStore, BenchmarkEmail, CampaignTrend } from "@/types/campaign-central"
@@ -166,8 +167,10 @@ async function runWithConcurrency<T>(
 export async function runSuggestionCycle(params: {
   orgId: string
   triggeredBy: "cron" | "manual"
-  /** Trends pré-carregadas (F5). Vazio = sem sugestões type=tema. */
+  /** Trends pré-carregadas. Se vazio e enableTrends!==false, captura via web search. */
   trends?: Pick<CampaignTrend, "title" | "source" | "delta_label" | "tag" | "niche" | "country">[]
+  /** false desliga a captura de trends (teste/custo). Default: true. */
+  enableTrends?: boolean
   dryRun?: boolean
 }): Promise<RunCycleResult> {
   const admin = createAdminClient()
@@ -217,7 +220,7 @@ export async function runSuggestionCycle(params: {
     ])
 
     const clusters = clusterStores(ctx.stores)
-    const trends = params.trends ?? []
+    let trends = params.trends ?? []
 
     // Número sequencial por org
     const { data: lastCycle } = await admin
@@ -267,6 +270,25 @@ export async function runSuggestionCycle(params: {
       .single()
     if (cycleErr) throw cycleErr
     cycleId = cycleRow.id as string
+
+    // Trends via web search (F5) — enriquecimento: falha interna não
+    // aborta o ciclo (captureTrends já trata e retorna []).
+    if (trends.length === 0 && params.enableTrends !== false) {
+      const niches = Array.from(
+        new Set(ctx.stores.map((s) => s.niche).filter((n): n is string => !!n)),
+      )
+      trends = await captureTrends({
+        orgId,
+        cycleId,
+        niches,
+        countries: ctx.countries,
+      })
+      // Atualiza o snapshot com a contagem real de trends
+      await admin
+        .from("campaign_cycles")
+        .update({ context: { ...contextSnapshot, trends_count: trends.length } })
+        .eq("id", cycleId)
+    }
 
     const config = await loadAgentConfig(admin)
     if (!config) {

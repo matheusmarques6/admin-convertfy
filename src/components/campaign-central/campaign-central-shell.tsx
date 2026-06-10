@@ -10,6 +10,8 @@ import { ApprovedTab } from "./approved-tab"
 import { CampaignDetailModal } from "./campaign-detail-modal"
 import { NewCampaignModal } from "./new-campaign-modal"
 import { CopyPanel } from "./copy-panel"
+import { CalendarTab } from "./calendar-tab"
+import { PerformanceTab } from "./performance-tab"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
 type TabKey = "sugestoes" | "calendario" | "performance" | "aprovadas"
@@ -192,15 +194,17 @@ export function CampaignCentralShell() {
           onOpen={handleOpen}
           onGenerateCopy={handleCopyPanel}
         />
+      ) : tab === "calendario" ? (
+        <CalendarTab trends={central.trends} onCreate={() => setNewModalOpen(true)} />
       ) : (
-        <div className="flex flex-col items-center gap-2 rounded-[6px] border border-dashed border-border bg-card/50 px-6 py-12 text-center text-muted-foreground">
-          <div className="text-[13.5px] font-medium">
-            Esta sub-tela entra nas próximas fases ({tab === "calendario" ? "F5" : "F5"}).
-          </div>
-          <div className="text-[12px]">
-            Por enquanto, foque em Sugestões e Aprovadas — o fluxo do COO está completo.
-          </div>
-        </div>
+        <PerformanceTab
+          suggestions={suggestions}
+          onApprove={central.approve}
+          onDismiss={central.dismiss}
+          onUndo={central.undo}
+          onGenerateCopy={handleCopyPanel}
+          onOpen={handleOpen}
+        />
       )}
 
       {/* Modals */}
