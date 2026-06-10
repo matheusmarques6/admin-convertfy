@@ -46,9 +46,13 @@ const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — PO
 {{pesquisa_diagnostico}}
 </pesquisa_diagnostico>
 
+<referencia_curada>
+{{reference_template_html}}
+</referencia_curada>
+
 BLOCOS: {{blocks_json}}
 FINALISTAS POR BLOCO: {{candidates_json}}
-Escolha a melhor variante de cada bloco, alinhada ao objetivo do email. Responda apenas o JSON array.`
+Use a <referencia_curada> (email comprovado deste flow) como guia de estrutura/estilo — NÃO copie, adapte à marca; se vazia, ignore. Escolha a melhor variante de cada bloco, alinhada ao objetivo do email. Responda apenas o JSON array.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -160,6 +164,11 @@ export interface AssembleReferenceInput {
   outlineObjective: string
   outlineGuidance: string
   outlineToneHint: string
+  // Template de referência curado global (email_reference_templates) p/ este
+  // flow×email — guia de estrutura/estilo para a escolha das variantes (NÃO é
+  // copiado). "" quando não há curado. Independe do papel de fallback que a
+  // mesma fonte mantém no build-vars (consumidor).
+  referenceTemplateHtml: string
   // Seções (8) vindas do outline (estrutura geral), na ordem.
   sections: string[]
 }
@@ -269,6 +278,7 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    reference_template_html: input.referenceTemplateHtml,
     blocks_json: blocksJson,
     candidates_json: candidatesJson,
   }

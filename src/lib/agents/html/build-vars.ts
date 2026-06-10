@@ -36,6 +36,7 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 
+import { loadGlobalReferenceTemplate } from "../reference-template"
 import { precheckBrandReady, resolveBrandTokens } from "./brand-guards"
 import { deriveColorRoles } from "./color-roles"
 import { HtmlPromptVarsSchema } from "./contract"
@@ -292,7 +293,7 @@ export async function buildHtmlPromptVars(
   // ── Queries paralelas: email row + blocks + reference ─────────────
   // O reference montado por loja (store_email_references, Component
   // Assembler) tem precedência sobre o template global curado.
-  const [emailRes, blocksRes, storeRefRes, refRes] = await Promise.all([
+  const [emailRes, blocksRes, storeRefRes, globalRefHtml] = await Promise.all([
     admin
       .from("email_flow_emails")
       .select("name, subject, preheader")
@@ -312,17 +313,9 @@ export async function buildHtmlPromptVars(
           .eq("email_number", emailNumber)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    flowType && emailNumber != null
-      ? admin
-          .from("email_reference_templates")
-          .select("html")
-          .eq("flow_type", flowType)
-          .eq("email_number", emailNumber)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+    // Template global curado (fallback). Mesma fonte que o Montador recebe
+    // como inspiração — ver lib/agents/reference-template.ts.
+    loadGlobalReferenceTemplate(admin, flowType, emailNumber),
   ])
 
   const emailRow = emailRes.data as
@@ -333,10 +326,6 @@ export async function buildHtmlPromptVars(
   const storeRefHtml =
     ((storeRefRes as { data: { html?: string | null } | null }).data
       ?.html as string | null) ?? null
-  const globalRefHtml =
-    ((refRes as { data: { html?: string | null } | null }).data?.html as
-      | string
-      | null) ?? null
   const referenceHtml = storeRefHtml || globalRefHtml || ""
 
   // ── Color roles ────────────────────────────────────────────────────

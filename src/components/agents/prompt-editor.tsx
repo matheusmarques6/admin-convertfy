@@ -94,6 +94,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "outline_objective", desc: "Objetivo geral do email (outline)" },
     { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
     { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
+    { key: "reference_template_html", desc: "Referência curada do flow (guia, não copiar)" },
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],

@@ -13,6 +13,7 @@ import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { mapTomVozToMood } from "../image/mood-mapping"
+import { loadGlobalReferenceTemplate } from "../reference-template"
 import { resolveSections } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { assembleStoreReference } from "./component-assembler.service"
@@ -58,7 +59,7 @@ export async function generateBlueprintAndReference(
   input: GenerateArchitectInput,
 ): Promise<void> {
   const admin = createAdminClient()
-  const [storeRes, briefingRes, productsRes, outlineRes] = await Promise.all([
+  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml] = await Promise.all([
     admin
       .from("client_stores")
       .select("*")
@@ -84,6 +85,9 @@ export async function generateBlueprintAndReference(
       .eq("email_number", input.emailNumber)
       .eq("is_active", true)
       .maybeSingle(),
+    // Referência curada global (mesmo flow×email): input/inspiração do
+    // Montador. A MESMA fonte segue como fallback no build-vars (consumidor).
+    loadGlobalReferenceTemplate(admin, input.flowType, input.emailNumber),
   ])
 
   const store = (storeRes.data ?? {}) as Record<string, unknown>
@@ -131,6 +135,7 @@ export async function generateBlueprintAndReference(
     outlineObjective: outline?.objective ?? "",
     outlineGuidance: outline?.guidance ?? "",
     outlineToneHint: outline?.tone_hint ?? "",
+    referenceTemplateHtml: refTemplateHtml ?? "",
     sections,
   })
 
