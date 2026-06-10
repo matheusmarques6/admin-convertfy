@@ -13,7 +13,6 @@ import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { runTestGeneration } from "@/lib/agents/test-generation.service"
-import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -58,19 +57,41 @@ export async function POST(
       batchId,
     })
 
-    // Path with_copy: dispara phase2 (image+html+qa) em background pra
-    // não estourar maxDuration. Cliente faz polling em /generation-status.
+    // Path with_copy: dispara phase2 em background. Usa o split novo
+    // (run-phase2-image -> run-phase2-html-qa) pra cada etapa caber no
+    // maxDuration=300s da Vercel — antes o monolito estourava ~355s
+    // e o html+qa nunca rodava (Bug 2). Cliente faz polling em
+    // /generation-status.
     if (result.triggerPhase2) {
+      const secret = process.env.INTERNAL_SECRET
+      const baseUrl = (
+        process.env.NEXT_PUBLIC_APP_URL ??
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+        `https://${request.headers.get("host") ?? "localhost:3000"}`
+      ).replace(/\/$/, "")
+
       after(async () => {
-        try {
-          await runPhase2InBackground({
-            storeId,
+        if (!secret) {
+          log.error("generate-email.phase2.no_internal_secret", {
             emailId: result.emailId,
-            triggeredBy: user.id,
-            relaxedBrandCheck: result.relaxedBrand === true,
+          })
+          return
+        }
+        try {
+          await fetch(`${baseUrl}/api/internal/run-phase2-image/${result.emailId}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-internal-secret": secret,
+            },
+            body: JSON.stringify({
+              storeId,
+              triggeredBy: user.id,
+              relaxedBrandCheck: result.relaxedBrand === true,
+            }),
           })
         } catch (err) {
-          log.error("generate-email.phase2.background_error", err)
+          log.error("generate-email.phase2.dispatch_error", err)
         }
       })
     }

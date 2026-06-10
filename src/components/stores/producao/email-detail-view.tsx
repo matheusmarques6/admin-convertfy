@@ -3792,6 +3792,11 @@ function EmailStatusBadge({ status }: { status: EmailFlowEmail["status"] }) {
       fg: "var(--crm-brand)",
       label: "Renderizando",
     },
+    image_done: {
+      bg: "var(--crm-blue-50)",
+      fg: "var(--crm-brand)",
+      label: "Imagem pronta",
+    },
     qa_running: {
       bg: "var(--crm-blue-50)",
       fg: "var(--crm-brand)",

@@ -136,6 +136,7 @@ export type EmailStatus =
   | "copy_generating_recovery"
   | "copy_ready"
   | "rendering"
+  | "image_done"
   | "qa_running"
   | "ready"
   | "failed"

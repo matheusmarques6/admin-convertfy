@@ -45,6 +45,11 @@ const state = {
     flow_id?: string
     generation_batch_id?: string | null
   }>,
+  // image_done stale select (Bug 2 split / Front 5)
+  staleImageDone: [] as Array<{
+    id: string
+    generation_batch_id?: string | null
+  }>,
   selectCalls: [] as SelectCall[],
   updateCalls: [] as UpdateCall[],
   insertCalls: [] as InsertCall[],
@@ -60,6 +65,7 @@ function resetState() {
   state.pendingSignals = []
   state.updateReturns = new Map()
   state.staleCopyReady = []
+  state.staleImageDone = []
   state.selectCalls = []
   state.updateCalls = []
   state.insertCalls = []
@@ -100,8 +106,16 @@ function buildQuery(table: string): any {
       if (table === "email_generation_queue_signals") {
         data = state.pendingSignals
       } else if (table === "email_flow_emails") {
-        // Apenas o "stale_copy_ready" usa SELECT puro
-        data = state.staleCopyReady
+        // SELECT puro em email_flow_emails: tanto front 4 (stale copy_ready)
+        // quanto front 5 (stale image_done) usam. Distingue pelo filtro de status.
+        const statusFilter = filters.find(
+          (f) => f.op === "eq" && f.col === "status",
+        )
+        if (statusFilter?.val === "image_done") {
+          data = state.staleImageDone
+        } else {
+          data = state.staleCopyReady
+        }
       }
       resolve({ data, error: null })
     },
@@ -415,10 +429,11 @@ describe("GET /api/cron/email-generation-watchdog — front 2: copy stuck", () =
 })
 
 describe("GET /api/cron/email-generation-watchdog — front 3: phase2 timeout", () => {
-  it("marks rendering and qa_running stuck as failed:timeout_phase2", async () => {
-    // O handler chama 2 UPDATEs para status='failed' (rendering, qa_running)
-    // ambos com failure_reason='timeout_phase2'. Apenas 1 key disponivel
-    // para o mock — retornamos o mesmo array; chamamos GET 1x e contamos.
+  it("marks rendering, image_done and qa_running stuck as failed:timeout_phase2", async () => {
+    // O handler chama 3 UPDATEs para status='failed' (rendering, image_done,
+    // qa_running) — todos com failure_reason='timeout_phase2'. Apenas 1 key
+    // disponivel para o mock — retornamos o mesmo array; chamamos GET 1x e
+    // contamos.
     state.updateReturns.set("email_flow_emails:failed", [
       {
         id: "bbbbbbbb-bbbb-4bbb-8bbb-eeeeeeeeeeee",
@@ -430,23 +445,23 @@ describe("GET /api/cron/email-generation-watchdog — front 3: phase2 timeout", 
     const res = await GET(authedRequest() as any)
     expect(res.status).toBe(200)
     const json = await res.json()
-    // Tanto rendering quanto qa_running retornam 1 = total 2 (mesmo array
-    // reutilizado pelas 2 chamadas) — soma o exhaust + phase2.
-    expect(json.phase2_timed_out).toBeGreaterThanOrEqual(2)
+    // 3 statuses cobertos (rendering, image_done, qa_running) — cada um
+    // retorna 1 = total 3.
+    expect(json.phase2_timed_out).toBeGreaterThanOrEqual(3)
 
     const timeoutCalls = state.updateCalls.filter(
       (c) =>
         c.table === "email_flow_emails" &&
         c.data.failure_reason === "timeout_phase2",
     )
-    expect(timeoutCalls.length).toBe(2)
+    expect(timeoutCalls.length).toBe(3)
     // Verifica que filtramos por status correto em cada um
     const statuses = timeoutCalls
       .map(
         (c) => c.filters.find((f) => f.op === "eq" && f.col === "status")?.val,
       )
       .sort()
-    expect(statuses).toEqual(["qa_running", "rendering"])
+    expect(statuses).toEqual(["image_done", "qa_running", "rendering"])
   })
 })
 

@@ -363,12 +363,27 @@ export interface RunPhase2Params {
   relaxedBrandCheck?: boolean
 }
 
-export async function runPhase2InBackground(
+/**
+ * Phase 2 — etapa 1 (imagem).
+ *
+ * Faz claim atomico `copy_ready -> rendering`, gera todas as imagens
+ * necessarias e, ao final, atualiza status para `image_done`. NAO dispara
+ * HTML+QA — o caller (rota HTTP dedicada ou wrapper) e responsavel.
+ *
+ * Split criado para permitir que image (~250s) e html+qa (~105s) rodem em
+ * rotas HTTP separadas, cada uma com seu maxDuration de 300s na Vercel Pro.
+ *
+ * Retorna:
+ *   - `image_done`: imagem gerada com sucesso, pronto para fase HTML+QA
+ *   - `failed`: erro fatal (context_load_failed, store_data_incomplete, image_failed)
+ *   - `skipped`: status nao estava em `copy_ready` (idempotente)
+ */
+export async function runPhase2Image(
   params: RunPhase2Params,
-): Promise<void> {
-  const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
+): Promise<{ status: "image_done" | "failed" | "skipped" }> {
+  const { storeId, emailId, triggeredBy } = params
   const admin = createAdminClient()
-  log.info("phase2.start", { storeId, emailId })
+  log.info("phase2.image.start", { storeId, emailId })
 
   // ── Guard 1: copy_ready -> rendering (atomico) ──────────────────────
   const { data: claimed } = await admin
@@ -383,8 +398,8 @@ export async function runPhase2InBackground(
     .select("id, flow_id, generation_batch_id")
 
   if (!claimed || claimed.length === 0) {
-    log.info("phase2.skipped_already_started", { emailId })
-    return
+    log.info("phase2.image.skipped_already_started", { emailId })
+    return { status: "skipped" }
   }
 
   const flowId = claimed[0].flow_id as string
@@ -399,7 +414,7 @@ export async function runPhase2InBackground(
     await markEmailFailed(emailId, "context_load_failed")
     await safeNotifyEmailFailed(storeId, emailId, "context_load_failed", batchId || null)
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    return
+    return { status: "failed" }
   }
 
   // ── Guard 2: dados da loja incompletos (sem nicho ou sem produtos) ──
@@ -423,7 +438,7 @@ export async function runPhase2InBackground(
       batchId || null,
     )
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    return
+    return { status: "failed" }
   }
 
   // ── Step 1: Image generation (se habilitado) ─────────────────────────
@@ -666,7 +681,7 @@ export async function runPhase2InBackground(
           await rollupTotalCost(emailId, batchId).catch(() => {})
           await checkBatchTerminal(storeId, batchId).catch(() => {})
         }
-        return
+        return { status: "failed" }
       }
     }
   } else {
@@ -679,6 +694,78 @@ export async function runPhase2InBackground(
       agent: "image",
       status: "skipped",
     })
+  }
+
+  // ── Fim da fase imagem: marca image_done para que a fase HTML+QA
+  // (rota dedicada ou wrapper) possa fazer o claim atomico.
+  await admin
+    .from("email_flow_emails")
+    .update({
+      status: "image_done",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", emailId)
+
+  log.info("phase2.image.done", { storeId, emailId, batchId })
+  return { status: "image_done" }
+}
+
+/**
+ * Phase 2 — etapa 2 (HTML + QA).
+ *
+ * Faz claim atomico aceitando `image_done` (caminho split novo) OU `rendering`
+ * (compat com watchdog / runPhase2InBackground wrapper) e roda HTML + QA.
+ * Marca status final `ready` (sucesso) ou `failed` (html_failed, brand_incomplete,
+ * qa_failed).
+ *
+ * Idempotente: se o claim nao matchar (email ja em outro status), retorna
+ * sem fazer nada.
+ *
+ * Retorna:
+ *   - `ready`: pipeline concluido com sucesso
+ *   - `failed`: erro fatal ou QA bloqueou
+ */
+export async function runPhase2HtmlQa(
+  params: RunPhase2Params,
+): Promise<{ status: "ready" | "failed" | "skipped" }> {
+  const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
+  const admin = createAdminClient()
+  log.info("phase2.html_qa.start", { storeId, emailId })
+
+  // ── Claim atomico: image_done OR rendering -> rendering ──────────────
+  // Aceita ambos porque:
+  //   - image_done: caminho split (rota run-phase2-image -> run-phase2-html-qa)
+  //   - rendering: caminho legacy (runPhase2InBackground em monolito) +
+  //     watchdog disparando direto pra esta rota com email travado em rendering
+  const nowIso = new Date().toISOString()
+  const { data: claimed } = await admin
+    .from("email_flow_emails")
+    .update({
+      status: "rendering",
+      updated_at: nowIso,
+    })
+    .eq("id", emailId)
+    .in("status", ["image_done", "rendering"])
+    .select("id, flow_id, generation_batch_id")
+
+  if (!claimed || claimed.length === 0) {
+    log.info("phase2.html_qa.skipped_no_claim", { emailId })
+    return { status: "skipped" }
+  }
+
+  const flowId = claimed[0].flow_id as string
+  const batchId = (claimed[0].generation_batch_id as string | null) ?? ""
+
+  let ctx: Awaited<ReturnType<typeof loadMinimalContext>>
+  try {
+    ctx = await loadMinimalContext(storeId, emailId)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro ao carregar contexto"
+    log.error("phase2.html_qa.context.error", { emailId, error: msg })
+    await markEmailFailed(emailId, "context_load_failed")
+    await safeNotifyEmailFailed(storeId, emailId, "context_load_failed", batchId || null)
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    return { status: "failed" }
   }
 
   // ── Step 2: HTML generation (Master Prompt v2) ──────────────────────
@@ -765,7 +852,7 @@ export async function runPhase2InBackground(
       await rollupTotalCost(emailId, batchId).catch(() => {})
       await checkBatchTerminal(storeId, batchId).catch(() => {})
     }
-    return
+    return { status: "failed" }
   }
 
   // ── Guard 2: rendering -> qa_running ─────────────────────────────────
@@ -782,7 +869,7 @@ export async function runPhase2InBackground(
 
   if (!qaClaimed || qaClaimed.length === 0) {
     log.info("phase2.qa.skipped_already_started", { emailId })
-    return
+    return { status: "skipped" }
   }
 
   // ── Step 3: QA (story AE-5 — runQaAgent real, com fallback seguro) ──
@@ -845,7 +932,7 @@ export async function runPhase2InBackground(
     if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
     log.info("phase2.qa.blocked", { emailId, issuesCount: qaResult.issues.length })
-    return
+    return { status: "failed" }
   }
 
   // ── Sucesso: status='ready' ──────────────────────────────────────────
@@ -862,4 +949,21 @@ export async function runPhase2InBackground(
   if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
 
   log.info("phase2.done", { storeId, emailId, batchId })
+  return { status: "ready" }
+}
+
+/**
+ * Wrapper monolitico: roda imagem + html + qa em sequencia, dentro do
+ * mesmo runtime. Mantido por retrocompat com callers que NAO precisam de
+ * split HTTP (notavelmente o watchdog dispatchando direto e os testes
+ * unitarios). Tem custo proibitivo de tempo (~355s) — evitar em rotas HTTP
+ * com maxDuration=300s.
+ */
+export async function runPhase2InBackground(
+  params: RunPhase2Params,
+): Promise<void> {
+  const r = await runPhase2Image(params)
+  if (r.status === "image_done") {
+    await runPhase2HtmlQa(params)
+  }
 }

@@ -92,6 +92,7 @@ function mapStatusToBucket(status: EmailStatus): StatusBucket {
     case "copy_generating":
     case "copy_generating_recovery":
     case "rendering":
+    case "image_done":
     case "qa_running":
       return "rascunho"
     case "copy_ready":

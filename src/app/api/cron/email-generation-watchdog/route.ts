@@ -59,6 +59,10 @@ export const maxDuration = 300
 const COPY_TIMEOUT_MIN = Number(process.env.WATCHDOG_COPY_TIMEOUT_MIN ?? 15)
 const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 10)
 const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ?? 3)
+// Bug 2 split: `image_done` e estado intermediario curto. Se ficar parado >5min
+// a fetch interna pra /api/internal/run-phase2-html-qa provavelmente crashou —
+// re-dispatcha.
+const STALE_IMAGE_DONE_MIN = Number(process.env.WATCHDOG_STALE_IMAGE_DONE_MIN ?? 5)
 const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
 // Cap de re-dispatches do front 4 (POST /api/internal/run-phase2 para
 // emails em copy_ready travados). Atingindo o cap, marca como
@@ -77,6 +81,7 @@ interface WatchdogSummary {
   phase2_timed_out: number
   stale_copy_ready: number
   stale_dispatch_exhausted: number
+  stale_image_done: number
   started_at: string
   finished_at: string
   duration_ms: number
@@ -337,11 +342,16 @@ async function timeoutPhase2(): Promise<number> {
   const phase2ThresholdIso = new Date(now - PHASE2_TIMEOUT_MIN * 60_000).toISOString()
   const nowIso = new Date().toISOString()
 
-  // Trata `rendering` e `qa_running` separadamente por causa dos
-  // campos de timing distintos.
+  // Trata `rendering`, `image_done` e `qa_running` separadamente por causa
+  // dos campos de timing distintos. `image_done` usa `rendering_started_at`
+  // porque foi atualizado no inicio da fase imagem (mesmo claim).
   const updates = [
     {
       status: "rendering",
+      column: "rendering_started_at",
+    },
+    {
+      status: "image_done",
       column: "rendering_started_at",
     },
     {
@@ -539,6 +549,93 @@ async function redispatchStaleCopyReady(): Promise<{
   return { dispatched, exhausted }
 }
 
+// ── Front 5: re-dispatch image_done sem fase HTML+QA iniciada ──────────
+//
+// Bug 2 split: imagem termina e marca status='image_done', e a rota
+// `/api/internal/run-phase2-image` dispara fetch interna pra
+// `/api/internal/run-phase2-html-qa` no mesmo after(). Se a fetch crashar
+// (cold start, runtime restart), o email fica parado em `image_done`.
+//
+// Janela: STALE_IMAGE_DONE_MIN (5min) <= idade < PHASE2_TIMEOUT_MIN (10min).
+// Apos 10min o timeoutPhase2 ja marca como failed.
+async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
+  const admin = createAdminClient()
+  const now = Date.now()
+  const staleThresholdIso = new Date(
+    now - STALE_IMAGE_DONE_MIN * 60_000,
+  ).toISOString()
+  const timeoutThresholdIso = new Date(
+    now - PHASE2_TIMEOUT_MIN * 60_000,
+  ).toISOString()
+
+  const { data, error } = await admin
+    .from("email_flow_emails")
+    .select("id, generation_batch_id")
+    .eq("status", "image_done")
+    .lt("rendering_started_at", staleThresholdIso)
+    .gte("rendering_started_at", timeoutThresholdIso)
+    .order("rendering_started_at", { ascending: true })
+    .limit(MAX_PHASE2_TIMEOUT_PER_RUN)
+
+  if (error) {
+    log.error("watchdog.stale_image_done.query_failed", { error: error.message })
+    return { dispatched: 0 }
+  }
+  const rows = (data ?? []) as Array<{
+    id: string
+    generation_batch_id: string | null
+  }>
+  if (rows.length === 0) return { dispatched: 0 }
+
+  log.warn("watchdog.stale_image_done.detected", { count: rows.length })
+
+  const internalSecret = process.env.INTERNAL_SECRET ?? ""
+  if (!internalSecret) {
+    log.error("watchdog.stale_image_done.no_secret", { count: rows.length })
+    return { dispatched: 0 }
+  }
+
+  const base = getInternalUrl()
+  let dispatched = 0
+
+  for (const r of rows) {
+    const url = `${base}/api/internal/run-phase2-html-qa/${r.id}`
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 5_000)
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": internalSecret,
+        },
+      })
+      if (resp.ok) {
+        dispatched++
+        log.info("watchdog.stale_image_done.dispatch_ok", {
+          emailId: r.id,
+          status: resp.status,
+        })
+      } else {
+        log.warn("watchdog.stale_image_done.dispatch_non_ok", {
+          emailId: r.id,
+          status: resp.status,
+        })
+      }
+    } catch (err) {
+      log.warn("watchdog.stale_image_done.dispatch_error", {
+        emailId: r.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  return { dispatched }
+}
+
 // ── Persistir telemetria final do cron ────────────────────────────────
 async function persistRunSummary(summary: WatchdogSummary): Promise<void> {
   const admin = createAdminClient()
@@ -576,6 +673,7 @@ export async function GET(request: NextRequest) {
   let phase2TimedOut = 0
   let staleCopyReady = 0
   let staleDispatchExhausted = 0
+  let staleImageDone = 0
 
   // Front 1: sinais
   try {
@@ -621,6 +719,16 @@ export async function GET(request: NextRequest) {
     })
   }
 
+  // Front 5: image_done stale (Bug 2 split)
+  try {
+    const r = await redispatchStaleImageDone()
+    staleImageDone = r.dispatched
+  } catch (err) {
+    log.error("watchdog.stale_image_done.fatal", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   const finishedAt = new Date().toISOString()
   const duration = Date.now() - t0
 
@@ -632,6 +740,7 @@ export async function GET(request: NextRequest) {
     phase2_timed_out: phase2TimedOut,
     stale_copy_ready: staleCopyReady,
     stale_dispatch_exhausted: staleDispatchExhausted,
+    stale_image_done: staleImageDone,
     started_at: startedAt,
     finished_at: finishedAt,
     duration_ms: duration,

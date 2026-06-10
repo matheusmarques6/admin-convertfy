@@ -1449,6 +1449,7 @@ function EmailStatusDot({
     copy_generating: "var(--crm-brand)",
     copy_generating_recovery: "var(--crm-brand)",
     rendering: "var(--crm-brand)",
+    image_done: "var(--crm-brand)",
     qa_running: "var(--crm-brand)",
     failed: "var(--crm-neg)",
   }
