@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
 import { SuggestionsTab } from "./suggestions-tab"
 import { ApprovedTab } from "./approved-tab"
+import { CampaignDetailModal } from "./campaign-detail-modal"
+import { NewCampaignModal } from "./new-campaign-modal"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
 type TabKey = "sugestoes" | "calendario" | "performance" | "aprovadas"
@@ -43,6 +45,8 @@ export function CampaignCentralShell() {
   const central = useCampaignCentral()
   const [tab, setTab] = useState<TabKey>("sugestoes")
   const [regenerating, setRegenerating] = useState(false)
+  const [detailSuggestion, setDetailSuggestion] = useState<CampaignSuggestion | null>(null)
+  const [newModalOpen, setNewModalOpen] = useState(false)
 
   const { cycle, suggestions, counts, isLoading } = central
 
@@ -71,10 +75,7 @@ export function CampaignCentralShell() {
     // Placeholder até F4 — o painel de copy entra na próxima fase.
     alert("O painel de geração de copy chega na F4 — por enquanto use o modal de detalhe.")
   }
-  const handleOpen = (_s: CampaignSuggestion) => {
-    // Placeholder até F3 — modal de detalhe entra na próxima fase.
-    alert("O modal de detalhe chega na F3 — por enquanto aprove ou rejeite direto no card.")
-  }
+  const handleOpen = (s: CampaignSuggestion) => setDetailSuggestion(s)
 
   return (
     <div className="flex flex-col gap-5">
@@ -132,7 +133,7 @@ export function CampaignCentralShell() {
               )}
               Re-gerar
             </Button>
-            <Button disabled>
+            <Button onClick={() => setNewModalOpen(true)}>
               <Plus size={15} className="mr-1.5" /> Nova campanha
             </Button>
           </div>
@@ -199,6 +200,23 @@ export function CampaignCentralShell() {
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      {detailSuggestion && (
+        <CampaignDetailModal
+          key={detailSuggestion.id}
+          suggestion={detailSuggestion}
+          onClose={() => setDetailSuggestion(null)}
+          onSaveDraft={(draft) => central.updateDraft(detailSuggestion.id, draft, draft.strategy)}
+          onApprove={(draft) => central.approve(detailSuggestion.id, draft)}
+          onGenerateCopy={() => handleCopyPanel(detailSuggestion)}
+        />
+      )}
+      <NewCampaignModal
+        open={newModalOpen}
+        onClose={() => setNewModalOpen(false)}
+        onCreated={() => central.mutate()}
+      />
     </div>
   )
 }
