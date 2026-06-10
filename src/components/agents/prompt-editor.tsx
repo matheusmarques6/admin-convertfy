@@ -93,6 +93,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "pesquisa_diagnostico", desc: "Pesquisa & Diagnóstico (marca/ICP/tom/ads)" },
     { key: "outline_objective", desc: "Objetivo geral do email (outline)" },
     { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
+    { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],

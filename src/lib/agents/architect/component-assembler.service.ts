@@ -39,6 +39,7 @@ const DEFAULT_ASSEMBLER_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — PO
 <outline>
 - objetivo: {{outline_objective}}
 - diretriz: {{outline_guidance}}
+- tom sugerido: {{outline_tone_hint}}
 </outline>
 
 <pesquisa_diagnostico>
@@ -155,9 +156,10 @@ export interface AssembleReferenceInput {
   briefingJson: string
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
   pesquisa: string
-  // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance.
+  // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance + tom.
   outlineObjective: string
   outlineGuidance: string
+  outlineToneHint: string
   // Seções (8) vindas do outline (estrutura geral), na ordem.
   sections: string[]
 }
@@ -266,6 +268,7 @@ export async function assembleStoreReference(
     pesquisa_diagnostico: input.pesquisa,
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
+    outline_tone_hint: input.outlineToneHint,
     blocks_json: blocksJson,
     candidates_json: candidatesJson,
   }

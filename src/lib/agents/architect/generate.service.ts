@@ -130,6 +130,7 @@ export async function generateBlueprintAndReference(
     pesquisa,
     outlineObjective: outline?.objective ?? "",
     outlineGuidance: outline?.guidance ?? "",
+    outlineToneHint: outline?.tone_hint ?? "",
     sections,
   })
 
