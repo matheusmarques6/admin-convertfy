@@ -774,7 +774,7 @@ export function ProductionWorkspace({
                 flow={currentFlow}
                 emailId={selection.emailId}
                 esp={store.email_platform}
-                storeUrl={store.store_url}
+                storeName={store.store_name}
                 languageLabel={store.language_label}
                 onEmailUpdated={() => mutate()}
                 onNavigate={(emailId) =>

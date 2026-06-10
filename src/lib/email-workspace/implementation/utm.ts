@@ -23,8 +23,8 @@ export const FLOW_UTM_SLUG: Record<FlowType, string> = {
 }
 
 /** Defaults de UTM (editáveis em Configurações). */
-export const UTM_SOURCE_DEFAULT = "email"
-export const UTM_MEDIUM_DEFAULT = "automation"
+export const UTM_SOURCE_DEFAULT = "Convertfy"
+export const UTM_MEDIUM_DEFAULT = "email"
 
 export interface EmailUtm {
   source: string

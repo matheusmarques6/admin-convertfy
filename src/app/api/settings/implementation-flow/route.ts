@@ -36,7 +36,6 @@ const fieldSchema = z.object({
   metricEvent: z.string().max(120),
   utmSource: z.string().max(80),
   utmMedium: z.string().max(80),
-  utmCampaign: z.string().max(120),
 })
 
 const putSchema = z.object({

@@ -26,7 +26,6 @@ const FIELD_DEFS: Array<{ key: keyof FlowSetupConfig; label: string; hint?: stri
   { key: "metricEvent", label: "Evento / métrica", hint: "Evento nativo do ESP" },
   { key: "utmSource", label: "UTM source" },
   { key: "utmMedium", label: "UTM medium" },
-  { key: "utmCampaign", label: "UTM campaign" },
 ]
 
 export default function ImplementationSettingsPage() {

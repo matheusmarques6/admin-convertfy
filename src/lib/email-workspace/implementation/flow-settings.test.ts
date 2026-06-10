@@ -10,9 +10,8 @@ describe("defaultFlowSetup", () => {
   it("usa os defaults de flow-meta + UTM", () => {
     const w = defaultFlowSetup("welcome")
     expect(w.trigger).toMatch(/inscri/i)
-    expect(w.utmSource).toBe("email")
-    expect(w.utmMedium).toBe("automation")
-    expect(w.utmCampaign).toBe("welcome-flow")
+    expect(w.utmSource).toBe("Convertfy")
+    expect(w.utmMedium).toBe("email")
   })
 })
 
@@ -23,10 +22,10 @@ describe("resolveFlowSetupFor", () => {
 
   it("override vence o default", () => {
     const r = resolveFlowSetupFor("welcome", {
-      welcome: { trigger: "Meu gatilho", utmCampaign: "boas-vindas" },
+      welcome: { trigger: "Meu gatilho", utmSource: "MinhaSource" },
     })
     expect(r.trigger).toBe("Meu gatilho")
-    expect(r.utmCampaign).toBe("boas-vindas")
+    expect(r.utmSource).toBe("MinhaSource")
     // campos não sobrescritos caem no default
     expect(r.audience).toBe(defaultFlowSetup("welcome").audience)
   })

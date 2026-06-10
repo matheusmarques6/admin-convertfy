@@ -21,7 +21,6 @@ import { InlineEditField } from "@/components/crm/inline-edit-field"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import { emailCoupons } from "@/lib/email-workspace/implementation/coupon-info"
-import { emailUtm, applyUtm } from "@/lib/email-workspace/implementation/utm"
 import {
   resolveFlowSetupFor,
   type FlowSetupConfig,
@@ -57,7 +56,7 @@ interface ImplementationViewProps {
   emailId: string
   /** ESP onde o flow será montado (client_stores.email_platform). */
   esp: string | null
-  storeUrl: string | null
+  storeName: string
   languageLabel: string | null
   onEmailUpdated: () => void
   onNavigate: (emailId: string) => void
@@ -73,7 +72,7 @@ export function ImplementationView({
   flow,
   emailId,
   esp,
-  storeUrl,
+  storeName,
   languageLabel,
   onEmailUpdated,
   onNavigate,
@@ -118,13 +117,27 @@ export function ImplementationView({
     }),
     [setup],
   )
-  const utm = email
-    ? emailUtm(flow.flow_type, email.number, {
-        source: setup.utmSource,
-        medium: setup.utmMedium,
-        campaign: setup.utmCampaign,
-      })
-    : null
+
+  // brandID da Omnisend — buscado ao vivo (não é persistido). Só quando o ESP
+  // da loja é Omnisend; senão usa placeholder no Campaign.
+  const { data: brandResp } = useSWR<
+    { data?: { connected: boolean; brandId: string | null } } & {
+      connected?: boolean
+      brandId?: string | null
+    }
+  >(esp === "omnisend" ? `/api/admin/stores/${storeId}/omnisend-brand` : null, fetcher)
+  const omnisendId =
+    brandResp?.data?.brandId ?? brandResp?.brandId ?? null
+
+  // UTM no formato Omnisend (3 campos). Campaign é composto:
+  // automation: {source} | {flow} | {loja} ({id omnisend}).
+  const utm = useMemo(() => {
+    const source = setup.utmSource
+    const medium = setup.utmMedium
+    const campaign = `automation: ${source} | ${flow.name} | ${storeName} (${omnisendId ?? "id omnisend"})`
+    return { source, medium, campaign }
+  }, [setup.utmSource, setup.utmMedium, flow.name, storeName, omnisendId])
+
   const coupons = useMemo(() => emailCoupons(blocks), [blocks])
 
   const blockSections = useMemo(
@@ -203,7 +216,11 @@ export function ImplementationView({
     lines.push(`Idioma: ${languageLabel ?? "—"}`)
     lines.push(`Assunto: ${email.subject ?? "—"}`)
     lines.push(`Pré-cabeçalho: ${email.preheader ?? "—"}`)
-    if (utm) lines.push(`UTM: ${utm.query}`)
+    lines.push("")
+    lines.push("## UTM")
+    lines.push(`Source: ${utm.source}`)
+    lines.push(`Medium: ${utm.medium}`)
+    lines.push(`Campaign: ${utm.campaign}`)
     lines.push("")
     if (coupons.length > 0) {
       lines.push("## Cupons a criar")
@@ -409,41 +426,29 @@ export function ImplementationView({
               </SetupCard>
             </div>
 
-            {/* Rastreio & UTM */}
-            {utm && (
+            {/* Rastreio & UTM — 3 campos no formato do Omnisend */}
+            <div
+              style={{
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-border)",
+                borderRadius: 8,
+                padding: "4px 14px 6px",
+                marginBottom: 16,
+              }}
+            >
               <div
-                style={{
-                  background: "var(--crm-gray-0)",
-                  border: "1px solid var(--crm-border)",
-                  borderRadius: 8,
-                  padding: 14,
-                  marginBottom: 16,
-                }}
+                className="flex items-center gap-2"
+                style={{ padding: "10px 0 2px" }}
               >
-                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                  <div className="flex items-center gap-2">
-                    <Link2 className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--crm-gray-800)" }}>
-                      Rastreio & UTM
-                    </span>
-                  </div>
-                  <CopyButton onClick={() => copy(utm.query, "UTM")} />
-                </div>
-                <code
-                  style={{
-                    display: "block",
-                    fontSize: 12,
-                    color: "var(--crm-gray-700)",
-                    background: "var(--crm-gray-50)",
-                    borderRadius: 4,
-                    padding: "8px 10px",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {applyUtm(storeUrl, utm)}
-                </code>
+                <Link2 className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--crm-gray-800)" }}>
+                  UTM settings
+                </span>
               </div>
-            )}
+              <UtmRow label="Source" value={utm.source} onCopy={() => copy(utm.source, "Source")} />
+              <UtmRow label="Medium" value={utm.medium} onCopy={() => copy(utm.medium, "Medium")} />
+              <UtmRow label="Campaign" value={utm.campaign} onCopy={() => copy(utm.campaign, "Campaign")} last />
+            </div>
 
             {/* Cupons a criar */}
             {coupons.length > 0 && (
@@ -768,6 +773,61 @@ function CopyButton({ onClick }: { onClick: () => void }) {
         <Copy className="h-3 w-3" />
       )}
     </button>
+  )
+}
+
+/** Linha de UTM no estilo do painel do Omnisend: label + caixa do valor + copiar. */
+function UtmRow({
+  label,
+  value,
+  onCopy,
+  last,
+}: {
+  label: string
+  value: string
+  onCopy: () => void
+  last?: boolean
+}) {
+  return (
+    <div
+      className="flex items-center gap-3"
+      style={{
+        padding: "10px 0",
+        borderBottom: last ? "none" : "1px solid var(--crm-gray-100)",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          width: 80,
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </span>
+      <div
+        className="flex-1 min-w-0"
+        style={{
+          fontSize: 12.5,
+          color: "var(--crm-gray-900)",
+          background: "var(--crm-gray-50)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 4,
+          padding: "7px 10px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={value}
+      >
+        {value}
+      </div>
+      <CopyButton onClick={onCopy} />
+    </div>
   )
 }
 

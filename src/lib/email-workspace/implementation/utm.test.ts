@@ -7,7 +7,7 @@ describe("emailUtm", () => {
     expect(u.campaign).toBe("welcome-flow")
     expect(u.content).toBe("email-01")
     expect(u.query).toBe(
-      "utm_source=email&utm_medium=automation&utm_campaign=welcome-flow&utm_content=email-01",
+      "utm_source=Convertfy&utm_medium=email&utm_campaign=welcome-flow&utm_content=email-01",
     )
   })
 
@@ -26,7 +26,7 @@ describe("applyUtm", () => {
 
   it("anexa UTMs a uma URL válida", () => {
     const out = applyUtm("https://loja.com/produto", utm)
-    expect(out).toContain("utm_source=email")
+    expect(out).toContain("utm_source=Convertfy")
     expect(out).toContain("utm_campaign=welcome-flow")
     expect(out.startsWith("https://loja.com/produto?")).toBe(true)
   })

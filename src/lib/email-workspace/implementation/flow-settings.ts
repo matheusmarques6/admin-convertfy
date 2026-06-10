@@ -11,11 +11,7 @@
 
 import type { FlowType } from "@/types/email-workspace"
 import { FLOW_META_DEFAULTS, IMPLEMENTATION_FLOW_TYPES } from "./flow-meta"
-import {
-  FLOW_UTM_SLUG,
-  UTM_SOURCE_DEFAULT,
-  UTM_MEDIUM_DEFAULT,
-} from "./utm"
+import { UTM_SOURCE_DEFAULT, UTM_MEDIUM_DEFAULT } from "./utm"
 
 /** Key da row na tabela global `settings`. */
 export const FLOW_SETUP_SETTINGS_KEY = "implementation_flow_setup"
@@ -26,7 +22,6 @@ export interface FlowSetupConfig {
   metricEvent: string
   utmSource: string
   utmMedium: string
-  utmCampaign: string
 }
 
 /** Overrides salvos: parcial por flow type (campos faltantes caem no default). */
@@ -46,7 +41,6 @@ export function defaultFlowSetup(flowType: FlowType): FlowSetupConfig {
     metricEvent: meta.metricEvent,
     utmSource: UTM_SOURCE_DEFAULT,
     utmMedium: UTM_MEDIUM_DEFAULT,
-    utmCampaign: FLOW_UTM_SLUG[flowType] ?? FLOW_UTM_SLUG.custom,
   }
 }
 
@@ -70,7 +64,6 @@ export function resolveFlowSetupFor(
     metricEvent: pick(o.metricEvent, base.metricEvent),
     utmSource: pick(o.utmSource, base.utmSource),
     utmMedium: pick(o.utmMedium, base.utmMedium),
-    utmCampaign: pick(o.utmCampaign, base.utmCampaign),
   }
 }
 
