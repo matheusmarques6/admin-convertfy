@@ -8,6 +8,7 @@ interface AgentStatus {
 
 interface BatchStatusData {
   batchId: string
+  currentBatchId?: string
   status: "pending" | "running" | "done" | "error"
   total: number
   completed: number
@@ -17,6 +18,12 @@ interface BatchStatusData {
     totalDuration: number
     tokensTotal: number
   }
+  // Bug 3: campos do email_flow_emails row pra UI detectar terminal
+  // status (failed/ready) e calcular stale warning antes do watchdog
+  // marcar como failed em 10min.
+  email_status?: string | null
+  email_failure_reason?: string | null
+  email_updated_at?: string | null
 }
 
 interface GenerationStatusResult {
