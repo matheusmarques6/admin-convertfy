@@ -172,17 +172,49 @@ export async function GET(
     const currentStatuses = currentRuns.map((r) => r.status as string)
     const hasRunning = currentStatuses.includes("running")
     const hasError = currentStatuses.includes("error")
-    const allDone =
+
+    // Status derivado do email_status (autoridade) — runs sozinhos
+    // mentem porque sempre tem agentes esperando phase2 disparar
+    // (ex: with_copy retorna apos assembler+blueprint, mas image+
+    // html+qa ainda vao rodar em background).
+    //
+    // Mid-flight states (copy_ready/rendering/image_done/qa_running):
+    // sempre "running" — UI continua polling ate email_status ficar
+    // terminal (ready ou failed) ou ate watchdog limpar.
+    const IN_FLIGHT_EMAIL_STATUSES = new Set([
+      "copy_ready",
+      "rendering",
+      "image_done",
+      "qa_running",
+      "copy_generating",
+      "copy_generating_recovery",
+      "pending",
+    ])
+
+    let status: "running" | "done" | "error" | "pending"
+    if (emailStatus === "ready") {
+      status = "done"
+    } else if (emailStatus === "failed") {
+      status = "error"
+    } else if (emailStatus && IN_FLIGHT_EMAIL_STATUSES.has(emailStatus)) {
+      // Email ainda processando — mantém polling mesmo se currentRuns
+      // todos success (significa que próxima fase ainda não disparou).
+      status = "running"
+    } else if (hasRunning) {
+      status = "running"
+    } else if (hasError) {
+      status = "error"
+    } else if (
       currentRuns.length > 0 &&
       currentStatuses.every((s) => s === "success" || s === "skipped")
-
-    const status = hasRunning
-      ? "running"
-      : allDone
-        ? "done"
-        : hasError
-          ? "error"
-          : "pending"
+    ) {
+      // Sem email_status (raro — email não tem generation_batch_id
+      // setado), cai no antigo "todos success = done". Mantido pra
+      // compat com fluxos legados.
+      status = "done"
+    } else {
+      status = "pending"
+    }
 
     const total = byEmail.size
     const completed = Array.from(byEmail.values()).filter((e) =>
