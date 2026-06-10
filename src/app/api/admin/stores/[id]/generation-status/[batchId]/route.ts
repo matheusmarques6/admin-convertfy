@@ -1,7 +1,12 @@
 /**
  * GET /api/admin/stores/[id]/generation-status/[batchId]
  *
- * Retorna o status de um batch de geração, agrupado por email.
+ * Retorna o status de geração para um batch. A consulta resolve o `emailId`
+ * a partir do `batchId` informado e devolve TODOS os runs daquele email
+ * (histórico completo). O status agregado (`running` | `done` | `error` |
+ * `pending`) e o `summary` são derivados APENAS dos runs do batch atual do
+ * email — runs de batches anteriores ficam visíveis pra UI montar histórico,
+ * mas não influenciam o status.
  */
 
 import { NextRequest } from "next/server"
@@ -23,21 +28,77 @@ export async function GET(
     await requireAuth(sb)
     const admin = createAdminClient()
 
-    const { data: runs, error } = await admin
+    // 1. Resolver emailId a partir do batchId. Buscamos primeiro pela
+    //    coluna `generation_batch_id` no email (batch atual). Se nada,
+    //    fallback: olhar a tabela de runs pra descobrir o email.
+    let emailId: string | null = null
+    let currentBatchId: string = batchId
+
+    const { data: emailByBatch, error: emailLookupErr } = await admin
+      .from("email_flow_emails")
+      .select("id, generation_batch_id")
+      .eq("generation_batch_id", batchId)
+      .maybeSingle()
+    if (emailLookupErr) throw emailLookupErr
+
+    if (emailByBatch) {
+      emailId = emailByBatch.id as string
+      currentBatchId = (emailByBatch.generation_batch_id as string | null) ?? batchId
+    } else {
+      // Fallback: o email pode ter sido sobrescrito por um batch mais novo.
+      // Localiza pelo run e pega o `generation_batch_id` atual do email.
+      const { data: runHit } = await admin
+        .from("email_generation_runs")
+        .select("email_id")
+        .eq("batch_id", batchId)
+        .limit(1)
+        .maybeSingle()
+
+      if (runHit?.email_id) {
+        emailId = runHit.email_id as string
+        const { data: emailRow } = await admin
+          .from("email_flow_emails")
+          .select("generation_batch_id")
+          .eq("id", emailId)
+          .maybeSingle()
+        currentBatchId =
+          (emailRow?.generation_batch_id as string | null) ?? batchId
+      }
+    }
+
+    // Sem email resolvido — devolve resposta vazia consistente.
+    if (!emailId) {
+      return successResponse(request, {
+        batchId,
+        currentBatchId: batchId,
+        status: "pending",
+        total: 0,
+        completed: 0,
+        errors: [],
+        runs: [],
+        summary: { totalCost: 0, totalDuration: 0, tokensTotal: 0 },
+      })
+    }
+
+    // 2. Buscar TODOS os runs do email (histórico completo).
+    const { data: allRuns, error } = await admin
       .from("email_generation_runs")
-      .select("id, email_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output")
-      .eq("batch_id", batchId)
+      .select(
+        "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
+      )
+      .eq("email_id", emailId)
       .order("created_at", { ascending: true })
 
     if (error) throw error
 
-    // Agrupar por email
+    const runs = allRuns ?? []
+
+    // 3. Status e summary são derivados SO dos runs do batch atual.
+    const currentRuns = runs.filter((r) => r.batch_id === currentBatchId)
+
+    // Agrupar por email (continuamos suportando o shape antigo)
     const byEmail = new Map<string, {
-      agents: Array<{
-        agent: string
-        status: string
-        errorMessage: string | null
-      }>
+      agents: Array<{ agent: string; status: string; errorMessage: string | null }>
     }>()
 
     let totalCost = 0
@@ -45,13 +106,13 @@ export async function GET(
     let totalTokens = 0
     const errors: Array<{ emailId: string; agent: string; error: string }> = []
 
-    for (const run of runs ?? []) {
-      const emailId = (run.email_id as string) ?? "global"
+    for (const run of currentRuns) {
+      const eid = (run.email_id as string) ?? "global"
 
-      if (!byEmail.has(emailId)) {
-        byEmail.set(emailId, { agents: [] })
+      if (!byEmail.has(eid)) {
+        byEmail.set(eid, { agents: [] })
       }
-      byEmail.get(emailId)!.agents.push({
+      byEmail.get(eid)!.agents.push({
         agent: run.agent as string,
         status: run.status as string,
         errorMessage: run.error_message as string | null,
@@ -59,24 +120,33 @@ export async function GET(
 
       totalCost += (run.cost_cents as number) ?? 0
       totalDuration += (run.duration_ms as number) ?? 0
-      totalTokens += ((run.tokens_input as number) ?? 0) + ((run.tokens_output as number) ?? 0)
+      totalTokens +=
+        ((run.tokens_input as number) ?? 0) +
+        ((run.tokens_output as number) ?? 0)
 
       if (run.status === "error" && run.error_message) {
         errors.push({
-          emailId,
+          emailId: eid,
           agent: run.agent as string,
           error: run.error_message as string,
         })
       }
     }
 
-    // Calcular status geral
-    const allStatuses = (runs ?? []).map((r) => r.status as string)
-    const hasRunning = allStatuses.includes("running")
-    const hasError = allStatuses.includes("error")
-    const allDone = allStatuses.every((s) => s === "success" || s === "skipped")
+    const currentStatuses = currentRuns.map((r) => r.status as string)
+    const hasRunning = currentStatuses.includes("running")
+    const hasError = currentStatuses.includes("error")
+    const allDone =
+      currentRuns.length > 0 &&
+      currentStatuses.every((s) => s === "success" || s === "skipped")
 
-    const status = hasRunning ? "running" : allDone ? "done" : hasError ? "error" : "pending"
+    const status = hasRunning
+      ? "running"
+      : allDone
+        ? "done"
+        : hasError
+          ? "error"
+          : "pending"
 
     const total = byEmail.size
     const completed = Array.from(byEmail.values()).filter((e) =>
@@ -85,11 +155,13 @@ export async function GET(
 
     return successResponse(request, {
       batchId,
+      currentBatchId,
       status,
       total,
       completed,
       errors,
-      runs: (runs ?? []).map((r) => ({
+      // Devolve TODOS os runs do email (com batch_id pra UI agrupar).
+      runs: runs.map((r) => ({
         agent: r.agent,
         status: r.status,
         error_message: r.error_message,
@@ -97,6 +169,8 @@ export async function GET(
         tokens_input: r.tokens_input,
         tokens_output: r.tokens_output,
         cost_cents: r.cost_cents,
+        batch_id: r.batch_id,
+        created_at: r.created_at,
       })),
       summary: {
         totalCost,

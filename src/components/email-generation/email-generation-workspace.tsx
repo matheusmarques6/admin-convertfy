@@ -1012,6 +1012,7 @@ function TestTab() {
   } | null>(null)
   const [steps, setSteps] = useState<RunStep[]>([])
   const [pollInterval, setPollInterval] = useState(0)
+  const [showHistory, setShowHistory] = useState(false)
   // ── Preview de vars HTML resolvidas (debug do Master Prompt v2) ─
   const [previewingVars, setPreviewingVars] = useState(false)
   const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(
@@ -1424,50 +1425,137 @@ function TestTab() {
             </div>
           )}
 
-          {/* Agent steps */}
-          {statusInfo?.runs && (
-            <div className="space-y-1.5">
-              {(["assembler", "blueprint", "seed", "copy", "image", "html"] as const).map((agent) => {
-                const agentRuns = (statusInfo.runs as Array<{ agent: string; status: string; error_message?: string; duration_ms?: number; tokens_input?: number; tokens_output?: number; cost_cents?: number }>).filter(
-                  (r) => r.agent === agent,
-                )
-                const latestRun = agentRuns[agentRuns.length - 1]
-                const status = latestRun?.status ?? "pending"
+          {/* Agent steps — default mostra só runs do batch atual.
+              Toggle revela histórico (runs de batches anteriores agrupados). */}
+          {statusInfo?.runs && (() => {
+            const allRuns = (statusInfo.runs ?? []) as Array<{
+              agent: string
+              status: string
+              error_message?: string
+              duration_ms?: number
+              tokens_input?: number
+              tokens_output?: number
+              cost_cents?: number
+              batch_id?: string
+              created_at?: string
+            }>
+            const currentBatchId =
+              (statusInfo as { currentBatchId?: string }).currentBatchId ?? batchId
+            const currentRuns = allRuns.filter(
+              (r) => !currentBatchId || r.batch_id === currentBatchId,
+            )
+            const historicalRuns = allRuns.filter(
+              (r) => currentBatchId && r.batch_id && r.batch_id !== currentBatchId,
+            )
+            // Agrupa runs históricos por batch_id (ordem decrescente — mais recente primeiro)
+            const historicalByBatch = new Map<string, typeof allRuns>()
+            for (const r of historicalRuns) {
+              const bid = r.batch_id as string
+              if (!historicalByBatch.has(bid)) historicalByBatch.set(bid, [])
+              historicalByBatch.get(bid)!.push(r)
+            }
+            const historicalBatches = Array.from(historicalByBatch.entries()).sort(
+              ([, a], [, b]) => {
+                const ta = a[0]?.created_at ? Date.parse(a[0].created_at) : 0
+                const tb = b[0]?.created_at ? Date.parse(b[0].created_at) : 0
+                return tb - ta
+              },
+            )
 
-                return (
-                  <div
-                    key={agent}
-                    className="flex items-center justify-between px-3 py-2 rounded-[4px] bg-slate-50 dark:bg-white/[0.03]"
-                  >
-                    <div className="flex items-center gap-2">
-                      {statusIcon(status)}
-                      <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
-                        {agentLabels[agent] ?? agent}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-white/35">
-                      {latestRun?.duration_ms != null && (
-                        <span>{(latestRun.duration_ms / 1000).toFixed(1)}s</span>
-                      )}
-                      {(latestRun?.tokens_input || latestRun?.tokens_output) && (
-                        <span>
-                          {((latestRun.tokens_input ?? 0) + (latestRun.tokens_output ?? 0)).toLocaleString()} tokens
-                        </span>
-                      )}
-                      {latestRun?.cost_cents != null && latestRun.cost_cents > 0 && (
-                        <span>${(latestRun.cost_cents / 100).toFixed(4)}</span>
-                      )}
-                      {latestRun?.error_message && (
-                        <span className="text-red-500 max-w-[200px] truncate" title={latestRun.error_message}>
-                          {latestRun.error_message}
-                        </span>
-                      )}
-                    </div>
+            const renderAgentRow = (
+              runs: typeof allRuns,
+              agent: string,
+            ) => {
+              const agentRuns = runs.filter((r) => r.agent === agent)
+              const latestRun = agentRuns[agentRuns.length - 1]
+              const status = latestRun?.status ?? "pending"
+              return (
+                <div
+                  key={agent}
+                  className="flex items-center justify-between px-3 py-2 rounded-[4px] bg-slate-50 dark:bg-white/[0.03]"
+                >
+                  <div className="flex items-center gap-2">
+                    {statusIcon(status)}
+                    <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                      {agentLabels[agent] ?? agent}
+                    </span>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-white/35">
+                    {latestRun?.duration_ms != null && (
+                      <span>{(latestRun.duration_ms / 1000).toFixed(1)}s</span>
+                    )}
+                    {(latestRun?.tokens_input || latestRun?.tokens_output) && (
+                      <span>
+                        {((latestRun.tokens_input ?? 0) + (latestRun.tokens_output ?? 0)).toLocaleString()} tokens
+                      </span>
+                    )}
+                    {latestRun?.cost_cents != null && latestRun.cost_cents > 0 && (
+                      <span>${(latestRun.cost_cents / 100).toFixed(4)}</span>
+                    )}
+                    {latestRun?.error_message && (
+                      <span className="text-red-500 max-w-[200px] truncate" title={latestRun.error_message}>
+                        {latestRun.error_message}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+
+            const agentKeys = ["assembler", "blueprint", "seed", "copy", "image", "html"] as const
+
+            return (
+              <>
+                <div className="space-y-1.5">
+                  {agentKeys.map((agent) => renderAgentRow(currentRuns, agent))}
+                </div>
+
+                {historicalBatches.length > 0 && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowHistory((v) => !v)}
+                      className="text-[11px] text-slate-500 hover:text-slate-700 dark:text-white/45 dark:hover:text-white/70 hover:underline"
+                    >
+                      {showHistory
+                        ? "Ocultar histórico de testes anteriores"
+                        : `Ver histórico de testes anteriores (${historicalBatches.length})`}
+                    </button>
+                  </div>
+                )}
+
+                {showHistory && historicalBatches.length > 0 && (
+                  <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+                    {historicalBatches.map(([bid, batchRuns], idx) => {
+                      const firstRun = batchRuns[0]
+                      const minutesAgo = firstRun?.created_at
+                        ? Math.max(
+                            1,
+                            Math.round(
+                              (Date.now() - Date.parse(firstRun.created_at)) / 60000,
+                            ),
+                          )
+                        : null
+                      return (
+                        <div key={bid} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-white/45">
+                            <span className="font-medium">
+                              Anterior #{historicalBatches.length - idx}
+                              {minutesAgo != null && ` · ${minutesAgo} min atrás`}
+                            </span>
+                            <span className="font-mono text-[10px] opacity-60">
+                              {bid.slice(0, 8)}
+                            </span>
+                          </div>
+                          {agentKeys.map((agent) => renderAgentRow(batchRuns, agent))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
           {/* Fallback steps when no status polling data yet */}
           {!statusInfo?.runs && steps.length > 0 && (
