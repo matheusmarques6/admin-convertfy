@@ -379,7 +379,9 @@ export async function assembleStoreReference(
     // Em skip, registra o motivo + o modelo tentado pra diagnóstico.
     errorMessage: usedLlm ? undefined : (invokeError ?? undefined),
     inputVars: { sections: input.sections.length },
-    rawOutput: rawOutput.slice(0, 8000),
+    // Telemetria do output bruto. HTML gerado é grande — guarda até 40k pra
+    // não cortar a visualização (o HTML real persistido não é truncado).
+    rawOutput: rawOutput.slice(0, 40000),
     parsedOutput: {
       used_llm: usedLlm,
       attempted_model: config.model,
