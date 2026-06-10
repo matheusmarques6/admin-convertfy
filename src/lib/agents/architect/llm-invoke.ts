@@ -167,7 +167,7 @@ async function invokeViaOpenRouter(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://admin.convertfy.com.br",
-        "X-Title": "Convertfy Admin — Architect",
+        "X-Title": "Convertfy Admin - Architect",
       },
       body: JSON.stringify(body),
     })

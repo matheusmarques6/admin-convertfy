@@ -389,7 +389,7 @@ async function tryOpenRouter(
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "https://admin.convertfy.com.br",
-          "X-Title": "Convertfy Admin — Briefing Onboarding",
+          "X-Title": "Convertfy Admin - Briefing Onboarding",
         },
         body: JSON.stringify({
           model: OPENROUTER_MODEL,
