@@ -46,7 +46,7 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false)
 
   const { data: storesData } = useSWR<{ stores: StoreOption[] }>(
-    open ? "/api/stores?active_only=true" : null,
+    open ? "/api/stores?active=true" : null,
     fetcher,
     { revalidateOnFocus: false },
   )

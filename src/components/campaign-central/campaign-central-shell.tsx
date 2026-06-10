@@ -9,6 +9,7 @@ import { SuggestionsTab } from "./suggestions-tab"
 import { ApprovedTab } from "./approved-tab"
 import { CampaignDetailModal } from "./campaign-detail-modal"
 import { NewCampaignModal } from "./new-campaign-modal"
+import { CopyPanel } from "./copy-panel"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
 type TabKey = "sugestoes" | "calendario" | "performance" | "aprovadas"
@@ -46,6 +47,7 @@ export function CampaignCentralShell() {
   const [tab, setTab] = useState<TabKey>("sugestoes")
   const [regenerating, setRegenerating] = useState(false)
   const [detailSuggestion, setDetailSuggestion] = useState<CampaignSuggestion | null>(null)
+  const [copySuggestion, setCopySuggestion] = useState<CampaignSuggestion | null>(null)
   const [newModalOpen, setNewModalOpen] = useState(false)
 
   const { cycle, suggestions, counts, isLoading } = central
@@ -71,9 +73,9 @@ export function CampaignCentralShell() {
     }
   }
 
-  const handleCopyPanel = (_s: CampaignSuggestion) => {
-    // Placeholder até F4 — o painel de copy entra na próxima fase.
-    alert("O painel de geração de copy chega na F4 — por enquanto use o modal de detalhe.")
+  const handleCopyPanel = (s: CampaignSuggestion) => {
+    setDetailSuggestion(null)
+    setCopySuggestion(s)
   }
   const handleOpen = (s: CampaignSuggestion) => setDetailSuggestion(s)
 
@@ -216,6 +218,11 @@ export function CampaignCentralShell() {
         open={newModalOpen}
         onClose={() => setNewModalOpen(false)}
         onCreated={() => central.mutate()}
+      />
+      <CopyPanel
+        suggestion={copySuggestion}
+        onClose={() => setCopySuggestion(null)}
+        onSaved={() => central.mutate()}
       />
     </div>
   )
