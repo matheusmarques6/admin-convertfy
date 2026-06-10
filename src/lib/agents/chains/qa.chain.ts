@@ -218,13 +218,16 @@ async function invokeWithTimeout(
     maxTokens,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   })
-  // Passa user prompt cru porque ja foi renderizado (sem placeholders {var}).
+  // System e user entram como VALORES (vars {system}/{user}), não como
+  // template. Ambos já vêm prontos e podem conter chaves literais ({ }) —
+  // ex.: exemplos de JSON no system prompt. Passá-los crus no fromMessages
+  // faria o parser f-string do LangChain estourar "Single '}' in template.".
   const prompt = ChatPromptTemplate.fromMessages([
-    ["system", systemPrompt],
+    ["system", "{system}"],
     ["human", "{user}"],
   ])
   const chain = prompt.pipe(chat).pipe(new StringOutputParser())
-  return chain.invoke({ user: userPrompt }, { signal })
+  return chain.invoke({ system: systemPrompt, user: userPrompt }, { signal })
 }
 
 // ── Parse JSON tolerante ──────────────────────────────────────────────

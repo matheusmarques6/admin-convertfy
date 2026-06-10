@@ -74,10 +74,13 @@ vi.mock("@/lib/logger", () => ({
 // ── Mock LangChain ChatAnthropic ───────────────────────────────────────
 // vi.hoisted garante que chainInvokeMock existe antes dos vi.mock factories
 // (que sao hoisted automaticamente pelo Vitest).
-const { chainInvokeMock, visionCheckMock } = vi.hoisted(() => ({
-  chainInvokeMock: vi.fn(),
-  visionCheckMock: vi.fn(),
-}))
+const { chainInvokeMock, visionCheckMock, fromMessagesMock } = vi.hoisted(
+  () => ({
+    chainInvokeMock: vi.fn(),
+    visionCheckMock: vi.fn(),
+    fromMessagesMock: vi.fn(),
+  }),
+)
 
 // Story AE-15: mock do qa-vision chain. Default: nao chamado (env OFF).
 vi.mock("./qa-vision.chain", () => ({
@@ -89,13 +92,16 @@ vi.mock("@langchain/anthropic", () => {
 })
 vi.mock("@langchain/core/prompts", () => ({
   ChatPromptTemplate: {
-    fromMessages: () => ({
-      pipe: () => ({
+    fromMessages: (...args: unknown[]) => {
+      fromMessagesMock(...args)
+      return {
         pipe: () => ({
-          invoke: chainInvokeMock,
+          pipe: () => ({
+            invoke: chainInvokeMock,
+          }),
         }),
-      }),
-    }),
+      }
+    },
   },
 }))
 vi.mock("@langchain/core/output_parsers", () => {
@@ -147,6 +153,7 @@ beforeEach(() => {
   resetTables()
   chainInvokeMock.mockReset()
   visionCheckMock.mockReset()
+  fromMessagesMock.mockReset()
   process.env.EMAIL_QA_BLOCK_SEVERITY = "high"
   delete process.env.EMAIL_QA_VISION_ENABLED
 })
@@ -400,6 +407,39 @@ describe("runQaAgent — com config ativo", () => {
     expect(result.issues.find((i) => i.type === "claim_nao_coberto")).toBeDefined()
     // links_quebrados javascript: e high -> bloqueia
     expect(result.passed).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// Regressão: system prompt com chaves literais (Single '}' in template)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("runQaAgent — system prompt com chaves literais", () => {
+  it("passa system/user como valores; fromMessages só recebe placeholders", async () => {
+    const cfg = makeConfig()
+    // System prompt com exemplo de JSON ({ }) — exatamente o que fazia o
+    // parser f-string do LangChain estourar "Single '}' in template".
+    cfg.system_prompt = 'Formato: {"passed": boolean, "issues": [{ "type": "x" }]}'
+    tables.email_agent_configs.push(cfg as unknown as Row)
+
+    chainInvokeMock.mockResolvedValueOnce(
+      JSON.stringify({ passed: true, issues: [] }),
+    )
+    const result = await runQaAgent(makeInput())
+
+    expect(result.passed).toBe(true)
+    // O system prompt NUNCA entra como template no fromMessages (senão as
+    // chaves seriam parseadas como f-string). Só os placeholders estáticos.
+    expect(fromMessagesMock).toHaveBeenCalledWith([
+      ["system", "{system}"],
+      ["human", "{user}"],
+    ])
+    // O conteúdo (com chaves) vai como VALOR no invoke.
+    const invokeArg = chainInvokeMock.mock.calls[0][0] as {
+      system: string
+      user: string
+    }
+    expect(invokeArg.system).toBe(cfg.system_prompt)
   })
 })
 
