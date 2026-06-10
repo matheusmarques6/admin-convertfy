@@ -97,7 +97,10 @@ export interface HtmlChainConfig {
   user_template: string
 }
 
-const DEFAULT_MODEL = "claude-opus-4-7"
+// Fallback usado só quando não há row ativa de email_agent_configs (agent_type
+// ='html'). Sonnet 4.6: o HTML agent é montador (não arquiteta), então não
+// precisa de Opus — a estrutura vem do reference_html (Montador).
+const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 export interface InvokeHtmlInput {
   config: HtmlChainConfig
