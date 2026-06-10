@@ -7,12 +7,13 @@
  * maxDuration: 300s (Vercel serverless limit)
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { runTestGeneration } from "@/lib/agents/test-generation.service"
+import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -56,6 +57,23 @@ export async function POST(
       triggeredBy: user.id,
       batchId,
     })
+
+    // Path with_copy: dispara phase2 (image+html+qa) em background pra
+    // não estourar maxDuration. Cliente faz polling em /generation-status.
+    if (result.triggerPhase2) {
+      after(async () => {
+        try {
+          await runPhase2InBackground({
+            storeId,
+            emailId: result.emailId,
+            triggeredBy: user.id,
+            relaxedBrandCheck: result.relaxedBrand === true,
+          })
+        } catch (err) {
+          log.error("generate-email.phase2.background_error", err)
+        }
+      })
+    }
 
     return successResponse(request, result)
   } catch (error) {

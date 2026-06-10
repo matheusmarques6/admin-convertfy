@@ -1003,7 +1003,7 @@ function TestTab() {
   const [generating, setGenerating] = useState(false)
   const [batchId, setBatchId] = useState<string | null>(null)
   const [result, setResult] = useState<{
-    status: "done" | "error" | "dispatched"
+    status: "done" | "error" | "dispatched" | "running"
     error?: string
     message?: string
     batchId?: string
@@ -1096,22 +1096,32 @@ function TestTab() {
       const respStatus = responseData.status as string
       const isError = respStatus === "error"
       const isDispatched = respStatus === "dispatched"
+      const isRunning = respStatus === "running"
       const errMsg =
         responseData.error != null ? errText(responseData.error) : undefined
       setResult({
-        status: isError ? "error" : isDispatched ? "dispatched" : "done",
+        status: isError
+          ? "error"
+          : isDispatched
+            ? "dispatched"
+            : isRunning
+              ? "running"
+              : "done",
         error: isError
           ? errMsg || "Falha na geração (sem detalhe retornado)"
           : errMsg,
         message: isDispatched
           ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem/HTML/QA) virá depois, após o callback da copy."
-          : undefined,
+          : isRunning
+            ? "Montador e Blueprint concluídos. Render (imagem + HTML + QA) rodando em background — esta página atualiza sozinha."
+            : undefined,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
         relaxedBrand: responseData.relaxedBrand === true,
       })
-      // Polling só no caminho síncrono (com copy). No "dispatched" o render é
-      // assíncrono e roda sob outro batch.
+      // Polling no caminho síncrono (with_copy) E no novo "running" (phase2
+      // em background). Só pula no "dispatched" porque o render lá vem sob
+      // outro batch.
       if (responseData.batchId && !isDispatched) {
         setBatchId(responseData.batchId as string)
         setPollInterval(2000)

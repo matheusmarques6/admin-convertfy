@@ -2,8 +2,11 @@
  * Orquestra a geração de TESTE de um único email (aba "Testar" do hub).
  *
  * Regra de produto:
- *  - Se o email JÁ tem copy  → Montador → Blueprint → render síncrono
- *    (imagem + HTML + QA), SEM passar pelo N8N.
+ *  - Se o email JÁ tem copy  → Montador → Blueprint (síncrono no handler),
+ *    depois retorna imediato. O render (imagem + HTML + QA) é disparado
+ *    em background via `after(runPhase2InBackground)` no route handler.
+ *    Sem isso, image (~166s) + html (~90s) + qa (~15s) estouram o
+ *    maxDuration=300s da Vercel.
  *  - Se NÃO tem copy         → caminho normal de dispatch, que já faz
  *    Montador → Blueprint → seed → N8N. O render acontece depois, via gate
  *    de brand / callback do N8N (assíncrono).
@@ -11,7 +14,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { generateBlueprintAndReference } from "./architect/generate.service"
-import { generateEmail } from "./email-generation.service"
 import { dispatchEmailCopyWebhook } from "../services/email-copy-webhook.service"
 
 const log = logger.child("TestGeneration")
@@ -27,17 +29,22 @@ export interface TestGenerationInput {
 }
 
 export interface TestGenerationResult {
-  status: "done" | "dispatched" | "error"
+  status: "running" | "dispatched" | "error"
   path: "with_copy" | "without_copy"
   hasCopy: boolean
   error?: string
   batchId: string
   emailId: string
   /**
-   * True quando o path síncrono rodou com precheck relaxado (TestTab).
+   * True quando o path com_copy preparou e marcou email pronto pra
+   * phase2 — o route handler deve disparar `runPhase2InBackground`
+   * via `after()` antes de devolver a response. Polling em
+   * /generation-status/{batchId} traz status final.
+   */
+  triggerPhase2?: boolean
+  /**
+   * True quando o phase2 deve rodar com precheck relaxado (TestTab).
    * UI mostra banner informativo de que brand pode estar incompleta.
-   * No path "without_copy" a flag não se propaga (phase2 roda em
-   * background via callback do n8n).
    */
   relaxedBrand?: boolean
 }
@@ -73,7 +80,10 @@ export async function runTestGeneration(
   log.info("test.start", { storeId, emailId, batchId, hasCopy })
 
   if (hasCopy) {
-    // COM copy: Montador → Blueprint → render síncrono (sem N8N).
+    // COM copy: Montador + Blueprint síncronos (~10-20s, cabem em 300s).
+    // O render (image + html + qa) é disparado em background pelo route
+    // handler via `after(runPhase2InBackground)` — sem isso, image (~166s)
+    // + html (~90s) estouram o maxDuration da Vercel.
     await generateBlueprintAndReference({
       storeId,
       flowType,
@@ -81,26 +91,32 @@ export async function runTestGeneration(
       batchId,
       triggeredBy,
     })
-    const r = await generateEmail({
-      storeId,
-      flowId,
-      emailId,
-      flowType,
-      emailNumber,
-      triggeredBy,
-      batchId,
-      skipSeed: true, // preserva a copy existente (não re-seedeia)
-      // TestTab: brand draft (sem confirm, partials) gera mesmo assim.
-      // Cores/logo faltando degradam pra defaults em vez de bloquear.
-      relaxedBrandCheck: true,
-    })
+
+    // Reset de status pra `copy_ready` pra que phase2 possa fazer claim
+    // atômico. Cobre re-execução de email que ficou `failed` ou já
+    // chegou em `ready` num teste anterior. Persiste batchId pra que
+    // /generation-status leia os runs corretos.
+    const admin = createAdminClient()
+    await admin
+      .from("email_flow_emails")
+      .update({
+        status: "copy_ready",
+        generation_batch_id: batchId,
+        rendering_started_at: null,
+        qa_started_at: null,
+        failure_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+
+    log.info("test.with_copy.ready_for_phase2", { storeId, emailId, batchId })
     return {
-      status: r.status,
+      status: "running",
       path: "with_copy",
       hasCopy: true,
-      error: r.error,
       batchId,
       emailId,
+      triggerPhase2: true,
       relaxedBrand: true,
     }
   }

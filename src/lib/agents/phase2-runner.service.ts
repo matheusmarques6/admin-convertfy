@@ -356,12 +356,17 @@ export interface RunPhase2Params {
   storeId: string
   emailId: string
   triggeredBy?: string
+  /**
+   * Quando true (TestTab), buildHtmlPromptVars usa precheck relaxado:
+   * só falha se brand=null. Cores/logo faltando degradam pra defaults.
+   */
+  relaxedBrandCheck?: boolean
 }
 
 export async function runPhase2InBackground(
   params: RunPhase2Params,
 ): Promise<void> {
-  const { storeId, emailId, triggeredBy } = params
+  const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
   const admin = createAdminClient()
   log.info("phase2.start", { storeId, emailId })
 
@@ -697,6 +702,7 @@ export async function runPhase2InBackground(
       flowType: ctx.flowType,
       emailNumber: ctx.emailNumber,
       admin,
+      relaxedBrandCheck,
     })
 
     const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({
