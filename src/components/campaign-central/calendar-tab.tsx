@@ -1,9 +1,11 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import useSWR from "swr"
-import { ChevronLeft, ChevronRight, LayoutList, Calendar as CalendarIcon, Loader2, Plus } from "lucide-react"
+import useSWR, { useSWRConfig } from "swr"
+import { ChevronLeft, ChevronRight, LayoutList, Calendar as CalendarIcon, Loader2, Plus, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/lib/hooks/use-toast"
 import { getCountryMeta } from "./country-chip"
 import { TrendsList, PerformersList } from "./side-cards"
 import type { BenchmarkEmail, CampaignTrend } from "@/types/campaign-central"
@@ -163,6 +165,34 @@ interface Props {
 
 export function CalendarTab({ trends, onCreate }: Props) {
   const [mode, setMode] = useState<"lista" | "grade">("lista")
+  const [syncing, setSyncing] = useState(false)
+  const { mutate } = useSWRConfig()
+  const { toast } = useToast()
+
+  const syncHolidays = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch("/api/admin/campaign-central/calendar/sync-holidays", {
+        method: "POST",
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      const t = json.totals as { inserted: number; skipped_manual: number; failed: number }
+      toast({
+        title: "Feriados sincronizados",
+        description: `${t.inserted} novos · ${t.skipped_manual} curados preservados${t.failed > 0 ? ` · ${t.failed} falharam` : ""}`,
+      })
+      await mutate("/api/admin/campaign-central/calendar?days=90")
+    } catch (err) {
+      toast({
+        title: "Falha ao sincronizar feriados",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const { data: calData, isLoading: calLoading } = useSWR<{ dates: CalendarDate[] }>(
     "/api/admin/campaign-central/calendar?days=90",
@@ -195,6 +225,21 @@ export function CalendarTab({ trends, onCreate }: Props) {
           <span className="text-[13px] font-semibold text-foreground/80">
             {mode === "lista" ? "Datas por país · próximos 25 dias" : "Visão de calendário"}
           </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={syncHolidays}
+              disabled={syncing}
+              title="Puxa feriados oficiais de cada país via Nager.Date (não toca nas datas comerciais curadas)"
+            >
+              {syncing ? (
+                <Loader2 size={13} className="mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw size={13} className="mr-1.5" />
+              )}
+              Sincronizar feriados
+            </Button>
           <div className="inline-flex gap-0.5 rounded-[8px] bg-muted p-0.5">
             {(
               [
@@ -215,6 +260,7 @@ export function CalendarTab({ trends, onCreate }: Props) {
                 </button>
               )
             })}
+          </div>
           </div>
         </div>
 
