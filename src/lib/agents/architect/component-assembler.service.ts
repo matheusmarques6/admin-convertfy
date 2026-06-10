@@ -289,6 +289,7 @@ export async function assembleStoreReference(
   let tokensOutput = 0
   let rawOutput = ""
   let usedLlm = false
+  let invokeError: string | null = null
 
   try {
     const res = await invokeAgent(config, vars)
@@ -297,10 +298,14 @@ export async function assembleStoreReference(
     tokensOutput = res.tokensOutput
     llmChoices = parseAssemblerOutput(res.raw)
     usedLlm = llmChoices.length > 0
+    // LLM respondeu mas não veio nenhuma escolha parseável.
+    if (!usedLlm) invokeError = "llm_unparseable_or_empty_choices"
   } catch (err) {
+    invokeError = err instanceof Error ? err.message : String(err)
     log.error("assembler.invoke_failed", {
       storeId: input.storeId,
-      error: err instanceof Error ? err.message : String(err),
+      model: config.model,
+      error: invokeError,
     })
   }
 
@@ -318,11 +323,16 @@ export async function assembleStoreReference(
     agentConfigId: cfgRow?.id,
     status: usedLlm ? "success" : "skipped",
     model: usedLlm ? config.model : "fallback",
+    // Em skip, registra o motivo + o modelo tentado pra diagnóstico (o run
+    // mostrava "fallback" mudo, sem dizer por quê).
+    errorMessage: usedLlm ? undefined : (invokeError ?? undefined),
     inputVars: { sections: input.sections.length },
     rawOutput: rawOutput.slice(0, 4000),
     parsedOutput: {
       chosen: variantIds.length,
       used_llm: usedLlm,
+      attempted_model: config.model,
+      invoke_error: invokeError,
       choices: llmChoices.map((c) => ({
         block_index: c.block_index,
         variant_id: c.variant_id,
