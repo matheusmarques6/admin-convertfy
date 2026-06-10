@@ -57,6 +57,9 @@ export type AgentType =
   // assembler: escolhe variantes de componente e monta o reference HTML.
   | "blueprint"
   | "assembler"
+  // ── Central de Campanhas ────────────────────────────────
+  // campaign_suggestion: gera sugestões de campanha por ciclo semanal.
+  | "campaign_suggestion"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em

@@ -98,6 +98,16 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
   ],
+  // Central de Campanhas — vars renderizadas por suggestion-engine.service
+  campaign_suggestion: [
+    { key: "cycle_range", desc: "Período do ciclo (início a fim)" },
+    { key: "today", desc: "Data de hoje (YYYY-MM-DD)" },
+    { key: "stores_json", desc: "Lojas do cluster (JSON)" },
+    { key: "dates_json", desc: "Datas comemorativas na janela de 25d (JSON)" },
+    { key: "attention_json", desc: "Lojas em atenção do cluster (JSON)" },
+    { key: "benchmark_json", desc: "Emails campeões da rede Omnisend (JSON)" },
+    { key: "trends_json", desc: "Temas em alta do ciclo (JSON)" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [
