@@ -33,72 +33,75 @@ import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
 
+// Sem .max() de caractere nos campos de texto livre — o conteúdo vem da IA via
+// n8n (fonte confiável, autenticada por x-webhook-secret) e pode ser longo.
+// Mantemos min(1) (presença), faixas numéricas, enum e contagens de array.
 const personaSchema = z.object({
-  name: z.string().min(1).max(60),
-  age: z.string().min(1).max(40),
-  city: z.string().min(1).max(80),
-  monogram: z.string().min(1).max(4),
+  name: z.string().min(1),
+  age: z.string().min(1),
+  city: z.string().min(1),
+  monogram: z.string().min(1).max(8), // curto — usado no avatar
 })
 
 const demographicsSchema = z.object({
-  age_range: z.string().min(1).max(60),
-  income: z.string().min(1).max(60),
-  education: z.string().min(1).max(80),
-  occupation: z.string().min(1).max(120),
-  religion: z.string().min(1).max(60),
+  age_range: z.string().min(1),
+  income: z.string().min(1),
+  education: z.string().min(1),
+  occupation: z.string().min(1),
+  religion: z.string().min(1),
 })
 
 // Blocos avançados — opcionais para retrocompatibilidade com payloads antigos.
 const awarenessSchema = z.object({
-  dominant: z.string().min(1).max(60),
+  dominant: z.string().min(1),
   levels: z.array(z.object({
-    key: z.string().min(1).max(40),
-    label: z.string().min(1).max(60),
+    key: z.string().min(1),
+    label: z.string().min(1),
     pct: z.number().min(0).max(100),
   })).min(2).max(7),
-  copy_implication: z.string().min(1).max(2000),
+  copy_implication: z.string().min(1),
 })
 
 const starvingCrowdSchema = z.object({
-  verdict: z.string().min(1).max(60),
+  verdict: z.string().min(1),
   scores: z.array(z.object({
-    key: z.string().min(1).max(40),
-    label: z.string().min(1).max(60),
+    key: z.string().min(1),
+    label: z.string().min(1),
     value: z.number().min(0).max(5),
-    note: z.string().max(200),
+    note: z.string(),
   })).min(2).max(8),
   total: z.number().min(0).max(20),
 })
 
 const uniqueMechanismSchema = z.object({
-  headline: z.string().min(1).max(200),
-  body: z.string().min(1).max(4000),
+  headline: z.string().min(1),
+  body: z.string().min(1),
 })
 
 const objectionSchema = z.object({
-  objection: z.string().min(1).max(400),
-  treatment: z.string().min(1).max(800),
+  objection: z.string().min(1),
+  treatment: z.string().min(1),
 })
 
 const vocabularySchema = z.object({
   type: z.enum(["Dor", "Desejo", "Objeção", "Marca"]),
-  channel: z.string().min(1).max(60),
-  quote: z.string().min(1).max(400),
+  channel: z.string().min(1),
+  quote: z.string().min(1),
 })
 
 const schema = z.object({
   store_id: z.string().uuid(),
   persona: personaSchema,
   demographics: demographicsSchema,
-  day_in_life: z.string().min(80).max(4000),
-  motivations: z.array(z.string().min(2).max(200)).min(2).max(12),
-  frictions: z.array(z.string().min(2).max(200)).min(2).max(12),
+  day_in_life: z.string().min(80),
+  motivations: z.array(z.string().min(2)).min(2).max(20),
+  frictions: z.array(z.string().min(2)).min(2).max(20),
   // Opcionais (blocos avançados)
   awareness: awarenessSchema.optional(),
   starving_crowd: starvingCrowdSchema.optional(),
   unique_mechanism: uniqueMechanismSchema.optional(),
-  objections: z.array(objectionSchema).min(1).max(8).optional(),
-  vocabulary: z.array(vocabularySchema).min(1).max(16).optional(),
+  objections: z.array(objectionSchema).min(1).max(12).optional(),
+  vocabulary: z.array(vocabularySchema).min(1).max(24).optional(),
 })
 
 export async function POST(request: NextRequest) {
