@@ -70,7 +70,12 @@ const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 // Fallback usado apenas se email_agent_configs não tiver row ativa para
 // agent_type='blueprint' (a migration 20260708b semeia a versão canônica).
-const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Você recebe o HTML JÁ MONTADO de um email (a forma final) e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — a lista ordenada de blocos que o HTML contém, cada um com tipo técnico, label, propósito, needs_image e, quando needs_image=true, image_brief. A estrutura deve REFLETIR o HTML (mesma ordem e seções); não invente blocos ausentes. Mapeie cada seção do HTML para o tipo técnico mais adequado (ex.: seção de reviews → testimonials; cupom → coupon). hero/image têm needs_image=true. Para CADA bloco com needs_image=true, escreva image_brief: 1-2 frases (no idioma da loja) de COMO gerar a imagem daquele bloco — cena, assunto, enquadramento e mood — derivadas da INTENÇÃO do email (objetivo) e do NICHO da loja, sem texto na imagem. Blocos com needs_image=false: image_brief=null. Use SOMENTE os tipos permitidos. Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief"}]}.`
+const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Recebe o HTML JÁ MONTADO de um email e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — UM bloco para CADA seção visual do HTML, na MESMA ordem, SEM fundir seções diferentes num bloco só e SEM pular nenhuma. Se o HTML tem 9 seções, o blueprint tem 9 blocos; NÃO force um número (esqueça qualquer faixa tipo "4 a 9"). Mapeie cada seção ao tipo técnico mais adequado (reviews/depoimentos → testimonials ou social_proof; cupom → coupon; escassez/contagem → urgency; CTA de fechamento → cta; selos/garantias → features; grade de produtos → products). Use SOMENTE os tipos permitidos. Cada bloco precisa de:
+- label: nome específico da seção (não genérico).
+- purpose: 2-3 frases CONCRETAS — o que a seção mostra, o ângulo/argumento e o que a COPY precisa entregar ali (NÃO escreva a copy final, escreva a diretiva específica daquele bloco). Nada de "papel do bloco" raso.
+- needs_image: true só onde há imagem renderizada (hero/image quase sempre; products quando tem foto; demais quase nunca).
+- image_brief: quando needs_image=true, 1-2 frases de COMO gerar a imagem (cena, assunto, enquadramento, mood) derivadas da INTENÇÃO do email + NICHO, sem texto na imagem; quando needs_image=false, null.
+Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief"}]}.`
 
 const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
 PERSONA: {{persona}} — TOM DE VOZ: {{tom_voz}}
@@ -200,8 +205,8 @@ export async function generateStoreBlueprint(
     : {
         model: DEFAULT_MODEL,
         temperature: 0.4,
-        // 4096 p/ caber os image_brief por bloco de imagem.
-        max_tokens: 4096,
+        // 8192 p/ caber 1 bloco por seção, purpose detalhado + image_brief.
+        max_tokens: 8192,
         system_prompt: DEFAULT_BLUEPRINT_SYSTEM,
         user_template: DEFAULT_BLUEPRINT_USER,
       }
