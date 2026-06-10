@@ -43,6 +43,11 @@ interface AdsReview {
 interface WebhookPayload {
   event: "onboarding.briefing_confirmed"
   timestamp: string
+  // Quando true, sinaliza que o briefing foi REGERADO (não é a primeira
+  // confirmação). O n8n deve ECOAR este campo ao chamar o callback
+  // /api/webhooks/n8n/pesquisa-completa para que a geração de copy não
+  // seja re-disparada.
+  regeneration: boolean
   onboarding: Record<string, unknown>
   briefing: BriefingContent | null
   briefing_ai_original: BriefingContent | null
@@ -54,7 +59,9 @@ interface WebhookPayload {
 
 export async function dispatchBriefingWebhook(
   onboardingId: string,
+  opts?: { regeneration?: boolean },
 ): Promise<void> {
+  const regeneration = opts?.regeneration ?? false
   const url = process.env.N8N_BRIEFING_WEBHOOK_URL
   if (!url) {
     log.warn("briefing.webhook.skip", {
@@ -66,7 +73,7 @@ export async function dispatchBriefingWebhook(
 
   let payload: WebhookPayload | null = null
   try {
-    payload = await buildPayload(onboardingId)
+    payload = await buildPayload(onboardingId, regeneration)
   } catch (e) {
     log.error("briefing.webhook.fatal", {
       onboardingId,
@@ -96,7 +103,7 @@ export async function dispatchBriefingWebhook(
     }
     if (secret) headers["x-webhook-secret"] = secret
 
-    log.info("briefing.webhook.start", { onboardingId, url })
+    log.info("briefing.webhook.start", { onboardingId, url, regeneration })
     const resp = await fetch(url, {
       method: "POST",
       signal: ctrl.signal,
@@ -118,6 +125,7 @@ export async function dispatchBriefingWebhook(
       onboardingId,
       ms,
       http_status: resp.status,
+      regeneration,
     })
   } catch (e) {
     const ms = Date.now() - t0
@@ -137,6 +145,7 @@ export async function dispatchBriefingWebhook(
 
 async function buildPayload(
   onboardingId: string,
+  regeneration: boolean,
 ): Promise<WebhookPayload | null> {
   const admin = createAdminClient()
 
@@ -190,6 +199,7 @@ async function buildPayload(
   return {
     event: "onboarding.briefing_confirmed",
     timestamp: new Date().toISOString(),
+    regeneration,
 
     onboarding: {
       id: onb.id,

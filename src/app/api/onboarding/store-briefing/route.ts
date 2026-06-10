@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("N8N_BRIEFING_WEBHOOK_URL não configurada", 502)
     }
 
-    await dispatchBriefingWebhook(onboarding.id)
+    await dispatchBriefingWebhook(onboarding.id, { regeneration: true })
 
     log.info(`Briefing webhook dispatched for store ${body.store_id}, onboarding ${onboarding.id}`)
 
