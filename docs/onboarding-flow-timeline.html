@@ -181,12 +181,21 @@
       <p class="pdesc">Antes da copy, o <b>Arquiteto</b> monta uma referência visual por loja×email e extrai a estrutura (blueprint). Depois a copy é escrita bloco a bloco.</p>
 
       <div class="card ai">
-        <div class="card-head"><span class="card-name">🤖 Arquiteto · Montador (Component Assembler)</span><span class="tag ai">IA</span></div>
+        <div class="card-head"><span class="card-name">🤖 Arquiteto · Montador (Component Assembler)</span><span class="tag ai">IA — escolhe, não escreve</span></div>
         <div class="model">claude-sonnet-4-6</div>
         <div class="io">
-          <div class="io-box in"><div class="io-label">Input</div><ul><li>outline do email + nicho + persona</li><li>tom de voz, mood, produtos</li><li>biblioteca de variantes de componentes</li></ul></div>
-          <div class="io-box out"><div class="io-label">Output → store_email_references</div><ul><li>HTML de referência montado</li></ul></div>
+          <div class="io-box in"><div class="io-label">Input</div><ul>
+            <li>seções do outline (flow × nº do email)</li>
+            <li>marca: nicho, posicionamento, tom, mood</li>
+            <li>Pesquisa &amp; Diagnóstico (5 pilares) + briefing.marca</li>
+            <li>variantes pré-filtradas de email_component_variants</li>
+          </ul></div>
+          <div class="io-box out"><div class="io-label">Output → store_email_references</div><ul>
+            <li>escolhas <code>[{block_index, variant_id}]</code></li>
+            <li>HTML de referência = snippets escolhidos concatenados</li>
+          </ul></div>
         </div>
+        <div class="note">O LLM só <b>seleciona</b> a melhor variante por bloco (pré-filtro determinístico antes). Não recebe produtos. Sem variante → cai no template global; LLM falha → top-1 do pré-filtro.</div>
       </div>
 
       <div class="card ai">
