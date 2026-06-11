@@ -1,43 +1,105 @@
 /**
- * Geração de copy de campanha POR LOJA (CopyPanel — modos teste/produção).
+ * Geração de copy de campanha POR LOJA — adaptação da copy MASTER.
  *
- * Cada loja recebe uma chamada IA com seu contexto (brand/briefing/tom/
- * top products, lidos das tabelas locais) + o briefing da sugestão.
- * Output: { subject, preview } no idioma da loja. Persistido em
- * campaign_suggestions.copy_results[mode][store_id].
+ * Recebe a master (subject + preheader + blocks) gerada via copy-master
+ * service e adapta pra cada loja-alvo:
+ * - traduz pro idioma da loja (language)
+ * - aplica o tom de voz da marca (brand briefing)
+ * - substitui placeholders genéricos do bloco 'products' por TOP PRODUCTS
+ *   reais da loja (store_top_products)
+ * - mantém estrutura/ordem dos blocks
  *
- * Não reusa o copy.chain do flow (template acoplado a flow_type/blocks);
- * usa o anthropic-client do módulo com structured outputs. Telemetria em
- * campaign_ai_runs (kind='copy').
+ * Modos:
+ * - 'test' (PILOTO): COO seleciona 2-3 lojas, valida qualidade
+ * - 'production' (ROLLOUT): rodada nas demais lojas. Quando há lojas com
+ *   quality='good' no piloto, elas são injetadas no prompt como
+ *   FEW-SHOT references de qualidade.
+ *
+ * Persiste em copy_results[mode][store_id] como CopyResultEntry com
+ * blocks completos. Telemetria em campaign_ai_runs (kind='copy').
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { callAnthropicJson } from "./anthropic-client"
-import type { CampaignSuggestion, CopyResultEntry } from "@/types/campaign-central"
+import { copyResultEntrySchema } from "@/lib/validations/campaign-central"
+import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
+import type {
+  CampaignSuggestion,
+  CopyResultEntry,
+  EmailDraftBlock,
+} from "@/types/campaign-central"
 
 const log = logger.child("CampaignCopy")
 
 const MAX_CONCURRENT = 3
 const COPY_MODEL = "claude-sonnet-4-6"
 
-const SYSTEM_PROMPT = `Você é um copywriter sênior de email marketing para e-commerce.
-Gere o assunto (subject) e o preview text de UM email de campanha para a loja informada.
+const SYSTEM_PROMPT = `Você é um copywriter sênior de email marketing para e-commerce, especialista em adaptar copy master para múltiplas lojas mantendo estratégia consistente mas voz local.
 
-Regras:
-- Escreva NO IDIOMA da loja (campo language: pt-BR → português, en-* → inglês, es → espanhol).
-- Subject: máximo 50 caracteres, gera curiosidade ou urgência conforme o ângulo. Emojis com parcimônia (no máximo 1).
-- Preview: complementa o subject sem repeti-lo, máximo 90 caracteres.
-- Respeite EXATAMENTE o tom de voz da marca quando informado.
-- Se a sugestão cita valores (desconto, cupom, prazo), MANTENHA-os — nunca invente números novos.
-- Responda APENAS o JSON.`
+Você recebe:
+1. Uma COPY MASTER em português brasileiro (subject + preheader + blocks de estrutura completa)
+2. O contexto de UMA loja específica (idioma, tom de voz, top products reais, branding)
+3. (Opcional) Adaptações já APROVADAS de outras lojas piloto — use como referência de qualidade
+
+Sua tarefa: gerar a versão adaptada do email completo para a loja informada, mantendo a ESTRUTURA da master (mesmos blocos, mesma ordem) mas adaptando o CONTEÚDO.
+
+REGRAS:
+1. **Idioma**: escreva NO IDIOMA da loja (campo language: pt-BR → português, en-* → inglês, es → espanhol). Traduza tudo: subject, preheader, headlines, textos, CTA do botão, rodapé.
+2. **Tom de voz**: aplique o tom de voz da marca quando informado. Confidente/casual/formal/jovem — siga.
+3. **Subject**: máx 50 caracteres, gera curiosidade/urgência, no idioma. Emojis com parcimônia (no máximo 1, e só se a master usar).
+4. **Preheader**: máx 90 caracteres, complementa o subject sem repetir.
+5. **Blocks** — mantenha a mesma ORDEM e os mesmos TIPOS da master. Para cada bloco, adapte:
+   - 'image': mantenha caption (descritiva)
+   - 'heading': traduza headline + sub
+   - 'text': reescreva no tom da marca, mesmo comprimento e intenção
+   - 'offer': mantenha valores numéricos/cupons EXATOS, só traduza palavras
+   - 'button': traduza CTA
+   - 'divider': mantenha
+   - 'footer': use placeholder {{loja}} pra nome da loja
+   - 'products' (CRÍTICO): substitua os items placeholder por TOP PRODUCTS REAIS da loja. Use exatamente os produtos fornecidos (name + price). Mantenha o mesmo número de columns.
+6. **Storytelling local**: pode citar slogan/diferencial/persona da loja se fizerem sentido no fluxo. Não force.
+7. Se a master cita valores específicos (desconto, cupom, prazo), MANTENHA-os exatamente. Nunca invente números.
+8. Se houver REFERÊNCIAS de qualidade (lojas piloto aprovadas), use-as como guia de tom e estrutura — não copie literalmente, só inspire-se.
+
+OUTPUT: APENAS JSON {subject, preheader, strategy, blocks: [...]} no idioma da loja. Sem markdown.`
 
 const OUTPUT_SCHEMA = {
   type: "object",
-  required: ["subject", "preview"],
+  required: ["subject", "preheader", "blocks"],
   properties: {
     subject: { type: "string" },
-    preview: { type: "string" },
+    preheader: { type: "string" },
+    strategy: { type: "string" },
+    blocks: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["type"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["image", "heading", "text", "offer", "button", "divider", "footer", "products"],
+          },
+          headline: { type: "string" },
+          sub: { type: "string" },
+          value: { type: "string" },
+          caption: { type: "string" },
+          columns: { type: "number" },
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                price: { type: "string" },
+                image_caption: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 } as const
 
@@ -78,7 +140,7 @@ async function loadStoreContexts(
       .from("store_top_products")
       .select("store_id, title, price, rank")
       .in("store_id", storeIds)
-      .lte("rank", 3)
+      .lte("rank", 6)
       .order("rank", { ascending: true }),
   ])
 
@@ -114,10 +176,25 @@ async function loadStoreContexts(
   return result
 }
 
-function buildUserPrompt(store: StoreCopyContext, suggestion: CampaignSuggestion): string {
+/** Strip ids dos blocks pra IA — id é regerado no servidor após o output. */
+function blocksWithoutIds(blocks: EmailDraftBlock[]): Array<Omit<EmailDraftBlock, "id">> {
+  return blocks.map((b) => {
+    const { id: _id, ...rest } = b
+    void _id
+    return rest
+  })
+}
+
+function buildUserPrompt(
+  store: StoreCopyContext,
+  suggestion: CampaignSuggestion,
+  referenceCopies: Array<{ store_name: string; language: string; copy: CopyResultEntry }>,
+): string {
   const draft = suggestion.email_draft
-  return [
-    `## Loja`,
+  const masterBlocks = draft?.blocks ? blocksWithoutIds(draft.blocks) : []
+
+  const parts: string[] = [
+    `## Loja-alvo`,
     JSON.stringify(
       {
         name: store.store_name,
@@ -133,18 +210,50 @@ function buildUserPrompt(store: StoreCopyContext, suggestion: CampaignSuggestion
       1,
     ),
     ``,
-    `## Campanha`,
+    `## Copy MASTER (em pt-BR) — adapte mantendo a mesma estrutura`,
+    JSON.stringify(
+      {
+        subject: draft?.subject ?? suggestion.subject ?? "",
+        preheader: draft?.preheader ?? "",
+        strategy: draft?.strategy ?? suggestion.angle ?? "",
+        blocks: masterBlocks,
+      },
+      null,
+      1,
+    ),
+    ``,
+    `## Contexto da campanha`,
     `Título: ${suggestion.title}`,
     `Tipo: ${suggestion.type}`,
     `Gatilho: ${suggestion.trigger?.label ?? ""} — ${suggestion.trigger?.detail ?? ""}`,
-    `Ângulo/estratégia: ${draft?.strategy || suggestion.angle || ""}`,
-    suggestion.subject ? `Subject de referência (adapte ao idioma/tom da loja): ${suggestion.subject}` : "",
     suggestion.send_date ? `Data de envio: ${suggestion.send_date}` : "",
+  ].filter(Boolean)
+
+  if (referenceCopies.length > 0) {
+    parts.push(``, `## REFERÊNCIAS — adaptações de lojas piloto APROVADAS`)
+    parts.push(`Use como guia de tom e qualidade — não copie literalmente.`)
+    for (const ref of referenceCopies) {
+      parts.push(
+        ``,
+        `### ${ref.store_name} (${ref.language})`,
+        JSON.stringify(
+          {
+            subject: ref.copy.subject,
+            preheader: ref.copy.preheader ?? ref.copy.preview,
+            blocks: ref.copy.blocks ?? [],
+          },
+          null,
+          1,
+        ),
+      )
+    }
+  }
+
+  parts.push(
     ``,
-    `Gere subject + preview para ESTA loja.`,
-  ]
-    .filter(Boolean)
-    .join("\n")
+    `Gere a adaptação completa pra ESTA loja seguindo as regras do system prompt.`,
+  )
+  return parts.join("\n")
 }
 
 /** Roda fns com limite de concorrência. */
@@ -157,6 +266,28 @@ async function runLimited<T>(fns: Array<() => Promise<T>>, limit: number): Promi
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, fns.length) }, worker))
+}
+
+/** Coleta lojas piloto com quality='good' pra usar como few-shot. */
+function collectPilotReferences(
+  suggestion: CampaignSuggestion,
+  storeContexts: Map<string, StoreCopyContext>,
+  maxRefs = 2,
+): Array<{ store_name: string; language: string; copy: CopyResultEntry }> {
+  const pilotResults = suggestion.copy_results?.test ?? {}
+  const refs: Array<{ store_name: string; language: string; copy: CopyResultEntry }> = []
+  for (const [storeId, entry] of Object.entries(pilotResults)) {
+    if (entry.quality !== "good") continue
+    if (!entry.blocks || entry.blocks.length === 0) continue
+    const ctx = storeContexts.get(storeId)
+    refs.push({
+      store_name: ctx?.store_name ?? "loja piloto",
+      language: ctx?.language ?? "pt-BR",
+      copy: entry,
+    })
+    if (refs.length >= maxRefs) break
+  }
+  return refs
 }
 
 export async function generateCampaignCopy(params: {
@@ -177,7 +308,19 @@ export async function generateCampaignCopy(params: {
   if (!suggestionRaw) throw new Error("Sugestão não encontrada")
   const suggestion = suggestionRaw as CampaignSuggestion
 
-  const contexts = await loadStoreContexts(admin, orgId, storeIds)
+  if (!suggestion.email_draft || !suggestion.email_draft.blocks?.length) {
+    throw new Error(
+      "Esta campanha ainda não tem copy master. Gere a master primeiro no construtor de email.",
+    )
+  }
+
+  // Carrega contextos das lojas-alvo + das lojas piloto (pra reference)
+  const pilotStoreIds = Object.keys(suggestion.copy_results?.test ?? {})
+  const allStoreIds = Array.from(new Set([...storeIds, ...pilotStoreIds]))
+  const contexts = await loadStoreContexts(admin, orgId, allStoreIds)
+
+  const referenceCopies =
+    mode === "production" ? collectPilotReferences(suggestion, contexts) : []
 
   const results: Record<string, CopyResultEntry> = {}
   const errors: Record<string, string> = {}
@@ -201,9 +344,9 @@ export async function generateCampaignCopy(params: {
       const result = await callAnthropicJson({
         model: COPY_MODEL,
         system: SYSTEM_PROMPT,
-        user: buildUserPrompt(store, suggestion),
-        maxTokens: 1024,
-        temperature: 0.8,
+        user: buildUserPrompt(store, suggestion, referenceCopies),
+        maxTokens: 3500,
+        temperature: 0.75,
         outputSchema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
       })
       raw = result.rawText
@@ -211,16 +354,43 @@ export async function generateCampaignCopy(params: {
       tokensOut = result.tokensOutput
       costCents = result.costCents
 
-      const parsed = result.parsed as { subject?: string; preview?: string } | null
-      if (!parsed?.subject || !parsed?.preview) {
+      if (!result.parsed) {
         runStatus = "invalid_output"
-        errorMessage = result.parseError ?? "Output sem subject/preview"
+        errorMessage = result.parseError ?? "Output sem JSON"
         errors[storeId] = errorMessage
       } else {
-        results[storeId] = {
-          subject: parsed.subject,
-          preview: parsed.preview,
-          generated_at: new Date().toISOString(),
+        const candidate = result.parsed as {
+          subject?: string
+          preheader?: string
+          strategy?: string
+          blocks?: Array<Omit<EmailDraftBlock, "id"> & { id?: string }>
+        }
+        const validation = copyResultEntrySchema.safeParse({
+          subject: candidate.subject ?? "",
+          preheader: candidate.preheader ?? "",
+          strategy: candidate.strategy,
+          blocks: (candidate.blocks ?? []).map((b) => ({ ...b, id: b.id ?? newBlockId() })),
+        })
+        if (!validation.success) {
+          runStatus = "invalid_output"
+          errorMessage = validation.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; ")
+          errors[storeId] = errorMessage
+        } else {
+          const v = validation.data
+          // Preserva quality já existente se for refazer
+          const prevQuality = suggestion.copy_results?.[mode]?.[storeId]?.quality
+          results[storeId] = {
+            subject: v.subject,
+            preview: v.preheader,
+            preheader: v.preheader,
+            strategy: v.strategy,
+            blocks: v.blocks,
+            quality: prevQuality ?? null,
+            generated_at: new Date().toISOString(),
+            generated_via: "ai_master_adapt",
+          }
         }
       }
     } catch (err) {
@@ -237,7 +407,11 @@ export async function generateCampaignCopy(params: {
       kind: "copy",
       model: COPY_MODEL,
       status: runStatus,
-      input_vars: { store_id: storeId, mode },
+      input_vars: {
+        store_id: storeId,
+        mode,
+        references_count: referenceCopies.length,
+      },
       raw_output: raw,
       parsed_output: results[storeId] ?? null,
       error_message: errorMessage,
@@ -276,7 +450,61 @@ export async function generateCampaignCopy(params: {
     requested: storeIds.length,
     generated: Object.keys(results).length,
     failed: Object.keys(errors).length,
+    references: referenceCopies.length,
   })
 
   return { results, errors }
+}
+
+/** Atualiza quality de uma copy específica. Usado pelo botão "Boa". */
+export async function markCopyQuality(params: {
+  suggestionId: string
+  orgId: string
+  storeId: string
+  mode: "test" | "production"
+  quality: "good" | null
+}): Promise<void> {
+  const admin = createAdminClient()
+  const { suggestionId, orgId, storeId, mode, quality } = params
+
+  const { data } = await admin
+    .from("campaign_suggestions")
+    .select("copy_results")
+    .eq("id", suggestionId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+  if (!data) throw new Error("Sugestão não encontrada")
+
+  const copyResults = (data.copy_results ?? {}) as CampaignSuggestion["copy_results"]
+  const entry = copyResults[mode]?.[storeId]
+  if (!entry) throw new Error("Copy desta loja não encontrada — gere primeiro")
+
+  const updated: CampaignSuggestion["copy_results"] = {
+    ...copyResults,
+    [mode]: {
+      ...(copyResults[mode] ?? {}),
+      [storeId]: { ...entry, quality },
+    },
+  }
+
+  const { error } = await admin
+    .from("campaign_suggestions")
+    .update({ copy_results: updated })
+    .eq("id", suggestionId)
+  if (error) throw error
+}
+
+/** Define quais lojas são piloto. */
+export async function setPilotStores(params: {
+  suggestionId: string
+  orgId: string
+  storeIds: string[]
+}): Promise<void> {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("campaign_suggestions")
+    .update({ pilot_store_ids: params.storeIds })
+    .eq("id", params.suggestionId)
+    .eq("org_id", params.orgId)
+  if (error) throw error
 }

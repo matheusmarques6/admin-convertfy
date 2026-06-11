@@ -2,11 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
-import { X, Zap, Check, Loader2, Store, Copy as CopyIcon, RefreshCw, Edit3 } from "lucide-react"
+import {
+  X,
+  Zap,
+  Check,
+  Loader2,
+  Store,
+  Copy as CopyIcon,
+  RefreshCw,
+  Edit3,
+  ChevronDown,
+  ChevronRight,
+  Send,
+  ArrowRight,
+  Sparkles,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/lib/hooks/use-toast"
-import type { CampaignSuggestion, CopyResultEntry } from "@/types/campaign-central"
+import type { CampaignSuggestion, CopyResultEntry, EmailDraftBlock } from "@/types/campaign-central"
 
 interface StoreOption {
   id: string
@@ -46,20 +60,64 @@ interface Props {
   onSaved: () => void
 }
 
+type Phase = "pilot" | "rollout"
+
+function copyBlocksToText(entry: CopyResultEntry): string {
+  const lines: string[] = []
+  lines.push(`Assunto: ${entry.subject}`)
+  lines.push(`Preview: ${entry.preheader ?? entry.preview}`)
+  lines.push("")
+  for (const block of entry.blocks ?? []) {
+    switch (block.type) {
+      case "heading":
+        if (block.headline) lines.push(`# ${block.headline}`)
+        if (block.sub) lines.push(block.sub)
+        lines.push("")
+        break
+      case "text":
+        if (block.value) lines.push(block.value, "")
+        break
+      case "image":
+        if (block.caption) lines.push(`[Imagem: ${block.caption}]`, "")
+        break
+      case "offer":
+        if (block.value) lines.push(`>> ${block.value}`, "")
+        break
+      case "button":
+        if (block.value) lines.push(`>> [${block.value}]`, "")
+        break
+      case "divider":
+        lines.push("---", "")
+        break
+      case "footer":
+        if (block.value) lines.push(block.value)
+        break
+      case "products":
+        for (const item of block.items ?? []) {
+          lines.push(`• ${item.name ?? "Produto"} — ${item.price ?? ""}`)
+        }
+        lines.push("")
+        break
+    }
+  }
+  return lines.join("\n").trim()
+}
+
 export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const { toast } = useToast()
   const open = !!suggestion
 
-  const [mode, setMode] = useState<"test" | "production">("test")
-  const [phase, setPhase] = useState<"idle" | "generating" | "done">("idle")
-  const [statusFilter, setStatusFilter] = useState<"todas" | "ativas" | "inativas">("todas")
+  const [phase, setPhase] = useState<Phase>("pilot")
+  const [busy, setBusy] = useState<"generating" | "rollout" | null>(null)
+  const [statusFilter, setStatusFilter] = useState<"todas" | "ativas" | "inativas">("ativas")
   const [regionFilter, setRegionFilter] = useState<"todas" | "BR" | "EU" | "US">("todas")
   const [langFilter, setLangFilter] = useState<"todos" | "pt" | "en" | "es">("todos")
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [results, setResults] = useState<Record<string, CopyResultEntry>>({})
-  const [quality, setQuality] = useState<Record<string, boolean>>({})
+  const [selectedPilot, setSelectedPilot] = useState<Set<string>>(new Set())
+  const [selectedRollout, setSelectedRollout] = useState<Set<string>>(new Set())
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [qualityBusy, setQualityBusy] = useState<string | null>(null)
 
   const { data: storesData } = useSWR<{ stores: StoreOption[] }>(
     open ? "/api/stores" : null,
@@ -67,32 +125,40 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     { revalidateOnFocus: false },
   )
   const stores = useMemo(() => storesData?.stores ?? [], [storesData])
+  const storeById = useMemo(() => new Map(stores.map((s) => [s.id, s])), [stores])
 
-  // Reset ao abrir nova sugestão: pré-seleciona os targets dela
-  useEffect(() => {
-    if (suggestion) {
-      setMode("test")
-      setPhase("idle")
-      setStatusFilter("todas")
-      setRegionFilter("todas")
-      setLangFilter("todos")
-      setSelected(new Set(suggestion.targets.map((t) => t.store_id)))
-      setQuality({})
-      // Carrega resultados já persistidos do modo teste
-      setResults(suggestion.copy_results?.test ?? {})
-      if (Object.keys(suggestion.copy_results?.test ?? {}).length > 0) setPhase("done")
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestion?.id])
+  const pilotResults = (suggestion?.copy_results?.test ?? {}) as Record<string, CopyResultEntry>
+  const rolloutResults = (suggestion?.copy_results?.production ?? {}) as Record<
+    string,
+    CopyResultEntry
+  >
+  const approvedPilotCount = Object.values(pilotResults).filter((c) => c.quality === "good").length
+  const canRollout = approvedPilotCount > 0
 
-  // Ao trocar de modo, carrega o que já existe persistido naquele modo
   useEffect(() => {
     if (!suggestion) return
-    const existing = suggestion.copy_results?.[mode] ?? {}
-    setResults(existing)
-    setPhase(Object.keys(existing).length > 0 ? "done" : "idle")
+    const hasPilot = Object.keys(pilotResults).length > 0
+    const hasRollout = Object.keys(rolloutResults).length > 0
+    setPhase(hasRollout && canRollout ? "rollout" : "pilot")
+    setExpandedCards(new Set())
+    if (suggestion.pilot_store_ids?.length) {
+      setSelectedPilot(new Set(suggestion.pilot_store_ids))
+    } else {
+      const seen = new Set<string>()
+      const picks: string[] = []
+      for (const t of suggestion.targets) {
+        if (!seen.has(t.country)) {
+          seen.add(t.country)
+          picks.push(t.store_id)
+        }
+        if (picks.length >= 3) break
+      }
+      setSelectedPilot(new Set(picks))
+    }
+    setSelectedRollout(new Set())
+    if (hasPilot) setExpandedCards(new Set(Object.keys(pilotResults).slice(0, 1)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode])
+  }, [suggestion?.id])
 
   const matched = useMemo(
     () =>
@@ -107,9 +173,26 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     [stores, statusFilter, regionFilter, langFilter],
   )
 
-  const genList = matched.filter((s) => selected.has(s.id))
-
   if (!suggestion) return null
+
+  const mode = phase === "pilot" ? "test" : "production"
+  const results = phase === "pilot" ? pilotResults : rolloutResults
+  const selected = phase === "pilot" ? selectedPilot : selectedRollout
+  const setSelected = phase === "pilot" ? setSelectedPilot : setSelectedRollout
+
+  const rolloutCandidateIds = useMemo(() => {
+    if (phase !== "rollout") return new Set<string>()
+    const fromTargets = new Set(suggestion.targets.map((t) => t.store_id))
+    for (const [sid, entry] of Object.entries(pilotResults)) {
+      if (entry.quality !== "good") fromTargets.add(sid)
+    }
+    return fromTargets
+  }, [phase, suggestion.targets, pilotResults])
+
+  const visibleStores = useMemo(() => {
+    if (phase === "pilot") return matched
+    return matched.filter((s) => rolloutCandidateIds.has(s.id))
+  }, [phase, matched, rolloutCandidateIds])
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -119,7 +202,19 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
       return next
     })
 
-  const callGenerate = async (storeIds: string[]) => {
+  const toggleExpand = (id: string) =>
+    setExpandedCards((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const genList = visibleStores.filter((s) => selected.has(s.id))
+
+  const callGenerate = async (
+    storeIds: string[],
+  ): Promise<{ results: Record<string, CopyResultEntry>; errors: Record<string, string> }> => {
     const res = await fetch(
       `/api/admin/campaign-central/suggestions/${suggestion.id}/generate-copy`,
       {
@@ -130,16 +225,25 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     )
     const json = await res.json()
     if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-    return json as { results: Record<string, CopyResultEntry>; errors: Record<string, string> }
+    return json
+  }
+
+  const callSetPilot = async (storeIds: string[]) => {
+    await fetch(`/api/admin/campaign-central/suggestions/${suggestion.id}/set-pilot`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ store_ids: storeIds }),
+    })
   }
 
   const generate = async () => {
     if (genList.length === 0) return
-    setPhase("generating")
+    setBusy(phase === "pilot" ? "generating" : "rollout")
     try {
-      const { results: generated, errors } = await callGenerate(genList.map((s) => s.id))
-      setResults((prev) => ({ ...prev, ...generated }))
-      setPhase("done")
+      if (phase === "pilot") {
+        await callSetPilot(genList.map((s) => s.id))
+      }
+      const { errors } = await callGenerate(genList.map((s) => s.id))
       const failed = Object.keys(errors ?? {}).length
       if (failed > 0) {
         toast({
@@ -147,23 +251,28 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
           description: Object.values(errors)[0],
           variant: "destructive",
         })
+      } else {
+        toast({
+          title: phase === "pilot" ? "Piloto gerado" : "Rollout gerado",
+          description: `${genList.length - failed} loja(s) com copy.`,
+        })
       }
       onSaved()
     } catch (err) {
-      setPhase(Object.keys(results).length > 0 ? "done" : "idle")
       toast({
         title: "Falha ao gerar copy",
         description: err instanceof Error ? err.message : "Erro desconhecido",
         variant: "destructive",
       })
+    } finally {
+      setBusy(null)
     }
   }
 
   const regenerateOne = async (storeId: string) => {
     setRegeneratingId(storeId)
     try {
-      const { results: generated } = await callGenerate([storeId])
-      setResults((prev) => ({ ...prev, ...generated }))
+      await callGenerate([storeId])
       onSaved()
     } catch (err) {
       toast({
@@ -176,13 +285,41 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     }
   }
 
+  const toggleQuality = async (storeId: string, current: CopyResultEntry["quality"]) => {
+    setQualityBusy(storeId)
+    try {
+      const next = current === "good" ? null : "good"
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestion.id}/mark-quality`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store_id: storeId, mode, quality: next }),
+        },
+      )
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      onSaved()
+    } catch (err) {
+      toast({
+        title: "Falha ao marcar qualidade",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setQualityBusy(null)
+    }
+  }
+
   const copyToClipboard = async (id: string, entry: CopyResultEntry) => {
     try {
-      await navigator.clipboard.writeText(`${entry.subject}\n${entry.preview}`)
+      await navigator.clipboard.writeText(copyBlocksToText(entry))
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 1400)
     } catch {
-      // clipboard indisponível — ignora
+      // clipboard indisponível
     }
   }
 
@@ -222,44 +359,81 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     </div>
   )
 
-  const storeById = new Map(stores.map((s) => [s.id, s]))
+  const hasMaster = !!suggestion.email_draft?.blocks?.length
 
   return (
     <>
-      {/* Overlay */}
       <div
         className={`fixed inset-0 z-[90] bg-white/85 backdrop-blur-sm transition-opacity dark:bg-gray-950/85 ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
       />
-      {/* Panel */}
       <aside
-        className={`fixed inset-y-0 right-0 z-[91] flex w-[480px] max-w-[92vw] flex-col border-l border-border shadow-2xl transition-transform duration-200 ${
+        className={`fixed inset-y-0 right-0 z-[91] flex w-[560px] max-w-[94vw] flex-col border-l border-border shadow-2xl transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         style={{ background: "var(--background)" }}
       >
-        {/* Header */}
         <div className="shrink-0 border-b border-border bg-card px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="mb-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
-                <Edit3 size={13} /> Geração de copy
+                <Edit3 size={13} /> Adaptação por loja
               </div>
               <div className="truncate text-[16px] font-semibold tracking-tight text-foreground">
                 {suggestion.title}
               </div>
             </div>
-            <button onClick={onClose} className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground">
+            <button
+              onClick={onClose}
+              className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+            >
               <X size={18} />
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-[11.5px]">
+            <button
+              onClick={() => setPhase("pilot")}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold ${
+                phase === "pilot"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground"
+              }`}
+            >
+              <span className="inline-flex size-4 items-center justify-center rounded-full bg-current/15 text-[10px]">
+                1
+              </span>
+              Piloto
+              {approvedPilotCount > 0 && <Badge variant="positive">{approvedPilotCount} OK</Badge>}
+            </button>
+            <ArrowRight size={13} className="text-muted-foreground/50" />
+            <button
+              onClick={() => canRollout && setPhase("rollout")}
+              disabled={!canRollout}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                phase === "rollout"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground"
+              }`}
+            >
+              <span className="inline-flex size-4 items-center justify-center rounded-full bg-current/15 text-[10px]">
+                2
+              </span>
+              Rollout (todas)
             </button>
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto p-5">
-          {/* Contexto */}
+          {!hasMaster && (
+            <div className="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-700">
+              <strong className="font-bold">Falta a copy master.</strong> Abra a campanha no
+              detalhe e clique em <em>Gerar master</em> antes de adaptar por loja.
+            </div>
+          )}
+
           <div className="mb-4 rounded-[8px] border border-border bg-card px-3.5 py-3 text-[12.5px]">
             <div className="flex justify-between py-1">
               <span className="text-muted-foreground">Alvo</span>
@@ -271,20 +445,33 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               <span className="text-muted-foreground">Canal</span>
               <span className="font-semibold text-foreground/90">{suggestion.channel}</span>
             </div>
-            {suggestion.trigger && (
-              <div className="flex justify-between gap-3 border-t border-dashed border-border py-1">
-                <span className="text-muted-foreground">Gatilho</span>
-                <span className="text-right font-semibold text-foreground/90">
-                  {suggestion.trigger.label}
+            {phase === "rollout" && (
+              <div className="flex justify-between border-t border-dashed border-border py-1">
+                <span className="text-muted-foreground">Referências</span>
+                <span className="font-semibold text-emerald-600">
+                  {approvedPilotCount} piloto(s) aprovada(s)
                 </span>
               </div>
             )}
           </div>
 
-          {/* Segmentação */}
+          {phase === "pilot" ? (
+            <div className="mb-3 rounded-[6px] border border-border bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
+              <strong className="font-bold text-foreground">Etapa 1 — Piloto.</strong> Escolha 2-3
+              lojas pra validar a copy. Marque <em>Boa</em> nas que aprovar — elas serão a
+              referência de qualidade no rollout.
+            </div>
+          ) : (
+            <div className="mb-3 rounded-[6px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
+              <strong className="font-bold">Etapa 2 — Rollout.</strong> A IA vai usar as{" "}
+              {approvedPilotCount} adaptação(ões) aprovada(s) como referência pra gerar as demais
+              lojas com o mesmo padrão de qualidade.
+            </div>
+          )}
+
           <div className="mb-4">
             <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Gerar para
+              Seleção de lojas
             </div>
             <FilterRow
               label="Status"
@@ -292,8 +479,8 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               onPick={(k) => setStatusFilter(k as typeof statusFilter)}
               options={[
                 { k: "todas", label: "Todas" },
-                { k: "ativas", label: "Somente ativas" },
-                { k: "inativas", label: "Somente inativas" },
+                { k: "ativas", label: "Ativas" },
+                { k: "inativas", label: "Inativas" },
               ]}
             />
             <FilterRow
@@ -319,14 +506,13 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               ]}
             />
 
-            {/* Lista de lojas */}
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Lojas {mode === "test" ? "para testar" : "selecionadas"}
+                {phase === "pilot" ? "Lojas piloto" : "Lojas para rollout"}
               </span>
               <span className="flex gap-3">
                 <button
-                  onClick={() => setSelected(new Set(matched.map((s) => s.id)))}
+                  onClick={() => setSelected(new Set(visibleStores.map((s) => s.id)))}
                   className="text-[11.5px] font-semibold text-primary hover:underline"
                 >
                   Todas
@@ -340,19 +526,19 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               </span>
             </div>
             <div className="max-h-44 overflow-y-auto rounded-[6px] border border-border bg-card">
-              {matched.length === 0 && (
+              {visibleStores.length === 0 && (
                 <div className="px-3.5 py-3.5 text-center text-[12px] text-muted-foreground">
                   Nenhuma loja com esses filtros.
                 </div>
               )}
-              {matched.map((s, i) => {
+              {visibleStores.map((s, i) => {
                 const on = selected.has(s.id)
                 return (
                   <button
                     key={s.id}
                     onClick={() => toggle(s.id)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/40 ${
-                      i < matched.length - 1 ? "border-b border-border/50" : ""
+                      i < visibleStores.length - 1 ? "border-b border-border/50" : ""
                     }`}
                   >
                     <span
@@ -383,177 +569,234 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               <Store size={14} />
               <span>
                 <strong className="font-bold tabular-nums">
-                  {genList.length} de {matched.length}
+                  {genList.length} de {visibleStores.length}
                 </strong>{" "}
-                loja{matched.length !== 1 ? "s" : ""} {mode === "test" ? "para o teste" : "para produção"}
+                loja{visibleStores.length !== 1 ? "s" : ""} selecionada
+                {genList.length !== 1 ? "s" : ""}
               </span>
             </div>
           </div>
 
-          {/* Modo */}
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Objetivo da geração
-          </div>
-          <div className="mb-4 flex gap-2">
-            {(
-              [
-                { key: "test", title: "Teste", sub: "copy real por loja p/ avaliar" },
-                { key: "production", title: "Produção", sub: "versão final p/ enviar" },
-              ] as const
-            ).map((m) => {
-              const on = mode === m.key
-              return (
-                <button
-                  key={m.key}
-                  onClick={() => setMode(m.key)}
-                  className={`flex-1 rounded-[8px] border px-3 py-2.5 text-left transition-colors ${
-                    on
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border bg-card hover:border-primary/40"
-                  }`}
-                >
-                  <div className={`text-[13px] font-semibold ${on ? "text-primary" : "text-foreground/90"}`}>
-                    {m.title}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">{m.sub}</div>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Gerar / resultados */}
-          {phase === "idle" && (
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={generate}
-              disabled={genList.length === 0}
-            >
+          <Button
+            size="lg"
+            className="mb-4 w-full"
+            onClick={generate}
+            disabled={busy !== null || genList.length === 0 || !hasMaster}
+          >
+            {busy ? (
+              <Loader2 size={16} className="mr-1.5 animate-spin" />
+            ) : phase === "pilot" ? (
               <Zap size={16} className="mr-1.5" />
-              {mode === "test"
-                ? `Gerar copy de ${genList.length} loja${genList.length !== 1 ? "s" : ""}`
-                : `Gerar versão final · ${genList.length} loja${genList.length !== 1 ? "s" : ""}`}
-            </Button>
-          )}
+            ) : (
+              <Sparkles size={16} className="mr-1.5" />
+            )}
+            {busy === "generating" || busy === "rollout"
+              ? "Gerando…"
+              : phase === "pilot"
+              ? `Gerar piloto · ${genList.length} loja${genList.length !== 1 ? "s" : ""}`
+              : `Gerar para ${genList.length} loja${genList.length !== 1 ? "s" : ""}`}
+          </Button>
 
-          {phase === "generating" && (
-            <div className="flex items-center justify-center gap-2.5 rounded-[8px] border border-border bg-card px-4 py-5 text-[13px] text-muted-foreground">
-              <Loader2 size={16} className="animate-spin text-primary" />
-              Gerando copy com base no contexto de cada loja…
-            </div>
-          )}
-
-          {phase === "done" && (
+          {Object.keys(results).length > 0 && (
             <div>
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-[12.5px] font-semibold text-foreground/90">
-                  Copy gerada para {Object.keys(results).length} loja
-                  {Object.keys(results).length !== 1 ? "s" : ""}
+                  {Object.keys(results).length} loja
+                  {Object.keys(results).length !== 1 ? "s" : ""} com copy
+                  {phase === "pilot" && (
+                    <span className="ml-1.5 text-emerald-600">
+                      ({approvedPilotCount} aprovada{approvedPilotCount !== 1 ? "s" : ""})
+                    </span>
+                  )}
                 </span>
-                <button
-                  onClick={generate}
-                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
-                >
-                  <Zap size={13} /> Regerar tudo
-                </button>
-              </div>
-              <div className="mb-3 text-[11.5px] text-muted-foreground">
-                Avalie a qualidade loja a loja antes de soltar pra todas.
               </div>
               <div className="flex flex-col gap-3">
-                {genList
-                  .filter((s) => results[s.id])
-                  .map((s) => {
-                    const entry = results[s.id]
-                    const good = quality[s.id]
-                    const isRegen = regeneratingId === s.id
-                    return (
+                {Object.entries(results).map(([storeId, entry]) => {
+                  const store = storeById.get(storeId)
+                  const isGood = entry.quality === "good"
+                  const isExpanded = expandedCards.has(storeId)
+                  const isRegen = regeneratingId === storeId
+                  return (
+                    <div
+                      key={storeId}
+                      className={`overflow-hidden rounded-[8px] border bg-card ${
+                        isGood ? "border-emerald-300" : "border-border"
+                      }`}
+                    >
                       <div
-                        key={s.id}
-                        className={`overflow-hidden rounded-[8px] border bg-card ${
-                          good ? "border-emerald-300" : "border-border"
+                        className={`flex items-center gap-2 border-b border-border/50 px-3.5 py-2 ${
+                          isGood ? "bg-emerald-50" : "bg-muted/40"
                         }`}
                       >
-                        <div
-                          className={`flex items-center gap-2 border-b border-border/50 px-3.5 py-2 ${
-                            good ? "bg-emerald-50" : "bg-muted/40"
+                        <span className="truncate text-[12.5px] font-semibold text-foreground">
+                          {store?.store_name ?? storeId}
+                        </span>
+                        {store && <Badge variant="neutral">{countryKey(store.country)}</Badge>}
+                        {store && (
+                          <Badge variant="info">
+                            {LANG_LABEL[langKey(store.language)] ?? "—"}
+                          </Badge>
+                        )}
+                        <div className="flex-1" />
+                        {isGood && (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600">
+                            <Check size={13} /> Aprovada
+                          </span>
+                        )}
+                      </div>
+                      <div className="px-3.5 py-3">
+                        <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Assunto
+                        </div>
+                        <div className="mb-2.5 text-[13.5px] font-semibold text-foreground">
+                          {entry.subject}
+                        </div>
+                        <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Preview
+                        </div>
+                        <div className="mb-2 text-[12.5px] leading-normal text-muted-foreground">
+                          {entry.preheader ?? entry.preview}
+                        </div>
+                        {entry.blocks && entry.blocks.length > 0 && (
+                          <button
+                            onClick={() => toggleExpand(storeId)}
+                            className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline"
+                          >
+                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                            {isExpanded
+                              ? "Ocultar email completo"
+                              : `Ver email completo (${entry.blocks.length} blocos)`}
+                          </button>
+                        )}
+                        {isExpanded && entry.blocks && (
+                          <div className="mt-2.5 space-y-2.5 rounded-[6px] border border-border/70 bg-muted/30 p-3">
+                            {entry.blocks.map((b, i) => (
+                              <BlockPreview key={b.id ?? i} block={b} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 px-3.5 pb-3">
+                        <button
+                          onClick={() => copyToClipboard(storeId, entry)}
+                          className={`inline-flex items-center gap-1 text-[11.5px] font-semibold ${
+                            copiedId === storeId
+                              ? "text-emerald-600"
+                              : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <span className="text-[12.5px] font-semibold text-foreground">
-                            {s.store_name}
-                          </span>
-                          <Badge variant="neutral">{countryKey(s.country)}</Badge>
-                          <Badge variant="info">{LANG_LABEL[langKey(s.language)] ?? "—"}</Badge>
-                          <div className="flex-1" />
-                          {good && (
-                            <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600">
-                              <Check size={13} /> Aprovada
-                            </span>
+                          <CopyIcon size={13} />
+                          {copiedId === storeId ? "Copiado" : "Copiar tudo"}
+                        </button>
+                        <div className="flex-1" />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => regenerateOne(storeId)}
+                          disabled={isRegen || busy !== null}
+                        >
+                          {isRegen ? (
+                            <Loader2 size={13} className="mr-1 animate-spin" />
+                          ) : (
+                            <RefreshCw size={13} className="mr-1" />
                           )}
-                        </div>
-                        <div className="px-3.5 py-3">
-                          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Assunto
-                          </div>
-                          <div className="mb-2.5 text-[13.5px] font-semibold text-foreground">
-                            {entry.subject}
-                          </div>
-                          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Preview
-                          </div>
-                          <div className="text-[12.5px] leading-normal text-muted-foreground">
-                            {entry.preview}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 px-3.5 pb-3">
-                          <button
-                            onClick={() => copyToClipboard(s.id, entry)}
-                            className={`inline-flex items-center gap-1 text-[11.5px] font-semibold ${
-                              copiedId === s.id ? "text-emerald-600" : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            {copiedId === s.id ? <Check size={13} /> : <CopyIcon size={13} />}
-                            {copiedId === s.id ? "Copiado" : "Copiar"}
-                          </button>
-                          <div className="flex-1" />
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => regenerateOne(s.id)}
-                            disabled={isRegen}
-                          >
-                            {isRegen ? (
-                              <Loader2 size={13} className="mr-1 animate-spin" />
-                            ) : (
-                              <RefreshCw size={13} className="mr-1" />
-                            )}
-                            Refazer
-                          </Button>
-                          <Button
-                            variant={good ? "primary" : "secondary"}
-                            size="sm"
-                            onClick={() =>
-                              setQuality((p) => ({ ...p, [s.id]: !p[s.id] }))
-                            }
-                          >
+                          Refazer
+                        </Button>
+                        <Button
+                          variant={isGood ? "primary" : "secondary"}
+                          size="sm"
+                          onClick={() => toggleQuality(storeId, entry.quality ?? null)}
+                          disabled={qualityBusy === storeId}
+                        >
+                          {qualityBusy === storeId ? (
+                            <Loader2 size={13} className="mr-1 animate-spin" />
+                          ) : (
                             <Check size={13} className="mr-1" />
-                            {good ? "Aprovada" : "Boa"}
-                          </Button>
-                        </div>
+                          )}
+                          {isGood ? "Aprovada" : "Boa"}
+                        </Button>
                       </div>
-                    )
-                  })}
-                {genList.some((s) => !results[s.id]) && (
-                  <div className="rounded-[6px] border border-dashed border-border px-3.5 py-2.5 text-[12px] text-muted-foreground">
-                    {genList.filter((s) => !results[s.id]).length} loja(s) ainda sem copy — clique
-                    em &quot;Regerar tudo&quot; ou ajuste a seleção.
-                  </div>
-                )}
+                    </div>
+                  )
+                })}
               </div>
+              {phase === "pilot" && canRollout && (
+                <button
+                  onClick={() => setPhase("rollout")}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                  <Send size={14} /> Avançar para rollout (todas as outras lojas)
+                  <ArrowRight size={14} />
+                </button>
+              )}
             </div>
           )}
         </div>
       </aside>
     </>
   )
+}
+
+function BlockPreview({ block }: { block: EmailDraftBlock }) {
+  switch (block.type) {
+    case "image":
+      return (
+        <div className="rounded-[4px] border border-dashed border-border bg-muted px-2 py-2 font-mono text-[10.5px] text-muted-foreground">
+          [Imagem] {block.caption ?? ""}
+        </div>
+      )
+    case "heading":
+      return (
+        <div>
+          <div className="text-[14px] font-bold leading-tight text-foreground">
+            {block.headline ?? "—"}
+          </div>
+          {block.sub && (
+            <div className="mt-0.5 text-[12px] text-muted-foreground">{block.sub}</div>
+          )}
+        </div>
+      )
+    case "text":
+      return (
+        <div className="text-[12.5px] leading-relaxed text-foreground/85">{block.value}</div>
+      )
+    case "offer":
+      return (
+        <div className="rounded-[4px] border border-primary/20 bg-primary/5 px-2 py-1.5 text-center text-[12.5px] font-semibold text-primary">
+          {block.value}
+        </div>
+      )
+    case "button":
+      return (
+        <div className="text-center">
+          <span className="inline-block rounded-[4px] bg-primary px-4 py-1.5 text-[12px] font-semibold text-white">
+            {block.value}
+          </span>
+        </div>
+      )
+    case "divider":
+      return <hr className="border-border" />
+    case "footer":
+      return (
+        <div className="text-center text-[10.5px] text-muted-foreground/70">{block.value}</div>
+      )
+    case "products": {
+      const cols = block.columns ?? 3
+      return (
+        <div className={`grid gap-2 ${cols === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+          {(block.items ?? []).map((it, i) => (
+            <div key={i} className="rounded-[4px] border border-border bg-card p-1.5">
+              <div className="mb-1 h-12 rounded-[3px] border border-dashed border-border/70 bg-muted/60" />
+              <div className="truncate text-[11px] font-semibold text-foreground">
+                {it.name ?? "—"}
+              </div>
+              <div className="text-[10.5px] font-bold text-primary">{it.price ?? ""}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    default:
+      return null
+  }
 }
