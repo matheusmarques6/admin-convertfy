@@ -900,8 +900,10 @@ function DispatchEmailCopiesButton({
       const raw = err instanceof Error ? err.message : "Erro desconhecido"
       // Traduz os reasons crus do dispatch em mensagens acionáveis.
       const REASON_MESSAGES: Record<string, string> = {
+        no_draft_emails:
+          "Todos os emails desses flows já saíram de rascunho. Desmarque 'Apenas emails em draft' para regerar (substitui a copy existente).",
         no_emails:
-          "Nenhum email em rascunho. Desmarque 'somente rascunhos' para regerar os emails existentes.",
+          "Os flows selecionados não têm emails e não foi possível criar os defaults. Verifique os flows da loja.",
         no_flows: "A loja não tem flows. Inicialize os flows antes de gerar copies.",
         no_url_configured: "N8N_EMAIL_COPY_WEBHOOK_URL não configurada no ambiente.",
         store_not_found: "Loja não encontrada.",

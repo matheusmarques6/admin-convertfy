@@ -11,7 +11,10 @@
 
 import { randomUUID } from "crypto"
 
+import type { SupabaseClient } from "@supabase/supabase-js"
+
 import { createAdminClient } from "@/lib/supabase/server"
+import { DEFAULT_EMAILS, type FlowTypeKey } from "@/lib/services/flow-seed.service"
 import { logger } from "@/lib/logger"
 import {
   ensureBlocksSeeded,
@@ -123,6 +126,53 @@ interface CompetitorRow {
   url: string | null
   posicionamento: string | null
   notas: string | null
+}
+
+/**
+ * Auto-seed: flows selecionados SEM NENHUM email ganham os emails default
+ * (mesma fonte do init-flows / trigger SQL de auto-seed). Torna o dispatch
+ * auto-curativo para lojas onde o seed nunca rodou ou os emails foram
+ * apagados — antes isso travava o disparo com "no_emails" sem saída na UI.
+ * Flows que já têm qualquer email não são tocados (não ressuscita deleção
+ * parcial intencional). Retorna o total de emails criados.
+ */
+async function seedMissingEmails(
+  admin: SupabaseClient,
+  flows: EmailFlowRow[],
+): Promise<number> {
+  const flowIds = flows.map((f) => f.id)
+  const { data: existing, error } = await admin
+    .from("email_flow_emails")
+    .select("flow_id")
+    .in("flow_id", flowIds)
+  if (error) throw error
+  const withEmails = new Set((existing ?? []).map((e) => e.flow_id as string))
+
+  const rows: Array<{
+    flow_id: string
+    number: number
+    name: string
+    status: "draft"
+    delay_hours: number
+  }> = []
+  for (const flow of flows) {
+    if (withEmails.has(flow.id)) continue
+    const defaults = DEFAULT_EMAILS[flow.flow_type as FlowTypeKey]
+    if (!defaults) continue
+    for (const e of defaults) {
+      rows.push({
+        flow_id: flow.id,
+        number: e.number,
+        name: e.name,
+        status: "draft",
+        delay_hours: e.delay_hours,
+      })
+    }
+  }
+  if (rows.length === 0) return 0
+  const { error: insErr } = await admin.from("email_flow_emails").insert(rows)
+  if (insErr) throw insErr
+  return rows.length
 }
 
 export async function dispatchEmailCopyWebhook(
@@ -265,8 +315,54 @@ export async function dispatchEmailCopyWebhook(
     return { ok: false, flow_count: 0, email_count: 0, reason: "emails_query_failed" }
   }
 
-  const emails = (emailsRes.data ?? []) as EmailRow[]
+  let emails = (emailsRes.data ?? []) as EmailRow[]
   if (emails.length === 0) {
+    // Auto-cura: flows sem NENHUM email (seed nunca rodou / emails apagados)
+    // ganham os defaults e o dispatch segue. Os novos nascem `draft`, então
+    // passam no filtro onlyDrafts naturalmente.
+    let seeded = 0
+    try {
+      seeded = await seedMissingEmails(admin, flows)
+    } catch (err) {
+      log.error("email_copy.webhook.autoseed.error", {
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    if (seeded > 0) {
+      log.info("email_copy.webhook.autoseed", { storeId, seeded })
+      let retryQuery = admin
+        .from("email_flow_emails")
+        .select("id, flow_id, number, name, status")
+        .in("flow_id", flowIds)
+        .order("number", { ascending: true })
+      if (options.onlyDrafts) {
+        retryQuery = retryQuery.eq("status", "draft")
+      }
+      const retryRes = await retryQuery
+      if (retryRes.error) {
+        log.error("email_copy.webhook.emails.error", { storeId, error: retryRes.error.message })
+        return { ok: false, flow_count: 0, email_count: 0, reason: "emails_query_failed" }
+      }
+      emails = (retryRes.data ?? []) as EmailRow[]
+    }
+  }
+
+  if (emails.length === 0) {
+    // Distingue "não há drafts" (existe email, mas nenhum em draft) de
+    // "não há emails" — antes os dois caíam em no_emails e a instrução de
+    // desmarcar o checkbox não resolvia o segundo caso.
+    if (options.onlyDrafts) {
+      const { data: anyEmails } = await admin
+        .from("email_flow_emails")
+        .select("id")
+        .in("flow_id", flowIds)
+        .limit(1)
+      if (anyEmails && anyEmails.length > 0) {
+        log.warn("email_copy.webhook.skip", { storeId, reason: "no_draft_emails" })
+        return { ok: false, flow_count: 0, email_count: 0, reason: "no_draft_emails" }
+      }
+    }
     log.warn("email_copy.webhook.skip", { storeId, reason: "no_emails" })
     return { ok: false, flow_count: 0, email_count: 0, reason: "no_emails" }
   }

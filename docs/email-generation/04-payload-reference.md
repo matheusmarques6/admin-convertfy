@@ -354,7 +354,8 @@ Quando `dispatchEmailCopyWebhook` retorna `{ ok: false, reason }`:
 | `no_url_configured` | `N8N_EMAIL_COPY_WEBHOOK_URL` ausente | Configurar env na Vercel |
 | `store_not_found` | `storeId` inválido | Conferir UUID |
 | `no_flows` | Loja sem flows em `email_flows` | Criar flows no workspace |
-| `no_emails` | Flows sem emails | Adicionar emails ao flow |
+| `no_draft_emails` | `only_drafts=true` e nenhum email em `draft` (todos já gerados) | Desmarcar "Apenas emails em draft" para regerar |
+| `no_emails` | Flows sem emails E o auto-seed dos defaults falhou (flows sem zero emails são semeados automaticamente antes de falhar) | Ver log `email_copy.webhook.autoseed.error` |
 | `flows_query_failed` / `emails_query_failed` / `blocks_query_failed` | Erro SQL | Ver log `email_copy.webhook.*.error` |
 
 E erros do POST HTTP em si:

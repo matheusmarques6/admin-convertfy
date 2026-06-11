@@ -176,7 +176,7 @@ Diferente do trigger 1, este é **síncrono**: aguarda a resposta do `dispatchEm
   "ok": true,
   "flow_count": 4,
   "email_count": 12,
-  "reason": null // ou: "no_url_configured" | "store_not_found" | "no_flows" | "no_emails"
+  "reason": null // ou: "no_url_configured" | "store_not_found" | "no_flows" | "no_draft_emails" | "no_emails"
 }
 ```
 
