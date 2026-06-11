@@ -27,17 +27,25 @@ function useOpenRouter(): boolean {
 
 /**
  * Normaliza model slug pra OpenRouter (vendor/model). Aceita:
- *   - "anthropic/claude-sonnet-4.6"  → mantém
+ *   - "anthropic/claude-sonnet-4.6"  → mantém (qualquer vendor/...)
  *   - "claude-sonnet-4-6"            → "anthropic/claude-sonnet-4.6"
  *   - "claude-opus-4-7"              → "anthropic/claude-opus-4.7"
  *   - "claude-haiku-4-5-20251001"    → "anthropic/claude-haiku-4.5"
+ *   - "gpt-5-1" / "gpt-5.1"          → "openai/gpt-5.1"
+ *   - "gpt-5-4" / "gpt-5.4"          → "openai/gpt-5.4"
+ *   - "gemini-3-5-flash"             → "google/gemini-3.5-flash"
  */
 function toOpenRouterModel(model: string, online = false): string {
   let slug = model
   if (!slug.includes("/")) {
-    // claude-sonnet-4-6 → claude-sonnet-4.6
     const cleaned = slug.replace(/(\d+)-(\d+)(?:-\d{4,8})?$/, "$1.$2")
-    slug = `anthropic/${cleaned}`
+    if (cleaned.startsWith("gpt-")) {
+      slug = `openai/${cleaned}`
+    } else if (cleaned.startsWith("gemini-")) {
+      slug = `google/${cleaned}`
+    } else {
+      slug = `anthropic/${cleaned}`
+    }
   }
   return online ? `${slug}:online` : slug
 }
@@ -65,7 +73,11 @@ export function computeCostCents(model: string, inputTokens: number, outputToken
     "claude-opus-4-8": { input: 15.0, output: 75.0 },
     "claude-opus-4-7": { input: 15.0, output: 75.0 },
     "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
+    "claude-sonnet-4-5": { input: 3.0, output: 15.0 },
     "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
+    "gpt-5-1": { input: 1.25, output: 10.0 },
+    "gpt-5-4": { input: 3.75, output: 30.0 },
+    "gemini-3-5-flash": { input: 0.075, output: 0.3 },
   }
   const p = pricing[model] || { input: 3.0, output: 15.0 }
   const usd = (inputTokens / 1_000_000) * p.input + (outputTokens / 1_000_000) * p.output

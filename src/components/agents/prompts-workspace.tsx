@@ -15,6 +15,7 @@ import {
   Blocks,
   Megaphone,
   Zap,
+  Compass,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
@@ -33,6 +34,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   assembler: "Montador",
   campaign_suggestion: "Campanhas",
   campaign_trends: "Trends",
+  campaign_architect: "Arquiteto",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -44,6 +46,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   assembler: Blocks,
   campaign_suggestion: Megaphone,
   campaign_trends: Zap,
+  campaign_architect: Compass,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

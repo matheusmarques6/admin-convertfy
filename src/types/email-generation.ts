@@ -60,8 +60,11 @@ export type AgentType =
   // ── Central de Campanhas ────────────────────────────────
   // campaign_suggestion: gera sugestões de campanha por ciclo semanal.
   // campaign_trends: captura tendências por país via web search.
+  // campaign_architect: arquiteto de estrutura (Single Day) — gera blueprint
+  //   de blocos (FIXO/PREENCHER/DINAMICO) que o redator depois preenche.
   | "campaign_suggestion"
   | "campaign_trends"
+  | "campaign_architect"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em

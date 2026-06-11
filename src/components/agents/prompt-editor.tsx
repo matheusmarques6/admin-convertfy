@@ -117,12 +117,24 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "today", desc: "Data de hoje (YYYY-MM-DD)" },
     { key: "excluded_dates", desc: "Datas comerciais já no calendário (não repetir)" },
   ],
+  // Arquiteto Single Day — gera blueprint de blocos (FIXO/PREENCHER/DINAMICO)
+  // Vars renderizadas por campaign-architect.service:buildArchitectVars
+  campaign_architect: [
+    { key: "briefing", desc: "Perfil da marca (o que ela PODE entregar: frete, garantia, prova social)" },
+    { key: "ideia_campanha", desc: "A oferta da campanha (ex.: '24h, X% OFF + VIP acaba hoje')" },
+    { key: "produtos", desc: "Dados disponíveis pro grid (nome, preço de/por, prova social)" },
+    { key: "blocos_disponiveis", desc: "Enum de blocos permitidos (PREHEADER, HERO, GRID_PRODUTOS, ...)" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [
   "claude-sonnet-4-6",
+  "claude-sonnet-4-5",
   "claude-opus-4-7",
   "claude-haiku-3-5",
+  "gpt-5-1",
+  "gpt-5-4",
+  "gemini-3-5-flash",
 ]
 const MODEL_OPTIONS_IMAGE = ["gpt-image-2", "gpt-image-1"]
 
@@ -278,7 +290,8 @@ export function PromptEditor({ agentType, activePrompt, onSaved }: Props) {
   }
 
   const modelOptions = agentType === "image" ? MODEL_OPTIONS_IMAGE : MODEL_OPTIONS_TEXT
-  const supportsSchema = agentType === "copy" || agentType === "qa"
+  const supportsSchema =
+    agentType === "copy" || agentType === "qa" || agentType === "campaign_architect"
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
