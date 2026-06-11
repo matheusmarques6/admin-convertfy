@@ -72,7 +72,7 @@ export function CampaignDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-md md:p-7"
+      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-white/90 p-4 backdrop-blur-md md:p-7 dark:bg-gray-950/90"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

@@ -119,7 +119,7 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-white/90 p-4 backdrop-blur-md dark:bg-gray-950/90"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

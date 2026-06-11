@@ -228,7 +228,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     <>
       {/* Overlay */}
       <div
-        className={`fixed inset-0 z-[90] bg-gray-900/60 backdrop-blur-sm transition-opacity ${
+        className={`fixed inset-0 z-[90] bg-white/85 backdrop-blur-sm transition-opacity dark:bg-gray-950/85 ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
