@@ -9,8 +9,6 @@
  * Padrão fire-and-forget igual a dispatchBriefingWebhook.
  */
 
-import { randomUUID } from "crypto"
-
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -20,10 +18,6 @@ import {
   ensureBlocksSeeded,
   reconcileBlocksAdditive,
 } from "@/lib/agents/seed-blocks"
-import {
-  generateForEmails,
-  isArchitectConfigured,
-} from "@/lib/agents/architect/generate.service"
 import { loadEffectiveBlueprintsBatch } from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
@@ -405,35 +399,14 @@ export async function dispatchEmailCopyWebhook(
   // Falhas individuais são logadas mas não bloqueiam o dispatch.
   const flowsById = new Map(flows.map((f) => [f.id, f]))
 
-  // Component Assembler (Epic AE): gera blueprint + reference por (loja×email)
-  // ANTES do seed, para que os blocos venham do blueprint gerado por loja.
-  // Guard evita latência quando a biblioteca não está configurada; o try/catch
-  // garante que falha aqui não bloqueia o onboarding (seed cai no global/default).
-  try {
-    if (await isArchitectConfigured()) {
-      const architectEmails = emails
-        .map((e) => {
-          const flow = flowsById.get(e.flow_id)
-          return flow
-            ? { flowType: flow.flow_type, emailNumber: e.number }
-            : null
-        })
-        .filter(
-          (x): x is { flowType: string; emailNumber: number } => x !== null,
-        )
-      await generateForEmails(
-        storeId,
-        randomUUID(),
-        architectEmails,
-        options.triggeredBy,
-      )
-    }
-  } catch (err) {
-    log.warn("email_copy.webhook.architect_failed", {
-      storeId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  // Component Assembler (Epic AE): NÃO roda mais inline no dispatch. Com o
+  // Montador em Opus gerando HTML completo (60-180s/email), rodar aqui
+  // estourava o maxDuration da função e o dispatch inteiro morria com 504
+  // antes de chegar no n8n. O dispatch usa o que existir em
+  // store_email_references/store_email_blueprints e cai no fallback global
+  // (email_reference_templates / email_blueprints / DEFAULT_BLUEPRINTS) para
+  // o que faltar. Gerar/regenerar referência por loja é ação explícita via
+  // POST /api/admin/stores/[id]/generate-blueprints ("Regenerar").
 
   await Promise.all(
     emails.map(async (e) => {

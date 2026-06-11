@@ -90,11 +90,6 @@ vi.mock("@/lib/agents/seed-blocks", () => ({
   reconcileBlocksAdditive: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock("@/lib/agents/architect/generate.service", () => ({
-  isArchitectConfigured: vi.fn().mockResolvedValue(false),
-  generateForEmails: vi.fn().mockResolvedValue(undefined),
-}))
-
 vi.mock("@/lib/agents/architect/blueprint-loader", () => ({
   loadEffectiveBlueprintsBatch: vi.fn().mockResolvedValue(new Map()),
 }))
