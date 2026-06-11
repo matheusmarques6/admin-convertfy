@@ -119,11 +119,13 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4"
+      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-md"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
     >
       <div
-        className="max-h-[90vh] w-[540px] max-w-full overflow-y-auto rounded-[10px] bg-card shadow-2xl"
+        className="max-h-[90vh] w-[540px] max-w-full overflow-y-auto rounded-[10px] border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">

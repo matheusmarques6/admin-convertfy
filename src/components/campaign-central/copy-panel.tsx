@@ -228,14 +228,14 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     <>
       {/* Overlay */}
       <div
-        className={`fixed inset-0 z-40 bg-gray-900/30 transition-opacity ${
+        className={`fixed inset-0 z-[90] bg-gray-900/60 backdrop-blur-sm transition-opacity ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
       />
       {/* Panel */}
       <aside
-        className={`fixed inset-y-0 right-0 z-[41] flex w-[480px] max-w-[92vw] flex-col border-l border-border bg-muted/20 shadow-2xl transition-transform duration-200 ${
+        className={`fixed inset-y-0 right-0 z-[91] flex w-[480px] max-w-[92vw] flex-col border-l border-border shadow-2xl transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         style={{ background: "var(--background)" }}

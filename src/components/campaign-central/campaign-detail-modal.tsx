@@ -72,11 +72,13 @@ export function CampaignDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-4 md:p-7"
+      className="fixed inset-0 z-[100] isolate flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-md md:p-7"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
     >
       <div
-        className="flex h-[88vh] w-[1080px] max-w-full flex-col overflow-hidden rounded-[10px] bg-muted/30 shadow-2xl"
+        className="flex h-[88vh] w-[1080px] max-w-full flex-col overflow-hidden rounded-[10px] border border-border bg-muted/30 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
