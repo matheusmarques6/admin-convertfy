@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
+import { isInsufficientCreditsMessage } from "../openrouter-invoke"
 
 const log = logger.child("ArchitectLLM")
 
@@ -179,6 +180,17 @@ async function invokeViaOpenRouter(
 
     if (!resp.ok) {
       const errBody = await resp.text().catch(() => "")
+      // Sem crédito → alerta CTO (deduplicado). Fire-and-forget.
+      if (resp.status === 402 || isInsufficientCreditsMessage(errBody)) {
+        void import("../generation-notify.service")
+          .then((m) =>
+            m.notifyCreditsExhausted({
+              provider: "OpenRouter",
+              detail: errBody.slice(0, 200),
+            }),
+          )
+          .catch(() => {})
+      }
       throw new Error(`OpenRouter HTTP ${resp.status}: ${errBody.slice(0, 200)}`)
     }
 

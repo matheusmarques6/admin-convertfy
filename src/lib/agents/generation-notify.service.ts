@@ -440,6 +440,81 @@ export async function notifyBatchAllFailed(params: {
   }
 }
 
+// ── Notifica que o provedor (OpenRouter) ficou SEM CRÉDITO ─────────────
+// Disparado pelos invokers quando a API retorna 402 / "insufficient credits".
+// É um sinal sistêmico (todo o pipeline para) → vai pra tag CTO (in-app +
+// email). Deduplicado por provedor (1 alerta/hora) pra não spammar quando
+// vários emails batem no 402 ao mesmo tempo.
+export async function notifyCreditsExhausted(params: {
+  provider: string
+  detail?: string
+}): Promise<void> {
+  try {
+    const dedupKey = `provider_credits_exhausted:${params.provider}`
+    if (await checkDedupKey(dedupKey)) return
+
+    const title = `Sem crédito na ${params.provider}`
+    const body = `A geração de emails PAROU: ${params.provider} retornou "sem crédito". Recarregue o crédito e re-renderize para retomar o fluxo.`
+    const link = `/admin/settings/email-generation?tab=agentes`
+
+    const count = await notificationService.notifyByTag(["cto"], {
+      title,
+      body,
+      type: "error",
+      link,
+      event_id: `provider-credits-${params.provider}`,
+      metadata: {
+        dedup_key: dedupKey,
+        source: "email-generation",
+        provider: params.provider,
+        detail: params.detail ?? null,
+      },
+    })
+
+    if (count > 0) {
+      try {
+        const adminCli = createAdminClient()
+        const { data: ctos } = await adminCli
+          .from("profiles")
+          .select("email")
+          .overlaps("tags", ["cto"])
+        const toEmails = ((ctos ?? []) as Array<{ email: string | null }>)
+          .map((p) => p.email)
+          .filter((e): e is string => Boolean(e))
+
+        const html = renderErrorEmailTemplate({
+          storeName: "Pipeline de geração",
+          emailName: `Provedor ${params.provider}`,
+          agent: "pipeline",
+          model: params.provider,
+          error: params.detail || "Insufficient credits (402)",
+          durationMs: 0,
+          costCents: 0,
+          logUrl: `${APP_URL}${link}`,
+        })
+        await sendTransactionalBatch({
+          to: toEmails,
+          subject: `[Convertfy] ALERTA: sem crédito na ${params.provider}`,
+          html,
+        })
+      } catch (err) {
+        log.warn("notify.credits_exhausted.email_send_failed", {
+          error: (err as Error).message,
+        })
+      }
+    }
+
+    log.info("notify.fired", {
+      event_type: "provider_credits_exhausted",
+      recipients_count: count,
+      tags: ["cto"],
+      provider: params.provider,
+    })
+  } catch (err) {
+    log.warn("notify.credits_exhausted.fatal", { error: (err as Error).message })
+  }
+}
+
 export async function notifyGenerationError(params: {
   runId: string
   storeId: string

@@ -16,6 +16,13 @@ export function isOpenRouterModel(model: string): boolean {
   return model.includes("/")
 }
 
+/** Detecta erro de crédito esgotado (402 / "insufficient credits") do provedor. */
+export function isInsufficientCreditsMessage(msg: string): boolean {
+  return /insufficient credits|credit balance.*too low|purchase credits|add more.*credit|\b402\b/i.test(
+    msg,
+  )
+}
+
 export interface OpenRouterInvokeInput {
   model: string
   systemPrompt: string
@@ -68,6 +75,17 @@ export async function invokeOpenRouter(
 
     if (!resp.ok) {
       const errBody = await resp.text().catch(() => "")
+      // Sem crédito → alerta CTO (deduplicado). Fire-and-forget, não bloqueia.
+      if (resp.status === 402 || isInsufficientCreditsMessage(errBody)) {
+        void import("./generation-notify.service")
+          .then((m) =>
+            m.notifyCreditsExhausted({
+              provider: "OpenRouter",
+              detail: errBody.slice(0, 200),
+            }),
+          )
+          .catch(() => {})
+      }
       throw new Error(`OpenRouter HTTP ${resp.status}: ${errBody.slice(0, 300)}`)
     }
 
