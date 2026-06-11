@@ -108,6 +108,15 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "benchmark_json", desc: "Emails campeões da rede Omnisend (JSON)" },
     { key: "trends_json", desc: "Temas em alta do ciclo (JSON)" },
   ],
+  // Trends — vars renderizadas por trends.service:captureFromWebSearch
+  campaign_trends: [
+    { key: "country", desc: "Código do país do cluster (BR, US, DE…)" },
+    { key: "search_language", desc: "Idioma em que pesquisar (Portuguese, German…)" },
+    { key: "hints", desc: "Queries-template em idioma local" },
+    { key: "niches", desc: "Nichos das lojas do cluster" },
+    { key: "today", desc: "Data de hoje (YYYY-MM-DD)" },
+    { key: "excluded_dates", desc: "Datas comerciais já no calendário (não repetir)" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

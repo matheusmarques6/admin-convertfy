@@ -8,12 +8,16 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import type { BenchmarkEmail } from "@/types/campaign-central"
+import { getSettings } from "./settings.service"
 
-const MIN_RECIPIENTS = 500
-const TOP_N = 8
+const DEFAULT_MIN_RECIPIENTS = 500
+const DEFAULT_TOP_N = 8
 
 export async function loadBenchmarkEmails(orgId: string): Promise<BenchmarkEmail[]> {
   const admin = createAdminClient()
+  const settings = await getSettings(orgId)
+  const MIN_RECIPIENTS = settings.benchmark_min_recipients ?? DEFAULT_MIN_RECIPIENTS
+  const TOP_N = settings.benchmark_top_n ?? DEFAULT_TOP_N
 
   const { data, error } = await admin
     .from("omnisend_campaign_metrics")

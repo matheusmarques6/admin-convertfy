@@ -9,10 +9,13 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import type { AttentionStore } from "@/types/campaign-central"
 import { normalizeCountry } from "./cycle-context.service"
+import { getSettings } from "./settings.service"
 
-const HEALTH_CRITICAL = 40
-const HEALTH_WARN = 55
-const REVENUE_DROP_PCT = -20
+// Defaults (espelham campaign_central_settings) — usados quando a função
+// é chamada sem orgId (uso legado em testes/seed).
+const DEFAULT_HEALTH_CRITICAL = 40
+const DEFAULT_HEALTH_WARN = 55
+const DEFAULT_REVENUE_DROP_PCT = -20
 
 const ALERT_LABEL: Record<string, string> = {
   low_revenue: "Receita em queda",
@@ -38,6 +41,10 @@ interface StoreRow {
 
 export async function loadAttentionStores(orgId: string): Promise<AttentionStore[]> {
   const admin = createAdminClient()
+  const settings = await getSettings(orgId)
+  const HEALTH_CRITICAL = settings.health_critical_threshold ?? DEFAULT_HEALTH_CRITICAL
+  const HEALTH_WARN = settings.health_warn_threshold ?? DEFAULT_HEALTH_WARN
+  const REVENUE_DROP_PCT = settings.revenue_drop_pct ?? DEFAULT_REVENUE_DROP_PCT
 
   const { data: storesRaw, error: storesErr } = await admin
     .from("client_stores")

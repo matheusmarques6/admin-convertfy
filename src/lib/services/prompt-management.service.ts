@@ -51,6 +51,7 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "blueprint",
   "assembler",
   "campaign_suggestion",
+  "campaign_trends",
 ]
 
 // ── Validação de output_schema ─────────────────────────────
@@ -144,6 +145,7 @@ export async function listPrompts(opts: {
     blueprint: { active: null, history: [] },
     assembler: { active: null, history: [] },
     campaign_suggestion: { active: null, history: [] },
+    campaign_trends: { active: null, history: [] },
   }
 
   for (const row of rows) {

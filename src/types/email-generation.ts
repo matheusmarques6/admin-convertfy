@@ -59,7 +59,9 @@ export type AgentType =
   | "assembler"
   // ── Central de Campanhas ────────────────────────────────
   // campaign_suggestion: gera sugestões de campanha por ciclo semanal.
+  // campaign_trends: captura tendências por país via web search.
   | "campaign_suggestion"
+  | "campaign_trends"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em

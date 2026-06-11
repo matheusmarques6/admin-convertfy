@@ -23,6 +23,7 @@ import {
 import { loadAttentionStores } from "./attention-stores.service"
 import { loadBenchmarkEmails } from "./benchmark.service"
 import { captureTrends } from "./trends.service"
+import { getSettings } from "./settings.service"
 import { callAnthropicJson } from "./anthropic-client"
 import { aiSuggestionsOutputSchema, type AiSuggestion } from "@/lib/validations/campaign-central"
 import type { AttentionStore, BenchmarkEmail, CampaignTrend } from "@/types/campaign-central"
@@ -31,7 +32,7 @@ const log = logger.child("CampaignSuggestionEngine")
 
 const LOCK_NAME = "campaign_suggestions_cycle"
 const LOCK_STALE_MINUTES = 10
-const MAX_CONCURRENT_CLUSTERS = 3
+const DEFAULT_MAX_CONCURRENT_CLUSTERS = 3
 const CYCLE_DAYS = 7
 
 export interface RunCycleResult {
@@ -71,21 +72,19 @@ export function nextSundayRun(from = new Date()): Date {
 }
 
 async function acquireLock(admin: ReturnType<typeof createAdminClient>): Promise<boolean> {
-  const staleCutoff = new Date(Date.now() - LOCK_STALE_MINUTES * 60_000).toISOString()
-
-  // Claim atômico: só pega se não está rodando OU se o lock está stale
-  const { data, error } = await admin
-    .from("cron_locks")
-    .update({ is_running: true, started_at: new Date().toISOString() })
-    .eq("lock_name", LOCK_NAME)
-    .or(`is_running.eq.false,started_at.is.null,started_at.lt.${staleCutoff}`)
-    .select("lock_name")
+  // RPC atômico padrão do projeto (acquire_sync_lock — 20260310). Evita
+  // TOCTOU. Stale = lock parado há mais de LOCK_STALE_MINUTES é liberado
+  // automaticamente.
+  const { data, error } = await admin.rpc("acquire_sync_lock", {
+    p_lock_name: LOCK_NAME,
+    p_stale_ms: LOCK_STALE_MINUTES * 60_000,
+  })
 
   if (error) {
     log.error("lock.acquire_error", error)
     return false
   }
-  return (data?.length ?? 0) > 0
+  return data === true
 }
 
 async function releaseLock(admin: ReturnType<typeof createAdminClient>): Promise<void> {
@@ -198,7 +197,8 @@ export async function runSuggestionCycle(params: {
       .slice(0, 10)
 
     // Contexto (tabelas locais apenas)
-    const ctx = await loadCycleContext(orgId, now)
+    const settings = await getSettings(orgId)
+    const ctx = await loadCycleContext(orgId, now, settings.date_window_days)
     if (ctx.stores.length === 0) {
       return {
         cycleId: null,
@@ -219,7 +219,7 @@ export async function runSuggestionCycle(params: {
       }),
     ])
 
-    const clusters = clusterStores(ctx.stores)
+    const clusters = clusterStores(ctx.stores, settings.max_stores_per_cluster)
     let trends = params.trends ?? []
 
     // Número sequencial por org
@@ -276,7 +276,11 @@ export async function runSuggestionCycle(params: {
     // ciclo. Trends `risk_flag='high'` ficam no banco mas são filtradas
     // do contexto enviado pra IA da geração de sugestões (mostradas só
     // na UI com badge, COO decide).
-    if (trends.length === 0 && params.enableTrends !== false) {
+    if (
+      trends.length === 0 &&
+      params.enableTrends !== false &&
+      settings.trends_enabled !== false
+    ) {
       // Agrupa nichos por país pra montar os clusters do trends.service
       const nichesByCountry = new Map<string, Set<string>>()
       for (const s of ctx.stores) {
@@ -419,7 +423,10 @@ export async function runSuggestionCycle(params: {
       }
     })
 
-    await runWithConcurrency(tasks, MAX_CONCURRENT_CLUSTERS)
+    await runWithConcurrency(
+      tasks,
+      settings.max_concurrent_clusters ?? DEFAULT_MAX_CONCURRENT_CLUSTERS,
+    )
 
     const finalStatus: "ready" | "partial" | "failed" =
       clustersFailed === 0 ? "ready" : clustersFailed < clusters.length ? "partial" : "failed"

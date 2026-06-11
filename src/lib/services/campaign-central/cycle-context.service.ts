@@ -16,7 +16,7 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("CampaignCycleContext")
 
-const DATE_WINDOW_DAYS = 25
+const DEFAULT_DATE_WINDOW_DAYS = 25
 
 export interface CycleStoreContext {
   store_id: string
@@ -104,7 +104,11 @@ export function normalizeCountry(raw: string | null | undefined): string {
 /**
  * Carrega lojas elegíveis (ativas + Omnisend) com briefing e receita.
  */
-export async function loadCycleContext(orgId: string, now = new Date()): Promise<CycleContext> {
+export async function loadCycleContext(
+  orgId: string,
+  now = new Date(),
+  windowDays = DEFAULT_DATE_WINDOW_DAYS,
+): Promise<CycleContext> {
   const admin = createAdminClient()
 
   const { data: storesRaw, error: storesErr } = await admin
@@ -196,7 +200,7 @@ export async function loadCycleContext(orgId: string, now = new Date()): Promise
     const next = resolveNextOccurrence(d.month_day as string, (d.year as number | null) ?? null, now)
     if (!next) continue
     const inDays = daysBetween(now, next)
-    if (inDays < 0 || inDays > DATE_WINDOW_DAYS) continue
+    if (inDays < 0 || inDays > windowDays) continue
     dates.push({
       id: d.id as string,
       country: d.country as string,

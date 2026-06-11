@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { runSuggestionCycle } from "@/lib/services/campaign-central/suggestion-engine.service"
+import { getSettings } from "@/lib/services/campaign-central/settings.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CronCampaignSuggestions")
@@ -44,6 +45,12 @@ export async function GET(request: NextRequest) {
 
     const results = []
     for (const orgId of orgIds) {
+      const settings = await getSettings(orgId)
+      if (!settings.auto_cycle_enabled) {
+        log.info("cron.skipped_disabled", { orgId })
+        results.push({ orgId, status: "skipped_disabled" as const, suggestionsCreated: 0 })
+        continue
+      }
       const result = await runSuggestionCycle({ orgId, triggeredBy: "cron", dryRun })
       results.push({ orgId, ...result })
     }

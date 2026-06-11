@@ -25,6 +25,7 @@ import type { CampaignTrend } from "@/types/campaign-central"
 import { getSearchLocale } from "@/lib/constants/country-search-language"
 import { evaluateRisk } from "@/lib/constants/risk-keywords"
 import { captureFromTrendtrack } from "./trendtrack.service"
+import { getSettings } from "./settings.service"
 
 const log = logger.child("CampaignTrends")
 
@@ -178,9 +179,37 @@ function matchesExcludedDate(title: string, excluded: string[]): boolean {
  * Captura via web search em idioma local. Retorna TrendInput[] ainda
  * SEM filtro de risco/calendário (aplicados depois).
  */
+async function loadTrendsConfig(): Promise<{
+  model: string
+  system_prompt: string
+  user_template: string
+  temperature: number
+  max_tokens: number
+} | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from("email_agent_configs")
+    .select("model, system_prompt, user_template, temperature, max_tokens")
+    .eq("agent_type", "campaign_trends")
+    .eq("is_active", true)
+    .maybeSingle()
+  return (data as {
+    model: string
+    system_prompt: string
+    user_template: string
+    temperature: number
+    max_tokens: number
+  } | null) ?? null
+}
+
+function renderTrendsVars(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_, expr) => vars[expr.trim()] ?? "")
+}
+
 async function captureFromWebSearch(params: {
   cluster: ClusterParams
   excludedDates: string[]
+  maxSearches: number
 }): Promise<{
   trends: AiTrend[]
   rawText: string
@@ -190,27 +219,40 @@ async function captureFromWebSearch(params: {
   parseError: string | null
 }> {
   const locale = getSearchLocale(params.cluster.country)
-  const system = SYSTEM_PROMPT_V2.replace("{{search_language}}", locale.name).replace(
-    "{{excluded_dates}}",
-    params.excludedDates.length > 0
-      ? params.excludedDates.join(", ")
-      : "(none — no commercial calendar overlap)",
-  )
-  const user = buildUserPrompt({
+  const cfg = await loadTrendsConfig()
+  const vars = {
+    search_language: locale.name,
+    excluded_dates:
+      params.excludedDates.length > 0
+        ? params.excludedDates.join(", ")
+        : "(none — no commercial calendar overlap)",
+    country: params.cluster.country,
+    hints: locale.hints.join(" | "),
+    niches:
+      params.cluster.niches.length > 0
+        ? params.cluster.niches.join(", ")
+        : "general e-commerce",
+    today: new Date().toISOString().slice(0, 10),
+  }
+
+  const systemTemplate = cfg?.system_prompt ?? SYSTEM_PROMPT_V2
+  const userTemplate = cfg?.user_template ?? buildUserPrompt({
     country: params.cluster.country,
     niches: params.cluster.niches,
     excludedDates: params.excludedDates,
     searchLanguage: locale.name,
     hints: locale.hints,
   })
+  const system = renderTrendsVars(systemTemplate, vars)
+  const user = cfg?.user_template ? renderTrendsVars(userTemplate, vars) : userTemplate
 
   const result = await callAnthropicWithWebSearch({
-    model: TRENDS_MODEL,
+    model: cfg?.model ?? TRENDS_MODEL,
     system,
     user,
-    maxTokens: 4096,
-    temperature: 0.6,
-    maxSearches: 5,
+    maxTokens: cfg?.max_tokens ?? 4096,
+    temperature: cfg?.temperature ?? 0.6,
+    maxSearches: params.maxSearches,
   })
 
   if (!result.parsed) {
@@ -306,6 +348,7 @@ export function dedupeTrends(trends: TrendInput[]): TrendInput[] {
 export async function captureTrends(params: CaptureCycleParams): Promise<TrendInput[]> {
   const admin = createAdminClient()
   const { orgId, cycleId, clusters } = params
+  const settings = await getSettings(orgId)
   const countries = Array.from(new Set(clusters.map((c) => c.country.toUpperCase())))
   const excludedByCountry = await loadExcludedDateNames(countries)
 
@@ -341,7 +384,11 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
     let fromWeb: TrendInput[] = []
 
     try {
-      const ws = await captureFromWebSearch({ cluster, excludedDates })
+      const ws = await captureFromWebSearch({
+        cluster,
+        excludedDates,
+        maxSearches: settings.max_web_searches_per_cluster ?? 5,
+      })
       raw = ws.rawText
       tokensIn = ws.tokensIn
       tokensOut = ws.tokensOut

@@ -68,6 +68,13 @@ const SETTINGS_SECTIONS: SettingSection[] = [
     adminOnly: true,
   },
   {
+    title: "Central de Campanhas",
+    description: "Janela, thresholds e modelos dos agentes de sugestão e trends",
+    icon: Sparkles,
+    href: "/admin/settings/campaign-central",
+    adminOnly: true,
+  },
+  {
     title: "Setup de Implementação",
     description: "Gatilho, público, evento e UTM por flow (Modo Implementação)",
     icon: Send,
