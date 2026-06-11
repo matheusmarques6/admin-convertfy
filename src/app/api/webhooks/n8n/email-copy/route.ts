@@ -25,7 +25,7 @@ import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import {
   errorResponse,
   successResponse,
-  parseAndValidate,
+  AppError,
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -67,9 +67,39 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  // Lê o corpo BRUTO antes de validar — assim QUALQUER rejeição (secret /
+  // schema / email não encontrado) deixa rastro nos logs do que o n8n mandou.
+  // Sem isso a falha era invisível e a copy "sumia" sem explicação.
+  const rawText = await request.text().catch(() => "")
+  let rawJson: Record<string, unknown> = {}
+  try {
+    rawJson = JSON.parse(rawText) as Record<string, unknown>
+  } catch {
+    /* corpo não-JSON */
+  }
+  log.info("email_copy.received", {
+    has_secret_header: !!request.headers.get("x-webhook-secret"),
+    body_keys: Object.keys(rawJson),
+    store_id: rawJson.store_id ?? null,
+    email_id: rawJson.email_id ?? null,
+    blocks_count: Array.isArray(rawJson.blocks) ? rawJson.blocks.length : null,
+    raw_len: rawText.length,
+  })
+
   try {
     requireWebhookSecret(request)
-    const body = await parseAndValidate(request, schema)
+
+    const validated = schema.safeParse(rawJson)
+    if (!validated.success) {
+      log.warn("email_copy.validation_failed", {
+        store_id: rawJson.store_id ?? null,
+        email_id: rawJson.email_id ?? null,
+        body_keys: Object.keys(rawJson),
+        issues: validated.error.issues.slice(0, 8),
+      })
+      throw new AppError("Payload do n8n inválido (schema email-copy)", 400)
+    }
+    const body = validated.data
     const admin = createAdminClient()
 
     // 1) Verifica email + flow pertencem à store (defesa contra spoofing)
@@ -79,11 +109,23 @@ export async function POST(request: NextRequest) {
       .eq("id", body.email_id)
       .maybeSingle()
 
-    if (emailErr || !email) throw new NotFoundError("Email")
+    if (emailErr || !email) {
+      log.warn("email_copy.email_not_found", {
+        email_id: body.email_id,
+        store_id: body.store_id,
+        db_error: emailErr?.message ?? null,
+      })
+      throw new NotFoundError("Email")
+    }
 
     const flow = Array.isArray(email.flow) ? email.flow[0] : email.flow
     const flowStoreId = (flow as { store_id?: string } | null)?.store_id
     if (flowStoreId !== body.store_id) {
+      log.warn("email_copy.store_mismatch", {
+        email_id: body.email_id,
+        body_store_id: body.store_id,
+        actual_store_id: flowStoreId ?? null,
+      })
       throw new NotFoundError("Email não pertence a esta loja")
     }
 
@@ -127,17 +169,22 @@ export async function POST(request: NextRequest) {
       .eq("id", body.email_id)
     if (updEmailErr) throw updEmailErr
 
-    // 3) PATCH email_blocks.content por block_id (com sanitizacao de tokens)
+    // 3) PATCH email_blocks.content por block_id (com sanitizacao de tokens).
+    // `.select("id")` faz o update RETORNAR as linhas afetadas — assim
+    // blocksWritten reflete escritas REAIS (antes contava mesmo quando o
+    // block_id nao casava nenhuma linha, mascarando ids velhos pos-reseed).
     let blocksWritten = 0
+    let blocksUnmatched = 0
     let blocksSanitized = 0
     for (const b of body.blocks) {
       const cleaned = resolveBrandTokens(b.content, brandName) as Record<string, unknown>
       if (JSON.stringify(cleaned) !== JSON.stringify(b.content)) blocksSanitized++
-      const { error: blkErr } = await admin
+      const { data: updated, error: blkErr } = await admin
         .from("email_blocks")
         .update({ content: cleaned })
         .eq("id", b.block_id)
         .eq("email_id", body.email_id)
+        .select("id")
       if (blkErr) {
         log.warn("email_copy.block.update_failed", {
           email_id: body.email_id,
@@ -146,7 +193,20 @@ export async function POST(request: NextRequest) {
         })
         continue
       }
+      if (!updated || updated.length === 0) {
+        blocksUnmatched++
+        continue
+      }
       blocksWritten++
+    }
+    if (blocksUnmatched > 0) {
+      log.warn("email_copy.blocks_unmatched", {
+        email_id: body.email_id,
+        unmatched: blocksUnmatched,
+        total: body.blocks.length,
+        // block_id do n8n nao existe mais nesse email (estrutura re-semeada
+        // depois do dispatch). Candidato a fallback por posicao.
+      })
     }
 
     // 4) Telemetria
