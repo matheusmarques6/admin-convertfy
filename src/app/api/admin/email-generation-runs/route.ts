@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     let query = admin
       .from("email_generation_runs")
       .select(
-        "*, client_stores!inner(store_name), email_flows(flow_type), email_flow_emails(name)",
+        "*, client_stores(store_name), email_flows(flow_type), email_flow_emails(name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       const email = row.email_flow_emails as Record<string, unknown> | null
       return {
         ...row,
-        store_name: stores?.name ?? null,
+        store_name: stores?.store_name ?? null,
         flow_type: flow?.flow_type ?? null,
         email_name: email?.name ?? null,
         client_stores: undefined,
