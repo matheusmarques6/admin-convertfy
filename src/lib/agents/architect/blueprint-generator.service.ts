@@ -279,7 +279,14 @@ export async function generateStoreBlueprint(
     model = null
   }
 
-  await upsertStoreBlueprint(input, blueprint, source, model)
+  // Só persiste o blueprint quando o LLM gerou de verdade (source='ai'). No
+  // fallback (DEFAULT_BLUEPRINTS in-code ou mínimo) NÃO grava: preserva um
+  // blueprint store bom anterior e deixa loadEffectiveBlueprint cair no
+  // email_blueprints global curado — o que funcionava antes. O blueprint de
+  // fallback ainda vai no retorno, pro run corrente usar.
+  if (source === "ai") {
+    await upsertStoreBlueprint(input, blueprint, source, model)
+  }
 
   await logGenerationRun({
     storeId: input.storeId,

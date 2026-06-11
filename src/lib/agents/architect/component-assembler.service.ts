@@ -363,7 +363,14 @@ export async function assembleStoreReference(
   const html = usedLlm ? generatedHtml : assembleReferenceHtml(fallbackChosen)
   const variantIds = usedLlm ? [] : fallbackChosen.map((v) => v.id)
 
-  await upsertStoreReference(input, html, variantIds, usedLlm ? config.model : null)
+  // Só persiste a reference quando o LLM gerou de verdade. No fallback NÃO
+  // grava: preserva uma reference boa de um run anterior (upsert é destrutivo)
+  // e deixa o consumidor (build-vars) cair no template global curado — o que
+  // funcionava antes. O `html` de fallback ainda vai no retorno, pro Blueprint
+  // do mesmo run extrair a estrutura.
+  if (usedLlm) {
+    await upsertStoreReference(input, html, variantIds, config.model)
+  }
 
   await logGenerationRun({
     storeId: input.storeId,
