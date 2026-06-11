@@ -1,19 +1,32 @@
 -- ─────────────────────────────────────────────────────────────────────
--- Recovery: campaign_copy_master ausente/inativo em produção
---
--- Sintoma: /api/admin/campaign-central/suggestions/[id]/generate-master
--- retornava "Config 'campaign_copy_master' ausente ou inativa em
--- email_agent_configs". Causa raiz: ou o seed da migration
--- 20260720_copy_master_workflow.sql não inseriu (banco em outro estado
--- na hora da aplicação), ou alguma versão foi criada via UI sem
--- ativação.
---
--- Esta migration é idempotente:
---   - Se não há NENHUMA row campaign_copy_master: insere o seed v1 ativo.
---   - Se há rows mas nenhuma ativa: ativa a de maior version.
---   - Se já tem ativa: no-op.
+-- Recovery v2: garante CHECK constraint atualizado ANTES de tentar
+-- inserir campaign_copy_master (CHECK em prod não incluía o tipo).
+-- Idempotente.
 -- ─────────────────────────────────────────────────────────────────────
 
+-- ── 1. Expande CHECK pra incluir todos os agent_types vigentes ───────
+DO $$
+DECLARE
+  cname text;
+BEGIN
+  SELECT conname INTO cname
+  FROM pg_constraint
+  WHERE conrelid = 'email_agent_configs'::regclass
+    AND contype = 'c'
+    AND pg_get_constraintdef(oid) ILIKE '%agent_type%';
+  IF cname IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE email_agent_configs DROP CONSTRAINT %I', cname);
+  END IF;
+  ALTER TABLE email_agent_configs
+    ADD CONSTRAINT email_agent_configs_agent_type_check
+    CHECK (agent_type IN (
+      'copy','image','html','qa','blueprint','assembler',
+      'campaign_suggestion','campaign_trends','campaign_copy_master',
+      'campaign_architect'
+    ));
+END $$;
+
+-- ── 2. Recovery do campaign_copy_master ──────────────────────────────
 DO $$
 DECLARE
   has_any boolean;
