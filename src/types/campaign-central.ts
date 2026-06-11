@@ -52,6 +52,11 @@ export interface CommemorativeDate {
   is_active: boolean
 }
 
+export type TrendCategory = "consumo" | "cultural" | "esportivo" | "social" | "viral" | "outros"
+export type TrendUrgency = "week" | "month" | "quarter"
+export type TrendRiskFlag = "low" | "med" | "high"
+export type TrendFetchedVia = "trendtrack" | "web_search" | "manual"
+
 export interface CampaignTrend {
   id: string
   org_id: string
@@ -62,6 +67,13 @@ export interface CampaignTrend {
   tag: string | null
   niche: string | null
   country: string | null
+  category: TrendCategory | null
+  commercial_potential: number | null
+  urgency: TrendUrgency | null
+  risk_flag: TrendRiskFlag
+  risk_reason: string | null
+  campaign_angle: string | null
+  fetched_via: TrendFetchedVia
   evidence: Array<{ url?: string; title?: string; quote?: string }>
   created_at: string
 }

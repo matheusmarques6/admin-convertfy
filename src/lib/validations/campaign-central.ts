@@ -47,11 +47,18 @@ export type AiSuggestion = z.infer<typeof aiSuggestionSchema>
 
 export const aiTrendSchema = z.object({
   title: z.string().min(3),
+  category: z
+    .enum(["consumo", "cultural", "esportivo", "social", "viral", "outros"])
+    .optional()
+    .default("outros"),
   source: z.string().optional(),
   delta_label: z.string().optional(),
   tag: z.string().optional(),
   niche: z.string().optional(),
   country: z.string().optional(),
+  commercial_potential: z.number().int().min(0).max(100).optional(),
+  urgency: z.enum(["week", "month", "quarter"]).optional(),
+  campaign_angle: z.string().optional(),
   evidence: z
     .array(
       z.object({

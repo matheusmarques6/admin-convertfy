@@ -271,22 +271,39 @@ export async function runSuggestionCycle(params: {
     if (cycleErr) throw cycleErr
     cycleId = cycleRow.id as string
 
-    // Trends via web search (F5) — enriquecimento: falha interna não
-    // aborta o ciclo (captureTrends já trata e retorna []).
+    // Trends v2 — 1 chamada IA por cluster (país × nichos) com busca em
+    // idioma local + cascata TrendTrack stub. Falha interna não aborta o
+    // ciclo. Trends `risk_flag='high'` ficam no banco mas são filtradas
+    // do contexto enviado pra IA da geração de sugestões (mostradas só
+    // na UI com badge, COO decide).
     if (trends.length === 0 && params.enableTrends !== false) {
-      const niches = Array.from(
-        new Set(ctx.stores.map((s) => s.niche).filter((n): n is string => !!n)),
+      // Agrupa nichos por país pra montar os clusters do trends.service
+      const nichesByCountry = new Map<string, Set<string>>()
+      for (const s of ctx.stores) {
+        const c = s.country.toUpperCase()
+        const set = nichesByCountry.get(c) ?? new Set<string>()
+        if (s.niche) set.add(s.niche)
+        nichesByCountry.set(c, set)
+      }
+      const trendClusters = Array.from(nichesByCountry.entries()).map(
+        ([country, niches]) => ({ country, niches: Array.from(niches) }),
       )
-      trends = await captureTrends({
+      const captured = await captureTrends({
         orgId,
         cycleId,
-        niches,
-        countries: ctx.countries,
+        clusters: trendClusters,
       })
-      // Atualiza o snapshot com a contagem real de trends
+      // Filtra risk_flag='high' antes de injetar no prompt das sugestões
+      trends = captured.filter((t) => t.risk_flag !== "high")
       await admin
         .from("campaign_cycles")
-        .update({ context: { ...contextSnapshot, trends_count: trends.length } })
+        .update({
+          context: {
+            ...contextSnapshot,
+            trends_count: captured.length,
+            trends_risk_high: captured.length - trends.length,
+          },
+        })
         .eq("id", cycleId)
     }
 
