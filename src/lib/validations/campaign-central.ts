@@ -133,3 +133,36 @@ export const generateCopySchema = z.object({
   mode: z.enum(["test", "production"]),
   store_ids: z.array(z.string().uuid()).min(1).max(30),
 })
+
+// ── Master generation (F1) ───────────────────────────────────────────
+
+export const generateMasterSchema = z.object({
+  /** Override opcional do público-alvo. Senão, usa o já persistido. */
+  audience_label: z.string().max(200).optional(),
+})
+
+export const parseMasterSchema = z.object({
+  raw_text: z.string().min(20).max(20_000),
+})
+
+// ── Copy results (F2) ────────────────────────────────────────────────
+
+/** Subset usado quando a IA adapta a master pra uma loja: subject +
+ * preheader + strategy + blocks completos. Vai pra copy_results[mode]
+ * sob o store_id. */
+export const copyResultEntrySchema = z.object({
+  subject: z.string().min(1),
+  preheader: z.string().default(""),
+  strategy: z.string().optional(),
+  blocks: z.array(emailDraftBlockSchema).min(1),
+})
+
+export const markQualitySchema = z.object({
+  store_id: z.string().uuid(),
+  mode: z.enum(["test", "production"]),
+  quality: z.union([z.literal("good"), z.null()]),
+})
+
+export const setPilotSchema = z.object({
+  store_ids: z.array(z.string().uuid()).max(10),
+})

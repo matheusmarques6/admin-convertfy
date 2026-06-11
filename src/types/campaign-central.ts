@@ -118,9 +118,15 @@ export interface EmailDraft {
 
 export interface CopyResultEntry {
   subject: string
+  /** Mantido pra compat — em entries novas reflete preheader. */
   preview: string
+  preheader?: string
+  strategy?: string
+  /** Email completo adaptado por loja (idioma/tom/grid com top products reais). */
+  blocks?: EmailDraftBlock[]
+  quality?: "good" | null
   generated_at: string
-  quality?: "good"
+  generated_via?: "ai_master_adapt" | "subject_only_legacy"
 }
 
 export interface CampaignSuggestion {
@@ -149,6 +155,12 @@ export interface CampaignSuggestion {
     production?: Record<string, CopyResultEntry>
   }
   pipeline_item_id: string | null
+  /** Público-alvo livre escolhido pelo COO (ex: "BR + Global", "Só BR moda"). */
+  audience_label: string | null
+  /** Lojas escolhidas como piloto (gate piloto→rollout). */
+  pilot_store_ids: string[]
+  /** Task criada pros designers quando a campanha foi aprovada. */
+  design_task_id: string | null
   decided_by: string | null
   decided_at: string | null
   created_by: string | null

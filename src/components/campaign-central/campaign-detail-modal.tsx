@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { X, Check, Edit3, Send, Mail, Monitor, Smartphone, Loader2 } from "lucide-react"
+import { X, Check, Edit3, Send, Mail, Monitor, Smartphone, Loader2, Sparkles, ClipboardPaste } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/lib/hooks/use-toast"
 import { CountryChip } from "./country-chip"
 import { EditBlock } from "./email-builder/edit-block"
 import { BlockCanvas } from "./email-builder/block-canvas"
@@ -33,10 +34,75 @@ export function CampaignDetailModal({
   onApprove,
   onGenerateCopy,
 }: Props) {
+  const { toast } = useToast()
   const [draft, setDraft] = useState<EmailDraft>(() => s.email_draft ?? buildDefaultDraft(s))
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop")
-  const [busy, setBusy] = useState<"save" | "approve" | null>(null)
+  const [busy, setBusy] = useState<"save" | "approve" | "master_ai" | "master_paste" | null>(null)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState("")
   const mobile = device === "mobile"
+
+  const generateMaster = async () => {
+    setBusy("master_ai")
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${s.id}/generate-master`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      if (json.draft) {
+        setDraft(json.draft as EmailDraft)
+        toast({ title: "Copy master gerada", description: "Blocos atualizados pelo agente." })
+      }
+    } catch (err) {
+      toast({
+        title: "Falha ao gerar master",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const parsePastedText = async () => {
+    if (pasteText.trim().length < 20) {
+      toast({ title: "Texto muito curto", description: "Cole pelo menos 20 caracteres." })
+      return
+    }
+    setBusy("master_paste")
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${s.id}/parse-master`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_text: pasteText }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      if (json.draft) {
+        setDraft(json.draft as EmailDraft)
+        setPasteOpen(false)
+        setPasteText("")
+        toast({ title: "Copy importada", description: "Texto convertido em blocos." })
+      }
+    } catch (err) {
+      toast({
+        title: "Falha ao importar texto",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const meta = TYPE_LABEL[s.type] ?? TYPE_LABEL.avulsa
 
@@ -177,6 +243,30 @@ export function CampaignDetailModal({
                 · arraste para reordenar · clique para editar
               </span>
               <div className="flex-1" />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={generateMaster}
+                disabled={busy !== null}
+                title="Gerar copy master com IA a partir do ângulo da campanha"
+              >
+                {busy === "master_ai" ? (
+                  <Loader2 size={13} className="mr-1 animate-spin" />
+                ) : (
+                  <Sparkles size={13} className="mr-1" />
+                )}
+                Gerar master
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPasteOpen(true)}
+                disabled={busy !== null}
+                title="Cole uma copy pronta — a IA converte em blocos"
+              >
+                <ClipboardPaste size={13} className="mr-1" />
+                Colar pronta
+              </Button>
               <div className="inline-flex gap-0.5 rounded-[6px] bg-muted p-0.5">
                 {(
                   [
@@ -273,10 +363,70 @@ export function CampaignDetailModal({
             ) : (
               <Send size={14} className="mr-1.5" />
             )}
-            {s.status === "approved" ? "Aprovada" : "Salvar e aprovar"}
+            {s.status === "approved" ? "Aprovada" : "Aprovar campanha"}
           </Button>
         </div>
       </div>
+
+      {/* Modal "Colar copy pronta" */}
+      {pasteOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-white/90 p-4 backdrop-blur-md dark:bg-gray-950/90"
+          onClick={() => !busy && setPasteOpen(false)}
+        >
+          <div
+            className="flex max-h-[80vh] w-[640px] max-w-full flex-col overflow-hidden rounded-[10px] border border-border bg-card shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-3.5">
+              <ClipboardPaste size={16} className="text-primary" />
+              <span className="text-[14px] font-semibold text-foreground">Colar copy pronta</span>
+              <div className="flex-1" />
+              <button
+                onClick={() => !busy && setPasteOpen(false)}
+                className="rounded p-1 text-muted-foreground hover:text-foreground"
+                disabled={busy !== null}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <p className="mb-3 text-[12.5px] text-muted-foreground">
+                Cole abaixo a copy gerada em outra ferramenta (Claude, ChatGPT, Google Docs…). A IA
+                vai reconhecer seções (hero, body, produtos, oferta, CTA) e montar os blocos.
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={`🎯 HERO\nHeadline da campanha\nSubtítulo de apoio\n\n📝 BODY\nCorpo do email...\n\n🛍️ PRODUTOS\nProduto 1 - R$ 199\nProduto 2 - R$ 299\n\n🎁 OFERTA\nFrete grátis acima de R$ 199\n\n🎯 CTA\nVer coleção`}
+                className="h-72 w-full resize-none rounded-[6px] border border-border bg-background p-3 font-mono text-[12.5px] leading-relaxed text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                disabled={busy !== null}
+              />
+              <div className="mt-2 text-right text-[11px] text-muted-foreground">
+                {pasteText.length} caracteres
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => setPasteOpen(false)}
+                disabled={busy !== null}
+              >
+                Cancelar
+              </Button>
+              <Button size="md" onClick={parsePastedText} disabled={busy !== null || pasteText.trim().length < 20}>
+                {busy === "master_paste" ? (
+                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                ) : (
+                  <Sparkles size={14} className="mr-1.5" />
+                )}
+                Converter em blocos
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
