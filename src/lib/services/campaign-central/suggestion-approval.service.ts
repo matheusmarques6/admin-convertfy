@@ -13,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 import { ConflictError, NotFoundError } from "@/lib/api/errors"
+import { createUnifiedTask } from "@/lib/services/tasks-unified.service"
 
 const log = logger.child("CampaignSuggestionApproval")
 
@@ -86,11 +87,40 @@ export async function approveSuggestion(params: {
   if (insertErr) throw insertErr
   const pipelineId = item.id as string
 
+  // Cria task pros designers (sourceType 'campaign_suggestion').
+  // assignee_role='designer' deixa qualquer designer pegar via fila.
+  // Idempotente: se já existe task pra essa sugestão, reusa.
+  let designTaskId: string | null = s.design_task_id ?? null
+  if (!designTaskId) {
+    const copyCount = countCopyEntries(s)
+    const task = await createUnifiedTask({
+      orgId,
+      title: `[Design] ${s.title}`,
+      description: [description, `Sugestão: ${s.id}`, copyCount > 0 ? `${copyCount} copies geradas` : null]
+        .filter(Boolean)
+        .join("\n"),
+      sourceType: "campaign_suggestion",
+      sourceId: suggestionId,
+      sourceMetadata: {
+        pipeline_item_id: pipelineId,
+        suggestion_title: s.title,
+        suggestion_type: s.type,
+        copy_results_count: copyCount,
+        send_date: s.send_date,
+      },
+      assigneeRole: "designer",
+      priority: "medium",
+      createdBy: userId,
+    })
+    designTaskId = task?.id ?? null
+  }
+
   const { error: updateErr } = await admin
     .from("campaign_suggestions")
     .update({
       status: "approved",
       pipeline_item_id: pipelineId,
+      design_task_id: designTaskId,
       decided_by: userId,
       decided_at: new Date().toISOString(),
     })
@@ -99,11 +129,20 @@ export async function approveSuggestion(params: {
   if (updateErr) {
     // Best effort: tenta deletar o item órfão pra não duplicar na próxima aprovação
     await admin.from("campaign_pipeline_items").delete().eq("id", pipelineId)
+    if (designTaskId && designTaskId !== s.design_task_id) {
+      await admin.from("tasks").delete().eq("id", designTaskId)
+    }
     throw updateErr
   }
 
-  log.info("approve.done", { suggestionId, pipelineId })
+  log.info("approve.done", { suggestionId, pipelineId, designTaskId })
   return { pipeline_item_id: pipelineId }
+}
+
+function countCopyEntries(s: CampaignSuggestion): number {
+  const pilot = Object.keys(s.copy_results?.test ?? {}).length
+  const prod = Object.keys(s.copy_results?.production ?? {}).length
+  return pilot + prod
 }
 
 export async function dismissSuggestion(params: {

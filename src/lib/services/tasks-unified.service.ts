@@ -25,6 +25,7 @@ export type UnifiedTaskSource =
   | "project"
   | "crm"
   | "manual"
+  | "campaign_suggestion"
 
 export interface CreateUnifiedTaskInput {
   orgId: string
