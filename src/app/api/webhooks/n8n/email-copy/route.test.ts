@@ -209,8 +209,8 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
     expect(statusUpdate).toBeUndefined()
   })
 
-  it("returns 200 idempotent when email is in rendering / qa_running / ready / failed", async () => {
-    for (const status of ["rendering", "qa_running", "ready", "failed"]) {
+  it("returns 200 idempotent when email is in rendering / qa_running / ready", async () => {
+    for (const status of ["rendering", "qa_running", "ready"]) {
       resetState()
       mockEmail = {
         id: MOCK_EMAIL_ID,
@@ -225,6 +225,26 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
       expect(json.idempotent).toBe(true)
       expect(json.current_status).toBe(status)
     }
+  })
+
+  it("NÃO é idempotente quando email está em failed — aceita a copy nova", async () => {
+    resetState()
+    mockEmail = {
+      id: MOCK_EMAIL_ID,
+      flow_id: MOCK_FLOW_ID,
+      status: "failed",
+      flow: { store_id: MOCK_STORE_ID },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    // processa (não retorna idempotent) e avança o status
+    expect(json.idempotent).toBeUndefined()
+    const statusUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(statusUpdate).toBeDefined()
   })
 })
 

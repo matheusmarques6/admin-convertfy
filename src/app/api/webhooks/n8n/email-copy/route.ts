@@ -37,12 +37,13 @@ export const dynamic = "force-dynamic"
 
 // Status que indicam que a fase 2 ja foi disparada (ou ja terminou).
 // Callbacks duplicados nesses estados sao no-op idempotente.
+// `failed` foi REMOVIDO: um email que falhou (ex.: timeout/credito hoje) DEVE
+// aceitar uma copy nova quando o n8n volta — senao fica preso pra sempre.
 const IDEMPOTENT_STATUSES = new Set([
   "copy_ready",
   "rendering",
   "qa_running",
   "ready",
-  "failed",
 ])
 
 const schema = z.object({
@@ -173,13 +174,31 @@ export async function POST(request: NextRequest) {
     // `.select("id")` faz o update RETORNAR as linhas afetadas — assim
     // blocksWritten reflete escritas REAIS (antes contava mesmo quando o
     // block_id nao casava nenhuma linha, mascarando ids velhos pos-reseed).
+    //
+    // Fallback por POSICAO: se o block_id do n8n nao existe mais (estrutura
+    // re-semeada depois do dispatch -> novos ids), casa a copy pelo bloco na
+    // MESMA posicao (a ordem do array do callback espelha a ordem dos blocos).
+    // Assim a copy nao se perde quando os ids mudam.
+    const { data: emailBlocksOrdered } = await admin
+      .from("email_blocks")
+      .select("id")
+      .eq("email_id", body.email_id)
+      .order("position", { ascending: true })
+    const orderedIds = ((emailBlocksOrdered ?? []) as Array<{ id: string }>).map(
+      (r) => r.id,
+    )
+
     let blocksWritten = 0
+    let blocksByPosition = 0
     let blocksUnmatched = 0
     let blocksSanitized = 0
-    for (const b of body.blocks) {
+    for (let i = 0; i < body.blocks.length; i++) {
+      const b = body.blocks[i]
       const cleaned = resolveBrandTokens(b.content, brandName) as Record<string, unknown>
       if (JSON.stringify(cleaned) !== JSON.stringify(b.content)) blocksSanitized++
-      const { data: updated, error: blkErr } = await admin
+
+      // (a) tenta pelo block_id que o n8n mandou
+      const { data: byId, error: blkErr } = await admin
         .from("email_blocks")
         .update({ content: cleaned })
         .eq("id", b.block_id)
@@ -193,21 +212,36 @@ export async function POST(request: NextRequest) {
         })
         continue
       }
-      if (!updated || updated.length === 0) {
-        blocksUnmatched++
+      if (byId && byId.length > 0) {
+        blocksWritten++
         continue
       }
-      blocksWritten++
+
+      // (b) fallback: bloco na mesma posicao (i-esimo)
+      const fallbackId = orderedIds[i]
+      if (fallbackId) {
+        const { data: byPos } = await admin
+          .from("email_blocks")
+          .update({ content: cleaned })
+          .eq("id", fallbackId)
+          .select("id")
+        if (byPos && byPos.length > 0) {
+          blocksByPosition++
+          continue
+        }
+      }
+      blocksUnmatched++
     }
-    if (blocksUnmatched > 0) {
-      log.warn("email_copy.blocks_unmatched", {
+    if (blocksByPosition > 0 || blocksUnmatched > 0) {
+      log.warn("email_copy.blocks_fallback", {
         email_id: body.email_id,
+        written_by_id: blocksWritten,
+        written_by_position: blocksByPosition,
         unmatched: blocksUnmatched,
         total: body.blocks.length,
-        // block_id do n8n nao existe mais nesse email (estrutura re-semeada
-        // depois do dispatch). Candidato a fallback por posicao.
       })
     }
+    blocksWritten += blocksByPosition
 
     // 4) Telemetria
     await admin.from("email_generation_runs").insert({
