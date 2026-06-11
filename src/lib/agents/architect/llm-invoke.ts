@@ -17,6 +17,11 @@ import { renderImageTemplate } from "../image/template-renderer"
 
 const log = logger.child("ArchitectLLM")
 
+// O Montador gera o HTML completo (Opus 4.8, ~9 blocos) — 60s era curto e
+// dava timeout, derrubando pro fallback. 180s dá folga (cabe no maxDuration
+// 300s do route, já que Montador+Blueprint rodam antes da fase 2 em background).
+const INVOKE_TIMEOUT_MS = 180_000
+
 export interface AgentInvokeConfig {
   model: string
   temperature: number
@@ -99,7 +104,7 @@ async function invokeViaAnthropic(
     },
   ]
 
-  const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 60_000 })
+  const client = new Anthropic({ apiKey, maxRetries: 2, timeout: INVOKE_TIMEOUT_MS })
   const baseReq = {
     model: config.model,
     max_tokens: config.max_tokens,
@@ -146,7 +151,7 @@ async function invokeViaOpenRouter(
   if (!apiKey) throw new Error("OPENROUTER_API_KEY nao configurada")
 
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 60_000)
+  const timer = setTimeout(() => ctrl.abort(), INVOKE_TIMEOUT_MS)
   try {
     const body: Record<string, unknown> = {
       model: config.model,
