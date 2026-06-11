@@ -27,6 +27,16 @@ export function defaultBlock(type: EmailDraftBlock["type"]): EmailDraftBlock {
       return { ...base, value: "Clique aqui" }
     case "footer":
       return { ...base, value: "Rodapé do email." }
+    case "products":
+      return {
+        ...base,
+        columns: 3,
+        items: [
+          { name: "Produto 1", price: "R$ —" },
+          { name: "Produto 2", price: "R$ —" },
+          { name: "Produto 3", price: "R$ —" },
+        ],
+      }
     default:
       return base
   }

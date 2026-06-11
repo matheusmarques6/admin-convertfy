@@ -81,11 +81,21 @@ export type AiTrend = z.infer<typeof aiTrendSchema>
 
 export const emailDraftBlockSchema = z.object({
   id: z.string(),
-  type: z.enum(["image", "heading", "text", "offer", "button", "divider", "footer"]),
+  type: z.enum(["image", "heading", "text", "offer", "button", "divider", "footer", "products"]),
   headline: z.string().optional(),
   sub: z.string().optional(),
   value: z.string().optional(),
   caption: z.string().optional(),
+  columns: z.union([z.literal(2), z.literal(3)]).optional(),
+  items: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        price: z.string().optional(),
+        image_caption: z.string().optional(),
+      }),
+    )
+    .optional(),
 })
 
 export const emailDraftSchema = z.object({

@@ -90,14 +90,23 @@ export interface SuggestionTarget {
   country: string
 }
 
+export interface EmailDraftProductItem {
+  name?: string
+  price?: string
+  image_caption?: string
+}
+
 /** Bloco do construtor de email (mesma semântica dos blocos do mockup). */
 export interface EmailDraftBlock {
   id: string
-  type: "image" | "heading" | "text" | "offer" | "button" | "divider" | "footer"
+  type: "image" | "heading" | "text" | "offer" | "button" | "divider" | "footer" | "products"
   headline?: string
   sub?: string
   value?: string
   caption?: string
+  // products
+  columns?: 2 | 3
+  items?: EmailDraftProductItem[]
 }
 
 export interface EmailDraft {

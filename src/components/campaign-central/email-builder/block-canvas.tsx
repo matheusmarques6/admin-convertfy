@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, X, Copy, GripVertical, Trash2, Type, FileText, Image as ImageIcon, Zap, MousePointerClick, Minus } from "lucide-react"
+import { Plus, X, Copy, GripVertical, Trash2, Type, FileText, Image as ImageIcon, Zap, MousePointerClick, Minus, LayoutGrid } from "lucide-react"
 import { BlockContent } from "./block-content"
 import { defaultBlock } from "./default-draft"
 import type { EmailDraftBlock } from "@/types/campaign-central"
@@ -14,12 +14,14 @@ const BLOCK_NAME: Record<string, string> = {
   button: "Botão",
   divider: "Divisória",
   footer: "Rodapé",
+  products: "Grid de produtos",
 }
 
 const BLOCK_CATALOG: Array<{ type: EmailDraftBlock["type"]; label: string; Icon: typeof Type }> = [
   { type: "heading", label: "Cabeçalho", Icon: Type },
   { type: "text", label: "Texto", Icon: FileText },
   { type: "image", label: "Imagem", Icon: ImageIcon },
+  { type: "products", label: "Grid de produtos", Icon: LayoutGrid },
   { type: "offer", label: "Oferta", Icon: Zap },
   { type: "button", label: "Botão", Icon: MousePointerClick },
   { type: "divider", label: "Divisória", Icon: Minus },
