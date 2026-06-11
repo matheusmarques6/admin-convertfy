@@ -897,10 +897,21 @@ function DispatchEmailCopiesButton({
       })
       setOpen(false)
     } catch (err) {
+      const raw = err instanceof Error ? err.message : "Erro desconhecido"
+      // Traduz os reasons crus do dispatch em mensagens acionáveis.
+      const REASON_MESSAGES: Record<string, string> = {
+        no_emails:
+          "Nenhum email em rascunho. Desmarque 'somente rascunhos' para regerar os emails existentes.",
+        no_flows: "A loja não tem flows. Inicialize os flows antes de gerar copies.",
+        no_url_configured: "N8N_EMAIL_COPY_WEBHOOK_URL não configurada no ambiente.",
+        store_not_found: "Loja não encontrada.",
+        flows_query_failed: "Erro ao buscar flows no banco.",
+        emails_query_failed: "Erro ao buscar emails no banco.",
+      }
       toast({
         variant: "destructive",
         title: "Falha ao disparar",
-        description: err instanceof Error ? err.message : "Erro desconhecido",
+        description: REASON_MESSAGES[raw] ?? raw,
       })
     } finally {
       setSubmitting(false)
