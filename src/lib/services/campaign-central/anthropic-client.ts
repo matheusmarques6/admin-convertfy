@@ -1,26 +1,46 @@
 /**
- * Cliente Anthropic da Central de Campanhas.
+ * Cliente LLM da Central de Campanhas com cascata de provedores:
+ *   1. OpenRouter (se OPENROUTER_API_KEY) — formato OpenAI-compatible
+ *   2. Anthropic direta (se ANTHROPIC_API_KEY) — fallback
  *
- * Fetch direto na Messages API (sem SDK — padrão do repo, ver
- * crm-ai-action.service.ts). Dois modos:
- *
- * - callAnthropicJson: structured outputs (output_config.format json_schema)
- *   pra chamadas SEM web search — JSON garantido pela API.
- * - callAnthropicWithWebSearch: tool server-side de web search; JSON
- *   instruído no prompt + parse manual (citations é incompatível com
- *   structured outputs). Trata stop_reason "pause_turn" reenviando o
- *   content do assistant pra retomar a busca.
+ * Duas funções públicas:
+ * - callAnthropicJson: JSON instruído no prompt + parse manual
+ *   (structured outputs via API Anthropic / response_format via OR).
+ * - callAnthropicWithWebSearch: tool web search nativa do Anthropic OR
+ *   `:online` suffix do OpenRouter (que ativa Exa por trás).
  *
  * Telemetria fica a cargo do caller (campaign_ai_runs).
  */
 
 import { logger } from "@/lib/logger"
 
-const log = logger.child("CampaignCentralAnthropic")
+const log = logger.child("CampaignCentralLLM")
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 const ANTHROPIC_VERSION = "2023-06-01"
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 const MAX_PAUSE_TURN_RETRIES = 3
+
+function useOpenRouter(): boolean {
+  return !!process.env.OPENROUTER_API_KEY
+}
+
+/**
+ * Normaliza model slug pra OpenRouter (vendor/model). Aceita:
+ *   - "anthropic/claude-sonnet-4.6"  → mantém
+ *   - "claude-sonnet-4-6"            → "anthropic/claude-sonnet-4.6"
+ *   - "claude-opus-4-7"              → "anthropic/claude-opus-4.7"
+ *   - "claude-haiku-4-5-20251001"    → "anthropic/claude-haiku-4.5"
+ */
+function toOpenRouterModel(model: string, online = false): string {
+  let slug = model
+  if (!slug.includes("/")) {
+    // claude-sonnet-4-6 → claude-sonnet-4.6
+    const cleaned = slug.replace(/(\d+)-(\d+)(?:-\d{4,8})?$/, "$1.$2")
+    slug = `anthropic/${cleaned}`
+  }
+  return online ? `${slug}:online` : slug
+}
 
 export interface AnthropicCallResult {
   rawText: string
@@ -74,9 +94,15 @@ export function tryParseJson(raw: string): { parsed: unknown | null; error: stri
   return { parsed: null, error: "JSON parse falhou em todos os candidatos" }
 }
 
-function requireApiKey(): string {
+function requireAnthropicKey(): string {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error("ANTHROPIC_API_KEY nao configurada")
+  return key
+}
+
+function requireOpenRouterKey(): string {
+  const key = process.env.OPENROUTER_API_KEY
+  if (!key) throw new Error("OPENROUTER_API_KEY nao configurada")
   return key
 }
 
@@ -87,8 +113,59 @@ function extractText(data: AnthropicMessageResponse): string {
     .join("")
 }
 
+interface OpenRouterChatResponse {
+  choices?: Array<{
+    message?: { content?: string }
+    finish_reason?: string
+  }>
+  usage?: { prompt_tokens?: number; completion_tokens?: number }
+  error?: { message?: string }
+}
+
+async function callOpenRouterJson(params: {
+  model: string
+  system: string
+  user: string
+  maxTokens: number
+  temperature: number
+  online?: boolean
+}): Promise<{ rawText: string; tokensIn: number; tokensOut: number }> {
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireOpenRouterKey()}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://admin.convertfy.com.br",
+      "X-Title": "Convertfy Campaign Central",
+    },
+    body: JSON.stringify({
+      model: toOpenRouterModel(params.model, params.online),
+      max_tokens: params.maxTokens,
+      temperature: params.temperature,
+      messages: [
+        { role: "system", content: params.system },
+        { role: "user", content: params.user },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  })
+
+  const data = (await res.json()) as OpenRouterChatResponse
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message || `OpenRouter HTTP ${res.status}`)
+  }
+  return {
+    rawText: (data.choices?.[0]?.message?.content ?? "").trim(),
+    tokensIn: data.usage?.prompt_tokens ?? 0,
+    tokensOut: data.usage?.completion_tokens ?? 0,
+  }
+}
+
 /**
- * Chamada com structured outputs — a API garante JSON conforme o schema.
+ * Chamada JSON via OpenRouter (preferência) ou Anthropic direta (fallback).
+ *
+ * OpenRouter: usa response_format json_object + JSON instruído no prompt.
+ * Anthropic: usa output_config.format json_schema (structured outputs).
  */
 export async function callAnthropicJson(params: {
   model: string
@@ -99,17 +176,54 @@ export async function callAnthropicJson(params: {
   outputSchema: Record<string, unknown>
 }): Promise<AnthropicCallResult> {
   const t0 = Date.now()
+  const temperature = params.temperature ?? 0.7
+
+  if (useOpenRouter()) {
+    // Adiciona instrução de JSON conforme schema no system prompt — a API
+    // OpenAI-compatible não tem structured outputs com schema livre.
+    const systemWithSchema = `${params.system}\n\nOUTPUT JSON SCHEMA (follow strictly):\n${JSON.stringify(
+      params.outputSchema,
+    )}\n\nReturn ONLY a JSON object matching this schema. No markdown.`
+    try {
+      const { rawText, tokensIn, tokensOut } = await callOpenRouterJson({
+        model: params.model,
+        system: systemWithSchema,
+        user: params.user,
+        maxTokens: params.maxTokens,
+        temperature,
+      })
+      const { parsed, error } = tryParseJson(rawText)
+      return {
+        rawText,
+        parsed,
+        parseError: error,
+        tokensInput: tokensIn,
+        tokensOutput: tokensOut,
+        costCents: computeCostCents(params.model, tokensIn, tokensOut),
+        durationMs: Date.now() - t0,
+      }
+    } catch (err) {
+      log.warn("openrouter.json_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      // Sem Anthropic key, propaga o erro
+      if (!process.env.ANTHROPIC_API_KEY) throw err
+      // Senão cai pro Anthropic
+    }
+  }
+
+  // Fallback: Anthropic direta
   const res = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
-      "x-api-key": requireApiKey(),
+      "x-api-key": requireAnthropicKey(),
       "anthropic-version": ANTHROPIC_VERSION,
       "content-type": "application/json",
     },
     body: JSON.stringify({
       model: params.model,
       max_tokens: params.maxTokens,
-      temperature: params.temperature ?? 0.7,
+      temperature,
       system: params.system,
       messages: [{ role: "user", content: params.user }],
       output_config: { format: { type: "json_schema", schema: params.outputSchema } },
@@ -150,7 +264,40 @@ export async function callAnthropicWithWebSearch(params: {
   maxSearches?: number
 }): Promise<AnthropicCallResult> {
   const t0 = Date.now()
-  const apiKey = requireApiKey()
+  const temperature = params.temperature ?? 0.7
+
+  if (useOpenRouter()) {
+    // :online suffix do OpenRouter ativa web search (via Exa internamente).
+    // maxSearches não é configurável aqui — usa default do OpenRouter (5).
+    try {
+      const { rawText, tokensIn, tokensOut } = await callOpenRouterJson({
+        model: params.model,
+        system: params.system,
+        user: params.user,
+        maxTokens: params.maxTokens,
+        temperature,
+        online: true,
+      })
+      const { parsed, error } = tryParseJson(rawText)
+      return {
+        rawText,
+        parsed,
+        parseError: error,
+        tokensInput: tokensIn,
+        tokensOutput: tokensOut,
+        costCents: computeCostCents(params.model, tokensIn, tokensOut),
+        durationMs: Date.now() - t0,
+      }
+    } catch (err) {
+      log.warn("openrouter.websearch_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      if (!process.env.ANTHROPIC_API_KEY) throw err
+      // Senão cai pro Anthropic
+    }
+  }
+
+  const apiKey = requireAnthropicKey()
   let totalIn = 0
   let totalOut = 0
 
