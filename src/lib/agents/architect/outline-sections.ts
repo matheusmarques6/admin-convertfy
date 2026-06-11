@@ -1,6 +1,12 @@
 /**
  * Normalização das seções do outline (estrutura geral) → categorias da
  * biblioteca de componentes. Puro (sem I/O), usado pelo Montador.
+ *
+ * O outline guarda os blocos pelos RÓTULOS humanos ("Value Proposition / Body",
+ * "Produtos / Grade", "Reviews / Prova Social", "Oferta / Promo"...), não pelas
+ * chaves. O matcher abaixo é TOLERANTE: tenta match exato (chave de categoria
+ * ou block_type técnico) e, se falhar, mapeia por palavra-chave — senão o
+ * resolveSections dropava esses blocos e o Montador recebia um email mutilado.
  */
 import {
   blockTypeToCategory,
@@ -10,22 +16,80 @@ import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 const FALLBACK_SECTIONS = ["header", "hero", "body", "products", "footer"]
 
+export interface OutlineSection {
+  /** Categoria da biblioteca (8): header/hero/body/products/reviews/cta/offer/footer. */
+  section: string
+  /** Rótulo original do outline (preserva a intenção: "USP icons", "Grade"...). */
+  label: string
+}
+
+/** Mapeia um rótulo humano de bloco → categoria, por palavra-chave. */
+function categoryByKeyword(s: string): string | null {
+  const has = (...words: string[]) => words.some((w) => s.includes(w))
+  // Ordem importa: checa o específico antes de "body" (mais abrangente).
+  if (has("footer", "rodap")) return "footer"
+  if (has("header", "navega", "menu", "topo")) return "header"
+  if (has("hero", "banner", "capa")) return "hero"
+  if (has("produto", "products", "grade", "catalog", "vitrine")) return "products"
+  if (
+    has("review", "prova social", "depoiment", "testimonial", "social proof", "avalia")
+  )
+    return "reviews"
+  if (has("oferta", "promo", "desconto", "cupom", "coupon", "offer", "discount"))
+    return "offer"
+  if (has("cta", "call to action", "botão", "botao", "button")) return "cta"
+  if (
+    has(
+      "value proposition",
+      "usp",
+      "benefíc",
+      "benefic",
+      "feature",
+      "diferenc",
+      "body",
+      "texto",
+      "story",
+      "sobre",
+    )
+  )
+    return "body"
+  return null
+}
+
+/** Resolve a categoria de UM item do outline (exato → block_type → keyword). */
+export function categoryForOutlineItem(item: string): string | null {
+  const key = item.trim().toLowerCase()
+  if (!key) return null
+  const exact = COMPONENT_CATEGORY_KEYS.includes(key)
+    ? key
+    : blockTypeToCategory(key)
+  if (exact) return exact
+  return categoryByKeyword(key)
+}
+
+/**
+ * Estrutura ordenada do outline: categoria + rótulo original por bloco.
+ * Preserva ordem e repetições; descarta itens que não casam com nada.
+ * Se nada sobrar, retorna a estrutura mínima de fallback.
+ */
+export function resolveStructure(
+  outline: EmailOutlineTemplate | null,
+): OutlineSection[] {
+  const out: OutlineSection[] = []
+  for (const item of outline?.suggested_blocks ?? []) {
+    const section = categoryForOutlineItem(item)
+    if (section) out.push({ section, label: item.trim() })
+  }
+  if (out.length > 0) return out
+  return FALLBACK_SECTIONS.map((s) => ({ section: s, label: s }))
+}
+
 /**
  * Normaliza as seções do outline para as 8 categorias da biblioteca,
- * preservando ordem e repetições. Aceita tanto seções (8) quanto tipos
- * técnicos (19, mapeados via blockTypeToCategory). Itens não reconhecidos
- * são ignorados; se nada sobrar, retorna a estrutura mínima de fallback.
+ * preservando ordem e repetições. Mantido para compat (candidatos/fallback).
  */
 export function resolveSections(
   outline: EmailOutlineTemplate | null,
 ): string[] {
-  const out: string[] = []
-  for (const item of outline?.suggested_blocks ?? []) {
-    const key = item.trim().toLowerCase()
-    const section = COMPONENT_CATEGORY_KEYS.includes(key)
-      ? key
-      : blockTypeToCategory(key)
-    if (section) out.push(section)
-  }
-  return out.length > 0 ? out : [...FALLBACK_SECTIONS]
+  return resolveStructure(outline).map((s) => s.section)
 }

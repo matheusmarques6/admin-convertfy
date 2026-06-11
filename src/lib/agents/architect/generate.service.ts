@@ -14,7 +14,7 @@ import type { EmailOutlineTemplate } from "@/types/email-generation"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { mapTomVozToMood } from "../image/mood-mapping"
 import { loadGlobalReferenceTemplate } from "../reference-template"
-import { resolveSections } from "./outline-sections"
+import { resolveStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { assembleStoreReference } from "./component-assembler.service"
 
@@ -116,8 +116,9 @@ export async function generateBlueprintAndReference(
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica p/ os agentes.
   const pesquisa = pesquisaToFullText(store as PesquisaFields)
 
-  // Passo 1 — Montador: monta o HTML a partir das seções do outline.
-  const sections = resolveSections(outline)
+  // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
+  // (categoria + rótulo original de cada bloco, na ordem).
+  const structure = resolveStructure(outline)
   const { html } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
@@ -136,7 +137,7 @@ export async function generateBlueprintAndReference(
     outlineGuidance: outline?.guidance ?? "",
     outlineToneHint: outline?.tone_hint ?? "",
     referenceTemplateHtml: refTemplateHtml ?? "",
-    sections,
+    structure,
   })
 
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.

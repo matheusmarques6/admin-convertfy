@@ -24,6 +24,7 @@ import {
   prefilterCandidates,
   DEFAULT_TOP_K,
 } from "./component-deriver"
+import type { OutlineSection } from "./outline-sections"
 import {
   invokeAgent,
   loadActiveAgentConfig,
@@ -215,8 +216,9 @@ export interface AssembleReferenceInput {
   // copiado). "" quando não há curado. Independe do papel de fallback que a
   // mesma fonte mantém no build-vars (consumidor).
   referenceTemplateHtml: string
-  // Seções (8) vindas do outline (estrutura geral), na ordem.
-  sections: string[]
+  // Estrutura geral do outline (categoria + rótulo original), na ordem. É o
+  // que o Montador segue pra gerar 1 bloco por componente.
+  structure: OutlineSection[]
 }
 
 export interface AssembleReferenceResult {
@@ -260,21 +262,15 @@ export async function assembleStoreReference(
     tom_voz: input.tomVoz,
   })
 
+  const sections = input.structure.map((s) => s.section)
   const poolByType = await loadActiveVariantsByType()
-  const candidatesByBlock: EmailComponentVariant[][] = input.sections.map(
-    (section) =>
-      prefilterCandidates(poolByType.get(section) ?? [], matchCtx, DEFAULT_TOP_K),
+  const candidatesByBlock: EmailComponentVariant[][] = sections.map((section) =>
+    prefilterCandidates(poolByType.get(section) ?? [], matchCtx, DEFAULT_TOP_K),
   )
-
-  const hasAnyCandidate = candidatesByBlock.some((c) => c.length > 0)
-  if (!hasAnyCandidate) {
-    log.warn("assembler.no_candidates", {
-      storeId: input.storeId,
-      flowType: input.flowType,
-      emailNumber: input.emailNumber,
-    })
-    return { html: null, variantIds: [] }
-  }
+  // Nota: a geração do HTML NÃO depende da biblioteca (o LLM gera do zero,
+  // usando os candidatos só como inspiração). Sem early-return por
+  // "no_candidates" — antes isso abortava emails cujas seções não tinham
+  // variante curada, deixando o consumidor sem reference.
 
   const cfgRow = await loadActiveAgentConfig("assembler")
   const config: AgentInvokeConfig = cfgRow
@@ -296,9 +292,10 @@ export async function assembleStoreReference(
       }
 
   const blocksJson = JSON.stringify(
-    input.sections.map((section, i) => ({
+    input.structure.map((s, i) => ({
       block_index: i,
-      section,
+      section: s.section,
+      componente: s.label,
     })),
   )
   // Biblioteca como inspiração: mostra o HTML de até 3 exemplos por seção
@@ -306,7 +303,7 @@ export async function assembleStoreReference(
   const candidatesJson = JSON.stringify(
     candidatesByBlock.map((finalists, i) => ({
       block_index: i,
-      section: input.sections[i],
+      section: sections[i],
       exemplos: shuffle(finalists)
         .slice(0, 3)
         .map((v) => ({
@@ -378,7 +375,7 @@ export async function assembleStoreReference(
     model: usedLlm ? config.model : "fallback",
     // Em skip, registra o motivo + o modelo tentado pra diagnóstico.
     errorMessage: usedLlm ? undefined : (invokeError ?? undefined),
-    inputVars: { sections: input.sections.length },
+    inputVars: { sections: input.structure.length },
     // Telemetria do output bruto. HTML gerado é grande — guarda até 40k pra
     // não cortar a visualização (o HTML real persistido não é truncado).
     rawOutput: rawOutput.slice(0, 40000),
