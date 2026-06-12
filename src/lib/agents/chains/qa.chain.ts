@@ -523,6 +523,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   // Falha graceful: vision throw/timeout vira 0 issues + log.warn em
   // runQaVisionCheck — nao bloqueia o passed do textual.
   const visionEnabled = process.env.EMAIL_QA_VISION_ENABLED === "true"
+  // Marca se vision realmente executou (lido pela view v_email_generation_logs
+  // pra derivar bucket 'qavision' no dashboard).
+  let visionRan = false
   const stage1BlockedImage = issues.some(
     (i) => i.type === "image_nicho_mismatch" && i.severity === "high",
   )
@@ -565,6 +568,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
           issues.push(...r.value.issues)
         }
       }
+      visionRan = visionResults.length > 0
       // TODO (AE-15 review IMPORTANTE): vision retorna `costCents` mas
       // o `logGenerationRun` abaixo so contabiliza o custo textual.
       // Quando ops ativar `EMAIL_QA_VISION_ENABLED=true`, agregar:
@@ -612,6 +616,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       passed,
       issues_count: issues.length,
       issues_by_severity: issuesBySeverity,
+      vision_ran: visionRan,
     },
   }).catch(() => {})
 

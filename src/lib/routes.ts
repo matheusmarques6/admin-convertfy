@@ -216,6 +216,7 @@ export const ROUTES = {
       TAGS: "/admin/settings/tags",
       EMAIL_TEMPLATES: "/admin/settings/email-templates",
       EMAIL_GENERATION: "/admin/settings/email-generation",
+      EMAIL_GENERATION_LOGS: "/admin/settings/email-generation-logs",
       CAMPAIGN_CENTRAL: "/admin/settings/campaign-central",
     },
     AI_USAGE: "/admin/ai-usage",

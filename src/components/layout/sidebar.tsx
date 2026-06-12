@@ -39,6 +39,7 @@ import {
   LifeBuoy,
   Megaphone,
   Cpu,
+  ListChecks,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -328,6 +329,14 @@ const GERAL_NAV: NavGroup[] = [
         icon: Cpu,
         // Dashboard de observabilidade: cada execução de agente com
         // tokens e custo. Mesmo gate da Geração de Emails.
+        requiredFeatures: ["__admin_only__"],
+      },
+      {
+        name: "Logs de geração",
+        href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION_LOGS,
+        icon: ListChecks,
+        // Logs operacionais do pipeline AE — específico, fiel à maquete
+        // (KPIs, custo no tempo, resumo por agente, tabela detalhada).
         requiredFeatures: ["__admin_only__"],
       },
     ],
