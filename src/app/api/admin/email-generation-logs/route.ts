@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
     let totalRetries = 0
     let trackedDurationMs = 0
     let trackedDurationCount = 0
-    const byStatus = { success: 0, error: 0, running: 0 }
+    const byStatus = { success: 0, error: 0, running: 0, skipped: 0 }
     const byDay = new Map<string, { runs: number; cost_cents: number }>()
     const byType = new Map<string, number>()
 
@@ -241,6 +241,7 @@ export async function GET(request: NextRequest) {
       if (row.status === "success") byStatus.success += 1
       else if (row.status === "error") byStatus.error += 1
       else if (row.status === "running") byStatus.running += 1
+      else if (row.status === "skipped") byStatus.skipped += 1
 
       // by_day
       const day = row.created_at.slice(0, 10)

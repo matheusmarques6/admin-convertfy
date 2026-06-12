@@ -149,7 +149,7 @@ interface Payload {
   by_agent: AgentRow[]
   by_day: DayRow[]
   by_type: TypeRow[]
-  by_status: { success: number; error: number; running: number }
+  by_status: { success: number; error: number; running: number; skipped: number }
   recent: RecentRow[]
 }
 
@@ -614,7 +614,9 @@ function StatusBadge({ status }: { status: string }) {
     success: { bg: C.posBg, border: C.posBorder, color: C.pos, label: "Sucesso" },
     error: { bg: C.negBg, border: C.negBorder, color: C.neg, label: "Erro" },
     running: { bg: C.infoBg, border: C.infoBorder, color: C.info, label: "Em andamento" },
-    skipped: { bg: C.g100, border: C.g200, color: C.g700, label: "Pulado" },
+    // 'skipped' no pipeline AE = caiu no fallback (ex.: 402 créditos,
+    // timeout) — o email saiu com template genérico em vez de IA.
+    skipped: { bg: C.warnBg, border: C.warnBorder, color: C.warn, label: "Fallback" },
   }
   const s = map[status] || map.success
   return (
@@ -1446,13 +1448,21 @@ const WINDOWS = [
 
 export function LogsWorkspace() {
   const [windowDays, setWindowDays] = useState("14")
-  const [tab, setTab] = useState<"todos" | "erros" | "andamento">("todos")
+  const [tab, setTab] = useState<"todos" | "erros" | "andamento" | "fallbacks">(
+    "todos",
+  )
   const [agentFilter, setAgentFilter] = useState<string>("")
   const [showWindowMenu, setShowWindowMenu] = useState(false)
   const [showAgentMenu, setShowAgentMenu] = useState(false)
 
   const statusParam =
-    tab === "erros" ? "&status=error" : tab === "andamento" ? "&status=running" : ""
+    tab === "erros"
+      ? "&status=error"
+      : tab === "andamento"
+        ? "&status=running"
+        : tab === "fallbacks"
+          ? "&status=skipped"
+          : ""
   const agentParam = agentFilter ? `&agent=${agentFilter}` : ""
 
   const { data, isLoading, error } = useSWR<{ data: Payload } | Payload>(
@@ -1786,6 +1796,11 @@ export function LogsWorkspace() {
                     key: "andamento",
                     label: "Em andamento",
                     count: payload.by_status.running,
+                  },
+                  {
+                    key: "fallbacks",
+                    label: "Fallbacks",
+                    count: payload.by_status.skipped ?? 0,
                   },
                 ]}
               />
