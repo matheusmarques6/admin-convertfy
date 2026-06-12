@@ -126,4 +126,25 @@ describe("assembleStoreReference — fallback não persiste a reference", () => 
     await assembleStoreReference(baseInput)
     expect(upsertSpy).not.toHaveBeenCalled()
   })
+
+  it("fallback usa o HTML de referência CURADO quando existe (não a biblioteca)", async () => {
+    invokeAgent.mockRejectedValue(new Error("timeout"))
+    const curated =
+      "<!DOCTYPE html><html><body><div>email curado completo</div></body></html>"
+    const res = await assembleStoreReference({
+      ...baseInput,
+      referenceTemplateHtml: curated,
+    })
+    expect(upsertSpy).not.toHaveBeenCalled()
+    expect(res.html).toBe(curated)
+    // não escolheu variantes da biblioteca
+    expect(res.variantIds).toEqual([])
+  })
+
+  it("fallback só concatena variantes quando NÃO há curado", async () => {
+    invokeAgent.mockRejectedValue(new Error("timeout"))
+    const res = await assembleStoreReference(baseInput) // referenceTemplateHtml: ""
+    expect(res.html).toContain("hero")
+    expect(res.variantIds).toEqual(["v1"])
+  })
 })

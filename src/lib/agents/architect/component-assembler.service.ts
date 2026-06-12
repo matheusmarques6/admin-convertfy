@@ -375,10 +375,27 @@ export async function assembleStoreReference(
     })
   }
 
-  // Fallback determinístico: concatena o top-1 das variantes pré-filtradas.
-  const fallbackChosen = resolveChoices(candidatesByBlock, [])
-  const html = usedLlm ? generatedHtml : assembleReferenceHtml(fallbackChosen)
-  const variantIds = usedLlm ? [] : fallbackChosen.map((v) => v.id)
+  // Fallback em cascata: (1) HTML de referência CURADO do flow×email
+  // (email_reference_templates, já carregado em input.referenceTemplateHtml) —
+  // é um email completo e validado, muito superior à concatenação de
+  // variantes; (2) só sem curado, concatena o top-1 das variantes
+  // pré-filtradas (pode sair com blocos faltando se a biblioteca não
+  // cobre alguma seção).
+  const curatedReference = input.referenceTemplateHtml.trim()
+  let html: string
+  let variantIds: string[] = []
+  let fallbackSource: "llm" | "curated_reference" | "variants" = "llm"
+  if (usedLlm) {
+    html = generatedHtml
+  } else if (curatedReference) {
+    html = curatedReference
+    fallbackSource = "curated_reference"
+  } else {
+    const fallbackChosen = resolveChoices(candidatesByBlock, [])
+    html = assembleReferenceHtml(fallbackChosen)
+    variantIds = fallbackChosen.map((v) => v.id)
+    fallbackSource = "variants"
+  }
 
   // Só persiste a reference quando o LLM gerou de verdade. No fallback NÃO
   // grava: preserva uma reference boa de um run anterior (upsert é destrutivo)
@@ -405,6 +422,7 @@ export async function assembleStoreReference(
     rawOutput: rawOutput.slice(0, 40000),
     parsedOutput: {
       used_llm: usedLlm,
+      fallback_source: usedLlm ? null : fallbackSource,
       attempted_model: config.model,
       invoke_error: invokeError,
       html_chars: html.length,
