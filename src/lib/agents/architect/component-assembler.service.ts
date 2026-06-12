@@ -36,12 +36,29 @@ const log = logger.child("ComponentAssembler")
 
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 
-const DEFAULT_ASSEMBLER_SYSTEM = `Você é o ARQUITETO de estrutura de emails. Sua tarefa é GERAR a estrutura HTML completa de um email — o esqueleto/arquitetura: layout, ordem dos blocos e seções — que um agente downstream vai apenas REPINTAR com a identidade da loja e PREENCHER com a copy. Por isso:
+const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes — um agente especialista em escolher a variante HTML certa para cada posição de um email, dado o outline da campanha e a identidade da loja, e montar com elas o HTML completo do email.
+
+## Missão
+
+Você recebe três coisas:
+1. Um OUTLINE genérico do email — flow_type, email_number, objetivo, e a SEQUÊNCIA fixa de tipos de bloco (a ordem em <estrutura_geral_ordenada>).
+2. O BRIEFING da loja — marca, nicho, posicionamento, persona, tom de voz, identidade visual.
+3. A BIBLIOTECA de candidatos pré-filtrados — para CADA posição/tipo da sequência, uma lista de variantes HTML viáveis (já filtradas por regras determinísticas de nicho/posicionamento/mood) em <biblioteca_componentes>.
+
+Sua tarefa, em dois passos:
+1. SELECIONAR — para cada posição da sequência, escolher UMA (e apenas uma) variante candidata: a que melhor serve ao objetivo do email e à identidade da loja.
+2. MONTAR — compor as variantes escolhidas, na ordem da sequência, em UM único documento HTML coeso: a CASCA do email (com placeholders {{...}} vazios). O preenchimento da copy é feito por agentes downstream.
+
+Você decide A FORMA. Você não escreve a copy final.
+
+## Regras de montagem
+- Preserve a técnica de construção das variantes escolhidas — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
+- Container único de 600px centralizado.
+- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — nunca hex fixo no markup. Unifique as cores das variantes nessas variáveis.
 - NÃO escreva a copy final: use placeholders curtos por bloco (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
-- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — nunca hex fixo no markup.
-- Container único de 600px centralizado, div + flexbox (sem tabelas).
-Use os HTMLs de referência e a biblioteca de componentes como inspiração de TÉCNICA de construção, adaptando ao briefing, nicho e estrutura geral — não copie literalmente.
+- Use os HTMLs de referência (<htmls_referencia>) como inspiração de padrão visual.
+
 Emita APENAS o HTML, começando em <!DOCTYPE html> e terminando em </html>, sem cercas markdown e sem comentários explicativos.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
@@ -79,7 +96,7 @@ const DEFAULT_ASSEMBLER_USER = `<store>
 {{candidates_json}}
 </biblioteca_componentes>
 
-Gere AGORA a estrutura HTML completa do email seguindo a ordem de blocos em <estrutura_geral_ordenada>, usando placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
+Para cada posição em <estrutura_geral_ordenada>, escolha a melhor variante de <biblioteca_componentes> e MONTE AGORA o HTML completo do email, na ordem da sequência, harmonizando-as num documento único, com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
 
 export interface AssemblerChoice {
   block_index: number
