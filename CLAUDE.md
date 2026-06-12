@@ -1097,5 +1097,49 @@ Referência: `docs/architecture/adr-agent-email-generation.md`.
 
 ---
 
+## Pipeline de Geração de Emails do Onboarding (8 agentes)
+
+Ordem real de execução. Os 2 primeiros montam o CONTEXTO (marca/pesquisa);
+os 6 últimos rodam por email (fase 2).
+
+```
+Briefing → [Pesquisa & Diagnóstico] → Montador → Blueprint → Copy(n8n) → Imagem → HTML → QA
+```
+
+Modelos vivem em `email_agent_configs` (agent_type, model, system_prompt,
+user_template, temperature, max_tokens, is_active). Carregados via
+`loadActiveAgentConfig(agent_type)`; UI em `/admin/settings/email-generation?tab=agents`.
+Migrations fazem `UPDATE` in-place da linha ativa. Model id com "/" roteia via
+OpenRouter; sem "/" usa Anthropic SDK direto.
+
+| # | Agente | Arquivo | Modelo (config) | INPUT | OUTPUT |
+|---|--------|---------|-----------------|-------|--------|
+| 1 | **Briefing** | `briefing-generation.service.ts` | cascata `claude-sonnet-4-6` → `openai/gpt-5.3-chat` → template | `form_responses` + pesquisa (`pesquisaToFullText`) | `onboardings.briefing` (JSON BriefingContent) |
+| 2 | **Pesquisa & Diagnóstico** | n8n callbacks `/api/webhooks/n8n/{brand,competitors,icp,tone,ads-analyzer}` | n8n + agentes | URL da loja | 5 pilares em `client_stores` (`brand_*`,`store_*`,`icp_*`,`tone_*`,`ads_*`) |
+| 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **`anthropic/claude-opus-4.8`** (OpenRouter) · T=0.3 · max 16384 | briefing+pesquisa+outline+`structure`+`reference_template_html`+biblioteca | HTML de ARQUITETURA → `store_email_references` (só persiste se `usedLlm`) |
+| 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
+| 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
+| 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
+| 7 | **HTML** | `chains/html.chain.ts` + `html/build-vars.ts` | `claude-sonnet-4-6` (config; era opus-4-7) | 21 vars: `reference_html`+copy+brand+blocks | `email_flow_emails.html`; status `qa_running` |
+| 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
+
+**Papel-chave**: o Montador (#3) GERA a arquitetura HTML (esqueleto, ordem dos
+blocos, CSS variables, placeholders `{{HEADLINE}}`) UMA vez por loja×email; o
+HTML agent (#7) só REPINTA e despeja copy — por isso #7 é Sonnet barato.
+
+**Fallback por email**: Montador e Blueprint só gravam quando geram de verdade
+(`if usedLlm` / `if source==='ai'`). No fallback NÃO gravam → consumidor cai no
+template global (`email_reference_templates` / `email_blueprints` / `DEFAULT_BLUEPRINTS`).
+
+**Dispatch NÃO roda o Montador inline** (timeout 504): `dispatchEmailCopyWebhook`
+usa o que existir em `store_email_references`/`store_email_blueprints` + fallback
+global. Gerar/regenerar reference por loja = `POST /api/admin/stores/[id]/generate-blueprints`
+(`maxDuration=300`).
+
+Status machine: `draft → pending → copy_generating → copy_ready → rendering →
+image_done → qa_running → ready/failed`.
+
+---
+
 *Última atualização: Marco 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
