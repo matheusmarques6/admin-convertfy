@@ -371,12 +371,12 @@ export async function GET(request: NextRequest) {
               links,
               subtasks: [],
               group_id: `onb-${onb.id}`,
-              group_name: `Onboarding · ${client?.name ?? store?.store_name ?? "Cliente"}`,
+              group_name: `Onboarding · ${store?.store_name ?? client?.name ?? "Loja"}`,
               group_color: col?.color ?? "#4E62D8",
             }
           })
 
-          const onboardingName = client?.name ?? store?.store_name ?? "Cliente"
+          const onboardingName = store?.store_name ?? client?.name ?? "Loja"
           groups.push({
             id: `onb-${onb.id}`,
             name: `Onboarding · ${onboardingName}`,

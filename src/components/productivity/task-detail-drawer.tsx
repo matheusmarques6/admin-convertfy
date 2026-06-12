@@ -797,7 +797,7 @@ export function TaskDetailDrawer({
   }
 
   const meta = task.metadata ?? {}
-  const clientName = (meta.client_name as string) ?? (meta.store_name as string) ?? null
+  const clientName = (meta.store_name as string) ?? (meta.client_name as string) ?? null
   const stageName = (meta.column_name as string) ?? null
   const stageColor = (meta.stage_color as string) ?? C.brandBlueLight
   const isOnboarding = task.source_type === "onboarding"
