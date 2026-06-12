@@ -235,4 +235,21 @@ describe("processDispatchJobs", () => {
     expect(res.claimed).toBe(false)
     expect(dispatchEmailCopyWebhook).not.toHaveBeenCalled()
   })
+
+  it("recovery: dispatch devolve no_draft_emails (batch já saiu) → job 'done', não 'failed'", async () => {
+    // Simula re-claim de job cujo dispatch anterior JÁ saiu (emails fora de
+    // draft): o re-dispatch volta no_draft_emails — não é falha real.
+    dispatchEmailCopyWebhook.mockResolvedValue({
+      ok: false,
+      flow_count: 0,
+      email_count: 0,
+      reason: "no_draft_emails",
+    })
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const res = await processDispatchJobs()
+    expect(res.done).toBe(true)
+    const job = h.tables.email_dispatch_jobs[0]
+    expect(job.status).toBe("done")
+    expect(String(job.error)).toContain("no_draft_emails")
+  })
 })

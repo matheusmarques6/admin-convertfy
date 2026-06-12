@@ -43,8 +43,11 @@ const ARCHITECT_BATCH = Number(process.env.DISPATCH_ARCHITECT_BATCH ?? 4)
 // Orçamento de tempo de um tick (deixa folga sob maxDuration=300).
 const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 240_000)
 // Lease: um job tocado há menos disso é considerado "em processamento" por
-// outro tick e não é reclamado (evita gerar o mesmo email 2x = $$).
-const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? 180_000)
+// outro tick e não é reclamado (evita gerar o mesmo email 2x = $$). Precisa
+// ser MAIOR que o INVOKE_TIMEOUT_MS do LLM (180s em llm-invoke.ts) + folga:
+// o heartbeat só roda após cada lote, então um lote de cauda longa não pode
+// estourar o lease — senão outro tick re-claima e paga Opus 2×.
+const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? 360_000)
 
 export type ArchitectStatus = "pending" | "done" | "failed"
 
@@ -211,6 +214,13 @@ export async function enqueueDispatchJob(
     .single()
 
   if (insErr || !job) {
+    // 23505 = unique_violation no índice parcial uq_edj_one_active_per_store:
+    // outro callback criou o job ativo entre o dedup e o insert. Mesmo
+    // resultado do dedup app-level — não é erro.
+    if (insErr?.code === "23505") {
+      log.info("enqueue.dedup_race", { storeId })
+      return { ok: true, reason: "already_queued" }
+    }
     log.error("enqueue.insert_failed", { storeId, error: insErr?.message })
     return { ok: false, reason: "enqueue_failed" }
   }
@@ -406,11 +416,20 @@ export async function processDispatchJobs(): Promise<{
     log.error("dispatch.threw", { jobId: job.id, error: dispatchReason })
   }
 
+  // Recovery: um job 'dispatching' re-claimado (crash entre o POST ok ao n8n
+  // e o update final) re-tenta o dispatch; como os emails já saíram de draft
+  // (in_progress), volta 'no_draft_emails' — o batch JÁ foi despachado. Marca
+  // 'done' com nota, não 'failed', pra não enganar o operador.
+  const alreadyDispatched = !dispatchOk && dispatchReason === "no_draft_emails"
   await admin
     .from("email_dispatch_jobs")
     .update({
-      status: dispatchOk ? "done" : "failed",
-      error: dispatchOk ? null : (dispatchReason ?? "dispatch_failed"),
+      status: dispatchOk || alreadyDispatched ? "done" : "failed",
+      error: dispatchOk
+        ? null
+        : alreadyDispatched
+          ? "no_draft_emails (batch provavelmente já despachado antes)"
+          : (dispatchReason ?? "dispatch_failed"),
       dispatched_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

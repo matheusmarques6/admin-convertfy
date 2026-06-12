@@ -43,6 +43,14 @@ CREATE INDEX IF NOT EXISTS idx_edj_active
 CREATE INDEX IF NOT EXISTS idx_edj_store
   ON email_dispatch_jobs(store_id, created_at DESC);
 
+-- No máximo 1 job ATIVO por loja: fecha no banco a corrida de dois callbacks
+-- pesquisa-completa simultâneos criarem 2 jobs (o dedup app-level checa antes
+-- do insert; este índice é o backstop atômico — violação vira 'already_queued'
+-- no enqueue).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_edj_one_active_per_store
+  ON email_dispatch_jobs(store_id)
+  WHERE status IN ('pending','generating','dispatching');
+
 ALTER TABLE email_dispatch_jobs ENABLE ROW LEVEL SECURITY;
 
 -- Policy: padrão authenticated_full_access reusado do epic email workspace.

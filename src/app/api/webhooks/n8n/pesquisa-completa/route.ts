@@ -13,8 +13,8 @@
  *
  * O n8n deve chamar este endpoint como ÚLTIMO passo do workflow de pesquisa,
  * depois dos callbacks brand/store-story/icp/tone/ads-analyzer. A idempotência
- * vive no enqueue (job ativo → already_queued) e no guard de batch em
- * andamento de dispatchEmailCopyWebhook.
+ * vive no enqueue: job ativo → already_queued (dedup app-level + índice único
+ * parcial); pós-dispatch, emails fora de draft → no_draft_emails sem criar job.
  *
  * REGERAÇÃO: o briefing webhook (dispatchBriefingWebhook) envia um campo
  * `regeneration` no payload de saída. Quando o briefing é REGERADO, o n8n
