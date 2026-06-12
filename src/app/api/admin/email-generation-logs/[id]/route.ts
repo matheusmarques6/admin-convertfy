@@ -78,7 +78,7 @@ export async function GET(
       r.email_id
         ? admin
             .from("email_flow_emails")
-            .select("name, position")
+            .select("name, number")
             .eq("id", r.email_id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -99,7 +99,7 @@ export async function GET(
     ])
 
     const store = storeRes.data as { store_name?: string } | null
-    const email = emailRes.data as { name?: string; position?: number } | null
+    const email = emailRes.data as { name?: string; number?: number } | null
     const flow = flowRes.data as { flow_type?: string } | null
     const triggeredBy = triggeredByRes.data as
       | { name?: string; email?: string }
@@ -135,7 +135,7 @@ export async function GET(
       store_name: store?.store_name ?? null,
       email_id: r.email_id,
       email_name: email?.name ?? null,
-      email_position: email?.position ?? null,
+      email_position: email?.number ?? null,
       flow_id: r.flow_id,
       flow_type: flow?.flow_type ?? null,
       flow_type_label: flowTypeLabel(flow?.flow_type),

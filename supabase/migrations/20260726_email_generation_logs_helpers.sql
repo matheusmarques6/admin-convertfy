@@ -40,7 +40,7 @@ SELECT
   s.store_name,
   r.email_id,
   e.name        AS email_name,
-  e.position    AS email_position,
+  e.number      AS email_position,
   r.flow_id,
   f.flow_type,
   -- QA Vision derivado: marca runs de agent='qa' que executaram
