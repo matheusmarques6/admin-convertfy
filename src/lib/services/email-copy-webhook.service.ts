@@ -756,7 +756,10 @@ export async function dispatchEmailCopyWebhook(
   }
 
   // ── Persistir tentativa em email_generation_runs e marcar emails como in_progress
-  await admin.from("email_generation_runs").insert({
+  // Telemetria é fire-and-forget, mas a falha PRECISA aparecer no log:
+  // este insert ficou meses falhando silenciosamente porque 'copy_dispatch'
+  // não estava no CHECK do agent (fix: migration 20260728).
+  const { error: telemetryErr } = await admin.from("email_generation_runs").insert({
     store_id: storeId,
     triggered_by: options.triggeredBy ?? null,
     agent: "copy_dispatch",
@@ -771,6 +774,12 @@ export async function dispatchEmailCopyWebhook(
     },
     error_message: dispatchError,
   })
+  if (telemetryErr) {
+    log.warn("email_copy.telemetry_failed", {
+      storeId,
+      error_message: telemetryErr.message,
+    })
+  }
 
   if (dispatchStatus === "success") {
     await admin

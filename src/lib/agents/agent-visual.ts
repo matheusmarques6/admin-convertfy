@@ -15,6 +15,7 @@ export type PipelineAgentKey =
   | "qa"
   | "qavision"
   | "seed"
+  | "copy_dispatch"
 
 export interface AgentVisual {
   name: string
@@ -89,6 +90,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   seed: {
     name: "Seed",
     desc: "Watchdog — recovery e enfileiramento",
+    color: "#71778A",
+    bg: "#F3F4F6",
+    border: "#E5E7EB",
+    kind: "sistema",
+  },
+  copy_dispatch: {
+    name: "Dispatch",
+    desc: "Envio do lote de copy pro n8n (manual ou pesquisa-completa)",
     color: "#71778A",
     bg: "#F3F4F6",
     border: "#E5E7EB",
