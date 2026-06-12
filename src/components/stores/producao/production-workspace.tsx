@@ -892,8 +892,8 @@ function DispatchEmailCopiesButton({
         throw new Error((data?.reason as string) || (data?.error as string) || `HTTP ${res.status}`)
       }
       toast({
-        title: "Geração iniciada",
-        description: `${data.flow_count ?? 0} flow(s) · ${data.email_count ?? 0} email(s) enviados ao n8n.`,
+        title: "Geração enfileirada",
+        description: `${data.email_count ?? 0} email(s) na fila. O Montador/Blueprint roda em background e dispara pro n8n ao terminar.`,
       })
       setOpen(false)
     } catch (err) {
@@ -909,6 +909,7 @@ function DispatchEmailCopiesButton({
         store_not_found: "Loja não encontrada.",
         flows_query_failed: "Erro ao buscar flows no banco.",
         emails_query_failed: "Erro ao buscar emails no banco.",
+        enqueue_failed: "Não foi possível enfileirar o job. Tente novamente.",
       }
       toast({
         variant: "destructive",
