@@ -32,7 +32,19 @@ import {
 } from "@/components/ui/collapsible"
 import { toast } from "@/lib/hooks/use-toast"
 import { isRawTextBriefing, getRawText } from "@/lib/briefing/briefing-text"
+import { languageLabelToCode, languageCodeToLabel } from "@/lib/i18n/store-language"
 import type { StoreBriefing, BriefingData } from "@/types/onboarding"
+
+/**
+ * Exibe o idioma do briefing SEMPRE em português. Briefings antigos podem ter o
+ * nome nativo salvo ("日本語", "Polski"); converte label/código → label PT novo.
+ * Mantém o texto cru quando é idioma livre ("Outro") que não casa.
+ */
+function toPortugueseLanguage(value: string | null): string | null {
+  if (!value) return value
+  const code = languageLabelToCode(value)
+  return code ? (languageCodeToLabel(code) ?? value) : value
+}
 
 interface StoreBriefingViewProps {
   storeId: string
@@ -393,7 +405,7 @@ export function StoreBriefingView({
             <InfoRow label="Plataforma" value={v.plataforma} />
             <InfoRow label="Nicho" value={v.nicho} />
             <InfoRow label="País" value={v.pais} />
-            <InfoRow label="Idioma" value={v.idioma} />
+            <InfoRow label="Idioma" value={toPortugueseLanguage(v.idioma)} />
             <InfoRow label="Frete" value={v.frete_gratis} />
           </div>
         )

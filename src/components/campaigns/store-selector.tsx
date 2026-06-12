@@ -54,12 +54,12 @@ function getFlag(code: string): string {
 }
 
 const LANGUAGE_LABELS: Record<string, string> = {
-  pt: "Portugues",
-  en: "English",
-  es: "Espanol",
-  de: "Deutsch",
-  fr: "Francais",
-  nl: "Nederlands",
+  pt: "Português",
+  en: "Inglês",
+  es: "Espanhol",
+  de: "Alemão",
+  fr: "Francês",
+  nl: "Holandês",
 }
 
 function getLanguageLabel(lang: string): string {

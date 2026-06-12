@@ -8,8 +8,8 @@ import {
 describe("languageCodeToLabel", () => {
   it("converte código canônico para label amigável", () => {
     expect(languageCodeToLabel("pt-BR")).toBe("Português (Brasil)")
-    expect(languageCodeToLabel("en")).toBe("English")
-    expect(languageCodeToLabel("de")).toBe("Deutsch")
+    expect(languageCodeToLabel("en")).toBe("Inglês")
+    expect(languageCodeToLabel("de")).toBe("Alemão")
   })
 
   it("é case-insensitive e ignora espaços", () => {
@@ -17,7 +17,7 @@ describe("languageCodeToLabel", () => {
   })
 
   it("retorna null para código fora da lista, vazio ou não-string", () => {
-    expect(languageCodeToLabel("fr")).toBeNull()
+    expect(languageCodeToLabel("ru")).toBeNull()
     expect(languageCodeToLabel("")).toBeNull()
     expect(languageCodeToLabel(null)).toBeNull()
     expect(languageCodeToLabel(undefined)).toBeNull()
@@ -29,5 +29,16 @@ describe("languageCodeToLabel", () => {
       expect(languageCodeToLabel(opt.value)).toBe(opt.label)
       expect(languageLabelToCode(opt.label)).toBe(opt.value)
     }
+  })
+
+  it("labels nativos antigos (pré-tradução PT) ainda resolvem via alias", () => {
+    // Lojas cadastradas antes de traduzir o dropdown guardaram o nome nativo.
+    expect(languageLabelToCode("Polski")).toBe("pl")
+    expect(languageLabelToCode("日本語")).toBe("ja")
+    expect(languageLabelToCode("中文")).toBe("zh")
+    expect(languageLabelToCode("한국어")).toBe("ko")
+    expect(languageLabelToCode("Deutsch")).toBe("de")
+    expect(languageLabelToCode("Español")).toBe("es")
+    expect(languageLabelToCode("Norsk")).toBe("nb")
   })
 })

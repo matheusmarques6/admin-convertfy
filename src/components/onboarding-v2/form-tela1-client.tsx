@@ -179,7 +179,7 @@ const SECTIONS: Section[] = [
         label: "Qual idioma?",
         type: "text",
         required: true,
-        placeholder: "Ex: Français, 日本語…",
+        placeholder: "Ex: Grego, Tailandês…",
         showIf: (v) => v.store_language === OTHER_LANGUAGE_LABEL,
       },
       {

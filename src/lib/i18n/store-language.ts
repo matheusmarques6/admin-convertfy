@@ -30,22 +30,25 @@ export type StoreLanguageCode =
   | "zh"
   | "ko"
 
+// Labels em PORTUGUÊS (a equipe opera em PT). O `value` (código ISO) é o que
+// vai pro banco/n8n e NUNCA muda. Os nomes nativos antigos ("Polski", "日本語"…)
+// já salvos em lojas existentes seguem resolvendo via LANGUAGE_ALIASES abaixo.
 export const STORE_LANGUAGE_OPTIONS: { value: StoreLanguageCode; label: string }[] = [
   { value: "pt-BR", label: "Português (Brasil)" },
-  { value: "en", label: "English" },
-  { value: "es", label: "Español" },
-  { value: "de", label: "Deutsch" },
-  { value: "fr", label: "Français" },
+  { value: "en", label: "Inglês" },
+  { value: "es", label: "Espanhol" },
+  { value: "de", label: "Alemão" },
+  { value: "fr", label: "Francês" },
   { value: "it", label: "Italiano" },
-  { value: "nl", label: "Nederlands" },
-  { value: "nb", label: "Norsk" },
-  { value: "sv", label: "Svenska" },
-  { value: "da", label: "Dansk" },
-  { value: "fi", label: "Suomi" },
-  { value: "pl", label: "Polski" },
-  { value: "ja", label: "日本語" },
-  { value: "zh", label: "中文" },
-  { value: "ko", label: "한국어" },
+  { value: "nl", label: "Holandês" },
+  { value: "nb", label: "Norueguês" },
+  { value: "sv", label: "Sueco" },
+  { value: "da", label: "Dinamarquês" },
+  { value: "fi", label: "Finlandês" },
+  { value: "pl", label: "Polonês" },
+  { value: "ja", label: "Japonês" },
+  { value: "zh", label: "Chinês" },
+  { value: "ko", label: "Coreano" },
 ]
 
 // Tuple non-empty derivado de STORE_LANGUAGE_OPTIONS — usado pelo
@@ -69,59 +72,71 @@ const LANGUAGE_ALIASES: Record<string, StoreLanguageCode> = {
   "portuguese": "pt-BR",
   "brasileiro": "pt-BR",
   "br": "pt-BR",
-  // inglês
+  // inglês (label nativo antigo: "English")
   "inglês": "en",
   "ingles": "en",
   "english": "en",
-  // espanhol
+  // espanhol (label nativo antigo: "Español")
   "espanhol": "es",
   "spanish": "es",
-  // alemão
+  "español": "es",
+  // alemão (label nativo antigo: "Deutsch")
   "alemão": "de",
   "alemao": "de",
   "german": "de",
-  // francês
+  "deutsch": "de",
+  // francês (label nativo antigo: "Français")
   "francês": "fr",
   "frances": "fr",
   "french": "fr",
+  "français": "fr",
   // italiano
   "italian": "it",
-  // holandês
+  // holandês (label nativo antigo: "Nederlands")
   "holandês": "nl",
   "holandes": "nl",
   "dutch": "nl",
-  // norueguês
+  "nederlands": "nl",
+  // norueguês (label nativo antigo: "Norsk")
   "norueguês": "nb",
   "noruegues": "nb",
   "norwegian": "nb",
+  "norsk": "nb",
   "no": "nb",
-  // sueco
+  // sueco (label nativo antigo: "Svenska")
   "sueco": "sv",
   "swedish": "sv",
-  // dinamarquês
+  "svenska": "sv",
+  // dinamarquês (label nativo antigo: "Dansk")
   "dinamarquês": "da",
   "dinamarques": "da",
   "danish": "da",
-  // finlandês
+  "dansk": "da",
+  // finlandês (label nativo antigo: "Suomi")
   "finlandês": "fi",
   "finlandes": "fi",
   "finnish": "fi",
-  // polonês
+  "suomi": "fi",
+  // polonês (label nativo antigo: "Polski")
   "polonês": "pl",
   "polones": "pl",
   "polish": "pl",
-  // japonês
+  "polski": "pl",
+  // japonês (label nativo antigo: "日本語")
   "japonês": "ja",
   "japones": "ja",
   "japanese": "ja",
-  // chinês
+  "日本語": "ja",
+  // chinês (label nativo antigo: "中文")
   "chinês": "zh",
   "chines": "zh",
   "chinese": "zh",
   "mandarim": "zh",
-  // coreano
+  "中文": "zh",
+  // coreano (label nativo antigo: "한국어")
   "coreano": "ko",
   "korean": "ko",
+  "한국어": "ko",
 }
 
 /** Última opção do select — abre campo de texto livre para idiomas fora da lista. */

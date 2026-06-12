@@ -345,8 +345,8 @@ export default function OnboardingWizardPage() {
                       <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
-                        <SelectItem value="en-US">English (US)</SelectItem>
-                        <SelectItem value="es">Español</SelectItem>
+                        <SelectItem value="en-US">Inglês (EUA)</SelectItem>
+                        <SelectItem value="es">Espanhol</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

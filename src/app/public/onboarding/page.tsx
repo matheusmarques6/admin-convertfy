@@ -62,14 +62,14 @@ const COUNTRIES = [
 ]
 
 const LANGUAGES = [
-  { value: "pt-BR", label: "Portugues (Brasil)" },
-  { value: "pt-PT", label: "Portugues (Portugal)" },
-  { value: "en", label: "English" },
-  { value: "es", label: "Espanol" },
-  { value: "fr", label: "Francais" },
-  { value: "de", label: "Deutsch" },
+  { value: "pt-BR", label: "Português (Brasil)" },
+  { value: "pt-PT", label: "Português (Portugal)" },
+  { value: "en", label: "Inglês" },
+  { value: "es", label: "Espanhol" },
+  { value: "fr", label: "Francês" },
+  { value: "de", label: "Alemão" },
   { value: "it", label: "Italiano" },
-  { value: "ja", label: "日本語" },
+  { value: "ja", label: "Japonês" },
   { value: "other", label: "Outro" },
 ]
 
