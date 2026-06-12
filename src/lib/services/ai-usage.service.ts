@@ -10,7 +10,10 @@
  * 4 fontes num formato canônico.
  */
 
-import { createAdminClient } from "@/lib/supabase/server"
+// Importa de `admin` (nao `server`): server.ts puxa next/headers, que
+// quebra o build quando esta cadeia chega numa pagina fora do app router
+// (ai.service.ts e' re-exportado por services/index.ts).
+import { createAdminClient } from "@/lib/supabase/admin"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AiUsage")
