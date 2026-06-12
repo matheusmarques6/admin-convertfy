@@ -331,7 +331,9 @@ export async function runSuggestionCycle(params: {
     const cycleRangeLabel = `${today} a ${rangeEnd}`
     const validStoreIds = new Set(ctx.stores.map((s) => s.store_id))
     const storeNameById = new Map(ctx.stores.map((s) => [s.store_id, s.store_name]))
-    const storeCountryById = new Map(ctx.stores.map((s) => [s.store_id, s.country]))
+    // NÃO usar um Map global store→país: com o fan-out uma loja pode estar
+    // em 2 países e o Map colapsaria pro último. O país é derivado do
+    // CLUSTER (single-country por construção em clusterStores).
     const dateIdByName = new Map(ctx.dates.map((d) => [d.name.toLowerCase(), d.id]))
 
     let suggestionsCreated = 0
@@ -383,13 +385,17 @@ export async function runSuggestionCycle(params: {
               .join("; ")
           } else {
             parsedOutput = validation.data
+            // Cluster é single-country (clusterStores agrupa por país):
+            // o país do cluster vem do primeiro store ou do prefixo da key.
+            const clusterCountry =
+              cluster.stores[0]?.country ?? cluster.key.split(":")[0]
             const inserted = await persistSuggestions(admin, {
               orgId,
               cycleId: cycleId!,
               suggestions: validation.data.suggestions,
               validStoreIds,
               storeNameById,
-              storeCountryById,
+              clusterCountry,
               dateIdByName,
             })
             suggestionsCreated += inserted
@@ -489,7 +495,8 @@ async function persistSuggestions(
     suggestions: AiSuggestion[]
     validStoreIds: Set<string>
     storeNameById: Map<string, string>
-    storeCountryById: Map<string, string>
+    /** País do cluster (single-country) — todos os targets herdam dele. */
+    clusterCountry: string
     dateIdByName: Map<string, string>
   },
 ): Promise<number> {
@@ -501,7 +508,7 @@ async function persistSuggestions(
       .map((t) => ({
         store_id: t.store_id,
         store_name: params.storeNameById.get(t.store_id) ?? t.store_name,
-        country: params.storeCountryById.get(t.store_id) ?? t.country,
+        country: params.clusterCountry ?? t.country,
       }))
 
     if (targets.length === 0) {

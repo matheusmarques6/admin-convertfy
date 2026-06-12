@@ -31,6 +31,7 @@ interface StoreHeroProps {
   storeUrl: string | null
   language: string | null
   country: string | null
+  countries?: string[] | null
   clientName: string | null
   clientId?: string | null
   clientSince: string | null
@@ -55,6 +56,7 @@ export function StoreHero({
   storeUrl,
   language,
   country,
+  countries,
   clientName,
   clientId,
   clientSince,
@@ -88,7 +90,7 @@ export function StoreHero({
             </Badge>
             {planLabel && <Badge tone="info">{planLabel}</Badge>}
             <StoreLanguagePopover storeId={storeId} language={language} />
-            <StoreCountryPopover storeId={storeId} country={country} />
+            <StoreCountryPopover storeId={storeId} country={country} countries={countries} />
             {mrrCents != null && (
               <span className="text-[11px] text-slate-400 ml-1" style={TNUM}>
                 MRR {formatMRR(mrrCents)}

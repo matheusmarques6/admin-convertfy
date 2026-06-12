@@ -32,6 +32,7 @@ const patchSchema = z.object({
   niche: z.string().max(240).nullable().optional(),
   language: z.enum(STORE_LANGUAGE_CODES).nullable().optional(),
   country: z.enum(COUNTRY_VALUES).nullable().optional(),
+  countries: z.array(z.enum(COUNTRY_VALUES)).nullable().optional(),
 })
 
 export async function PATCH(
@@ -54,6 +55,19 @@ export async function PATCH(
     for (const [k, v] of Object.entries(parsed.data)) {
       if (v !== undefined) updateData[k] = v
     }
+
+    // `country` é sempre o PRINCIPAL (= countries[0]). Mantemos os dois
+    // sincronizados em ambas as direções para os ~12 consumidores que leem
+    // `country` (singular) continuarem corretos.
+    if (parsed.data.countries !== undefined) {
+      const list = parsed.data.countries
+      updateData.countries = list && list.length ? list : null
+      updateData.country = list && list.length ? list[0] : null
+    } else if (parsed.data.country !== undefined) {
+      // Retrocompat: se vier só `country`, espelha em `countries`.
+      updateData.countries = parsed.data.country ? [parsed.data.country] : null
+    }
+
     if (Object.keys(updateData).length === 0) {
       throw new AppError("nothing_to_update", 400)
     }
@@ -62,7 +76,7 @@ export async function PATCH(
       .from("client_stores")
       .update(updateData)
       .eq("id", id)
-      .select("id, store_name, store_url, platform, niche, language, country")
+      .select("id, store_name, store_url, platform, niche, language, country, countries")
       .single()
 
     if (error) throw error

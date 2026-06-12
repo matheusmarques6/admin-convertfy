@@ -101,6 +101,71 @@ export function normalizeCountry(raw: string | null | undefined): string {
   return map[v] || "BR"
 }
 
+/** Forma mínima de uma linha de client_stores usada no fan-out. */
+export interface StoreRow {
+  id: string
+  store_name?: string | null
+  country?: string | null
+  countries?: string[] | null
+  language?: string | null
+  niche?: string | null
+  health_score?: number | null
+  currency?: string | null
+}
+
+/**
+ * FAN-OUT por país. Cada loja vira UMA `CycleStoreContext` por país em
+ * `countries` (fallback: `[country]` quando a lista estiver vazia/null).
+ * Assim a loja entra no cluster de cada país e recebe datas + sugestões
+ * para todos. `country` é sempre normalizado.
+ */
+export function expandStoreContexts(
+  stores: StoreRow[],
+  revenueByStore: Map<string, { d7: number; d30: number }>,
+  briefingByStore: Map<string, Record<string, unknown>>,
+): CycleStoreContext[] {
+  return stores.flatMap((s) => {
+    const rev = revenueByStore.get(s.id) ?? { d7: 0, d30: 0 }
+    // Delta: 7d projetado vs média semanal dos 30d — sinal de tendência
+    const weeklyAvg30 = rev.d30 / (30 / 7)
+    const delta = weeklyAvg30 > 0 ? ((rev.d7 - weeklyAvg30) / weeklyAvg30) * 100 : null
+
+    const briefing = briefingByStore.get(s.id)
+    const marca = (briefing?.marca ?? {}) as Record<string, unknown>
+
+    const base = {
+      store_id: s.id,
+      store_name: s.store_name ?? "",
+      language: s.language ?? "pt-BR",
+      niche: (s.niche ?? null) ?? ((marca.nicho as string) || null),
+      health_score: s.health_score ?? null,
+      revenue_30d: rev.d30,
+      revenue_7d: rev.d7,
+      revenue_delta_pct: delta != null ? Math.round(delta) : null,
+      currency: s.currency ?? null,
+      tone: (marca.tom_voz as string) || (marca.tomDeVoz as string) || null,
+      positioning: (marca.posicionamento as string) || null,
+    }
+
+    const rawCountries =
+      Array.isArray(s.countries) && s.countries.length ? s.countries : [s.country]
+
+    // Normaliza, deduplica e garante ao menos uma entrada (default BR).
+    const seen = new Set<string>()
+    const countries: string[] = []
+    for (const c of rawCountries) {
+      const norm = normalizeCountry(c)
+      if (!seen.has(norm)) {
+        seen.add(norm)
+        countries.push(norm)
+      }
+    }
+    if (countries.length === 0) countries.push(normalizeCountry(null))
+
+    return countries.map((country) => ({ ...base, country }))
+  })
+}
+
 /**
  * Carrega lojas elegíveis (ativas + Omnisend) com briefing e receita.
  */
@@ -113,7 +178,7 @@ export async function loadCycleContext(
 
   const { data: storesRaw, error: storesErr } = await admin
     .from("client_stores")
-    .select("id, store_name, country, language, niche, health_score, currency, is_active, omnisend_api_key")
+    .select("id, store_name, country, countries, language, niche, health_score, currency, is_active, omnisend_api_key")
     .eq("org_id", orgId)
     .eq("is_active", true)
     .not("omnisend_api_key", "is", null)
@@ -159,30 +224,11 @@ export async function loadCycleContext(
     briefingByStore.set(b.store_id as string, (b.briefing_data ?? {}) as Record<string, unknown>)
   }
 
-  const storeContexts: CycleStoreContext[] = stores.map((s) => {
-    const rev = revenueByStore.get(s.id as string) ?? { d7: 0, d30: 0 }
-    // Delta: 7d projetado vs média semanal dos 30d — sinal de tendência
-    const weeklyAvg30 = rev.d30 / (30 / 7)
-    const delta = weeklyAvg30 > 0 ? ((rev.d7 - weeklyAvg30) / weeklyAvg30) * 100 : null
-
-    const briefing = briefingByStore.get(s.id as string)
-    const marca = (briefing?.marca ?? {}) as Record<string, unknown>
-
-    return {
-      store_id: s.id as string,
-      store_name: (s.store_name as string) ?? "",
-      country: normalizeCountry(s.country as string | null),
-      language: (s.language as string) ?? "pt-BR",
-      niche: (s.niche as string | null) ?? ((marca.nicho as string) || null),
-      health_score: (s.health_score as number | null) ?? null,
-      revenue_30d: rev.d30,
-      revenue_7d: rev.d7,
-      revenue_delta_pct: delta != null ? Math.round(delta) : null,
-      currency: (s.currency as string | null) ?? null,
-      tone: (marca.tom_voz as string) || (marca.tomDeVoz as string) || null,
-      positioning: (marca.posicionamento as string) || null,
-    }
-  })
+  const storeContexts = expandStoreContexts(
+    stores as unknown as StoreRow[],
+    revenueByStore,
+    briefingByStore,
+  )
 
   const countries = Array.from(new Set(storeContexts.map((s) => s.country)))
 

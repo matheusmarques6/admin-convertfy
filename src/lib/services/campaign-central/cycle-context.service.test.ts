@@ -3,7 +3,9 @@ import {
   resolveNextOccurrence,
   normalizeCountry,
   clusterStores,
+  expandStoreContexts,
   type CycleStoreContext,
+  type StoreRow,
 } from "./cycle-context.service"
 
 function makeStore(overrides: Partial<CycleStoreContext> = {}): CycleStoreContext {
@@ -77,6 +79,60 @@ describe("normalizeCountry", () => {
 
   it("nome desconhecido cai no default BR", () => {
     expect(normalizeCountry("Atlantis")).toBe("BR")
+  })
+})
+
+describe("expandStoreContexts (fan-out por país)", () => {
+  const emptyRev = new Map<string, { d7: number; d30: number }>()
+  const emptyBriefing = new Map<string, Record<string, unknown>>()
+
+  it("loja com countries=['BR','US'] vira 2 contextos (BR e US)", () => {
+    const rows: StoreRow[] = [
+      { id: "s1", store_name: "Multi", countries: ["BR", "US"], country: "BR" },
+    ]
+    const ctx = expandStoreContexts(rows, emptyRev, emptyBriefing)
+    expect(ctx).toHaveLength(2)
+    expect(ctx.map((c) => c.country).sort()).toEqual(["BR", "US"])
+    // todos compartilham o mesmo store_id
+    expect(new Set(ctx.map((c) => c.store_id))).toEqual(new Set(["s1"]))
+  })
+
+  it("fallback para [country] quando countries vazio/null", () => {
+    const rows: StoreRow[] = [
+      { id: "s1", country: "PT", countries: null },
+      { id: "s2", country: "US", countries: [] },
+    ]
+    const ctx = expandStoreContexts(rows, emptyRev, emptyBriefing)
+    expect(ctx).toHaveLength(2)
+    expect(ctx.find((c) => c.store_id === "s1")?.country).toBe("PT")
+    expect(ctx.find((c) => c.store_id === "s2")?.country).toBe("US")
+  })
+
+  it("normaliza e deduplica países do fan-out", () => {
+    const rows: StoreRow[] = [
+      { id: "s1", country: "BR", countries: ["Brasil", "br", "Estados Unidos"] },
+    ]
+    const ctx = expandStoreContexts(rows, emptyRev, emptyBriefing)
+    expect(ctx.map((c) => c.country).sort()).toEqual(["BR", "US"])
+  })
+
+  it("sem país algum cai no default BR", () => {
+    const rows: StoreRow[] = [{ id: "s1", country: null, countries: null }]
+    const ctx = expandStoreContexts(rows, emptyRev, emptyBriefing)
+    expect(ctx).toHaveLength(1)
+    expect(ctx[0].country).toBe("BR")
+  })
+
+  it("propaga receita/delta corretamente por contexto da mesma loja", () => {
+    const rev = new Map([["s1", { d7: 3500, d30: 10000 }]])
+    const rows: StoreRow[] = [{ id: "s1", country: "BR", countries: ["BR", "US"] }]
+    const ctx = expandStoreContexts(rows, rev, emptyBriefing)
+    for (const c of ctx) {
+      expect(c.revenue_7d).toBe(3500)
+      expect(c.revenue_30d).toBe(10000)
+      // delta: 3500 vs weeklyAvg 10000/(30/7) ≈ 2333 → +50%
+      expect(c.revenue_delta_pct).toBe(50)
+    }
   })
 })
 

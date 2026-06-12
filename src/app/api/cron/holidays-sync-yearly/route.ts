@@ -27,18 +27,29 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
 
-    // Países distintos de TODAS as orgs com loja ativa + Omnisend
+    // Países distintos de TODAS as orgs com loja ativa + Omnisend.
+    // Inclui os SECUNDÁRIOS: a união de countries[] de cada loja
+    // (fallback [country] quando countries vazio/null) — assim datas dos
+    // países secundários também são sincronizadas.
     const { data, error } = await admin
       .from("client_stores")
-      .select("country")
+      .select("country, countries")
       .eq("is_active", true)
       .not("omnisend_api_key", "is", null)
       .not("country", "is", null)
     if (error) throw error
 
-    const countries = Array.from(
-      new Set((data ?? []).map((s) => (s.country as string).toUpperCase())),
-    )
+    const countrySet = new Set<string>()
+    for (const s of data ?? []) {
+      const list =
+        Array.isArray(s.countries) && s.countries.length
+          ? (s.countries as string[])
+          : [s.country as string | null]
+      for (const c of list) {
+        if (c) countrySet.add(c.toUpperCase())
+      }
+    }
+    const countries = Array.from(countrySet)
     if (countries.length === 0) {
       log.info("cron.no_countries")
       return NextResponse.json({ success: true, countries: 0 })

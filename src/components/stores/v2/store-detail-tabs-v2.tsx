@@ -61,6 +61,7 @@ interface StoreDetailTabsV2Props {
     is_active: boolean
     niche: string | null
     country: string | null
+    countries?: string[] | null
     language: string | null
     created_at: string
     client_id: string | null
@@ -144,6 +145,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
         storeUrl={store.store_url}
         language={store.language}
         country={store.country ?? null}
+        countries={store.countries ?? null}
         clientName={store.clients?.name ?? null}
         clientId={store.client_id ?? store.clients?.id ?? null}
         clientSince={clientSince}
