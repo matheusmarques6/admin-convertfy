@@ -1,160 +1,163 @@
-# Fluxo de Geração de Email — da Aprovação do Briefing até o Fim
+# Fluxo de Geração de Email — Mapa Completo (Onboarding → Email pronto)
 
-Mapa canônico e organizado do pipeline, do momento em que o cliente aprova o
-briefing até cada email ficar `ready`. Apenas documentação — reflete o código
-atual, não propõe mudanças.
+Mapa canônico, do cliente preencher o formulário até cada email ficar `ready`.
+Reflete o código atual. Os agentes de IA (Montador/Blueprint) **não** rodam no
+fluxo natural — só via botão "Regenerar". Veja §9.
 
 ---
 
-## 1. Visão geral
+## 0. Visão geral (uma imagem)
 
 ```
-Cliente aprova briefing
-        │
-        ├─(A) Briefing webhook ──► n8n (Pesquisa & Diagnóstico) ─┐
-        │                                                        │
-        └─(B) Dispatch de copy ◄────── pesquisa-completa ◄───────┘
-                  │
-                  ▼
-        n8n gera a COPY ──► callback ──► status: copy_ready
-                  │
-                  ▼
-        [GATE] Identidade visual confirmada
-                  │
-                  ▼
-        Fase 2 (por email):  Imagem ─► HTML ─► QA
-                  │
-                  ▼
-             ready  (ou failed)
+Form → Briefing(IA) → [aprova] ─┬─► n8n Pesquisa (5 pilares) ─► pesquisa-completa ─┐
+                                │                                                  │
+                                └─► dispatch copy ◄────────────────────────────────┘
+                                        │
+                                   n8n gera COPY ─► copy_ready
+                                        │
+                            [GATE MANUAL] designer confirma identidade visual
+                                        │ (sinal render → watchdog)
+                                        ▼
+                            Fase 2:  Imagem ─► HTML ─► QA ─► ready / failed
 ```
 
-Em paralelo a tudo, o **watchdog** (cron, 5 min) é a rede de segurança que
-destrava o que ficar preso.
+Rede de segurança: **watchdog** (cron 5 min) destrava o que ficar preso.
 
 ---
 
-## 2. Os gatilhos de geração de copy
+## 1. Setup — onboarding criado
+- `createOnboarding` cria `onboardings` (`briefing_status='not_started'`),
+  gera `form_token`, vincula `client_id`/`store_id`. **Não** dispara pesquisa.
 
-Há mais de um ponto que dispara a copy. Todos convergem para a mesma função
-(`dispatchEmailCopyWebhook`), com idempotência evitando disparo duplicado.
+## 2. Cliente preenche o formulário
+- `POST /api/forms/[token]/submit-data`: grava `form_responses`,
+  `briefing_status='form_partially_filled'`, e dispara `generateBriefing` via
+  `after()`.
 
-| # | Origem | Função | Roda Montador/Blueprint antes? |
-|---|--------|--------|:---:|
-| 1 | Briefing aprovado | `confirmBriefing` → `dispatchEmailCopyWebhook('briefing_confirmed')` | ❌ |
-| 2 | Pesquisa concluída (gatilho oficial do onboarding) | `/webhooks/n8n/pesquisa-completa` → `dispatchEmailCopyWebhook('pesquisa_completa')` | ❌ |
-| 3 | Botão "Gerar copies" | `dispatchEmailCopyWebhook('manual_store_button')` | ❌ |
-| 4 | Botão "Regenerar" | `/generate-blueprints` (só Architect, **não** dispara copy) | ✅ |
+## 3. Agente 1 — Briefing
+- `briefing-generation.service.ts`. Cascata de modelo:
+  `claude-sonnet-4-6` (Anthropic, 40s) → `openai/gpt-5.3-chat` (OpenRouter, 20s)
+  → template determinístico.
+- **Input:** `form_responses` + pesquisa já existente em `client_stores` (via
+  `pesquisaToFullText`). Num cliente realmente novo a pesquisa ainda não rodou,
+  então o briefing sai de `form_responses` + template.
+- **Output:** `onboardings.briefing` + `briefing_ai_original`;
+  `briefing_status='generated_pending_review'`.
 
-> **Onde o Architect roda:** só no caminho 4 ("Regenerar"). Todos os disparos
-> de copy (1, 2 e 3) usam `dispatchEmailCopyWebhook` direto, que monta o payload
-> com o blueprint efetivo (cascata **store → global**) — não gera estrutura
-> nova. Gerar blueprint/reference sob medida é ação deliberada via "Regenerar".
+## 4. Cliente aprova o briefing  ← a bifurcação
+`confirmBriefing` (`onboarding-pipeline.service.ts:1036`):
+- `briefing_status='approved'`, `briefing_confirmed_by_client=true`; avança o
+  kanban pra `preview_producao`; grava evento.
+- Dispara **2 fire-and-forget** (`after()`):
+  - **(A)** `dispatchBriefingWebhook` → n8n (workflow de Pesquisa). `:1154`
+  - **(B)** `dispatchEmailCopyWebhook('briefing_confirmed')` → dispatch de copy. `:1158`
 
----
+> Ordem real: a **pesquisa roda DEPOIS da aprovação** (é a aprovação que a
+> dispara). O dispatch (B) sai logo na aprovação; o dispatch via
+> pesquisa-completa (§5) é o re-gatilho idempotente.
 
-## 3. Fluxo sequencial, estágio por estágio
+## 5. Agente 2 — Pesquisa & Diagnóstico (n8n)
+- O n8n roda os agentes e chama **5 callbacks**, cada um gravando em
+  `client_stores`:
+  - `/webhooks/n8n/brand` → `brand_thesis/about/pillars/presence`
+  - `/webhooks/n8n/store-story` → `store_story/milestones`
+  - `/webhooks/n8n/icp` → `icp_persona/demographics/motivations/frictions`
+  - `/webhooks/n8n/tone` → `tone_description/do/dont/use_words/avoid_words`
+  - `/webhooks/n8n/ads-analyzer` → `ads_score/summary/sub_scores/...`
+- **Último passo:** `/webhooks/n8n/pesquisa-completa` →
+  `dispatchEmailCopyWebhook('pesquisa_completa')` (idempotente: pula se já há
+  batch em andamento). `regeneration:true` → só atualiza pesquisa, não dispara.
 
-### Estágio 0 — Aprovação do briefing
-**Função:** `confirmBriefing` (`onboarding-pipeline.service.ts`)
-- Atualiza `onboardings` (status do briefing → confirmado, `briefing_confirmed_*`).
-- Grava evento `onboarding.briefing_confirmed`; sincroniza idioma da loja.
-- Dispara, fire-and-forget (`after()`):
-  - **(A)** `dispatchBriefingWebhook` → n8n (workflow de Pesquisa & Diagnóstico).
-  - **(B)** `dispatchEmailCopyWebhook('briefing_confirmed')`.
+## 6. Dispatch da copy → n8n  ← onde a ESTRUTURA é escolhida
+`dispatchEmailCopyWebhook`:
+1. Carrega contexto da loja (brand, ICP, tom, briefing, pesquisa, top products,
+   concorrentes).
+2. **Blueprint efetivo por email:** cascata `store_email_blueprints` → **global
+   `email_blueprints`**. No fluxo natural não existe `store_*` → usa o **global**.
+3. Auto-cura emails faltantes; reconcilia `email_blocks` a partir do blueprint.
+4. Monta o payload `flows[].emails[]`:
+   `blueprint:{objective,messaging,subject_hint}` + `blocks:[{block_id,position,type,label}]`.
+5. POST pro `N8N_EMAIL_COPY_WEBHOOK_URL`, callback `/webhooks/n8n/email-copy`.
+6. Status `draft → in_progress`. Telemetria em `email_generation_runs`.
 
-### Estágio 1 — Pesquisa & Diagnóstico (n8n)
-- O n8n executa os agentes de pesquisa e grava os **5 pilares** em
-  `client_stores` (`brand_*`, `store_*`, `icp_*`, `tone_*`, `ads_*`).
-- No **último passo**, chama `POST /api/webhooks/n8n/pesquisa-completa` — o
-  **gatilho oficial** da geração de email.
-  - `regeneration: true` → só atualiza a pesquisa, **não** dispara copy.
-  - Caso contrário → `dispatchEmailCopyWebhook('pesquisa_completa')`.
-
-### Estágio 2 — Dispatch da copy → n8n
-**Função:** `dispatchEmailCopyWebhook`
-1. Carrega o contexto da loja (brand, ICP, tom, briefing, pesquisa, top
-   products, concorrentes).
-2. Auto-cura emails faltantes; reconcilia `email_blocks` a partir do blueprint
-   efetivo (cascata **store → global → DEFAULT**).
-3. Monta o payload `flows[].emails[]`:
-   - `blueprint: { objective, messaging, subject_hint }`
-   - `blocks: [{ block_id, position, type, label }]`
-4. `POST` para `N8N_EMAIL_COPY_WEBHOOK_URL` com
-   `callback.url = /api/webhooks/n8n/email-copy`.
-5. Marca os emails `draft → in_progress`. Telemetria em `email_generation_runs`.
-
-### Estágio 3 — Copy retorna do n8n
-**Endpoint:** `POST /api/webhooks/n8n/email-copy` (callback, 1 email por POST)
-- Recebe `{ subject, preheader, blocks: [{ block_id, content }] }`.
-- Grava `email_flow_emails.subject/preheader` + `email_blocks.content`.
+## 7. Copy volta do n8n
+- `POST /api/webhooks/n8n/email-copy` (1 email por POST): grava
+  `email_flow_emails.subject/preheader` + `email_blocks.content`.
 - Status `in_progress → copy_ready` (`copy_ready_at`).
 
-### Estágio 4 — GATE: identidade visual
-- Em `copy_ready`, o email aguarda a **brand identity** estar pronta.
-- Confirmada → um sinal `render` entra em `email_generation_queue_signals` → o
-  watchdog consome e dispara `runPhase2InBackground`.
-- Status `copy_ready → rendering`.
+## 8. GATE MANUAL — Identidade visual  ← parte crítica, é MANUAL
+1. `store_brand_identity` é preenchida **manualmente** pelo designer no
+   workspace (logo, cores, fontes). **Não há webhook n8n disso.**
+2. Designer clica **"Confirmar identidade visual"** →
+   `POST /api/admin/stores/[id]/brand-identity/confirm`:
+   - Sanity check (cor primária + `font_heading` + ≥1 logo) — senão `422`.
+   - `UPDATE store_brand_identity.confirmed_at = NOW()`.
+3. **Trigger SQL** `fn_on_brand_identity_confirmed` (`confirmed_at` NULL→NOT
+   NULL) insere sinal `signal_type='render'` em
+   `email_generation_queue_signals`.
+4. **Watchdog** (cron 5 min) → `consumeQueueSignal` → ramo `render` →
+   `dispatchRenderForCopyReady`: pega os emails em `copy_ready` e chama
+   `runPhase2InBackground` por email (via `after()`).
 
-### Estágio 5 — Fase 2 (por email, em background)
-**Serviço:** `phase2-runner.service.ts`
+> Sem essa confirmação manual, os emails ficam parados em `copy_ready`. A
+> latência até a fase 2 começar é de até ~5 min (o tick do watchdog).
 
-| Passo | Agente | Modelo | Entrada → Saída | Status |
-|------|--------|--------|-----------------|--------|
-| 1 | **Imagem** | `openai/gpt-5.4-image-2` (OpenRouter, 90s) | blocos `needs_image` + `image_brief` → `image_url`/`image_alt` | `rendering → image_done` |
-| 2 | **HTML** | `claude-sonnet-4-6` | 21 vars (`reference_html` + copy + brand + blocks) → `email_flow_emails.html` | `image_done → qa_running` |
-| 3 | **QA** | `claude-sonnet-4-6` (60s) | HTML + blocks + briefing + brand → `qa_issues` + `passed` | `qa_running → ready` / `failed` |
+## 9. Fase 2 — Imagem → HTML → QA (por email, background)
+`phase2-runner.service.ts`. Split em 2 etapas com claim atômico:
 
-### Estágio 6 — Estado final
-- **`ready`** → pronto para o designer / implementação na Omnisend.
-- **`failed`** → com `failure_reason`; o watchdog/alertas avisam.
-- `total_cost_cents` consolidado por email.
+| Etapa | Agente | Modelo | Faz | Transição |
+|------|--------|--------|-----|-----------|
+| 2.1 | **Imagem** | `openai/gpt-5.4-image-2` (OpenRouter, 90s/img) | blocos `needs_image` + `image_brief` → `image_url`/`image_alt` | `copy_ready → rendering → image_done` |
+| 2.2a | **HTML** | `claude-sonnet-4-6` | 21 vars (`reference_html` global + copy + brand + blocks) → `email_flow_emails.html`. `precheckBrandReady` (cor+logo+fonte) | `image_done → rendering → qa_running` |
+| 2.2b | **QA** | `claude-sonnet-4-6` (60s) | checks determinísticos + LLM (+Vision opcional) → `qa_issues` + `passed` | `qa_running → ready` / `failed` |
 
----
+- Endpoints internos (auth `x-internal-secret`): `/api/internal/run-phase2-image/[id]`,
+  `/api/internal/run-phase2-html-qa/[id]`, `/api/internal/run-phase2/[id]` (monolito).
+- Falhas: `context_load_failed`, `image_failed`, `brand_incomplete`
+  (`BrandIncompleteError`), `qa_failed`.
 
-## 4. Status machine
+## 10. Terminal + notificações
+- Sucesso → **`ready`** (`ready_at`); falha → **`failed`** (`failure_reason`).
+- `rollupTotalCost` consolida `total_cost_cents` por email.
+- `checkBatchTerminal`: quando todos do batch estão `ready`/`failed` →
+  `notifyBatchComplete` ou `notifyBatchAllFailed` (tag CTO/admins, dedup-key).
 
-```
-draft ─► in_progress ─► copy_ready ─►[GATE brand]─► rendering ─► image_done ─► qa_running ─► ready
-                                                                                          └─► failed
-```
-
-Legados (não usar em código novo): `in_progress`/`approved`/`live` da era
-Klaviyo. Canônico em `src/types/email-workspace.ts`.
-
----
-
-## 5. Quem escreve o quê (tabelas)
-
-| Estágio | Tabela | Campos principais |
-|--------|--------|-------------------|
-| 0 | `onboardings`, `events` | status do briefing, evento confirmado |
-| 1 | `client_stores` | 5 pilares (`brand_*`, `store_*`, `icp_*`, `tone_*`, `ads_*`) |
-| 2 | `email_flow_emails`, `email_generation_runs` | `status=in_progress`, telemetria |
-| 3 | `email_flow_emails`, `email_blocks` | `subject`, `preheader`, `content`, `status=copy_ready` |
-| 5 | `email_blocks`, `email_flow_emails` | `image_url`, `html`, `qa_issues`, `status` |
-
----
-
-## 6. Rede de segurança — watchdog (cron, 5 min)
-
+## 11. Rede de segurança — watchdog (cron 5 min)
 `/api/cron/email-generation-watchdog`:
-1. Consome sinais pendentes em `email_generation_queue_signals`.
+1. Consome sinais pendentes (`start`/`render`/`rerender`).
 2. Recupera copy travada (`copy_generating > 15min` → fallback Claude in-process).
 3. Marca fase 2 travada como `failed` (`rendering`/`qa_running > 10min`).
 4. Re-dispara `copy_ready`/`image_done` presos.
-5. Notifica tag **CTO** e dispara `notifyBatchComplete` / `notifyBatchAllFailed`.
+5. Notifica tag CTO; dispara batch-complete/all-failed.
 
 ---
 
-## 7. Onde fica o Architect (Montador + Blueprint)
+## Status machine
 
-- **Botão "Regenerar"** (`/generate-blueprints`) → único ponto que roda o
-  Architect. Gera `store_email_references`/`store_email_blueprints` sob medida,
-  sem disparar copy.
-- **Todos os disparos de copy** (botão "Gerar copies", briefing aprovado,
-  pesquisa-completa) → `dispatchEmailCopyWebhook` direto, **sem** rodar o
-  Architect. Usam o blueprint efetivo na cascata **store → global**: pega o
-  da loja se foi gerado antes pelo "Regenerar", senão o **global** pronto.
+```
+draft → in_progress → copy_ready ─[GATE MANUAL brand]→ rendering → image_done → rendering → qa_running → ready
+                                                                                                       └→ failed
+```
 
-Referências: `docs/email-generation/01-overview.md`,
-`02-triggers.md`, `04-payload-reference.md`.
+Sinais de fila (`email_generation_queue_signals.signal_type`):
+- `start` → `startOnboarding` (caminho do botão "Iniciar Onboarding").
+- `render` → `dispatchRenderForCopyReady` (GATE da identidade visual).
+- `rerender` → reset + render (AE-20).
+
+---
+
+## Onde cada botão da UI entra
+
+| Botão | Endpoint | Roda IA (Architect)? | Dispara n8n? | Status |
+|------|----------|:---:|:---:|--------|
+| **Gerar copies (n8n)** | `dispatch-email-copies` | ❌ | ✅ | `→ in_progress` |
+| **Iniciar Onboarding** | `start-onboarding` | ❌ | ✅ | `→ copy_generating` |
+| **Re-sincronizar estrutura** | `reconcile-blocks` | ❌ | ❌ | sem mudança |
+| **Regenerar** (Generated Inspector) | `generate-blueprints` | ✅ Montador+Blueprint | ❌ | sem mudança |
+
+> **Onde o Architect roda:** só no "Regenerar". Todo o resto (inclusive o
+> onboarding natural) usa o blueprint/reference **global** quando a loja não
+> tem o sob-medida. Rodar "Regenerar" antes faz a loja passar a usar o
+> layout/blueprint próprio em vez do global.
+
+Refs: `01-overview.md`, `02-triggers.md`, `04-payload-reference.md`.
