@@ -218,6 +218,7 @@ export const ROUTES = {
       EMAIL_GENERATION: "/admin/settings/email-generation",
       CAMPAIGN_CENTRAL: "/admin/settings/campaign-central",
     },
+    AI_USAGE: "/admin/ai-usage",
   },
 
   // ── Cliente (Portal) ─────────────────────────────────────────────────

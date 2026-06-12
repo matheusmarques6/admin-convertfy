@@ -14,6 +14,7 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { createAdminClient } from "@/lib/supabase/server"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 import type {
   BriefingContent,
@@ -117,6 +118,16 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
     const { briefing, meta } = await tryAnthropic(prompt, T1_TIMEOUT_MS)
     const t1Ms = Date.now() - t1Start
     log.info("anthropic.try.ok", { onboardingId, ms: t1Ms, ...meta })
+    void recordAiUsage({
+      feature: "briefing_generation",
+      model: ANTHROPIC_MODEL,
+      provider: "anthropic",
+      tokensInput: meta.input_tokens ?? 0,
+      tokensOutput: meta.output_tokens ?? 0,
+      durationMs: t1Ms,
+      orgId: ctx.orgId,
+      context: { onboarding_id: onboardingId, tier: "T1" },
+    })
     await saveBriefing(ctx, briefing, "anthropic_sonnet")
     log.info("briefing.cascade.done", {
       onboardingId,
@@ -151,6 +162,16 @@ export async function generateBriefing(onboardingId: string): Promise<void> {
       const { briefing, meta } = await tryOpenRouter(prompt, T2_TIMEOUT_MS)
       const t2Ms = Date.now() - t2Start
       log.info("openrouter.try.ok", { onboardingId, ms: t2Ms, ...meta })
+      void recordAiUsage({
+        feature: "briefing_generation",
+        model: OPENROUTER_MODEL,
+        provider: "openrouter",
+        tokensInput: meta.input_tokens ?? 0,
+        tokensOutput: meta.output_tokens ?? 0,
+        durationMs: t2Ms,
+        orgId: ctx.orgId,
+        context: { onboarding_id: onboardingId, tier: "T2" },
+      })
       await saveBriefing(ctx, briefing, "openrouter_sonnet")
       log.info("briefing.cascade.done", {
         onboardingId,

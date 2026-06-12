@@ -8,6 +8,7 @@ import {
   getUnifiedFlows,
 } from "@/lib/services/unified-metrics.service"
 import OpenAI from "openai"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("Insights")
@@ -132,6 +133,7 @@ ${alertsSummary || "Nenhum alerta ativo"}
     }
 
     const openai = new OpenAI({ apiKey })
+    const t0 = Date.now()
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
@@ -151,6 +153,17 @@ Responda APENAS com o array JSON, sem markdown.`,
         },
         { role: "user", content: dataContext },
       ],
+    })
+
+    void recordAiUsage({
+      feature: "dashboard_insights",
+      model: "gpt-4o-mini",
+      provider: "openai",
+      tokensInput: response.usage?.prompt_tokens ?? 0,
+      tokensOutput: response.usage?.completion_tokens ?? 0,
+      durationMs: Date.now() - t0,
+      userId: user.id,
+      orgId,
     })
 
     let insights

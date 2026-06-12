@@ -22,6 +22,7 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CaptureBrand")
@@ -35,6 +36,7 @@ interface AnthropicResponseContent {
 
 interface AnthropicResponse {
   content: AnthropicResponseContent[]
+  usage?: { input_tokens?: number; output_tokens?: number }
 }
 
 const BRAND_IDENTITY_SCHEMA = {
@@ -209,6 +211,8 @@ Nicho: ${store.niche ?? "—"}
 
 Sugira identidade visual.`
 
+  const MODEL = "claude-haiku-4-5-20251001"
+  const t0 = Date.now()
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -218,7 +222,7 @@ Sugira identidade visual.`
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: MODEL,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: userMsg }],
@@ -239,10 +243,26 @@ Sugira identidade visual.`
         status: res.status,
         body: body.slice(0, 500),
       })
+      void recordAiUsage({
+        feature: "capture_brand",
+        model: MODEL,
+        provider: "anthropic",
+        status: "error",
+        durationMs: Date.now() - t0,
+        errorMessage: `HTTP ${res.status}`,
+      })
       return null
     }
 
     const json = (await res.json()) as AnthropicResponse
+    void recordAiUsage({
+      feature: "capture_brand",
+      model: MODEL,
+      provider: "anthropic",
+      tokensInput: json.usage?.input_tokens ?? 0,
+      tokensOutput: json.usage?.output_tokens ?? 0,
+      durationMs: Date.now() - t0,
+    })
     const toolUse = json.content.find(
       (c) => c.type === "tool_use",
     ) as unknown as { input: Record<string, unknown> } | undefined

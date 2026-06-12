@@ -38,6 +38,7 @@ import {
   Moon,
   LifeBuoy,
   Megaphone,
+  Cpu,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -319,6 +320,14 @@ const GERAL_NAV: NavGroup[] = [
         // devs com tag 'dev' acessam por URL direta (mesmo padrão dos
         // antigos /admin/agents/prompts e /admin/email-blueprints, que
         // agora redirecionam pra cá).
+        requiredFeatures: ["__admin_only__"],
+      },
+      {
+        name: "Custo de IA",
+        href: ROUTES.ADMIN.AI_USAGE,
+        icon: Cpu,
+        // Dashboard de observabilidade: cada execução de agente com
+        // tokens e custo. Mesmo gate da Geração de Emails.
         requiredFeatures: ["__admin_only__"],
       },
     ],

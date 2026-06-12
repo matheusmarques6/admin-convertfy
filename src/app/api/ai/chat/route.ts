@@ -29,6 +29,7 @@ import {
   buildStoreContext,
 } from "@/lib/services/ai-context.service"
 import { checkAiRateLimit } from "@/lib/services/ai-rate-limit"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AiChat")
@@ -171,13 +172,18 @@ export async function POST(request: NextRequest) {
     const client = new Anthropic({ apiKey })
     const userMessage = messages[messages.length - 1]?.content ?? ""
     let assistantAcc = ""
+    const CHAT_MODEL = "claude-sonnet-4-5"
+    const t0 = Date.now()
+    let tokensIn = 0
+    let tokensOut = 0
+    let streamError: string | null = null
 
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
         try {
           const claudeStream = client.messages.stream({
-            model: "claude-sonnet-4-5",
+            model: CHAT_MODEL,
             max_tokens: 4096,
             system: systemPrompt,
             messages: messages.map((m) => ({
@@ -186,6 +192,12 @@ export async function POST(request: NextRequest) {
             })),
           })
           for await (const event of claudeStream) {
+            if (event.type === "message_start") {
+              tokensIn = event.message.usage?.input_tokens ?? 0
+            }
+            if (event.type === "message_delta" && event.usage) {
+              tokensOut = event.usage.output_tokens ?? tokensOut
+            }
             if (
               event.type === "content_block_delta" &&
               event.delta.type === "text_delta"
@@ -199,6 +211,7 @@ export async function POST(request: NextRequest) {
           }
           controller.enqueue(encoder.encode("data: [DONE]\n\n"))
         } catch (err) {
+          streamError = (err as Error).message
           log.error("Stream error", err)
           controller.enqueue(
             encoder.encode(
@@ -212,6 +225,22 @@ export async function POST(request: NextRequest) {
           if (body.conversation_id && assistantAcc && userMessage) {
             void persistMessages(body.conversation_id, userMessage, assistantAcc)
           }
+          void recordAiUsage({
+            feature: "ai_chat",
+            model: CHAT_MODEL,
+            provider: "anthropic",
+            status: streamError ? "error" : "success",
+            tokensInput: tokensIn,
+            tokensOutput: tokensOut,
+            durationMs: Date.now() - t0,
+            userId: user.id,
+            orgId,
+            storeId: ctx.store_id ?? null,
+            context: body.conversation_id
+              ? { conversation_id: body.conversation_id }
+              : null,
+            errorMessage: streamError,
+          })
         }
       },
     })

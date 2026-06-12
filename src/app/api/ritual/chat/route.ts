@@ -6,6 +6,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { OMNISEND_TOOLS, executeOmnisendTool } from "@/lib/integrations/omnisend/ritual-tools"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
@@ -306,6 +307,7 @@ export async function POST(request: NextRequest) {
     const sources: string[] = []
     let totalInputTokens = 0
     let totalOutputTokens = 0
+    const llmT0 = Date.now()
 
     if (rawCampaigns.length > 0) sources.push("omnisend.campaigns.cache")
     if (rawAutomations.length > 0) sources.push("omnisend.automations.cache")
@@ -396,6 +398,19 @@ export async function POST(request: NextRequest) {
       toolCalls: sources.filter((s) => s.includes(".live")).length,
       inputTokens: totalInputTokens,
       outputTokens: totalOutputTokens,
+    })
+
+    void recordAiUsage({
+      feature: "ritual_chat",
+      model: "claude-sonnet-4-6",
+      provider: "anthropic",
+      tokensInput: totalInputTokens,
+      tokensOutput: totalOutputTokens,
+      durationMs: Date.now() - llmT0,
+      storeId: body.store_id ?? null,
+      context: {
+        tool_calls: sources.filter((s) => s.includes(".live")).length,
+      },
     })
 
     return successResponse(request, {

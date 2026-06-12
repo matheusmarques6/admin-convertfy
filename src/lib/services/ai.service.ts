@@ -1,4 +1,5 @@
 import OpenAI from "openai"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AIService")
@@ -32,6 +33,7 @@ export async function generateEmailSubjects(campaignType: string): Promise<strin
 
   log.info("Generating email subjects", { campaignType })
 
+  const t0 = Date.now()
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -46,6 +48,16 @@ export async function generateEmailSubjects(campaignType: string): Promise<strin
     ],
     temperature: 0.8,
     max_tokens: 300,
+  })
+
+  void recordAiUsage({
+    feature: "ai_generate_subjects",
+    model: "gpt-4o-mini",
+    provider: "openai",
+    tokensInput: response.usage?.prompt_tokens ?? 0,
+    tokensOutput: response.usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - t0,
+    context: { campaign_type: campaignType },
   })
 
   const content = response.choices[0]?.message?.content || ""
@@ -64,6 +76,7 @@ export async function generateAdCopy(product: string, tone: string): Promise<str
 
   log.info("Generating ad copy", { product, tone })
 
+  const t0 = Date.now()
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -78,6 +91,16 @@ export async function generateAdCopy(product: string, tone: string): Promise<str
     ],
     temperature: 0.7,
     max_tokens: 500,
+  })
+
+  void recordAiUsage({
+    feature: "ai_generate_ad_copy",
+    model: "gpt-4o-mini",
+    provider: "openai",
+    tokensInput: response.usage?.prompt_tokens ?? 0,
+    tokensOutput: response.usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - t0,
+    context: { product, tone },
   })
 
   const copy = response.choices[0]?.message?.content || ""

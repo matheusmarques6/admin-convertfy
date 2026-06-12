@@ -13,6 +13,7 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("RegenerateObjections")
@@ -85,7 +86,7 @@ export async function POST(
       throw new AppError("ANTHROPIC_API_KEY não configurada", 502)
     }
 
-    const objections = await generateObjections(store, apiKey)
+    const objections = await generateObjections(store, apiKey, storeId)
     if (!objections) {
       throw new AppError("A IA não retornou objeções válidas. Tente novamente.", 502)
     }
@@ -118,6 +119,7 @@ async function generateObjections(
     icp_unique_mechanism: { headline?: string; body?: string } | null
   },
   apiKey: string,
+  storeId?: string,
 ): Promise<Objection[] | null> {
   const systemPrompt = `Você é estrategista de copywriting de resposta direta.
 Dado o ICP (cliente ideal) de uma loja, gere EXATAMENTE 5 objeções principais — as
@@ -147,6 +149,8 @@ Regras:
     .filter(Boolean)
     .join("\n")
 
+  const MODEL = "claude-haiku-4-5-20251001"
+  const t0 = Date.now()
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -156,7 +160,7 @@ Regras:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: MODEL,
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: "user", content: `${ctx}\n\nGere as 5 objeções e tratamentos.` }],
@@ -172,9 +176,30 @@ Regras:
     })
     if (!res.ok) {
       log.warn("[RegenerateObjections] AI HTTP error", { status: res.status })
+      void recordAiUsage({
+        feature: "regenerate_objections",
+        model: MODEL,
+        provider: "anthropic",
+        status: "error",
+        durationMs: Date.now() - t0,
+        storeId: storeId ?? null,
+        errorMessage: `HTTP ${res.status}`,
+      })
       return null
     }
-    const json = (await res.json()) as { content: Array<{ type: string; input?: unknown }> }
+    const json = (await res.json()) as {
+      content: Array<{ type: string; input?: unknown }>
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
+    void recordAiUsage({
+      feature: "regenerate_objections",
+      model: MODEL,
+      provider: "anthropic",
+      tokensInput: json.usage?.input_tokens ?? 0,
+      tokensOutput: json.usage?.output_tokens ?? 0,
+      durationMs: Date.now() - t0,
+      storeId: storeId ?? null,
+    })
     const toolUse = json.content.find((c) => c.type === "tool_use") as
       | { input: { objections: Objection[] } }
       | undefined
@@ -188,6 +213,15 @@ Regras:
     return clean.length > 0 ? clean : null
   } catch (e) {
     log.warn("[RegenerateObjections] AI call failed:", e)
+    void recordAiUsage({
+      feature: "regenerate_objections",
+      model: MODEL,
+      provider: "anthropic",
+      status: "error",
+      durationMs: Date.now() - t0,
+      storeId: storeId ?? null,
+      errorMessage: e instanceof Error ? e.message : String(e),
+    })
     return null
   }
 }

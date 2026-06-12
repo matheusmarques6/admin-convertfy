@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("RitualProcess")
@@ -139,10 +140,21 @@ REGRAS:
 - Máximo 5 tasks por loja, escolha as mais impactantes
 - origin_quote deve ser trecho literal da transcrição`
 
+    const llmT0 = Date.now()
     const response = await ai.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
       messages: [{ role: "user", content: extractionPrompt }],
+    })
+
+    void recordAiUsage({
+      feature: "ritual_process",
+      model: "claude-sonnet-4-6",
+      provider: "anthropic",
+      tokensInput: response.usage?.input_tokens ?? 0,
+      tokensOutput: response.usage?.output_tokens ?? 0,
+      durationMs: Date.now() - llmT0,
+      context: { session_id: sessionId },
     })
 
     const responseText = response.content[0]?.type === "text" ? response.content[0].text : ""

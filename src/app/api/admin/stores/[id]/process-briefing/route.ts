@@ -10,6 +10,7 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ProcessBriefing")
@@ -156,6 +157,8 @@ Raw input: ${JSON.stringify(rawInput ?? {})}
 
 Gere briefing tratado.`
 
+  const MODEL = "claude-haiku-4-5-20251001"
+  const t0 = Date.now()
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -165,7 +168,7 @@ Gere briefing tratado.`
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: MODEL,
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: "user", content: userMsg }],
@@ -181,9 +184,28 @@ Gere briefing tratado.`
     })
     if (!res.ok) {
       log.warn("[ProcessBriefing] AI HTTP error", { status: res.status })
+      void recordAiUsage({
+        feature: "process_briefing",
+        model: MODEL,
+        provider: "anthropic",
+        status: "error",
+        durationMs: Date.now() - t0,
+        errorMessage: `HTTP ${res.status}`,
+      })
       return null
     }
-    const json = (await res.json()) as { content: Array<{ type: string; input?: unknown }> }
+    const json = (await res.json()) as {
+      content: Array<{ type: string; input?: unknown }>
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
+    void recordAiUsage({
+      feature: "process_briefing",
+      model: MODEL,
+      provider: "anthropic",
+      tokensInput: json.usage?.input_tokens ?? 0,
+      tokensOutput: json.usage?.output_tokens ?? 0,
+      durationMs: Date.now() - t0,
+    })
     const toolUse = json.content.find((c) => c.type === "tool_use") as
       | { input: { marca: Record<string, unknown>; briefing: Record<string, unknown> } }
       | undefined

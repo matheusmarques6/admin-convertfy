@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AcompanhamentoGenerateMessage")
@@ -113,11 +114,23 @@ export async function POST(
     const userPrompt = `Gere a mensagem semanal pra esse cliente:\n\n${JSON.stringify(ctx, null, 2)}`
 
     const ai = new Anthropic({ apiKey })
+    const llmT0 = Date.now()
     const response = await ai.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1000,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
+    })
+
+    void recordAiUsage({
+      feature: "acompanhamento_message",
+      model: "claude-sonnet-4-6",
+      provider: "anthropic",
+      tokensInput: response.usage?.input_tokens ?? 0,
+      tokensOutput: response.usage?.output_tokens ?? 0,
+      durationMs: Date.now() - llmT0,
+      storeId: state.store_id,
+      context: { state_id: stateId },
     })
 
     const text = response.content[0]?.type === "text" ? response.content[0].text : ""
