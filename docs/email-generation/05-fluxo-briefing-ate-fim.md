@@ -42,13 +42,13 @@ Há mais de um ponto que dispara a copy. Todos convergem para a mesma função
 |---|--------|--------|:---:|
 | 1 | Briefing aprovado | `confirmBriefing` → `dispatchEmailCopyWebhook('briefing_confirmed')` | ❌ |
 | 2 | Pesquisa concluída (gatilho oficial do onboarding) | `/webhooks/n8n/pesquisa-completa` → `dispatchEmailCopyWebhook('pesquisa_completa')` | ❌ |
-| 3 | Botão "Gerar copies" | `enqueueDispatchJob` → cron → `dispatchEmailCopyWebhook('manual_store_button')` | ✅ |
+| 3 | Botão "Gerar copies" | `dispatchEmailCopyWebhook('manual_store_button')` | ❌ |
 | 4 | Botão "Regenerar" | `/generate-blueprints` (só Architect, **não** dispara copy) | ✅ |
 
-> **Nota de inconsistência conhecida:** o Architect (Montador + Blueprint) só
-> roda nos caminhos 3 e 4. Os gatilhos automáticos do onboarding (1 e 2) chamam
-> `dispatchEmailCopyWebhook` direto, que usa as references/blueprints **já
-> existentes + fallback global** — não gera estrutura nova.
+> **Onde o Architect roda:** só no caminho 4 ("Regenerar"). Todos os disparos
+> de copy (1, 2 e 3) usam `dispatchEmailCopyWebhook` direto, que monta o payload
+> com o blueprint efetivo (cascata **store → global**) — não gera estrutura
+> nova. Gerar blueprint/reference sob medida é ação deliberada via "Regenerar".
 
 ---
 
@@ -148,12 +148,13 @@ Klaviyo. Canônico em `src/types/email-workspace.ts`.
 
 ## 7. Onde fica o Architect (Montador + Blueprint)
 
-- **Botão manual** → `email_dispatch_jobs` (fila) → cron `email-dispatch-queue`
-  roda Montador→Blueprint em lotes e, ao terminar, dispara pro n8n.
-- **Botão "Regenerar"** (`/generate-blueprints`) → roda só o Architect, sem
-  disparar copy.
-- **Onboarding automático (gatilhos 1 e 2)** → hoje **não** roda o Architect;
-  usa `store_email_references`/`store_email_blueprints` existentes + global.
+- **Botão "Regenerar"** (`/generate-blueprints`) → único ponto que roda o
+  Architect. Gera `store_email_references`/`store_email_blueprints` sob medida,
+  sem disparar copy.
+- **Todos os disparos de copy** (botão "Gerar copies", briefing aprovado,
+  pesquisa-completa) → `dispatchEmailCopyWebhook` direto, **sem** rodar o
+  Architect. Usam o blueprint efetivo na cascata **store → global**: pega o
+  da loja se foi gerado antes pelo "Regenerar", senão o **global** pronto.
 
 Referências: `docs/email-generation/01-overview.md`,
 `02-triggers.md`, `04-payload-reference.md`.

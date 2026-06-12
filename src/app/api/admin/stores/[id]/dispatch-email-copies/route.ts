@@ -10,7 +10,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { enqueueDispatchJob } from "@/lib/services/email-dispatch-queue.service"
+import { dispatchEmailCopyWebhook } from "@/lib/services/email-copy-webhook.service"
 
 const log = logger.child("DispatchEmailCopies")
 
@@ -34,17 +34,18 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const parsed = bodySchema.parse(body)
 
-    log.info("enqueue.start", {
+    log.info("dispatch.start", {
       storeId,
       flow_ids: parsed.flow_ids,
       only_drafts: parsed.only_drafts,
       triggered_by: user.id,
     })
 
-    // Enfileira: o cron (email-dispatch-queue) roda o Montador+Blueprint de
-    // cada email em lotes e dispara pro n8n quando todos estão prontos. Não
-    // disparamos inline — Architect (Opus, 60-180s/email) estoura o request.
-    const result = await enqueueDispatchJob(storeId, {
+    // Dispara direto pro n8n usando o blueprint efetivo (store se existir,
+    // senão GLOBAL) + reference global. NÃO roda o Montador/Blueprint — este
+    // botão é um "forçar disparo agora" com o que está pronto; gerar estrutura
+    // sob medida é o botão "Regenerar" (/generate-blueprints).
+    const result = await dispatchEmailCopyWebhook(storeId, {
       triggerSource: "manual_store_button",
       flowIds: parsed.flow_ids,
       triggeredBy: user.id,
