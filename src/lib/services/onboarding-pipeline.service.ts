@@ -18,7 +18,6 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import { dispatchBriefingWebhook } from "./briefing-webhook.service"
-import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import type {
   BriefingContent,
@@ -1153,14 +1152,10 @@ export async function confirmBriefing(
   // Dispara webhook outbound pro n8n (fire-and-forget via after() do Next 15)
   after(dispatchBriefingWebhook(onb.id))
 
-  // Dispara geração de copy dos emails via n8n (fire-and-forget)
-  if (onb.store_id) {
-    after(
-      dispatchEmailCopyWebhook(onb.store_id, {
-        triggerSource: "briefing_confirmed",
-      }),
-    )
-  }
+  // A copy NÃO é mais disparada aqui. O caminho único do fluxo natural é
+  // pesquisa-completa → fila do Architect (email_dispatch_jobs) → dispatch,
+  // garantindo que o payload da copy já tenha a Pesquisa & Diagnóstico e a
+  // estrutura sob medida (Montador+Blueprint) de cada email.
 
   return { ok: true }
 }

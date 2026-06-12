@@ -3,25 +3,31 @@
  *
  * Sinal explícito do n8n de que a Pesquisa & Diagnóstico (5 pilares —
  * marca/loja/ICP/tom/ads em client_stores) terminou de ser gerada. É o
- * GATILHO da geração de email: dispara o Architect (Montador + Blueprint,
- * usando a Pesquisa) + seed + copy, sem depender da confirmação manual.
+ * GATILHO da geração de email: ENFILEIRA um job em `email_dispatch_jobs`
+ * (com seed idempotente dos emails default); o cron
+ * `/api/cron/email-dispatch-queue` roda o Architect (Montador + Blueprint,
+ * usando a Pesquisa) de cada email em lotes e, quando TODOS estão settled
+ * (reference gerada OU fallback global), dispara a copy pro n8n UMA vez via
+ * dispatchEmailCopyWebhook — o payload sai com a Pesquisa E a estrutura sob
+ * medida de cada email.
  *
  * O n8n deve chamar este endpoint como ÚLTIMO passo do workflow de pesquisa,
  * depois dos callbacks brand/store-story/icp/tone/ads-analyzer. A idempotência
- * (não re-disparar batch em andamento) vive em dispatchEmailCopyWebhook.
+ * vive no enqueue (job ativo → already_queued) e no guard de batch em
+ * andamento de dispatchEmailCopyWebhook.
  *
  * REGERAÇÃO: o briefing webhook (dispatchBriefingWebhook) envia um campo
  * `regeneration` no payload de saída. Quando o briefing é REGERADO, o n8n
  * deve ECOAR `regeneration: true` neste callback. Nesse caso, a geração de
  * copy NÃO é re-disparada (apenas a Pesquisa é atualizada). Quando ausente
- * ou false, o comportamento é o normal: dispara Architect + seed + copy.
+ * ou false, o comportamento é o normal: enfileira Architect + seed + copy.
  */
 
 import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
-import { dispatchEmailCopyWebhook } from "@/lib/services/email-copy-webhook.service"
+import { enqueueDispatchJob } from "@/lib/services/email-dispatch-queue.service"
 import {
   errorResponse,
   successResponse,
@@ -57,7 +63,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Gatilho em background — falha não derruba o 200 (o n8n não deve re-tentar
-    // por erro nosso). O guard de batch em andamento vive no dispatch.
+    // por erro nosso). A idempotência vive no enqueue (dedup de job ativo).
     after(async () => {
       // Regeração de briefing apenas atualiza a Pesquisa — não re-dispara copy.
       if (body.regeneration === true) {
@@ -67,18 +73,19 @@ export async function POST(request: NextRequest) {
         return
       }
       try {
-        const res = await dispatchEmailCopyWebhook(body.store_id, {
+        const res = await enqueueDispatchJob(body.store_id, {
           triggerSource: "pesquisa_completa",
-          triggeredBy: "n8n:pesquisa-completa",
+          onlyDrafts: true,
         })
-        logger.info("[n8n:pesquisa-completa] dispatched", {
+        logger.info("[n8n:pesquisa-completa] enqueued", {
           store_id: body.store_id,
           ok: res.ok,
-          reason: res.reason,
+          job_id: res.job_id,
           email_count: res.email_count,
+          reason: res.reason,
         })
       } catch (err) {
-        logger.error("[n8n:pesquisa-completa] dispatch_failed", {
+        logger.error("[n8n:pesquisa-completa] enqueue_failed", {
           store_id: body.store_id,
           error: err instanceof Error ? err.message : String(err),
         })

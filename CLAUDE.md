@@ -1133,7 +1133,17 @@ template global (`email_reference_templates` / `email_blueprints` / `DEFAULT_BLU
 
 **Dispatch NÃO roda o Montador inline** (timeout 504): `dispatchEmailCopyWebhook`
 usa o que existir em `store_email_references`/`store_email_blueprints` + fallback
-global. Gerar/regenerar reference por loja = `POST /api/admin/stores/[id]/generate-blueprints`
+global. No fluxo NATURAL o Architect roda via fila: o callback
+`/api/webhooks/n8n/pesquisa-completa` ENFILEIRA um job em `email_dispatch_jobs`
+(`enqueueDispatchJob` — dedup de job ativo, skip de reference existente, bypass
+se Architect não configurado) e o cron `/api/cron/email-dispatch-queue` (every
+minute, maxDuration 300) roda Montador+Blueprint por email em lotes; o dispatch
+pro n8n só sai quando TODOS os emails estão settled (done = reference
+persistida; failed = tentativas esgotadas → fallback global por email). O
+disparo de copy na aprovação do briefing (`confirmBriefing`) foi REMOVIDO — o
+payload saía sem pesquisa e o guard `batch_in_progress` pulava o re-dispatch.
+O botão manual "Gerar copies" continua disparando direto (sem Architect).
+Gerar/regenerar reference por loja = `POST /api/admin/stores/[id]/generate-blueprints`
 (`maxDuration=300`).
 
 Status machine: `draft → pending → copy_generating → copy_ready → rendering →

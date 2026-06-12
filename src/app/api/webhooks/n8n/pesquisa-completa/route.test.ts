@@ -2,11 +2,11 @@
  * Tests for POST /api/webhooks/n8n/pesquisa-completa
  *
  * Cobre o campo `regeneration` (echo do briefing webhook):
- *  - regeneration:true  -> NAO chama dispatchEmailCopyWebhook (pula copy)
- *  - regeneration ausente -> chama dispatchEmailCopyWebhook (comportamento normal)
- *  - regeneration:false -> chama dispatchEmailCopyWebhook
+ *  - regeneration:true  -> NAO chama enqueueDispatchJob (pula copy)
+ *  - regeneration ausente -> chama enqueueDispatchJob (comportamento normal)
+ *  - regeneration:false -> chama enqueueDispatchJob
  *
- * O dispatch roda dentro de after() do next/server — aqui mockamos after
+ * O enqueue roda dentro de after() do next/server — aqui mockamos after
  * para executar o callback sincronamente e poder assertar a chamada.
  */
 
@@ -62,15 +62,15 @@ vi.mock("@/lib/api/n8n-auth", () => ({
   requireWebhookSecret: vi.fn(),
 }))
 
-const dispatchEmailCopyWebhook = vi.fn(async () => ({
+const enqueueDispatchJob = vi.fn(async () => ({
   ok: true,
-  reason: null,
+  job_id: "job-1",
   email_count: 3,
 }))
 
-vi.mock("@/lib/services/email-copy-webhook.service", () => ({
-  dispatchEmailCopyWebhook: (...args: unknown[]) =>
-    dispatchEmailCopyWebhook(...(args as [])),
+vi.mock("@/lib/services/email-dispatch-queue.service", () => ({
+  enqueueDispatchJob: (...args: unknown[]) =>
+    enqueueDispatchJob(...(args as [])),
 }))
 
 // after() roda o callback sincronamente para podermos assertar o dispatch.
@@ -117,32 +117,35 @@ function makeRequest(body: Record<string, unknown>): Request {
 }
 
 describe("POST /api/webhooks/n8n/pesquisa-completa — regeneration", () => {
-  it("regeneration:true -> 200 mas NAO dispara copy", async () => {
+  it("regeneration:true -> 200 mas NAO enfileira", async () => {
     const res = await POST(
       makeRequest({ store_id: MOCK_STORE_ID, regeneration: true }),
     )
     expect(res.status).toBe(200)
     await flushAfter()
-    expect(dispatchEmailCopyWebhook).not.toHaveBeenCalled()
+    expect(enqueueDispatchJob).not.toHaveBeenCalled()
   })
 
-  it("regeneration ausente -> 200 e dispara copy", async () => {
+  it("regeneration ausente -> 200 e enfileira o job", async () => {
     const res = await POST(makeRequest({ store_id: MOCK_STORE_ID }))
     expect(res.status).toBe(200)
     await flushAfter()
-    expect(dispatchEmailCopyWebhook).toHaveBeenCalledTimes(1)
-    expect(dispatchEmailCopyWebhook).toHaveBeenCalledWith(
+    expect(enqueueDispatchJob).toHaveBeenCalledTimes(1)
+    expect(enqueueDispatchJob).toHaveBeenCalledWith(
       MOCK_STORE_ID,
-      expect.objectContaining({ triggerSource: "pesquisa_completa" }),
+      expect.objectContaining({
+        triggerSource: "pesquisa_completa",
+        onlyDrafts: true,
+      }),
     )
   })
 
-  it("regeneration:false -> 200 e dispara copy", async () => {
+  it("regeneration:false -> 200 e enfileira o job", async () => {
     const res = await POST(
       makeRequest({ store_id: MOCK_STORE_ID, regeneration: false }),
     )
     expect(res.status).toBe(200)
     await flushAfter()
-    expect(dispatchEmailCopyWebhook).toHaveBeenCalledTimes(1)
+    expect(enqueueDispatchJob).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,24 +1,27 @@
 # Fluxo de Geração de Email — Mapa Completo (Onboarding → Email pronto)
 
 Mapa canônico, do cliente preencher o formulário até cada email ficar `ready`.
-Reflete o código atual. Os agentes de IA (Montador/Blueprint) **não** rodam no
-fluxo natural — só via botão "Regenerar". Veja §9.
+Reflete o código atual. No fluxo natural, os agentes de IA (Montador/Blueprint)
+rodam via fila `email_dispatch_jobs` + cron, ANTES do dispatch da copy. Veja §6.
 
 ---
 
 ## 0. Visão geral (uma imagem)
 
 ```
-Form → Briefing(IA) → [aprova] ─┬─► n8n Pesquisa (5 pilares) ─► pesquisa-completa ─┐
-                                │                                                  │
-                                └─► dispatch copy ◄────────────────────────────────┘
-                                        │
-                                   n8n gera COPY ─► copy_ready
-                                        │
-                            [GATE MANUAL] designer confirma identidade visual
-                                        │ (sinal render → watchdog)
-                                        ▼
-                            Fase 2:  Imagem ─► HTML ─► QA ─► ready / failed
+Form → Briefing(IA) → [aprova] ─► n8n Pesquisa (5 pilares) ─► pesquisa-completa
+                                                                      │
+                                                 enfileira job (email_dispatch_jobs)
+                                                                      │
+                              cron email-dispatch-queue (1 min): Montador+Blueprint
+                              por email, em lotes; TODOS settled ─► dispatch copy
+                                                                      │
+                                                            n8n gera COPY ─► copy_ready
+                                                                      │
+                                  [GATE MANUAL] designer confirma identidade visual
+                                                                      │ (sinal render → watchdog)
+                                                                      ▼
+                                  Fase 2:  Imagem ─► HTML ─► QA ─► ready / failed
 ```
 
 Rede de segurança: **watchdog** (cron 5 min) destrava o que ficar preso.
@@ -44,17 +47,18 @@ Rede de segurança: **watchdog** (cron 5 min) destrava o que ficar preso.
 - **Output:** `onboardings.briefing` + `briefing_ai_original`;
   `briefing_status='generated_pending_review'`.
 
-## 4. Cliente aprova o briefing  ← a bifurcação
-`confirmBriefing` (`onboarding-pipeline.service.ts:1036`):
+## 4. Cliente aprova o briefing
+`confirmBriefing` (`onboarding-pipeline.service.ts:1035`):
 - `briefing_status='approved'`, `briefing_confirmed_by_client=true`; avança o
   kanban pra `preview_producao`; grava evento.
-- Dispara **2 fire-and-forget** (`after()`):
-  - **(A)** `dispatchBriefingWebhook` → n8n (workflow de Pesquisa). `:1154`
-  - **(B)** `dispatchEmailCopyWebhook('briefing_confirmed')` → dispatch de copy. `:1158`
+- Dispara **1 fire-and-forget** (`after()`):
+  `dispatchBriefingWebhook` → n8n (workflow de Pesquisa). `:1153`
 
-> Ordem real: a **pesquisa roda DEPOIS da aprovação** (é a aprovação que a
-> dispara). O dispatch (B) sai logo na aprovação; o dispatch via
-> pesquisa-completa (§5) é o re-gatilho idempotente.
+> A aprovação **NÃO dispara mais copy** — só a Pesquisa. A copy é disparada
+> exclusivamente pelo caminho pesquisa-completa → fila do Architect (§5/§6),
+> garantindo que o payload saia com a Pesquisa e a estrutura sob medida.
+> (Antes, o dispatch na aprovação saía sem pesquisa e o guard
+> `batch_in_progress` pulava o re-dispatch da pesquisa-completa.)
 
 ## 5. Agente 2 — Pesquisa & Diagnóstico (n8n)
 - O n8n roda os agentes e chama **5 callbacks**, cada um gravando em
@@ -65,15 +69,28 @@ Rede de segurança: **watchdog** (cron 5 min) destrava o que ficar preso.
   - `/webhooks/n8n/tone` → `tone_description/do/dont/use_words/avoid_words`
   - `/webhooks/n8n/ads-analyzer` → `ads_score/summary/sub_scores/...`
 - **Último passo:** `/webhooks/n8n/pesquisa-completa` →
-  `dispatchEmailCopyWebhook('pesquisa_completa')` (idempotente: pula se já há
-  batch em andamento). `regeneration:true` → só atualiza pesquisa, não dispara.
+  `enqueueDispatchJob('pesquisa_completa')` **ENFILEIRA** um job em
+  `email_dispatch_jobs` (idempotente: job ativo → `already_queued`; emails com
+  reference já gerada entram `done`; Architect não configurado → tudo settled,
+  dispatch direto). `regeneration:true` → só atualiza pesquisa, não enfileira.
 
-## 6. Dispatch da copy → n8n  ← onde a ESTRUTURA é escolhida
-`dispatchEmailCopyWebhook`:
+## 6. Fila do Architect + dispatch da copy → n8n  ← onde a ESTRUTURA é escolhida
+**6a. Cron `email-dispatch-queue`** (every minute, maxDuration 300) processa
+`email_dispatch_jobs` (`email-dispatch-queue.service.ts`):
+1. Claim otimista do job mais antigo (lease por `updated_at`).
+2. Roda **Montador+Blueprint** (`generateBlueprintAndReference`) dos emails
+   `pending` em lotes paralelos (4 por vez) dentro do orçamento do tick;
+   continua nos próximos ticks se não couber.
+3. Por email: reference persistida → `done`; 2 tentativas sem persistir →
+   `failed` (esse email usa o template/blueprint **global** — não bloqueia).
+4. Quando **TODOS settled** → `dispatchEmailCopyWebhook` UMA vez, propagando o
+   `trigger_source` do job.
+
+**6b. Dispatch** — `dispatchEmailCopyWebhook`:
 1. Carrega contexto da loja (brand, ICP, tom, briefing, pesquisa, top products,
    concorrentes).
-2. **Blueprint efetivo por email:** cascata `store_email_blueprints` → **global
-   `email_blueprints`**. No fluxo natural não existe `store_*` → usa o **global**.
+2. **Blueprint efetivo por email:** cascata `store_email_blueprints` (gerado
+   pela fila em 6a) → **global `email_blueprints`** (fallback por email).
 3. Auto-cura emails faltantes; reconcilia `email_blocks` a partir do blueprint.
 4. Monta o payload `flows[].emails[]`:
    `blueprint:{objective,messaging,subject_hint}` + `blocks:[{block_id,position,type,label}]`.
@@ -146,18 +163,21 @@ Sinais de fila (`email_generation_queue_signals.signal_type`):
 
 ---
 
-## Onde cada botão da UI entra
+## Onde cada gatilho entra
 
-| Botão | Endpoint | Roda IA (Architect)? | Dispara n8n? | Status |
+| Gatilho | Endpoint | Roda IA (Architect)? | Dispara n8n? | Status |
 |------|----------|:---:|:---:|--------|
-| **Gerar copies (n8n)** | `dispatch-email-copies` | ❌ | ✅ | `→ in_progress` |
-| **Iniciar Onboarding** | `start-onboarding` | ❌ | ✅ | `→ copy_generating` |
-| **Re-sincronizar estrutura** | `reconcile-blocks` | ❌ | ❌ | sem mudança |
+| **Fluxo natural** (pesquisa-completa) | `webhooks/n8n/pesquisa-completa` → fila + cron `email-dispatch-queue` | ✅ Montador+Blueprint (via fila) | ✅ (quando todos settled) | `→ in_progress` |
+| **Gerar copies (n8n)** (botão) | `dispatch-email-copies` | ❌ | ✅ | `→ in_progress` |
+| **Iniciar Onboarding** (botão) | `start-onboarding` | ❌ | ✅ | `→ copy_generating` |
+| **Re-sincronizar estrutura** (botão) | `reconcile-blocks` | ❌ | ❌ | sem mudança |
 | **Regenerar** (Generated Inspector) | `generate-blueprints` | ✅ Montador+Blueprint | ❌ | sem mudança |
 
-> **Onde o Architect roda:** só no "Regenerar". Todo o resto (inclusive o
-> onboarding natural) usa o blueprint/reference **global** quando a loja não
-> tem o sob-medida. Rodar "Regenerar" antes faz a loja passar a usar o
-> layout/blueprint próprio em vez do global.
+> **Onde o Architect roda:** no **fluxo natural** (via fila
+> `email_dispatch_jobs` + cron, antes do dispatch) e no botão "Regenerar"
+> (inline, `maxDuration=300`). Os botões manuais de dispatch ("Gerar copies",
+> "Iniciar Onboarding") **não** rodam o Architect — usam o que existir em
+> `store_email_blueprints`/`store_email_references` e caem no **global** por
+> email quando a loja não tem o sob-medida.
 
 Refs: `01-overview.md`, `02-triggers.md`, `04-payload-reference.md`.
