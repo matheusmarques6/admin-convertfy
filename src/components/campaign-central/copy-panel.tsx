@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import {
   X,
@@ -16,6 +16,7 @@ import {
   Send,
   ArrowRight,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -118,6 +119,12 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [qualityBusy, setQualityBusy] = useState<string | null>(null)
+  /** Lojas com dispatch em andamento — UI mostra spinner ate receber callback. */
+  const [pendingStoreIds, setPendingStoreIds] = useState<Set<string>>(new Set())
+  /** Mode do dispatch atual — pendingStoreIds e relativo a esse mode. */
+  const [pendingMode, setPendingMode] = useState<"test" | "production" | null>(null)
+  const onSavedRef = useRef(onSaved)
+  onSavedRef.current = onSaved
 
   const { data: storesData } = useSWR<{ stores: StoreOption[] }>(
     open ? "/api/stores" : null,
@@ -173,6 +180,54 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     [stores, statusFilter, regionFilter, langFilter],
   )
 
+  /**
+   * Polling: enquanto houver lojas pending, refaz fetch da suggestion
+   * a cada 4s. Detecta termino lendo copy_results[mode][storeId].status
+   * — quando none == 'pending', limpa pending e dispara toast. Vive
+   * antes do early return pra respeitar rules-of-hooks.
+   */
+  useEffect(() => {
+    if (pendingStoreIds.size === 0 || !pendingMode || !suggestion) return
+
+    const currentResults = (suggestion.copy_results?.[pendingMode] ?? {}) as Record<
+      string,
+      CopyResultEntry
+    >
+    const stillPending = Array.from(pendingStoreIds).filter(
+      (id) => (currentResults[id]?.status ?? "pending") === "pending",
+    )
+
+    if (stillPending.length === 0) {
+      const completed = Array.from(pendingStoreIds)
+      const success = completed.filter((id) => currentResults[id]?.status === "success").length
+      const failed = completed.filter((id) => currentResults[id]?.status === "error").length
+      setPendingStoreIds(new Set())
+      setPendingMode(null)
+      setBusy(null)
+      if (failed > 0) {
+        const firstErr = completed.find((id) => currentResults[id]?.status === "error")
+        toast({
+          title: `${failed} loja(s) falharam`,
+          description: firstErr
+            ? currentResults[firstErr]?.error_message ?? "Erro no callback"
+            : "Erro no callback",
+          variant: "destructive",
+        })
+      } else if (success > 0) {
+        toast({
+          title: "Copy pronta",
+          description: `${success} loja(s) geradas com sucesso.`,
+        })
+      }
+      return
+    }
+
+    const tick = setInterval(() => {
+      onSavedRef.current()
+    }, 4000)
+    return () => clearInterval(tick)
+  }, [pendingStoreIds, pendingMode, suggestion, toast])
+
   if (!suggestion) return null
 
   const mode = phase === "pilot" ? "test" : "production"
@@ -212,15 +267,21 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
   const genList = visibleStores.filter((s) => selected.has(s.id))
 
+  /**
+   * Dispatch async: rota retorna 202 com job_id; UI faz polling de
+   * onSaved (re-fetch da suggestion) ate todas as lojas saírem de
+   * status='pending'. Sem mais lista de results/errors síncrona.
+   */
   const callGenerate = async (
     storeIds: string[],
-  ): Promise<{ results: Record<string, CopyResultEntry>; errors: Record<string, string> }> => {
+    targetMode: "test" | "production",
+  ): Promise<{ job_id: string | null; stores_count: number; reason?: string }> => {
     const res = await fetch(
       `/api/admin/campaign-central/suggestions/${suggestion.id}/generate-copy`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, store_ids: storeIds }),
+        body: JSON.stringify({ mode: targetMode, store_ids: storeIds }),
       },
     )
     const json = await res.json()
@@ -238,43 +299,55 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
   const generate = async () => {
     if (genList.length === 0) return
+    const storeIds = genList.map((s) => s.id)
+    const targetMode = mode
     setBusy(phase === "pilot" ? "generating" : "rollout")
+    setPendingStoreIds(new Set(storeIds))
+    setPendingMode(targetMode)
     try {
       if (phase === "pilot") {
-        await callSetPilot(genList.map((s) => s.id))
+        await callSetPilot(storeIds)
       }
-      const { errors } = await callGenerate(genList.map((s) => s.id))
-      const failed = Object.keys(errors ?? {}).length
-      if (failed > 0) {
-        toast({
-          title: `${failed} loja(s) falharam`,
-          description: Object.values(errors)[0],
-          variant: "destructive",
-        })
-      } else {
-        toast({
-          title: phase === "pilot" ? "Piloto gerado" : "Rollout gerado",
-          description: `${genList.length - failed} loja(s) com copy.`,
-        })
-      }
-      onSaved()
-    } catch (err) {
+      const result = await callGenerate(storeIds, targetMode)
+      onSavedRef.current()
+      const description =
+        result.reason === "no_url_configured"
+          ? "Webhook n8n não configurado — fallback inline rodará no próximo watchdog (até 5min)."
+          : `Aguarde — ${storeIds.length} loja(s) entram em fila.`
       toast({
-        title: "Falha ao gerar copy",
+        title: phase === "pilot" ? "Piloto enfileirado" : "Rollout enfileirado",
+        description,
+      })
+    } catch (err) {
+      // Falha pré-dispatch: limpa pending (UI volta ao estado anterior)
+      setPendingStoreIds(new Set())
+      setPendingMode(null)
+      setBusy(null)
+      toast({
+        title: "Falha ao iniciar geração",
         description: err instanceof Error ? err.message : "Erro desconhecido",
         variant: "destructive",
       })
-    } finally {
-      setBusy(null)
     }
   }
 
   const regenerateOne = async (storeId: string) => {
     setRegeneratingId(storeId)
+    setPendingStoreIds((prev) => {
+      const next = new Set(prev)
+      next.add(storeId)
+      return next
+    })
+    setPendingMode(mode)
     try {
-      await callGenerate([storeId])
-      onSaved()
+      await callGenerate([storeId], mode)
+      onSavedRef.current()
     } catch (err) {
+      setPendingStoreIds((prev) => {
+        const next = new Set(prev)
+        next.delete(storeId)
+        return next
+      })
       toast({
         title: "Falha ao refazer",
         description: err instanceof Error ? err.message : "Erro desconhecido",
@@ -284,6 +357,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
       setRegeneratingId(null)
     }
   }
+
 
   const toggleQuality = async (storeId: string, current: CopyResultEntry["quality"]) => {
     setQualityBusy(storeId)
@@ -616,16 +690,31 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                   const isGood = entry.quality === "good"
                   const isExpanded = expandedCards.has(storeId)
                   const isRegen = regeneratingId === storeId
+                  const isPending =
+                    pendingMode === mode && (pendingStoreIds.has(storeId) || entry.status === "pending")
+                  const isError = entry.status === "error" && !isPending
                   return (
                     <div
                       key={storeId}
                       className={`overflow-hidden rounded-[8px] border bg-card ${
-                        isGood ? "border-emerald-300" : "border-border"
+                        isGood
+                          ? "border-emerald-300"
+                          : isError
+                          ? "border-red-300"
+                          : isPending
+                          ? "border-primary/40"
+                          : "border-border"
                       }`}
                     >
                       <div
                         className={`flex items-center gap-2 border-b border-border/50 px-3.5 py-2 ${
-                          isGood ? "bg-emerald-50" : "bg-muted/40"
+                          isGood
+                            ? "bg-emerald-50"
+                            : isError
+                            ? "bg-red-50"
+                            : isPending
+                            ? "bg-primary/5"
+                            : "bg-muted/40"
                         }`}
                       >
                         <span className="truncate text-[12.5px] font-semibold text-foreground">
@@ -638,7 +727,17 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                           </Badge>
                         )}
                         <div className="flex-1" />
-                        {isGood && (
+                        {isPending && (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary">
+                            <Loader2 size={13} className="animate-spin" /> Gerando…
+                          </span>
+                        )}
+                        {isError && (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-red-600">
+                            <AlertTriangle size={13} /> Erro
+                          </span>
+                        )}
+                        {isGood && !isPending && !isError && (
                           <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600">
                             <Check size={13} /> Aprovada
                           </span>
