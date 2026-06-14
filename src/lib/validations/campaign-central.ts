@@ -166,3 +166,24 @@ export const markQualitySchema = z.object({
 export const setPilotSchema = z.object({
   store_ids: z.array(z.string().uuid()).max(10),
 })
+
+// ── Callback n8n (campaign-copy) ─────────────────────────────────────
+
+/** Payload que o n8n posta em /api/webhooks/n8n/campaign-copy por loja. */
+export const campaignCopyCallbackSchema = z.object({
+  job_id: z.string().uuid(),
+  suggestion_id: z.string().uuid(),
+  store_id: z.string().uuid(),
+  mode: z.enum(["test", "production"]),
+  status: z.enum(["success", "error"]),
+  copy: copyResultEntrySchema.optional(),
+  error_message: z.string().optional(),
+  meta: z
+    .object({
+      model: z.string().optional(),
+      tokens_input: z.number().int().nonnegative().optional(),
+      tokens_output: z.number().int().nonnegative().optional(),
+      duration_ms: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
+})

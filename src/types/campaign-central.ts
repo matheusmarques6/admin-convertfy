@@ -126,7 +126,17 @@ export interface CopyResultEntry {
   blocks?: EmailDraftBlock[]
   quality?: "good" | null
   generated_at: string
-  generated_via?: "ai_master_adapt" | "subject_only_legacy"
+  generated_via?:
+    | "ai_master_adapt"
+    | "subject_only_legacy"
+    | "n8n"
+    | "inline_fallback"
+  /** Estado do dispatch assíncrono (n8n). UI usa pra mostrar spinner. */
+  status?: "pending" | "success" | "error"
+  /** Quando o dispatch foi enfileirado. Watchdog usa pra detectar timeout. */
+  dispatched_at?: string
+  /** Mensagem de erro do callback quando status='error'. */
+  error_message?: string
 }
 
 export interface CampaignSuggestion {
