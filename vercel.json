@@ -77,6 +77,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/campaign-copy-watchdog",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/campaign-suggestions-cycle",
       "schedule": "0 1 * * 1"
     },

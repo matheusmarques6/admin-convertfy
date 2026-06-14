@@ -116,6 +116,21 @@ export async function POST(request: NextRequest) {
       throw new AppError("mode não bate com o job", 400)
     }
 
+    // 1.5) Se o job já caiu no fallback inline (watchdog promoveu), descarta
+    //      o callback. O inline ja gravou copy_results pras lojas pendentes —
+    //      escrever em cima criaria race com o run inline ainda em voo.
+    if (job.status === "fallback_inline" || job.status === "done") {
+      log.info("campaign_copy.skip_inactive_job", {
+        job_id: body.job_id,
+        store_id: body.store_id,
+        job_status: job.status,
+      })
+      return successResponse(request, {
+        idempotent: true,
+        reason: `job_${job.status}`,
+      })
+    }
+
     // 2) Re-lê copy_results pra merge consistente (writes concorrentes do
     //    n8n em paralelo — uma loja por callback).
     const { data: fresh, error: freshErr } = await admin

@@ -295,9 +295,15 @@ export async function generateCampaignCopy(params: {
   orgId: string
   mode: "test" | "production"
   storeIds: string[]
+  /**
+   * Origem da copy gerada. Default 'ai_master_adapt' (botão manual COO).
+   * F3 (watchdog) chama com 'inline_fallback' pra distinguir nas métricas
+   * quando o n8n falhou e o inline correu como fallback.
+   */
+  generatedVia?: "ai_master_adapt" | "inline_fallback"
 }): Promise<GenerateCopyResult> {
   const admin = createAdminClient()
-  const { suggestionId, orgId, mode, storeIds } = params
+  const { suggestionId, orgId, mode, storeIds, generatedVia = "ai_master_adapt" } = params
 
   const { data: suggestionRaw } = await admin
     .from("campaign_suggestions")
@@ -389,7 +395,8 @@ export async function generateCampaignCopy(params: {
             blocks: v.blocks,
             quality: prevQuality ?? null,
             generated_at: new Date().toISOString(),
-            generated_via: "ai_master_adapt",
+            generated_via: generatedVia,
+            status: "success",
           }
         }
       }
