@@ -132,6 +132,7 @@ describe("approveSuggestion", () => {
       subject: "⏳ Ainda dá tempo",
       trigger: { label: "Dia dos Namorados", detail: "em 2 dias", source: "Calendário BR" },
       confidence: 92,
+      channel: "Email + SMS",
       targets: [{ store_id: "store-1", store_name: "Loja A", country: "BR" }],
       est_revenue: "R$ 42k",
       send_date: "2026-06-11",
@@ -160,6 +161,12 @@ describe("approveSuggestion", () => {
     expect(insert!.data.description).toBe("Estratégia editada pelo COO")
     expect((insert!.data.target_stores as unknown[])).toHaveLength(1)
     expect((insert!.data.tags as string[])).toEqual(["central", "data"])
+
+    // Estado de produção por loja inicializado + canal propagado (aba "Em produção")
+    const targets = insert!.data.target_stores as Array<Record<string, unknown>>
+    expect(targets[0].prod_stage).toBe(0)
+    expect(targets[0].designer_id).toBeNull()
+    expect((insert!.data.copy_data as Record<string, unknown>).channel).toBe("Email + SMS")
 
     const suggestion = fixtures.suggestions.get("sug-1")!
     expect(suggestion.status).toBe("approved")
