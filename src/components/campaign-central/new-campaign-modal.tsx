@@ -136,8 +136,8 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
       toast({
-        title: "Campanha criada",
-        description: "Adicionada à fila como aprovada e enviada pro pipeline.",
+        title: "Campanha criada (rascunho)",
+        description: "Gere a copy de teste e aprove um piloto pra enviar aos designers.",
       })
       setTitle("")
       setBriefing("")
