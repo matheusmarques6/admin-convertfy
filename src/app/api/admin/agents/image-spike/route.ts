@@ -20,6 +20,7 @@ const schema = z.object({
   image_url: z.string().url(),
   prompt: z.string().min(3).max(2000),
   model: z.string().max(120).optional(),
+  max_tokens: z.number().int().min(256).max(65536).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       imageUrl: body.image_url,
       prompt: body.prompt,
       model: body.model,
+      maxTokens: body.max_tokens,
     })
     return successResponse(request, result)
   } catch (error) {

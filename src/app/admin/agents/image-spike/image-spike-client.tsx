@@ -15,6 +15,7 @@ export function ImageSpikeClient() {
   const [imageUrl, setImageUrl] = useState("")
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
   const [model, setModel] = useState("")
+  const [maxTokens, setMaxTokens] = useState("16384")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ImageSpikeResponse | null>(null)
@@ -27,7 +28,12 @@ export function ImageSpikeClient() {
       const res = await fetch("/api/admin/agents/image-spike", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: imageUrl, prompt, model: model || undefined }),
+        body: JSON.stringify({
+          image_url: imageUrl,
+          prompt,
+          model: model || undefined,
+          max_tokens: maxTokens ? Number(maxTokens) : undefined,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
@@ -84,6 +90,16 @@ export function ImageSpikeClient() {
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="openai/gpt-5.4-image-2 (padrão)"
+            />
+          </div>
+          <div className="w-28">
+            <label className="mb-1 block text-[12px] font-semibold text-foreground">max_tokens</label>
+            <input
+              className={field}
+              type="number"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(e.target.value)}
+              placeholder="16384"
             />
           </div>
           <Button onClick={run} disabled={loading || imageUrl.trim().length === 0}>

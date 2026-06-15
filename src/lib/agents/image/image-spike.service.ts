@@ -16,6 +16,10 @@ const log = logger.child("ImageSpike")
 const API = "https://openrouter.ai/api/v1/chat/completions"
 const DEFAULT_MODEL = "openai/gpt-5.4-image-2"
 const TIMEOUT_MS = 90_000
+// OpenRouter reserva créditos pelo TETO de max_tokens. Sem passar, assume o
+// máximo do modelo (65536) e dá 402 com saldo baixo — mas uma imagem usa
+// bem menos. 16k é folgado pra geração de imagem.
+const DEFAULT_MAX_TOKENS = 16_384
 
 type SpikeContent =
   | string
@@ -52,6 +56,7 @@ async function callImage(
   apiKey: string,
   model: string,
   messages: SpikeMessage[],
+  maxTokens: number,
 ): Promise<SpikeImageResult> {
   const t0 = Date.now()
   const ctrl = new AbortController()
@@ -60,7 +65,7 @@ async function callImage(
     const res = await fetch(API, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, response_format: "b64_json" }),
+      body: JSON.stringify({ model, messages, response_format: "b64_json", max_tokens: maxTokens }),
       signal: ctrl.signal,
     })
     const raw = await res.text()
@@ -95,12 +100,15 @@ export async function runImageSpike(params: {
   imageUrl: string
   prompt: string
   model?: string
+  maxTokens?: number
 }): Promise<ImageSpikeResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY não está configurada neste ambiente do servidor.")
   }
   const model = params.model?.trim() || DEFAULT_MODEL
+  const maxTokens =
+    params.maxTokens && params.maxTokens > 0 ? params.maxTokens : DEFAULT_MAX_TOKENS
 
   // 1. Confirma que a URL de entrada é baixável E é imagem (o que o modelo
   //    precisaria fazer no modo product_ref).
@@ -115,16 +123,21 @@ export async function runImageSpike(params: {
 
   // 2. Gera A (multimodal) e B (text2img) em paralelo.
   const [productRef, text2img] = await Promise.all([
-    callImage(apiKey, model, [
-      {
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: params.imageUrl } },
-          { type: "text", text: params.prompt },
-        ],
-      },
-    ]),
-    callImage(apiKey, model, [{ role: "user", content: params.prompt }]),
+    callImage(
+      apiKey,
+      model,
+      [
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: params.imageUrl } },
+            { type: "text", text: params.prompt },
+          ],
+        },
+      ],
+      maxTokens,
+    ),
+    callImage(apiKey, model, [{ role: "user", content: params.prompt }], maxTokens),
   ])
 
   log.info("spike.done", {
