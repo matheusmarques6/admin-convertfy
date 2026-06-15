@@ -28,6 +28,7 @@ export type ImageModeSource =
   | "default"
   | "fallback_text2img_no_product"
   | "fallback_text2img_disabled"
+  | "fallback_text2img_unreachable"
 
 const WELCOME_MODE_BY_EMAIL: Record<number, ImageMode> = {
   1: "product_ref",

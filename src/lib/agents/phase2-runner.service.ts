@@ -50,6 +50,7 @@ import {
   resolveImageMode,
   productRefDescriptionFallback,
 } from "./image/mode-resolution"
+import { isUsableProductImage } from "./image/product-image-guard"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import {
   DEFAULT_HTML_SYSTEM_PROMPT,
@@ -538,13 +539,35 @@ export async function runPhase2Image(
         // tipicamente uma signed URL Supabase com validade ~365 dias
         // (segura entre as fases copy → image → upload final).
         const topProductImageUrl = ctx.topProducts[0]?.image_url ?? null
-        const { mode, source: modeSource } = resolveImageMode({
+        let { mode, source: modeSource } = resolveImageMode({
           blueprintMode: ctx.blueprint?.image_mode ?? null,
           flowType: ctx.flowType,
           emailNumber: ctx.emailNumber,
           topProductImageUrl,
           multimodalEnabled,
         })
+
+        // ── Guarda de integração (product_ref) ──────────────────────────
+        // Antes de mandar a URL do produto como referência visual ao modelo,
+        // confirma que ela é baixável E é imagem. URLs 403/404/HTML (asset de
+        // e-mail removido, CDN restrito, link reaproveitado) fariam o modelo
+        // cair em imagem genérica silenciosamente. Reprovou → text2img + a
+        // descrição textual do produto (fallback abaixo).
+        if (mode === "product_ref" && topProductImageUrl) {
+          const check = await isUsableProductImage(topProductImageUrl)
+          if (!check.usable) {
+            log.warn("phase2.image.product_ref_url_unusable", {
+              emailId,
+              blockId: blk.id,
+              reason: check.reason,
+              status: check.status,
+              contentType: check.contentType,
+            })
+            mode = "text2img"
+            modeSource = "fallback_text2img_unreachable"
+          }
+        }
+
         log.info("phase2.image.mode_resolved", {
           emailId,
           blockId: blk.id,
@@ -593,7 +616,8 @@ export async function runPhase2Image(
         // o modelo ainda pode "evocar" o produto via texto detalhado.
         if (
           (modeSource === "fallback_text2img_disabled" ||
-            modeSource === "fallback_text2img_no_product") &&
+            modeSource === "fallback_text2img_no_product" ||
+            modeSource === "fallback_text2img_unreachable") &&
           ctx.topProducts[0]?.name
         ) {
           promptWithAspect += `\n\n${productRefDescriptionFallback({
