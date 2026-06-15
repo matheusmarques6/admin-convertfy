@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check } from "lucide-react"
+import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
@@ -12,14 +12,16 @@ import { NewCampaignModal } from "./new-campaign-modal"
 import { CopyPanel } from "./copy-panel"
 import { CalendarTab } from "./calendar-tab"
 import { PerformanceTab } from "./performance-tab"
+import { ProductionTab } from "./production/production-tab"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
-type TabKey = "sugestoes" | "calendario" | "performance" | "aprovadas"
+type TabKey = "sugestoes" | "calendario" | "performance" | "producao" | "aprovadas"
 
 const TABS: Array<{ key: TabKey; label: string; Icon: typeof Send }> = [
   { key: "sugestoes", label: "Sugestões", Icon: Send },
   { key: "calendario", label: "Calendário", Icon: Calendar },
   { key: "performance", label: "Performance", Icon: Activity },
+  { key: "producao", label: "Em produção", Icon: Layers },
   { key: "aprovadas", label: "Aprovadas", Icon: Check },
 ]
 
@@ -61,6 +63,7 @@ export function CampaignCentralShell() {
       sugestoes: counts.pending,
       calendario: counts.dates_upcoming,
       performance: counts.attention,
+      producao: counts.approved,
       aprovadas: counts.approved,
     }),
     [counts],
@@ -196,6 +199,8 @@ export function CampaignCentralShell() {
         />
       ) : tab === "calendario" ? (
         <CalendarTab trends={central.trends} onCreate={() => setNewModalOpen(true)} />
+      ) : tab === "producao" ? (
+        <ProductionTab />
       ) : (
         <PerformanceTab
           suggestions={suggestions}

@@ -187,3 +187,16 @@ export const campaignCopyCallbackSchema = z.object({
     })
     .optional(),
 })
+
+// ── Produção (aba "Em produção") ─────────────────────────────────────
+
+/** Atualiza estágio (0..4) e/ou designer de UMA loja de uma campanha. */
+export const productionStorePatchSchema = z
+  .object({
+    store_id: z.string().uuid(),
+    prod_stage: z.number().int().min(0).max(4).optional(),
+    designer_id: z.string().uuid().nullable().optional(),
+  })
+  .refine((v) => v.prod_stage !== undefined || v.designer_id !== undefined, {
+    message: "Informe prod_stage ou designer_id",
+  })

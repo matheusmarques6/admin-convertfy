@@ -51,10 +51,14 @@ export async function approveSuggestion(params: {
   const draft = s.email_draft
   const triggerLabel = `${s.trigger?.label ?? ""} — ${s.trigger?.detail ?? ""}`.trim()
   const description = (draft?.strategy && draft.strategy.trim()) || s.angle || triggerLabel
+  // prod_stage/designer_id por loja alimentam a aba "Em produção" (estágio
+  // copy→design→revisão→agendado→enviado e designer responsável por peça).
   const targetStores = s.targets.map((t) => ({
     store_id: t.store_id,
     store_name: t.store_name,
     status: "pending" as const,
+    prod_stage: 0,
+    designer_id: null as string | null,
   }))
 
   const { data: item, error: insertErr } = await admin
@@ -72,6 +76,7 @@ export async function approveSuggestion(params: {
         confidence: s.confidence,
         trigger: s.trigger,
         angle: s.angle,
+        channel: s.channel,
         blocks: draft?.blocks ?? [],
         copy_results: s.copy_results ?? {},
         est_revenue: s.est_revenue,
