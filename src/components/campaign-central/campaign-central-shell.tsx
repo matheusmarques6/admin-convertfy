@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/lib/hooks/use-toast"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
 import { useProduction } from "@/app/admin/campaigns/central/use-production"
 import { SuggestionsTab } from "./suggestions-tab"
@@ -48,6 +49,7 @@ function formatDateTime(iso: string | null | undefined) {
 }
 
 export function CampaignCentralShell() {
+  const { toast } = useToast()
   const central = useCampaignCentral()
   // Pré-carrega produção sempre — o badge da aba "Em produção" deve bater
   // com o número de cards reais (que vivem em campaign_pipeline_items,
@@ -89,6 +91,28 @@ export function CampaignCentralShell() {
     setCopySuggestion(s)
   }
   const handleOpen = (s: CampaignSuggestion) => setDetailSuggestion(s)
+
+  /** Reabre um pipeline_item (rascunho) no CopyPanel: a API garante uma
+   *  suggestion 'suggested' atrelada (criando se necessário) e devolve. */
+  const handleReopenProduction = async (pipelineItemId: string) => {
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/production/${pipelineItemId}/reopen`,
+        { method: "POST" },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      setCopySuggestion(json.suggestion as CampaignSuggestion)
+      central.mutate()
+      production.mutate()
+    } catch (err) {
+      toast({
+        title: "Falha ao abrir copy",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -206,7 +230,7 @@ export function CampaignCentralShell() {
       ) : tab === "calendario" ? (
         <CalendarTab trends={central.trends} onCreate={() => setNewModalOpen(true)} />
       ) : tab === "producao" ? (
-        <ProductionTab />
+        <ProductionTab onOpenCopy={handleReopenProduction} />
       ) : (
         <PerformanceTab
           suggestions={suggestions}
@@ -237,7 +261,10 @@ export function CampaignCentralShell() {
       <CopyPanel
         suggestion={copySuggestion}
         onClose={() => setCopySuggestion(null)}
-        onSaved={() => central.mutate()}
+        onSaved={() => {
+          central.mutate()
+          production.mutate()
+        }}
       />
     </div>
   )

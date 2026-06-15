@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, Search, ChevronRight, Check } from "lucide-react"
+import { ChevronDown, Search, ChevronRight, Check, Edit3, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   PRODUCTION_BUCKETS,
@@ -44,6 +44,9 @@ interface Props {
   designerFilter: string | "todos"
   onUpdateStore: (storeId: string, patch: { prod_stage?: number; designer_id?: string | null }) => void
   onOpenStore: (storeIndex: number) => void
+  /** Quando passado e a campanha é rascunho, renderiza botão "Editar copy"
+   *  que abre o CopyPanel pro fluxo de teste + aprovação. */
+  onOpenCopy?: (pipelineItemId: string) => Promise<void> | void
 }
 
 export function ProductionCard({
@@ -53,7 +56,9 @@ export function ProductionCard({
   designerFilter,
   onUpdateStore,
   onOpenStore,
+  onOpenCopy,
 }: Props) {
+  const [openingCopy, setOpeningCopy] = useState(false)
   const meta = PRODUCTION_TYPE_META[campaign.type] ?? PRODUCTION_TYPE_META.avulsa
   const pct = campaignProgress(campaign)
   const urgent = campaign.send_in != null && campaign.send_in <= 3
@@ -88,6 +93,30 @@ export function ProductionCard({
             {sendLabel(campaign.send_in, campaign.send_date)}
           </Badge>
           <div className="flex-1" />
+          {campaign.is_draft && onOpenCopy && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (openingCopy) return
+                setOpeningCopy(true)
+                try {
+                  await onOpenCopy(campaign.id)
+                } finally {
+                  setOpeningCopy(false)
+                }
+              }}
+              disabled={openingCopy}
+              className="inline-flex items-center gap-1 rounded-[4px] border border-primary/30 bg-primary/5 px-2 py-1 text-[11.5px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-60"
+              title="Abre o painel de adaptação por loja: gere copies de teste, marque a melhor como 'Boa' e aprove pros designers"
+            >
+              {openingCopy ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Edit3 size={12} />
+              )}
+              Editar copy / Aprovar
+            </button>
+          )}
           <span className="text-[11.5px] text-muted-foreground">{campaign.channel}</span>
         </div>
         <div className="mb-4 flex items-end justify-between gap-4">

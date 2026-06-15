@@ -11,7 +11,12 @@ import { bucketOf } from "./helpers"
 import { ProductionCard } from "./production-card"
 import { DesignerModal } from "./designer-modal"
 
-export function ProductionTab() {
+interface ProductionTabProps {
+  /** Callback do shell pra abrir o CopyPanel em modo rascunho. */
+  onOpenCopy?: (pipelineItemId: string) => Promise<void> | void
+}
+
+export function ProductionTab({ onOpenCopy }: ProductionTabProps = {}) {
   const { productions, designers, isLoading, updateStore } = useProduction(true)
   const [stageFilter, setStageFilter] = useState<ProductionBucketKey | "todas">("todas")
   const [designerFilter, setDesignerFilter] = useState<string | "todos">("todos")
@@ -143,6 +148,7 @@ export function ProductionTab() {
             designerFilter={designerFilter}
             onUpdateStore={(storeId, patch) => updateStore(p.id, storeId, patch)}
             onOpenStore={(storeIndex) => setTask({ campaignId: p.id, storeIndex })}
+            onOpenCopy={onOpenCopy}
           />
         ))}
       </div>

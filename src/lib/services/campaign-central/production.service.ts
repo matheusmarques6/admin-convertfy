@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { NotFoundError } from "@/lib/api/errors"
 import type { CampaignStage } from "@/types/campaign-pipeline"
-import type { CampaignSuggestionType } from "@/types/campaign-central"
+import type { CampaignSuggestion, CampaignSuggestionType } from "@/types/campaign-central"
 import type {
   ProductionCampaign,
   ProductionDesigner,
@@ -315,4 +315,139 @@ export async function updateProductionStore(params: {
     designer_id: targets[idx].designer_id ?? null,
     deploy_status: (current.status as ProductionStore["deploy_status"]) ?? "pending",
   }
+}
+
+/**
+ * Garante uma campaign_suggestion em status='suggested' atrelada ao
+ * pipeline_item, pra abrir o CopyPanel a partir de "Em produção" e
+ * percorrer o fluxo de teste→aprovação. Cobre dois casos:
+ *
+ *   - pipeline_item LEGADO (sem suggestion_id em copy_data, criado antes
+ *     do gate): cria uma suggestion nova herdando os campos do item.
+ *
+ *   - pipeline_item já com suggestion atrelada (status approved/dismissed):
+ *     reverte status pra 'suggested' (sem apagar nada).
+ *
+ * Em ambos os casos, NÃO altera stage do pipeline_item nem target_stores —
+ * o card continua em "Em produção" como rascunho até o COO aprovar de novo.
+ */
+export async function reopenAsDraft(params: {
+  orgId: string
+  pipelineItemId: string
+  userId: string
+}): Promise<CampaignSuggestion> {
+  const { orgId, pipelineItemId, userId } = params
+  const admin = createAdminClient()
+
+  const { data: item, error: itemErr } = await admin
+    .from("campaign_pipeline_items")
+    .select("*")
+    .eq("id", pipelineItemId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+  if (itemErr) throw itemErr
+  if (!item) throw new NotFoundError("Campanha em produção")
+
+  const copy = (item.copy_data ?? {}) as Record<string, unknown>
+  const deploy = (item.deploy_config ?? {}) as Record<string, unknown>
+  const tags = (item.tags as string[] | null) ?? []
+  const existingSid = (copy.suggestion_id as string | null) ?? null
+
+  let suggestionId: string | null = null
+
+  if (existingSid) {
+    const { data: existing } = await admin
+      .from("campaign_suggestions")
+      .select("id, status")
+      .eq("id", existingSid)
+      .eq("org_id", orgId)
+      .maybeSingle()
+    if (existing) {
+      if (existing.status !== "suggested") {
+        const { error: revertErr } = await admin
+          .from("campaign_suggestions")
+          .update({
+            status: "suggested",
+            decided_by: null,
+            decided_at: null,
+          })
+          .eq("id", existing.id)
+        if (revertErr) throw revertErr
+      }
+      suggestionId = existing.id as string
+    }
+  }
+
+  if (!suggestionId) {
+    const type =
+      (tags.find((t) => CENTRAL_TYPES.has(t as CampaignSuggestionType)) as
+        | CampaignSuggestionType
+        | undefined) ?? "avulsa"
+    const rawTargets = (item.target_stores as Array<Record<string, unknown>>) ?? []
+    const targets = rawTargets.map((t) => ({
+      store_id: t.store_id as string,
+      store_name: (t.store_name as string) ?? "Loja",
+      country: (t.country as string) ?? "BR",
+    }))
+    const blocks = (copy.blocks as unknown[] | null) ?? null
+
+    const { data: created, error: insertErr } = await admin
+      .from("campaign_suggestions")
+      .insert({
+        org_id: orgId,
+        cycle_id: null,
+        source: "manual",
+        status: "suggested",
+        type,
+        title: item.title as string,
+        confidence: null,
+        trigger: { label: "Reabertura", detail: "Campanha em produção" },
+        trend_id: null,
+        commemorative_date_id: null,
+        angle: (copy.angle as string | null) ?? (item.description as string | null) ?? null,
+        subject: (item.subject_line as string | null) ?? null,
+        channel: (copy.channel as string | null) ?? "Email",
+        targets,
+        target_summary: `${targets.length} loja(s)`,
+        est_revenue: null,
+        low_perf: false,
+        send_date: (deploy.send_date as string | null) ?? null,
+        email_draft:
+          blocks && blocks.length > 0
+            ? {
+                subject: item.subject_line ?? null,
+                preheader: null,
+                strategy: null,
+                blocks,
+              }
+            : null,
+        copy_results: (copy.copy_results as Record<string, unknown>) ?? {},
+        pipeline_item_id: pipelineItemId,
+        audience_label: null,
+        pilot_store_ids: [],
+        design_task_id: null,
+        created_by: userId,
+      })
+      .select("id")
+      .single()
+    if (insertErr) throw insertErr
+    suggestionId = created.id as string
+
+    const { error: linkErr } = await admin
+      .from("campaign_pipeline_items")
+      .update({ copy_data: { ...copy, suggestion_id: suggestionId } })
+      .eq("id", pipelineItemId)
+      .eq("org_id", orgId)
+    if (linkErr) throw linkErr
+  }
+
+  const { data: full, error: fullErr } = await admin
+    .from("campaign_suggestions")
+    .select("*")
+    .eq("id", suggestionId)
+    .single()
+  if (fullErr) throw fullErr
+
+  log.info("production.reopened", { pipelineItemId, suggestionId })
+  return full as CampaignSuggestion
 }
