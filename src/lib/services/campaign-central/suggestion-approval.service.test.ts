@@ -143,7 +143,8 @@ describe("approveSuggestion", () => {
         strategy: "Estratégia editada pelo COO",
         blocks: [{ id: "b1", type: "heading", headline: "Title" }],
       },
-      copy_results: {},
+      // Gate de aprovação: precisa de pelo menos 1 piloto 'good'.
+      copy_results: { test: { "store-1": { quality: "good" } } },
     })
 
     const result = await approveSuggestion({
@@ -189,7 +190,7 @@ describe("approveSuggestion", () => {
       targets: [{ store_id: "store-2", store_name: "Loja B", country: "BR" }],
       pipeline_item_id: null,
       email_draft: null,
-      copy_results: {},
+      copy_results: { test: { "store-2": { quality: "good" } } },
     })
 
     await approveSuggestion({ suggestionId: "sug-2", orgId: "org-1", userId: "user-1" })
@@ -221,6 +222,28 @@ describe("approveSuggestion", () => {
       userId: "user-1",
     })
     expect(result.pipeline_item_id).toBe("pipe-existing")
+    expect(captured.inserts).toHaveLength(0)
+  })
+
+  it("bloqueia aprovação sem piloto 'good' (gate de qualidade)", async () => {
+    const { approveSuggestion } = await import("./suggestion-approval.service")
+
+    fixtures.suggestions.set("sug-gate", {
+      id: "sug-gate",
+      org_id: "org-1",
+      status: "suggested",
+      type: "data",
+      title: "Sem piloto validado",
+      trigger: { label: "x", detail: "y", source: "z" },
+      targets: [{ store_id: "s1", store_name: "S1", country: "BR" }],
+      email_draft: null,
+      copy_results: {},
+      pipeline_item_id: null,
+    })
+
+    await expect(
+      approveSuggestion({ suggestionId: "sug-gate", orgId: "org-1", userId: "user-1" }),
+    ).rejects.toThrow(/Boa/)
     expect(captured.inserts).toHaveLength(0)
   })
 })
