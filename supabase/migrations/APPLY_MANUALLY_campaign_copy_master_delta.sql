@@ -83,6 +83,10 @@ END $$;
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── 1.1. Expandir agent_type pra incluir campaign_copy_master ────────
+-- NOTA: usa a lista FINAL COMPLETA (com campaign_architect), não a lista
+-- literal do 20260720. Motivo: o banco já tem uma linha campaign_architect
+-- (liberada pelo recovery 20260724); recriar o CHECK sem ela violaria o
+-- constraint (23514). A lista final é idempotente e cobre os 10 tipos reais.
 DO $$
 DECLARE
   cname text;
@@ -99,7 +103,8 @@ BEGIN
     ADD CONSTRAINT email_agent_configs_agent_type_check
     CHECK (agent_type IN (
       'copy','image','html','qa','blueprint','assembler',
-      'campaign_suggestion','campaign_trends','campaign_copy_master'
+      'campaign_suggestion','campaign_trends','campaign_copy_master',
+      'campaign_architect'
     ));
 END $$;
 
