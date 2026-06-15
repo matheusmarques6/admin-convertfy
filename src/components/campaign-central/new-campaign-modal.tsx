@@ -14,6 +14,7 @@ interface StoreOption {
   id: string
   store_name: string
   country?: string | null
+  niche?: string | null
   is_active?: boolean
 }
 
@@ -42,6 +43,7 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
   const [sendDate, setSendDate] = useState("")
   const [briefing, setBriefing] = useState("")
   const [storeSearch, setStoreSearch] = useState("")
+  const [nicheFilter, setNicheFilter] = useState<string>("todos")
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
 
@@ -54,9 +56,46 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
 
   const filtered = useMemo(() => {
     const q = storeSearch.trim().toLowerCase()
-    if (!q) return stores
-    return stores.filter((s) => s.store_name.toLowerCase().includes(q))
-  }, [stores, storeSearch])
+    return stores.filter((s) => {
+      if (q && !s.store_name.toLowerCase().includes(q)) return false
+      if (
+        nicheFilter !== "todos" &&
+        (s.niche ?? "").trim().toLowerCase() !== nicheFilter
+      )
+        return false
+      return true
+    })
+  }, [stores, storeSearch, nicheFilter])
+
+  /** Nichos únicos derivados das lojas (case-insensitive; preserva display). */
+  const niches = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const s of stores) {
+      const raw = s.niche?.trim()
+      if (!raw) continue
+      const key = raw.toLowerCase()
+      if (!seen.has(key)) seen.set(key, raw)
+    }
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [stores])
+
+  const activeNicheLabel = useMemo(() => {
+    if (nicheFilter === "todos") return null
+    return niches.find(([k]) => k === nicheFilter)?.[1] ?? nicheFilter
+  }, [nicheFilter, niches])
+
+  const selectedInNiche = useMemo(() => {
+    if (!activeNicheLabel) return 0
+    let count = 0
+    for (const s of stores) {
+      if (
+        selected.has(s.id) &&
+        (s.niche ?? "").trim().toLowerCase() === nicheFilter
+      )
+        count += 1
+    }
+    return count
+  }, [activeNicheLabel, nicheFilter, selected, stores])
 
   if (!open) return null
 
@@ -198,8 +237,27 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
               <Label>Lojas-alvo</Label>
               <span className="text-[11.5px] text-muted-foreground">
                 {selected.size} selecionada{selected.size !== 1 ? "s" : ""}
+                {activeNicheLabel && (
+                  <span className="ml-1 text-foreground/80">
+                    ({selectedInNiche} do nicho ‘{activeNicheLabel}’)
+                  </span>
+                )}
               </span>
             </div>
+            {niches.length > 0 && (
+              <select
+                value={nicheFilter}
+                onChange={(e) => setNicheFilter(e.target.value)}
+                className="h-9 w-full rounded-[6px] border border-border bg-card px-3 text-sm text-foreground"
+              >
+                <option value="todos">Todos os nichos</option>
+                {niches.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -209,6 +267,21 @@ export function NewCampaignModal({ open, onClose, onCreated }: Props) {
                 className="pl-8"
               />
             </div>
+            {activeNicheLabel && filtered.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setSelected((prev) => {
+                    const next = new Set(prev)
+                    for (const s of filtered) next.add(s.id)
+                    return next
+                  })
+                }
+                className="text-left text-[11.5px] font-semibold text-primary hover:underline"
+              >
+                Selecionar todas do nicho ‘{activeNicheLabel}’ ({filtered.length})
+              </button>
+            )}
             <div className="max-h-44 overflow-y-auto rounded-[6px] border border-border">
               {filtered.length === 0 && (
                 <div className="px-3.5 py-3 text-center text-[12px] text-muted-foreground">

@@ -28,6 +28,7 @@ interface StoreOption {
   store_name: string
   country?: string | null
   language?: string | null
+  niche?: string | null
   is_active?: boolean
 }
 
@@ -113,6 +114,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [statusFilter, setStatusFilter] = useState<"todas" | "ativas" | "inativas">("ativas")
   const [regionFilter, setRegionFilter] = useState<"todas" | "BR" | "EU" | "US">("todas")
   const [langFilter, setLangFilter] = useState<"todos" | "pt" | "en" | "es">("todos")
+  const [nicheFilter, setNicheFilter] = useState<string>("todos")
   const [selectedPilot, setSelectedPilot] = useState<Set<string>>(new Set())
   const [selectedRollout, setSelectedRollout] = useState<Set<string>>(new Set())
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
@@ -134,11 +136,14 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const stores = useMemo(() => storesData?.stores ?? [], [storesData])
   const storeById = useMemo(() => new Map(stores.map((s) => [s.id, s])), [stores])
 
-  const pilotResults = (suggestion?.copy_results?.test ?? {}) as Record<string, CopyResultEntry>
-  const rolloutResults = (suggestion?.copy_results?.production ?? {}) as Record<
-    string,
-    CopyResultEntry
-  >
+  const pilotResults = useMemo(
+    () => (suggestion?.copy_results?.test ?? {}) as Record<string, CopyResultEntry>,
+    [suggestion?.copy_results?.test],
+  )
+  const rolloutResults = useMemo(
+    () => (suggestion?.copy_results?.production ?? {}) as Record<string, CopyResultEntry>,
+    [suggestion?.copy_results?.production],
+  )
   const approvedPilotCount = Object.values(pilotResults).filter((c) => c.quality === "good").length
   const canRollout = approvedPilotCount > 0
 
@@ -175,10 +180,32 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
         if (regionFilter !== "todas" && REGION_OF[countryKey(s.country)] !== regionFilter)
           return false
         if (langFilter !== "todos" && langKey(s.language) !== langFilter) return false
+        if (
+          nicheFilter !== "todos" &&
+          (s.niche ?? "").trim().toLowerCase() !== nicheFilter
+        )
+          return false
         return true
       }),
-    [stores, statusFilter, regionFilter, langFilter],
+    [stores, statusFilter, regionFilter, langFilter, nicheFilter],
   )
+
+  /** Nichos únicos derivados das lojas (case-insensitive; preserva display). */
+  const niches = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const s of stores) {
+      const raw = s.niche?.trim()
+      if (!raw) continue
+      const key = raw.toLowerCase()
+      if (!seen.has(key)) seen.set(key, raw)
+    }
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [stores])
+
+  const activeNicheLabel = useMemo(() => {
+    if (nicheFilter === "todos") return null
+    return niches.find(([k]) => k === nicheFilter)?.[1] ?? nicheFilter
+  }, [nicheFilter, niches])
 
   /**
    * Polling: enquanto houver lojas pending, refaz fetch da suggestion
@@ -228,26 +255,30 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     return () => clearInterval(tick)
   }, [pendingStoreIds, pendingMode, suggestion, toast])
 
+  // IMPORTANTE: os useMemos abaixo precisam ficar ANTES do early return
+  // pra respeitar rules-of-hooks (React #310: rendered more hooks than
+  // during the previous render). Guards internos lidam com suggestion null.
+  const rolloutCandidateIds = useMemo(() => {
+    if (!suggestion || phase !== "rollout") return new Set<string>()
+    const fromTargets = new Set(suggestion.targets.map((t) => t.store_id))
+    for (const [sid, entry] of Object.entries(pilotResults)) {
+      if (entry.quality !== "good") fromTargets.add(sid)
+    }
+    return fromTargets
+  }, [phase, suggestion, pilotResults])
+
+  const visibleStores = useMemo(() => {
+    if (!suggestion) return []
+    if (phase === "pilot") return matched
+    return matched.filter((s) => rolloutCandidateIds.has(s.id))
+  }, [phase, matched, rolloutCandidateIds, suggestion])
+
   if (!suggestion) return null
 
   const mode = phase === "pilot" ? "test" : "production"
   const results = phase === "pilot" ? pilotResults : rolloutResults
   const selected = phase === "pilot" ? selectedPilot : selectedRollout
   const setSelected = phase === "pilot" ? setSelectedPilot : setSelectedRollout
-
-  const rolloutCandidateIds = useMemo(() => {
-    if (phase !== "rollout") return new Set<string>()
-    const fromTargets = new Set(suggestion.targets.map((t) => t.store_id))
-    for (const [sid, entry] of Object.entries(pilotResults)) {
-      if (entry.quality !== "good") fromTargets.add(sid)
-    }
-    return fromTargets
-  }, [phase, suggestion.targets, pilotResults])
-
-  const visibleStores = useMemo(() => {
-    if (phase === "pilot") return matched
-    return matched.filter((s) => rolloutCandidateIds.has(s.id))
-  }, [phase, matched, rolloutCandidateIds])
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -580,11 +611,46 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               ]}
             />
 
+            {niches.length > 0 && (
+              <div className="mb-2.5">
+                <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Nicho
+                </div>
+                <select
+                  value={nicheFilter}
+                  onChange={(e) => setNicheFilter(e.target.value)}
+                  className="w-full rounded-[6px] border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground focus:border-primary focus:outline-none"
+                >
+                  <option value="todos">Todos os nichos</option>
+                  {niches.map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {phase === "pilot" ? "Lojas piloto" : "Lojas para rollout"}
               </span>
               <span className="flex gap-3">
+                {activeNicheLabel && (
+                  <button
+                    onClick={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev)
+                        for (const s of visibleStores) next.add(s.id)
+                        return next
+                      })
+                    }
+                    className="text-[11.5px] font-semibold text-primary hover:underline"
+                    title={`Adicionar todas as ${visibleStores.length} loja(s) de ${activeNicheLabel}`}
+                  >
+                    Todas do nicho
+                  </button>
+                )}
                 <button
                   onClick={() => setSelected(new Set(visibleStores.map((s) => s.id)))}
                   className="text-[11.5px] font-semibold text-primary hover:underline"
@@ -634,20 +700,30 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               })}
             </div>
             <div
-              className={`mt-2 flex items-center gap-2 rounded-[6px] border px-3 py-2 text-[12.5px] ${
+              className={`mt-2 flex flex-col gap-1 rounded-[6px] border px-3 py-2 text-[12.5px] ${
                 genList.length > 0
                   ? "border-primary/20 bg-primary/5 text-primary"
                   : "border-amber-200 bg-amber-50 text-amber-700"
               }`}
             >
-              <Store size={14} />
-              <span>
-                <strong className="font-bold tabular-nums">
-                  {genList.length} de {visibleStores.length}
-                </strong>{" "}
-                loja{visibleStores.length !== 1 ? "s" : ""} selecionada
-                {genList.length !== 1 ? "s" : ""}
-              </span>
+              <div className="flex items-center gap-2">
+                <Store size={14} />
+                <span>
+                  <strong className="font-bold tabular-nums">
+                    {genList.length} de {visibleStores.length}
+                  </strong>{" "}
+                  loja{visibleStores.length !== 1 ? "s" : ""} selecionada
+                  {genList.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {activeNicheLabel && (
+                <div className="pl-[22px] text-[11.5px] font-medium opacity-80">
+                  Nicho ‘{activeNicheLabel}’:{" "}
+                  <strong className="font-bold tabular-nums">
+                    {genList.length}/{visibleStores.length}
+                  </strong>
+                </div>
+              )}
             </div>
           </div>
 
