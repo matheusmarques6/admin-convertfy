@@ -11,6 +11,13 @@ const DEFAULT_PROMPT =
 const field =
   "w-full rounded-md border border-border bg-card px-3 py-2 text-[13px] text-foreground outline-none focus:border-primary"
 
+function fmtCost(cost: number | null | undefined): string {
+  if (cost == null) return "custo não retornado"
+  if (cost === 0) return "$0"
+  // imagens custam centavos; casas suficientes pra não virar $0.00
+  return cost < 0.01 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`
+}
+
 export function ImageSpikeClient() {
   const [imageUrl, setImageUrl] = useState("")
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
@@ -137,6 +144,16 @@ export function ImageSpikeClient() {
             )}
           </div>
 
+          {(() => {
+            const total = (result.product_ref.cost_usd ?? 0) + (result.text2img.cost_usd ?? 0)
+            return total > 0 ? (
+              <div className="text-[12.5px]">
+                <span className="text-muted-foreground">Custo total desta rodada (A + B): </span>
+                <span className="font-semibold text-foreground">{fmtCost(total)}</span>
+              </div>
+            ) : null
+          })()}
+
           <div className="grid gap-4 md:grid-cols-3">
             <Panel title="Entrada (referência)">
               {imageUrl ? (
@@ -188,8 +205,16 @@ function ResultPanel({ title, r }: { title: string; r: SpikeImageResult }) {
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={r.data_uri} alt={title} className="w-full rounded-md border border-border" />
-          <div className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] text-emerald-600">
-            <Check size={13} /> gerada em {(r.duration_ms / 1000).toFixed(1)}s
+          <div className="mt-2 flex flex-col gap-0.5 text-[11.5px]">
+            <span className="inline-flex items-center gap-1.5 text-emerald-600">
+              <Check size={13} /> gerada em {(r.duration_ms / 1000).toFixed(1)}s
+            </span>
+            <span className="text-muted-foreground">
+              <span className="font-semibold text-foreground">{fmtCost(r.cost_usd)}</span>
+              {r.total_tokens != null
+                ? ` · ${r.total_tokens.toLocaleString("pt-BR")} tokens`
+                : ""}
+            </span>
           </div>
         </>
       ) : (

@@ -35,6 +35,11 @@ export interface SpikeImageResult {
   error?: string
   status?: number
   duration_ms: number
+  /** Custo em USD reportado pelo OpenRouter (usage.cost). null se não veio. */
+  cost_usd?: number | null
+  total_tokens?: number | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
 }
 
 export interface ImageSpikeResponse {
@@ -52,6 +57,26 @@ function extractDataUri(raw: string): string | null {
   return null
 }
 
+/** Extrai usage/custo do raw (a resposta vem com usage:{include:true}).
+ *  Regex em vez de JSON.parse porque o raw carrega ~5MB de base64. */
+function extractUsage(raw: string): {
+  cost_usd: number | null
+  total_tokens: number | null
+  prompt_tokens: number | null
+  completion_tokens: number | null
+} {
+  const num = (re: RegExp): number | null => {
+    const m = raw.match(re)
+    return m ? Number(m[1]) : null
+  }
+  return {
+    cost_usd: num(/"cost"\s*:\s*([0-9.eE+-]+)/),
+    total_tokens: num(/"total_tokens"\s*:\s*(\d+)/),
+    prompt_tokens: num(/"prompt_tokens"\s*:\s*(\d+)/),
+    completion_tokens: num(/"completion_tokens"\s*:\s*(\d+)/),
+  }
+}
+
 async function callImage(
   apiKey: string,
   model: string,
@@ -65,7 +90,13 @@ async function callImage(
     const res = await fetch(API, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, response_format: "b64_json", max_tokens: maxTokens }),
+      body: JSON.stringify({
+        model,
+        messages,
+        response_format: "b64_json",
+        max_tokens: maxTokens,
+        usage: { include: true },
+      }),
       signal: ctrl.signal,
     })
     const raw = await res.text()
@@ -73,6 +104,7 @@ async function callImage(
     if (!res.ok) {
       return { ok: false, error: raw.slice(0, 500), status: res.status, duration_ms }
     }
+    const usage = extractUsage(raw)
     const dataUri = extractDataUri(raw)
     if (!dataUri) {
       return {
@@ -80,9 +112,10 @@ async function callImage(
         error: "200 mas sem imagem na resposta: " + raw.slice(0, 300),
         status: res.status,
         duration_ms,
+        ...usage,
       }
     }
-    return { ok: true, data_uri: dataUri, status: res.status, duration_ms }
+    return { ok: true, data_uri: dataUri, status: res.status, duration_ms, ...usage }
   } catch (err) {
     const duration_ms = Date.now() - t0
     const isAbort = err instanceof Error && err.name === "AbortError"
