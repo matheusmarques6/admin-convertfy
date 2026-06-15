@@ -194,10 +194,14 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
 
     const sid = (copy.suggestion_id as string | null) ?? null
     const sMeta = sid ? suggestionMeta.get(sid) : null
-    // Pipeline items sem suggestion atrelada (caso legado) não viram rascunho —
-    // assume-se que já passaram pelo fluxo antigo. Apenas itens onde a sugestão
-    // ainda está em 'suggested' contam como rascunho.
-    const isDraft = sMeta?.status === "suggested"
+    // Rascunho = ainda não há piloto marcado como "Boa" em copy_results.test.
+    // Mesma regra do gate em approveSuggestion(): sem piloto good, não vai
+    // pros designers. Cobre cards novos (saveAsDraft) e legados criados antes
+    // do gate (que nunca passaram por aprovação real, mas entraram direto em
+    // pipeline porque o fluxo antigo aprovava na criação).
+    const tests = sMeta?.copy_results?.test ?? {}
+    const hasPilotGood = Object.values(tests).some((t) => t?.quality === "good")
+    const isDraft = !hasPilotGood
 
     return {
       id: it.id as string,
