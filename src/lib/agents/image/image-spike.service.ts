@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("ImageSpike")
 
 const API = "https://openrouter.ai/api/v1/chat/completions"
+const GEN_API = "https://openrouter.ai/api/v1/generation"
 const DEFAULT_MODEL = "openai/gpt-5.4-image-2"
 const TIMEOUT_MS = 90_000
 // OpenRouter reserva créditos pelo TETO de max_tokens. Sem passar, assume o
@@ -57,14 +58,16 @@ function extractDataUri(raw: string): string | null {
   return null
 }
 
-/** Extrai usage/custo do raw (a resposta vem com usage:{include:true}).
- *  Regex em vez de JSON.parse porque o raw carrega ~5MB de base64. */
-function extractUsage(raw: string): {
+interface UsageInfo {
   cost_usd: number | null
   total_tokens: number | null
   prompt_tokens: number | null
   completion_tokens: number | null
-} {
+}
+
+/** Extrai usage/custo do raw (a resposta vem com usage:{include:true}).
+ *  Regex em vez de JSON.parse porque o raw carrega ~5MB de base64. */
+function extractUsage(raw: string): UsageInfo {
   const num = (re: RegExp): number | null => {
     const m = raw.match(re)
     return m ? Number(m[1]) : null
@@ -75,6 +78,38 @@ function extractUsage(raw: string): {
     prompt_tokens: num(/"prompt_tokens"\s*:\s*(\d+)/),
     completion_tokens: num(/"completion_tokens"\s*:\s*(\d+)/),
   }
+}
+
+/** Fallback de custo: quando o usage.cost não vem na resposta, consulta o
+ *  endpoint /generation pelo id da geração. O custo pode não estar pronto na
+ *  hora — tenta algumas vezes com um pequeno intervalo. */
+async function fetchGenerationCost(apiKey: string, genId: string): Promise<UsageInfo | null> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 700))
+    try {
+      const res = await fetch(`${GEN_API}?id=${encodeURIComponent(genId)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+      if (!res.ok) continue
+      const json = (await res.json()) as { data?: Record<string, unknown> }
+      const d = json.data
+      if (!d) continue
+      const cost = typeof d.total_cost === "number" ? d.total_cost : null
+      if (cost == null) continue
+      const promptT = typeof d.tokens_prompt === "number" ? d.tokens_prompt : null
+      const completionT = typeof d.tokens_completion === "number" ? d.tokens_completion : null
+      return {
+        cost_usd: cost,
+        prompt_tokens: promptT,
+        completion_tokens: completionT,
+        total_tokens:
+          promptT != null || completionT != null ? (promptT ?? 0) + (completionT ?? 0) : null,
+      }
+    } catch {
+      // tenta de novo
+    }
+  }
+  return null
 }
 
 async function callImage(
@@ -104,7 +139,14 @@ async function callImage(
     if (!res.ok) {
       return { ok: false, error: raw.slice(0, 500), status: res.status, duration_ms }
     }
-    const usage = extractUsage(raw)
+    let usage = extractUsage(raw)
+    if (usage.cost_usd == null) {
+      const genId = raw.match(/"id"\s*:\s*"([^"]+)"/)?.[1]
+      if (genId) {
+        const fromGen = await fetchGenerationCost(apiKey, genId)
+        if (fromGen) usage = { ...usage, ...fromGen }
+      }
+    }
     const dataUri = extractDataUri(raw)
     if (!dataUri) {
       return {
