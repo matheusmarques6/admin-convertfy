@@ -44,7 +44,13 @@ CREATE INDEX IF NOT EXISTS idx_ccj_active
 
 ALTER TABLE campaign_copy_jobs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "authenticated_full_access" ON campaign_copy_jobs;
-CREATE POLICY "authenticated_full_access"
-  ON campaign_copy_jobs
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- Membership por org via org_members — mesmo padrão de campaign_cycles,
+-- campaign_suggestions, campaign_trends e campaign_ai_runs (epic
+-- campaign-central, migration 20260716). Service-role bypassa esta
+-- policy; ela protege apenas leituras com anon key (defesa em profundidade).
+DROP POLICY IF EXISTS "campaign_copy_jobs_org" ON campaign_copy_jobs;
+CREATE POLICY "campaign_copy_jobs_org" ON campaign_copy_jobs
+  FOR ALL USING (
+    org_id IN (SELECT org_id FROM org_members
+               WHERE profile_id = auth.uid() AND is_active = true)
+  );
