@@ -122,6 +122,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [qualityBusy, setQualityBusy] = useState<string | null>(null)
   const [approveBusy, setApproveBusy] = useState(false)
+  const [generatingMaster, setGeneratingMaster] = useState(false)
   /** Lojas com dispatch em andamento — UI mostra spinner ate receber callback. */
   const [pendingStoreIds, setPendingStoreIds] = useState<Set<string>>(new Set())
   /** Mode do dispatch atual — pendingStoreIds e relativo a esse mode. */
@@ -154,19 +155,14 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     const hasRollout = Object.keys(rolloutResults).length > 0
     setPhase(hasRollout && canRollout ? "rollout" : "pilot")
     setExpandedCards(new Set())
+    // Pré-select: targets da campanha já vêm marcados, pra refletir o
+    // escopo escolhido pelo COO ao criar a campanha. O COO ainda pode
+    // adicionar piloto fora do escopo via lista completa, mas o default
+    // bate com "essa campanha é pra essas lojas".
     if (suggestion.pilot_store_ids?.length) {
       setSelectedPilot(new Set(suggestion.pilot_store_ids))
     } else {
-      const seen = new Set<string>()
-      const picks: string[] = []
-      for (const t of suggestion.targets) {
-        if (!seen.has(t.country)) {
-          seen.add(t.country)
-          picks.push(t.store_id)
-        }
-        if (picks.length >= 3) break
-      }
-      setSelectedPilot(new Set(picks))
+      setSelectedPilot(new Set(suggestion.targets.map((t) => t.store_id)))
     }
     setSelectedRollout(new Set())
     if (hasPilot) setExpandedCards(new Set(Object.keys(pilotResults).slice(0, 1)))
@@ -391,6 +387,54 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   }
 
 
+  /** Gera copy master via IA e persiste no email_draft da suggestion.
+   *  Reproduz o fluxo do CampaignDetailModal (POST generate-master +
+   *  PATCH update_draft) sem forçar o COO a sair do CopyPanel. */
+  const generateMaster = async () => {
+    setGeneratingMaster(true)
+    try {
+      const genRes = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestion.id}/generate-master`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      )
+      const genJson = await genRes.json()
+      if (!genRes.ok) throw new Error(genJson?.error || `HTTP ${genRes.status}`)
+      if (!genJson.draft) throw new Error("Resposta sem draft")
+
+      const saveRes = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestion.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "update_draft",
+            email_draft: genJson.draft,
+          }),
+        },
+      )
+      const saveJson = await saveRes.json()
+      if (!saveRes.ok) throw new Error(saveJson?.error || `HTTP ${saveRes.status}`)
+
+      toast({
+        title: "Copy master gerada",
+        description: "Agora você pode gerar o piloto pras lojas.",
+      })
+      onSavedRef.current()
+    } catch (err) {
+      toast({
+        title: "Falha ao gerar copy master",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingMaster(false)
+    }
+  }
+
   const approveAndSendToDesigners = async () => {
     setApproveBusy(true)
     try {
@@ -564,9 +608,25 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
         <div className="flex-1 overflow-y-auto p-5">
           {!hasMaster && (
-            <div className="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-700">
-              <strong className="font-bold">Falta a copy master.</strong> Abra a campanha no
-              detalhe e clique em <em>Gerar master</em> antes de adaptar por loja.
+            <div className="mb-4 rounded-[6px] border border-primary/30 bg-primary/5 px-3.5 py-3 text-[12.5px]">
+              <div className="mb-2 text-foreground/85">
+                <strong className="font-bold text-foreground">Falta a copy master.</strong>{" "}
+                Ela é o ponto de partida pra adaptar a copy por loja. Gere agora pra liberar
+                o piloto.
+              </div>
+              <Button
+                size="sm"
+                onClick={generateMaster}
+                disabled={generatingMaster || busy !== null}
+                className="w-full"
+              >
+                {generatingMaster ? (
+                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                ) : (
+                  <Sparkles size={14} className="mr-1.5" />
+                )}
+                {generatingMaster ? "Gerando copy master…" : "Gerar copy master"}
+              </Button>
             </div>
           )}
 
