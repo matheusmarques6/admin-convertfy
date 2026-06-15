@@ -68,9 +68,14 @@ export interface ProductionCampaign {
   /** Dias até o envio (negativo = atrasado, null = sem data). */
   send_in: number | null
   stores: ProductionStore[]
+  /** Rascunho = sugestão atrelada ainda em 'suggested' (sem piloto 'good'
+   *  marcado). Aparece na aba mas com chip; designer ainda não pegou. */
+  is_draft: boolean
 }
 
 export interface ProductionResponse {
   productions: ProductionCampaign[]
   designers: ProductionDesigner[]
+  /** Total de cards exibidos (rascunho + em produção). Bate com o badge da aba. */
+  count: number
 }

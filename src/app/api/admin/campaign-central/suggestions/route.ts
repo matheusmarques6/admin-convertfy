@@ -1,9 +1,10 @@
 /**
  * POST /api/admin/campaign-central/suggestions
  *
- * Cria campanha MANUAL (modal "Nova campanha"). Entra direto como
- * approved + item no Kanban — o COO criou, então já aprovou (mockup:
- * "entra na fila como aprovada por você").
+ * Cria campanha MANUAL (modal "Nova campanha"). Entra como RASCUNHO:
+ * status='suggested' + pipeline_item em copy_creation. Para virar
+ * 'approved' (e ir pros designers), o COO precisa gerar o piloto e
+ * marcar pelo menos uma loja como 'Boa'.
  */
 
 import { NextRequest } from "next/server"
@@ -16,7 +17,7 @@ import {
 } from "@/lib/api/errors"
 import { getUserOrgRole } from "@/lib/api/onboarding-permissions"
 import { manualSuggestionSchema } from "@/lib/validations/campaign-central"
-import { approveSuggestion } from "@/lib/services/campaign-central/suggestion-approval.service"
+import { saveAsDraft } from "@/lib/services/campaign-central/suggestion-approval.service"
 
 export const dynamic = "force-dynamic"
 
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
         org_id: ctx.orgId,
         cycle_id: cycle?.id ?? null,
         source: "manual",
-        status: "suggested", // approveSuggestion transiciona pra approved
+        status: "suggested", // fica rascunho até o COO aprovar via gate de piloto
         type: body.type,
         title: body.title,
         confidence: null,
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
       .single()
     if (insertErr) throw insertErr
 
-    const { pipeline_item_id } = await approveSuggestion({
+    const { pipeline_item_id } = await saveAsDraft({
       suggestionId: suggestion.id as string,
       orgId: ctx.orgId,
       userId: user.id,
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
     return successResponse(request, {
       suggestion_id: suggestion.id,
       pipeline_item_id,
-      status: "approved",
+      status: "draft",
     })
   } catch (error) {
     return errorResponse(request, error, "suggestions:post")

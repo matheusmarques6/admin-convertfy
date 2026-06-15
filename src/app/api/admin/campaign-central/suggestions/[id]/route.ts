@@ -73,6 +73,7 @@ export async function PATCH(
         const patch: Record<string, unknown> = {}
         if (body.email_draft) patch.email_draft = body.email_draft
         if (body.angle != null) patch.angle = body.angle
+        if (body.send_date !== undefined) patch.send_date = body.send_date
         if (Object.keys(patch).length === 0) {
           return successResponse(request, { status: "no_changes" })
         }
@@ -82,10 +83,26 @@ export async function PATCH(
           .update(patch)
           .eq("id", id)
           .eq("org_id", ctx.orgId)
-          .select("id")
+          .select("id, pipeline_item_id")
           .maybeSingle()
         if (error) throw error
         if (!data) throw new NotFoundError("Sugestão")
+        // Sync send_date no pipeline_item espelhado (se já existe).
+        // Aba "Em produção" e calendário leem de fontes diferentes — manter
+        // os dois em sincronia evita o card sumir do calendário quando o
+        // COO troca a data.
+        if (body.send_date !== undefined && data.pipeline_item_id) {
+          const { data: item } = await admin
+            .from("campaign_pipeline_items")
+            .select("deploy_config")
+            .eq("id", data.pipeline_item_id)
+            .maybeSingle()
+          const cfg = (item?.deploy_config ?? {}) as Record<string, unknown>
+          await admin
+            .from("campaign_pipeline_items")
+            .update({ deploy_config: { ...cfg, send_date: body.send_date } })
+            .eq("id", data.pipeline_item_id)
+        }
         return successResponse(request, { status: "saved" })
       }
     }

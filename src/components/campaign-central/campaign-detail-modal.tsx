@@ -37,10 +37,42 @@ export function CampaignDetailModal({
   const { toast } = useToast()
   const [draft, setDraft] = useState<EmailDraft>(() => s.email_draft ?? buildDefaultDraft(s))
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop")
-  const [busy, setBusy] = useState<"save" | "approve" | "master_ai" | "master_paste" | null>(null)
+  const [busy, setBusy] = useState<
+    "save" | "approve" | "master_ai" | "master_paste" | "send_date" | null
+  >(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState("")
+  const [sendDate, setSendDate] = useState<string>(s.send_date ?? "")
   const mobile = device === "mobile"
+
+  const saveSendDate = async (next: string) => {
+    setSendDate(next)
+    setBusy("send_date")
+    try {
+      const res = await fetch(`/api/admin/campaign-central/suggestions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_draft",
+          send_date: next === "" ? null : next,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      toast({
+        title: "Data salva",
+        description: next ? `Envio agendado para ${next.split("-").reverse().join("/")}.` : "Data removida.",
+      })
+    } catch (err) {
+      toast({
+        title: "Falha ao salvar data",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const generateMaster = async () => {
     setBusy("master_ai")
@@ -214,7 +246,19 @@ export function CampaignDetailModal({
             {metaRow("Alvo", s.target_summary || `${s.targets.length} loja(s)`)}
             {metaRow("Canal", s.channel)}
             {s.est_revenue && metaRow("Impacto estimado", s.est_revenue)}
-            {s.send_date && metaRow("Envio sugerido", s.send_date.split("-").reverse().join("/"))}
+            <div className="flex items-center justify-between gap-3 border-b border-dashed border-border py-2 text-[12.5px]">
+              <span className="text-muted-foreground">Data de envio</span>
+              <input
+                type="date"
+                value={sendDate}
+                onChange={(e) => setSendDate(e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value !== (s.send_date ?? "")) saveSendDate(e.target.value)
+                }}
+                disabled={busy === "send_date"}
+                className="rounded-[4px] border border-border bg-card px-2 py-1 text-[12.5px] font-semibold text-foreground/90 focus:border-primary focus:outline-none"
+              />
+            </div>
             <div className="flex items-start justify-between gap-3 py-2 text-[12.5px]">
               <span className="text-muted-foreground">Lojas</span>
               <div className="flex flex-wrap justify-end gap-1">
@@ -357,7 +401,12 @@ export function CampaignDetailModal({
             )}
             Salvar rascunho
           </Button>
-          <Button size="md" onClick={handleApprove} disabled={busy !== null || s.status === "approved"}>
+          <Button
+            size="md"
+            onClick={handleApprove}
+            disabled={busy !== null || s.status === "approved"}
+            title="Aprovação requer pelo menos 1 piloto marcado como 'Boa' no painel de copy."
+          >
             {busy === "approve" ? (
               <Loader2 size={14} className="mr-1.5 animate-spin" />
             ) : (

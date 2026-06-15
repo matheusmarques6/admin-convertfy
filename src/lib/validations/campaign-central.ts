@@ -113,6 +113,11 @@ export const suggestionPatchSchema = z.discriminatedUnion("action", [
     action: z.literal("update_draft"),
     email_draft: emailDraftSchema.optional(),
     angle: z.string().optional(),
+    send_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
   }),
 ])
 

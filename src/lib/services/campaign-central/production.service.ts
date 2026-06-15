@@ -98,6 +98,11 @@ interface StoreMeta {
   lang: string
 }
 
+interface SuggestionDraftMeta {
+  status: string
+  copy_results: { test?: Record<string, { quality?: "good" | null }> } | null
+}
+
 export async function getProduction(orgId: string): Promise<ProductionResponse> {
   const admin = createAdminClient()
 
@@ -113,10 +118,15 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
 
   // Metadados das lojas referenciadas (país/idioma) — uma query só.
   const storeIds = new Set<string>()
+  const suggestionIds = new Set<string>()
   for (const it of rows) {
     for (const t of (it.target_stores as RawTargetStore[] | null) ?? []) {
       if (t?.store_id) storeIds.add(t.store_id)
     }
+    const sid = ((it.copy_data ?? {}) as Record<string, unknown>).suggestion_id as
+      | string
+      | undefined
+    if (sid) suggestionIds.add(sid)
   }
 
   const storeMeta = new Map<string, StoreMeta>()
@@ -129,6 +139,23 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
       storeMeta.set(s.id as string, {
         country: countryKey(s.country as string | null),
         lang: langKey(s.language as string | null),
+      })
+    }
+  }
+
+  // Status das sugestões referenciadas, pra derivar is_draft.
+  // Rascunho = pipeline_item existe mas a sugestão ainda está em 'suggested'
+  // (e por consequência sem piloto 'good' marcado).
+  const suggestionMeta = new Map<string, SuggestionDraftMeta>()
+  if (suggestionIds.size > 0) {
+    const { data: sugs } = await admin
+      .from("campaign_suggestions")
+      .select("id, status, copy_results")
+      .in("id", [...suggestionIds])
+    for (const s of sugs ?? []) {
+      suggestionMeta.set(s.id as string, {
+        status: s.status as string,
+        copy_results: (s.copy_results as SuggestionDraftMeta["copy_results"]) ?? null,
       })
     }
   }
@@ -165,9 +192,16 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
       }
     })
 
+    const sid = (copy.suggestion_id as string | null) ?? null
+    const sMeta = sid ? suggestionMeta.get(sid) : null
+    // Pipeline items sem suggestion atrelada (caso legado) não viram rascunho —
+    // assume-se que já passaram pelo fluxo antigo. Apenas itens onde a sugestão
+    // ainda está em 'suggested' contam como rascunho.
+    const isDraft = sMeta?.status === "suggested"
+
     return {
       id: it.id as string,
-      suggestion_id: (copy.suggestion_id as string | null) ?? null,
+      suggestion_id: sid,
       type,
       title: it.title as string,
       subject: (it.subject_line as string | null) ?? null,
@@ -176,10 +210,11 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
       send_date: sendDate,
       send_in: daysUntil(sendDate),
       stores,
+      is_draft: isDraft,
     }
   })
 
-  return { productions, designers }
+  return { productions, designers, count: productions.length }
 }
 
 async function getDesigners(orgId: string): Promise<ProductionDesigner[]> {

@@ -1,12 +1,19 @@
 /**
  * Aprovação de sugestão → item no Kanban (campaign_pipeline_items).
  *
- * Cria um item em stage 'copy_creation' com copy_data herdando o rascunho
- * (subject, blocks) + suggestion_id pra rastreabilidade. Grava o
- * pipeline_item_id na sugestão (necessário pro undo).
+ * Dois caminhos:
  *
- * Undo permitido SÓ enquanto stage='copy_creation' — senão, a equipe já
- * mexeu no item e seria destrutivo voltar atrás.
+ *   saveAsDraft()  — cria pipeline_item sem design task; sugestão fica em
+ *                    status='suggested'. Usado pela criação manual (Nova
+ *                    campanha) e por qualquer fluxo que precise "rascunho".
+ *
+ *   approveSuggestion() — gate: exige pelo menos 1 entry em
+ *                    copy_results.test com quality='good'. Quando passa,
+ *                    cria/garante pipeline_item, cria design_task e move
+ *                    status pra 'approved'. SÓ AQUI o designer entra no
+ *                    fluxo.
+ *
+ * Undo permitido SÓ enquanto stage='copy_creation'.
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -25,34 +32,16 @@ const TYPE_TO_CAMPAIGN_TYPE: Record<string, string> = {
   avulsa: "adhoc",
 }
 
-export async function approveSuggestion(params: {
-  suggestionId: string
-  orgId: string
-  userId: string
-}): Promise<{ pipeline_item_id: string }> {
+/** Faz o INSERT em campaign_pipeline_items + grava pipeline_item_id na sugestão.
+ *  Não cria design task, não muda status da sugestão. Idempotente:
+ *  se já existe pipeline_item_id, retorna o existente. */
+async function ensurePipelineItem(s: CampaignSuggestion, userId: string): Promise<string> {
   const admin = createAdminClient()
-  const { suggestionId, orgId, userId } = params
-
-  const { data: suggestion } = await admin
-    .from("campaign_suggestions")
-    .select("*")
-    .eq("id", suggestionId)
-    .eq("org_id", orgId)
-    .maybeSingle()
-
-  if (!suggestion) throw new NotFoundError("Sugestão")
-  const s = suggestion as CampaignSuggestion
-
-  if (s.status === "approved" && s.pipeline_item_id) {
-    log.info("approve.already_approved", { suggestionId, pipelineId: s.pipeline_item_id })
-    return { pipeline_item_id: s.pipeline_item_id }
-  }
+  if (s.pipeline_item_id) return s.pipeline_item_id
 
   const draft = s.email_draft
   const triggerLabel = `${s.trigger?.label ?? ""} — ${s.trigger?.detail ?? ""}`.trim()
   const description = (draft?.strategy && draft.strategy.trim()) || s.angle || triggerLabel
-  // prod_stage/designer_id por loja alimentam a aba "Em produção" (estágio
-  // copy→design→revisão→agendado→enviado e designer responsável por peça).
   const targetStores = s.targets.map((t) => ({
     store_id: t.store_id,
     store_name: t.store_name,
@@ -64,7 +53,7 @@ export async function approveSuggestion(params: {
   const { data: item, error: insertErr } = await admin
     .from("campaign_pipeline_items")
     .insert({
-      org_id: orgId,
+      org_id: s.org_id,
       title: s.title,
       description,
       stage: "copy_creation",
@@ -92,12 +81,91 @@ export async function approveSuggestion(params: {
   if (insertErr) throw insertErr
   const pipelineId = item.id as string
 
-  // Cria task pros designers (sourceType 'campaign_suggestion').
-  // assignee_role='designer' deixa qualquer designer pegar via fila.
-  // Idempotente: se já existe task pra essa sugestão, reusa.
+  const { error: updateErr } = await admin
+    .from("campaign_suggestions")
+    .update({ pipeline_item_id: pipelineId })
+    .eq("id", s.id)
+
+  if (updateErr) {
+    await admin.from("campaign_pipeline_items").delete().eq("id", pipelineId)
+    throw updateErr
+  }
+  return pipelineId
+}
+
+/** Cria pipeline_item sem design task. Sugestão fica em 'suggested'.
+ *  Usado pela criação manual e por qualquer ponto que precise "rascunho". */
+export async function saveAsDraft(params: {
+  suggestionId: string
+  orgId: string
+  userId: string
+}): Promise<{ pipeline_item_id: string }> {
+  const admin = createAdminClient()
+  const { suggestionId, orgId, userId } = params
+
+  const { data: suggestion } = await admin
+    .from("campaign_suggestions")
+    .select("*")
+    .eq("id", suggestionId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+
+  if (!suggestion) throw new NotFoundError("Sugestão")
+  const s = suggestion as CampaignSuggestion
+
+  if (s.pipeline_item_id) {
+    log.info("draft.already_exists", { suggestionId, pipelineId: s.pipeline_item_id })
+    return { pipeline_item_id: s.pipeline_item_id }
+  }
+
+  const pipelineId = await ensurePipelineItem(s, userId)
+  log.info("draft.created", { suggestionId, pipelineId })
+  return { pipeline_item_id: pipelineId }
+}
+
+/** Aprova a campanha em definitivo: gate de pelo menos 1 piloto 'good',
+ *  garante pipeline_item, cria design task, move status pra 'approved'. */
+export async function approveSuggestion(params: {
+  suggestionId: string
+  orgId: string
+  userId: string
+}): Promise<{ pipeline_item_id: string }> {
+  const admin = createAdminClient()
+  const { suggestionId, orgId, userId } = params
+
+  const { data: suggestion } = await admin
+    .from("campaign_suggestions")
+    .select("*")
+    .eq("id", suggestionId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+
+  if (!suggestion) throw new NotFoundError("Sugestão")
+  const s = suggestion as CampaignSuggestion
+
+  if (s.status === "approved" && s.pipeline_item_id) {
+    log.info("approve.already_approved", { suggestionId, pipelineId: s.pipeline_item_id })
+    return { pipeline_item_id: s.pipeline_item_id }
+  }
+
+  // GATE: aprovação requer pelo menos 1 piloto marcado como 'good'.
+  // Sem isso, a campanha vai pros designers sem teste validado pelo COO.
+  const pilot = (s.copy_results?.test ?? {}) as Record<string, { quality?: "good" | null }>
+  const goodCount = Object.values(pilot).filter((e) => e.quality === "good").length
+  if (goodCount === 0) {
+    throw new ConflictError(
+      "Gere a copy de teste e marque pelo menos 1 loja como 'Boa' antes de aprovar.",
+    )
+  }
+
+  const pipelineId = await ensurePipelineItem(s, userId)
+
   let designTaskId: string | null = s.design_task_id ?? null
   if (!designTaskId) {
     const copyCount = countCopyEntries(s)
+    const draft = s.email_draft
+    const triggerLabel = `${s.trigger?.label ?? ""} — ${s.trigger?.detail ?? ""}`.trim()
+    const description = (draft?.strategy && draft.strategy.trim()) || s.angle || triggerLabel
     const task = await createUnifiedTask({
       orgId,
       title: `[Design] ${s.title}`,
@@ -132,8 +200,6 @@ export async function approveSuggestion(params: {
     .eq("id", suggestionId)
 
   if (updateErr) {
-    // Best effort: tenta deletar o item órfão pra não duplicar na próxima aprovação
-    await admin.from("campaign_pipeline_items").delete().eq("id", pipelineId)
     if (designTaskId && designTaskId !== s.design_task_id) {
       await admin.from("tasks").delete().eq("id", designTaskId)
     }

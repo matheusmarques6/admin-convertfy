@@ -5,6 +5,7 @@ import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check, Layers } from
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
+import { useProduction } from "@/app/admin/campaigns/central/use-production"
 import { SuggestionsTab } from "./suggestions-tab"
 import { ApprovedTab } from "./approved-tab"
 import { CampaignDetailModal } from "./campaign-detail-modal"
@@ -48,6 +49,11 @@ function formatDateTime(iso: string | null | undefined) {
 
 export function CampaignCentralShell() {
   const central = useCampaignCentral()
+  // Pré-carrega produção sempre — o badge da aba "Em produção" deve bater
+  // com o número de cards reais (que vivem em campaign_pipeline_items,
+  // não em campaign_suggestions). Sem isso, badge=approved-do-ciclo
+  // e conteúdo=pipeline-items divergiam.
+  const production = useProduction(true)
   const [tab, setTab] = useState<TabKey>("sugestoes")
   const [regenerating, setRegenerating] = useState(false)
   const [detailSuggestion, setDetailSuggestion] = useState<CampaignSuggestion | null>(null)
@@ -63,10 +69,10 @@ export function CampaignCentralShell() {
       sugestoes: counts.pending,
       calendario: counts.dates_upcoming,
       performance: counts.attention,
-      producao: counts.approved,
+      producao: production.productions.length,
       aprovadas: counts.approved,
     }),
-    [counts],
+    [counts, production.productions.length],
   )
 
   const handleRegenerate = async () => {

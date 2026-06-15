@@ -83,6 +83,7 @@ export function ProductionCard({
       <div className="px-4 pt-4 pb-3.5">
         <div className="mb-2.5 flex items-center gap-2">
           <Badge variant={meta.tone}>{meta.label}</Badge>
+          {campaign.is_draft && <Badge variant="neutral">Rascunho</Badge>}
           <Badge variant={urgent ? "warning" : "neutral"} showDot>
             {sendLabel(campaign.send_in, campaign.send_date)}
           </Badge>

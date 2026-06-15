@@ -22,6 +22,16 @@ interface CalendarDate {
   suggestions_count: number
 }
 
+interface CalendarCampaign {
+  id: string
+  title: string
+  type: string
+  send_date: string // YYYY-MM-DD
+  is_draft: boolean
+  country: string | null
+  store_count: number
+}
+
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
@@ -47,7 +57,13 @@ function DateTile({ iso }: { iso: string }) {
   )
 }
 
-function MonthGrid({ dates }: { dates: CalendarDate[] }) {
+function MonthGrid({
+  dates,
+  campaigns,
+}: {
+  dates: CalendarDate[]
+  campaigns: CalendarCampaign[]
+}) {
   const today = new Date()
   const [monthOffset, setMonthOffset] = useState(0)
   const base = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
@@ -69,6 +85,20 @@ function MonthGrid({ dates }: { dates: CalendarDate[] }) {
     }
     return map
   }, [dates, year, month])
+
+  const camps = useMemo(() => {
+    const map = new Map<number, CalendarCampaign[]>()
+    for (const c of campaigns) {
+      const dt = new Date(`${c.send_date}T12:00:00Z`)
+      if (dt.getUTCFullYear() === year && dt.getUTCMonth() === month) {
+        const k = dt.getUTCDate()
+        const arr = map.get(k) ?? []
+        arr.push(c)
+        map.set(k, arr)
+      }
+    }
+    return map
+  }, [campaigns, year, month])
 
   const cells: Array<number | null> = []
   for (let i = 0; i < first; i++) cells.push(null)
@@ -131,6 +161,23 @@ function MonthGrid({ dates }: { dates: CalendarDate[] }) {
                 </div>
               )}
               <div className="flex flex-col gap-0.5">
+                {(day != null ? (camps.get(day) ?? []) : []).map((c) => (
+                  <div
+                    key={`c-${c.id}`}
+                    title={`${c.title}${c.is_draft ? " · rascunho" : ""}`}
+                    className={`flex items-center gap-1 truncate rounded-[5px] border px-1.5 py-0.5 ${
+                      c.is_draft
+                        ? "border-dashed border-foreground/40 bg-muted/60 text-foreground/80"
+                        : "border-primary/40 bg-primary/10 text-primary"
+                    }`}
+                  >
+                    <span className="size-1.5 shrink-0 rounded-full bg-current" />
+                    <span className="truncate text-[10.5px] font-semibold">
+                      {c.is_draft ? "✏️ " : ""}
+                      {c.title}
+                    </span>
+                  </div>
+                ))}
                 {dayEvs.map((d) => {
                   const c = getCountryMeta(d.country)
                   const hot = d.impact === "high"
@@ -194,7 +241,10 @@ export function CalendarTab({ trends, onCreate }: Props) {
     }
   }
 
-  const { data: calData, isLoading: calLoading } = useSWR<{ dates: CalendarDate[] }>(
+  const { data: calData, isLoading: calLoading } = useSWR<{
+    dates: CalendarDate[]
+    campaigns: CalendarCampaign[]
+  }>(
     "/api/admin/campaign-central/calendar?days=90",
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 300_000 },
@@ -206,7 +256,22 @@ export function CalendarTab({ trends, onCreate }: Props) {
   )
 
   const dates = useMemo(() => calData?.dates ?? [], [calData])
+  const campaigns = useMemo(() => calData?.campaigns ?? [], [calData])
   const listDates = dates.filter((d) => d.in_days <= 25)
+
+  // Campanhas dentro da janela de 25 dias pra modo "lista".
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const listCampaigns = useMemo(() => {
+    const cutoff = new Date(today.getTime() + 25 * 86_400_000)
+    return campaigns
+      .filter((c) => {
+        const dt = new Date(`${c.send_date}T00:00:00`)
+        return dt >= today && dt <= cutoff
+      })
+      .sort((a, b) => a.send_date.localeCompare(b.send_date))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns])
 
   const byCountry = useMemo(() => {
     const map = new Map<string, CalendarDate[]>()
@@ -270,11 +335,48 @@ export function CalendarTab({ trends, onCreate }: Props) {
           </div>
         )}
 
-        {!calLoading && mode === "grade" && <MonthGrid dates={dates} />}
+        {!calLoading && mode === "grade" && <MonthGrid dates={dates} campaigns={campaigns} />}
 
-        {!calLoading && mode === "lista" && byCountry.length === 0 && (
+        {!calLoading && mode === "lista" && listCampaigns.length > 0 && (
+          <div className="overflow-hidden rounded-[10px] border border-border bg-card shadow-sm">
+            <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+              <span className="size-2 rounded-full bg-primary" />
+              <span className="text-[14px] font-semibold text-foreground">Suas campanhas agendadas</span>
+              <span className="text-[12px] tabular-nums text-muted-foreground">
+                · {listCampaigns.length}
+              </span>
+            </header>
+            {listCampaigns.map((c, i) => (
+              <div
+                key={c.id}
+                className={`flex items-center gap-3.5 px-4 py-3.5 ${
+                  i < listCampaigns.length - 1 ? "border-b border-border/50" : ""
+                }`}
+              >
+                <DateTile iso={c.send_date} />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2">
+                    <span className="text-[14.5px] font-semibold text-foreground">{c.title}</span>
+                    {c.is_draft ? (
+                      <Badge variant="neutral">Rascunho</Badge>
+                    ) : (
+                      <Badge variant="info">Aprovada</Badge>
+                    )}
+                  </div>
+                  <div className="text-[12.5px] leading-snug text-muted-foreground">
+                    {c.store_count > 0
+                      ? `${c.store_count} loja${c.store_count > 1 ? "s" : ""}`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!calLoading && mode === "lista" && byCountry.length === 0 && listCampaigns.length === 0 && (
           <div className="rounded-[8px] border border-dashed border-border bg-card/50 px-6 py-10 text-center text-[13px] text-muted-foreground">
-            Nenhuma data comemorativa nos próximos 25 dias pros países das suas lojas.
+            Nenhuma data comemorativa nem campanha agendada nos próximos 25 dias.
           </div>
         )}
 

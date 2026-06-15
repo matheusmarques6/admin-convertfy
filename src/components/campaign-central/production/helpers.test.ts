@@ -36,6 +36,7 @@ function mkCampaign(stages: number[]): ProductionCampaign {
     send_date: null,
     send_in: null,
     stores: stages.map((s) => mkStore(s)),
+    is_draft: false,
   }
 }
 

@@ -121,6 +121,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [qualityBusy, setQualityBusy] = useState<string | null>(null)
+  const [approveBusy, setApproveBusy] = useState(false)
   /** Lojas com dispatch em andamento — UI mostra spinner ate receber callback. */
   const [pendingStoreIds, setPendingStoreIds] = useState<Set<string>>(new Set())
   /** Mode do dispatch atual — pendingStoreIds e relativo a esse mode. */
@@ -389,6 +390,36 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     }
   }
 
+
+  const approveAndSendToDesigners = async () => {
+    setApproveBusy(true)
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestion.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "approve" }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      toast({
+        title: "Campanha aprovada",
+        description: "Enviada pros designers. Acompanhe na aba 'Em produção'.",
+      })
+      onSavedRef.current()
+      onClose()
+    } catch (err) {
+      toast({
+        title: "Falha ao aprovar",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setApproveBusy(false)
+    }
+  }
 
   const toggleQuality = async (storeId: string, current: CopyResultEntry["quality"]) => {
     setQualityBusy(storeId)
@@ -903,6 +934,35 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                   <Send size={14} /> Avançar para rollout (todas as outras lojas)
                   <ArrowRight size={14} />
                 </button>
+              )}
+
+              {/* Gate de envio aos designers: só após pelo menos 1 piloto bom. */}
+              {suggestion.status !== "approved" && (
+                <div className="mt-4 rounded-[6px] border border-border bg-card px-3.5 py-3">
+                  <div className="mb-2 text-[12px] text-muted-foreground">
+                    {canRollout
+                      ? `${approvedPilotCount} piloto(s) aprovado(s). Pronto para enviar pros designers.`
+                      : "Marque pelo menos 1 loja-piloto como 'Boa' pra liberar o envio."}
+                  </div>
+                  <Button
+                    size="md"
+                    className="w-full"
+                    onClick={approveAndSendToDesigners}
+                    disabled={!canRollout || approveBusy}
+                    title={
+                      !canRollout
+                        ? "Aprovação requer pelo menos 1 piloto marcado como 'Boa'."
+                        : undefined
+                    }
+                  >
+                    {approveBusy ? (
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Send size={14} className="mr-1.5" />
+                    )}
+                    Aprovar e enviar pros designers
+                  </Button>
+                </div>
               )}
             </div>
           )}
