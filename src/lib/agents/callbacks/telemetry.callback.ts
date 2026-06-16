@@ -48,6 +48,11 @@ export function computeCostCents(model: string, inputTokens: number, outputToken
     "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
     "claude-sonnet-4-5-20250514": { input: 3.0, output: 15.0 },
     "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
+    // GPT-5.4 (Montador via OpenRouter). Reasoning model: tokens_output já
+    // inclui os "thinking tokens" reportados pelo OpenRouter, então
+    // tokens_output * output cobre o custo de reasoning. Preço base de tabela
+    // (input <272K). Se a fatura real divergir, alinhar aqui.
+    "openai/gpt-5.4": { input: 2.5, output: 15.0 },
   }
   const p = pricing[model] || { input: 3.0, output: 15.0 }
   const usd = (inputTokens / 1_000_000) * p.input + (outputTokens / 1_000_000) * p.output

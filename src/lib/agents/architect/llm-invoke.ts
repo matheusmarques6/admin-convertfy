@@ -75,11 +75,21 @@ export async function invokeAgent(
 }
 
 /**
- * Opus 4.7/4.8 não aceitam `temperature` (direto ou via OpenRouter). Cobre os
- * dois formatos de id: `claude-opus-4-8` e `anthropic/claude-opus-4.8`.
+ * Modelos de reasoning (GPT-5.x) geram "thinking tokens" cobrados como output
+ * e NÃO aceitam `temperature`. Detecta pra o invoke omitir temperatura e
+ * travar reasoning.effort.
+ */
+function isReasoningModel(model: string): boolean {
+  return /gpt-5/i.test(model)
+}
+
+/**
+ * Opus 4.7/4.8 e reasoning models (GPT-5.x) não aceitam `temperature` (direto
+ * ou via OpenRouter). Cobre os dois formatos de id: `claude-opus-4-8` e
+ * `anthropic/claude-opus-4.8`.
  */
 function modelSupportsTemperature(model: string): boolean {
-  return !/opus-4[.-](7|8)/i.test(model)
+  return !/opus-4[.-](7|8)/i.test(model) && !isReasoningModel(model)
 }
 
 /** Invoca via SDK Anthropic (Messages API), com prompt caching no system. */
@@ -164,6 +174,13 @@ async function invokeViaOpenRouter(
     }
     if (modelSupportsTemperature(config.model)) {
       body.temperature = config.temperature
+    }
+    // Reasoning models (GPT-5.x): trava o esforço em 'low' pra o custo ser
+    // previsível. Sem isso, os thinking tokens (cobrados como output) podem
+    // anular a economia vs Opus. Subir pra 'medium'/'high' se a qualidade
+    // da arquitetura exigir.
+    if (isReasoningModel(config.model)) {
+      body.reasoning = { effort: "low" }
     }
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
