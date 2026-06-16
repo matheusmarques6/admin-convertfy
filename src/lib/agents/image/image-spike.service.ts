@@ -13,6 +13,13 @@
  * Regra dura: NUNCA chamar o modelo quando o gasto é garantidamente inútil.
  * No modo product_ref, se a foto de entrada não é baixável/não é imagem, a
  * geração é ABORTADA antes de tocar no OpenRouter (o modelo falharia igual).
+ *
+ * Lição do primeiro teste (152s, $0,44, "200 sem imagem"): pra o modelo
+ * RETORNAR imagem (e não texto) o chat completions exige `modalities:["image"]`.
+ * `response_format:"b64_json"` é do endpoint legado /images/generations e é
+ * IGNORADO aqui. A imagem volta em choices[].message.images[].image_url.url.
+ * Quando mesmo assim não houver imagem, capturamos o TEXTO que o modelo
+ * respondeu — diagnóstico, nunca falha silenciosa.
  */
 
 import { logger } from "@/lib/logger"
@@ -43,13 +50,20 @@ type SpikeMessage = { role: "user"; content: SpikeContent }
 
 export interface SpikeImageResult {
   ok: boolean
-  data_uri?: string
+  /** data URI (data:image/...;base64,...) OU URL http — usável direto em <img>. */
+  image_src?: string
+  /** True quando image_src é uma URL http (e não base64 inline). */
+  is_remote_url?: boolean
   error?: string
   status?: number
   duration_ms: number
   /** True quando falhou SEM chamar o modelo (gasto evitado). Diferencia um
    *  erro barato (entrada inválida) de um timeout que pode ter sido cobrado. */
   skipped?: boolean
+  /** Diagnóstico quando 200 mas sem imagem: o TEXTO que o modelo respondeu
+   *  (sinal de que ele "analisou" em vez de gerar) e o finish_reason. */
+  assistant_text?: string | null
+  finish_reason?: string | null
   /** Custo em USD reportado pelo OpenRouter (usage.cost). null se não veio. */
   cost_usd?: number | null
   total_tokens?: number | null
@@ -72,12 +86,40 @@ export interface OneGenResponse {
   result: SpikeImageResult
 }
 
-function extractDataUri(raw: string): string | null {
+/** Extrai a imagem gerada do raw, cobrindo os formatos conhecidos do
+ *  OpenRouter, em ordem de preferência. Regex em vez de JSON.parse porque o
+ *  raw carrega ~5MB de base64. Retorna a src (data URI ou http) ou null. */
+function extractImageSrc(raw: string): { src: string; remote: boolean } | null {
+  // 1) Formato oficial: choices[].message.images[].image_url.url (data ou http)
+  const inImages = raw.match(
+    /"images"\s*:\s*\[\s*\{[^]*?"url"\s*:\s*"((?:data:image\/[^"]+)|(?:https?:\/\/[^"]+))"/,
+  )
+  if (inImages?.[1]) {
+    return { src: inImages[1], remote: !inImages[1].startsWith("data:") }
+  }
+  // 2) Data URI solto em qualquer lugar do corpo
   const direct = raw.match(/data:image\/[^;"]+;base64,[A-Za-z0-9+/]+=*/)
-  if (direct?.[0]) return direct[0]
+  if (direct?.[0]) return { src: direct[0], remote: false }
+  // 3) Campo b64_json cru
   const b64 = raw.match(/"b64_json"\s*:\s*"([A-Za-z0-9+/]+=*)"/)
-  if (b64?.[1]) return `data:image/png;base64,${b64[1]}`
+  if (b64?.[1]) return { src: `data:image/png;base64,${b64[1]}`, remote: false }
   return null
+}
+
+/** Quando NÃO veio imagem: captura o texto que o modelo respondeu e o
+ *  finish_reason, pra mostrar o que aconteceu em vez de "sem imagem" seco. */
+function extractDiagnostics(raw: string): { text: string | null; finish: string | null } {
+  const contentMatch = raw.match(/"content"\s*:\s*"((?:[^"\\]|\\.){0,800})"/)
+  let text: string | null = null
+  if (contentMatch?.[1]) {
+    try {
+      text = JSON.parse(`"${contentMatch[1]}"`)
+    } catch {
+      text = contentMatch[1]
+    }
+  }
+  const finish = raw.match(/"finish_reason"\s*:\s*"([^"]+)"/)?.[1] ?? null
+  return { text: text && text.trim() ? text : null, finish }
 }
 
 interface UsageInfo {
@@ -87,8 +129,7 @@ interface UsageInfo {
   completion_tokens: number | null
 }
 
-/** Extrai usage/custo do raw (a resposta vem com usage:{include:true}).
- *  Regex em vez de JSON.parse porque o raw carrega ~5MB de base64. */
+/** Extrai usage/custo do raw (a resposta vem com usage:{include:true}). */
 function extractUsage(raw: string): UsageInfo {
   const num = (re: RegExp): number | null => {
     const m = raw.match(re)
@@ -150,7 +191,8 @@ async function callImage(
       body: JSON.stringify({
         model,
         messages,
-        response_format: "b64_json",
+        // O que faltava: sem isto o modelo responde TEXTO, não imagem.
+        modalities: ["image", "text"],
         max_tokens: maxTokens,
         usage: { include: true },
       }),
@@ -169,17 +211,30 @@ async function callImage(
         if (fromGen) usage = { ...usage, ...fromGen }
       }
     }
-    const dataUri = extractDataUri(raw)
-    if (!dataUri) {
+    const img = extractImageSrc(raw)
+    if (!img) {
+      // 200 mas sem imagem: mostra o que o modelo de fato respondeu.
+      const diag = extractDiagnostics(raw)
       return {
         ok: false,
-        error: "200 mas sem imagem na resposta: " + raw.slice(0, 300),
+        error: diag.text
+          ? "O modelo respondeu TEXTO em vez de gerar imagem (não fez img2img)."
+          : "200 mas sem imagem e sem texto reconhecível: " + raw.slice(0, 300),
         status: res.status,
         duration_ms,
+        assistant_text: diag.text,
+        finish_reason: diag.finish,
         ...usage,
       }
     }
-    return { ok: true, data_uri: dataUri, status: res.status, duration_ms, ...usage }
+    return {
+      ok: true,
+      image_src: img.src,
+      is_remote_url: img.remote,
+      status: res.status,
+      duration_ms,
+      ...usage,
+    }
   } catch (err) {
     const duration_ms = Date.now() - t0
     const isAbort = err instanceof Error && err.name === "AbortError"
@@ -260,7 +315,11 @@ export async function runImageGeneration(params: {
       ],
       maxTokens,
     )
-    log.info("spike.product_ref.done", { ok: result.ok, cost: result.cost_usd })
+    log.info("spike.product_ref.done", {
+      ok: result.ok,
+      cost: result.cost_usd,
+      respondedText: !!result.assistant_text,
+    })
     return { mode: "product_ref", model, input, result }
   }
 

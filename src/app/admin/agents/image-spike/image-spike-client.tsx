@@ -240,14 +240,15 @@ function ResultPanel({ title, r }: { title: string; r: SpikeImageResult | undefi
       </Panel>
     )
   }
-  if (r.ok && r.data_uri) {
+  if (r.ok && r.image_src) {
     return (
       <Panel title={title}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={r.data_uri} alt={title} className="w-full rounded-md border border-border" />
+        <img src={r.image_src} alt={title} className="w-full rounded-md border border-border" />
         <div className="mt-2 flex flex-col gap-0.5 text-[11.5px]">
           <span className="inline-flex items-center gap-1.5 text-emerald-600">
             <Check size={13} /> gerada em {(r.duration_ms / 1000).toFixed(1)}s
+            {r.is_remote_url ? " · via URL" : ""}
           </span>
           <span className="text-muted-foreground">
             <span className="font-semibold text-foreground">{fmtCost(r.cost_usd)}</span>
@@ -280,6 +281,24 @@ function ResultPanel({ title, r }: { title: string; r: SpikeImageResult | undefi
             {r.skipped ? " (sem custo)" : ` (${(r.duration_ms / 1000).toFixed(1)}s)`}
           </span>
         </div>
+        {/* Diagnóstico-chave: se o modelo respondeu TEXTO em vez de imagem,
+            mostra o texto. É a prova de que não fez img2img. */}
+        {r.assistant_text && (
+          <div className="rounded-[4px] border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+            <div className="mb-0.5 font-semibold">
+              Texto que o modelo respondeu{r.finish_reason ? ` (finish: ${r.finish_reason})` : ""}:
+            </div>
+            <div className="max-h-32 overflow-auto whitespace-pre-wrap break-words italic">
+              {r.assistant_text}
+            </div>
+          </div>
+        )}
+        {!r.skipped && r.cost_usd != null && r.cost_usd > 0 && (
+          <div className="text-[11px] text-[#991B1B]">
+            ⚠ Cobrado mesmo sem imagem: <strong>{fmtCost(r.cost_usd)}</strong>
+            {r.total_tokens != null ? ` · ${r.total_tokens.toLocaleString("pt-BR")} tokens` : ""}
+          </div>
+        )}
       </div>
     </Panel>
   )
