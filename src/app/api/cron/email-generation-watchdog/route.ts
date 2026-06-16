@@ -23,16 +23,18 @@
  *
  *   4. Detecta `copy_ready` sem fase 2 iniciada ha mais de 3min — cobre
  *      o caso onde o webhook n8n persistiu a copy mas a invocacao
- *      `waitUntil(runPhase2InBackground)` crashou. Para cada: POST
- *      `/api/internal/run-phase2/[emailId]` (story AE-3).
+ *      `waitUntil(runPhase2InBackground)` crashou. SO re-dispatcha e-mails
+ *      de lojas com brand identity CONFIRMADA (GATE 2) — e-mails sem brand
+ *      confirmada nao sao "stale", estao legitimamente esperando o portao.
+ *      Para cada elegivel: POST `/api/internal/run-phase2/[emailId]`.
  *
  * **Concorrencia**: PostgREST nao expoe `FOR UPDATE SKIP LOCKED`. Usamos
  * UPDATE atomico com filtro de status (`.eq('status', 'copy_generating')`)
  * para garantir que apenas 1 cron pega cada row — o WHERE eh avaliado
  * dentro da transacao.
  *
- * **Telemetria**: 1 INSERT em `email_generation_runs` com
- * `agent='seed', email_id=NULL, parsed_output=summary` por execucao.
+ * **Telemetria**: resumo por execucao via logs estruturados
+ * (`log.info/warn/error("watchdog.summary", ...)`).
  *
  * Refs: docs/stories/AE-4.watchdog-cron-fallback.md
  */
@@ -49,6 +51,7 @@ import {
   notifyBatchAllFailed,
 } from "@/lib/agents/generation-notify.service"
 import { logger } from "@/lib/logger"
+import { getConfirmedBrandStoreIds } from "@/lib/agents/html/brand-guards"
 
 const log = logger.child("EmailGenWatchdog")
 
@@ -419,7 +422,7 @@ async function redispatchStaleCopyReady(): Promise<{
 
   const { data, error } = await admin
     .from("email_flow_emails")
-    .select("id, flow_id, generation_batch_id")
+    .select("id, flow_id, generation_batch_id, flow:email_flows(store_id)")
     .eq("status", "copy_ready")
     .lt("copy_ready_at", threshold)
     .lt("copy_ready_dispatch_attempts", MAX_STALE_DISPATCH)
@@ -430,11 +433,37 @@ async function redispatchStaleCopyReady(): Promise<{
     log.error("watchdog.stale_copy_ready.query_failed", { error: error.message })
     return { dispatched: 0, exhausted: 0 }
   }
-  const rows = (data ?? []) as Array<{
+  const allRows = (data ?? []) as Array<{
     id: string
     flow_id: string
     generation_batch_id: string | null
+    flow: { store_id?: string } | Array<{ store_id?: string }> | null
   }>
+  if (allRows.length === 0) return { dispatched: 0, exhausted: 0 }
+
+  // GATE 2: e-mails em `copy_ready` cuja loja AINDA NAO confirmou a brand
+  // nao sao "stale" — estao corretamente esperando o portao. Re-dispatchar
+  // so derrubaria a fase 2 no Guard 0 (skipped). Filtramos pra so manter
+  // os de lojas com brand confirmada — os demais sao ignorados.
+  const storeIdByEmail = new Map<string, string>()
+  for (const r of allRows) {
+    const flowRel = Array.isArray(r.flow) ? r.flow[0] : r.flow
+    const storeId = (flowRel as { store_id?: string } | null)?.store_id
+    if (storeId) storeIdByEmail.set(r.id, storeId)
+  }
+  const uniqueStoreIds = [...new Set(storeIdByEmail.values())]
+  const confirmedStoreIds = await getConfirmedBrandStoreIds(admin, uniqueStoreIds)
+
+  const rows = allRows.filter((r) => {
+    const storeId = storeIdByEmail.get(r.id)
+    return storeId !== undefined && confirmedStoreIds.has(storeId)
+  })
+  const skippedBrand = allRows.length - rows.length
+  if (skippedBrand > 0) {
+    log.info("watchdog.stale_copy_ready.skipped_brand_not_confirmed", {
+      skipped: skippedBrand,
+    })
+  }
   if (rows.length === 0) return { dispatched: 0, exhausted: 0 }
 
   log.warn("watchdog.stale_copy_ready.detected", { count: rows.length })
@@ -636,27 +665,6 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
   return { dispatched }
 }
 
-// ── Persistir telemetria final do cron ────────────────────────────────
-async function persistRunSummary(summary: WatchdogSummary): Promise<void> {
-  const admin = createAdminClient()
-  try {
-    await admin.from("email_generation_runs").insert({
-      // batch_id eh obrigatorio no schema; usamos um UUID por execucao
-      // para indexar 1 row por watchdog tick. email_id NULL eh permitido.
-      batch_id: crypto.randomUUID(),
-      agent: "seed",
-      status: "success",
-      model: "watchdog",
-      parsed_output: summary,
-      duration_ms: summary.duration_ms,
-    })
-  } catch (err) {
-    log.warn("watchdog.summary.insert_failed", {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
 export async function GET(request: NextRequest) {
   const authError = requireCronAuth(request)
   if (authError) return authError
@@ -754,8 +762,6 @@ export async function GET(request: NextRequest) {
   } else {
     log.info("watchdog.summary", summary)
   }
-
-  await persistRunSummary(summary)
 
   return NextResponse.json({ success: true, ...summary })
 }

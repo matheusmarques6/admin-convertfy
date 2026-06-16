@@ -24,6 +24,7 @@
  *   brand_name, brand, store_name + variantes uppercase
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type { StoreBrandIdentity } from "@/types/email-workspace"
 
 // Captura `{{BRAND_NAME}}`, `{{ brand }}`, `{{store_name}}`, etc.
@@ -110,4 +111,65 @@ export function precheckBrandReady(
       { missing, storeId },
     )
   }
+}
+
+/**
+ * GATE 2 — verifica se a brand de UMA loja esta confirmada.
+ *
+ * A confirmacao da identidade visual (`/admin/stores/[id]/identity`) grava
+ * `confirmed_at` na ultima versao de `store_brand_identity`. Sem isso, a
+ * fase 2 (imagem/HTML/QA) NAO deve rodar — o e-mail fica esperando em
+ * `copy_ready`. Retorna `true` somente se existe row E a ultima versao tem
+ * `confirmed_at` nao-null.
+ */
+export async function isBrandConfirmed(
+  admin: SupabaseClient,
+  storeId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from("store_brand_identity")
+    .select("confirmed_at")
+    .eq("store_id", storeId)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return Boolean(data && (data as { confirmed_at: string | null }).confirmed_at)
+}
+
+/**
+ * GATE 2 em lote — dado um conjunto de lojas, retorna o Set das que tem a
+ * ultima versao de brand confirmada (`confirmed_at` nao-null).
+ *
+ * Usado pela Frente 4 do watchdog pra filtrar e-mails em `copy_ready` que
+ * ainda estao legitimamente esperando o GATE 2 (nao re-dispatcha esses).
+ * Reduz pra ULTIMA versao por loja: ordena por `version` desc e mantem a
+ * primeira ocorrencia de cada `store_id`.
+ */
+export async function getConfirmedBrandStoreIds(
+  admin: SupabaseClient,
+  storeIds: string[],
+): Promise<Set<string>> {
+  const confirmed = new Set<string>()
+  if (storeIds.length === 0) return confirmed
+
+  const { data } = await admin
+    .from("store_brand_identity")
+    .select("store_id, version, confirmed_at")
+    .in("store_id", storeIds)
+    .order("version", { ascending: false })
+
+  const rows = (data ?? []) as Array<{
+    store_id: string
+    version: number
+    confirmed_at: string | null
+  }>
+
+  const seen = new Set<string>()
+  for (const row of rows) {
+    // Primeira ocorrencia (ordem desc) = ultima versao da loja.
+    if (seen.has(row.store_id)) continue
+    seen.add(row.store_id)
+    if (row.confirmed_at) confirmed.add(row.store_id)
+  }
+  return confirmed
 }

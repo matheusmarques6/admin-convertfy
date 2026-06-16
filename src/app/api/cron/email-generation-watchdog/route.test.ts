@@ -44,6 +44,13 @@ const state = {
     id: string
     flow_id?: string
     generation_batch_id?: string | null
+    flow?: { store_id?: string } | Array<{ store_id?: string }> | null
+  }>,
+  // store_brand_identity rows (GATE 2 — getConfirmedBrandStoreIds)
+  brandIdentities: [] as Array<{
+    store_id: string
+    version: number
+    confirmed_at: string | null
   }>,
   // image_done stale select (Bug 2 split / Front 5)
   staleImageDone: [] as Array<{
@@ -66,6 +73,7 @@ function resetState() {
   state.updateReturns = new Map()
   state.staleCopyReady = []
   state.staleImageDone = []
+  state.brandIdentities = []
   state.selectCalls = []
   state.updateCalls = []
   state.insertCalls = []
@@ -116,6 +124,8 @@ function buildQuery(table: string): any {
         } else {
           data = state.staleCopyReady
         }
+      } else if (table === "store_brand_identity") {
+        data = state.brandIdentities
       }
       resolve({ data, error: null })
     },
@@ -312,12 +322,6 @@ describe("GET /api/cron/email-generation-watchdog — nothing to do", () => {
     expect(json.max_attempts_exhausted).toBe(0)
     expect(json.phase2_timed_out).toBe(0)
     expect(json.stale_copy_ready).toBe(0)
-
-    // Telemetria persistida (1 row de summary)
-    const summaryRun = state.insertCalls.find(
-      (c) => c.table === "email_generation_runs" && c.data.agent === "seed",
-    )
-    expect(summaryRun).toBeDefined()
   })
 })
 
@@ -468,8 +472,13 @@ describe("GET /api/cron/email-generation-watchdog — front 3: phase2 timeout", 
 describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready", () => {
   it("POSTs internal endpoint for each stale copy_ready row", async () => {
     state.staleCopyReady = [
-      { id: "dddddddd-dddd-4ddd-8ddd-aaaaaaaaaaaa" },
-      { id: "eeeeeeee-eeee-4eee-8eee-bbbbbbbbbbbb" },
+      { id: "dddddddd-dddd-4ddd-8ddd-aaaaaaaaaaaa", flow: { store_id: "store-d" } },
+      { id: "eeeeeeee-eeee-4eee-8eee-bbbbbbbbbbbb", flow: { store_id: "store-e" } },
+    ]
+    // Ambas as lojas com brand confirmada → passam o GATE 2.
+    state.brandIdentities = [
+      { store_id: "store-d", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
+      { store_id: "store-e", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
     ]
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -491,9 +500,46 @@ describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready"
     expect(headers["x-internal-secret"]).toBe("test-internal-secret")
   })
 
+  it("ignora e-mail de loja SEM brand confirmada (GATE 2) e dispara so o confirmado", async () => {
+    state.staleCopyReady = [
+      {
+        id: "11111111-1111-4111-8111-aaaaaaaaaaaa",
+        flow: { store_id: "store-confirmed" },
+      },
+      {
+        id: "22222222-2222-4222-8222-bbbbbbbbbbbb",
+        flow: { store_id: "store-unconfirmed" },
+      },
+    ]
+    state.brandIdentities = [
+      { store_id: "store-confirmed", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
+      { store_id: "store-unconfirmed", version: 1, confirmed_at: null },
+    ]
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+
+    // Só a loja com brand confirmada é re-dispatchada; a outra fica esperando.
+    expect(json.stale_copy_ready).toBe(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const firstCall = fetchSpy.mock.calls[0] as unknown as [
+      string,
+      RequestInit | undefined,
+    ]
+    expect(firstCall[0]).toContain("11111111-1111-4111-8111-aaaaaaaaaaaa")
+    expect(firstCall[0]).not.toContain("22222222-2222-4222-8222-bbbbbbbbbbbb")
+  })
+
   it("does not POST when INTERNAL_SECRET is missing", async () => {
     vi.stubEnv("INTERNAL_SECRET", "")
-    state.staleCopyReady = [{ id: "ffffffff-ffff-4fff-8fff-cccccccccccc" }]
+    state.staleCopyReady = [
+      { id: "ffffffff-ffff-4fff-8fff-cccccccccccc", flow: { store_id: "store-f" } },
+    ]
+    state.brandIdentities = [
+      { store_id: "store-f", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
+    ]
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await GET(authedRequest() as any)
@@ -508,8 +554,12 @@ describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready"
 
   it("dispatch falha (5xx): incrementa contador, nao marca exhausted ainda", async () => {
     state.staleCopyReady = [
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-111111111111" },
-      { id: "bbbbbbbb-bbbb-4bbb-8bbb-222222222222" },
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-111111111111", flow: { store_id: "store-a" } },
+      { id: "bbbbbbbb-bbbb-4bbb-8bbb-222222222222", flow: { store_id: "store-b" } },
+    ]
+    state.brandIdentities = [
+      { store_id: "store-a", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
+      { store_id: "store-b", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
     ]
     // Primeiro POST falha (500), segundo passa (200)
     let call = 0
@@ -557,8 +607,12 @@ describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready"
       {
         id: failingId,
         flow_id: "flow-aaa",
+        flow: { store_id: "store-cap" },
         generation_batch_id: "batch-aaa",
       },
+    ]
+    state.brandIdentities = [
+      { store_id: "store-cap", version: 1, confirmed_at: "2026-06-16T00:00:00Z" },
     ]
     // POST falha
     fetchSpy.mockImplementation(

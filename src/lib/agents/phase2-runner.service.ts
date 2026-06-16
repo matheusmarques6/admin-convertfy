@@ -67,6 +67,7 @@ import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES } from "./image/limits"
 import { loadTopProducts } from "./top-products"
 import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
+import { isBrandConfirmed } from "./html/brand-guards"
 
 const log = logger.child("Phase2Runner")
 
@@ -385,6 +386,15 @@ export async function runPhase2Image(
   const { storeId, emailId, triggeredBy } = params
   const admin = createAdminClient()
   log.info("phase2.image.start", { storeId, emailId })
+
+  // ── Guard 0: GATE 2 — só renderiza com brand confirmada ──────────────
+  // Cobre TODOS os caminhos de entrada (watchdog Frente 4, generate-email,
+  // signal consumer, monolito legado). Sem brand confirmada o e-mail FICA
+  // em copy_ready — nunca vira failed:brand_incomplete.
+  if (!params.relaxedBrandCheck && !(await isBrandConfirmed(admin, storeId))) {
+    log.info("phase2.image.skipped_brand_not_confirmed", { storeId, emailId })
+    return { status: "skipped" }
+  }
 
   // ── Guard 1: copy_ready -> rendering (atomico) ──────────────────────
   const { data: claimed } = await admin
