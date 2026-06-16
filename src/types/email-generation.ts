@@ -54,9 +54,11 @@ export type AgentType =
   | "qa"
   // ── Epic AE: Component Assembler ────────────────────────
   // blueprint: gera a estrutura detalhada do email a partir do outline.
-  // assembler: escolhe variantes de componente e monta o reference HTML.
+  // assembler: harmoniza (passo B) — recebe os HTMLs das variantes escolhidas.
+  // assembler_chooser: escolhe (passo A) — 1 variant_id por seção, pela descrição.
   | "blueprint"
   | "assembler"
+  | "assembler_chooser"
   // ── Central de Campanhas ────────────────────────────────
   // campaign_suggestion: gera sugestões de campanha por ciclo semanal.
   // campaign_trends: captura tendências por país via web search.
@@ -150,6 +152,7 @@ export type GenerationRunAgent =
   | "qa"
   | "blueprint"
   | "assembler"
+  | "assembler_chooser"
 
 export interface EmailGenerationRun {
   id: string
@@ -220,6 +223,10 @@ export interface EmailComponentVariant {
   block_type: string
   name: string
   html: string
+  // Descrição curta (sem HTML) da variante. Usada pelo passo A do Montador
+  // (escolha por descrição, barato) para escolher a variante sem mandar o HTML
+  // completo de todas. Null quando ainda não preenchida.
+  description: string | null
   slots: string[]
   niche_affinity: string[]
   positioning: string[]

@@ -19,6 +19,7 @@ function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     block_type: p.block_type ?? "hero",
     name: p.name ?? "v",
     html: p.html ?? "<div></div>",
+    description: p.description ?? null,
     slots: p.slots ?? [],
     niche_affinity: p.niche_affinity ?? [],
     positioning: p.positioning ?? [],

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// Spy do upsert em store_email_references.
-const upsertSpy = vi.fn().mockResolvedValue({ error: null })
+// Estado mutável da biblioteca (email_component_variants) + spy do upsert.
+const h = vi.hoisted(() => ({
+  upsertSpy: vi.fn().mockResolvedValue({ error: null }),
+  variants: [] as Array<Record<string, unknown>>,
+}))
 
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: () => ({
@@ -9,36 +12,14 @@ vi.mock("@/lib/supabase/server", () => ({
       if (table === "email_component_variants") {
         return {
           select: () => ({
-            eq: () =>
-              Promise.resolve({
-                data: [
-                  {
-                    id: "v1",
-                    block_type: "hero",
-                    name: "Hero V1",
-                    html: "<div>hero</div>",
-                    slots: [],
-                    niche_affinity: [],
-                    positioning: [],
-                    mood: [],
-                    density: null,
-                    tags: [],
-                    thumbnail: null,
-                    is_active: true,
-                    version: 1,
-                    created_at: "2026-01-01",
-                    created_by: null,
-                  },
-                ],
-                error: null,
-              }),
+            eq: () => Promise.resolve({ data: h.variants, error: null }),
           }),
         }
       }
       if (table === "store_email_references") {
         return {
           upsert: (...args: unknown[]) => {
-            upsertSpy(...args)
+            h.upsertSpy(...args)
             return Promise.resolve({ error: null })
           },
         }
@@ -66,11 +47,31 @@ vi.mock("../callbacks/telemetry.callback", () => ({
 
 vi.mock("./component-deriver", () => ({
   buildMatchContext: () => ({}),
-  DEFAULT_TOP_K: 3,
-  prefilterCandidates: (pool: unknown[]) => pool,
+  prefilterCandidates: (pool: unknown[]) => pool, // sem ranqueamento no teste
 }))
 
 import { assembleStoreReference } from "./component-assembler.service"
+
+function variant(id: string, blockType: string, html: string) {
+  return {
+    id,
+    block_type: blockType,
+    name: `${blockType} ${id}`,
+    html,
+    description: null,
+    slots: [],
+    niche_affinity: [],
+    positioning: [],
+    mood: [],
+    density: null,
+    tags: [],
+    thumbnail: null,
+    is_active: true,
+    version: 1,
+    created_at: "2026-01-01",
+    created_by: null,
+  }
+}
 
 const baseInput = {
   storeId: "s1",
@@ -92,59 +93,86 @@ const baseInput = {
   structure: [{ section: "hero", label: "Hero" }],
 }
 
+const CHOICE_V1 = { raw: '[{"block_index":0,"variant_id":"v1"}]', tokensInput: 5, tokensOutput: 5 }
+const HTML_OK = {
+  raw: "<!DOCTYPE html><html><body><div>ok</div></body></html>",
+  tokensInput: 10,
+  tokensOutput: 20,
+}
+
 beforeEach(() => {
-  upsertSpy.mockClear()
+  h.upsertSpy.mockClear()
   invokeAgent.mockReset()
+  h.variants = [variant("v1", "hero", "<div>hero</div>")]
 })
 
-describe("assembleStoreReference — fallback não persiste a reference", () => {
-  it("grava a reference quando o LLM gera HTML válido", async () => {
-    invokeAgent.mockResolvedValue({
-      raw: "<!DOCTYPE html><html><body><div>ok</div></body></html>",
-      tokensInput: 10,
-      tokensOutput: 20,
-    })
+describe("assembleStoreReference — 2 passos (escolha + harmonização)", () => {
+  it("escolhe (passo A) e harmoniza (passo B) → persiste a reference", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
     const res = await assembleStoreReference(baseInput)
-    expect(upsertSpy).toHaveBeenCalledTimes(1)
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
     expect(res.html).toContain("</html>")
+    expect(res.variantIds).toEqual(["v1"])
   })
 
-  it("NÃO grava a reference quando o LLM falha (cai no fallback)", async () => {
-    invokeAgent.mockRejectedValue(new Error("timeout"))
-    const res = await assembleStoreReference(baseInput)
-    expect(upsertSpy).not.toHaveBeenCalled()
-    // retorno ainda traz um html de fallback pro Blueprint do mesmo run
-    expect(res.html).toContain("<!DOCTYPE html>")
-  })
-
-  it("NÃO grava a reference quando o output do LLM não é HTML", async () => {
-    invokeAgent.mockResolvedValue({
-      raw: "desculpa, não consegui gerar",
-      tokensInput: 5,
-      tokensOutput: 5,
-    })
+  it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {
+    h.variants = [
+      variant("v1", "hero", "<div>UNIQUE_HTML_A</div>"),
+      variant("v2", "hero", "<div>UNIQUE_HTML_B</div>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
     await assembleStoreReference(baseInput)
-    expect(upsertSpy).not.toHaveBeenCalled()
+    // 1ª chamada = passo A (chooser). Os vars NÃO podem conter o html das variantes.
+    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    expect(chooserVars.candidates_json).toContain("v1")
+    expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_A")
+    expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_B")
+    expect(chooserVars.candidates_json).not.toContain("<div>")
   })
 
-  it("fallback usa o HTML de referência CURADO quando existe (não a biblioteca)", async () => {
-    invokeAgent.mockRejectedValue(new Error("timeout"))
-    const curated =
-      "<!DOCTYPE html><html><body><div>email curado completo</div></body></html>"
-    const res = await assembleStoreReference({
-      ...baseInput,
-      referenceTemplateHtml: curated,
-    })
-    expect(upsertSpy).not.toHaveBeenCalled()
+  it("passo B falha (erro) → persiste o concat REAL das escolhidas", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockRejectedValueOnce(new Error("timeout"))
+    const res = await assembleStoreReference(baseInput)
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1) // conteúdo real da biblioteca → persiste
+    expect(res.html).toContain("hero")
+    expect(res.variantIds).toEqual(["v1"])
+  })
+
+  it("passo B com output não-HTML → persiste o concat REAL", async () => {
+    invokeAgent
+      .mockResolvedValueOnce(CHOICE_V1)
+      .mockResolvedValueOnce({ raw: "desculpa, não consegui", tokensInput: 5, tokensOutput: 5 })
+    const res = await assembleStoreReference(baseInput)
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
+    expect(res.variantIds).toEqual(["v1"])
+  })
+
+  it("passo A sem escolha válida → top-1 da biblioteca (ainda persiste)", async () => {
+    // passo A devolve lixo (não-JSON) → resolveChoices cai no top-1 da seção.
+    invokeAgent
+      .mockResolvedValueOnce({ raw: "nada de json", tokensInput: 1, tokensOutput: 1 })
+      .mockResolvedValueOnce(HTML_OK)
+    const res = await assembleStoreReference(baseInput)
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
+    expect(res.variantIds).toEqual(["v1"])
+  })
+
+  it("biblioteca vazia → NÃO chama LLM nem persiste; devolve o curado", async () => {
+    h.variants = []
+    const curated = "<!DOCTYPE html><html><body><div>curado</div></body></html>"
+    const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
+    expect(invokeAgent).not.toHaveBeenCalled()
+    expect(h.upsertSpy).not.toHaveBeenCalled()
     expect(res.html).toBe(curated)
-    // não escolheu variantes da biblioteca
     expect(res.variantIds).toEqual([])
   })
 
-  it("fallback só concatena variantes quando NÃO há curado", async () => {
-    invokeAgent.mockRejectedValue(new Error("timeout"))
-    const res = await assembleStoreReference(baseInput) // referenceTemplateHtml: ""
-    expect(res.html).toContain("hero")
-    expect(res.variantIds).toEqual(["v1"])
+  it("biblioteca vazia e sem curado → html vazio, sem persistir", async () => {
+    h.variants = []
+    const res = await assembleStoreReference(baseInput)
+    expect(invokeAgent).not.toHaveBeenCalled()
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+    expect(res.html).toBe("")
   })
 })

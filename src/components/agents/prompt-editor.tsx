@@ -82,6 +82,20 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "reference_html", desc: "HTML montado pelo Montador (extrair daqui)" },
     { key: "pesquisa_diagnostico", desc: "Pesquisa & Diagnóstico (marca/ICP/tom/ads)" },
   ],
+  // Passo A — Curador: escolhe variant_id por seção SÓ pela descrição (sem html).
+  assembler_chooser: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "nicho", desc: "Nicho do negócio" },
+    { key: "posicionamento", desc: "Posicionamento de preço" },
+    { key: "persona", desc: "Persona-alvo (ICP)" },
+    { key: "tom_voz", desc: "Tom de voz" },
+    { key: "outline_objective", desc: "Objetivo geral do email (outline)" },
+    { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
+    { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
+    { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
+    { key: "candidates_json", desc: "Candidatos por seção (id+nome+descrição+metadados, SEM html)" },
+  ],
+  // Passo B — Harmonizador: recebe o HTML das variantes ESCOLHIDAS e monta.
   assembler: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "nicho", desc: "Nicho do negócio" },
@@ -95,8 +109,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
     { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
     { key: "reference_template_html", desc: "Referência curada do flow (guia, não copiar)" },
-    { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
-    { key: "candidates_json", desc: "Candidatos por seção (embaralhados)" },
+    { key: "chosen_html_json", desc: "HTML completo das variantes escolhidas (passo A)" },
   ],
   // Central de Campanhas — vars renderizadas por suggestion-engine.service
   campaign_suggestion: [

@@ -145,6 +145,7 @@ export async function listPrompts(opts: {
     qa: { active: null, history: [] },
     blueprint: { active: null, history: [] },
     assembler: { active: null, history: [] },
+    assembler_chooser: { active: null, history: [] },
     campaign_suggestion: { active: null, history: [] },
     campaign_trends: { active: null, history: [] },
     campaign_architect: { active: null, history: [] },

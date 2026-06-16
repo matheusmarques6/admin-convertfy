@@ -22,7 +22,6 @@ import { computeCostCents, logGenerationRun } from "../callbacks/telemetry.callb
 import {
   buildMatchContext,
   prefilterCandidates,
-  DEFAULT_TOP_K,
 } from "./component-deriver"
 import type { OutlineSection } from "./outline-sections"
 import {
@@ -36,30 +35,59 @@ const log = logger.child("ComponentAssembler")
 
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 
-const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes — um agente especialista em escolher a variante HTML certa para cada posição de um email, dado o outline da campanha e a identidade da loja, e montar com elas o HTML completo do email.
+// Quantos candidatos por seção vão pro PASSO A (escolha por descrição). Como o
+// passo A é texto barato (sem HTML), mandamos uma lista generosa.
+const CHOOSER_TOP_K = 8
 
-## Missão
+// ── PASSO A — Curador: escolhe 1 variant_id por seção, só pela DESCRIÇÃO ──
+const DEFAULT_CHOOSER_MODEL = "anthropic/claude-sonnet-4.6"
 
-Você recebe três coisas:
-1. Um OUTLINE genérico do email — flow_type, email_number, objetivo, e a SEQUÊNCIA fixa de tipos de bloco (a ordem em <estrutura_geral_ordenada>).
-2. O BRIEFING da loja — marca, nicho, posicionamento, persona, tom de voz, identidade visual.
-3. A BIBLIOTECA de candidatos pré-filtrados — para CADA posição/tipo da sequência, uma lista de variantes HTML viáveis (já filtradas por regras determinísticas de nicho/posicionamento/mood) em <biblioteca_componentes>.
+const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email. Para CADA posição da sequência do email, escolha UMA variante da biblioteca — a que melhor serve ao objetivo do email e à identidade da loja — usando o NOME, a DESCRIÇÃO e os metadados (mood/density) de cada variante. Você NÃO recebe o HTML das variantes; decide pela descrição.
 
-Sua tarefa, em dois passos:
-1. SELECIONAR — para cada posição da sequência, escolher UMA (e apenas uma) variante candidata: a que melhor serve ao objetivo do email e à identidade da loja.
-2. MONTAR — compor as variantes escolhidas, na ordem da sequência, em UM único documento HTML coeso: a CASCA do email (com placeholders {{...}} vazios). O preenchimento da copy é feito por agentes downstream.
+Regras:
+- Uma escolha por block_index da sequência. Use APENAS variant_id presente nas opções daquela posição.
+- Se a descrição estiver vazia, decida pelo nome + metadados.
+- Não invente variant_id.
 
-Você decide A FORMA. Você não escreve a copy final.
+Responda APENAS um array JSON, sem markdown nem texto ao redor:
+[{"block_index": 0, "variant_id": "..."}, {"block_index": 1, "variant_id": "..."}]`
 
-## Regras de montagem
-- Preserve a técnica de construção das variantes escolhidas — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
+const DEFAULT_CHOOSER_USER = `<store>
+- marca: {{brand_name}}
+- nicho: {{nicho}}
+- posicionamento: {{posicionamento}}
+- persona: {{persona}}
+- tom de voz: {{tom_voz}}
+</store>
+
+<outline>
+- objetivo: {{outline_objective}}
+- diretriz: {{outline_guidance}}
+- tom sugerido: {{outline_tone_hint}}
+</outline>
+
+<estrutura_geral_ordenada>
+{{blocks_json}}
+</estrutura_geral_ordenada>
+
+<biblioteca_componentes>
+{{candidates_json}}
+</biblioteca_componentes>
+
+Para CADA block_index em <estrutura_geral_ordenada>, escolha em <biblioteca_componentes> (mesmo block_index) o variant_id que melhor serve ao objetivo e à loja. Responda APENAS o array JSON [{"block_index":N,"variant_id":"..."}].`
+
+// ── PASSO B — Montador/Harmonizador: recebe só o HTML das ESCOLHIDAS ──
+const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.
+
+Regras:
+- Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
 - Container único de 600px centralizado.
-- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — nunca hex fixo no markup. Unifique as cores das variantes nessas variáveis.
-- NÃO escreva a copy final: use placeholders curtos por bloco (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
+- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — unifique as cores das variantes nessas variáveis.
+- NÃO escreva a copy final: use placeholders curtos (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
-- Use os HTMLs de referência (<htmls_referencia>) como inspiração de padrão visual.
+- Use <htmls_referencia> só como inspiração de padrão visual.
 
-Emita APENAS o HTML, começando em <!DOCTYPE html> e terminando em </html>, sem cercas markdown e sem comentários explicativos.`
+Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
 - marca: {{brand_name}}
@@ -84,19 +112,15 @@ const DEFAULT_ASSEMBLER_USER = `<store>
 - tom sugerido: {{outline_tone_hint}}
 </outline>
 
-<estrutura_geral_ordenada>
-{{blocks_json}}
-</estrutura_geral_ordenada>
-
 <htmls_referencia>
 {{reference_template_html}}
 </htmls_referencia>
 
-<biblioteca_componentes>
-{{candidates_json}}
-</biblioteca_componentes>
+<componentes_escolhidos>
+{{chosen_html_json}}
+</componentes_escolhidos>
 
-Para cada posição em <estrutura_geral_ordenada>, escolha a melhor variante de <biblioteca_componentes> e MONTE AGORA o HTML completo do email, na ordem da sequência, harmonizando-as num documento único, com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
+Monte AGORA o HTML completo REUSANDO os HTMLs de <componentes_escolhidos>, na ordem, harmonizando num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -282,31 +306,8 @@ export async function assembleStoreReference(
   const sections = input.structure.map((s) => s.section)
   const poolByType = await loadActiveVariantsByType()
   const candidatesByBlock: EmailComponentVariant[][] = sections.map((section) =>
-    prefilterCandidates(poolByType.get(section) ?? [], matchCtx, DEFAULT_TOP_K),
+    prefilterCandidates(poolByType.get(section) ?? [], matchCtx, CHOOSER_TOP_K),
   )
-  // Nota: a geração do HTML NÃO depende da biblioteca (o LLM gera do zero,
-  // usando os candidatos só como inspiração). Sem early-return por
-  // "no_candidates" — antes isso abortava emails cujas seções não tinham
-  // variante curada, deixando o consumidor sem reference.
-
-  const cfgRow = await loadActiveAgentConfig("assembler")
-  const config: AgentInvokeConfig = cfgRow
-    ? {
-        model: cfgRow.model,
-        temperature: cfgRow.temperature,
-        max_tokens: cfgRow.max_tokens,
-        system_prompt: cfgRow.system_prompt,
-        user_template: cfgRow.user_template,
-      }
-    : {
-        model: DEFAULT_MODEL,
-        temperature: 0.3,
-        // Gera um documento HTML inteiro — precisa de espaço (não os ~1.5k
-        // de quando só escolhia variantes).
-        max_tokens: 16384,
-        system_prompt: DEFAULT_ASSEMBLER_SYSTEM,
-        user_template: DEFAULT_ASSEMBLER_USER,
-      }
 
   const blocksJson = JSON.stringify(
     input.structure.map((s, i) => ({
@@ -315,24 +316,165 @@ export async function assembleStoreReference(
       componente: s.label,
     })),
   )
-  // Biblioteca como inspiração: mostra o HTML de até 3 exemplos por seção
-  // (truncado p/ controlar tokens). O LLM se inspira na técnica, não copia.
-  const candidatesJson = JSON.stringify(
+  const curatedReference = input.referenceTemplateHtml.trim()
+  const t0 = Date.now()
+
+  // Biblioteca não cobre NENHUMA seção → nem chama o LLM. Não persiste: o
+  // consumidor (build-vars) cai no template global. Devolve o curado (se houver)
+  // só pro Blueprint do mesmo run ter estrutura.
+  if (candidatesByBlock.every((b) => b.length === 0)) {
+    return { html: curatedReference || "", variantIds: [] }
+  }
+
+  // ── PASSO A — Curador: escolhe 1 variant_id por seção SÓ pela descrição.
+  // O HTML das variantes NÃO entra aqui — evita gasto de input token com HTML
+  // que não será usado (variantes rejeitadas).
+  const chooserRow = await loadActiveAgentConfig("assembler_chooser")
+  const chooserConfig: AgentInvokeConfig = chooserRow
+    ? {
+        model: chooserRow.model,
+        temperature: chooserRow.temperature,
+        max_tokens: chooserRow.max_tokens,
+        system_prompt: chooserRow.system_prompt,
+        user_template: chooserRow.user_template,
+      }
+    : {
+        model: DEFAULT_CHOOSER_MODEL,
+        temperature: 0.2,
+        max_tokens: 2048,
+        system_prompt: DEFAULT_CHOOSER_SYSTEM,
+        user_template: DEFAULT_CHOOSER_USER,
+      }
+
+  const chooserCandidatesJson = JSON.stringify(
     candidatesByBlock.map((finalists, i) => ({
       block_index: i,
       section: sections[i],
-      exemplos: shuffle(finalists)
-        .slice(0, 3)
-        .map((v) => ({
-          name: v.name,
-          density: v.density,
-          mood: v.mood,
-          html: v.html.trim().slice(0, 1500),
-        })),
+      label: input.structure[i]?.label ?? sections[i],
+      // SEM html: só descrição + metadados (escolha barata).
+      opcoes: finalists.map((v) => ({
+        variant_id: v.id,
+        name: v.name,
+        description: v.description ?? "",
+        mood: v.mood,
+        density: v.density,
+      })),
     })),
   )
 
-  const vars: Record<string, string> = {
+  const chooserVars: Record<string, string> = {
+    brand_name: input.brandName,
+    nicho: input.nicho,
+    posicionamento: input.posicionamento,
+    persona: input.persona,
+    tom_voz: input.tomVoz,
+    outline_objective: input.outlineObjective,
+    outline_guidance: input.outlineGuidance,
+    outline_tone_hint: input.outlineToneHint,
+    blocks_json: blocksJson,
+    candidates_json: chooserCandidatesJson,
+  }
+
+  let chooserRaw = ""
+  let chooserTokensIn = 0
+  let chooserTokensOut = 0
+  let choices: AssemblerChoice[] = []
+  let chooserError: string | null = null
+  try {
+    const res = await invokeAgent(chooserConfig, chooserVars)
+    chooserRaw = res.raw
+    chooserTokensIn = res.tokensInput
+    chooserTokensOut = res.tokensOutput
+    choices = parseAssemblerOutput(res.raw)
+  } catch (err) {
+    chooserError = err instanceof Error ? err.message : String(err)
+    log.error("assembler.chooser_failed", {
+      storeId: input.storeId,
+      model: chooserConfig.model,
+      error: chooserError,
+    })
+  }
+
+  // Resolve as escolhas preservando seção/rótulo de cada bloco (resolveChoices
+  // compacta e perde o índice; aqui guardamos a meta pro passo B). Top-1
+  // fallback por seção quando o LLM não escolheu / escolheu id inválido.
+  const choiceMap = new Map(choices.map((c) => [c.block_index, c.variant_id]))
+  const chosenWithMeta: Array<{
+    variant: EmailComponentVariant
+    section: string
+    label: string
+  }> = []
+  candidatesByBlock.forEach((finalists, i) => {
+    if (finalists.length === 0) return
+    const id = choiceMap.get(i)
+    const variant =
+      (id ? finalists.find((v) => v.id === id) : undefined) ?? finalists[0]
+    chosenWithMeta.push({
+      variant,
+      section: sections[i],
+      label: input.structure[i]?.label ?? sections[i],
+    })
+  })
+  const chosen = chosenWithMeta.map((c) => c.variant)
+
+  await logGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler_chooser",
+    agentConfigId: chooserRow?.id,
+    status: chosen.length > 0 ? "success" : "skipped",
+    model: chooserConfig.model,
+    errorMessage:
+      chooserError ?? (chosen.length === 0 ? "no_candidates" : undefined),
+    inputVars: { sections: input.structure.length },
+    rawOutput: chooserRaw.slice(0, 8000),
+    parsedOutput: { choices: choices.length, chosen: chosen.length },
+    tokensInput: chooserTokensIn,
+    tokensOutput: chooserTokensOut,
+    costCents: computeCostCents(
+      chooserConfig.model,
+      chooserTokensIn,
+      chooserTokensOut,
+    ),
+    durationMs: Date.now() - t0,
+  })
+
+  // Biblioteca não cobre NENHUMA seção → não há o que montar. Não persiste: o
+  // consumidor (build-vars) cai no template global. Devolve o curado (se
+  // houver) só pro Blueprint do mesmo run ter estrutura.
+  if (chosen.length === 0) {
+    return { html: curatedReference || "", variantIds: [] }
+  }
+
+  // ── PASSO B — Harmonizador: recebe SÓ o HTML COMPLETO das escolhidas.
+  const harmRow = await loadActiveAgentConfig("assembler")
+  const harmConfig: AgentInvokeConfig = harmRow
+    ? {
+        model: harmRow.model,
+        temperature: harmRow.temperature,
+        max_tokens: harmRow.max_tokens,
+        system_prompt: harmRow.system_prompt,
+        user_template: harmRow.user_template,
+      }
+    : {
+        model: DEFAULT_MODEL,
+        temperature: 0.3,
+        max_tokens: 16384,
+        system_prompt: DEFAULT_ASSEMBLER_SYSTEM,
+        user_template: DEFAULT_ASSEMBLER_USER,
+      }
+
+  const chosenHtmlJson = JSON.stringify(
+    chosenWithMeta.map((c) => ({
+      section: c.section,
+      label: c.label,
+      name: c.variant.name,
+      html: c.variant.html,
+    })),
+  )
+
+  const harmVars: Record<string, string> = {
     brand_name: input.brandName,
     nicho: input.nicho,
     posicionamento: input.posicionamento,
@@ -345,94 +487,72 @@ export async function assembleStoreReference(
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
     reference_template_html: input.referenceTemplateHtml,
-    blocks_json: blocksJson,
-    candidates_json: candidatesJson,
+    chosen_html_json: chosenHtmlJson,
   }
 
-  const t0 = Date.now()
-  let tokensInput = 0
-  let tokensOutput = 0
-  let rawOutput = ""
-  let generatedHtml = ""
+  const t1 = Date.now()
+  let harmRaw = ""
+  let harmTokensIn = 0
+  let harmTokensOut = 0
+  let html = ""
   let usedLlm = false
-  let invokeError: string | null = null
-
+  let harmError: string | null = null
   try {
-    const res = await invokeAgent(config, vars)
-    rawOutput = res.raw
-    tokensInput = res.tokensInput
-    tokensOutput = res.tokensOutput
-    generatedHtml = extractHtml(res.raw)
-    usedLlm = looksLikeHtml(generatedHtml)
-    // LLM respondeu mas não veio um documento HTML utilizável.
-    if (!usedLlm) invokeError = "llm_output_not_html"
+    const res = await invokeAgent(harmConfig, harmVars)
+    harmRaw = res.raw
+    harmTokensIn = res.tokensInput
+    harmTokensOut = res.tokensOutput
+    const extracted = extractHtml(res.raw)
+    if (looksLikeHtml(extracted)) {
+      html = extracted
+      usedLlm = true
+    } else {
+      harmError = "llm_output_not_html"
+    }
   } catch (err) {
-    invokeError = err instanceof Error ? err.message : String(err)
-    log.error("assembler.invoke_failed", {
+    harmError = err instanceof Error ? err.message : String(err)
+    log.error("assembler.harmonizer_failed", {
       storeId: input.storeId,
-      model: config.model,
-      error: invokeError,
+      model: harmConfig.model,
+      error: harmError,
     })
   }
 
-  // Fallback em cascata: (1) HTML de referência CURADO do flow×email
-  // (email_reference_templates, já carregado em input.referenceTemplateHtml) —
-  // é um email completo e validado, muito superior à concatenação de
-  // variantes; (2) só sem curado, concatena o top-1 das variantes
-  // pré-filtradas (pode sair com blocos faltando se a biblioteca não
-  // cobre alguma seção).
-  const curatedReference = input.referenceTemplateHtml.trim()
-  let html: string
-  let variantIds: string[] = []
-  let fallbackSource: "llm" | "curated_reference" | "variants" = "llm"
-  if (usedLlm) {
-    html = generatedHtml
-  } else if (curatedReference) {
-    html = curatedReference
-    fallbackSource = "curated_reference"
-  } else {
-    const fallbackChosen = resolveChoices(candidatesByBlock, [])
-    html = assembleReferenceHtml(fallbackChosen)
-    variantIds = fallbackChosen.map((v) => v.id)
-    fallbackSource = "variants"
-  }
+  // Fallback: concatena o HTML REAL das escolhidas num shell 600px. Ainda é
+  // conteúdo curado da biblioteca (não degradado) → persistimos mesmo assim.
+  if (!usedLlm) html = assembleReferenceHtml(chosen)
 
-  // Só persiste a reference quando o LLM gerou de verdade. No fallback NÃO
-  // grava: preserva uma reference boa de um run anterior (upsert é destrutivo)
-  // e deixa o consumidor (build-vars) cair no template global curado — o que
-  // funcionava antes. O `html` de fallback ainda vai no retorno, pro Blueprint
-  // do mesmo run extrair a estrutura.
-  if (usedLlm) {
-    await upsertStoreReference(input, html, variantIds, config.model)
-  }
+  const variantIds = chosen.map((v) => v.id)
+  await upsertStoreReference(
+    input,
+    html,
+    variantIds,
+    usedLlm ? harmConfig.model : null,
+  )
 
   await logGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     batchId: input.batchId,
     agent: "assembler",
-    agentConfigId: cfgRow?.id,
+    agentConfigId: harmRow?.id,
     status: usedLlm ? "success" : "skipped",
-    model: usedLlm ? config.model : "fallback",
-    // Em skip, registra o motivo + o modelo tentado pra diagnóstico.
-    errorMessage: usedLlm ? undefined : (invokeError ?? undefined),
-    inputVars: { sections: input.structure.length },
-    // Telemetria do output bruto. HTML gerado é grande — guarda até 40k pra
-    // não cortar a visualização (o HTML real persistido não é truncado).
-    rawOutput: rawOutput.slice(0, 40000),
+    model: usedLlm ? harmConfig.model : "fallback",
+    errorMessage: usedLlm ? undefined : (harmError ?? undefined),
+    inputVars: { sections: input.structure.length, chosen: chosen.length },
+    rawOutput: harmRaw.slice(0, 40000),
     parsedOutput: {
       used_llm: usedLlm,
-      fallback_source: usedLlm ? null : fallbackSource,
-      attempted_model: config.model,
-      invoke_error: invokeError,
+      fallback: usedLlm ? null : "variants_concat",
       html_chars: html.length,
+      variant_ids: variantIds.length,
     },
-    tokensInput,
-    tokensOutput,
+    tokensInput: harmTokensIn,
+    tokensOutput: harmTokensOut,
     costCents: usedLlm
-      ? computeCostCents(config.model, tokensInput, tokensOutput)
+      ? computeCostCents(harmConfig.model, harmTokensIn, harmTokensOut)
       : 0,
-    durationMs: Date.now() - t0,
+    durationMs: Date.now() - t1,
   })
 
   return { html, variantIds }
