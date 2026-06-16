@@ -177,12 +177,11 @@ async function invokeViaOpenRouter(
     if (modelSupportsTemperature(config.model)) {
       body.temperature = config.temperature
     }
-    // Reasoning models (GPT-5.x): trava o esforço em 'low' pra o custo ser
-    // previsível. Sem isso, os thinking tokens (cobrados como output) podem
-    // anular a economia vs Opus. Subir pra 'medium'/'high' se a qualidade
-    // da arquitetura exigir.
+    // Reasoning models (GPT-5.x): fixa o esforço em 'medium' (≈50% do
+    // max_tokens p/ reasoning) — mais qualidade de arquitetura que 'low'
+    // (~20%), custo ainda bem abaixo do Opus. 'high'/'xhigh' encarecem mais.
     if (isReasoningModel(config.model)) {
-      body.reasoning = { effort: "low" }
+      body.reasoning = { effort: "medium" }
     }
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
