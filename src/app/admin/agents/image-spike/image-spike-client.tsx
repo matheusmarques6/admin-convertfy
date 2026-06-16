@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { Loader2, ImageOff, AlertTriangle, Check, X } from "lucide-react"
+import { Loader2, ImageOff, AlertTriangle, Check, X, Ban } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { ImageSpikeResponse, SpikeImageResult } from "@/lib/agents/image/image-spike.service"
+import type { OneGenResponse, SpikeImageResult } from "@/lib/agents/image/image-spike.service"
 
 const DEFAULT_PROMPT =
   "Hero de boas-vindas para email de e-commerce: foto editorial do produto em uso/destaque, luz natural suave, profundidade de campo cinematográfica, enquadramento vertical 4:5, sem texto na imagem."
@@ -23,20 +23,27 @@ export function ImageSpikeClient() {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
   const [model, setModel] = useState("")
   const [maxTokens, setMaxTokens] = useState("16384")
-  const [loading, setLoading] = useState(false)
+  const [loadingA, setLoadingA] = useState(false)
+  const [loadingB, setLoadingB] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<ImageSpikeResponse | null>(null)
+  const [resA, setResA] = useState<OneGenResponse | null>(null)
+  const [resB, setResB] = useState<OneGenResponse | null>(null)
 
-  const run = async () => {
+  const busy = loadingA || loadingB
+
+  const run = async (mode: "product_ref" | "text2img") => {
+    const setLoading = mode === "product_ref" ? setLoadingA : setLoadingB
+    const setRes = mode === "product_ref" ? setResA : setResB
     setLoading(true)
     setError(null)
-    setResult(null)
+    setRes(null)
     try {
       const res = await fetch("/api/admin/agents/image-spike", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          image_url: imageUrl,
+          mode,
+          image_url: imageUrl || undefined,
           prompt,
           model: model || undefined,
           max_tokens: maxTokens ? Number(maxTokens) : undefined,
@@ -44,13 +51,15 @@ export function ImageSpikeClient() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-      setResult(json as ImageSpikeResponse)
+      setRes(json as OneGenResponse)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
     } finally {
       setLoading(false)
     }
   }
+
+  const totalCost = (resA?.result.cost_usd ?? 0) + (resB?.result.cost_usd ?? 0)
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-5">
@@ -60,8 +69,8 @@ export function ImageSpikeClient() {
         </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
           Prova se o modelo <strong>recebe</strong> a foto do produto pelo link e a <strong>usa</strong>{" "}
-          como referência. Gera a mesma campanha <strong>com</strong> a imagem (product_ref) e{" "}
-          <strong>sem</strong> (text2img) pra você comparar a correlação.
+          como referência. Gere <strong>A (com a imagem)</strong> e <strong>B (sem)</strong> e compare a
+          correlação.
         </p>
       </div>
 
@@ -109,14 +118,30 @@ export function ImageSpikeClient() {
               placeholder="16384"
             />
           </div>
-          <Button onClick={run} disabled={loading || imageUrl.trim().length === 0}>
-            {loading ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : null}
-            Rodar teste A/B
-          </Button>
         </div>
-        {loading && (
+
+        {/* Ações — uma geração por clique, sob demanda */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => run("product_ref")} disabled={busy || imageUrl.trim().length === 0}>
+            {loadingA ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : null}
+            Gerar A — com imagem
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => run("text2img")}
+            disabled={busy || prompt.trim().length < 3}
+          >
+            {loadingB ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : null}
+            Gerar B — sem imagem
+          </Button>
+          <span className="text-[11.5px] text-muted-foreground">
+            Roda <strong>1 imagem por clique</strong> · cada geração é cobrada · até ~270s
+          </span>
+        </div>
+
+        {busy && (
           <div className="text-[12px] text-muted-foreground">
-            Gerando as duas imagens… pode levar até ~90s cada (rodando em paralelo).
+            Gerando… o modelo pode levar mais de um minuto. Não recarregue a página.
           </div>
         )}
         {error && (
@@ -128,41 +153,48 @@ export function ImageSpikeClient() {
       </div>
 
       {/* Resultado */}
-      {result && (
+      {(resA || resB) && (
         <div className="flex flex-col gap-3">
           <div className="text-[12.5px] text-muted-foreground">
-            Modelo: <span className="font-mono text-foreground">{result.model}</span> · entrada:{" "}
-            {result.input.ok ? (
-              <span className="font-semibold text-emerald-600">
-                acessível ({result.input.content_type})
-              </span>
-            ) : (
-              <span className="font-semibold text-[#991B1B]">
-                inacessível {result.input.status ? `(HTTP ${result.input.status})` : ""}{" "}
-                {result.input.content_type ? `· ${result.input.content_type}` : ""}
-              </span>
-            )}
+            Modelo:{" "}
+            <span className="font-mono text-foreground">{resA?.model ?? resB?.model}</span>
+            {resA?.input ? (
+              <>
+                {" "}· entrada:{" "}
+                {resA.input.ok ? (
+                  <span className="font-semibold text-emerald-600">
+                    acessível ({resA.input.content_type})
+                  </span>
+                ) : (
+                  <span className="font-semibold text-[#991B1B]">
+                    inacessível {resA.input.status ? `(HTTP ${resA.input.status})` : ""}{" "}
+                    {resA.input.content_type ? `· ${resA.input.content_type}` : ""}
+                  </span>
+                )}
+              </>
+            ) : null}
           </div>
 
-          {(() => {
-            const total = (result.product_ref.cost_usd ?? 0) + (result.text2img.cost_usd ?? 0)
-            return total > 0 ? (
-              <div className="text-[12.5px]">
-                <span className="text-muted-foreground">Custo total desta rodada (A + B): </span>
-                <span className="font-semibold text-foreground">{fmtCost(total)}</span>
-              </div>
-            ) : null
-          })()}
+          {totalCost > 0 && (
+            <div className="text-[12.5px]">
+              <span className="text-muted-foreground">Custo somado (A + B gerados): </span>
+              <span className="font-semibold text-foreground">{fmtCost(totalCost)}</span>
+            </div>
+          )}
 
           <div className="grid gap-4 md:grid-cols-3">
             <Panel title="Entrada (referência)">
               {imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={imageUrl} alt="entrada" className="w-full rounded-md border border-border" />
-              ) : null}
+              ) : (
+                <div className="flex aspect-square items-center justify-center rounded-md bg-muted text-muted-foreground/50">
+                  <ImageOff size={28} />
+                </div>
+              )}
             </Panel>
-            <ResultPanel title="A · product_ref (com imagem)" r={result.product_ref} />
-            <ResultPanel title="B · text2img (sem imagem)" r={result.text2img} />
+            <ResultPanel title="A · product_ref (com imagem)" r={resA?.result} />
+            <ResultPanel title="B · text2img (sem imagem)" r={resB?.result} />
           </div>
 
           <div className="rounded-[6px] border border-border bg-muted/40 p-3 text-[12.5px] text-muted-foreground">
@@ -198,39 +230,57 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function ResultPanel({ title, r }: { title: string; r: SpikeImageResult }) {
+function ResultPanel({ title, r }: { title: string; r: SpikeImageResult | undefined }) {
+  if (!r) {
+    return (
+      <Panel title={title}>
+        <div className="flex aspect-square items-center justify-center rounded-md bg-muted/50 text-[11.5px] text-muted-foreground/60">
+          ainda não gerada
+        </div>
+      </Panel>
+    )
+  }
+  if (r.ok && r.data_uri) {
+    return (
+      <Panel title={title}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={r.data_uri} alt={title} className="w-full rounded-md border border-border" />
+        <div className="mt-2 flex flex-col gap-0.5 text-[11.5px]">
+          <span className="inline-flex items-center gap-1.5 text-emerald-600">
+            <Check size={13} /> gerada em {(r.duration_ms / 1000).toFixed(1)}s
+          </span>
+          <span className="text-muted-foreground">
+            <span className="font-semibold text-foreground">{fmtCost(r.cost_usd)}</span>
+            {r.total_tokens != null ? ` · ${r.total_tokens.toLocaleString("pt-BR")} tokens` : ""}
+          </span>
+        </div>
+      </Panel>
+    )
+  }
+  // Falha: distingue "abortada antes de gastar" (skipped) de erro real.
   return (
     <Panel title={title}>
-      {r.ok && r.data_uri ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={r.data_uri} alt={title} className="w-full rounded-md border border-border" />
-          <div className="mt-2 flex flex-col gap-0.5 text-[11.5px]">
-            <span className="inline-flex items-center gap-1.5 text-emerald-600">
-              <Check size={13} /> gerada em {(r.duration_ms / 1000).toFixed(1)}s
-            </span>
-            <span className="text-muted-foreground">
-              <span className="font-semibold text-foreground">{fmtCost(r.cost_usd)}</span>
-              {r.total_tokens != null
-                ? ` · ${r.total_tokens.toLocaleString("pt-BR")} tokens`
-                : ""}
-            </span>
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex aspect-square items-center justify-center rounded-md bg-muted text-muted-foreground/50">
-            <ImageOff size={28} />
-          </div>
-          <div className="inline-flex items-start gap-1.5 text-[11.5px] text-[#991B1B]">
-            <X size={13} className="mt-px shrink-0" />
-            <span className="break-words">
-              {r.status ? `HTTP ${r.status} · ` : ""}
-              {r.error ?? "falhou"} ({(r.duration_ms / 1000).toFixed(1)}s)
-            </span>
-          </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex aspect-square items-center justify-center rounded-md bg-muted text-muted-foreground/50">
+          {r.skipped ? <Ban size={28} /> : <ImageOff size={28} />}
         </div>
-      )}
+        <div
+          className={`inline-flex items-start gap-1.5 text-[11.5px] ${
+            r.skipped ? "text-amber-700" : "text-[#991B1B]"
+          }`}
+        >
+          {r.skipped ? (
+            <Ban size={13} className="mt-px shrink-0" />
+          ) : (
+            <X size={13} className="mt-px shrink-0" />
+          )}
+          <span className="break-words">
+            {r.status ? `HTTP ${r.status} · ` : ""}
+            {r.error ?? "falhou"}
+            {r.skipped ? " (sem custo)" : ` (${(r.duration_ms / 1000).toFixed(1)}s)`}
+          </span>
+        </div>
+      </div>
     </Panel>
   )
 }
