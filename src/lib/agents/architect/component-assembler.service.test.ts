@@ -10,7 +10,10 @@ import {
   parseAssemblerOutput,
   resolveChoices,
   assembleReferenceHtml,
+  assembleReferenceHtmlOrdered,
+  missingBlockNote,
   shuffle,
+  type AssemblySlot,
 } from "./component-assembler.service"
 
 function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
@@ -102,5 +105,30 @@ describe("assembleReferenceHtml", () => {
     expect(html).toContain("<!DOCTYPE html>")
     expect(html).toContain("max-width:600px")
     expect(html.indexOf("hero")).toBeLessThan(html.indexOf("foot"))
+  })
+})
+
+describe("assembleReferenceHtmlOrdered (bloco sem variante nunca some)", () => {
+  it("insere placeholder com a nota na posição do bloco sem variante, na ordem", () => {
+    const hero = mk({ id: "a", block_type: "hero", name: "H", html: "<div>hero</div>" })
+    const foot = mk({ id: "b", block_type: "footer", name: "F", html: "<div>foot</div>" })
+    const slots: AssemblySlot[] = [
+      { kind: "variant", variant: hero, section: "hero", label: "Hero" },
+      { kind: "missing", section: "reviews", label: "Prova Social" },
+      { kind: "variant", variant: foot, section: "footer", label: "Rodapé" },
+    ]
+    const html = assembleReferenceHtmlOrdered(slots)
+    // O bloco sem variante aparece (não some) e traz a nota obrigatória.
+    expect(html).toContain(missingBlockNote("reviews"))
+    expect(html).toContain('data-block="reviews"')
+    // Ordem preservada: hero → reviews(placeholder) → footer.
+    expect(html.indexOf("hero")).toBeLessThan(html.indexOf("reviews"))
+    expect(html.indexOf("reviews")).toBeLessThan(html.indexOf("foot"))
+  })
+
+  it("a nota tem o texto pedido pelo produto", () => {
+    expect(missingBlockNote("offer")).toContain(
+      "nao foi encontrada referencia para esse bloco",
+    )
   })
 })

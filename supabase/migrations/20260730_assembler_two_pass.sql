@@ -97,13 +97,14 @@ SET
 
 Regras:
 - Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
+- Monte os blocos na ordem de block_index (intercalando <componentes_escolhidos> e <blocos_sem_variante> pela posição).
+- BLOCOS SEM VARIANTE: para CADA item de <blocos_sem_variante>, NÃO pule a posição. Extraia a seção correspondente de <htmls_referencia> (o reference PADRÃO) e inclua-a naquela posição, precedida do comentário HTML exatamente: <!-- bloco {section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->. Se o reference padrão não tiver essa seção, crie um bloco mínimo daquele tipo com o MESMO comentário. O bloco SEMPRE aparece.
 - Container único de 600px centralizado.
 - Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — unifique as cores das variantes nessas variáveis.
 - NÃO escreva a copy final: use placeholders curtos (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
-- Use <htmls_referencia> só como inspiração de padrão visual.
 
-Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários.$SYS$,
+Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.$SYS$,
   user_template = $USR$<store>
 - marca: {{brand_name}}
 - nicho: {{nicho}}
@@ -135,7 +136,11 @@ Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem com
 {{chosen_html_json}}
 </componentes_escolhidos>
 
-Monte AGORA o HTML completo REUSANDO os HTMLs de <componentes_escolhidos>, na ordem, harmonizando num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.$USR$
+<blocos_sem_variante>
+{{missing_blocks_json}}
+</blocos_sem_variante>
+
+Monte AGORA o HTML completo na ordem de block_index, REUSANDO os HTMLs de <componentes_escolhidos> e, para cada item de <blocos_sem_variante>, puxando aquela seção de <htmls_referencia> (com a nota obrigatória). Harmonize num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.$USR$
 WHERE agent_type = 'assembler' AND is_active = true;
 
 -- 5. Telemetria do passo A grava agent='assembler_chooser' em

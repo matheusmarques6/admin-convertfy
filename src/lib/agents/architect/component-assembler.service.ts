@@ -81,13 +81,14 @@ const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você rece
 
 Regras:
 - Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
+- Monte os blocos na ordem de block_index (intercalando <componentes_escolhidos> e <blocos_sem_variante> pela posição).
+- BLOCOS SEM VARIANTE: para CADA item de <blocos_sem_variante>, NÃO pule a posição. Extraia a seção correspondente de <htmls_referencia> (o reference PADRÃO) e inclua-a naquela posição, precedida do comentário HTML exatamente: <!-- bloco {section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->. Se o reference padrão não tiver essa seção, crie um bloco mínimo daquele tipo com o MESMO comentário. O bloco SEMPRE aparece.
 - Container único de 600px centralizado.
 - Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — unifique as cores das variantes nessas variáveis.
 - NÃO escreva a copy final: use placeholders curtos (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
-- Use <htmls_referencia> só como inspiração de padrão visual.
 
-Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários.`
+Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
 - marca: {{brand_name}}
@@ -120,7 +121,11 @@ const DEFAULT_ASSEMBLER_USER = `<store>
 {{chosen_html_json}}
 </componentes_escolhidos>
 
-Monte AGORA o HTML completo REUSANDO os HTMLs de <componentes_escolhidos>, na ordem, harmonizando num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
+<blocos_sem_variante>
+{{missing_blocks_json}}
+</blocos_sem_variante>
+
+Monte AGORA o HTML completo na ordem de block_index, REUSANDO os HTMLs de <componentes_escolhidos> e, para cada item de <blocos_sem_variante>, puxando aquela seção de <htmls_referencia> (com a nota obrigatória). Harmonize num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -194,11 +199,18 @@ export function resolveChoices(
   return out
 }
 
-/** Concatena os snippets escolhidos num shell de referência 600px. */
-export function assembleReferenceHtml(chosen: EmailComponentVariant[]): string {
-  const body = chosen
-    .map((v) => `  <!-- ${v.block_type}: ${v.name} -->\n  ${v.html.trim()}`)
-    .join("\n")
+/** Slot ordenado da estrutura do email: ou uma variante escolhida, ou um bloco
+ * sem variante na biblioteca (que vira placeholder com nota no fallback). */
+export type AssemblySlot =
+  | { kind: "variant"; variant: EmailComponentVariant; section: string; label: string }
+  | { kind: "missing"; section: string; label: string }
+
+/** Nota obrigatória do bloco sem variante (mesma do prompt do Montador). */
+export function missingBlockNote(section: string): string {
+  return `<!-- bloco ${section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->`
+}
+
+function referenceShell(body: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8" /></head>
@@ -208,6 +220,31 @@ ${body}
 </div>
 </body>
 </html>`
+}
+
+/** Concatena os snippets escolhidos num shell de referência 600px. */
+export function assembleReferenceHtml(chosen: EmailComponentVariant[]): string {
+  const body = chosen
+    .map((v) => `  <!-- ${v.block_type}: ${v.name} -->\n  ${v.html.trim()}`)
+    .join("\n")
+  return referenceShell(body)
+}
+
+/**
+ * Fallback determinístico ORDENADO (passo B falhou): mantém TODAS as posições.
+ * Variante → seu HTML real. Bloco sem variante → placeholder mínimo com a nota
+ * obrigatória (a posição nunca some). Sem extração do reference aqui — isso é
+ * trabalho do LLM (passo B); no fallback determinístico fica o placeholder.
+ */
+export function assembleReferenceHtmlOrdered(slots: AssemblySlot[]): string {
+  const body = slots
+    .map((s) =>
+      s.kind === "variant"
+        ? `  <!-- ${s.variant.block_type}: ${s.variant.name} -->\n  ${s.variant.html.trim()}`
+        : `  ${missingBlockNote(s.section)}\n  <div data-block="${s.section}" style="padding:24px;text-align:center;color:#999">{{${s.section.toUpperCase()}}}</div>`,
+    )
+    .join("\n")
+  return referenceShell(body)
 }
 
 /** Extrai o documento HTML do output do LLM (remove fences + prosa ao redor). */
@@ -395,27 +432,22 @@ export async function assembleStoreReference(
     })
   }
 
-  // Resolve as escolhas preservando seção/rótulo de cada bloco (resolveChoices
-  // compacta e perde o índice; aqui guardamos a meta pro passo B). Top-1
-  // fallback por seção quando o LLM não escolheu / escolheu id inválido.
+  // Slots ordenados: uma posição POR BLOCO da estrutura, na ordem. Posição com
+  // candidato → variante escolhida (top-1 fallback se o LLM não escolheu/errou
+  // o id); posição SEM candidato → bloco "missing" (NÃO some — o passo B puxa do
+  // reference padrão; o fallback determinístico insere placeholder com nota).
   const choiceMap = new Map(choices.map((c) => [c.block_index, c.variant_id]))
-  const chosenWithMeta: Array<{
-    variant: EmailComponentVariant
-    section: string
-    label: string
-  }> = []
-  candidatesByBlock.forEach((finalists, i) => {
-    if (finalists.length === 0) return
+  const slots: AssemblySlot[] = candidatesByBlock.map((finalists, i) => {
+    const section = sections[i]
+    const label = input.structure[i]?.label ?? section
+    if (finalists.length === 0) return { kind: "missing", section, label }
     const id = choiceMap.get(i)
     const variant =
       (id ? finalists.find((v) => v.id === id) : undefined) ?? finalists[0]
-    chosenWithMeta.push({
-      variant,
-      section: sections[i],
-      label: input.structure[i]?.label ?? sections[i],
-    })
+    return { kind: "variant", variant, section, label }
   })
-  const chosen = chosenWithMeta.map((c) => c.variant)
+  const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
+  const missingCount = slots.filter((s) => s.kind === "missing").length
 
   await logGenerationRun({
     storeId: input.storeId,
@@ -465,13 +497,27 @@ export async function assembleStoreReference(
         user_template: DEFAULT_ASSEMBLER_USER,
       }
 
+  // chosen + missing carregam block_index (posição na sequência) pra o Montador
+  // intercalar os dois na ordem certa.
   const chosenHtmlJson = JSON.stringify(
-    chosenWithMeta.map((c) => ({
-      section: c.section,
-      label: c.label,
-      name: c.variant.name,
-      html: c.variant.html,
-    })),
+    slots.flatMap((s, i) =>
+      s.kind === "variant"
+        ? [{
+            block_index: i,
+            section: s.section,
+            label: s.label,
+            name: s.variant.name,
+            html: s.variant.html,
+          }]
+        : [],
+    ),
+  )
+  const missingBlocksJson = JSON.stringify(
+    slots.flatMap((s, i) =>
+      s.kind === "missing"
+        ? [{ block_index: i, section: s.section, label: s.label }]
+        : [],
+    ),
   )
 
   const harmVars: Record<string, string> = {
@@ -488,6 +534,7 @@ export async function assembleStoreReference(
     outline_tone_hint: input.outlineToneHint,
     reference_template_html: input.referenceTemplateHtml,
     chosen_html_json: chosenHtmlJson,
+    missing_blocks_json: missingBlocksJson,
   }
 
   const t1 = Date.now()
@@ -518,9 +565,10 @@ export async function assembleStoreReference(
     })
   }
 
-  // Fallback: concatena o HTML REAL das escolhidas num shell 600px. Ainda é
-  // conteúdo curado da biblioteca (não degradado) → persistimos mesmo assim.
-  if (!usedLlm) html = assembleReferenceHtml(chosen)
+  // Fallback (passo B LLM falhou): monta ORDENADO — HTML real das escolhidas +
+  // placeholder com a nota nos blocos sem variante (nenhuma posição some). Ainda
+  // é conteúdo curado da biblioteca (não degradado) → persistimos mesmo assim.
+  if (!usedLlm) html = assembleReferenceHtmlOrdered(slots)
 
   const variantIds = chosen.map((v) => v.id)
   await upsertStoreReference(
@@ -539,13 +587,18 @@ export async function assembleStoreReference(
     status: usedLlm ? "success" : "skipped",
     model: usedLlm ? harmConfig.model : "fallback",
     errorMessage: usedLlm ? undefined : (harmError ?? undefined),
-    inputVars: { sections: input.structure.length, chosen: chosen.length },
+    inputVars: {
+      sections: input.structure.length,
+      chosen: chosen.length,
+      missing: missingCount,
+    },
     rawOutput: harmRaw.slice(0, 40000),
     parsedOutput: {
       used_llm: usedLlm,
-      fallback: usedLlm ? null : "variants_concat",
+      fallback: usedLlm ? null : "ordered_concat",
       html_chars: html.length,
       variant_ids: variantIds.length,
+      missing_blocks: missingCount,
     },
     tokensInput: harmTokensIn,
     tokensOutput: harmTokensOut,
