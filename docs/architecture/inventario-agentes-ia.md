@@ -23,7 +23,7 @@
 |---|--------|-----------|---------|--------|----------------|--------|
 | 1 | Briefing | Email AE | `briefing-generation.service.ts` | sonnet-4-6 → gpt-5.3-chat → template | Cliente envia formulário | Só re-roda se respostas mudaram |
 | 2 | Pesquisa & Diagnóstico | Email AE | n8n + `webhooks/n8n/*` | externo (n8n) | n8n termina cada pilar | Sobrescreve sempre |
-| 3 | **Montador** 💰 | Email AE | `architect/component-assembler.service.ts` | **opus-4.8** | cron dispatch / `/generate-blueprints` / **teste** | ✅ natural / ❌ teste e manual |
+| 3 | **Montador** 💰 | Email AE | `architect/component-assembler.service.ts` | **gpt-5.4** (reasoning medium) | cron dispatch / `/generate-blueprints` / **teste** | ✅ natural / ❌ teste e manual |
 | 4 | Blueprint | Email AE | `architect/blueprint-generator.service.ts` | sonnet-4.6 | junto com o Montador | segue o Montador |
 | 5 | Copy | Email AE | `email-copy-webhook.service.ts` (+ `copy.chain.ts` fallback) | n8n / sonnet-4.6 (fallback) | dispatch após research / manual / watchdog | só blocos vazios |
 | 6 | Imagem 💰 | Email AE | `chains/image.chain.ts` | **gpt-5.4-image-2** | fase 2 (após copy) | ❌ sempre roda por bloco |
@@ -78,7 +78,7 @@ Status do email: `draft → pending → copy_generating → copy_ready → rende
 - **Ativação (3 caminhos):** (a) cron `/api/cron/email-dispatch-queue` [natural], (b) `POST /api/admin/stores/[id]/generate-blueprints` [manual], (c) `runTestGeneration` caminho `with_copy` [**aba Testar**]. Todos via `generateBlueprintAndReference()`.
 - **Input:** briefing + pesquisa + outline + estrutura esperada + template de referência curado + biblioteca de variantes.
 - **Output:** HTML de arquitetura em `store_email_references.html` (**só persiste se `usedLlm`**).
-- **Modelo:** **`anthropic/claude-opus-4.8`** via OpenRouter (não aceita `temperature`), max 16384. **É o agente mais caro do pipeline (~$0,77/run, ~23k tokens).** Confirmado em `20260717_assembler_model_opus48.sql`.
+- **Modelo:** **`openai/gpt-5.4`** via OpenRouter (reasoning model: `reasoning.effort=medium`, sem `temperature`), max 16384. Trocado de `claude-opus-4.8` (que custava ~$0,60/req e era ~70% do gasto de IA) em `20260726_assembler_model_gpt54.sql` — projeção ~$0,20–0,23/req. Pricing em `telemetry.callback.ts`.
 - **Prompt (system):** "Você é o Montador de Componentes… SELECIONE 1 variante por posição + MONTE HTML 600px com CSS variables, placeholders `{{HEADLINE}}`/`{{BODY}}`, sem copy final, sem imagens reais." Fonte: `component-assembler.service.ts:39-62`.
 - **⚠️ Cache:** **TEM** no fluxo natural (`enqueueDispatchJob` marca `done` se a reference existe → pula o LLM). **NÃO TEM** no caminho manual nem na aba Testar → re-paga Opus 4.8 toda vez. **(Este é o vazamento que originou esta investigação.)**
 
@@ -108,10 +108,12 @@ Status do email: `draft → pending → copy_generating → copy_ready → rende
 
 ### 1.7 HTML
 - **Arquivo:** `src/lib/agents/chains/html.chain.ts` + `html/build-vars.ts`. Config `agent_type='html'`.
-- **Ativação:** fase 2, após a Imagem. **Input:** 21 vars (`reference_html` + copy + brand + blocks + image_map). **Output:** `email_flow_emails.html`.
-- **Modelo:** `anthropic/claude-sonnet-4.6` via OpenRouter, T=0.3, max 16384.
-- **Prompt (system, 83 linhas):** "HTML Assembler — NÃO escreve copy, NÃO gera imagens. 3 autoridades: reference_html=FORMA, color_roles+fonts+logo=APARÊNCIA, blocks+images=PAYLOAD. 600px, sem tables, CSS variables, 9 regras inquebráveis." Fonte: `20260630_html_agent_master_prompt_v2.sql:59-142` (+ v3 em `20260706`).
-- **Cache:** sempre roda (sobrescreve). Barato relativo ao Montador — só "repinta" a arquitetura que o Montador já gerou.
+- **Ativação:** fase 2, após a Imagem. **Output:** `email_flow_emails.html` (HTML completo `<!DOCTYPE…`).
+- **Modelo:** `anthropic/claude-sonnet-4.6` via OpenRouter, T=0.3, max 16384. (Histórico: `claude-opus-4-7` → $2,04/req; trocado pra Sonnet em `20260718`/`20260722`.)
+- **Prompt v3 (system):** "HTML Assembler — não escreve copy nem gera imagens; monta o design final pra importar no Figma. 3 autoridades: `reference_html`=FORMA, `color_roles+fonts+logo`=APARÊNCIA, `blocks+images`=PAYLOAD. Protocolo de 6 passos, matriz de overlay, 9 regras inquebráveis, self-check." User template em XML com as 21 vars. Fonte: `20260706_html_agent_master_prompt_v3.sql:47-200`.
+- **Inputs (21 vars,** `html/build-vars.ts`**) — o que pesa em tokens:** `reference_html` (HTML do Montador, ~38% do input) · `blocks_with_content_json` (copy de todos os blocos, ~24%) · `system_prompt` (~12%) · `logo_svg` (SVG ~leve; **se PNG vira base64 inline, até ~27k tokens!**) · resto (cores/fontes/image_map/top_products, leve).
+- **Preço real** (telemetria): **$0,1248/req** · in 12.731 → out 5.816. Decomposição (Sonnet 3/15): input $0,038 + **output $0,087 (70% do custo)**. O custo é dominado pelo OUTPUT (o HTML em si). Risco: input inchar (reference grande ou logo PNG) — foi o que levou a 101k in / $2,04 no passado com Opus.
+- **Cache:** sempre roda (sobrescreve). Só "repinta" a arquitetura do Montador — por isso é Sonnet barato, não precisa de modelo caro.
 
 ### 1.8 QA (+ QA Vision)
 - **Arquivo:** `src/lib/agents/chains/qa.chain.ts`. Config `agent_type='qa'`.
