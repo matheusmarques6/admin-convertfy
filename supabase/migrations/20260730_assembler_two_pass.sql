@@ -90,7 +90,7 @@ WHERE NOT EXISTS (
   WHERE agent_type = 'assembler_chooser' AND is_active = true
 );
 
--- 4. Config do PASSO B — o Montador vira Harmonizador (recebe os HTMLs escolhidos).
+-- 4. Config do PASSO B — o Montador agora recebe os HTMLs já escolhidos e monta.
 UPDATE email_agent_configs
 SET
   system_prompt = $SYS$Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.

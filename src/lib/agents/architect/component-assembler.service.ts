@@ -76,7 +76,7 @@ const DEFAULT_CHOOSER_USER = `<store>
 
 Para CADA block_index em <estrutura_geral_ordenada>, escolha em <biblioteca_componentes> (mesmo block_index) o variant_id que melhor serve ao objetivo e à loja. Responda APENAS o array JSON [{"block_index":N,"variant_id":"..."}].`
 
-// ── PASSO B — Montador/Harmonizador: recebe só o HTML das ESCOLHIDAS ──
+// ── PASSO B — Montador: recebe só o HTML das ESCOLHIDAS e monta ──
 const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.
 
 Regras:
@@ -447,7 +447,7 @@ export async function assembleStoreReference(
     return { html: curatedReference || "", variantIds: [] }
   }
 
-  // ── PASSO B — Harmonizador: recebe SÓ o HTML COMPLETO das escolhidas.
+  // ── PASSO B — Montador: recebe SÓ o HTML COMPLETO das escolhidas e monta.
   const harmRow = await loadActiveAgentConfig("assembler")
   const harmConfig: AgentInvokeConfig = harmRow
     ? {

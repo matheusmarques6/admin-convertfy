@@ -95,7 +95,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
     { key: "candidates_json", desc: "Candidatos por seção (id+nome+descrição+metadados, SEM html)" },
   ],
-  // Passo B — Harmonizador: recebe o HTML das variantes ESCOLHIDAS e monta.
+  // Passo B — Montador: recebe o HTML das variantes ESCOLHIDAS e monta.
   assembler: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "nicho", desc: "Nicho do negócio" },
