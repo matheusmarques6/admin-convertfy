@@ -146,7 +146,10 @@ export async function invokeHtmlChain(
       userMessage,
       maxTokens: config.max_tokens,
       temperature: supportsTemperature ? config.temperature : undefined,
-      timeoutMs: 120_000,
+      // 120s cortava quando o reference_html (do Montador) é grande/complexo —
+      // o teste com Montador em gpt-5.4 estourou em 120,6s. 200s dá fôlego e
+      // ainda cabe no maxDuration=300 da rota (HTML 200 + QA 60 + overhead).
+      timeoutMs: 200_000,
       title: "Convertfy Admin HTML",
     })
     const html = postProcessHtml(or.text)
@@ -176,11 +179,11 @@ export async function invokeHtmlChain(
 
   // maxRetries: SDK ja faz backoff exponencial em 408/409/429/5xx.
   // Default e' 2 — explicitar pra documentar a politica de robustez.
-  // timeout: teto bem abaixo do maxDuration: 300 do route serverless.
+  // timeout: 200s — teto abaixo do maxDuration:300 do route, com folga pro QA.
   const client = new Anthropic({
     apiKey,
     maxRetries: 2,
-    timeout: 120_000,
+    timeout: 200_000,
   })
 
   const t0 = Date.now()
