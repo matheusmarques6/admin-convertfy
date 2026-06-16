@@ -160,12 +160,6 @@ export interface EmailFlow {
   // Joins (opcional, em queries com select)
   emails?: EmailFlowEmail[]
   assignee?: { id: string; name: string; avatar_url: string | null } | null
-  /**
-   * Marcado pelo client (filterFlowsByMode) quando, em modo preview, o flow
-   * não tem nenhum email-piloto liberado. UI renderiza como bloqueado visual
-   * sem oferecer "Desbloquear" (não é bloqueio real do contrato).
-   */
-  preview_locked?: boolean
 }
 
 export interface EmailFlowEmail {
@@ -184,11 +178,6 @@ export interface EmailFlowEmail {
   klaviyo_message_id: string | null
   created_at: string
   updated_at: string
-  /**
-   * Marcado em runtime (modo preview) quando o email nao esta na lista de
-   * pilotos. UI renderiza com cadeado e desabilita selecao. Nunca persistido.
-   */
-  preview_locked?: boolean
   // ── Telemetria Epic AE (migration 20260530_agent_email_generation.sql) ──
   // Todas opcionais porque rows legacy nao tem esses valores.
   generation_batch_id?: string | null
