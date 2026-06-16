@@ -75,18 +75,20 @@ export async function invokeAgent(
 }
 
 /**
- * Modelos de reasoning (GPT-5.x) geram "thinking tokens" cobrados como output
- * e NÃO aceitam `temperature`. Detecta pra o invoke omitir temperatura e
- * travar reasoning.effort.
+ * Modelos de reasoning (GPT-5.x) geram "thinking tokens" cobrados como output;
+ * o comportamento deles é regulado por `reasoning.effort`, não por
+ * `temperature` (que o OpenRouter dropa sem erro pra esses modelos). Detecta
+ * pra o invoke omitir a temperatura e travar o effort.
  */
 function isReasoningModel(model: string): boolean {
   return /gpt-5/i.test(model)
 }
 
 /**
- * Opus 4.7/4.8 e reasoning models (GPT-5.x) não aceitam `temperature` (direto
- * ou via OpenRouter). Cobre os dois formatos de id: `claude-opus-4-8` e
- * `anthropic/claude-opus-4.8`.
+ * Não enviamos `temperature` pra Opus 4.7/4.8 nem pra reasoning models
+ * (GPT-5.x): eles não a usam. Via OpenRouter ela é dropada silenciosamente
+ * (sem erro); via SDK Anthropic direto pode ser rejeitada — então omitimos
+ * nos dois caminhos. Cobre os ids `claude-opus-4-8` e `anthropic/claude-opus-4.8`.
  */
 function modelSupportsTemperature(model: string): boolean {
   return !/opus-4[.-](7|8)/i.test(model) && !isReasoningModel(model)

@@ -8,10 +8,11 @@
 --
 -- GPT-5.4 é modelo de REASONING (gera "thinking tokens" cobrados como output).
 -- Pra o custo ser previsível, o invoke (llm-invoke.ts) trava
--- `reasoning.effort='low'` e OMITE `temperature` (reasoning models não a
--- aceitam — mandaria 400). O id com "/" roteia pelo OpenRouter. O pricing
--- foi adicionado em telemetry.callback.ts pra a telemetria não cair no
--- fallback (Sonnet) e registrar custo errado.
+-- `reasoning.effort='low'` (≈20% do max_tokens p/ reasoning) e OMITE
+-- `temperature`: reasoning models não a usam e o OpenRouter a dropa sem erro,
+-- então o comportamento é regulado pelo effort, não pela temperatura. O id
+-- com "/" roteia pelo OpenRouter. O pricing foi adicionado em
+-- telemetry.callback.ts pra a telemetria não cair no fallback (Sonnet).
 --
 -- Requer OPENROUTER_API_KEY no ambiente. Idempotente.
 -- ============================================================
