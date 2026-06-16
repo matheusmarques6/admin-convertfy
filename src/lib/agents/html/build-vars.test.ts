@@ -30,7 +30,21 @@ function makeSupabaseMock(tables: Record<string, MockTableState>) {
     }
     return builder
   }
-  return { from: handler } as never
+  return {
+    from: handler,
+    // storage.from(bucket).createSignedUrl(path, ttl) — usado por
+    // pngImgTagFromUrl pra renovar a URL do logo pra 365d. Retorna uma URL
+    // fresca previsivel pro teste.
+    storage: {
+      from: () => ({
+        createSignedUrl: (path: string) =>
+          Promise.resolve({
+            data: { signedUrl: `https://storage.example/signed/${path}?token=fresh365` },
+            error: null,
+          }),
+      }),
+    },
+  } as never
 }
 
 const baseBrand: StoreBrandIdentity = {
@@ -185,22 +199,29 @@ describe("buildHtmlPromptVars", () => {
     })
   })
 
-  it("brand so com logo_main_png (sem SVG) → passa precheck, logo_svg vem como <img data:image/png;base64", async () => {
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: { get: () => "image/png" },
-      arrayBuffer: async () => pngBytes.buffer,
-    })
+  it("logo_main_png (signed URL do nosso bucket) → <img src> com URL renovada 365d, sem base64", async () => {
     const soPng = {
       ...baseBrand,
       logo_main_svg: null,
-      logo_main_png: "https://storage.example/logo.png",
+      logo_main_png:
+        "https://proj.supabase.co/storage/v1/object/sign/onboarding-visual-assets/stores/s1/brand/logo_main_png-123-logo.png?token=old7d",
     }
     const vars = await setup({ brand: soPng })
-    expect(vars.logo_svg).toContain('<img src="data:image/png;base64,')
-    expect(vars.logo_svg).toContain('iVBORw0KGgo=')
+    // Renova a signed URL (365d) em vez de embutir o PNG como base64.
+    expect(vars.logo_svg).toContain('<img src="https://storage.example/signed/')
+    expect(vars.logo_svg).toContain("stores/s1/brand/logo_main_png-123-logo.png")
+    expect(vars.logo_svg).not.toContain("data:image/png;base64")
+  })
+
+  it("logo_main_png fora do nosso bucket → fallback usa a URL armazenada direto", async () => {
+    const soPng = {
+      ...baseBrand,
+      logo_main_svg: null,
+      logo_main_png: "https://cdn.externo.com/logo.png",
+    }
+    const vars = await setup({ brand: soPng })
+    expect(vars.logo_svg).toContain('<img src="https://cdn.externo.com/logo.png"')
+    expect(vars.logo_svg).not.toContain("data:image/png;base64")
   })
 
   it("relaxedBrandCheck=true + brand sem cores nem logo → nao joga, logo_svg vazio", async () => {

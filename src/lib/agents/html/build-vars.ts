@@ -145,56 +145,77 @@ async function fetchLogoSvgInline(url: string | null | undefined): Promise<strin
   }
 }
 
+// Bucket e TTL da signed URL do logo. 365d espelha image.chain.ts (imagens
+// de produto): o arquivo do logo e' permanente no Storage; so' a URL
+// armazenada (7d) expira, entao renovamos pra 1 ano na hora de montar o HTML.
+const LOGO_BUCKET = "onboarding-visual-assets"
+const LOGO_SIGNED_URL_TTL = 365 * 24 * 60 * 60
+
 /**
- * Fetch do PNG e conversao pra data URI inline (base64). Usado quando
- * a loja so subiu logo PNG (sem SVG). Inline base64 funciona em todos
- * os clients modernos (Gmail, Outlook, Apple Mail) e elimina dependencia
- * de URL remota — image hotlinking e bloqueado por padrao em muitos
- * clients de email.
- *
- * Warning em logs se PNG > 80KB: Gmail clipa mensagens em ~102KB total,
- * e base64 cresce ~33%. Logo > 80KB pode comer espaco do resto do email.
+ * Extrai o path interno do Storage de uma signed URL do Supabase.
+ * Formato: .../object/sign/{bucket}/{path}?token=... → retorna {path}.
+ * null se a URL nao for uma signed URL do nosso bucket.
  */
-async function fetchPngAsDataUriImg(url: string): Promise<string> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 10_000)
+function extractStoragePath(signedUrl: string): string | null {
+  const marker = `/object/sign/${LOGO_BUCKET}/`
+  const i = signedUrl.indexOf(marker)
+  if (i === -1) return null
+  const rest = signedUrl.slice(i + marker.length).split("?")[0]
+  if (!rest) return null
   try {
-    const res = await fetch(url, { signal: controller.signal })
-    if (!res.ok) {
-      log.warn("logo_png.fetch_failed", { url, status: res.status })
-      return ""
-    }
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.length > 80 * 1024) {
-      log.warn("logo_png.too_large_for_gmail", { url, bytes: buf.length })
-    }
-    const b64 = buf.toString("base64")
-    return `<img src="data:image/png;base64,${b64}" alt="" style="display:block;max-width:100%;height:auto;" />`
-  } catch (err) {
-    log.warn("logo_png.fetch_failed", {
-      url,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return ""
-  } finally {
-    clearTimeout(timer)
+    return decodeURIComponent(rest)
+  } catch {
+    return rest
   }
 }
 
 /**
- * Decide o formato do markup do logo: SVG inline se disponivel,
- * <img> com data URI base64 se so PNG, string vazia se nenhum.
- * A var `logo_svg` no contract aceita qualquer markup HTML.
+ * Logo PNG como `<img src="url">` — referencia por LINK, nao base64 inline.
+ *
+ * O output do HTML e' um mock pro Figma (renderizado em browser), entao URL
+ * funciona; embutir o PNG como base64 inflava o prompt em ~330k tokens (um
+ * PNG de 1MB = ~$5/geracao). O arquivo e' permanente no Storage; so' a signed
+ * URL armazenada (7d) expira, entao renovamos pra 365d na hora (mesmo TTL das
+ * imagens de produto). Sem download do arquivo. Fallback defensivo: se o path
+ * nao for extraivel ou o createSignedUrl falhar, usa a URL armazenada direto.
+ */
+async function pngImgTagFromUrl(
+  storedUrl: string,
+  admin: SupabaseClient,
+): Promise<string> {
+  let src = storedUrl
+  const path = extractStoragePath(storedUrl)
+  if (path) {
+    try {
+      const { data } = await admin.storage
+        .from(LOGO_BUCKET)
+        .createSignedUrl(path, LOGO_SIGNED_URL_TTL)
+      if (data?.signedUrl) src = data.signedUrl
+    } catch (err) {
+      log.warn("logo_png.signed_url_failed", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  return `<img src="${src}" alt="" style="display:block;max-width:100%;height:auto;" />`
+}
+
+/**
+ * Decide o formato do markup do logo: SVG inline se disponivel, `<img src>`
+ * (URL renovada pra 365d) se so PNG, string vazia se nenhum. A var `logo_svg`
+ * no contract aceita qualquer markup HTML.
  */
 async function fetchLogoMarkup(
   brand: StoreBrandIdentity | null,
+  admin: SupabaseClient,
 ): Promise<string> {
   if (!brand) return ""
   if (brand.logo_main_svg) {
     return await fetchLogoSvgInline(brand.logo_main_svg)
   }
   if (brand.logo_main_png) {
-    return await fetchPngAsDataUriImg(brand.logo_main_png)
+    return await pngImgTagFromUrl(brand.logo_main_png, admin)
   }
   return ""
 }
@@ -334,8 +355,8 @@ export async function buildHtmlPromptVars(
     brand?.colors_secondary ?? [],
   )
 
-  // ── Logo markup (SVG inline OU PNG como data URI img) ──────────────
-  const logoSvg = await fetchLogoMarkup(brand)
+  // ── Logo markup (SVG inline OU PNG como <img src> renovado 365d) ───
+  const logoSvg = await fetchLogoMarkup(brand, admin)
 
   // ── Locale ─────────────────────────────────────────────────────────
   // Normaliza via languageLabelToCode (aceita "Portugues" -> "pt-BR",
