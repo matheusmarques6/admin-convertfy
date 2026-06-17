@@ -110,6 +110,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
     { key: "reference_template_html", desc: "Referência curada do flow (guia, não copiar)" },
     { key: "chosen_html_json", desc: "HTML completo das variantes escolhidas (passo A)" },
+    { key: "missing_blocks_json", desc: "Blocos sem variante na biblioteca (section+label) — puxar do reference padrão" },
   ],
   // Central de Campanhas — vars renderizadas por suggestion-engine.service
   campaign_suggestion: [
