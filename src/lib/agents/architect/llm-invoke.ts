@@ -14,7 +14,12 @@ import { logger } from "@/lib/logger"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
-import { isInsufficientCreditsMessage } from "../openrouter-invoke"
+import {
+  isInsufficientCreditsMessage,
+  OpenRouterHttpError,
+  parseOpenRouterBody,
+  withOpenRouterRetry,
+} from "../openrouter-invoke"
 
 const log = logger.child("ArchitectLLM")
 
@@ -163,8 +168,30 @@ async function invokeViaOpenRouter(
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error("OPENROUTER_API_KEY nao configurada")
 
+  return withOpenRouterRetry(
+    (attempt) => callOnceArchitect(config, userMessage, apiKey, attempt),
+    {
+      onRetry: (err, n) =>
+        log.warn("openrouter.retry", {
+          model: config.model,
+          attempt: n,
+          errorName: (err as Error)?.name,
+          errorType: (err as { errorType?: string })?.errorType,
+          message: (err as Error)?.message,
+        }),
+    },
+  )
+}
+
+async function callOnceArchitect(
+  config: AgentInvokeConfig,
+  userMessage: string,
+  apiKey: string,
+  attempt: number,
+): Promise<InvokeResult> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), INVOKE_TIMEOUT_MS)
+  const t0 = Date.now()
   try {
     const body: Record<string, unknown> = {
       model: config.model,
@@ -209,18 +236,26 @@ async function invokeViaOpenRouter(
           )
           .catch(() => {})
       }
-      throw new Error(`OpenRouter HTTP ${resp.status}: ${errBody.slice(0, 200)}`)
+      throw new OpenRouterHttpError({
+        status: resp.status,
+        snippet: errBody.slice(0, 200),
+      })
     }
 
-    const data = (await resp.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
-      usage?: { prompt_tokens?: number; completion_tokens?: number }
-    }
-    const raw = (data.choices?.[0]?.message?.content ?? "").trim()
+    const rawBody = await resp.text()
+    const ms = Date.now() - t0
+    const parsed = parseOpenRouterBody(rawBody, { status: resp.status, ms })
+    log.info("openrouter.ok", {
+      model: config.model,
+      attempt,
+      ms,
+      tokensIn: parsed.tokensInput,
+      tokensOut: parsed.tokensOutput,
+    })
     return {
-      raw,
-      tokensInput: data.usage?.prompt_tokens ?? 0,
-      tokensOutput: data.usage?.completion_tokens ?? 0,
+      raw: parsed.text,
+      tokensInput: parsed.tokensInput,
+      tokensOutput: parsed.tokensOutput,
     }
   } catch (e) {
     if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {
