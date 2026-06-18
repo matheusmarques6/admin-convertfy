@@ -19,6 +19,7 @@ import {
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
+import { loadEffectiveBlueprint } from "./blueprint-loader"
 
 const log = logger.child("BlueprintGenerator")
 
@@ -159,6 +160,33 @@ export function blueprintFromDefault(
   }
 }
 
+/**
+ * Fallback do blueprint global curado (`email_blueprints`): reusa a cascata
+ * loadEffectiveBlueprint com storeId=null (pula a camada store e vai direto ao
+ * global). É a fonte curada que já existe — preferível ao DEFAULT_BLUEPRINTS
+ * in-code (que é só um espelho). null se o global não cobrir o flow×email.
+ */
+async function blueprintFromGlobal(
+  flowType: string,
+  emailNumber: number,
+): Promise<GeneratedBlueprint | null> {
+  const admin = createAdminClient()
+  const bp = await loadEffectiveBlueprint(admin, null, flowType, emailNumber)
+  if (!bp || !Array.isArray(bp.blocks) || bp.blocks.length === 0) return null
+  return {
+    objective: bp.objective ?? "",
+    messaging: bp.messaging ?? "",
+    subject_hint: bp.subject_hint ?? null,
+    blocks: (bp.blocks as unknown as GeneratedBlock[]).map((b) => ({
+      type: b.type,
+      label: b.label,
+      purpose: b.purpose,
+      needs_image: b.needs_image === true || IMAGE_BLOCKS.has(b.type),
+      image_brief: b.image_brief ?? null,
+    })),
+  }
+}
+
 // ── Orquestração (I/O) ─────────────────────────────────────────────
 
 export interface GenerateBlueprintInput {
@@ -256,9 +284,22 @@ export async function generateStoreBlueprint(
     })
   }
 
-  // Fallback: DEFAULT_BLUEPRINTS in-code.
+  // Fallback nível 1: blueprint global curado (email_blueprints) do mesmo
+  // flow×email — a fonte curada que já existe, preferível ao in-code.
+  let fallbackSource: "global_blueprint" | "default_incode" | "minimal" | null =
+    null
+  if (!blueprint) {
+    blueprint = await blueprintFromGlobal(input.flowType, input.emailNumber)
+    if (blueprint) fallbackSource = "global_blueprint"
+    source = "manual"
+    model = null
+  }
+
+  // Fallback nível 2: DEFAULT_BLUEPRINTS in-code (espelho do global; cobre o
+  // caso raro do global não ter o flow×email).
   if (!blueprint) {
     blueprint = blueprintFromDefault(input.flowType, input.emailNumber)
+    if (blueprint) fallbackSource = "default_incode"
     source = "manual"
     model = null
   }
@@ -275,6 +316,7 @@ export async function generateStoreBlueprint(
         { type: "footer", label: "Rodapé", purpose: "", needs_image: false },
       ],
     }
+    fallbackSource = "minimal"
     source = "manual"
     model = null
   }
@@ -303,6 +345,8 @@ export async function generateStoreBlueprint(
     parsedOutput: {
       blocks: blueprint.blocks.length,
       source,
+      // Fonte do fallback registrada na página de Logs de geração.
+      fallback_source: fallbackSource,
       attempted_model: config.model,
       invoke_error: invokeError,
     },

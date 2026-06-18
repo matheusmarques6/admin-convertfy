@@ -103,13 +103,16 @@ beforeEach(() => {
   generateBlueprintAndReference.mockReset()
   isArchitectConfigured.mockReset().mockResolvedValue(true)
   dispatchEmailCopyWebhook.mockReset().mockResolvedValue({ ok: true, flow_count: 1, email_count: 2 })
-  // por padrão, "gerar" persiste a reference (Montador genuíno)
+  // por padrão, "gerar" persiste a reference (Montador genuíno → source 'llm')
   generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
     if (h.refControl.persistOnRun) {
       h.tables.store_email_references.push({
         store_id: input.storeId, flow_type: input.flowType, email_number: input.emailNumber,
       })
+      return { referenceSource: "llm" }
     }
+    // sem persistir e sem global curado → 'none' (conta tentativa → failed)
+    return { referenceSource: "none" }
   })
 })
 
@@ -188,6 +191,18 @@ describe("processDispatchJobs", () => {
     expect((job.emails as Array<{ architect: string }>).every((e) => e.architect === "failed")).toBe(true)
     // 2 emails × 2 tentativas (MAX_ARCHITECT_ATTEMPTS default)
     expect(generateBlueprintAndReference).toHaveBeenCalledTimes(4)
+  })
+
+  it("Architect cai no global (referenceSource='global') → 'done' sem re-tentar", async () => {
+    generateBlueprintAndReference.mockReset().mockResolvedValue({ referenceSource: "global" })
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const res = await processDispatchJobs()
+    expect(res.done).toBe(true)
+    expect(res.dispatched).toBe(true)
+    // global = settled na 1ª tentativa, sem retry → 1 chamada por email (2 emails)
+    expect(generateBlueprintAndReference).toHaveBeenCalledTimes(2)
+    const job = h.tables.email_dispatch_jobs[0]
+    expect((job.emails as Array<{ architect: string }>).every((e) => e.architect === "done")).toBe(true)
   })
 
   it("email com reference pré-existente ('done') não roda LLM; só o pendente roda", async () => {

@@ -107,13 +107,14 @@ beforeEach(() => {
 })
 
 describe("assembleStoreReference — 2 passos (escolha + harmonização)", () => {
-  it("escolhe (passo A) e harmoniza (passo B) → persiste a reference", async () => {
+  it("escolhe (passo A) e harmoniza (passo B) → persiste a reference (source=llm)", async () => {
     invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
     const res = await assembleStoreReference(baseInput)
     expect(invokeAgent).toHaveBeenCalledTimes(2)
     expect(h.upsertSpy).toHaveBeenCalledTimes(1)
     expect(res.html).toContain("</html>")
     expect(res.variantIds).toEqual(["v1"])
+    expect(res.source).toBe("llm")
   })
 
   it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {
@@ -131,24 +132,35 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(chooserVars.candidates_json).not.toContain("<div>")
   })
 
-  it("passo B falha (erro) → persiste o concat REAL das escolhidas", async () => {
+  it("passo B falha + há reference global curado → usa o global, NÃO persiste (source=global)", async () => {
     invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockRejectedValueOnce(new Error("timeout"))
-    const res = await assembleStoreReference(baseInput)
-    expect(h.upsertSpy).toHaveBeenCalledTimes(1) // conteúdo real da biblioteca → persiste
-    expect(res.html).toContain("hero")
-    expect(res.variantIds).toEqual(["v1"])
+    const curated = "<!DOCTYPE html><html><body><div>CURADO</div></body></html>"
+    const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
+    expect(h.upsertSpy).not.toHaveBeenCalled() // fallback não persiste
+    expect(res.html).toBe(curated) // cai no HTML reference global
+    expect(res.source).toBe("global")
   })
 
-  it("passo B com output não-HTML → persiste o concat REAL", async () => {
+  it("passo B falha + SEM global curado → html vazio, NÃO persiste (source=none)", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockRejectedValueOnce(new Error("timeout"))
+    const res = await assembleStoreReference(baseInput) // referenceTemplateHtml = ""
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+    expect(res.html).toBe("")
+    expect(res.source).toBe("none")
+  })
+
+  it("passo B com output não-HTML + global curado → usa o global, NÃO persiste (source=global)", async () => {
     invokeAgent
       .mockResolvedValueOnce(CHOICE_V1)
       .mockResolvedValueOnce({ raw: "desculpa, não consegui", tokensInput: 5, tokensOutput: 5 })
-    const res = await assembleStoreReference(baseInput)
-    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
-    expect(res.variantIds).toEqual(["v1"])
+    const curated = "<!DOCTYPE html><html><body><div>CURADO</div></body></html>"
+    const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+    expect(res.html).toBe(curated)
+    expect(res.source).toBe("global")
   })
 
-  it("passo A sem escolha válida → top-1 da biblioteca (ainda persiste)", async () => {
+  it("passo A sem escolha válida → top-1 da biblioteca; passo B OK → persiste (source=llm)", async () => {
     // passo A devolve lixo (não-JSON) → resolveChoices cai no top-1 da seção.
     invokeAgent
       .mockResolvedValueOnce({ raw: "nada de json", tokensInput: 1, tokensOutput: 1 })
@@ -156,9 +168,10 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     const res = await assembleStoreReference(baseInput)
     expect(h.upsertSpy).toHaveBeenCalledTimes(1)
     expect(res.variantIds).toEqual(["v1"])
+    expect(res.source).toBe("llm")
   })
 
-  it("biblioteca vazia → NÃO chama LLM nem persiste; devolve o curado", async () => {
+  it("biblioteca vazia + global curado → NÃO chama LLM nem persiste; devolve o global (source=global)", async () => {
     h.variants = []
     const curated = "<!DOCTYPE html><html><body><div>curado</div></body></html>"
     const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
@@ -166,13 +179,15 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(h.upsertSpy).not.toHaveBeenCalled()
     expect(res.html).toBe(curated)
     expect(res.variantIds).toEqual([])
+    expect(res.source).toBe("global")
   })
 
-  it("biblioteca vazia e sem curado → html vazio, sem persistir", async () => {
+  it("biblioteca vazia e sem global → html vazio, sem persistir (source=none)", async () => {
     h.variants = []
     const res = await assembleStoreReference(baseInput)
     expect(invokeAgent).not.toHaveBeenCalled()
     expect(h.upsertSpy).not.toHaveBeenCalled()
     expect(res.html).toBe("")
+    expect(res.source).toBe("none")
   })
 })

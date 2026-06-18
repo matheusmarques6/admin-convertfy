@@ -16,7 +16,10 @@ import { mapTomVozToMood } from "../image/mood-mapping"
 import { loadGlobalReferenceTemplate } from "../reference-template"
 import { resolveStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
-import { assembleStoreReference } from "./component-assembler.service"
+import {
+  assembleStoreReference,
+  type ReferenceSource,
+} from "./component-assembler.service"
 
 const log = logger.child("ArchitectGenerate")
 
@@ -57,7 +60,7 @@ export async function isArchitectConfigured(): Promise<boolean> {
 
 export async function generateBlueprintAndReference(
   input: GenerateArchitectInput,
-): Promise<void> {
+): Promise<{ referenceSource: ReferenceSource }> {
   const admin = createAdminClient()
   const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml] = await Promise.all([
     admin
@@ -119,7 +122,7 @@ export async function generateBlueprintAndReference(
   // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
   // (categoria + rótulo original de cada bloco, na ordem).
   const structure = resolveStructure(outline)
-  const { html } = await assembleStoreReference({
+  const { html, source } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
     emailNumber: input.emailNumber,
@@ -157,6 +160,8 @@ export async function generateBlueprintAndReference(
     pesquisa,
     referenceHtml: html ?? "",
   })
+
+  return { referenceSource: source }
 }
 
 /**

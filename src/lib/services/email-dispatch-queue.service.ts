@@ -28,6 +28,7 @@ import {
   generateBlueprintAndReference,
   isArchitectConfigured,
 } from "@/lib/agents/architect/generate.service"
+import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
 import {
   dispatchEmailCopyWebhook,
   type DispatchEmailCopyOptions,
@@ -307,18 +308,19 @@ async function heartbeat(admin: SupabaseClient, job: JobRow): Promise<void> {
 
 /** Roda o Architect de um email e devolve o novo status settled/pending. */
 async function runArchitectForEmail(
-  admin: SupabaseClient,
   job: JobRow,
   e: JobEmail,
 ): Promise<ArchitectStatus> {
+  let referenceSource: ReferenceSource | null = null
   try {
-    await generateBlueprintAndReference({
+    const res = await generateBlueprintAndReference({
       storeId: job.store_id,
       flowType: e.flow_type,
       emailNumber: e.email_number,
       batchId: job.id,
       triggeredBy: job.triggered_by ?? undefined,
     })
+    referenceSource = res.referenceSource
   } catch (err) {
     log.warn("architect.threw", {
       jobId: job.id,
@@ -327,16 +329,11 @@ async function runArchitectForEmail(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  // Settled = reference foi de fato persistida (Montador genuíno). Fallback
-  // não persiste → ref ausente → conta tentativa; esgotou → 'failed' (global).
-  const { data: ref } = await admin
-    .from("store_email_references")
-    .select("flow_type")
-    .eq("store_id", job.store_id)
-    .eq("flow_type", e.flow_type)
-    .eq("email_number", e.email_number)
-    .maybeSingle()
-  if (ref) return "done"
+  // Settled quando o reference efetivo já existe: "llm" (Montador gerou e
+  // persistiu em store_email_references) ou "global" (caiu no template curado
+  // de email_reference_templates — intencional, não re-tenta). "none" (sem LLM
+  // e sem global curado) ou exceção → conta tentativa; esgotou → 'failed'.
+  if (referenceSource === "llm" || referenceSource === "global") return "done"
   return e.attempts + 1 >= MAX_ARCHITECT_ATTEMPTS ? "failed" : "pending"
 }
 
@@ -369,7 +366,7 @@ export async function processDispatchJobs(): Promise<{
     const batch = pending.slice(0, ARCHITECT_BATCH)
     await Promise.all(
       batch.map(async (e) => {
-        const next = await runArchitectForEmail(admin, job, e)
+        const next = await runArchitectForEmail(job, e)
         e.attempts += 1
         e.architect = next
         architectRan += 1

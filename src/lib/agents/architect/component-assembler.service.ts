@@ -230,23 +230,6 @@ export function assembleReferenceHtml(chosen: EmailComponentVariant[]): string {
   return referenceShell(body)
 }
 
-/**
- * Fallback determinístico ORDENADO (passo B falhou): mantém TODAS as posições.
- * Variante → seu HTML real. Bloco sem variante → placeholder mínimo com a nota
- * obrigatória (a posição nunca some). Sem extração do reference aqui — isso é
- * trabalho do LLM (passo B); no fallback determinístico fica o placeholder.
- */
-export function assembleReferenceHtmlOrdered(slots: AssemblySlot[]): string {
-  const body = slots
-    .map((s) =>
-      s.kind === "variant"
-        ? `  <!-- ${s.variant.block_type}: ${s.variant.name} -->\n  ${s.variant.html.trim()}`
-        : `  ${missingBlockNote(s.section)}\n  <div data-block="${s.section}" style="padding:24px;text-align:center;color:#999">{{${s.section.toUpperCase()}}}</div>`,
-    )
-    .join("\n")
-  return referenceShell(body)
-}
-
 /** Extrai o documento HTML do output do LLM (remove fences + prosa ao redor). */
 export function extractHtml(raw: string): string {
   let s = raw.replace(/```(?:html)?\s*/gi, "").replace(/```/g, "").trim()
@@ -299,9 +282,15 @@ export interface AssembleReferenceInput {
   structure: OutlineSection[]
 }
 
+export type ReferenceSource = "llm" | "global" | "none"
+
 export interface AssembleReferenceResult {
   html: string | null
   variantIds: string[]
+  // Fonte do reference HTML deste run — informa o dispatch (settle) e a página
+  // de Logs de geração: "llm" = Montador gerou; "global" = caiu no template
+  // curado (email_reference_templates); "none" = sem LLM e sem global curado.
+  source: ReferenceSource
 }
 
 /** Carrega as variantes ativas agrupadas por block_type. */
@@ -360,7 +349,11 @@ export async function assembleStoreReference(
   // consumidor (build-vars) cai no template global. Devolve o curado (se houver)
   // só pro Blueprint do mesmo run ter estrutura.
   if (candidatesByBlock.every((b) => b.length === 0)) {
-    return { html: curatedReference || "", variantIds: [] }
+    return {
+      html: curatedReference || "",
+      variantIds: [],
+      source: curatedReference ? "global" : "none",
+    }
   }
 
   // ── PASSO A — Curador: escolhe 1 variant_id por seção SÓ pela descrição.
@@ -476,7 +469,11 @@ export async function assembleStoreReference(
   // consumidor (build-vars) cai no template global. Devolve o curado (se
   // houver) só pro Blueprint do mesmo run ter estrutura.
   if (chosen.length === 0) {
-    return { html: curatedReference || "", variantIds: [] }
+    return {
+      html: curatedReference || "",
+      variantIds: [],
+      source: curatedReference ? "global" : "none",
+    }
   }
 
   // ── PASSO B — Montador: recebe SÓ o HTML COMPLETO das escolhidas e monta.
@@ -565,18 +562,39 @@ export async function assembleStoreReference(
     })
   }
 
-  // Fallback (passo B LLM falhou): monta ORDENADO — HTML real das escolhidas +
-  // placeholder com a nota nos blocos sem variante (nenhuma posição some). Ainda
-  // é conteúdo curado da biblioteca (não degradado) → persistimos mesmo assim.
-  if (!usedLlm) html = assembleReferenceHtmlOrdered(slots)
-
   const variantIds = chosen.map((v) => v.id)
-  await upsertStoreReference(
-    input,
-    html,
-    variantIds,
-    usedLlm ? harmConfig.model : null,
-  )
+
+  // Fonte do reference deste run. "llm" = Montador gerou HTML válido. Caso
+  // contrário (timeout/erro/output não-HTML), NÃO geramos HTML degradado nem
+  // persistimos: caímos no HTML reference global curado
+  // (email_reference_templates) do mesmo flow×email, que o consumidor
+  // (build-vars) já resolve via cascata store→global. Não sobrescrever
+  // store_email_references preserva um reference bom de geração anterior e
+  // deixa o global vencer (era a intenção já documentada no dispatch).
+  const source: ReferenceSource = usedLlm
+    ? "llm"
+    : curatedReference
+      ? "global"
+      : "none"
+
+  if (usedLlm) {
+    await upsertStoreReference(input, html, variantIds, harmConfig.model)
+  } else {
+    // html devolvido = o global curado (ou "" se não houver) — usado só pelo
+    // Blueprint do mesmo run pra extrair a estrutura; NÃO é persistido.
+    html = curatedReference
+    const logCtx = {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      error: harmError,
+    }
+    if (source === "global") {
+      log.info("assembler.fallback_global_reference", logCtx)
+    } else {
+      log.warn("assembler.fallback_no_global_reference", logCtx)
+    }
+  }
 
   await logGenerationRun({
     storeId: input.storeId,
@@ -595,7 +613,9 @@ export async function assembleStoreReference(
     rawOutput: harmRaw.slice(0, 40000),
     parsedOutput: {
       used_llm: usedLlm,
-      fallback: usedLlm ? null : "ordered_concat",
+      // Fonte registrada na página de Logs de geração (detalhe do run).
+      reference_source: source,
+      global_available: curatedReference.length > 0,
       html_chars: html.length,
       variant_ids: variantIds.length,
       missing_blocks: missingCount,
@@ -608,7 +628,7 @@ export async function assembleStoreReference(
     durationMs: Date.now() - t1,
   })
 
-  return { html, variantIds }
+  return { html, variantIds, source }
 }
 
 async function upsertStoreReference(
