@@ -24,6 +24,7 @@ import {
 } from "recharts"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
 
 interface Aggregate {
   runs: number
@@ -74,6 +75,18 @@ const SOURCE_LABELS: Record<string, string> = {
   campaign_central: "Campanhas",
   crm: "CRM",
   standalone: "Avulso",
+}
+
+/**
+ * Rótulo amigável do feature. No pipeline de emails o `feature` é o
+ * `agent_type` cru (ex.: `assembler_chooser`) — mapeia pro nome de exibição
+ * (Curador, Montador, Blueprint…) via AGENT_VISUAL. Outras sources mantêm o cru.
+ */
+function featureLabel(feature: string, source: string): string {
+  if (source === "email_generation") {
+    return AGENT_VISUAL[feature as PipelineAgentKey]?.name ?? feature
+  }
+  return feature
 }
 
 function usd(cents: number): string {
@@ -230,7 +243,7 @@ export function AiUsageDashboard() {
                     className="border-b border-slate-50 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.02]"
                   >
                     <td className={`${TD_CLASS} font-medium text-slate-900 dark:text-white`}>
-                      {f.feature}
+                      {featureLabel(f.feature, f.source)}
                     </td>
                     <td className={TD_CLASS}>{SOURCE_LABELS[f.source] ?? f.source}</td>
                     <td className={TD_CLASS}>{f.runs.toLocaleString("pt-BR")}</td>
@@ -322,7 +335,7 @@ export function AiUsageDashboard() {
                       })}
                     </td>
                     <td className={`${TD_CLASS} font-medium text-slate-900 dark:text-white`}>
-                      {r.feature}
+                      {featureLabel(r.feature, r.source)}
                     </td>
                     <td className={`${TD_CLASS} font-mono text-[11px]`}>{r.model ?? "—"}</td>
                     <td className={TD_CLASS}>

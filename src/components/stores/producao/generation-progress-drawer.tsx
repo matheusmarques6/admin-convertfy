@@ -3,6 +3,28 @@
 import { useEffect } from "react"
 import { X, CheckCircle2, AlertCircle, Loader2, ExternalLink } from "lucide-react"
 import { useGenerationStatus } from "@/hooks/use-generation-status"
+import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
+
+/** Agrega o custo (cents) e tokens dos runs por agente, em ordem de custo desc. */
+function costByAgent(
+  runs: Array<{ agent: string; cost_cents: number | null; tokens_input: number | null; tokens_output: number | null }> | undefined,
+): Array<{ agent: string; label: string; cents: number; tokens: number }> {
+  const acc = new Map<string, { cents: number; tokens: number }>()
+  for (const r of runs ?? []) {
+    const cur = acc.get(r.agent) ?? { cents: 0, tokens: 0 }
+    cur.cents += Number(r.cost_cents ?? 0)
+    cur.tokens += (r.tokens_input ?? 0) + (r.tokens_output ?? 0)
+    acc.set(r.agent, cur)
+  }
+  return Array.from(acc.entries())
+    .map(([agent, v]) => ({
+      agent,
+      label: AGENT_VISUAL[agent as PipelineAgentKey]?.name ?? agent,
+      cents: v.cents,
+      tokens: v.tokens,
+    }))
+    .sort((a, b) => b.cents - a.cents)
+}
 
 interface GenerationProgressDrawerProps {
   batchId: string | null
@@ -225,6 +247,50 @@ export function GenerationProgressDrawer({
               value={summary.tokensTotal.toLocaleString("pt-BR")}
             />
           </div>
+
+          {/* Custo POR AGENTE — quanto cada agente (Curador, Montador…) gastou */}
+          {(() => {
+            const perAgent = costByAgent(data?.runs)
+            if (perAgent.length === 0) return null
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--crm-gray-500, #6b7280)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    marginBottom: 6,
+                  }}
+                >
+                  Custo por agente
+                </div>
+                {perAgent.map((a) => (
+                  <div
+                    key={a.agent}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      fontSize: 12,
+                      padding: "3px 0",
+                      color: "var(--crm-gray-700, #374151)",
+                    }}
+                  >
+                    <span>{a.label}</span>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                      ${(a.cents / 100).toFixed(4)}
+                      <span style={{ color: "var(--crm-gray-400, #9ca3af)", marginLeft: 6 }}>
+                        {a.tokens.toLocaleString("pt-BR")} tok
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
           <a
             href={`/admin/tools/email-generation-logs?batch=${batchId}`}
             style={{

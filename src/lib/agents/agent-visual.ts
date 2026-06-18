@@ -1,5 +1,5 @@
 /**
- * Identidade visual dos 7 agentes do pipeline AE + helpers de label.
+ * Identidade visual dos agentes do pipeline AE + helpers de label.
  * Fonte ÚNICA — UI da página de logs (`/admin/settings/email-generation-logs`)
  * e qualquer outro consumidor que precise renderizar agente de forma consistente.
  *
@@ -9,6 +9,7 @@
 export type PipelineAgentKey =
   | "copy"
   | "blueprint"
+  | "assembler_chooser"
   | "assembler"
   | "image"
   | "html"
@@ -47,9 +48,17 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#C7CDEF",
     kind: "texto",
   },
+  assembler_chooser: {
+    name: "Curador",
+    desc: "Escolhe a variante de cada bloco pela descrição (passo A)",
+    color: "#4E62D8",
+    bg: "#EEF0FB",
+    border: "#C7CDEF",
+    kind: "texto",
+  },
   assembler: {
-    name: "Assembler",
-    desc: "Gera HTML estrutural de referência (sem copy real)",
+    name: "Montador",
+    desc: "Monta o HTML reusando as variantes escolhidas (passo B)",
     color: "#2137B6",
     bg: "#EEF0FB",
     border: "#C7CDEF",
@@ -105,10 +114,11 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
 }
 
-/** Ordem canônica de exibição dos 7 agentes operacionais (sem 'seed'). */
+/** Ordem canônica de exibição dos agentes operacionais (sem 'seed'). */
 export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "copy",
   "blueprint",
+  "assembler_chooser",
   "assembler",
   "image",
   "html",

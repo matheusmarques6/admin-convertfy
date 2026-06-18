@@ -1,11 +1,5 @@
 import useSWR from "swr"
 
-interface AgentStatus {
-  agent: string
-  status: string
-  errorMessage: string | null
-}
-
 interface BatchStatusData {
   batchId: string
   currentBatchId?: string
@@ -18,6 +12,19 @@ interface BatchStatusData {
     totalDuration: number
     tokensTotal: number
   }
+  // Runs individuais (1 por execução de agente) — usados pra quebra de
+  // custo por agente no drawer. O endpoint sempre devolve; o tipo declara.
+  runs?: Array<{
+    agent: string
+    status: string
+    error_message: string | null
+    duration_ms: number | null
+    tokens_input: number | null
+    tokens_output: number | null
+    cost_cents: number | null
+    batch_id: string | null
+    created_at: string | null
+  }>
   // Bug 3: campos do email_flow_emails row pra UI detectar terminal
   // status (failed/ready) e calcular stale warning antes do watchdog
   // marcar como failed em 10min.

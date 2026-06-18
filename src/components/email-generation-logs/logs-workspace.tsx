@@ -943,7 +943,7 @@ function AgentSummary({ payload }: { payload: Payload }) {
             fontFamily: F.sans,
           }}
         >
-          Total · 7 agentes
+          Total · {PIPELINE_AGENT_ORDER.length} agentes
         </span>
         <div style={{ display: "flex", gap: 26, ...TNUM }}>
           <span style={{ fontSize: 12.5, color: C.g600, fontFamily: F.sans }}>
@@ -1520,7 +1520,7 @@ export function LogsWorkspace() {
                 fontFamily: F.sans,
               }}
             >
-              Acompanhe execuções, custo e métricas dos 7 agentes do pipeline de geração.
+              Acompanhe execuções, custo e métricas dos agentes do pipeline de geração.
             </div>
           </div>
           <div
