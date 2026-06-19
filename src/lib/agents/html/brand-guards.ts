@@ -26,6 +26,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { StoreBrandIdentity } from "@/types/email-workspace"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("BrandGuards")
 
 // Captura `{{BRAND_NAME}}`, `{{ brand }}`, `{{store_name}}`, etc.
 // Case-insensitive pra cobrir variantes do n8n.
@@ -72,44 +75,39 @@ export class BrandIncompleteError extends Error {
 }
 
 /**
- * Verifica pre-requisitos de brand antes de invocar o HTML Agent.
- * Lanca BrandIncompleteError com lista de campos faltantes — sem isso,
- * o HTML Agent gera com defaults e o output sai inutilizavel.
+ * Inspeciona os pre-requisitos de brand antes de invocar o HTML Agent e
+ * apenas LOGA o que estiver faltando — NAO bloqueia mais a geração.
  *
- * Criterios minimos (produção):
- *   - brand identity existe (row em `store_brand_identity`)
- *   - pelo menos 1 cor (primary OU secondary)
- *   - pelo menos 1 logo (SVG OU PNG — UX sobe so um dos dois)
+ * Decisão do owner ("usa os dados que tem"): o email deve sempre gerar com o
+ * que a loja já possui, degradando o resto pra defaults. A máquina de
+ * degradação já existe em `buildHtmlPromptVars` (logo após esta chamada):
+ *   - cores ausentes/vazias → defaults via `deriveColorRoles`
+ *   - logo ausente → markup vazio via `fetchLogoMarkup`
+ *   - fontes ausentes → DEFAULT_FONT_*
  *
- * Modo `relaxed` (TestTab): pula validacao de partials. So falha se a
- * row de brand identity for completamente ausente — cores e logo
- * faltando degradam pra defaults (cores via deriveColorRoles, logo
- * via string vazia no markup).
+ * Mantida a assinatura (inclui `opts.relaxed`) por compatibilidade com os
+ * callers; o parâmetro não altera mais o comportamento. Não lança
+ * `BrandIncompleteError` — a classe segue exportada para compat.
+ *
+ * GATE 2 (`isBrandConfirmed`, abaixo) continua decidindo QUANDO a fase 2 roda
+ * em produção; este precheck não é mais um portão, só observabilidade.
  */
 export function precheckBrandReady(
   brand: StoreBrandIdentity | null,
   storeId: string | null,
-  opts: { relaxed?: boolean } = {},
+  _opts: { relaxed?: boolean } = {},
 ): void {
-  if (!brand) {
-    throw new BrandIncompleteError(
-      `Loja sem brand identity. Crie uma em /admin/stores/${storeId ?? "{id}"}/identity.`,
-      { missing: ["brand_identity"], storeId },
-    )
-  }
-  if (opts.relaxed) return
-
   const missing: string[] = []
-  const totalColors =
-    (brand.colors_primary?.length ?? 0) + (brand.colors_secondary?.length ?? 0)
-  if (totalColors === 0) missing.push("colors")
-  if (!brand.logo_main_svg && !brand.logo_main_png) missing.push("logo")
+  if (!brand) {
+    missing.push("brand_identity")
+  } else {
+    const totalColors =
+      (brand.colors_primary?.length ?? 0) + (brand.colors_secondary?.length ?? 0)
+    if (totalColors === 0) missing.push("colors")
+    if (!brand.logo_main_svg && !brand.logo_main_png) missing.push("logo")
+  }
   if (missing.length > 0) {
-    throw new BrandIncompleteError(
-      `Loja sem brand identity completa. Faltam: ${missing.join(", ")}. ` +
-        `Complete em /admin/stores/${storeId ?? "{id}"}/identity antes de gerar emails.`,
-      { missing, storeId },
-    )
+    log.warn("brand.partial", { storeId, missing })
   }
 }
 

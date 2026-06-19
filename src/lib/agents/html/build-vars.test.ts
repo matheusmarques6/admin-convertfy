@@ -176,27 +176,22 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.logo_svg).toContain("<svg")
   })
 
-  it("brand null → lanca BrandIncompleteError (precheck), nao gera com defaults", async () => {
-    await expect(setup({ brand: null })).rejects.toMatchObject({
-      name: "BrandIncompleteError",
-      missing: ["brand_identity"],
-    })
+  it("brand null → NAO joga, gera com defaults (usa os dados que tem)", async () => {
+    const vars = await setup({ brand: null })
+    expect(vars.color_bg).toBe("#FFFFFF") // default via deriveColorRoles
+    expect(vars.logo_svg).toBe("") // sem logo → markup vazio
   })
 
-  it("brand sem cores → lanca BrandIncompleteError listando 'colors'", async () => {
+  it("brand sem cores → NAO joga, cores caem em default", async () => {
     const semCores = { ...baseBrand, colors_primary: [], colors_secondary: [] }
-    await expect(setup({ brand: semCores })).rejects.toMatchObject({
-      name: "BrandIncompleteError",
-      missing: expect.arrayContaining(["colors"]),
-    })
+    const vars = await setup({ brand: semCores })
+    expect(vars.color_bg).toBe("#FFFFFF")
   })
 
-  it("brand sem logo SVG nem PNG → lanca BrandIncompleteError listando 'logo'", async () => {
+  it("brand sem logo SVG nem PNG → NAO joga, logo_svg vazio", async () => {
     const semLogo = { ...baseBrand, logo_main_svg: null, logo_main_png: null }
-    await expect(setup({ brand: semLogo })).rejects.toMatchObject({
-      name: "BrandIncompleteError",
-      missing: expect.arrayContaining(["logo"]),
-    })
+    const vars = await setup({ brand: semLogo })
+    expect(vars.logo_svg).toBe("")
   })
 
   it("logo_main_png (signed URL do nosso bucket) → <img src> com URL renovada 365d, sem base64", async () => {
@@ -237,13 +232,10 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.color_bg).toBe("#FFFFFF") // default via deriveColorRoles
   })
 
-  it("relaxedBrandCheck=true + brand=null → AINDA joga (sem brand identity nenhuma)", async () => {
-    await expect(
-      setup({ brand: null, relaxedBrandCheck: true }),
-    ).rejects.toMatchObject({
-      name: "BrandIncompleteError",
-      missing: ["brand_identity"],
-    })
+  it("brand=null + relaxedBrandCheck=true → gera com defaults (sem throw)", async () => {
+    const vars = await setup({ brand: null, relaxedBrandCheck: true })
+    expect(vars.color_bg).toBe("#FFFFFF")
+    expect(vars.logo_svg).toBe("")
   })
 
   it("content do bloco com {{BRAND_NAME}} → resolvido pelo brandName no JSON final", async () => {

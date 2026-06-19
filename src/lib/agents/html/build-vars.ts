@@ -304,10 +304,9 @@ export async function buildHtmlPromptVars(
     relaxedBrandCheck,
   } = input
 
-  // Pre-check: brand identity precisa estar completa antes de gastar
-  // tokens no LLM. Lanca BrandIncompleteError com lista de campos
-  // faltantes — phase2-runner trata como `failure_reason='brand_incomplete'`.
-  // Em modo relaxed (TestTab) so falha se brand=null.
+  // Observabilidade: apenas LOGA campos de brand faltantes — NAO bloqueia.
+  // A geração segue com os dados que a loja tem; o resto degrada pra defaults
+  // (cores via deriveColorRoles, logo via fetchLogoMarkup, fontes via DEFAULT_*).
   const storeId = (storeRaw?.id as string | undefined) ?? null
   precheckBrandReady(brand, storeId, { relaxed: relaxedBrandCheck })
 
