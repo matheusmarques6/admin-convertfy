@@ -45,6 +45,7 @@ import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { consumeQueueSignal } from "@/lib/services/email-generation-trigger.service"
 import { runCopyChainInProcess } from "@/lib/agents/copy-chain-fallback.service"
+import { runPhase2HtmlQa } from "@/lib/agents/phase2-runner.service"
 import {
   notifyEmailFailed,
   notifyBatchComplete,
@@ -62,9 +63,11 @@ export const maxDuration = 300
 const COPY_TIMEOUT_MIN = Number(process.env.WATCHDOG_COPY_TIMEOUT_MIN ?? 15)
 const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 10)
 const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ?? 3)
-// Bug 2 split: `image_done` e estado intermediario curto. Se ficar parado >5min
-// a fetch interna pra /api/internal/run-phase2-html-qa provavelmente crashou —
-// re-dispatcha.
+// Bug 2 split: `image_done` e `rendering` sao estados intermediarios curtos.
+// Se ficarem parados >5min, o `after()` que deveria continuar o pipeline crashou
+// (cold start, drop de runtime) — recuperacao via Front 5 (in-process, sem
+// depender de fetch). Threshold conta a partir de `rendering_started_at`, que
+// agora e renovado no claim do html-qa (phase2-runner) pra dar budget proprio.
 const STALE_IMAGE_DONE_MIN = Number(process.env.WATCHDOG_STALE_IMAGE_DONE_MIN ?? 5)
 const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
 // Cap de re-dispatches do front 4 (POST /api/internal/run-phase2 para
@@ -578,15 +581,28 @@ async function redispatchStaleCopyReady(): Promise<{
   return { dispatched, exhausted }
 }
 
-// ── Front 5: re-dispatch image_done sem fase HTML+QA iniciada ──────────
+// ── Front 5: recupera image_done OU rendering sem HTML+QA iniciado ─────
 //
-// Bug 2 split: imagem termina e marca status='image_done', e a rota
-// `/api/internal/run-phase2-image` dispara fetch interna pra
-// `/api/internal/run-phase2-html-qa` no mesmo after(). Se a fetch crashar
-// (cold start, runtime restart), o email fica parado em `image_done`.
+// Cobre dois cenarios do bug 2 split:
+//   (a) image_done: imagem terminou, mas o after() de `run-phase2-image`
+//       que dispara `run-phase2-html-qa` crashou — html-qa nunca rodou.
+//   (b) rendering: html-qa foi reclamado (claim renovou `rendering_started_at`)
+//       mas o after() da rota html-qa crashou antes do trabalho terminar.
+//
+// Antes da Mudanca 1 (renovar relogio no claim), (b) era invisivel: o
+// rendering_started_at era do tempo da imagem, nunca cruzava a janela
+// stale-mas-nao-timeout antes da Front 3 matar. Agora (b) e visivel e
+// recuperavel.
 //
 // Janela: STALE_IMAGE_DONE_MIN (5min) <= idade < PHASE2_TIMEOUT_MIN (10min).
-// Apos 10min o timeoutPhase2 ja marca como failed.
+// Apos 10min o timeoutPhase2 (Front 3) marca como failed.
+//
+// Execucao IN-PROCESS via `runPhase2HtmlQa` — o cron e contexto confiavel
+// (Vercel garante execucao do scheduled invoke), imune ao drop de after()
+// que e exatamente o que causou o stuck. Sequencial, limitado a
+// MAX_PHASE2_TIMEOUT_PER_RUN (10) por tick — cada html-qa leva ~100-180s,
+// cabem 1-2 por tick dentro do maxDuration=300s do cron. O resto fica pro
+// proximo tick (5min depois) ou pra Front 3 matar com timeout_phase2.
 async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
   const admin = createAdminClient()
   const now = Date.now()
@@ -600,7 +616,7 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
   const { data, error } = await admin
     .from("email_flow_emails")
     .select("id, generation_batch_id")
-    .eq("status", "image_done")
+    .in("status", ["image_done", "rendering"])
     .lt("rendering_started_at", staleThresholdIso)
     .gte("rendering_started_at", timeoutThresholdIso)
     .order("rendering_started_at", { ascending: true })
@@ -618,47 +634,34 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
 
   log.warn("watchdog.stale_image_done.detected", { count: rows.length })
 
-  const internalSecret = process.env.INTERNAL_SECRET ?? ""
-  if (!internalSecret) {
-    log.error("watchdog.stale_image_done.no_secret", { count: rows.length })
-    return { dispatched: 0 }
-  }
-
-  const base = getInternalUrl()
   let dispatched = 0
-
   for (const r of rows) {
-    const url = `${base}/api/internal/run-phase2-html-qa/${r.id}`
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 5_000)
+    const storeId = await getStoreIdForEmail(r.id)
+    if (!storeId) {
+      log.warn("watchdog.stale_image_done.no_store", { emailId: r.id })
+      continue
+    }
     try {
-      const resp = await fetch(url, {
-        method: "POST",
-        signal: ctrl.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "x-internal-secret": internalSecret,
-        },
+      // In-process: o cron e o contexto confiavel — sem fetch, sem after().
+      // `runPhase2HtmlQa` ja e idempotente (claim atomico) e tolera retry.
+      // `relaxedBrandCheck=true` mantem coerencia com a flag historica do
+      // pipeline de teste (brand parcial degradada ao inves de bloquear).
+      const result = await runPhase2HtmlQa({
+        storeId,
+        emailId: r.id,
+        triggeredBy: "watchdog:stale_image_done",
+        relaxedBrandCheck: true,
       })
-      if (resp.ok) {
-        dispatched++
-        log.info("watchdog.stale_image_done.dispatch_ok", {
-          emailId: r.id,
-          status: resp.status,
-        })
-      } else {
-        log.warn("watchdog.stale_image_done.dispatch_non_ok", {
-          emailId: r.id,
-          status: resp.status,
-        })
-      }
+      dispatched++
+      log.info("watchdog.stale_image_done.recovered", {
+        emailId: r.id,
+        result: result.status,
+      })
     } catch (err) {
-      log.warn("watchdog.stale_image_done.dispatch_error", {
+      log.error("watchdog.stale_image_done.recover_error", {
         emailId: r.id,
         error: err instanceof Error ? err.message : String(err),
       })
-    } finally {
-      clearTimeout(timer)
     }
   }
 

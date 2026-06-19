@@ -784,10 +784,14 @@ export async function runPhase2HtmlQa(
   //   - rendering: caminho legacy (runPhase2InBackground em monolito) +
   //     watchdog disparando direto pra esta rota com email travado em rendering
   const nowIso = new Date().toISOString()
+  // Renova `rendering_started_at` no claim: o relógio de timeout do watchdog
+  // (PHASE2_TIMEOUT_MIN=10min, Front 3) usa esse campo. Sem isso o HTML+QA
+  // herdaria os ~190s já consumidos pela fase imagem e seria morto cedo.
   const { data: claimed } = await admin
     .from("email_flow_emails")
     .update({
       status: "rendering",
+      rendering_started_at: nowIso,
       updated_at: nowIso,
     })
     .eq("id", emailId)
