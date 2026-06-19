@@ -68,6 +68,27 @@ const QA_ISSUE_TYPES = [
 
 const QA_SEVERITIES = ["low", "medium", "high"] as const satisfies readonly QaIssueSeverity[]
 
+// Instrucao fixa appendada ao user prompt: ensina o LLM a tratar merge tags
+// como conteudo valido, nao como link quebrado / violacao de compliance.
+// Esta in-code (nao no DB) para nao perder a garantia se alguem editar o
+// prompt versionado pela UI.
+const MERGE_TAGS_INSTRUCTION = `
+
+## MERGE TAGS (CRITICO — nao sinalize como issue)
+
+Hrefs e textos no formato:
+- \`[chave]\` (ex: \`[unsubscribe_link]\`, \`[email]\`, \`[first_name]\`)
+- \`{{ chave }}\` ou \`{{chave}}\` (Liquid / Handlebars)
+- \`{% bloco %}\` (Liquid blocks, ex: \`{% unsubscribe %}\`)
+- \`*|CHAVE|*\` (Mailchimp / Mandrill)
+- \`\${chave}\` (template strings)
+
+sao placeholders de merge tag do provedor de envio (Klaviyo, Mailchimp,
+Omnisend) que sao substituidos no momento do disparo. NAO sao link
+quebrado, NAO violam compliance (CAN-SPAM/GDPR — o opt-out funciona depois
+da substituicao no envio), NAO sao claim sem cobertura. Trate como
+conteudo dinamico valido.`
+
 // ── Zod schema do output do LLM ────────────────────────────────────────
 const QaIssueSchema = z.object({
   type: z.enum(QA_ISSUE_TYPES),
@@ -150,6 +171,13 @@ export function runDeterministicChecks(
 
   // 3. Links: extrai todos href e valida que cada URL e bem-formada
   //    e nao usa scheme `javascript:`.
+  //    Merge tags do provedor de envio (Klaviyo, Mailchimp, Omnisend, etc.)
+  //    sao placeholders que serao substituidos no envio — NAO sao link
+  //    quebrado. Cobre `[chave]`, `{{chave}}`, `{% bloco %}`, `*|CHAVE|*`
+  //    e `${chave}`. O QA antes flagava `[unsubscribe_link]` como malformado
+  //    e isso bloqueava emails legitimos.
+  const MERGE_TAG_HREF =
+    /^(\[[a-z0-9_]+\]|\{\{\s*[^}]+\s*\}\}|\{%\s*[^%]+\s*%\}|\*\|[^|]+\|\*|\$\{[^}]+\})$/i
   const hrefRegex = /href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/gi
   const seen = new Set<string>()
   let m: RegExpExecArray | null
@@ -160,6 +188,9 @@ export function runDeterministicChecks(
 
     // Anchor + mailto + tel: aceitos.
     if (url.startsWith("#") || url.startsWith("mailto:") || url.startsWith("tel:")) continue
+
+    // Merge tag de provedor de envio — substituido no disparo.
+    if (MERGE_TAG_HREF.test(url)) continue
 
     if (/^javascript:/i.test(url)) {
       issues.push({
@@ -367,7 +398,13 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     brand_json: JSON.stringify(brand ?? {}, null, 2),
     blueprint_objective: blueprintObjective || "",
   }
-  const userPrompt = renderTemplate(userTemplate, renderVars)
+  // Append fixo: merge tags do provedor (Klaviyo, Mailchimp, Omnisend) sao
+  // substituidas no envio — nao sao bug. Antes do fix o LLM marcava
+  // `[unsubscribe_link]` como links_quebrados/compliance/claim_nao_coberto e
+  // bloqueava emails legitimos. Forcado in-code pra nao depender do prompt
+  // versionado no DB.
+  const userPrompt =
+    renderTemplate(userTemplate, renderVars) + MERGE_TAGS_INSTRUCTION
 
   // ── 4. Chama Claude com timeout 15s ─────────────────────────────────
   const controller = new AbortController()

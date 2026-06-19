@@ -206,6 +206,20 @@ describe("runDeterministicChecks", () => {
     const issues = runDeterministicChecks(html, [])
     expect(issues.find((i) => i.type === "links_quebrados")).toBeUndefined()
   })
+
+  it("aceita merge tags de provedor de envio como href valido", () => {
+    const html = `<html>
+      <a href="[unsubscribe_link]">Unsubscribe</a>
+      <a href="[email]">x</a>
+      <a href="{{ organization.url }}">org</a>
+      <a href="{{unsubscribe}}">u</a>
+      <a href="{% unsubscribe %}">k</a>
+      <a href="*|UNSUB|*">m</a>
+      <a href="\${profile.id}">p</a>
+    </html>`
+    const issues = runDeterministicChecks(html, [])
+    expect(issues.find((i) => i.type === "links_quebrados")).toBeUndefined()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────
