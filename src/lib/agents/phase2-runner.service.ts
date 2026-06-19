@@ -479,6 +479,9 @@ export async function runPhase2Image(
 
     for (const blk of imageBlocks ?? []) {
       const imgT0 = Date.now()
+      // Declarados fora do try pra o catch tambem registrar o input no run.
+      let promptVars: Record<string, string> | undefined
+      let promptWithAspect = ""
       try {
         // CONTRATO COM AE-16: o campo opcional em `email_blocks.content` se
         // chama EXATAMENTE `image_instruction` (string). Se AE-16 nomear
@@ -586,7 +589,7 @@ export async function runPhase2Image(
           hasRefUrl: !!topProductImageUrl,
         })
 
-        const promptVars = buildImagePromptVars({
+        promptVars = buildImagePromptVars({
           brand: ctx.brand,
           briefing: ctx.briefing,
           topProducts: ctx.topProducts,
@@ -617,7 +620,7 @@ export async function runPhase2Image(
           ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
           : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
 
-        let promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
+        promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
         // descricao textual rica do produto pra compensar a perda visual.
@@ -682,6 +685,8 @@ export async function runPhase2Image(
           status: "success",
           model: "openai/gpt-5.4-image-2",
           durationMs: Date.now() - imgT0,
+          inputVars: promptVars,
+          renderedPrompt: promptWithAspect || undefined,
           parsedOutput: { blockId: blk.id, imageUrl },
         })
       } catch (err) {
@@ -697,6 +702,8 @@ export async function runPhase2Image(
           status: "error",
           model: "openai/gpt-5.4-image-2",
           durationMs: Date.now() - imgT0,
+          inputVars: promptVars,
+          renderedPrompt: promptWithAspect || undefined,
           errorMessage: msg,
         })
         await markEmailFailed(emailId, "image_failed")
