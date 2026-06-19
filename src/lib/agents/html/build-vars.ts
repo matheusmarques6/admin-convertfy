@@ -212,7 +212,15 @@ async function fetchLogoMarkup(
 ): Promise<string> {
   if (!brand) return ""
   if (brand.logo_main_svg) {
-    return await fetchLogoSvgInline(brand.logo_main_svg)
+    const svg = await fetchLogoSvgInline(brand.logo_main_svg)
+    if (svg) return svg
+    // T3.2: SVG falhou (404/timeout/nao-SVG) -> nao desistir do logo: cai pro
+    // PNG se houver. Antes retornava "" e o email saia sem marca.
+    if (brand.logo_main_png) {
+      log.warn("logo_svg.fallback_to_png", {})
+      return await pngImgTagFromUrl(brand.logo_main_png, admin)
+    }
+    return ""
   }
   if (brand.logo_main_png) {
     return await pngImgTagFromUrl(brand.logo_main_png, admin)
@@ -347,6 +355,24 @@ export async function buildHtmlPromptVars(
     ((storeRefRes as { data: { html?: string | null } | null }).data
       ?.html as string | null) ?? null
   const referenceHtml = storeRefHtml || globalRefHtml || ""
+
+  // T3.1: sinaliza a FONTE do reference. Sem o reference do Montador
+  // (store_email_references), o HTML agent nao tem estrutura por-loja pra
+  // substituir e acaba REGENERANDO do zero (perde o "repaint"). Logar a fonte
+  // deixa visivel quando o Montador nao persistiu pra essa loja/email.
+  const referenceSource = storeRefHtml
+    ? "assembler"
+    : globalRefHtml
+      ? "global"
+      : "none"
+  if (referenceSource !== "assembler") {
+    log.warn("html.reference_not_from_assembler", {
+      emailId,
+      flowType,
+      emailNumber,
+      source: referenceSource,
+    })
+  }
 
   // ── Color roles ────────────────────────────────────────────────────
   const roles = deriveColorRoles(

@@ -392,7 +392,15 @@ export async function runPhase2Image(
   // signal consumer, monolito legado). Sem brand confirmada o e-mail FICA
   // em copy_ready — nunca vira failed:brand_incomplete.
   if (!params.relaxedBrandCheck && !(await isBrandConfirmed(admin, storeId))) {
-    log.info("phase2.image.skipped_brand_not_confirmed", { storeId, emailId })
+    // GATE 2: email FICA em copy_ready (nao vira failed). Antes era log.info
+    // silencioso -> ops nao via que o email estava parado esperando brand.
+    // WARN torna visivel (logs + alertas), sem mudar o comportamento de
+    // produto (nao-bloqueante, so esperando confirmacao da brand).
+    log.warn("phase2.image.skipped_brand_not_confirmed", {
+      storeId,
+      emailId,
+      reason: "brand_nao_confirmada_email_parado_em_copy_ready",
+    })
     return { status: "skipped" }
   }
 

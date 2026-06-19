@@ -309,6 +309,30 @@ export class HtmlTruncatedError extends Error {
   }
 }
 
+// Placeholders de CONTEUDO do Montador: {{HEADLINE}}, {{HERO_TEXT}},
+// {{USP_1_TITLE}} etc — sempre MAIUSCULAS. NAO casa merge tags do provedor
+// (`{{ unsubscribe }}` minusculo/espacado, `{% ... %}`, `*|...|*`,
+// `[unsubscribe_link]`), que devem permanecer literais.
+const UNRESOLVED_CONTENT_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g
+
+/**
+ * Limpa placeholders de conteudo nao-substituidos pelo agente. Se o Montador
+ * usou `{{HEADLINE}}` mas o agente nao casou com blocks_with_content, o token
+ * chegaria LITERAL ao cliente. Aqui logamos (observabilidade) e removemos —
+ * melhor um campo vazio do que `{{HEADLINE}}` visivel no email.
+ */
+function stripUnresolvedPlaceholders(html: string): string {
+  const matches = html.match(UNRESOLVED_CONTENT_TOKEN)
+  if (matches && matches.length > 0) {
+    log.warn("html.unresolved_placeholders", {
+      count: matches.length,
+      sample: Array.from(new Set(matches)).slice(0, 10),
+    })
+    return html.replace(UNRESOLVED_CONTENT_TOKEN, "")
+  }
+  return html
+}
+
 /** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver. */
 function postProcessHtml(rawText: string): string {
   let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
@@ -322,5 +346,6 @@ function postProcessHtml(rawText: string): string {
   if (!/<\/html>\s*$/i.test(raw)) {
     throw new HtmlTruncatedError(raw.length)
   }
+  raw = stripUnresolvedPlaceholders(raw)
   return raw
 }

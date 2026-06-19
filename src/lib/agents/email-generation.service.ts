@@ -241,7 +241,11 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const restricoesArr = detail.restricoes as string[] | undefined
   const restricoes = Array.isArray(restricoesArr) ? restricoesArr.join("; ") : ""
 
-  const nicho = (marca.nicho as string) ?? ""
+  // Fallback p/ client_stores.niche quando o briefing nao populou marca.nicho
+  // (espelha architect/generate.service.ts). Sem isso, loja com niche so em
+  // client_stores gerava imagem generica a toa.
+  const nicho =
+    (marca.nicho as string) || (input.storeRaw?.niche as string) || ""
   const posicionamento = (marca.posicionamento as string) ?? "medio"
   const tomVoz = (marca.tom_voz as string) ?? "casual"
   const brandName = (input.storeRaw.store_name as string) ?? "Loja"

@@ -70,7 +70,12 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     flow_id: params.flowId ?? null,
     email_id: params.emailId ?? null,
     triggered_by: params.triggeredBy ?? null,
-    batch_id: params.batchId,
+    // batch_id e UUID nullable. String vazia ("" quando generation_batch_id
+    // do email e null) quebra o INSERT (sintaxe UUID invalida) e o run era
+    // DESCARTADO silenciosamente (telemetry.insert_failed) -> agente sumia da
+    // UI ("nem rodou"). Normaliza "" -> null pra o run sempre ser gravado
+    // (ligado por email_id).
+    batch_id: params.batchId || null,
     agent: params.agent,
     agent_config_id: params.agentConfigId ?? null,
     status: params.status,
