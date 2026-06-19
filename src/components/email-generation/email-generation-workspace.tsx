@@ -1042,21 +1042,45 @@ function TestTab() {
 
   const statusInfo = statusData?.data ?? statusData
 
-  useEffect(() => {
-    if (statusInfo && pollInterval > 0) {
-      const isTerminal =
-        statusInfo.status === "done" ||
+  // Estado terminal do polling — usado tanto p/ parar o polling quanto p/
+  // reconciliar a UI (esconder a msg "rodando em background" quando acabou).
+  const isTerminalStatus = Boolean(
+    statusInfo &&
+      (statusInfo.status === "done" ||
         statusInfo.status === "error" ||
         statusInfo.email_status === "failed" ||
-        statusInfo.email_status === "ready"
-      if (isTerminal) {
-        setPollInterval(0)
-      }
+        statusInfo.email_status === "ready"),
+  )
+
+  // Texto do estagio atual da fase 2, derivado do email_status do polling —
+  // evita o loading "mudo" e a mensagem inicial congelada do `result`.
+  const phaseMessage = ((): string | null => {
+    switch (statusInfo?.email_status) {
+      case "pending":
+        return "Na fila…"
+      case "copy_generating":
+      case "copy_generating_recovery":
+        return "Gerando copy…"
+      case "copy_ready":
+        return "Copy pronta — gerando imagem…"
+      case "rendering":
+      case "image_done":
+        return "Imagem pronta — gerando HTML…"
+      case "qa_running":
+        return "HTML pronto — validando (QA)…"
+      default:
+        return null
     }
-  }, [statusInfo, pollInterval])
+  })()
+
+  useEffect(() => {
+    if (isTerminalStatus && pollInterval > 0) {
+      setPollInterval(0)
+    }
+  }, [isTerminalStatus, pollInterval])
 
   // Detecta inatividade — se o pipeline esta numa fase in-flight (rendering,
-  // image_done, qa_running) e nao houve atualizacao ha >3min, mostra warning
+  // image_done, qa_running) e nao houve atualizacao ha >90s, mostra warning
   // pro usuario explicando que o watchdog vai limpar em breve.
   const [showStaleWarning, setShowStaleWarning] = useState(false)
 
@@ -1078,11 +1102,11 @@ function TestTab() {
       const isInFlight = ["rendering", "image_done", "qa_running"].includes(
         statusInfo.email_status ?? "",
       )
-      setShowStaleWarning(isInFlight && ageMs > 3 * 60 * 1000)
+      setShowStaleWarning(isInFlight && ageMs > 90 * 1000)
     }
 
     checkStale()
-    const interval = setInterval(checkStale, 30_000)
+    const interval = setInterval(checkStale, 15_000)
     return () => clearInterval(interval)
   }, [statusInfo, pollInterval])
 
@@ -1635,11 +1659,13 @@ function TestTab() {
             </div>
           )}
 
-          {/* Info message (caminho sem copy → N8N) */}
-          {result?.message && (
+          {/* Info message — esconde quando o polling ja chegou a terminal
+              (senao "rodando em background" persistia junto de "Erro na
+              geracao"). Mostra o estagio real (phaseMessage) quando em curso. */}
+          {result?.message && !isTerminalStatus && (
             <div className="p-3 rounded-[4px] bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
               <p className="text-[12px] text-blue-700 dark:text-blue-300">
-                {result.message}
+                {phaseMessage ?? result.message}
               </p>
             </div>
           )}

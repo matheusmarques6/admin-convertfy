@@ -26,7 +26,7 @@ import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { errorResponse, successResponse, NotFoundError } from "@/lib/api/errors"
-import { runPhase2Image } from "@/lib/agents/phase2-runner.service"
+import { runPhase2Image, runPhase2HtmlQa } from "@/lib/agents/phase2-runner.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("InternalRunPhase2Image")
@@ -85,6 +85,32 @@ export async function POST(
     const baseUrl = getInternalBaseUrl(request)
     const internalSecret = process.env.INTERNAL_SECRET ?? ""
 
+    // Fallback in-process: se o salto HTTP pro run-phase2-html-qa nao acontece
+    // (sem secret / resp nao-ok / fetch lanca), roda HTML+QA aqui mesmo, no
+    // processo ja vivo do after(). Sem isso o email fica orfao em `image_done`
+    // ate o watchdog (5-10min) recuperar — limbo longo demais p/ teste manual.
+    // `runPhase2HtmlQa` faz claim atomico (so image_done/rendering), entao e
+    // idempotente: se o HTTP tambem rodar, apenas um processa.
+    const runHtmlQaFallback = async (reason: string) => {
+      log.warn("internal.run_phase2_image.html_qa_fallback_inprocess", {
+        emailId,
+        reason,
+      })
+      try {
+        await runPhase2HtmlQa({
+          storeId: storeId!,
+          emailId,
+          triggeredBy,
+          relaxedBrandCheck,
+        })
+      } catch (err) {
+        log.error("internal.run_phase2_image.html_qa_fallback_error", {
+          emailId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
     const work = async () => {
       try {
         const r = await runPhase2Image({
@@ -98,6 +124,7 @@ export async function POST(
         if (r.status === "image_done") {
           if (!internalSecret) {
             log.error("internal.run_phase2_image.no_secret_for_chain", { emailId })
+            await runHtmlQaFallback("no_internal_secret")
             return
           }
           try {
@@ -121,12 +148,14 @@ export async function POST(
                 emailId,
                 status: resp.status,
               })
+              await runHtmlQaFallback(`fetch_non_ok_${resp.status}`)
             }
           } catch (err) {
             log.error("internal.run_phase2_image.chain_error", {
               emailId,
               error: err instanceof Error ? err.message : String(err),
             })
+            await runHtmlQaFallback("fetch_error")
           }
         }
       } catch (err) {
