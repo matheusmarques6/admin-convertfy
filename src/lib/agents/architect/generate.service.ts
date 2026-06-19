@@ -14,6 +14,7 @@ import type { EmailOutlineTemplate } from "@/types/email-generation"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { mapTomVozToMood } from "../image/mood-mapping"
 import { loadGlobalReferenceTemplate } from "../reference-template"
+import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service"
 import { resolveStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import {
@@ -144,7 +145,7 @@ export async function generateBlueprintAndReference(
   })
 
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.
-  await generateStoreBlueprint({
+  const { source: blueprintSource } = await generateStoreBlueprint({
     storeId: input.storeId,
     flowType: input.flowType,
     emailNumber: input.emailNumber,
@@ -160,6 +161,40 @@ export async function generateBlueprintAndReference(
     pesquisa,
     referenceHtml: html ?? "",
   })
+
+  // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.
+  // Só quando o Blueprint foi REALMENTE gerado pelo LLM (source='ai' →
+  // `store_email_blueprints` atualizado): aí os blocks precisam acompanhar a
+  // nova estrutura (na ordem do reference do Montador), senão o email fica
+  // preso na composição antiga e o reference é ignorado pelo HTML agent. No
+  // fallback (source='manual') o store_bp não muda — nada a propagar.
+  // Reconciliação aditiva (carry-over de copy) e não-destrutiva p/ finalizados;
+  // falha aqui não derruba o Architect (o dispatch reconcilia de novo depois).
+  if (blueprintSource === "ai") {
+    try {
+      const r = await reconcileEmailStructure(
+        input.storeId,
+        input.flowType,
+        input.emailNumber,
+      )
+      if (r.reconciled) {
+        log.info("architect.blocks_reconciled", {
+          storeId: input.storeId,
+          flowType: input.flowType,
+          emailNumber: input.emailNumber,
+          added: r.added,
+          total: r.total,
+        })
+      }
+    } catch (err) {
+      log.warn("architect.reconcile_blocks_failed", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 
   return { referenceSource: source }
 }

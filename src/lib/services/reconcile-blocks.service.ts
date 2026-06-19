@@ -10,12 +10,72 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { reconcileBlocksAdditive } from "@/lib/agents/seed-blocks"
+import { reconcileBlocksAdditive, type ReconcileResult } from "@/lib/agents/seed-blocks"
 
 const log = logger.child("ReconcileBlocks")
 
 // Status finalizados — não mexer na estrutura pronta.
 const FINALIZED_STATUSES = new Set(["ready", "approved", "live"])
+
+export interface ReconcileEmailResult extends ReconcileResult {
+  /** Por que pulou, quando não reconciliou por motivo estrutural. */
+  skipped: "not_found" | "finalized" | null
+}
+
+/**
+ * Reconcilia a estrutura de UM email contra a blueprint VIGENTE da loja,
+ * resolvendo o emailId a partir de (storeId, flowType, emailNumber).
+ *
+ * Usado pelo Architect logo após persistir um `store_email_blueprints` novo,
+ * para que os `email_blocks` acompanhem a estrutura recém-gerada — sem isso, um
+ * email cuja copy foi semeada ANTES do Architect (ou via regeneração) fica
+ * preso na estrutura antiga e o reference do Montador é ignorado pelo HTML agent.
+ *
+ * Sempre passa `storeId` ao `reconcileBlocksAdditive`, então o blueprint da
+ * loja é preferido (cai no global só se a loja não tiver um). Preserva emails
+ * finalizados (ready/approved/live).
+ */
+export async function reconcileEmailStructure(
+  storeId: string,
+  flowType: string,
+  emailNumber: number,
+): Promise<ReconcileEmailResult> {
+  const admin = createAdminClient()
+
+  const { data: flow, error: flowErr } = await admin
+    .from("email_flows")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("flow_type", flowType)
+    .maybeSingle()
+  if (flowErr) throw flowErr
+  if (!flow) {
+    return { reconciled: false, added: 0, total: 0, skipped: "not_found" }
+  }
+
+  const { data: email, error: emailErr } = await admin
+    .from("email_flow_emails")
+    .select("id, status")
+    .eq("flow_id", flow.id as string)
+    .eq("number", emailNumber)
+    .maybeSingle()
+  if (emailErr) throw emailErr
+  if (!email) {
+    return { reconciled: false, added: 0, total: 0, skipped: "not_found" }
+  }
+
+  if (FINALIZED_STATUSES.has(email.status as string)) {
+    return { reconciled: false, added: 0, total: 0, skipped: "finalized" }
+  }
+
+  const r = await reconcileBlocksAdditive(
+    email.id as string,
+    flowType,
+    emailNumber,
+    storeId,
+  )
+  return { ...r, skipped: null }
+}
 
 export interface ReconcileStoreResult {
   /** Emails cuja estrutura foi reescrita (estavam defasados). */
@@ -72,6 +132,7 @@ export async function reconcileStoreStructure(
         e.id as string,
         flowType,
         e.number as number,
+        storeId, // preferir o blueprint da loja (store_email_blueprints)
       )
       if (r.reconciled) emailsReconciled++
       blocksAdded += r.added
