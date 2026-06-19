@@ -482,10 +482,17 @@ export async function runPhase2Image(
     // (o HTML usa placeholder/slot vazio). O banner do modo teste já avisa que o
     // email pode sair com visual incompleto. Sem isso, 1 timeout/erro de imagem
     // matava o email inteiro e o HTML nunca rodava.
-    let imageFailures = 0
     const imageTotal = (imageBlocks ?? []).length
+    type ImageBlockRow = NonNullable<typeof imageBlocks>[number]
 
-    for (const blk of imageBlocks ?? []) {
+    // Geracao das imagens em PARALELO (antes sequencial ~90s x N). Cada bloco
+    // e independente: row propria em email_blocks + run proprio em
+    // email_generation_runs. Promise.allSettled corta o tempo total ~N x, o
+    // que faz image+HTML caberem na MESMA invocacao (sem depender do watchdog
+    // pra recuperar emails presos em image_done). Degradacao graciosa
+    // preservada: imagem que falha retorna false e NAO aborta as outras nem o
+    // email.
+    const processImageBlock = async (blk: ImageBlockRow): Promise<boolean> => {
       const imgT0 = Date.now()
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined
@@ -697,6 +704,7 @@ export async function runPhase2Image(
           renderedPrompt: promptWithAspect || undefined,
           parsedOutput: { blockId: blk.id, imageUrl },
         })
+        return true
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro na imagem"
         log.error("phase2.image.error", { emailId, blockId: blk.id, error: msg })
@@ -714,13 +722,19 @@ export async function runPhase2Image(
           renderedPrompt: promptWithAspect || undefined,
           errorMessage: msg,
         })
-        // NÃO aborta: contabiliza e segue pro próximo bloco. O bloco fica sem
-        // `image_url` (placeholder no HTML). Quem decide o estado terminal do
-        // email é a fase HTML+QA, não uma imagem isolada.
-        imageFailures++
-        continue
+        // NÃO aborta: sinaliza falha e deixa as outras imagens seguirem. O
+        // bloco fica sem `image_url` (placeholder no HTML). Quem decide o
+        // estado terminal do email é a fase HTML+QA, não uma imagem isolada.
+        return false
       }
     }
+
+    const imageResults = await Promise.allSettled(
+      (imageBlocks ?? []).map((blk) => processImageBlock(blk)),
+    )
+    const imageFailures = imageResults.filter(
+      (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value === false),
+    ).length
 
     if (imageFailures > 0) {
       log.warn("phase2.image.partial", {
