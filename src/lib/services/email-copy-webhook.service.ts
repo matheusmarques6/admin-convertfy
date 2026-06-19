@@ -782,11 +782,30 @@ export async function dispatchEmailCopyWebhook(
   }
 
   if (dispatchStatus === "success") {
+    // Reseta os emails despachados para um status que o callback do n8n ACEITA
+    // (fora de IDEMPOTENT_STATUSES no callback). Antes só resetava `draft`, então
+    // regenerar copy de um email já gerado (copy_ready/ready) deixava o status
+    // intacto — e o callback do n8n descartava a copy nova como "duplicada"
+    // (no-op idempotente). Excluímos approved/live (finalizados publicados) pra
+    // não rebaixar email no ar. A dedup de callbacks repetidos DENTRO de uma
+    // geração continua: o 1º callback salva e marca copy_ready; os seguintes
+    // (já em copy_ready) viram no-op.
     await admin
       .from("email_flow_emails")
-      .update({ status: "in_progress" })
+      .update({ status: "in_progress", updated_at: new Date().toISOString() })
       .in("id", emailIds)
-      .in("status", ["draft"])
+      .in("status", [
+        "draft",
+        "pending",
+        "in_progress",
+        "copy_generating",
+        "copy_generating_recovery",
+        "copy_ready",
+        "rendering",
+        "qa_running",
+        "ready",
+        "failed",
+      ])
   }
 
   return {

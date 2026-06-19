@@ -181,4 +181,41 @@ describe("dispatchEmailCopyWebhook — auto-seed e reasons", () => {
     expect(res.email_count).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it("regerar email já gerado (copy_ready) reseta status p/ in_progress — senão o callback do n8n descarta a copy nova como duplicada", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "copy_ready" },
+    ])
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: false,
+    })
+
+    expect(res.ok).toBe(true)
+    expect(res.email_count).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Pós-dispatch o status precisa sair de copy_ready (IDEMPOTENT_STATUSES no
+    // callback) p/ que a copy nova do n8n seja persistida e não vire no-op.
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.status).toBe("in_progress")
+  })
+
+  it("regerar email finalizado/publicado (live) NÃO é rebaixado de status", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "live" },
+    ])
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: false,
+    })
+
+    expect(res.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.status).toBe("live")
+  })
 })
