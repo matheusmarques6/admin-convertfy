@@ -477,6 +477,14 @@ export async function runPhase2Image(
       emailId,
     })
 
+    // Degradação graciosa: uma imagem que falha NÃO aborta o email. Contamos as
+    // falhas e seguimos pro HTML+QA com os blocos que falharam sem `image_url`
+    // (o HTML usa placeholder/slot vazio). O banner do modo teste já avisa que o
+    // email pode sair com visual incompleto. Sem isso, 1 timeout/erro de imagem
+    // matava o email inteiro e o HTML nunca rodava.
+    let imageFailures = 0
+    const imageTotal = (imageBlocks ?? []).length
+
     for (const blk of imageBlocks ?? []) {
       const imgT0 = Date.now()
       // Declarados fora do try pra o catch tambem registrar o input no run.
@@ -706,14 +714,21 @@ export async function runPhase2Image(
           renderedPrompt: promptWithAspect || undefined,
           errorMessage: msg,
         })
-        await markEmailFailed(emailId, "image_failed")
-        await safeNotifyEmailFailed(storeId, emailId, "image_failed", batchId || null)
-        if (batchId) {
-          await rollupTotalCost(emailId, batchId).catch(() => {})
-          await checkBatchTerminal(storeId, batchId).catch(() => {})
-        }
-        return { status: "failed" }
+        // NÃO aborta: contabiliza e segue pro próximo bloco. O bloco fica sem
+        // `image_url` (placeholder no HTML). Quem decide o estado terminal do
+        // email é a fase HTML+QA, não uma imagem isolada.
+        imageFailures++
+        continue
       }
+    }
+
+    if (imageFailures > 0) {
+      log.warn("phase2.image.partial", {
+        emailId,
+        storeId,
+        failed: imageFailures,
+        total: imageTotal,
+      })
     }
   } else {
     await logGenerationRun({
