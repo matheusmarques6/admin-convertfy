@@ -873,7 +873,12 @@ export async function runPhase2HtmlQa(
       relaxedBrandCheck,
     })
 
-    const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({
+    const {
+      html: rawHtml,
+      tokensInput,
+      tokensOutput,
+      renderedPrompt,
+    } = await invokeHtmlChain({
       config: {
         model,
         temperature,
@@ -899,6 +904,11 @@ export async function runPhase2HtmlQa(
       agentConfigId: htmlConfig?.id,
       status: "success",
       model,
+      // Telemetria: input completo do modelo. Sem renderedPrompt antes, nao
+      // era possivel auditar o que o agente HTML recebeu (ex.: reference do
+      // Montador chegou inteiro? blocks com content real?). agente de imagem
+      // ja grava (phase2-runner:712); HTML faltava paridade.
+      renderedPrompt,
       // HTML completo na telemetria — antes o caminho de producao nem gravava
       // raw_output, deixando o "OUTPUT BRUTO" vazio. Limitado pelo max_tokens.
       rawOutput: rawHtml,

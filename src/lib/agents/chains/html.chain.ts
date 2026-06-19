@@ -84,6 +84,22 @@ Before emitting, verify silently and fix any failure:
 - Output starts with <!DOCTYPE html> and ends with </html>. Nothing else.
 </self_check>
 
+<reference_count_check>
+CRITICAL — these are countable structural rules. The reference_html encodes a specific layout (zig-zag, framed sections, asymmetric radii, button grids). Failing to preserve these means you REGENERATED a stack-linear email instead of repainting the reference. Before emitting, count and verify:
+
+1. data-block attributes: count('data-block=') in your output MUST equal count('data-block=') in reference_html. If reference has any data-block="..." attributes, they MUST appear verbatim in the same elements in the output.
+
+2. Responsive plumbing classes: if reference contains the strings "mobile-reset-left", "mobile-reset-right", "stack-col", "stack-pad", or any class with prefix "stack-" / "mobile-", those classes MUST appear in your output on the same elements.
+
+3. Asymmetric radii: if reference contains border-radius values like "0 0 30px 0", "30px 0 0 0", "210px 210px 0 0" (or any radius with at least 2 different values), the output MUST preserve those EXACT 4-corner values on the same elements. NEVER simplify to a single value.
+
+4. Link grid: if reference contains placeholders {{LINK_1}} AND {{LINK_5}} (or any LINK_N up to 5), the output MUST contain 5 distinct anchor/button elements arranged in a 2+2+1 grid layout (two pairs of two, then one centered), NOT a simple horizontal list.
+
+5. Hero-product vs product-grid: if reference has placeholders {{PRODUCT_FEATURE}} or {{PRODUCTS_TITLE}} (single hero product with feature list), DO NOT replace it with a product catalog grid from top_products. Render the single hero-product block from the reference's structure. The reverse also holds: if reference has a 2x2 product grid using top_products, DO NOT collapse it into a single hero product.
+
+If ANY of these counts/checks fails, you are regenerating the layout — STOP and rewrite the output to match the reference structure exactly before emitting.
+</reference_count_check>
+
 Emit ONLY the final HTML.`
 
 export const DEFAULT_HTML_USER_TEMPLATE = `<store>
@@ -159,6 +175,10 @@ export interface InvokeHtmlResult {
   html: string
   tokensInput: number
   tokensOutput: number
+  /** User prompt renderizado (handlebars-lite aplicado em config.user_template
+   *  + vars). Exposto p/ o caller persistir em email_generation_runs.
+   *  rendered_prompt — telemetria de auditoria do input do modelo. */
+  renderedPrompt: string
 }
 
 /**
@@ -208,7 +228,12 @@ export async function invokeHtmlChain(
       outputTokens: or.tokensOutput,
       htmlLength: html.length,
     })
-    return { html, tokensInput: or.tokensInput, tokensOutput: or.tokensOutput }
+    return {
+      html,
+      tokensInput: or.tokensInput,
+      tokensOutput: or.tokensOutput,
+      renderedPrompt: userMessage,
+    }
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -283,6 +308,7 @@ export async function invokeHtmlChain(
     html,
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
+    renderedPrompt: userMessage,
   }
 }
 
