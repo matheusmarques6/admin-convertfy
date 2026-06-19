@@ -304,18 +304,58 @@ export async function generateEmailImage(
   }
 
   // A resposta contém base64 gigante (~5MB+) que pode truncar com res.json().
-  // Ler como text e extrair o base64 via regex é mais seguro.
+  // Ler como text e extrair via regex é mais seguro.
   const rawText = await res.text()
 
   let imageBuffer: Buffer | null = null
 
-  // Extrair data:image/...;base64,XXXX da resposta bruta
-  const b64Match = rawText.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]+=*)/)
-  if (b64Match?.[1]) {
-    imageBuffer = Buffer.from(b64Match[1], "base64")
+  // Formato atual do OpenRouter pra modelos de imagem: a imagem vem em
+  // choices[].message.images[].image_url.url — que pode ser um LINK http OU um
+  // data URL base64. Lemos esse campo PRIMEIRO (regex no texto, sem JSON.parse
+  // do payload que pode ser gigante). Antes só procurávamos base64 solto, então
+  // toda resposta que entregava a imagem por LINK falhava aqui.
+  const urlMatch = rawText.match(/"image_url"\s*:\s*\{\s*"url"\s*:\s*"([^"]+)"/)
+  const imageUrlField = urlMatch?.[1]
+  if (imageUrlField) {
+    if (/^https?:\/\//i.test(imageUrlField)) {
+      // Link http: baixar a imagem do link e seguir pro MESMO fluxo de upload +
+      // signed URL 365d abaixo (URL de referência, igual ao logo — nunca base64
+      // inline no HTML). Falha no download cai nos fallbacks de base64.
+      try {
+        const imgRes = await fetchWithTimeout(
+          imageUrlField,
+          {},
+          OPENROUTER_IMAGE_TIMEOUT_MS,
+        )
+        if (imgRes.ok) {
+          imageBuffer = Buffer.from(await imgRes.arrayBuffer())
+        } else {
+          log.warn("image.url_download_non_ok", { storeId, status: imgRes.status })
+        }
+      } catch (err) {
+        log.warn("image.url_download_failed", {
+          storeId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    } else {
+      // data URL base64 dentro do campo url (data:image/...;base64,XXXX).
+      const dataUrlB64 = imageUrlField.match(/^data:image\/[^;]+;base64,(.+)$/)
+      if (dataUrlB64?.[1]) {
+        imageBuffer = Buffer.from(dataUrlB64[1], "base64")
+      }
+    }
   }
 
-  // Fallback: tentar b64_json direto
+  // Fallback 1: data:image/...;base64,XXXX solto na resposta bruta.
+  if (!imageBuffer) {
+    const b64Match = rawText.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]+=*)/)
+    if (b64Match?.[1]) {
+      imageBuffer = Buffer.from(b64Match[1], "base64")
+    }
+  }
+
+  // Fallback 2: b64_json direto.
   if (!imageBuffer) {
     const b64JsonMatch = rawText.match(/"b64_json"\s*:\s*"([A-Za-z0-9+/]+=*)"/)
     if (b64JsonMatch?.[1]) {
@@ -324,8 +364,18 @@ export async function generateEmailImage(
   }
 
   if (!imageBuffer) {
-    log.error("image.parse_failed", { storeId, responseLength: rawText.length, first500: rawText.slice(0, 500) })
-    throw new Error("Não foi possível extrair imagem da resposta do OpenRouter")
+    // Instrumentação: inclui um trecho da resposta crua no erro (além do log).
+    // O phase2-runner grava esse `errorMessage` no run, então o formato real
+    // aparece na UI ("OUTPUT" do agente image) sem depender dos logs do server.
+    const snippet = rawText.slice(0, 1500)
+    log.error("image.parse_failed", {
+      storeId,
+      responseLength: rawText.length,
+      first500: rawText.slice(0, 500),
+    })
+    throw new Error(
+      `Não foi possível extrair imagem da resposta do OpenRouter. Resposta (truncada): ${snippet}`,
+    )
   }
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o

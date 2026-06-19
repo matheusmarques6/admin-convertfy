@@ -297,3 +297,108 @@ describe("generateEmailImage — AE-13 multimodal (product_ref)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
+
+// ── Extração via choices[].message.images[].image_url.url ──────────────
+describe("generateEmailImage — extração do campo image_url.url", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    uploadMock.mockResolvedValue({ error: null })
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: "https://signed.example/img.png" },
+      error: null,
+    })
+    getPublicUrlMock.mockReturnValue({
+      data: { publicUrl: "https://public.example/img.png" },
+    })
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized-bytes"))
+  })
+
+  it("image_url.url = link http → baixa a imagem do link e re-hospeda", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1a: resposta do OpenRouter entregando a imagem por LINK
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [
+              { message: { images: [{ image_url: { url: "https://prov/img.png" } }] } },
+            ],
+          }),
+      } as unknown as Response)
+      // 2a: download da imagem do link
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () =>
+          Uint8Array.from(Buffer.from(TINY_PNG_B64, "base64")).buffer,
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1][0]).toBe("https://prov/img.png")
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
+  it("image_url.url = data URL base64 → decodifica e re-hospeda (sem download extra)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                images: [
+                  { image_url: { url: `data:image/png;base64,${TINY_PNG_B64}` } },
+                ],
+              },
+            },
+          ],
+        }),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(1) // só OpenRouter, sem download
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
+  it("download do link falha → erro de extração", async () => {
+    const body = JSON.stringify({
+      choices: [{ message: { images: [{ image_url: { url: "https://prov/x.png" } }] } }],
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => body } as unknown as Response)
+      .mockResolvedValueOnce({ ok: false, status: 500 } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(generateEmailImage("prompt", "store-1")).rejects.toThrow(
+      /Não foi possível extrair imagem/,
+    )
+  })
+
+  it("sem imagem extraível → erro inclui o trecho da resposta crua", async () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "desculpe, nao posso gerar" } }],
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, text: async () => body } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const err = await generateEmailImage("prompt", "store-1").catch(
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain("Não foi possível extrair imagem")
+    expect(String(err)).toContain("desculpe, nao posso gerar")
+  })
+})
