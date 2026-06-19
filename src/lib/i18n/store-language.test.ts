@@ -45,41 +45,43 @@ describe("languageCodeToLabel", () => {
 })
 
 describe("resolveStoreLanguage", () => {
-  it("locked: coluna client_stores.language vence o formulário (bug Livara)", () => {
+  it("coluna client_stores.language vence o formulário (bug Livara)", () => {
     // Cenário real: admin trocou pra inglês (store='en') mas o formulário
-    // ainda diz "Português (Brasil)". Com locked, o admin vence.
+    // ainda diz "Português (Brasil)". A edição do admin vence.
     const r = resolveStoreLanguage(
       { store_language: "Português (Brasil)" },
       "en",
-      { locked: true },
     )
     expect(r.code).toBe("en")
     expect(r.label).toBe("Inglês")
-    expect(r.source).toBe("store_override")
+    expect(r.source).toBe("store")
   })
 
-  it("sem locked: o formulário vence a coluna (comportamento legado)", () => {
-    const r = resolveStoreLanguage(
-      { store_language: "Português (Brasil)" },
-      "en",
-    )
-    expect(r.code).toBe("pt-BR")
-    expect(r.source).toBe("form_main")
-  })
-
-  it("locked mas sem valor na coluna: cai pro fluxo normal (form)", () => {
-    const r = resolveStoreLanguage(
-      { store_language: "Português (Brasil)" },
-      null,
-      { locked: true },
-    )
-    expect(r.code).toBe("pt-BR")
-    expect(r.source).toBe("form_main")
-  })
-
-  it("locked com label cru na coluna resolve pra código", () => {
-    const r = resolveStoreLanguage(null, "Inglês", { locked: true })
+  it("coluna com label cru resolve pra código canônico", () => {
+    const r = resolveStoreLanguage(null, "Inglês")
     expect(r.code).toBe("en")
-    expect(r.source).toBe("store_override")
+    expect(r.source).toBe("store")
+  })
+
+  it("sem coluna (form-only): usa o store_language do formulário", () => {
+    // confirmBriefing e o upgrade do dispatch chamam assim (sem fallback).
+    const r = resolveStoreLanguage({ store_language: "Português (Brasil)" })
+    expect(r.code).toBe("pt-BR")
+    expect(r.source).toBe("form_main")
+  })
+
+  it("sem coluna: caminho 'Outro' + texto livre", () => {
+    const r = resolveStoreLanguage({
+      store_language: "Outro",
+      store_language_other: "Norsk",
+    })
+    expect(r.code).toBe("nb")
+    expect(r.source).toBe("form_other")
+  })
+
+  it("sem coluna nem formulário útil: default pt-BR", () => {
+    const r = resolveStoreLanguage(null, null)
+    expect(r.code).toBe("pt-BR")
+    expect(r.source).toBe("default")
   })
 })

@@ -191,12 +191,7 @@ export function languageCodeToLabel(code: unknown): string | null {
 export interface ResolvedStoreLanguage {
   code: string
   label: string
-  source:
-    | "store_override"
-    | "form_other"
-    | "form_main"
-    | "store_fallback"
-    | "default"
+  source: "store" | "form_other" | "form_main" | "default"
 }
 
 const FREE_TEXT_REGEX = /^[a-zà-ÿ\s-]+$/
@@ -215,47 +210,44 @@ function cleanFreeText(input: unknown): string | null {
 }
 
 /**
- * Resolve o idioma efetivo de uma loja combinando múltiplas fontes em
- * ordem de prioridade:
+ * Resolve o idioma efetivo de uma loja em ordem de prioridade:
  *
- *   0. `opts.locked === true` + `storeLanguageFallback` presente → usa a
- *      coluna `client_stores.language` com prioridade MÁXIMA (override manual
- *      do admin). Vence o formulário. source `store_override`.
- *   1. `form_responses.store_language === "Outro"` → usa
+ *   1. `storeLanguageFallback` (coluna `client_stores.language`) quando setada:
+ *      é o campo que o admin edita na tela e PRECISA vencer o formulário.
+ *      source `store`.
+ *   2. `form_responses.store_language === "Outro"` → usa
  *      `form_responses.store_language_other` (campo de texto livre).
  *      Tenta alias (ex: "norueguês" → "nb"); senão salva texto cru.
- *   2. `form_responses.store_language` quando é label canônico ou alias
+ *   3. `form_responses.store_language` quando é label canônico ou alias
  *      conhecido (ex: "Português (Brasil)" → "pt-BR").
- *   3. `storeLanguageFallback` (geralmente `client_stores.language`) —
- *      usado quando form_responses não tem nada útil.
  *   4. Default `"pt-BR"` se nada bate.
  *
- * Reusado por `confirmBriefing` (sync ao salvar briefing) e
- * `dispatchEmailCopyWebhook` (resolve na hora do dispatch, garante que
- * `store.language` no payload pro n8n reflete o que o cliente escolheu).
+ * IMPORTANTE: a coluna nasce com DEFAULT 'pt-BR'. Para lojas novas que
+ * escolheram outro idioma no formulário não ficarem presas em pt-BR, o
+ * `dispatchEmailCopyWebhook` e o `confirmBriefing` fazem um upgrade
+ * form→coluna enquanto a coluna ainda está no default. Esses dois chamam
+ * esta função SEM `storeLanguageFallback` (resolução form-only) justamente
+ * pra ler a escolha do formulário.
  */
 export function resolveStoreLanguage(
   formResponses: Record<string, unknown> | null | undefined,
   storeLanguageFallback?: string | null,
-  opts?: { locked?: boolean },
 ): ResolvedStoreLanguage {
   const formMain = formResponses?.store_language
   const formOther = formResponses?.store_language_other
 
-  // 0. Override manual do admin: a coluna client_stores.language vence o
-  // formulário quando language_locked=true. Sem isso, editar o idioma na
-  // tela não tinha efeito (o form sempre ganhava no passo 2).
-  if (opts?.locked && typeof storeLanguageFallback === "string" && storeLanguageFallback.trim()) {
-    const lockedTrim = storeLanguageFallback.trim()
-    const lockedCode = languageLabelToCode(lockedTrim) ?? lockedTrim
+  // 1. Coluna client_stores.language vence — é o que o admin edita na tela.
+  if (typeof storeLanguageFallback === "string" && storeLanguageFallback.trim()) {
+    const storeTrim = storeLanguageFallback.trim()
+    const storeCode = languageLabelToCode(storeTrim) ?? storeTrim
     return {
-      code: lockedCode,
-      label: languageCodeToLabel(lockedCode) ?? lockedCode,
-      source: "store_override",
+      code: storeCode,
+      label: languageCodeToLabel(storeCode) ?? storeCode,
+      source: "store",
     }
   }
 
-  // 1. Caminho "Outro" + texto livre
+  // 2. Caminho "Outro" + texto livre
   if (
     typeof formMain === "string" &&
     formMain.trim() === OTHER_LANGUAGE_LABEL
@@ -278,7 +270,7 @@ export function resolveStoreLanguage(
     }
   }
 
-  // 2. store_language com label canônico ou alias
+  // 3. store_language com label canônico ou alias
   const mainCode = languageLabelToCode(formMain)
   if (mainCode) {
     return {
@@ -293,17 +285,6 @@ export function resolveStoreLanguage(
       code: cleanedMain,
       label: typeof formMain === "string" ? formMain.trim() : cleanedMain,
       source: "form_main",
-    }
-  }
-
-  // 3. Fallback pro valor existente no DB (client_stores.language)
-  if (typeof storeLanguageFallback === "string" && storeLanguageFallback.trim()) {
-    const fallbackTrim = storeLanguageFallback.trim()
-    const fallbackCode = languageLabelToCode(fallbackTrim) ?? fallbackTrim
-    return {
-      code: fallbackCode,
-      label: languageCodeToLabel(fallbackCode) ?? fallbackCode,
-      source: "store_fallback",
     }
   }
 

@@ -187,7 +187,7 @@ export async function dispatchEmailCopyWebhook(
       .from("client_stores")
       .select(
         `
-          id, store_name, store_url, platform, language, language_locked, niche,
+          id, store_name, store_url, platform, language, niche,
           brand_thesis, brand_about, brand_pillars, brand_presence,
           icp_persona, icp_demographics, icp_day_in_life,
           icp_motivations, icp_frictions,
@@ -498,45 +498,32 @@ export async function dispatchEmailCopyWebhook(
     form_responses?: Record<string, unknown> | null
   } | null
 
-  // Resolve idioma combinando form_responses (escolha do cliente) com o
-  // valor em client_stores.language como fallback. Quando o cliente
-  // escolheu "Outro" + digitou um idioma livre, isso vai pegar do campo
-  // store_language_other — caminho que o sync antigo do confirmBriefing
-  // não cobria, fazendo o webhook enviar 'pt-BR' default. Agora o
-  // dispatch garante consistência mesmo pra lojas sem backfill aplicado.
-  // `language_locked` = idioma setado manualmente no admin. Quando true, a
-  // coluna client_stores.language vence o formulário (source store_override).
-  const languageLocked =
-    (store as { language_locked?: boolean | null }).language_locked === true
-  const resolvedLang = resolveStoreLanguage(
-    onboardingRow?.form_responses ?? null,
-    typeof store.language === "string" ? store.language : null,
-    { locked: languageLocked },
-  )
-
-  // Auto-correct lazy: se client_stores.language está no default mas a
-  // resolução achou outro idioma a partir do form_responses, atualiza.
-  // Próximas leituras direto da tabela (sem passar pelo dispatch) já
-  // ficam corretas — UI, exports, queries de BI etc.
+  // Idioma: a coluna client_stores.language (o que o admin edita na tela)
+  // vence. Como a coluna nasce com DEFAULT 'pt-BR', fazemos um upgrade
+  // form→coluna ENQUANTO a coluna ainda está no default — assim lojas novas
+  // que escolheram outro idioma no formulário não ficam presas em pt-BR.
+  // Uma vez que o admin editou pra qualquer coisa != pt-BR, o upgrade não
+  // mexe mais e a edição manual sempre vence.
   const currentStoreLang =
     typeof store.language === "string" ? store.language.trim() : ""
+  const formLang = resolveStoreLanguage(onboardingRow?.form_responses ?? null)
+  let effectiveStoreLang = currentStoreLang
   if (
-    !languageLocked &&
-    resolvedLang.source !== "default" &&
-    resolvedLang.source !== "store_fallback" &&
-    resolvedLang.code !== currentStoreLang &&
+    formLang.source !== "default" &&
+    formLang.code !== currentStoreLang &&
     (!currentStoreLang || currentStoreLang === "pt-BR")
   ) {
     try {
       await admin
         .from("client_stores")
-        .update({ language: resolvedLang.code })
+        .update({ language: formLang.code })
         .eq("id", storeId)
+      effectiveStoreLang = formLang.code
       log.info("email_copy.webhook.language_synced", {
         storeId,
         from: currentStoreLang || "(empty)",
-        to: resolvedLang.code,
-        source: resolvedLang.source,
+        to: formLang.code,
+        source: formLang.source,
       })
     } catch (err) {
       log.warn("email_copy.webhook.language_sync_failed", {
@@ -545,6 +532,13 @@ export async function dispatchEmailCopyWebhook(
       })
     }
   }
+
+  // Coluna vence: passa o valor efetivo (já com o upgrade aplicado) como
+  // fallback — resolveStoreLanguage retorna esse valor com source 'store'.
+  const resolvedLang = resolveStoreLanguage(
+    onboardingRow?.form_responses ?? null,
+    effectiveStoreLang || null,
+  )
 
   const payload = {
     event: "email_copy.requested" as const,
