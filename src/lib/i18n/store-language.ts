@@ -191,7 +191,12 @@ export function languageCodeToLabel(code: unknown): string | null {
 export interface ResolvedStoreLanguage {
   code: string
   label: string
-  source: "form_other" | "form_main" | "store_fallback" | "default"
+  source:
+    | "store_override"
+    | "form_other"
+    | "form_main"
+    | "store_fallback"
+    | "default"
 }
 
 const FREE_TEXT_REGEX = /^[a-zà-ÿ\s-]+$/
@@ -213,6 +218,9 @@ function cleanFreeText(input: unknown): string | null {
  * Resolve o idioma efetivo de uma loja combinando múltiplas fontes em
  * ordem de prioridade:
  *
+ *   0. `opts.locked === true` + `storeLanguageFallback` presente → usa a
+ *      coluna `client_stores.language` com prioridade MÁXIMA (override manual
+ *      do admin). Vence o formulário. source `store_override`.
  *   1. `form_responses.store_language === "Outro"` → usa
  *      `form_responses.store_language_other` (campo de texto livre).
  *      Tenta alias (ex: "norueguês" → "nb"); senão salva texto cru.
@@ -229,9 +237,23 @@ function cleanFreeText(input: unknown): string | null {
 export function resolveStoreLanguage(
   formResponses: Record<string, unknown> | null | undefined,
   storeLanguageFallback?: string | null,
+  opts?: { locked?: boolean },
 ): ResolvedStoreLanguage {
   const formMain = formResponses?.store_language
   const formOther = formResponses?.store_language_other
+
+  // 0. Override manual do admin: a coluna client_stores.language vence o
+  // formulário quando language_locked=true. Sem isso, editar o idioma na
+  // tela não tinha efeito (o form sempre ganhava no passo 2).
+  if (opts?.locked && typeof storeLanguageFallback === "string" && storeLanguageFallback.trim()) {
+    const lockedTrim = storeLanguageFallback.trim()
+    const lockedCode = languageLabelToCode(lockedTrim) ?? lockedTrim
+    return {
+      code: lockedCode,
+      label: languageCodeToLabel(lockedCode) ?? lockedCode,
+      source: "store_override",
+    }
+  }
 
   // 1. Caminho "Outro" + texto livre
   if (

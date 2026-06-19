@@ -1138,10 +1138,19 @@ export async function confirmBriefing(
   // tinham valor útil — não toca em client_stores.language pra não escrever
   // 'pt-BR' redundante (mantém o default existente).
   if (onb.store_id) {
+    // Não sobrescreve quando o admin travou o idioma manualmente
+    // (language_locked=true) — o override do admin vence o formulário.
+    const { data: langRow } = await admin
+      .from("client_stores")
+      .select("language_locked")
+      .eq("id", onb.store_id)
+      .maybeSingle()
+    const locked =
+      (langRow as { language_locked?: boolean | null } | null)?.language_locked === true
     const resolved = resolveStoreLanguage(
       onb.form_responses as Record<string, unknown> | null,
     )
-    if (resolved.source !== "default") {
+    if (!locked && resolved.source !== "default") {
       await admin
         .from("client_stores")
         .update({ language: resolved.code })

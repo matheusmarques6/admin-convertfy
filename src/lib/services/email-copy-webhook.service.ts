@@ -187,7 +187,7 @@ export async function dispatchEmailCopyWebhook(
       .from("client_stores")
       .select(
         `
-          id, store_name, store_url, platform, language, niche,
+          id, store_name, store_url, platform, language, language_locked, niche,
           brand_thesis, brand_about, brand_pillars, brand_presence,
           icp_persona, icp_demographics, icp_day_in_life,
           icp_motivations, icp_frictions,
@@ -504,9 +504,14 @@ export async function dispatchEmailCopyWebhook(
   // store_language_other — caminho que o sync antigo do confirmBriefing
   // não cobria, fazendo o webhook enviar 'pt-BR' default. Agora o
   // dispatch garante consistência mesmo pra lojas sem backfill aplicado.
+  // `language_locked` = idioma setado manualmente no admin. Quando true, a
+  // coluna client_stores.language vence o formulário (source store_override).
+  const languageLocked =
+    (store as { language_locked?: boolean | null }).language_locked === true
   const resolvedLang = resolveStoreLanguage(
     onboardingRow?.form_responses ?? null,
     typeof store.language === "string" ? store.language : null,
+    { locked: languageLocked },
   )
 
   // Auto-correct lazy: se client_stores.language está no default mas a
@@ -516,6 +521,7 @@ export async function dispatchEmailCopyWebhook(
   const currentStoreLang =
     typeof store.language === "string" ? store.language.trim() : ""
   if (
+    !languageLocked &&
     resolvedLang.source !== "default" &&
     resolvedLang.source !== "store_fallback" &&
     resolvedLang.code !== currentStoreLang &&

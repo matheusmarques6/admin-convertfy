@@ -56,6 +56,14 @@ export async function PATCH(
       if (v !== undefined) updateData[k] = v
     }
 
+    // Edição manual de idioma é um override explícito: liga language_locked
+    // para que o dispatch de copy use client_stores.language com prioridade
+    // sobre o form_responses (caso contrário o formulário sempre vencia).
+    // Idioma `null` destrava e volta a seguir o formulário.
+    if (parsed.data.language !== undefined) {
+      updateData.language_locked = parsed.data.language !== null
+    }
+
     // `country` é sempre o PRINCIPAL (= countries[0]). Mantemos os dois
     // sincronizados em ambas as direções para os ~12 consumidores que leem
     // `country` (singular) continuarem corretos.
@@ -76,7 +84,7 @@ export async function PATCH(
       .from("client_stores")
       .update(updateData)
       .eq("id", id)
-      .select("id, store_name, store_url, platform, niche, language, country, countries")
+      .select("id, store_name, store_url, platform, niche, language, language_locked, country, countries")
       .single()
 
     if (error) throw error
