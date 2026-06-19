@@ -54,6 +54,8 @@ Do NOT replace these. Do NOT flag them. Keep verbatim.
 - DO NOT add CSS, classes, or selectors that are not in the reference.
 - DO NOT add MSO/Outlook conditionals beyond what's in the reference.
 - DO NOT touch <meta>, <head>, <!DOCTYPE>, the <style> block structure, media queries, or comments other than to substitute font-family + :root vars.
+- PREHEADER: the preheader is ONE short hidden line of text (just the preheader copy). NEVER pad it with repeated &nbsp;, &#160;, zero-width characters (U+200C/U+200D/U+200B/U+FEFF), or any whitespace/spacer "hack". No spacer block of any kind. Emit the preheader text once and move on.
+- DO NOT repeat any character, entity, or token more than a handful of times in a row. If you find yourself emitting a long run of the same thing, STOP and continue with the next block.
 - DO NOT emit commentary, markdown fences, or any text before <!DOCTYPE html> or after </html>.
 </hard_prohibitions>
 

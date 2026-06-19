@@ -68,6 +68,8 @@ Do NOT replace these. Do NOT flag them. Keep verbatim.
 - DO NOT add CSS, classes, or selectors that are not in the reference.
 - DO NOT add MSO/Outlook conditionals beyond what's in the reference.
 - DO NOT touch <meta>, <head>, <!DOCTYPE>, the <style> block structure, media queries, or comments other than to substitute font-family + :root vars.
+- PREHEADER: the preheader is ONE short hidden line of text (just the preheader copy). NEVER pad it with repeated &nbsp;, &#160;, zero-width characters (U+200C/U+200D/U+200B/U+FEFF), or any whitespace/spacer "hack". No spacer block of any kind. Emit the preheader text once and move on.
+- DO NOT repeat any character, entity, or token more than a handful of times in a row. If you find yourself emitting a long run of the same thing, STOP and continue with the next block.
 - DO NOT emit commentary, markdown fences, or any text before <!DOCTYPE html> or after </html>.
 </hard_prohibitions>
 
@@ -284,10 +286,41 @@ export async function invokeHtmlChain(
   }
 }
 
+/**
+ * Colapsa "spacer hacks" descontrolados de preheader. Modelos as vezes entram
+ * num loop gerando `&nbsp;‌&nbsp;‌...` milhares de vezes (preheader padding),
+ * estouram o max_tokens e TRUNCAM o email antes do corpo. Cortar qualquer run
+ * >= 12 de nbsp/zero-width pra 3 evita o desperdicio e o bloat. Defensivo: o
+ * prompt ja proibe o spacer, isto e a rede de seguranca.
+ */
+function collapseRunawaySpacers(html: string): string {
+  // Cobre &nbsp; / &#160; / U+00A0 e zero-width: U+200C U+200D U+200B U+FEFF.
+  return html.replace(
+    /(?:&nbsp;|&#160;| |‌|‍|​|﻿){12,}/gi,
+    "&nbsp;&nbsp;&nbsp;",
+  )
+}
+
+/** Erro de output truncado — o modelo nao fechou o documento (`</html>`). */
+export class HtmlTruncatedError extends Error {
+  constructor(htmlLength: number) {
+    super(`HTML output truncado (sem </html>, ${htmlLength} chars)`)
+    this.name = "HtmlTruncatedError"
+  }
+}
+
 /** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver. */
 function postProcessHtml(rawText: string): string {
   let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
+  raw = collapseRunawaySpacers(raw)
   const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
   if (doctypeMatch) raw = doctypeMatch[1]
+  // Guard de truncamento: sem `</html>` o documento esta incompleto (ex.: o
+  // modelo estourou max_tokens num spacer runaway antes de gerar o corpo).
+  // Lancar aqui faz runPhase2HtmlQa marcar `failed: html_failed` (visivel +
+  // retry) em vez de salvar um email quebrado como "sucesso" -> render vazio.
+  if (!/<\/html>\s*$/i.test(raw)) {
+    throw new HtmlTruncatedError(raw.length)
+  }
   return raw
 }
