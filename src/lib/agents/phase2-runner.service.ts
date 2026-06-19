@@ -757,6 +757,15 @@ export async function runPhase2Image(
 }
 
 /**
+ * QA agent flag. REMOVIDO do fluxo (natural e teste) por decisao de produto:
+ * o agente vinha reprovando emails legitimos (`qa_failed`) e travando a
+ * entrega. Default DESLIGADO. Reativar com `EMAIL_QA_ENABLED=true`.
+ */
+function isQaEnabled(): boolean {
+  return process.env.EMAIL_QA_ENABLED === "true"
+}
+
+/**
  * Phase 2 — etapa 2 (HTML + QA).
  *
  * Faz claim atomico aceitando `image_done` (caminho split novo) OU `rendering`
@@ -903,6 +912,44 @@ export async function runPhase2HtmlQa(
       await checkBatchTerminal(storeId, batchId).catch(() => {})
     }
     return { status: "failed" }
+  }
+
+  // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
+  // Bypass: HTML pronto -> status `ready` direto, sem rodar o agente QA
+  // (nem pre-checks deterministicos nem LLM). Sem custo, sem qa_failed.
+  // Claim atomico `rendering -> ready` mantem idempotencia.
+  if (!isQaEnabled()) {
+    const { data: readyClaimed } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "ready",
+        ready_at: new Date().toISOString(),
+        qa_issues: [],
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+      .eq("status", "rendering")
+      .select("id")
+    if (!readyClaimed || readyClaimed.length === 0) {
+      log.info("phase2.qa.skipped_already_started", { emailId })
+      return { status: "skipped" }
+    }
+    // Telemetria: registra o QA como pulado (visivel no painel de logs).
+    await logGenerationRun({
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId: batchId ?? "",
+      agent: "qa",
+      status: "skipped",
+      model: "disabled",
+      parsedOutput: { reason: "qa_disabled_flag", passed: true, issues_count: 0 },
+    }).catch(() => {})
+    if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    log.info("phase2.qa.disabled_ready", { storeId, emailId, batchId })
+    return { status: "ready" }
   }
 
   // ── Guard 2: rendering -> qa_running ─────────────────────────────────
