@@ -401,4 +401,126 @@ describe("generateEmailImage — extração do campo image_url.url", () => {
     expect(String(err)).toContain("Não foi possível extrair imagem")
     expect(String(err)).toContain("desculpe, nao posso gerar")
   })
+
+  it("refusal textual NÃO é retryable: chama OpenRouter uma única vez", async () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "I can't generate that" } }],
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, text: async () => body } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("prompt", "store-1").catch(() => {})
+    // sem .retryable → withOpenRouterRetry não re-tenta
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("erro de parse rico inclui status/content-type/length (acionável)", async () => {
+    const body = JSON.stringify({ choices: [{ message: { content: "nope" } }] })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      text: async () => body,
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const err = await generateEmailImage("prompt", "store-1").catch(
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain("status=200")
+    expect(String(err)).toContain("content-type=application/json")
+    expect(String(err)).toContain(`length=${body.length}`)
+  })
+})
+
+// ── Resiliência: respostas transitórias do OpenRouter (200 OK enganoso) ──
+describe("generateEmailImage — retry em falha transitória", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    uploadMock.mockResolvedValue({ error: null })
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: "https://signed.example/img.png" },
+      error: null,
+    })
+    getPublicUrlMock.mockReturnValue({
+      data: { publicUrl: "https://public.example/img.png" },
+    })
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized-bytes"))
+  })
+
+  function okImageBody() {
+    return JSON.stringify({
+      choices: [
+        { message: { content: `data:image/png;base64,${TINY_PNG_B64}` } },
+      ],
+    })
+  }
+
+  it("200 OK + body vazio → retry e sucesso na 2a tentativa", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1a: body vazio (transitório)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => "",
+      } as unknown as Response)
+      // 2a: imagem válida
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => okImageBody(),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
+  it("200 OK + body vazio nas 2 tentativas → erro diagnóstico (não snippet vazio)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "",
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const err = await generateEmailImage("prompt", "store-1").catch(
+      (e: unknown) => e,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(err)).toContain("empty body")
+    expect(String(err)).toContain("status=200")
+    // a mensagem NÃO termina no antigo snippet vazio
+    expect(String(err)).not.toMatch(/Resposta \(truncada\): $/)
+  })
+
+  it("200 OK + SSE com error-frame → retryable, sucesso na 2a tentativa", async () => {
+    const sseError =
+      ': OPENROUTER PROCESSING\n\ndata: {"error":{"message":"provider disconnected","metadata":{"error_type":"provider_error"}}}\n\n'
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => sseError,
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => okImageBody(),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(url).toBe("https://signed.example/img.png")
+  })
 })

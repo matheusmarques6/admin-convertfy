@@ -12,6 +12,11 @@ import {
   getAspectDimensions,
   type AspectKey,
 } from "../image/aspect-ratio"
+import {
+  OpenRouterEmptyBodyError,
+  OpenRouterMidStreamError,
+  withOpenRouterRetry,
+} from "@/lib/agents/openrouter-invoke"
 
 const log = logger.child("ImageChain")
 
@@ -233,152 +238,206 @@ export async function generateEmailImage(
     })
   }
 
-  let res = await callOpenRouterImage(
-    apiKey,
-    prompt,
-    useMultimodal ? options?.referenceImageUrl : undefined,
-    systemPrompt,
-  )
-
-  // Master Prompt v2: se o modelo rejeitou role=system, retry UMA vez
-  // concatenando system + user no mesmo user message. Decidido antes do
-  // fallback de multimodal pra evitar mascarar drift de role como drift
-  // de multimodal (logs ficam mais limpos pra ops).
-  if (
-    !res.ok &&
-    systemPrompt &&
-    res.status >= 400 &&
-    res.status < 500
-  ) {
-    const errText = await res.text().catch(() => "")
-    if (isSystemRoleUnsupportedError(errText)) {
-      log.warn("image.system_prompt.fallback_concatenated", {
-        storeId,
-        status: res.status,
-        errorSnippet: errText.slice(0, 200),
-      })
-      const concatenated = `${systemPrompt}\n\n${prompt}`
-      res = await callOpenRouterImage(
-        apiKey,
-        concatenated,
-        useMultimodal ? options?.referenceImageUrl : undefined,
-        undefined,
-      )
-    } else {
-      // Reembrulha pra cair na 4xx genérica abaixo sem perder o body
-      // (Response já foi consumida via .text() — recria sintética).
-      res = new Response(errText, {
-        status: res.status,
-        statusText: res.statusText,
-      })
-    }
-  }
-
-  // AE-13: se multimodal foi tentado e o modelo nao aceita, retry
-  // UMA vez em modo text2img puro. Apenas pra 4xx; 5xx propaga.
-  if (!res.ok && useMultimodal && res.status >= 400 && res.status < 500) {
-    const errText = await res.text().catch(() => "")
-    if (isMultimodalUnsupportedError(errText)) {
-      log.warn("image.multimodal.fallback_text2img", {
-        storeId,
-        status: res.status,
-        errorSnippet: errText.slice(0, 200),
-      })
-      res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt)
-    } else {
-      // AE-13 review: se o body menciona "image" mas nao casa keywords
-      // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra
-      // ops detectar drift e atualizar isMultimodalUnsupportedError.
-      if (/image/i.test(errText)) {
-        log.warn("image.multimodal.4xx_with_image_keyword_no_match", {
-          storeId,
-          status: res.status,
-          errorSnippet: errText.slice(0, 300),
-        })
-      }
-      throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`)
-    }
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new Error(`OpenRouter ${res.status}: ${text.slice(0, 300)}`)
-  }
-
-  // A resposta contém base64 gigante (~5MB+) que pode truncar com res.json().
-  // Ler como text e extrair via regex é mais seguro.
-  const rawText = await res.text()
-
-  let imageBuffer: Buffer | null = null
-
-  // Formato atual do OpenRouter pra modelos de imagem: a imagem vem em
-  // choices[].message.images[].image_url.url — que pode ser um LINK http OU um
-  // data URL base64. Lemos esse campo PRIMEIRO (regex no texto, sem JSON.parse
-  // do payload que pode ser gigante). Antes só procurávamos base64 solto, então
-  // toda resposta que entregava a imagem por LINK falhava aqui.
-  const urlMatch = rawText.match(/"image_url"\s*:\s*\{\s*"url"\s*:\s*"([^"]+)"/)
-  const imageUrlField = urlMatch?.[1]
-  if (imageUrlField) {
-    if (/^https?:\/\//i.test(imageUrlField)) {
-      // Link http: baixar a imagem do link e seguir pro MESMO fluxo de upload +
-      // signed URL 365d abaixo (URL de referência, igual ao logo — nunca base64
-      // inline no HTML). Falha no download cai nos fallbacks de base64.
-      try {
-        const imgRes = await fetchWithTimeout(
-          imageUrlField,
-          {},
-          OPENROUTER_IMAGE_TIMEOUT_MS,
-        )
-        if (imgRes.ok) {
-          imageBuffer = Buffer.from(await imgRes.arrayBuffer())
-        } else {
-          log.warn("image.url_download_non_ok", { storeId, status: imgRes.status })
-        }
-      } catch (err) {
-        log.warn("image.url_download_failed", {
-          storeId,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    } else {
-      // data URL base64 dentro do campo url (data:image/...;base64,XXXX).
-      const dataUrlB64 = imageUrlField.match(/^data:image\/[^;]+;base64,(.+)$/)
-      if (dataUrlB64?.[1]) {
-        imageBuffer = Buffer.from(dataUrlB64[1], "base64")
-      }
-    }
-  }
-
-  // Fallback 1: data:image/...;base64,XXXX solto na resposta bruta.
-  if (!imageBuffer) {
-    const b64Match = rawText.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]+=*)/)
-    if (b64Match?.[1]) {
-      imageBuffer = Buffer.from(b64Match[1], "base64")
-    }
-  }
-
-  // Fallback 2: b64_json direto.
-  if (!imageBuffer) {
-    const b64JsonMatch = rawText.match(/"b64_json"\s*:\s*"([A-Za-z0-9+/]+=*)"/)
-    if (b64JsonMatch?.[1]) {
-      imageBuffer = Buffer.from(b64JsonMatch[1], "base64")
-    }
-  }
-
-  if (!imageBuffer) {
-    // Instrumentação: inclui um trecho da resposta crua no erro (além do log).
-    // O phase2-runner grava esse `errorMessage` no run, então o formato real
-    // aparece na UI ("OUTPUT" do agente image) sem depender dos logs do server.
-    const snippet = rawText.slice(0, 1500)
-    log.error("image.parse_failed", {
-      storeId,
-      responseLength: rawText.length,
-      first500: rawText.slice(0, 500),
-    })
-    throw new Error(
-      `Não foi possível extrair imagem da resposta do OpenRouter. Resposta (truncada): ${snippet}`,
+  // ── Uma tentativa completa: chama OpenRouter + extrai o buffer ──────────
+  //
+  // Encapsulada pra rodar sob `withOpenRouterRetry`: respostas vazias / SSE
+  // com error-frame são falhas TRANSITÓRIAS do OpenRouter (provider disconnect/
+  // timeout mid-stream, documentado) — viram erros nomeados retryable e ganham
+  // 1 retry com backoff. Erros HTTP e "nenhuma imagem extraível" (refusal de
+  // texto, formato inesperado) NÃO são retryable: propagam direto.
+  const fetchImageBuffer = async (attempt: number): Promise<Buffer> => {
+    const attemptT0 = Date.now()
+    let res = await callOpenRouterImage(
+      apiKey,
+      prompt,
+      useMultimodal ? options?.referenceImageUrl : undefined,
+      systemPrompt,
     )
+
+    // Master Prompt v2: se o modelo rejeitou role=system, retry UMA vez
+    // concatenando system + user no mesmo user message. Decidido antes do
+    // fallback de multimodal pra evitar mascarar drift de role como drift
+    // de multimodal (logs ficam mais limpos pra ops).
+    if (
+      !res.ok &&
+      systemPrompt &&
+      res.status >= 400 &&
+      res.status < 500
+    ) {
+      const errText = await res.text().catch(() => "")
+      if (isSystemRoleUnsupportedError(errText)) {
+        log.warn("image.system_prompt.fallback_concatenated", {
+          storeId,
+          attempt,
+          status: res.status,
+          errorSnippet: errText.slice(0, 200),
+        })
+        const concatenated = `${systemPrompt}\n\n${prompt}`
+        res = await callOpenRouterImage(
+          apiKey,
+          concatenated,
+          useMultimodal ? options?.referenceImageUrl : undefined,
+          undefined,
+        )
+      } else {
+        // Reembrulha pra cair na 4xx genérica abaixo sem perder o body
+        // (Response já foi consumida via .text() — recria sintética).
+        res = new Response(errText, {
+          status: res.status,
+          statusText: res.statusText,
+        })
+      }
+    }
+
+    // AE-13: se multimodal foi tentado e o modelo nao aceita, retry
+    // UMA vez em modo text2img puro. Apenas pra 4xx; 5xx propaga.
+    if (!res.ok && useMultimodal && res.status >= 400 && res.status < 500) {
+      const errText = await res.text().catch(() => "")
+      if (isMultimodalUnsupportedError(errText)) {
+        log.warn("image.multimodal.fallback_text2img", {
+          storeId,
+          attempt,
+          status: res.status,
+          errorSnippet: errText.slice(0, 200),
+        })
+        res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt)
+      } else {
+        // AE-13 review: se o body menciona "image" mas nao casa keywords
+        // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra
+        // ops detectar drift e atualizar isMultimodalUnsupportedError.
+        if (/image/i.test(errText)) {
+          log.warn("image.multimodal.4xx_with_image_keyword_no_match", {
+            storeId,
+            status: res.status,
+            errorSnippet: errText.slice(0, 300),
+          })
+        }
+        throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`)
+      }
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      throw new Error(`OpenRouter ${res.status}: ${text.slice(0, 300)}`)
+    }
+
+    // A resposta contém base64 gigante (~5MB+) que pode truncar com res.json().
+    // Ler como text e extrair via regex é mais seguro.
+    const rawText = await res.text()
+    const ms = Date.now() - attemptT0
+
+    // ── Falhas transitórias do OpenRouter (200 OK enganoso) ──────────────
+    // Body vazio: provider desconectou antes do primeiro byte útil. SSE com
+    // error-frame: erro entregue in-band depois do 200 OK. Ambos são
+    // transitórios → erro nomeado retryable (resolvidos pelo retry na maioria).
+    if (rawText.trim() === "") {
+      throw new OpenRouterEmptyBodyError({ status: res.status, ms })
+    }
+    if (/^(\s*:|\s*data:)/m.test(rawText)) {
+      throw new OpenRouterMidStreamError({
+        errorType: "midstream_error",
+        status: res.status,
+        ms,
+        snippet: rawText.slice(0, 200),
+      })
+    }
+
+    let imageBuffer: Buffer | null = null
+
+    // Formato atual do OpenRouter pra modelos de imagem: a imagem vem em
+    // choices[].message.images[].image_url.url — que pode ser um LINK http OU um
+    // data URL base64. Lemos esse campo PRIMEIRO (regex no texto, sem JSON.parse
+    // do payload que pode ser gigante). Antes só procurávamos base64 solto, então
+    // toda resposta que entregava a imagem por LINK falhava aqui.
+    const urlMatch = rawText.match(/"image_url"\s*:\s*\{\s*"url"\s*:\s*"([^"]+)"/)
+    const imageUrlField = urlMatch?.[1]
+    if (imageUrlField) {
+      if (/^https?:\/\//i.test(imageUrlField)) {
+        // Link http: baixar a imagem do link e seguir pro MESMO fluxo de upload +
+        // signed URL 365d abaixo (URL de referência, igual ao logo — nunca base64
+        // inline no HTML). Falha no download cai nos fallbacks de base64.
+        try {
+          const imgRes = await fetchWithTimeout(
+            imageUrlField,
+            {},
+            OPENROUTER_IMAGE_TIMEOUT_MS,
+          )
+          if (imgRes.ok) {
+            imageBuffer = Buffer.from(await imgRes.arrayBuffer())
+          } else {
+            log.warn("image.url_download_non_ok", { storeId, status: imgRes.status })
+          }
+        } catch (err) {
+          log.warn("image.url_download_failed", {
+            storeId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      } else {
+        // data URL base64 dentro do campo url (data:image/...;base64,XXXX).
+        const dataUrlB64 = imageUrlField.match(/^data:image\/[^;]+;base64,(.+)$/)
+        if (dataUrlB64?.[1]) {
+          imageBuffer = Buffer.from(dataUrlB64[1], "base64")
+        }
+      }
+    }
+
+    // Fallback 1: data:image/...;base64,XXXX solto na resposta bruta.
+    if (!imageBuffer) {
+      const b64Match = rawText.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]+=*)/)
+      if (b64Match?.[1]) {
+        imageBuffer = Buffer.from(b64Match[1], "base64")
+      }
+    }
+
+    // Fallback 2: b64_json direto.
+    if (!imageBuffer) {
+      const b64JsonMatch = rawText.match(/"b64_json"\s*:\s*"([A-Za-z0-9+/]+=*)"/)
+      if (b64JsonMatch?.[1]) {
+        imageBuffer = Buffer.from(b64JsonMatch[1], "base64")
+      }
+    }
+
+    if (!imageBuffer) {
+      // Não-retryable: body não-vazio mas sem imagem extraível — quase sempre é
+      // refusal textual do modelo (ex.: política de conteúdo sobre rostos, agora
+      // que testimonials gera avatares) ou formato inesperado. Retry não ajuda.
+      // Instrumentação rica: status + content-type + length tornam o erro
+      // acionável mesmo quando o snippet é curto/vazio (o bug que originou este
+      // fix mostrava "Resposta (truncada): " sem nenhum metadado). O phase2-runner
+      // grava esse `errorMessage` no run → aparece na UI sem depender dos logs.
+      const snippet = rawText.slice(0, 500)
+      const contentType = res.headers?.get?.("content-type") ?? "unknown"
+      log.error("image.parse_failed", {
+        storeId,
+        attempt,
+        status: res.status,
+        contentType,
+        responseLength: rawText.length,
+        first500: rawText.slice(0, 500),
+      })
+      throw new Error(
+        `Não foi possível extrair imagem da resposta do OpenRouter ` +
+          `(status=${res.status}, content-type=${contentType}, length=${rawText.length}). ` +
+          `Resposta (truncada): ${snippet}`,
+      )
+    }
+
+    return imageBuffer
   }
+
+  const imageBuffer = await withOpenRouterRetry(
+    (n) => fetchImageBuffer(n),
+    {
+      onRetry: (err, n) =>
+        log.warn("image.retry", {
+          storeId,
+          attempt: n,
+          errorName: (err as Error)?.name,
+          message: (err as Error)?.message,
+        }),
+    },
+  )
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o
   // resize falhar, segue com o buffer original (pipeline nao quebra).
