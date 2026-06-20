@@ -165,10 +165,11 @@ export async function resolveBlockPrompt(
       ? (blockContent.image_last_generated_at as string)
       : null
 
-  // ── 2. Email + flow_id + email_number ──────────────────────────
+  // ── 2. Email + flow_id + number ──────────────────────────
+  // Coluna em email_flow_emails se chama `number`, NAO `email_number`.
   const { data: emailRow, error: emailErr } = await admin
     .from("email_flow_emails")
-    .select("email_number, flow_id")
+    .select("number, flow_id")
     .eq("id", emailId)
     .maybeSingle()
 
@@ -176,7 +177,7 @@ export async function resolveBlockPrompt(
   if (!emailRow) throw new NotFoundError("Email")
 
   const flowId = (emailRow.flow_id as string | undefined) ?? null
-  const emailNumber = (emailRow.email_number as number | undefined) ?? null
+  const emailNumber = (emailRow.number as number | undefined) ?? null
 
   // ── 3. Flow → flow_type → store_id ────────────────────────────
   let flowType: string | null = null

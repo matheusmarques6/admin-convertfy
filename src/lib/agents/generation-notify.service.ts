@@ -145,15 +145,16 @@ export async function notifyEmailFailed(params: {
 
     const admin = createAdminClient()
     // Resolve email + flow + store em uma unica passada
+    // Coluna em email_flow_emails se chama `number`, NAO `email_number`.
     const { data: emailRow } = await admin
       .from("email_flow_emails")
-      .select("name, email_number, flow_id")
+      .select("name, number, flow_id")
       .eq("id", params.emailId)
       .maybeSingle()
 
     const flowId = (emailRow?.flow_id as string | undefined) ?? null
     const emailName = (emailRow?.name as string | undefined) ?? "Email"
-    const emailNumber = (emailRow?.email_number as number | undefined) ?? null
+    const emailNumber = (emailRow?.number as number | undefined) ?? null
 
     let flowType = ""
     if (flowId) {
