@@ -5,7 +5,8 @@
  *
  * Adiciona os blocos faltantes da blueprint preservando a copy já existente
  * (carry-over por `reconcileBlocksAdditive`). No-op nos emails cuja estrutura
- * já bate. Emails finalizados (ready/approved/live) são preservados.
+ * já bate. Emails finalizados (ready/approved/live) são preservados por padrão;
+ * pode-se forçar reescrita passando `force: true` (escolha consciente do user).
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -14,12 +15,25 @@ import { reconcileBlocksAdditive, type ReconcileResult } from "@/lib/agents/seed
 
 const log = logger.child("ReconcileBlocks")
 
-// Status finalizados — não mexer na estrutura pronta.
+// Status finalizados — não mexer na estrutura pronta (a menos que `force=true`).
 const FINALIZED_STATUSES = new Set(["ready", "approved", "live"])
 
 export interface ReconcileEmailResult extends ReconcileResult {
   /** Por que pulou, quando não reconciliou por motivo estrutural. */
   skipped: "not_found" | "finalized" | null
+  /** True quando atravessou um status finalizado por causa de `force`. */
+  forced_through_finalized?: boolean
+}
+
+export interface ReconcileOptions {
+  /**
+   * Quando true, ignora o guard de FINALIZED_STATUSES e reescreve a estrutura
+   * mesmo em emails ready/approved/live. A copy existente continua sendo
+   * preservada por tipo (carry-over em `reconcileBlocksAdditive`); blocos novos
+   * vêm vazios e precisam de regeração de copy depois. Use com consciência —
+   * a UI deve confirmar com o user antes.
+   */
+  force?: boolean
 }
 
 /**
@@ -33,14 +47,16 @@ export interface ReconcileEmailResult extends ReconcileResult {
  *
  * Sempre passa `storeId` ao `reconcileBlocksAdditive`, então o blueprint da
  * loja é preferido (cai no global só se a loja não tiver um). Preserva emails
- * finalizados (ready/approved/live).
+ * finalizados (ready/approved/live), a menos que `options.force=true`.
  */
 export async function reconcileEmailStructure(
   storeId: string,
   flowType: string,
   emailNumber: number,
+  options: ReconcileOptions = {},
 ): Promise<ReconcileEmailResult> {
   const admin = createAdminClient()
+  const force = options.force === true
 
   const { data: flow, error: flowErr } = await admin
     .from("email_flows")
@@ -64,8 +80,17 @@ export async function reconcileEmailStructure(
     return { reconciled: false, added: 0, total: 0, skipped: "not_found" }
   }
 
-  if (FINALIZED_STATUSES.has(email.status as string)) {
+  const wasFinalized = FINALIZED_STATUSES.has(email.status as string)
+  if (wasFinalized && !force) {
     return { reconciled: false, added: 0, total: 0, skipped: "finalized" }
+  }
+  if (wasFinalized && force) {
+    log.warn("reconcile.email.forced_through_finalized", {
+      storeId,
+      flowType,
+      emailNumber,
+      previousStatus: email.status,
+    })
   }
 
   const r = await reconcileBlocksAdditive(
@@ -74,7 +99,11 @@ export async function reconcileEmailStructure(
     emailNumber,
     storeId,
   )
-  return { ...r, skipped: null }
+  return {
+    ...r,
+    skipped: null,
+    forced_through_finalized: wasFinalized && force,
+  }
 }
 
 export interface ReconcileStoreResult {
@@ -82,15 +111,18 @@ export interface ReconcileStoreResult {
   emails_reconciled: number
   /** Total de blocos vazios adicionados (somados em todos os emails). */
   blocks_added: number
-  /** Emails elegíveis avaliados (não-finalizados). */
+  /** Emails elegíveis avaliados (não-finalizados, ou todos quando force=true). */
   emails_evaluated: number
+  /** Quantos emails atravessaram o guard de FINALIZED por causa de `force`. */
+  forced_finalized?: number
 }
 
 export async function reconcileStoreStructure(
   storeId: string,
-  options: { flowIds?: string[] } = {},
+  options: { flowIds?: string[]; force?: boolean } = {},
 ): Promise<ReconcileStoreResult> {
   const admin = createAdminClient()
+  const force = options.force === true
 
   let flowQuery = admin
     .from("email_flows")
@@ -116,17 +148,20 @@ export async function reconcileStoreStructure(
     .in("flow_id", flowIds)
   if (emailErr) throw emailErr
 
+  // Quando force=true, avalia TODOS os emails (inclusive ready/approved/live).
   const targets = (emails ?? []).filter(
-    (e) => !FINALIZED_STATUSES.has(e.status as string),
+    (e) => force || !FINALIZED_STATUSES.has(e.status as string),
   )
 
   let emailsReconciled = 0
   let blocksAdded = 0
+  let forcedFinalized = 0
   // Sequencial: reconcile é no-op na maioria (early-return) e só os emails
   // defasados fazem delete+insert. Evita rajada de queries no Supabase.
   for (const e of targets) {
     const flowType = flowTypeById.get(e.flow_id as string)
     if (!flowType) continue
+    const wasFinalized = FINALIZED_STATUSES.has(e.status as string)
     try {
       const r = await reconcileBlocksAdditive(
         e.id as string,
@@ -136,6 +171,7 @@ export async function reconcileStoreStructure(
       )
       if (r.reconciled) emailsReconciled++
       blocksAdded += r.added
+      if (wasFinalized && force) forcedFinalized++
     } catch (err) {
       log.warn("reconcile.email_failed", {
         storeId,
@@ -147,14 +183,17 @@ export async function reconcileStoreStructure(
 
   log.info("reconcile.store.done", {
     storeId,
+    force,
     emails_evaluated: targets.length,
     emails_reconciled: emailsReconciled,
     blocks_added: blocksAdded,
+    forced_finalized: forcedFinalized,
   })
 
   return {
     emails_reconciled: emailsReconciled,
     blocks_added: blocksAdded,
     emails_evaluated: targets.length,
+    forced_finalized: forcedFinalized,
   }
 }

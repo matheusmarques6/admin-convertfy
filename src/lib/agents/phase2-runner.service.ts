@@ -504,7 +504,169 @@ export async function runPhase2Image(
     // pra recuperar emails presos em image_done). Degradacao graciosa
     // preservada: imagem que falha retorna false e NAO aborta as outras nem o
     // email.
+
+    /**
+     * Testimonials: gera 1 avatar UGC POR ITEM (não 1 imagem pro bloco
+     * inteiro). Cada item.avatar_url recebe URL distinta. Cap em 4 avatares
+     * por bloco (custo controlado). Em vez de reutilizar o template do
+     * agente (que assume banner landscape), monta um prompt dedicado pra
+     * retrato UGC quadrado. Roda em paralelo entre items do mesmo bloco.
+     */
+    const processTestimonialAvatars = async (
+      blk: ImageBlockRow,
+    ): Promise<boolean> => {
+      const content = (blk.content as Record<string, unknown>) ?? {}
+      const rawItems = Array.isArray(content.items)
+        ? (content.items as Array<Record<string, unknown>>)
+        : []
+      if (rawItems.length === 0) return true
+
+      const MAX_AVATARS_PER_BLOCK = 4
+      const items = rawItems.slice(0, MAX_AVATARS_PER_BLOCK)
+
+      // Contexto de marca pra alinhar o avatar à audiência da loja.
+      const brandName =
+        ((ctx.storeRaw as Record<string, unknown>)?.store_name as string | undefined) ??
+        "the brand"
+      const nicheText =
+        ((ctx.storeRaw as Record<string, unknown>)?.niche as string | undefined) ??
+        ""
+      const personaText =
+        ((ctx.storeRaw as Record<string, unknown>)?.icp_persona as
+          | string
+          | undefined) ?? ""
+      const imageBriefBase = (() => {
+        const b = ctx.blueprint?.blocks?.find(
+          (x) => x.type === "testimonials",
+        )
+        return typeof b?.image_brief === "string" ? b.image_brief : ""
+      })()
+
+      const renderAvatarPrompt = (idx: number, author: string): string => {
+        const lines = [
+          imageBriefBase ? `ART DIRECTION: ${imageBriefBase}` : "",
+          `Generate a square (1:1) portrait avatar for a customer testimonial.`,
+          `Customer name: ${author || `Customer ${idx + 1}`}`,
+          `Brand: ${brandName}${nicheText ? ` (niche: ${nicheText})` : ""}`,
+          personaText ? `Target audience persona: ${personaText}` : "",
+          `Style: authentic UGC selfie, warm natural lighting, plain or softly blurred background, friendly genuine expression, no text or logos.`,
+          `Vary look between customers: this is avatar #${idx + 1} of ${items.length}, so use distinct age, hair, ethnicity, and pose relative to other avatars in the same set.`,
+          `Composition: head-and-shoulders, centered, suitable for cropping to a small circular avatar.`,
+        ]
+        return lines.filter(Boolean).join("\n\n")
+      }
+
+      const processOne = async (
+        item: Record<string, unknown>,
+        idx: number,
+      ): Promise<{ url: string | null; alt: string }> => {
+        const itemT0 = Date.now()
+        const author =
+          (typeof item.author === "string" && item.author.trim()) ||
+          `Customer ${idx + 1}`
+        const prompt = renderAvatarPrompt(idx, author)
+        try {
+          const imageUrl = await generateEmailImage(prompt, storeId, {
+            aspect: "1:1",
+            overlayReserveBottom: false,
+            mode: "text2img",
+            systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
+          })
+          const alt = `${author} — customer of ${brandName}`
+          await logGenerationRun({
+            storeId,
+            flowId,
+            emailId,
+            triggeredBy,
+            batchId,
+            agent: "image",
+            status: "success",
+            model: "openai/gpt-5.4-image-2",
+            durationMs: Date.now() - itemT0,
+            renderedPrompt: prompt,
+            parsedOutput: {
+              blockId: blk.id,
+              kind: "testimonial_avatar",
+              itemIndex: idx,
+              imageUrl,
+            },
+          })
+          return { url: imageUrl, alt }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Erro no avatar"
+          log.error("phase2.image.testimonial_avatar_error", {
+            emailId,
+            blockId: blk.id,
+            itemIndex: idx,
+            error: msg,
+          })
+          await logGenerationRun({
+            storeId,
+            flowId,
+            emailId,
+            triggeredBy,
+            batchId,
+            agent: "image",
+            status: "error",
+            model: "openai/gpt-5.4-image-2",
+            durationMs: Date.now() - itemT0,
+            renderedPrompt: prompt,
+            errorMessage: msg,
+            parsedOutput: {
+              blockId: blk.id,
+              kind: "testimonial_avatar",
+              itemIndex: idx,
+            },
+          })
+          return { url: null, alt: "" }
+        }
+      }
+
+      const results = await Promise.allSettled(items.map(processOne))
+
+      // Mescla URLs nos items preservando os campos existentes; items além do
+      // cap ficam intocados (sem avatar_url). Persiste apenas se ao menos 1
+      // avatar foi gerado — caso contrário, evita UPDATE desnecessário.
+      let anySuccess = false
+      const mergedItems = rawItems.map((it, idx) => {
+        if (idx >= items.length) return it
+        const r = results[idx]
+        if (r.status !== "fulfilled" || !r.value.url) return it
+        anySuccess = true
+        return {
+          ...it,
+          avatar_url: r.value.url,
+          avatar_alt: r.value.alt,
+        }
+      })
+
+      if (anySuccess) {
+        await admin
+          .from("email_blocks")
+          .update({ content: { ...content, items: mergedItems } })
+          .eq("id", blk.id)
+      }
+
+      const okCount = results.filter(
+        (r) => r.status === "fulfilled" && r.value.url,
+      ).length
+      log.info("phase2.image.testimonial_avatars_done", {
+        emailId,
+        blockId: blk.id,
+        requested: items.length,
+        succeeded: okCount,
+      })
+      // Considera sucesso parcial como sucesso do bloco (mesmo critério do
+      // bloco normal — degradação graciosa).
+      return okCount > 0
+    }
+
     const processImageBlock = async (blk: ImageBlockRow): Promise<boolean> => {
+      // Testimonials tem semântica especial: 1 avatar por item, não 1 imagem
+      // pro bloco. Roteia antes do fluxo normal.
+      if ((blk.block_type as string) === "testimonials") {
+        return processTestimonialAvatars(blk)
+      }
       const imgT0 = Date.now()
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined

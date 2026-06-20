@@ -20,6 +20,11 @@ export const maxDuration = 60
 
 const bodySchema = z.object({
   flow_ids: z.array(z.string().uuid()).optional(),
+  /**
+   * Reescreve a estrutura mesmo em emails ready/approved/live. Audit log
+   * em `reconcile.store.forced_finalized` quando >0 emails atravessam o guard.
+   */
+  force: z.boolean().optional(),
 })
 
 export async function POST(
@@ -37,11 +42,13 @@ export async function POST(
     log.info("reconcile.start", {
       storeId,
       flow_ids: parsed.flow_ids,
+      force: parsed.force === true,
       triggered_by: user.id,
     })
 
     const result = await reconcileStoreStructure(storeId, {
       flowIds: parsed.flow_ids,
+      force: parsed.force,
     })
 
     return successResponse(request, { ok: true, ...result })

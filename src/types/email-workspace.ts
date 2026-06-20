@@ -354,7 +354,19 @@ export interface SocialProofBlockContent {
 
 export interface TestimonialsBlockContent {
   headline?: string
-  items?: Array<{ author: string; quote: string; rating?: number }>
+  items?: Array<{
+    author: string
+    quote: string
+    rating?: number
+    /**
+     * Avatar real gerado pelo image agent (UGC-style por item — 1 imagem por
+     * customer, não 1 imagem pro bloco inteiro). Quando ausente, o HTML agent
+     * cai em placeholder cinza. Preenchido por `phase2-runner.runPhase2Image`
+     * quando o bloco testimonials tem `needs_image=true`.
+     */
+    avatar_url?: string
+    avatar_alt?: string
+  }>
 }
 
 export interface UrgencyBlockContent {

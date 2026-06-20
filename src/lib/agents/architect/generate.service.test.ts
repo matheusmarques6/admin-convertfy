@@ -76,7 +76,9 @@ describe("generateBlueprintAndReference — propaga estrutura (Fase 1)", () => {
   it("source='ai' → reconcilia os email_blocks com a estrutura nova", async () => {
     h.blueprintSource = "ai"
     const res = await generateBlueprintAndReference(input)
-    expect(h.reconcileSpy).toHaveBeenCalledWith("store1", "welcome", 1)
+    expect(h.reconcileSpy).toHaveBeenCalledWith("store1", "welcome", 1, {
+      force: false,
+    })
     expect(res.referenceSource).toBe("llm")
   })
 

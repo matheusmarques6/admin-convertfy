@@ -29,8 +29,10 @@ export async function POST(
 
     const body = (await request.json().catch(() => ({}))) as {
       flow_ids?: string[]
+      force?: boolean
     }
     const flowIds = Array.isArray(body?.flow_ids) ? body.flow_ids : null
+    const force = body?.force === true
 
     let flowQuery = admin
       .from("email_flows")
@@ -70,8 +72,9 @@ export async function POST(
       randomUUID(),
       list,
       user.id,
+      { force },
     )
-    return successResponse(request, { ...result, emails: list.length })
+    return successResponse(request, { ...result, emails: list.length, force })
   } catch (error) {
     log.error("generate_blueprints.post", error)
     return errorResponse(request, error, "generate-blueprints-post")

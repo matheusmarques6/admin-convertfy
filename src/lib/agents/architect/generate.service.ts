@@ -37,6 +37,14 @@ export interface GenerateArchitectInput {
   emailNumber: number
   batchId: string
   triggeredBy?: string
+  /**
+   * Reescreve a estrutura de blocos mesmo em emails ready/approved/live.
+   * Propaga ao `reconcileEmailStructure`. Default false (preserva finalizados,
+   * comportamento histórico). Quando true, a copy existente continua sendo
+   * preservada por tipo (carry-over); blocos novos vêm vazios e precisam de
+   * regeração de copy depois.
+   */
+  force?: boolean
 }
 
 /**
@@ -176,6 +184,7 @@ export async function generateBlueprintAndReference(
         input.storeId,
         input.flowType,
         input.emailNumber,
+        { force: input.force === true },
       )
       if (r.reconciled) {
         log.info("architect.blocks_reconciled", {
@@ -184,6 +193,7 @@ export async function generateBlueprintAndReference(
           emailNumber: input.emailNumber,
           added: r.added,
           total: r.total,
+          forced_through_finalized: r.forced_through_finalized === true,
         })
       }
     } catch (err) {
@@ -208,6 +218,7 @@ export async function generateForEmails(
   batchId: string,
   emails: Array<{ flowType: string; emailNumber: number }>,
   triggeredBy?: string,
+  options: { force?: boolean } = {},
 ): Promise<{ ok: number; failed: number }> {
   let ok = 0
   let failed = 0
@@ -220,6 +231,7 @@ export async function generateForEmails(
           emailNumber: e.emailNumber,
           batchId,
           triggeredBy,
+          force: options.force === true,
         })
         ok++
       } catch (err) {

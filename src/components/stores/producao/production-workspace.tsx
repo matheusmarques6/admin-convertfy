@@ -1022,14 +1022,26 @@ function ReconcileStructureButton({
   onDone: () => void
 }) {
   const { toast } = useToast()
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState<"normal" | "force" | null>(null)
 
-  const run = async () => {
-    setSubmitting(true)
+  const run = async (force: boolean) => {
+    if (force) {
+      const confirmed = window.confirm(
+        "Forçar re-sync inclui emails ready/approved/live.\n\n" +
+          "A copy existente é preservada por tipo, mas blocos novos virão " +
+          "vazios e precisam de regeração de copy depois.\n\nContinuar?",
+      )
+      if (!confirmed) return
+    }
+    setSubmitting(force ? "force" : "normal")
     try {
       const res = await fetch(
         `/api/admin/stores/${storeId}/reconcile-blocks`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(force ? { force: true } : {}),
+        },
       )
       const text = await res.text()
       let body: Record<string, unknown> = {}
@@ -1044,11 +1056,14 @@ function ReconcileStructureButton({
       }
       const reconciled = (data.emails_reconciled as number) ?? 0
       const added = (data.blocks_added as number) ?? 0
+      const forced = (data.forced_finalized as number) ?? 0
+      const forcedSuffix =
+        forced > 0 ? ` · ${forced} email(s) finalizado(s) reescrito(s)` : ""
       toast({
         title: reconciled > 0 ? "Estrutura atualizada" : "Já estava em dia",
         description:
           reconciled > 0
-            ? `${reconciled} email(s) reconciliado(s) · ${added} bloco(s) adicionado(s). A copy existente foi preservada.`
+            ? `${reconciled} email(s) reconciliado(s) · ${added} bloco(s) adicionado(s)${forcedSuffix}. A copy existente foi preservada.`
             : "Nenhum email estava defasado em relação à blueprint.",
       })
       onDone()
@@ -1059,25 +1074,42 @@ function ReconcileStructureButton({
         description: err instanceof Error ? err.message : "Erro desconhecido",
       })
     } finally {
-      setSubmitting(false)
+      setSubmitting(null)
     }
   }
 
+  const busy = submitting !== null
+
   return (
-    <button
-      type="button"
-      onClick={run}
-      disabled={submitting}
-      title="Adiciona à estrutura os blocos que faltam da blueprint, sem gerar copy (preserva a copy existente)."
-      className="w-full inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px] border border-black/[0.12] bg-white text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      {submitting ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <RefreshCw className="h-3.5 w-3.5" />
-      )}
-      Re-sincronizar estrutura
-    </button>
+    <div className="flex w-full gap-1.5">
+      <button
+        type="button"
+        onClick={() => run(false)}
+        disabled={busy}
+        title="Adiciona à estrutura os blocos que faltam da blueprint, sem gerar copy (preserva a copy existente). Emails ready/approved/live são preservados."
+        className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px] border border-black/[0.12] bg-white text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {submitting === "normal" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" />
+        )}
+        Re-sincronizar estrutura
+      </button>
+      <button
+        type="button"
+        onClick={() => run(true)}
+        disabled={busy}
+        title="Forçar re-sync mesmo em emails ready/approved/live. Use quando a blueprint mudou e você quer propagar a nova estrutura para tudo. Pede confirmação."
+        className="inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-[6px] border border-amber-300 bg-amber-50 text-[12px] font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {submitting === "force" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          "Forçar"
+        )}
+      </button>
+    </div>
   )
 }
 

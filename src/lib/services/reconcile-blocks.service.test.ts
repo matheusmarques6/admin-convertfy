@@ -52,7 +52,13 @@ describe("reconcileEmailStructure", () => {
     }
     const r = await reconcileEmailStructure("store1", "welcome", 1)
     expect(h.reconcileSpy).toHaveBeenCalledWith("em1", "welcome", 1, "store1")
-    expect(r).toEqual({ reconciled: true, added: 7, total: 17, skipped: null })
+    expect(r).toEqual({
+      reconciled: true,
+      added: 7,
+      total: 17,
+      skipped: null,
+      forced_through_finalized: false,
+    })
   })
 
   it("preserva emails finalizados (ready) — não reconcilia", async () => {
@@ -64,6 +70,19 @@ describe("reconcileEmailStructure", () => {
     expect(h.reconcileSpy).not.toHaveBeenCalled()
     expect(r.skipped).toBe("finalized")
     expect(r.reconciled).toBe(false)
+  })
+
+  it("force=true: reconcilia mesmo email finalizado (ready)", async () => {
+    h.tableData = {
+      email_flows: { single: { id: "flow1" } },
+      email_flow_emails: { single: { id: "em1", status: "ready" } },
+    }
+    const r = await reconcileEmailStructure("store1", "welcome", 1, {
+      force: true,
+    })
+    expect(h.reconcileSpy).toHaveBeenCalledWith("em1", "welcome", 1, "store1")
+    expect(r.skipped).toBeNull()
+    expect(r.forced_through_finalized).toBe(true)
   })
 
   it("flow inexistente → skipped:not_found, sem reconciliar", async () => {
