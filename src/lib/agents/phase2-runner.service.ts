@@ -197,14 +197,18 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     .eq("id", storeId)
     .single()
 
-  // Resolve blueprint via email -> flow -> flow_type + email.email_number
+  // Resolve blueprint via email -> flow -> flow_type + email.number
+  // ATENCAO: a coluna em email_flow_emails se chama `number` (NAO `email_number`).
+  // PostgREST silencia select de coluna inexistente -> retorna null -> blueprint
+  // nao carrega e build-vars cai no template global pobre. Outras tabelas
+  // (store_email_references, email_blueprints, etc) usam `email_number` mesmo.
   const { data: emailRow } = await admin
     .from("email_flow_emails")
-    .select("email_number, flow_id")
+    .select("number, flow_id")
     .eq("id", emailId)
     .maybeSingle()
   const flowIdForBlueprint = (emailRow?.flow_id as string | undefined) ?? null
-  const emailNumberForBlueprint = (emailRow?.email_number as number | undefined) ?? null
+  const emailNumberForBlueprint = (emailRow?.number as number | undefined) ?? null
 
   let flowTypeForBlueprint: string | null = null
   if (flowIdForBlueprint) {
