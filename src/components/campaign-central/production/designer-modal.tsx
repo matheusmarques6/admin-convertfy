@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Clock, Check, ArrowRight, Search, Layers, Package } from "lucide-react"
+import { X, Clock, Check, ArrowRight, Search, Layers, Package, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   PRODUCTION_STEP_COUNT,
   PROD_STAGE_LABELS,
   type ProductionCampaign,
   type ProductionDesigner,
+  type ProductionStore,
+  type ProductionStorePreview,
 } from "@/types/campaign-production"
 import {
   designerInitials,
@@ -271,7 +273,12 @@ export function DesignerModal({ campaign, storeIndex, designers, onClose, onUpda
               <div className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Preview · {LANG_LABEL[store.lang] ?? store.lang}
               </div>
-              <EmailPreview storeName={store.store_name} subject={campaign.subject} lang={store.lang} />
+              <EmailPreviewReal
+                key={`${campaign.id}:${store.store_id}`}
+                itemId={campaign.id}
+                store={store}
+                subject={campaign.subject}
+              />
             </div>
 
             {/* Footer: ações de estágio */}
@@ -322,6 +329,99 @@ export function DesignerModal({ campaign, storeIndex, designers, onClose, onUpda
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Preview do email da loja. CONSOME o HTML real do pipeline AE quando a loja
+ * tem vínculo (`email_flow_email_id`) + email 'ready'; senão, fallback gracioso.
+ *
+ * Hoje a maioria das lojas NÃO terá HTML (o vínculo será populado depois pelo
+ * "email-espelho"), então o fallback é o caminho comum — não um estado de erro.
+ * Nunca dispara/enfileira o pipeline: só faz GET do que já existir.
+ */
+function EmailPreviewReal({
+  itemId,
+  store,
+  subject,
+}: {
+  itemId: string
+  store: ProductionStore
+  subject: string | null
+}) {
+  const [state, setState] = useState<
+    | { phase: "loading" }
+    | { phase: "ready"; preview: ProductionStorePreview }
+    | { phase: "error" }
+  >({ phase: "loading" })
+
+  useEffect(() => {
+    let cancelled = false
+    setState({ phase: "loading" })
+    fetch(
+      `/api/admin/campaign-central/production/${itemId}/preview?store_id=${encodeURIComponent(
+        store.store_id,
+      )}`,
+    )
+      .then(async (res) => {
+        const json = (await res.json().catch(() => null)) as
+          | { preview?: ProductionStorePreview }
+          | null
+        if (!res.ok || !json?.preview) throw new Error("preview-failed")
+        if (!cancelled) setState({ phase: "ready", preview: json.preview })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ phase: "error" })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [itemId, store.store_id])
+
+  if (state.phase === "loading") {
+    return (
+      <div className="flex w-[360px] flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-muted-foreground">
+        <Loader2 size={18} className="animate-spin" />
+        <span className="text-[12px]">Carregando preview…</span>
+      </div>
+    )
+  }
+
+  // HTML real disponível: iframe SANDBOXED (HTML de terceiros — segurança).
+  if (state.phase === "ready" && state.preview.available && state.preview.html) {
+    return (
+      <div className="w-[400px] overflow-hidden rounded-lg border border-border bg-white shadow-xl">
+        <iframe
+          title={`Preview do email · ${store.store_name}`}
+          srcDoc={state.preview.html}
+          sandbox=""
+          referrerPolicy="no-referrer"
+          className="h-[620px] w-full border-0 bg-white"
+        />
+      </div>
+    )
+  }
+
+  // Fallback gracioso: sem HTML real (sem vínculo, email não-pronto, ou erro).
+  // Mostra o mock como "exemplo de estrutura", claramente rotulado.
+  const notReadyHint =
+    state.phase === "ready" &&
+    state.preview.email_flow_email_id != null &&
+    state.preview.status != null
+      ? `Email vinculado ainda em produção (status: ${state.preview.status}).`
+      : "O preview real será exibido quando o email for produzido para esta loja."
+
+  return (
+    <div className="flex w-[360px] flex-col items-center gap-3">
+      <div className="w-full rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-center">
+        <div className="text-[12px] font-semibold text-foreground">Preview real indisponível</div>
+        <div className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{notReadyHint}</div>
+      </div>
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+        <Layers size={12} /> Exemplo de estrutura
+      </div>
+      <EmailPreview storeName={store.store_name} subject={subject} lang={store.lang} />
     </div>
   )
 }

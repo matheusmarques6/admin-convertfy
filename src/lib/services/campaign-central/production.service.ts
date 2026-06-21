@@ -17,6 +17,7 @@ import type {
   ProductionDesigner,
   ProductionResponse,
   ProductionStore,
+  ProductionStorePreview,
 } from "@/types/campaign-production"
 
 const log = logger.child("CampaignProduction")
@@ -91,6 +92,9 @@ interface RawTargetStore {
   status?: string
   prod_stage?: number
   designer_id?: string | null
+  /** Vínculo opcional com email_flow_emails.id (HTML real do pipeline AE).
+   *  Hoje sempre ausente — reservado pro "email-espelho" futuro. */
+  email_flow_email_id?: string | null
 }
 
 interface StoreMeta {
@@ -189,6 +193,7 @@ export async function getProduction(orgId: string): Promise<ProductionResponse> 
         prod_stage: prodStage,
         designer_id: t.designer_id ?? null,
         deploy_status: (t.status as ProductionStore["deploy_status"]) ?? "pending",
+        email_flow_email_id: t.email_flow_email_id ?? null,
       }
     })
 
@@ -314,6 +319,7 @@ export async function updateProductionStore(params: {
     prod_stage: nextStage,
     designer_id: targets[idx].designer_id ?? null,
     deploy_status: (current.status as ProductionStore["deploy_status"]) ?? "pending",
+    email_flow_email_id: current.email_flow_email_id ?? null,
   }
 }
 
@@ -450,4 +456,71 @@ export async function reopenAsDraft(params: {
 
   log.info("production.reopened", { pipelineItemId, suggestionId })
   return full as CampaignSuggestion
+}
+
+/**
+ * Lê o HTML real (pipeline AE) de UMA loja dentro de uma campanha em produção.
+ *
+ * CONSOME, não enfileira: a Central nunca dispara o pipeline AE; só LÊ o que já
+ * existir. O vínculo é o campo opcional `email_flow_email_id` no JSONB
+ * target_stores — hoje SEMPRE vazio (será populado pelo "email-espelho" futuro).
+ *
+ * Retorna `available=true` + `html` SÓ quando:
+ *   1. a loja tem `email_flow_email_id` setado, E
+ *   2. o email_flow_emails correspondente está em status 'ready', E
+ *   3. há HTML não-vazio.
+ * Qualquer outro caso → `available=false` (fallback gracioso no workspace).
+ * Nunca lança por "não encontrado"; só por erro de DB ou item fora da org.
+ */
+export async function getProductionStorePreview(params: {
+  orgId: string
+  itemId: string
+  storeId: string
+}): Promise<ProductionStorePreview> {
+  const { orgId, itemId, storeId } = params
+  const admin = createAdminClient()
+
+  const empty: ProductionStorePreview = {
+    available: false,
+    html: null,
+    email_flow_email_id: null,
+    status: null,
+  }
+
+  const { data: item, error: fetchErr } = await admin
+    .from("campaign_pipeline_items")
+    .select("id, target_stores")
+    .eq("id", itemId)
+    .eq("org_id", orgId)
+    .maybeSingle()
+
+  if (fetchErr) throw fetchErr
+  if (!item) throw new NotFoundError("Campanha em produção")
+
+  const targets = (item.target_stores as RawTargetStore[] | null) ?? []
+  const target = targets.find((t) => t.store_id === storeId)
+  // Loja não está na campanha, ou ainda não tem vínculo com HTML real:
+  // fallback gracioso (não é erro — é o caminho esperado hoje).
+  const emailId = target?.email_flow_email_id ?? null
+  if (!emailId) return empty
+
+  const { data: email, error: emailErr } = await admin
+    .from("email_flow_emails")
+    .select("id, status, html")
+    .eq("id", emailId)
+    .maybeSingle()
+
+  if (emailErr) throw emailErr
+  if (!email) return { ...empty, email_flow_email_id: emailId }
+
+  const status = (email.status as string | null) ?? null
+  const html = (email.html as string | null) ?? null
+  const ready = status === "ready" && !!html && html.trim().length > 0
+
+  return {
+    available: ready,
+    html: ready ? html : null,
+    email_flow_email_id: emailId,
+    status,
+  }
 }

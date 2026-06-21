@@ -46,6 +46,17 @@ export interface ProductionStore {
   prod_stage: number
   designer_id: string | null
   deploy_status: CampaignStoreDeployStatus
+  /**
+   * Vínculo OPCIONAL com o HTML real produzido pelo pipeline AE
+   * (email_flow_emails.id). Hoje SEMPRE null: nenhum produtor o popula
+   * automaticamente — os flows do AE são de onboarding (welcome, etc.),
+   * não de campanha. Reservado para o futuro "email-espelho" que vai
+   * gerar um email_flow_emails adaptado por loja e gravar o id aqui.
+   * Quando preenchido E o email estiver 'ready', o workspace exibe o
+   * HTML real num iframe sandboxed; caso contrário, fallback gracioso.
+   * Campo novo no objeto JSONB target_stores — sem migration.
+   */
+  email_flow_email_id?: string | null
 }
 
 export interface ProductionDesigner {
@@ -78,4 +89,23 @@ export interface ProductionResponse {
   designers: ProductionDesigner[]
   /** Total de cards exibidos (rascunho + em produção). Bate com o badge da aba. */
   count: number
+}
+
+/**
+ * Resposta do preview de email real por loja (consumo do pipeline AE).
+ *
+ * `html` só vem preenchido quando a loja tem um vínculo `email_flow_email_id`
+ * válido E o email correspondente está em status 'ready'. Em qualquer outro
+ * caso (sem vínculo, email não-pronto, sem HTML), `available=false` e o
+ * workspace cai no fallback gracioso (estrutura de exemplo).
+ */
+export interface ProductionStorePreview {
+  /** true só quando há HTML real pronto pra renderizar. */
+  available: boolean
+  /** HTML do email_flow_emails.html (status 'ready') ou null. */
+  html: string | null
+  /** id do email_flow_emails de origem (quando houver). */
+  email_flow_email_id: string | null
+  /** Status do email vinculado — útil pra UI ("ainda em produção"). */
+  status: string | null
 }

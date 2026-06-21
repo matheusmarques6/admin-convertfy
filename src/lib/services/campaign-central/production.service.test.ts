@@ -12,12 +12,14 @@ const fx: {
   stores: Row[]
   members: Row[]
   pipelineById: Map<string, Row>
+  emailsById: Map<string, Row>
   updates: Array<{ id: unknown; payload: Row }>
 } = {
   pipelineItems: [],
   stores: [],
   members: [],
   pipelineById: new Map(),
+  emailsById: new Map(),
   updates: [],
 }
 
@@ -58,7 +60,9 @@ function makeQuery(table: string) {
     },
     maybeSingle: async () => {
       const id = filters.find((f) => f.c === "id")?.v as string | undefined
-      return { data: id ? (fx.pipelineById.get(id) ?? null) : null, error: null }
+      const store =
+        table === "email_flow_emails" ? fx.emailsById : fx.pipelineById
+      return { data: id ? (store.get(id) ?? null) : null, error: null }
     },
     then: (resolve: (v: { data: unknown; error: null }) => unknown) => {
       if (action === "update") {
@@ -81,6 +85,7 @@ beforeEach(() => {
   fx.stores = []
   fx.members = []
   fx.pipelineById = new Map()
+  fx.emailsById = new Map()
   fx.updates = []
 })
 
@@ -219,6 +224,66 @@ describe("updateProductionStore", () => {
     const { updateProductionStore } = await import("./production.service")
     await expect(
       updateProductionStore({ orgId: "org-1", itemId: "p1", storeId: "sX", prodStage: 1 }),
+    ).rejects.toThrow()
+  })
+})
+
+describe("getProductionStorePreview", () => {
+  it("fallback (available=false) quando a loja não tem vínculo email_flow_email_id", async () => {
+    fx.pipelineById.set("p1", {
+      id: "p1",
+      target_stores: [{ store_id: "s1", store_name: "Loja A" }],
+    })
+    const { getProductionStorePreview } = await import("./production.service")
+    const r = await getProductionStorePreview({ orgId: "org-1", itemId: "p1", storeId: "s1" })
+    expect(r.available).toBe(false)
+    expect(r.html).toBeNull()
+    expect(r.email_flow_email_id).toBeNull()
+  })
+
+  it("fallback quando há vínculo mas o email não está 'ready'", async () => {
+    fx.pipelineById.set("p1", {
+      id: "p1",
+      target_stores: [{ store_id: "s1", store_name: "Loja A", email_flow_email_id: "e1" }],
+    })
+    fx.emailsById.set("e1", { id: "e1", status: "rendering", html: "<p>parcial</p>" })
+    const { getProductionStorePreview } = await import("./production.service")
+    const r = await getProductionStorePreview({ orgId: "org-1", itemId: "p1", storeId: "s1" })
+    expect(r.available).toBe(false)
+    expect(r.html).toBeNull()
+    expect(r.email_flow_email_id).toBe("e1")
+    expect(r.status).toBe("rendering")
+  })
+
+  it("retorna HTML real quando o email vinculado está 'ready'", async () => {
+    fx.pipelineById.set("p1", {
+      id: "p1",
+      target_stores: [{ store_id: "s1", store_name: "Loja A", email_flow_email_id: "e1" }],
+    })
+    fx.emailsById.set("e1", { id: "e1", status: "ready", html: "<html><body>oi</body></html>" })
+    const { getProductionStorePreview } = await import("./production.service")
+    const r = await getProductionStorePreview({ orgId: "org-1", itemId: "p1", storeId: "s1" })
+    expect(r.available).toBe(true)
+    expect(r.html).toBe("<html><body>oi</body></html>")
+    expect(r.status).toBe("ready")
+  })
+
+  it("fallback quando 'ready' mas html vazio", async () => {
+    fx.pipelineById.set("p1", {
+      id: "p1",
+      target_stores: [{ store_id: "s1", store_name: "Loja A", email_flow_email_id: "e1" }],
+    })
+    fx.emailsById.set("e1", { id: "e1", status: "ready", html: "   " })
+    const { getProductionStorePreview } = await import("./production.service")
+    const r = await getProductionStorePreview({ orgId: "org-1", itemId: "p1", storeId: "s1" })
+    expect(r.available).toBe(false)
+    expect(r.html).toBeNull()
+  })
+
+  it("lança erro se o pipeline item não existe / fora da org", async () => {
+    const { getProductionStorePreview } = await import("./production.service")
+    await expect(
+      getProductionStorePreview({ orgId: "org-1", itemId: "nope", storeId: "s1" }),
     ).rejects.toThrow()
   })
 })
