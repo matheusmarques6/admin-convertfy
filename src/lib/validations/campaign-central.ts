@@ -205,3 +205,23 @@ export const productionStorePatchSchema = z
   .refine((v) => v.prod_stage !== undefined || v.designer_id !== undefined, {
     message: "Informe prod_stage ou designer_id",
   })
+
+// ── Board unificado de 7 colunas (Fase 2) ────────────────────────────
+
+/** As 7 colunas do board (espelha BOARD_COLUMNS de board-mapping.ts). */
+export const boardColumnSchema = z.enum([
+  "sugestao",
+  "aprovada",
+  "copy",
+  "design",
+  "revisao",
+  "agendada",
+  "enviada",
+])
+
+/** Move um card do board pra coluna `to`. A validação de adjacência +
+ *  guard-rails é feita no service (board-move.service.ts), que conhece a
+ *  coluna atual autoritativa derivada do banco. */
+export const boardMoveSchema = z.object({
+  to: boardColumnSchema,
+})

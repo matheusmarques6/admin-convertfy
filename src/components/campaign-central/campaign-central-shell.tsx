@@ -1,30 +1,25 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Sparkles, Plus, Loader2, Send, Calendar, Activity, Check, Layers } from "lucide-react"
+import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/lib/hooks/use-toast"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
-import { useProduction } from "@/app/admin/campaigns/central/use-production"
-import { SuggestionsTab } from "./suggestions-tab"
-import { ApprovedTab } from "./approved-tab"
+import { useBoard } from "@/app/admin/campaigns/central/use-board"
 import { CampaignDetailModal } from "./campaign-detail-modal"
 import { NewCampaignModal } from "./new-campaign-modal"
 import { CopyPanel } from "./copy-panel"
 import { CalendarTab } from "./calendar-tab"
 import { PerformanceTab } from "./performance-tab"
-import { ProductionTab } from "./production/production-tab"
+import { BoardTab } from "./board/board-tab"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
-type TabKey = "sugestoes" | "calendario" | "performance" | "producao" | "aprovadas"
+type TabKey = "fluxo" | "calendario" | "performance"
 
-const TABS: Array<{ key: TabKey; label: string; Icon: typeof Send }> = [
-  { key: "sugestoes", label: "Sugestões", Icon: Send },
+const TABS: Array<{ key: TabKey; label: string; Icon: typeof Calendar }> = [
+  { key: "fluxo", label: "Fluxo", Icon: Columns3 },
   { key: "calendario", label: "Calendário", Icon: Calendar },
   { key: "performance", label: "Performance", Icon: Activity },
-  { key: "producao", label: "Em produção", Icon: Layers },
-  { key: "aprovadas", label: "Aprovadas", Icon: Check },
 ]
 
 function formatRange(start: string | null | undefined, end: string | null | undefined) {
@@ -49,14 +44,11 @@ function formatDateTime(iso: string | null | undefined) {
 }
 
 export function CampaignCentralShell() {
-  const { toast } = useToast()
   const central = useCampaignCentral()
-  // Pré-carrega produção sempre — o badge da aba "Em produção" deve bater
-  // com o número de cards reais (que vivem em campaign_pipeline_items,
-  // não em campaign_suggestions). Sem isso, badge=approved-do-ciclo
-  // e conteúdo=pipeline-items divergiam.
-  const production = useProduction(true)
-  const [tab, setTab] = useState<TabKey>("sugestoes")
+  // O board é a fonte única do fluxo (sugestões + produção, cross-ciclo). O
+  // badge da aba "Fluxo" reflete o total de cards reais do board.
+  const board = useBoard(true)
+  const [tab, setTab] = useState<TabKey>("fluxo")
   const [regenerating, setRegenerating] = useState(false)
   const [detailSuggestion, setDetailSuggestion] = useState<CampaignSuggestion | null>(null)
   const [copySuggestion, setCopySuggestion] = useState<CampaignSuggestion | null>(null)
@@ -68,13 +60,11 @@ export function CampaignCentralShell() {
 
   const tabCounts = useMemo<Record<TabKey, number>>(
     () => ({
-      sugestoes: counts.pending,
+      fluxo: board.cards.length,
       calendario: counts.dates_upcoming,
       performance: counts.attention,
-      producao: production.productions.length,
-      aprovadas: counts.approved,
     }),
-    [counts, production.productions.length],
+    [counts, board.cards.length],
   )
 
   const handleRegenerate = async () => {
@@ -91,28 +81,6 @@ export function CampaignCentralShell() {
     setCopySuggestion(s)
   }
   const handleOpen = (s: CampaignSuggestion) => setDetailSuggestion(s)
-
-  /** Reabre um pipeline_item (rascunho) no CopyPanel: a API garante uma
-   *  suggestion 'suggested' atrelada (criando se necessário) e devolve. */
-  const handleReopenProduction = async (pipelineItemId: string) => {
-    try {
-      const res = await fetch(
-        `/api/admin/campaign-central/production/${pipelineItemId}/reopen`,
-        { method: "POST" },
-      )
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-      setCopySuggestion(json.suggestion as CampaignSuggestion)
-      central.mutate()
-      production.mutate()
-    } catch (err) {
-      toast({
-        title: "Falha ao abrir copy",
-        description: err instanceof Error ? err.message : "Erro desconhecido",
-        variant: "destructive",
-      })
-    }
-  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -211,26 +179,10 @@ export function CampaignCentralShell() {
         <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
           <Loader2 size={16} className="animate-spin" /> Carregando ciclo…
         </div>
-      ) : tab === "sugestoes" ? (
-        <SuggestionsTab
-          suggestions={suggestions}
-          onApprove={central.approve}
-          onDismiss={central.dismiss}
-          onUndo={central.undo}
-          onGenerateCopy={handleCopyPanel}
-          onOpen={handleOpen}
-        />
-      ) : tab === "aprovadas" ? (
-        <ApprovedTab
-          suggestions={suggestions}
-          onUndo={central.undo}
-          onOpen={handleOpen}
-          onGenerateCopy={handleCopyPanel}
-        />
+      ) : tab === "fluxo" ? (
+        <BoardTab onChanged={() => central.mutate()} />
       ) : tab === "calendario" ? (
         <CalendarTab trends={central.trends} onCreate={() => setNewModalOpen(true)} />
-      ) : tab === "producao" ? (
-        <ProductionTab onOpenCopy={handleReopenProduction} />
       ) : (
         <PerformanceTab
           suggestions={suggestions}
@@ -242,7 +194,7 @@ export function CampaignCentralShell() {
         />
       )}
 
-      {/* Modals */}
+      {/* Modais da aba Performance (o board gerencia os seus próprios) */}
       {detailSuggestion && (
         <CampaignDetailModal
           key={detailSuggestion.id}
@@ -256,14 +208,17 @@ export function CampaignCentralShell() {
       <NewCampaignModal
         open={newModalOpen}
         onClose={() => setNewModalOpen(false)}
-        onCreated={() => central.mutate()}
+        onCreated={() => {
+          central.mutate()
+          board.mutate()
+        }}
       />
       <CopyPanel
         suggestion={copySuggestion}
         onClose={() => setCopySuggestion(null)}
         onSaved={() => {
           central.mutate()
-          production.mutate()
+          board.mutate()
         }}
       />
     </div>

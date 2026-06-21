@@ -1,4 +1,10 @@
 /**
+ * GET /api/admin/campaign-central/suggestions/[id]
+ *
+ * Retorna a CampaignSuggestion completa (cross-ciclo). Usado pelo board pra
+ * abrir CopyPanel/CampaignDetailModal a partir de um card sem depender do
+ * endpoint de ciclo (que só traz sugestões do ciclo corrente).
+ *
  * PATCH /api/admin/campaign-central/suggestions/[id]
  *
  * Body: discriminated union (validations/campaign-central.ts):
@@ -26,6 +32,33 @@ import {
 } from "@/lib/services/campaign-central/suggestion-approval.service"
 
 export const dynamic = "force-dynamic"
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params
+    const sb = await createClient()
+    const user = await requireAuth(sb)
+    const ctx = await getUserOrgRole(user.id)
+    if (!ctx) return errorResponse(request, new Error("Sem org membership"), "suggestions:get")
+
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("campaign_suggestions")
+      .select("*")
+      .eq("id", id)
+      .eq("org_id", ctx.orgId)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) throw new NotFoundError("Sugestão")
+
+    return successResponse(request, { suggestion: data })
+  } catch (error) {
+    return errorResponse(request, error, "suggestions:get")
+  }
+}
 
 export async function PATCH(
   request: NextRequest,
