@@ -31,6 +31,7 @@ import {
 import { approveSuggestion, undoSuggestionDecision } from "./suggestion-approval.service"
 import { reopenAsDraft, updateProductionStore } from "./production.service"
 import { dispatchCampaignCopyToN8n } from "./campaign-copy-dispatch.service"
+import { executeColumnTransition } from "./central-automation.service"
 
 const log = logger.child("CampaignBoardMove")
 
@@ -190,7 +191,30 @@ async function moveAllStoresToStage(
   }
 }
 
+/**
+ * Move um card do board (público). Após a transição persistir com sucesso,
+ * dispara o motor de automações FIRE-AND-FORGET (igual campaign-copy-dispatch):
+ * sem await, erros logam mas NÃO revertem a transição. A barreira de
+ * idempotência (só "para frente" + dedup por dia) vive no próprio motor.
+ */
 export async function moveBoardCard(
+  params: MoveBoardCardParams,
+): Promise<MoveBoardCardResult> {
+  const result = await runBoardMove(params)
+
+  // Fire-and-forget: não bloqueia a resposta do move.
+  void executeColumnTransition({
+    cardId: params.cardId,
+    fromColumn: result.from,
+    toColumn: result.to,
+    orgId: params.orgId,
+    userId: params.userId,
+  })
+
+  return result
+}
+
+async function runBoardMove(
   params: MoveBoardCardParams,
 ): Promise<MoveBoardCardResult> {
   const { orgId, userId, cardId, to } = params

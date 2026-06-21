@@ -1,25 +1,28 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3 } from "lucide-react"
+import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
 import { useBoard } from "@/app/admin/campaigns/central/use-board"
+import { useAutomations } from "@/app/admin/campaigns/central/use-automations"
 import { CampaignDetailModal } from "./campaign-detail-modal"
 import { NewCampaignModal } from "./new-campaign-modal"
 import { CopyPanel } from "./copy-panel"
 import { CalendarTab } from "./calendar-tab"
 import { PerformanceTab } from "./performance-tab"
+import { AutomationsTab } from "./automations-tab"
 import { BoardTab } from "./board/board-tab"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 
-type TabKey = "fluxo" | "calendario" | "performance"
+type TabKey = "fluxo" | "calendario" | "performance" | "automacoes"
 
 const TABS: Array<{ key: TabKey; label: string; Icon: typeof Calendar }> = [
   { key: "fluxo", label: "Fluxo", Icon: Columns3 },
   { key: "calendario", label: "Calendário", Icon: Calendar },
   { key: "performance", label: "Performance", Icon: Activity },
+  { key: "automacoes", label: "Automações", Icon: Zap },
 ]
 
 function formatRange(start: string | null | undefined, end: string | null | undefined) {
@@ -48,6 +51,7 @@ export function CampaignCentralShell() {
   // O board é a fonte única do fluxo (sugestões + produção, cross-ciclo). O
   // badge da aba "Fluxo" reflete o total de cards reais do board.
   const board = useBoard(true)
+  const automations = useAutomations(true)
   const [tab, setTab] = useState<TabKey>("fluxo")
   const [regenerating, setRegenerating] = useState(false)
   const [detailSuggestion, setDetailSuggestion] = useState<CampaignSuggestion | null>(null)
@@ -63,8 +67,9 @@ export function CampaignCentralShell() {
       fluxo: board.cards.length,
       calendario: counts.dates_upcoming,
       performance: counts.attention,
+      automacoes: automations.count,
     }),
-    [counts, board.cards.length],
+    [counts, board.cards.length, automations.count],
   )
 
   const handleRegenerate = async () => {
@@ -183,6 +188,8 @@ export function CampaignCentralShell() {
         <BoardTab onChanged={() => central.mutate()} />
       ) : tab === "calendario" ? (
         <CalendarTab trends={central.trends} onCreate={() => setNewModalOpen(true)} />
+      ) : tab === "automacoes" ? (
+        <AutomationsTab />
       ) : (
         <PerformanceTab
           suggestions={suggestions}
