@@ -83,7 +83,7 @@ export function ProductionCard({
   const expanded = open || filtering
 
   return (
-    <div className="overflow-hidden rounded-[6px] border border-border bg-card shadow-sm">
+    <div className="overflow-hidden rounded-[6px] border border-border bg-card shadow-sm transition-colors duration-150 hover:border-foreground/15">
       {/* Header */}
       <div className="px-4 pt-4 pb-3.5">
         <div className="mb-2.5 flex items-center gap-2">

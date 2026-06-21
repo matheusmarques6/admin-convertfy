@@ -62,8 +62,8 @@ export function SuggestionCard({
 
   return (
     <div
-      className={`overflow-hidden rounded-[6px] border bg-card shadow-sm ${
-        approved ? "border-emerald-300" : "border-border"
+      className={`overflow-hidden rounded-[6px] border bg-card shadow-sm transition-colors duration-150 ${
+        approved ? "border-emerald-300" : "border-border hover:border-foreground/20"
       }`}
     >
       {approved && (
@@ -87,14 +87,12 @@ export function SuggestionCard({
               </Badge>
             )}
             <div className="flex-1" />
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Confiança
-              </span>
-              <span className={`text-[12px] font-bold tabular-nums ${confColor}`}>
-                {s.confidence ?? "—"}%
-              </span>
-            </div>
+            <span
+              className={`text-[12px] font-bold tabular-nums ${confColor}`}
+              title="Confiança da IA"
+            >
+              {s.confidence ?? "—"}%
+            </span>
           </div>
 
           <div className="mb-3 flex items-start justify-between gap-2.5">

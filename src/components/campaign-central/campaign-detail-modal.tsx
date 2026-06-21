@@ -191,13 +191,15 @@ export function CampaignDetailModal({
             {s.title}
           </span>
           <div className="flex-1" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Confiança
-          </span>
           <span
             className={`text-[13px] font-bold tabular-nums ${
-              (s.confidence ?? 0) >= 85 ? "text-emerald-600" : "text-primary"
+              (s.confidence ?? 0) >= 85
+                ? "text-emerald-600"
+                : (s.confidence ?? 0) >= 75
+                  ? "text-primary"
+                  : "text-amber-600"
             }`}
+            title="Confiança da IA"
           >
             {s.confidence ?? "—"}%
           </span>
