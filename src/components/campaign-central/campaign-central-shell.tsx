@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3, Zap } from "lucide-react"
+import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useCampaignCentral } from "@/app/admin/campaigns/central/use-campaign-central"
@@ -22,7 +22,7 @@ const TABS: Array<{ key: TabKey; label: string; Icon: typeof Calendar }> = [
   { key: "fluxo", label: "Fluxo", Icon: Columns3 },
   { key: "calendario", label: "Calendário", Icon: Calendar },
   { key: "performance", label: "Performance", Icon: Activity },
-  { key: "automacoes", label: "Automações", Icon: Zap },
+  { key: "automacoes", label: "Histórico", Icon: History },
 ]
 
 function formatRange(start: string | null | undefined, end: string | null | undefined) {

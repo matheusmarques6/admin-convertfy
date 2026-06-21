@@ -1,24 +1,36 @@
 /**
- * Tipos do motor de automações por transição de coluna do board (Fase 3).
+ * Tipos do registro interno de transições do board da Central de Campanhas.
  *
- * Cada movimento "para frente" de um card dispara os handlers do REGISTRY
- * cujo `matches(toColumn)` é true. Cada handler grava UMA linha em
- * campaign_automation_runs e dispara o efeito. Na Fase 3 todos os handlers
- * são STUB (status='stub', sem HTTP); na Fase 4 o corpo vira HTTP real sem
- * mudar este contrato nem a tabela.
+ * DECISÃO DE PRODUTO (Fase 4): a aba "Automações" NÃO integra vendors externos
+ * (ClickUp/Slack/Omnisend/GA). O envio/agendamento é feito manualmente na
+ * Omnisend; os dados já estão no banco. Aqui registramos apenas um LOG DE
+ * AUDITORIA INTERNO das movimentações "para frente" do board — sem HTTP, sem
+ * payload de vendor.
+ *
+ * Cada avanço de coluna de um card grava UMA linha em campaign_automation_runs
+ * com integration='internal' e uma mensagem legível
+ * (ex.: 'Campanha "X": Copy → Design').
+ *
+ * A tabela campaign_automation_runs é genérica e foi mantida da Fase 3; as
+ * colunas de vendor (request_payload/response_status/response_body/external_ref)
+ * ficam nullable e NÃO são mais populadas (ver migration
+ * 20260621_campaign_automation_runs.sql). Não há migration nova.
  */
 
 import type { BoardColumnKey } from "@/lib/services/campaign-central/board-mapping"
 
-/** Integrações suportadas (espelha o CHECK de campaign_automation_runs). */
-export type AutomationIntegration =
-  | "clickup"
-  | "slack"
-  | "omnisend"
-  | "ga"
-  | "internal"
+/**
+ * Origem do registro. Hoje é sempre 'internal' (transição do board). O CHECK da
+ * tabela ainda aceita os antigos rótulos de vendor por compatibilidade, mas o
+ * código só grava 'internal'.
+ */
+export type AutomationIntegration = "internal"
 
-/** Status de uma run (espelha o CHECK de campaign_automation_runs). */
+/**
+ * Status de uma run. Transições internas são sempre 'success' (a transição já
+ * persistiu no board antes do registro). 'failed' fica reservado pra um registro
+ * que não pôde ser gravado/processado — destacado na aba.
+ */
 export type AutomationRunStatus =
   | "pending"
   | "success"
@@ -36,20 +48,28 @@ export interface CampaignAutomationRun {
   to_column: string
   integration: AutomationIntegration
   status: AutomationRunStatus
-  request_payload: Record<string, unknown> | null
-  response_status: number | null
-  response_body: string | null
-  external_ref: string | null
+  /** Mensagem legível da transição (ex.: 'Campanha "X": Copy → Design'). */
   error_message: string | null
+  /** Quem moveu o card (profile id). Resolvido pra nome no endpoint. */
   triggered_by: string | null
   duration_ms: number | null
   created_at: string
+  // Colunas de vendor da Fase 3 — mantidas nullable na tabela, NÃO populadas.
+  // Omitidas do tipo de leitura porque a aba não as usa mais.
 }
 
 /**
- * Contexto passado a cada handler. É o snapshot mínimo do card + transição
- * necessário pra montar um request_payload realista. Estável entre Fase 3
- * (stub) e Fase 4 (HTTP real).
+ * Linha enriquecida com o nome de quem moveu (join best-effort com profiles no
+ * endpoint). É o shape consumido pela aba de histórico.
+ */
+export interface CampaignAutomationRunView extends CampaignAutomationRun {
+  /** Nome (ou email) de quem moveu o card; null se não resolvido. */
+  moved_by_name: string | null
+}
+
+/**
+ * Contexto de uma transição usado pra montar a mensagem legível do registro.
+ * É o snapshot mínimo do card + transição.
  */
 export interface AutomationContext {
   orgId: string
@@ -58,37 +78,6 @@ export interface AutomationContext {
   toColumn: BoardColumnKey
   suggestionId: string | null
   pipelineItemId: string | null
-  /** Título/assunto da campanha (pra mensagem do ClickUp/Slack etc.). */
+  /** Título da campanha (pra mensagem do registro). */
   title: string
-  subject: string | null
-  sendDate: string | null
-  /** Lojas-alvo (id + nome) — usadas no payload de Omnisend/ClickUp. */
-  stores: Array<{ store_id: string; store_name: string }>
-}
-
-/** Resultado de um handler.run() — gravado direto na linha da run. */
-export interface AutomationRunResult {
-  status: AutomationRunStatus
-  /** Corpo da requisição que SERIA enviada (Fase 3 grava; Fase 4 envia). */
-  requestPayload: Record<string, unknown>
-  responseStatus?: number | null
-  responseBody?: string | null
-  /** Referência externa (ex.: id da task ClickUp, campaign_id Omnisend). */
-  externalRef?: string | null
-  errorMessage?: string | null
-}
-
-/**
- * Interface comum de um handler de automação. O REGISTRY guarda uma lista
- * destes; o service consulta `matches(toColumn)` e chama `run(ctx)`.
- *
- * A assinatura é ESTÁVEL: na Fase 4 só o corpo de `run` muda (de montar
- * payload → fazer HTTP real). Nem a tabela nem este contrato mudam.
- */
-export interface AutomationHandler {
-  integration: AutomationIntegration
-  /** Casa com a coluna de destino da transição? */
-  matches(toColumn: BoardColumnKey): boolean
-  /** Executa o efeito (Fase 3: stub). */
-  run(ctx: AutomationContext): Promise<AutomationRunResult>
 }

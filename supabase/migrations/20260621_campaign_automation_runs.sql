@@ -1,19 +1,22 @@
 -- ============================================================
--- Log de automações por transição de coluna do board (Fase 3).
+-- Registro interno de transições de coluna do board.
 --
 -- Gatilho: POST /api/admin/campaign-central/board/[id]/move →
 -- moveBoardCard() persiste a transição e, fire-and-forget, chama
 -- executeColumnTransition() (central-automation.service.ts). Para cada
--- handler do REGISTRY que casa com a coluna de destino, grava UMA linha
--- aqui e dispara o efeito.
+-- avanço "para frente" grava UMA linha aqui com integration='internal' e
+-- uma mensagem legível em error_message (ex.: 'Campanha "X": Copy → Design').
 --
--- FASE 3 = STUB: os handlers (clickup/slack/omnisend/ga) só montam um
--- request_payload realista e gravam status='stub' (NÃO fazem HTTP). Na
--- Fase 4 o corpo vira HTTP real (status 'success'/'failed') SEM mudar
--- esta tabela nem a assinatura do handler.
+-- DECISÃO DE PRODUTO (Fase 4): NÃO há integrações externas
+-- (ClickUp/Slack/Omnisend/GA). O envio/agendamento é manual na Omnisend e os
+-- dados já estão no banco. Esta tabela é um LOG DE AUDITORIA INTERNO das
+-- movimentações do board — sem vendors, sem HTTP.
 --
--- Mapa coluna→integração: aprovada=clickup, design=slack,
--- agendada=omnisend, enviada=ga.
+-- A tabela é genérica e foi mantida da iteração anterior: as colunas de
+-- vendor (request_payload/response_status/response_body/external_ref) ficam
+-- nullable e NÃO são mais populadas (o código só grava 'internal'). O CHECK de
+-- integration ainda lista os antigos rótulos de vendor por compatibilidade,
+-- mas nada novo os escreve. Nenhuma migration nova foi necessária.
 --
 -- Espelha convenções de campaign_copy_jobs (RLS por org via org_members,
 -- índices, IF NOT EXISTS). Idempotente.

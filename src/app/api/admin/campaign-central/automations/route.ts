@@ -1,10 +1,14 @@
 /**
  * GET /api/admin/campaign-central/automations
  *
- * Lista as runs de automação por transição de coluna (campaign_automation_runs)
- * da org, mais recentes primeiro, + contagem por integração (cards do topo da
- * aba Automações). A escrita das runs é feita fire-and-forget pelo motor
- * (central-automation.service.ts) quando um card avança no board.
+ * Lista o REGISTRO INTERNO de transições do board (campaign_automation_runs)
+ * da org, mais recentes primeiro. Cada linha é um avanço de coluna de um card
+ * (integration='internal'); a aba mostra um histórico de auditoria. A escrita é
+ * feita fire-and-forget pelo motor (central-automation.service.ts) quando um
+ * card avança no board.
+ *
+ * NÃO há vendors externos: o envio/agendamento é manual na Omnisend. Aqui só
+ * resolvemos o nome de quem moveu (join best-effort com profiles).
  *
  * Padrão das rotas vizinhas: createAdminClient (via service-role) + requireAuth
  * + org membership + errorResponse/successResponse.
@@ -15,13 +19,13 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { getUserOrgRole } from "@/lib/api/onboarding-permissions"
 import type {
-  AutomationIntegration,
   CampaignAutomationRun,
+  CampaignAutomationRunView,
 } from "@/types/campaign-automation"
 
 export const dynamic = "force-dynamic"
 
-/** Quantas runs trazer no histórico (a aba mostra um log enxuto). */
+/** Quantas transições trazer no histórico (a aba mostra um log enxuto). */
 const RUNS_LIMIT = 200
 
 export async function GET(request: NextRequest) {
@@ -34,7 +38,9 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("campaign_automation_runs")
-      .select("*")
+      .select(
+        "id, org_id, suggestion_id, pipeline_item_id, from_column, to_column, integration, status, error_message, triggered_by, duration_ms, created_at",
+      )
       .eq("org_id", ctx.orgId)
       .order("created_at", { ascending: false })
       .limit(RUNS_LIMIT)
@@ -43,19 +49,28 @@ export async function GET(request: NextRequest) {
 
     const runs = (data ?? []) as CampaignAutomationRun[]
 
-    // Contagem por integração pros cards do topo.
-    const counts: Record<AutomationIntegration, number> = {
-      clickup: 0,
-      slack: 0,
-      omnisend: 0,
-      ga: 0,
-      internal: 0,
-    }
-    for (const r of runs) {
-      counts[r.integration] = (counts[r.integration] ?? 0) + 1
+    // Resolve o nome de quem moveu cada card (best-effort, 1 query agregada).
+    const moverIds = Array.from(
+      new Set(runs.map((r) => r.triggered_by).filter((id): id is string => Boolean(id))),
+    )
+    const nameById = new Map<string, string>()
+    if (moverIds.length > 0) {
+      const { data: profs } = await admin
+        .from("profiles")
+        .select("id, name, email")
+        .in("id", moverIds)
+      for (const p of profs ?? []) {
+        const display = (p.name as string | null) || (p.email as string | null) || null
+        if (display) nameById.set(p.id as string, display)
+      }
     }
 
-    return successResponse(request, { runs, counts, count: runs.length })
+    const views: CampaignAutomationRunView[] = runs.map((r) => ({
+      ...r,
+      moved_by_name: r.triggered_by ? nameById.get(r.triggered_by) ?? null : null,
+    }))
+
+    return successResponse(request, { runs: views, count: views.length })
   } catch (error) {
     return errorResponse(request, error, "automations:list")
   }
