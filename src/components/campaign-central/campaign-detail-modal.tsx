@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { X, Check, Edit3, Send, Mail, Monitor, Smartphone, Loader2, Sparkles, ClipboardPaste } from "lucide-react"
+import { X, Check, Edit3, Send, Mail, Monitor, Smartphone, Loader2, Sparkles, ClipboardPaste, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -10,6 +10,55 @@ import { EditBlock } from "./email-builder/edit-block"
 import { BlockCanvas } from "./email-builder/block-canvas"
 import { buildDefaultDraft } from "./email-builder/default-draft"
 import type { CampaignSuggestion, EmailDraft } from "@/types/campaign-central"
+
+/** Placeholder do briefing (mostra o formato esperado). Espelha o protótipo. */
+const BRIEF_PLACEHOLDER = `Ex.:
+
+OBJETIVO
+Recuperar clientes inativos sem queimar a base. Foco em reengajar.
+
+TOM GERAL
+Próximo e caloroso, com leve urgência. Nada agressivo.
+
+ESTRUTURA (bloco a bloco)
+1. Assunto — curiosidade + nome da loja. Máx. 45 caracteres.
+2. Abertura — reconhecer a ausência com empatia.
+3. Corpo — 1 benefício claro do retorno + prova social curta.
+4. Oferta — destaque visual, condição e prazo.
+5. CTA — verbo de ação, 1ª pessoa. 1 só CTA.
+6. Rodapé — opção de descadastro amigável.
+
+REGRAS
+- Sem emoji no assunto.
+- Frases curtas.
+
+EVITAR
+- Clichês e gatilhos de spam (GRÁTIS!!!, URGENTE).`
+
+/** Gera um modelo inicial de briefing a partir da campanha. */
+function buildBriefTemplate(s: CampaignSuggestion): string {
+  const storeCount = s.targets.length
+  return `OBJETIVO
+${s.angle || "Defina o objetivo central desta campanha."}
+
+TOM GERAL
+Defina o tom da campanha "${s.title}". Ex.: confiante e direto, alinhado à marca de cada loja.
+
+ESTRUTURA (bloco a bloco)
+1. Assunto — gancho principal. Máx. 45 caracteres.
+2. Abertura — contexto/gatilho (${s.trigger?.label ?? "—"}).
+3. Corpo — benefício central + prova.
+4. Oferta — condição e prazo, com destaque.
+5. CTA — 1 só, verbo de ação.
+6. Rodapé — assinatura da loja.
+
+REGRAS
+- Canal: ${s.channel}.
+- Adaptar idioma e voz por loja (${storeCount} loja(s)).
+
+EVITAR
+- Clichês e gatilhos de spam.`
+}
 
 const TYPE_LABEL: Record<string, { label: string; tone: "info" | "positive" | "warning" | "neutral" }> = {
   data: { label: "Data sazonal", tone: "info" },
@@ -38,12 +87,45 @@ export function CampaignDetailModal({
   const [draft, setDraft] = useState<EmailDraft>(() => s.email_draft ?? buildDefaultDraft(s))
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop")
   const [busy, setBusy] = useState<
-    "save" | "approve" | "master_ai" | "master_paste" | "send_date" | null
+    "save" | "approve" | "master_ai" | "master_paste" | "send_date" | "brief" | null
   >(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState("")
   const [sendDate, setSendDate] = useState<string>(s.send_date ?? "")
+  // Briefing de estrutura & tom da copy (campo `brief.structure`). Edição
+  // local; persiste no blur via update_draft. Re-gerar a copy aplica o brief.
+  const [brief, setBrief] = useState<string>(s.brief?.structure ?? "")
+  const [briefSaved, setBriefSaved] = useState<boolean>(Boolean(s.brief?.structure))
   const mobile = device === "mobile"
+
+  const saveBrief = async (next: string) => {
+    setBusy("brief")
+    try {
+      const res = await fetch(`/api/admin/campaign-central/suggestions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_draft",
+          brief: next.trim() ? { structure: next } : null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      setBriefSaved(Boolean(next.trim()))
+      toast({
+        title: "Briefing salvo",
+        description: "Aplicado na próxima geração de copy (teste e produção).",
+      })
+    } catch (err) {
+      toast({
+        title: "Falha ao salvar briefing",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const saveSendDate = async (next: string) => {
     setSendDate(next)
@@ -240,6 +322,67 @@ export function CampaignDetailModal({
                 placeholder="Descreva a estratégia da campanha"
                 className="text-[13px] leading-relaxed text-muted-foreground"
               />
+            </div>
+
+            {/* Estrutura & tom da copy (brief do COO) — espelha o protótipo. */}
+            <div className="mb-4 rounded-[6px] border border-border bg-muted/30 p-3">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Edit3 size={13} className="text-primary" />
+                <span className="text-[12.5px] font-semibold text-foreground">
+                  Estrutura & tom da copy
+                </span>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tpl = buildBriefTemplate(s)
+                    setBrief(tpl)
+                    void saveBrief(tpl)
+                  }}
+                  disabled={busy !== null}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline disabled:opacity-50"
+                  title="Gerar um modelo inicial a partir da campanha"
+                >
+                  <Wand2 size={12} /> Usar modelo
+                </button>
+              </div>
+              <p className="mb-2 text-[11.5px] leading-snug text-muted-foreground">
+                Descreva como a copy deve ser gerada — estrutura por bloco, tom, regras e o que
+                evitar. A IA usa isto como guia ao gerar teste e produção.
+              </p>
+              <textarea
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value !== (s.brief?.structure ?? "")) void saveBrief(e.target.value)
+                }}
+                disabled={busy === "brief"}
+                rows={9}
+                placeholder={BRIEF_PLACEHOLDER}
+                className="w-full resize-y rounded-[6px] border border-border bg-card p-2.5 text-[12px] leading-relaxed text-foreground/90 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="mt-1.5 flex items-center justify-between">
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] ${
+                    briefSaved ? "text-emerald-600" : "text-muted-foreground"
+                  }`}
+                >
+                  {busy === "brief" ? (
+                    <>
+                      <Loader2 size={11} className="animate-spin" /> Salvando…
+                    </>
+                  ) : briefSaved ? (
+                    <>
+                      <Check size={11} /> Briefing salvo · usado na geração
+                    </>
+                  ) : (
+                    "Opcional, mas melhora muito o resultado"
+                  )}
+                </span>
+                <span className="text-[10.5px] tabular-nums text-muted-foreground">
+                  {brief.length} caracteres
+                </span>
+              </div>
             </div>
 
             <div className="mb-1 text-[12px] font-bold uppercase tracking-wider text-muted-foreground">

@@ -139,6 +139,23 @@ export interface CopyResultEntry {
   error_message?: string
 }
 
+/**
+ * Briefing de estrutura & tom da copy, controlado pelo COO (campo `brief`
+ * em campaign_suggestions). Injetado como seção ADITIVA no prompt de geração
+ * (copy-master + campaign-copy). Todos os campos são opcionais — a UI
+ * principal usa `structure` como texto único (estrutura/tom/regras juntos).
+ */
+export interface CampaignBrief {
+  /** Estrutura bloco-a-bloco + tom geral (texto principal usado na UI). */
+  structure?: string
+  /** Tom de voz desejado (opcional — quando separado de `structure`). */
+  tone?: string
+  /** Restrições/regras ("sem emoji no assunto", "frases curtas"). */
+  constraints?: string
+  /** O que a copy DEVE incluir (cupom em destaque, prova social…). */
+  must_include?: string
+}
+
 export interface CampaignSuggestion {
   id: string
   org_id: string
@@ -160,6 +177,8 @@ export interface CampaignSuggestion {
   low_perf: boolean
   send_date: string | null
   email_draft: EmailDraft | null
+  /** Briefing de estrutura & tom da copy (COO). Guia a geração de copy. */
+  brief: CampaignBrief | null
   copy_results: {
     test?: Record<string, CopyResultEntry>
     production?: Record<string, CopyResultEntry>

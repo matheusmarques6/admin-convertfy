@@ -176,6 +176,30 @@ async function loadStoreContexts(
   return result
 }
 
+/**
+ * Monta a seção ADITIVA do brief do COO (estrutura & tom da copy) pro prompt.
+ * Retorna [] quando não há brief — a seção é puramente opcional e nunca altera
+ * o schema de OUTPUT. Mesma formatação usada na master (copy-master.service).
+ */
+export function buildBriefSection(brief: CampaignSuggestion["brief"]): string[] {
+  if (!brief) return []
+  const fields: Array<[string, string | undefined]> = [
+    ["Estrutura/tom", brief.structure],
+    ["Tom de voz", brief.tone],
+    ["Restrições", brief.constraints],
+    ["Deve incluir", brief.must_include],
+  ]
+  const lines = fields
+    .filter(([, v]) => v && v.trim().length > 0)
+    .map(([label, v]) => `### ${label}\n${(v as string).trim()}`)
+  if (lines.length === 0) return []
+  return [
+    ``,
+    `## Brief do COO (estrutura & tom — siga como guia ao gerar/adaptar a copy)`,
+    ...lines,
+  ]
+}
+
 /** Strip ids dos blocks pra IA — id é regerado no servidor após o output. */
 function blocksWithoutIds(blocks: EmailDraftBlock[]): Array<Omit<EmailDraftBlock, "id">> {
   return blocks.map((b) => {
@@ -227,6 +251,8 @@ function buildUserPrompt(
     `Tipo: ${suggestion.type}`,
     `Gatilho: ${suggestion.trigger?.label ?? ""} — ${suggestion.trigger?.detail ?? ""}`,
     suggestion.send_date ? `Data de envio: ${suggestion.send_date}` : "",
+    // Seção ADITIVA: brief de estrutura & tom do COO (vazia se não houver).
+    ...buildBriefSection(suggestion.brief),
   ].filter(Boolean)
 
   if (referenceCopies.length > 0) {

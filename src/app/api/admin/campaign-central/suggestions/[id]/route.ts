@@ -107,6 +107,8 @@ export async function PATCH(
         if (body.email_draft) patch.email_draft = body.email_draft
         if (body.angle != null) patch.angle = body.angle
         if (body.send_date !== undefined) patch.send_date = body.send_date
+        // Briefing de estrutura & tom (COO). Aceita objeto ou null (apagar).
+        if (body.brief !== undefined) patch.brief = body.brief
         if (Object.keys(patch).length === 0) {
           return successResponse(request, { status: "no_changes" })
         }

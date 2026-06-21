@@ -86,6 +86,9 @@ export async function POST(request: NextRequest) {
           source: "manual",
         },
         angle: body.briefing ?? null,
+        // O texto de briefing do modal manual também alimenta o `brief` de
+        // estrutura & tom (guia a geração de copy). Antes só virava `angle`.
+        brief: body.briefing ? { structure: body.briefing } : null,
         subject: null,
         channel: body.channel,
         targets,

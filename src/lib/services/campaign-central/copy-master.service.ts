@@ -18,6 +18,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { callAnthropicJson } from "./anthropic-client"
+import { buildBriefSection } from "./campaign-copy.service"
 import { emailDraftSchema } from "@/lib/validations/campaign-central"
 import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
 import type { CampaignSuggestion, EmailDraft, EmailDraftBlock } from "@/types/campaign-central"
@@ -110,7 +111,14 @@ export async function generateMasterFromAngle(params: {
   }
 
   const vars = buildMasterVars(suggestion, audienceLabel)
-  const userPrompt = renderTemplate(config.user_template, vars)
+  // Brief do COO guia a ESTRUTURA dos blocks da master (antes da adaptação
+  // por loja). Seção ADITIVA: anexada ao fim do user prompt, vazia se não há
+  // brief. Não altera o user_template versionado nem o schema de output.
+  const briefSection = buildBriefSection(suggestion.brief)
+  const userPrompt =
+    briefSection.length > 0
+      ? `${renderTemplate(config.user_template, vars)}\n${briefSection.join("\n")}`
+      : renderTemplate(config.user_template, vars)
 
   const t0 = Date.now()
   let runStatus: "completed" | "failed" | "invalid_output" = "completed"

@@ -105,6 +105,18 @@ export const emailDraftSchema = z.object({
   blocks: z.array(emailDraftBlockSchema),
 })
 
+/**
+ * Briefing de estrutura & tom da copy (campo `brief` em campaign_suggestions).
+ * Todos os campos são opcionais. Espelha CampaignBrief em
+ * src/types/campaign-central.ts. `null` apaga o briefing salvo.
+ */
+export const briefSchema = z.object({
+  structure: z.string().max(20_000).optional(),
+  tone: z.string().max(4_000).optional(),
+  constraints: z.string().max(4_000).optional(),
+  must_include: z.string().max(4_000).optional(),
+})
+
 export const suggestionPatchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("approve"), email_draft: emailDraftSchema.optional() }),
   z.object({ action: z.literal("dismiss") }),
@@ -118,6 +130,8 @@ export const suggestionPatchSchema = z.discriminatedUnion("action", [
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .nullable()
       .optional(),
+    // Briefing de estrutura & tom (COO). `null` apaga; objeto persiste.
+    brief: briefSchema.nullable().optional(),
   }),
 ])
 
