@@ -132,6 +132,11 @@ export const suggestionPatchSchema = z.discriminatedUnion("action", [
       .optional(),
     // Briefing de estrutura & tom (COO). `null` apaga; objeto persiste.
     brief: briefSchema.nullable().optional(),
+    // Lojas-alvo editáveis (aba Lojas do modal de detalhe). Revalidadas
+    // contra client_stores na rota; min 1. Bloqueado após aprovação.
+    targets: z.array(suggestionTargetSchema).min(1).optional(),
+    // Canal (Email / Email + SMS / SMS / Push) — aba Agendamento.
+    channel: z.string().max(60).optional(),
   }),
 ])
 

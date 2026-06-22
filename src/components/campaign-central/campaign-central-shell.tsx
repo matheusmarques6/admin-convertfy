@@ -207,8 +207,26 @@ export function CampaignCentralShell() {
           key={detailSuggestion.id}
           suggestion={detailSuggestion}
           onClose={() => setDetailSuggestion(null)}
-          onSaveDraft={(draft) => central.updateDraft(detailSuggestion.id, draft, draft.strategy)}
-          onApprove={(draft) => central.approve(detailSuggestion.id, draft)}
+          onChanged={() => {
+            central.mutate()
+            board.mutate()
+          }}
+          onApprove={async () => {
+            const res = await central.approve(detailSuggestion.id)
+            if (res.ok) {
+              board.mutate()
+              setDetailSuggestion(null)
+            }
+            return res
+          }}
+          onDismiss={async () => {
+            const res = await central.dismiss(detailSuggestion.id)
+            if (res.ok) {
+              board.mutate()
+              setDetailSuggestion(null)
+            }
+            return res
+          }}
           onGenerateCopy={() => handleCopyPanel(detailSuggestion)}
         />
       )}

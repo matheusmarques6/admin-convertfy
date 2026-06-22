@@ -189,26 +189,22 @@ export function BoardTab({ onChanged }: BoardTabProps) {
           key={detailSuggestion.id}
           suggestion={detailSuggestion}
           onClose={() => setDetailSuggestion(null)}
-          onSaveDraft={async (draft) => {
-            const res = await patchSuggestion(detailSuggestion.id, {
-              action: "update_draft",
-              email_draft: draft,
-              angle: draft.strategy,
-            })
-            if (res.ok) await board.mutate()
-            return res
-          }}
-          onApprove={async (draft) => {
-            const res = await patchSuggestion(detailSuggestion.id, {
-              action: "approve",
-              email_draft: draft,
-            })
+          onChanged={() => void board.mutate()}
+          onApprove={async () => {
+            const res = await patchSuggestion(detailSuggestion.id, { action: "approve" })
             if (res.ok) {
               await board.mutate()
               onChanged?.()
               setDetailSuggestion(null)
-            } else if (res.error) {
-              toast({ title: "Não foi possível aprovar", description: res.error, variant: "destructive" })
+            }
+            return res
+          }}
+          onDismiss={async () => {
+            const res = await patchSuggestion(detailSuggestion.id, { action: "dismiss" })
+            if (res.ok) {
+              await board.mutate()
+              onChanged?.()
+              setDetailSuggestion(null)
             }
             return res
           }}

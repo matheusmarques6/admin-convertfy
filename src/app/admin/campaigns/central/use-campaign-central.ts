@@ -90,11 +90,6 @@ export function useCampaignCentral() {
   const undo = useCallback((id: string) => patchSuggestion(id, { action: "undo" }), [
     patchSuggestion,
   ])
-  const updateDraft = useCallback(
-    (id: string, draft?: EmailDraft, angle?: string) =>
-      patchSuggestion(id, { action: "update_draft", email_draft: draft, angle }),
-    [patchSuggestion],
-  )
 
   const regenerate = useCallback(async (): Promise<boolean> => {
     try {
@@ -127,7 +122,6 @@ export function useCampaignCentral() {
     approve,
     dismiss,
     undo,
-    updateDraft,
     regenerate,
   }
 }
