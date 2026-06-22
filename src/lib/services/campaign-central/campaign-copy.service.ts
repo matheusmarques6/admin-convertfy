@@ -316,6 +316,35 @@ function collectPilotReferences(
   return refs
 }
 
+/**
+ * Merge das lojas recém-geradas em copy_results[mode], preservando o que o n8n
+ * já entregou. No fallback inline (watchdog) NÃO sobrescreve loja com
+ * generated_via='n8n' + status='success', nem copy aprovada (quality='good') — o
+ * n8n vence o fallback. Evita a corrida write-write com o callback
+ * /webhooks/n8n/campaign-copy que pode ter chegado durante o run inline. No
+ * caminho manual do COO (ai_master_adapt) a sobrescrita é deliberada.
+ */
+export function mergeInlineResults(
+  existingMode: Record<string, CopyResultEntry>,
+  results: Record<string, CopyResultEntry>,
+  generatedVia: "ai_master_adapt" | "inline_fallback",
+): Record<string, CopyResultEntry> {
+  const mergedMode: Record<string, CopyResultEntry> = { ...existingMode }
+  for (const [sid, entry] of Object.entries(results)) {
+    const prev = existingMode[sid]
+    if (
+      generatedVia === "inline_fallback" &&
+      prev &&
+      (prev.quality === "good" ||
+        (prev.generated_via === "n8n" && prev.status === "success"))
+    ) {
+      continue
+    }
+    mergedMode[sid] = entry
+  }
+  return mergedMode
+}
+
 export async function generateCampaignCopy(params: {
   suggestionId: string
   orgId: string
@@ -466,9 +495,10 @@ export async function generateCampaignCopy(params: {
     .maybeSingle()
 
   const existing = (fresh?.copy_results ?? {}) as CampaignSuggestion["copy_results"]
+  const existingMode = (existing[mode] ?? {}) as Record<string, CopyResultEntry>
   const merged = {
     ...existing,
-    [mode]: { ...(existing[mode] ?? {}), ...results },
+    [mode]: mergeInlineResults(existingMode, results, generatedVia),
   }
 
   const { error: updateErr } = await admin

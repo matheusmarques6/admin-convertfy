@@ -136,14 +136,20 @@ export async function POST(request: NextRequest) {
       throw new AppError("mode não bate com o job", 400)
     }
 
-    // 1.5) Se o job já caiu no fallback inline (watchdog promoveu), descarta
-    //      o callback. O inline ja gravou copy_results pras lojas pendentes —
-    //      escrever em cima criaria race com o run inline ainda em voo.
-    if (job.status === "fallback_inline" || job.status === "done") {
+    // 1.5) Job já settled pelo watchdog (fallback_inline/done):
+    //      - status:"error" tardio -> descarta (não rebaixa um fallback-success pra erro).
+    //      - status:"success"      -> PASSA, pra sobrescrever o fallback genérico. O n8n
+    //        vence o fallback (é o que o produto promete). A copy aprovada (quality='good')
+    //        segue preservada na seção 3, e o merge do inline preserva entries 'n8n'
+    //        (campaign-copy.service) pra evitar race write-write. Não tocamos no
+    //        contador/status do job — ele já foi finalizado pelo watchdog.
+    const jobAlreadySettled = job.status === "fallback_inline" || job.status === "done"
+    if (jobAlreadySettled && body.status !== "success") {
       log.info("campaign_copy.skip_inactive_job", {
         job_id: body.job_id,
         store_id: body.store_id,
         job_status: job.status,
+        reason: "late_non_success_discarded",
       })
       return successResponse(request, {
         idempotent: true,
@@ -230,29 +236,33 @@ export async function POST(request: NextRequest) {
       .eq("id", body.suggestion_id)
     if (updErr) throw updErr
 
-    // 6) Atualiza job + marca como done se já bateu todas as lojas
+    // 6) Atualiza job + marca como done se já bateu todas as lojas.
+    //    Override tardio (job já settled): NÃO mexe no job — ele já foi finalizado
+    //    pelo watchdog; só a copy_results foi atualizada acima.
     const newCompleted = jobFieldDelta.completed_count ?? job.completed_count
     const newFailed = jobFieldDelta.failed_count ?? job.failed_count
     const finished = newCompleted + newFailed >= job.stores_count
-    const newStatus = finished ? "done" : "running"
+    const newStatus = jobAlreadySettled ? job.status : finished ? "done" : "running"
 
-    const jobUpdate: Record<string, unknown> = {
-      completed_count: newCompleted,
-      failed_count: newFailed,
-      status: newStatus,
-      updated_at: nowIso,
-    }
-    if (finished) jobUpdate.done_at = nowIso
+    if (!jobAlreadySettled) {
+      const jobUpdate: Record<string, unknown> = {
+        completed_count: newCompleted,
+        failed_count: newFailed,
+        status: newStatus,
+        updated_at: nowIso,
+      }
+      if (finished) jobUpdate.done_at = nowIso
 
-    const { error: jobUpdErr } = await admin
-      .from("campaign_copy_jobs")
-      .update(jobUpdate)
-      .eq("id", body.job_id)
-    if (jobUpdErr) {
-      log.warn("campaign_copy.job_update_failed", {
-        job_id: body.job_id,
-        error: jobUpdErr.message,
-      })
+      const { error: jobUpdErr } = await admin
+        .from("campaign_copy_jobs")
+        .update(jobUpdate)
+        .eq("id", body.job_id)
+      if (jobUpdErr) {
+        log.warn("campaign_copy.job_update_failed", {
+          job_id: body.job_id,
+          error: jobUpdErr.message,
+        })
+      }
     }
 
     // 7) Telemetria — campaign_ai_runs (kind='copy', model='n8n')
@@ -289,6 +299,8 @@ export async function POST(request: NextRequest) {
       failed: newFailed,
       total: job.stores_count,
       job_status: newStatus,
+      // true => callback chegou após o watchdog e sobrescreveu o fallback genérico.
+      overrode_fallback: jobAlreadySettled,
     })
 
     return successResponse(request, {

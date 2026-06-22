@@ -4,8 +4,12 @@
  * Schedule: every 5 minutes (vercel.json).
  *
  * Detecta jobs em campaign_copy_jobs travados (dispatch falhou OU n8n
- * silencioso por mais de WATCHDOG_CAMPAIGN_COPY_TIMEOUT_MIN, default 10min)
- * e promove pra fallback inline:
+ * silencioso por mais de WATCHDOG_CAMPAIGN_COPY_TIMEOUT_MIN, default 15min)
+ * e promove pra fallback inline. Um callback do n8n que chegue DEPOIS disso
+ * ainda sobrescreve o fallback (n8n vence) — ver /webhooks/n8n/campaign-copy.
+ * O fallback inline, por sua vez, não apaga uma loja já preenchida pelo n8n.
+ *
+ * Promove pra fallback inline:
  *
  *  1. Marca status='fallback_inline', fallback_at=NOW().
  *  2. Re-le copy_results pra identificar lojas ainda com status='pending'.
@@ -19,8 +23,9 @@
  *
  * Concorrencia: UPDATE atomico WHERE status IN ('dispatched','running','failed')
  * pra claimar o job — se outro cron pegou primeiro, o nosso vê 0 rows e segue.
- * Quando o job esta 'fallback_inline', o callback do n8n NAO escreve mais
- * (guard em /webhooks/n8n/campaign-copy:104) — evita race write-write.
+ * Quando o job esta 'fallback_inline', um callback success do n8n AINDA
+ * sobrescreve o fallback (n8n vence); o merge inline aqui, por sua vez, preserva
+ * lojas ja preenchidas pelo n8n — sem race write-write destrutivo.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -35,7 +40,7 @@ const log = logger.child("CampaignCopyWatchdog")
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-const TIMEOUT_MIN = Number(process.env.WATCHDOG_CAMPAIGN_COPY_TIMEOUT_MIN ?? 10)
+const TIMEOUT_MIN = Number(process.env.WATCHDOG_CAMPAIGN_COPY_TIMEOUT_MIN ?? 15)
 const MAX_BATCH = Number(process.env.WATCHDOG_CAMPAIGN_COPY_BATCH ?? 5)
 
 interface JobRow {

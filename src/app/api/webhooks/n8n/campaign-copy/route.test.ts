@@ -257,6 +257,74 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
   })
 })
 
+describe("POST /api/webhooks/n8n/campaign-copy — override do fallback (Parte D)", () => {
+  it("job fallback_inline + success: sobrescreve o fallback e NÃO toca no job", async () => {
+    mockJob!.status = "fallback_inline"
+    mockSuggestion = {
+      copy_results: {
+        production: {
+          [MOCK_STORE_ID]: {
+            subject: "fallback genérico",
+            preview: "x",
+            preheader: "x",
+            blocks: [{ id: "b1", type: "text", value: "fallback" }],
+            quality: null,
+            generated_at: "2026-01-01T00:00:00Z",
+            generated_via: "inline_fallback",
+            status: "success",
+          },
+        },
+      },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+
+    const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
+    expect(sugUpdate).toBeDefined()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const e = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
+    expect(e.generated_via).toBe("n8n")
+    expect(e.subject).toBe("Oferta especial")
+    // job já estava settled -> não é atualizado (counters/status do watchdog ficam)
+    const jobUpdate = updateCalls.find((c) => c.table === "campaign_copy_jobs")
+    expect(jobUpdate).toBeUndefined()
+  })
+
+  it("job done + error tardio: descarta (não rebaixa o fallback nem grava)", async () => {
+    mockJob!.status = "done"
+    const body = validBody({ status: "error", error_message: "tarde demais", copy: undefined })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(body) as any)
+    expect(res.status).toBe(200)
+    expect(updateCalls.find((c) => c.table === "campaign_suggestions")).toBeUndefined()
+  })
+
+  it("job fallback_inline + success mas copy aprovada (good): preserva a aprovada", async () => {
+    mockJob!.status = "fallback_inline"
+    mockSuggestion = {
+      copy_results: {
+        production: {
+          [MOCK_STORE_ID]: {
+            subject: "aprovada pelo COO",
+            preview: "x",
+            preheader: "x",
+            blocks: [{ id: "b1", type: "text", value: "boa" }],
+            quality: "good",
+            generated_at: "2026-01-01T00:00:00Z",
+            generated_via: "n8n",
+            status: "success",
+          },
+        },
+      },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    expect(updateCalls.find((c) => c.table === "campaign_suggestions")).toBeUndefined()
+  })
+})
+
 describe("POST /api/webhooks/n8n/campaign-copy — validação e erros", () => {
   it("retorna 400 quando copy.subject está vazio", async () => {
     const body = validBody({
