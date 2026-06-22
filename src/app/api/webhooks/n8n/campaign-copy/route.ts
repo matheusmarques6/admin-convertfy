@@ -31,12 +31,24 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { campaignCopyCallbackSchema } from "@/lib/validations/campaign-central"
+import { sanitizeN8nCopyPayload } from "@/lib/services/campaign-central/n8n-copy-normalize"
 import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
 import type { CampaignSuggestion, CopyResultEntry } from "@/types/campaign-central"
 
 const log = logger.child("N8nCampaignCopy")
 
 export const dynamic = "force-dynamic"
+
+/** Tipos de bloco crus (pré-normalização) — só para diagnóstico no log. */
+function rawBlockTypes(raw: Record<string, unknown>): unknown[] | null {
+  const copy = raw.copy
+  if (!copy || typeof copy !== "object") return null
+  const blocks = (copy as Record<string, unknown>).blocks
+  if (!Array.isArray(blocks)) return null
+  return blocks
+    .map((b) => (b && typeof b === "object" ? (b as Record<string, unknown>).type : typeof b))
+    .slice(0, 12)
+}
 
 interface JobRow {
   id: string
@@ -71,12 +83,20 @@ export async function POST(request: NextRequest) {
   try {
     requireWebhookSecret(request)
 
-    const validated = campaignCopyCallbackSchema.safeParse(rawJson)
+    // Normaliza o output variável do LLM (type/columns/status/price/…) ANTES de
+    // validar. Sem isso, um único campo fora do formato derruba o payload inteiro
+    // com 400 e a copy do n8n nunca chega em copy_results (a aba mostra fallback).
+    // Ver src/lib/services/campaign-central/n8n-copy-normalize.ts.
+    const normalized = sanitizeN8nCopyPayload(rawJson)
+    const validated = campaignCopyCallbackSchema.safeParse(normalized)
     if (!validated.success) {
       log.warn("campaign_copy.validation_failed", {
         job_id: rawJson.job_id ?? null,
         store_id: rawJson.store_id ?? null,
         issues: validated.error.issues.slice(0, 8),
+        // Diagnóstico: o que o n8n mandou de fato (pré-normalização).
+        raw_status: rawJson.status ?? null,
+        raw_block_types: rawBlockTypes(rawJson),
       })
       throw new AppError("Payload do n8n inválido (schema campaign-copy)", 400)
     }

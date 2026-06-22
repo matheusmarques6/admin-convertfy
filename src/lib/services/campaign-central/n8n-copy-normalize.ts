@@ -1,0 +1,224 @@
+/**
+ * Normalização defensiva do payload que o n8n posta no callback de copy de
+ * campanha (`POST /api/webhooks/n8n/campaign-copy`), aplicada ANTES da
+ * validação Zod (`campaignCopyCallbackSchema`).
+ *
+ * Porquê: o n8n é alimentado por um LLM cujo output varia em detalhes de
+ * formato. Sem coerção, UM único campo fora do esperado (ex.: `type:"paragraph"`,
+ * `columns:"2"`, `status:"completed"`, `price:199`) derruba o payload INTEIRO
+ * com HTTP 400 no `safeParse`, e a copy do n8n nunca chega em `copy_results`
+ * (a aba acaba mostrando o fallback genérico do watchdog).
+ *
+ * Princípio: coage TIPO e mapeia SINÔNIMOS óbvios; **não inventa conteúdo nem
+ * mascara erro legítimo** — `subject` vazio e `blocks` vazio continuam inválidos
+ * (a validação real segue valendo, esses casos viram 400/erro como antes).
+ *
+ * A função é pura e testável isoladamente (`n8n-copy-normalize.test.ts`).
+ */
+
+/** Os 8 tipos de bloco aceitos pelo `emailDraftBlockSchema`. */
+const BLOCK_TYPES = [
+  "image",
+  "heading",
+  "text",
+  "offer",
+  "button",
+  "divider",
+  "footer",
+  "products",
+] as const
+
+type BlockType = (typeof BLOCK_TYPES)[number]
+
+const BLOCK_TYPE_SET = new Set<string>(BLOCK_TYPES)
+
+/** Sinônimos comuns que um LLM gera para os 8 tipos canônicos. */
+const TYPE_SYNONYMS: Record<string, BlockType> = {
+  // text
+  paragraph: "text",
+  p: "text",
+  body: "text",
+  copy: "text",
+  richtext: "text",
+  rich_text: "text",
+  content: "text",
+  // heading
+  title: "heading",
+  header: "heading",
+  headline: "heading",
+  h1: "heading",
+  h2: "heading",
+  h3: "heading",
+  subheading: "heading",
+  subtitle: "heading",
+  // image
+  img: "image",
+  picture: "image",
+  photo: "image",
+  banner: "image",
+  hero: "image",
+  // button
+  cta: "button",
+  link: "button",
+  btn: "button",
+  action: "button",
+  // divider
+  separator: "divider",
+  hr: "divider",
+  spacer: "divider",
+  rule: "divider",
+  line: "divider",
+  // products
+  product: "products",
+  product_list: "products",
+  productlist: "products",
+  product_grid: "products",
+  grid: "products",
+  // offer
+  coupon: "offer",
+  discount: "offer",
+  deal: "offer",
+  promo: "offer",
+  promotion: "offer",
+  // footer
+  foot: "footer",
+  bottom: "footer",
+}
+
+/** type → canônico (enum direto > sinônimo > fallback `text`). */
+function coerceType(raw: unknown): BlockType {
+  if (typeof raw === "string") {
+    const norm = raw.trim().toLowerCase()
+    if (BLOCK_TYPE_SET.has(norm)) return norm as BlockType
+    if (TYPE_SYNONYMS[norm]) return TYPE_SYNONYMS[norm]
+  }
+  return "text"
+}
+
+/** columns → `2 | 3` (aceita string "2"/"3"); inválido vira `undefined` (removido). */
+function coerceColumns(raw: unknown): 2 | 3 | undefined {
+  const n =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number.parseInt(raw.trim(), 10)
+        : Number.NaN
+  if (n === 2) return 2
+  if (n === 3) return 3
+  return undefined
+}
+
+/** Campo de texto: mantém string; coage number/boolean → string; senão `undefined`. */
+function coerceText(raw: unknown): string | undefined {
+  if (typeof raw === "string") return raw
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw)
+  return undefined
+}
+
+const TEXT_FIELDS = ["headline", "sub", "value", "caption"] as const
+const ITEM_FIELDS = ["name", "price", "image_caption"] as const
+
+function normalizeItem(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "object" || raw === null) return {}
+  const item = raw as Record<string, unknown>
+  const out: Record<string, unknown> = { ...item }
+  for (const k of ITEM_FIELDS) {
+    if (k in item) {
+      const v = coerceText(item[k])
+      if (v === undefined) delete out[k]
+      else out[k] = v
+    }
+  }
+  return out
+}
+
+function normalizeBlock(raw: unknown): Record<string, unknown> {
+  // Bloco não-objeto (ex.: string solta) → vira um bloco de texto.
+  if (typeof raw !== "object" || raw === null) {
+    return { type: "text", value: coerceText(raw) ?? "" }
+  }
+  const b = raw as Record<string, unknown>
+  const out: Record<string, unknown> = { ...b, type: coerceType(b.type) }
+
+  // id não-string → remove (o handler regenera com newBlockId()).
+  if ("id" in b && typeof b.id !== "string") delete out.id
+
+  for (const k of TEXT_FIELDS) {
+    if (k in b) {
+      const v = coerceText(b[k])
+      if (v === undefined) delete out[k]
+      else out[k] = v
+    }
+  }
+
+  if ("columns" in b) {
+    const c = coerceColumns(b.columns)
+    if (c === undefined) delete out.columns
+    else out.columns = c
+  }
+
+  if (Array.isArray(b.items)) {
+    out.items = (b.items as unknown[]).map(normalizeItem)
+  }
+
+  return out
+}
+
+const STATUS_SUCCESS = new Set([
+  "success",
+  "succeeded",
+  "ok",
+  "complete",
+  "completed",
+  "done",
+  "sucesso",
+])
+const STATUS_ERROR = new Set(["error", "errored", "fail", "failed", "failure", "erro"])
+
+/** status → `success | error` quando reconhecível; senão mantém (deixa o schema decidir). */
+function coerceStatus(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw
+  const norm = raw.trim().toLowerCase()
+  if (STATUS_SUCCESS.has(norm)) return "success"
+  if (STATUS_ERROR.has(norm)) return "error"
+  return raw
+}
+
+/**
+ * Normaliza o corpo bruto do callback do n8n. Não muta a entrada.
+ * Mantém intactos os campos que o schema valida por conta própria
+ * (`job_id`/`suggestion_id`/`store_id`/`mode`) — coerção errada ali esconderia
+ * mismatch real de job.
+ */
+export function sanitizeN8nCopyPayload(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw }
+
+  if ("status" in raw) out.status = coerceStatus(raw.status)
+
+  if (raw.copy && typeof raw.copy === "object" && !Array.isArray(raw.copy)) {
+    const copy = raw.copy as Record<string, unknown>
+    const copyOut: Record<string, unknown> = { ...copy }
+
+    // subject/preheader: coage tipo, mas não inventa (vazio segue inválido).
+    if ("subject" in copy) copyOut.subject = coerceText(copy.subject) ?? copy.subject
+    if ("preheader" in copy) copyOut.preheader = coerceText(copy.preheader) ?? copy.preheader
+    if ("strategy" in copy) {
+      const s = coerceText(copy.strategy)
+      if (s === undefined) delete copyOut.strategy
+      else copyOut.strategy = s
+    }
+
+    if (Array.isArray(copy.blocks)) {
+      copyOut.blocks = copy.blocks.map(normalizeBlock)
+    }
+
+    out.copy = copyOut
+  }
+
+  return out
+}
+
+/** Exportado para testes. */
+export const __internal = { coerceType, coerceColumns, coerceStatus, normalizeBlock }
