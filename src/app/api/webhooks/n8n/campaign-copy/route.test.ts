@@ -1,0 +1,229 @@
+/**
+ * Tests for POST /api/webhooks/n8n/campaign-copy
+ *
+ * Foco: o callback do n8n manda os blocks SEM `id` (a doc instrui omitir —
+ * docs/n8n/campaign-copy-flow.md — e o handler regenera o id no persist).
+ * Regressão coberta: o schema de validação exigia `id` obrigatório, então
+ * o payload do n8n era rejeitado com HTTP 400 e a copy nunca era gravada.
+ *
+ * Cobre:
+ *  - success com blocks SEM id  -> 200 + persiste em copy_results, ids regenerados
+ *  - success com blocks COM id  -> 200 + persiste
+ *  - subject vazio              -> 400 (validação real continua valendo)
+ *  - job inexistente            -> 404
+ *  - sem webhook secret         -> 401
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest"
+
+const MOCK_JOB_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+const MOCK_SUGGESTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+const MOCK_STORE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+const MOCK_ORG_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+interface MockJob {
+  id: string
+  suggestion_id: string
+  org_id: string
+  mode: "test" | "production"
+  stores_count: number
+  completed_count: number
+  failed_count: number
+  status: string
+}
+
+let mockJob: MockJob | null = null
+let mockSuggestion: { copy_results: Record<string, unknown> } | null = null
+
+const updateCalls: Array<{ table: string; data: Record<string, unknown> }> = []
+const insertCalls: Array<{ table: string; data: Record<string, unknown> }> = []
+
+function resetState() {
+  mockJob = {
+    id: MOCK_JOB_ID,
+    suggestion_id: MOCK_SUGGESTION_ID,
+    org_id: MOCK_ORG_ID,
+    mode: "production",
+    stores_count: 1,
+    completed_count: 0,
+    failed_count: 0,
+    status: "running",
+  }
+  mockSuggestion = { copy_results: {} }
+  updateCalls.length = 0
+  insertCalls.length = 0
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function buildQuery(table: string): any {
+  const self: any = {}
+  ;["select", "eq", "in", "order", "limit", "not", "neq"].forEach((m) => {
+    self[m] = () => self
+  })
+  self.maybeSingle = () => {
+    if (table === "campaign_copy_jobs") return Promise.resolve({ data: mockJob, error: null })
+    if (table === "campaign_suggestions")
+      return Promise.resolve({ data: mockSuggestion, error: null })
+    return Promise.resolve({ data: null, error: null })
+  }
+  self.single = self.maybeSingle
+  self.then = (resolve: (v: { data: unknown; error: null }) => void) => {
+    resolve({ data: [], error: null })
+  }
+  self.update = (data: Record<string, unknown>) => {
+    updateCalls.push({ table, data })
+    const chain: any = {
+      eq: () => chain,
+      then: (resolve: (v: { data: null; error: null }) => void) =>
+        resolve({ data: null, error: null }),
+    }
+    return chain
+  }
+  self.insert = (data: Record<string, unknown>) => {
+    insertCalls.push({ table, data })
+    return {
+      select: () => ({
+        single: () => Promise.resolve({ data: { id: "run-id" }, error: null }),
+      }),
+      then: (resolve: (v: { data: null; error: null }) => void) =>
+        resolve({ data: null, error: null }),
+    }
+  }
+  return self
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+vi.mock("@/lib/supabase/server", () => ({
+  createAdminClient: vi.fn(() => ({
+    from: (table: string) => buildQuery(table),
+  })),
+}))
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+  },
+}))
+
+vi.mock("@/lib/cors", () => ({
+  corsHeaders: () => ({}),
+  handleCorsPreFlight: vi.fn(),
+}))
+
+vi.stubEnv("N8N_WEBHOOK_SECRET", "test-secret")
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let POST: (req: any) => Promise<Response>
+
+beforeEach(async () => {
+  vi.clearAllMocks()
+  resetState()
+  const mod = await import("./route")
+  POST = mod.POST
+})
+
+function makeRequest(body: Record<string, unknown>, withSecret = true): Request {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (withSecret) headers["x-webhook-secret"] = "test-secret"
+  return new Request("http://localhost/api/webhooks/n8n/campaign-copy", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  })
+}
+
+function validBody(overrides: Record<string, unknown> = {}) {
+  return {
+    job_id: MOCK_JOB_ID,
+    suggestion_id: MOCK_SUGGESTION_ID,
+    store_id: MOCK_STORE_ID,
+    mode: "production",
+    status: "success",
+    copy: {
+      subject: "Oferta especial",
+      preheader: "Não perca",
+      strategy: "urgência",
+      // blocks SEM id — exatamente como o n8n manda
+      blocks: [
+        { type: "heading", headline: "Olá", sub: "tudo bem?" },
+        { type: "text", value: "corpo do email" },
+      ],
+    },
+    meta: { model: "n8n", tokens_input: 100, tokens_output: 200 },
+    ...overrides,
+  }
+}
+
+describe("POST /api/webhooks/n8n/campaign-copy — blocks sem id (regressão)", () => {
+  it("aceita callback do n8n com blocks SEM id, persiste e regenera os ids", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+
+    const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
+    expect(sugUpdate).toBeDefined()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const copyResults = sugUpdate!.data.copy_results as any
+    const entry = copyResults.production[MOCK_STORE_ID]
+    expect(entry.status).toBe("success")
+    expect(entry.generated_via).toBe("n8n")
+    expect(entry.subject).toBe("Oferta especial")
+    expect(entry.blocks).toHaveLength(2)
+    // ids regenerados no servidor (route.ts: id: b.id ?? newBlockId())
+    for (const b of entry.blocks) {
+      expect(typeof b.id).toBe("string")
+      expect(b.id.length).toBeGreaterThan(0)
+    }
+  })
+
+  it("também aceita blocks COM id", async () => {
+    const body = validBody({
+      copy: {
+        subject: "Oferta",
+        preheader: "preview",
+        blocks: [{ id: "existing-id", type: "text", value: "x" }],
+      },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(body) as any)
+    expect(res.status).toBe(200)
+    const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
+    expect(sugUpdate).toBeDefined()
+  })
+})
+
+describe("POST /api/webhooks/n8n/campaign-copy — validação e erros", () => {
+  it("retorna 400 quando copy.subject está vazio", async () => {
+    const body = validBody({
+      copy: { subject: "", preheader: "p", blocks: [{ type: "text", value: "x" }] },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(body) as any)
+    expect(res.status).toBe(400)
+  })
+
+  it("retorna 400 quando copy não tem blocks", async () => {
+    const body = validBody({ copy: { subject: "s", preheader: "p", blocks: [] } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(body) as any)
+    expect(res.status).toBe(400)
+  })
+
+  it("retorna 404 quando o job não existe", async () => {
+    mockJob = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(404)
+  })
+
+  it("retorna 401 sem webhook secret", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody(), false) as any)
+    expect(res.status).toBe(401)
+  })
+})

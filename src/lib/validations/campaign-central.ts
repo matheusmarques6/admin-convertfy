@@ -193,6 +193,20 @@ export const setPilotSchema = z.object({
 
 // ── Callback n8n (campaign-copy) ─────────────────────────────────────
 
+/**
+ * Bloco vindo do n8n: `id` é OPCIONAL. O handler regenera todo id no persist
+ * (route.ts: `id: b.id ?? newBlockId()`), e a doc do n8n instrui o flow a
+ * omitir o id (docs/n8n/campaign-copy-flow.md). Como o `emailDraftBlockSchema`
+ * global exige `id`, o callback precisa desta variante — senão a validação
+ * rejeita (HTTP 400) o payload do n8n e a copy nunca é gravada.
+ */
+const callbackBlockSchema = emailDraftBlockSchema.extend({ id: z.string().optional() })
+
+/** Copy do callback: igual a copyResultEntrySchema, mas com blocks de id opcional. */
+const callbackCopySchema = copyResultEntrySchema.extend({
+  blocks: z.array(callbackBlockSchema).min(1),
+})
+
 /** Payload que o n8n posta em /api/webhooks/n8n/campaign-copy por loja. */
 export const campaignCopyCallbackSchema = z.object({
   job_id: z.string().uuid(),
@@ -200,7 +214,7 @@ export const campaignCopyCallbackSchema = z.object({
   store_id: z.string().uuid(),
   mode: z.enum(["test", "production"]),
   status: z.enum(["success", "error"]),
-  copy: copyResultEntrySchema.optional(),
+  copy: callbackCopySchema.optional(),
   error_message: z.string().optional(),
   meta: z
     .object({
