@@ -221,6 +221,15 @@ export function BoardTab({ onChanged }: BoardTabProps) {
         onSaved={() => {
           void board.mutate()
           onChanged?.()
+          // Re-sincroniza o snapshot aberto: o CopyPanel deriva hasMaster,
+          // copy_results e o polling do prop `suggestion`. board.mutate() só
+          // atualiza a lista de cards (sem email_draft) — sem isto o painel
+          // fica stale (ex.: "Falta a copy master" mesmo após gerar a master).
+          if (copySuggestion) {
+            void board.fetchSuggestion(copySuggestion.id).then((fresh) => {
+              if (fresh) setCopySuggestion(fresh)
+            })
+          }
         }}
       />
 
