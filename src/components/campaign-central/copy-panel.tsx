@@ -22,6 +22,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/lib/hooks/use-toast"
 import type { CampaignSuggestion, CopyResultEntry, EmailDraftBlock } from "@/types/campaign-central"
+import {
+  FilterRow,
+  LANG_LABEL,
+  countryKey,
+  deriveNiches,
+  langKey,
+  matchStore,
+} from "./store-filters"
 
 interface StoreOption {
   id: string
@@ -30,28 +38,6 @@ interface StoreOption {
   language?: string | null
   niche?: string | null
   is_active?: boolean
-}
-
-const LANG_LABEL: Record<string, string> = {
-  pt: "Português",
-  en: "Inglês",
-  es: "Espanhol",
-}
-
-const REGION_OF: Record<string, string> = {
-  BR: "BR",
-  US: "US",
-  PT: "EU",
-  UK: "EU",
-  ES: "EU",
-}
-
-function langKey(language: string | null | undefined): string {
-  return (language ?? "pt-BR").slice(0, 2).toLowerCase()
-}
-
-function countryKey(country: string | null | undefined): string {
-  return (country ?? "BR").toUpperCase().slice(0, 2)
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -171,33 +157,19 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
   const matched = useMemo(
     () =>
-      stores.filter((s) => {
-        if (statusFilter === "ativas" && !s.is_active) return false
-        if (statusFilter === "inativas" && s.is_active) return false
-        if (regionFilter !== "todas" && REGION_OF[countryKey(s.country)] !== regionFilter)
-          return false
-        if (langFilter !== "todos" && langKey(s.language) !== langFilter) return false
-        if (
-          nicheFilter !== "todos" &&
-          (s.niche ?? "").trim().toLowerCase() !== nicheFilter
-        )
-          return false
-        return true
-      }),
+      stores.filter((s) =>
+        matchStore(s, {
+          status: statusFilter,
+          region: regionFilter,
+          lang: langFilter,
+          niche: nicheFilter,
+        }),
+      ),
     [stores, statusFilter, regionFilter, langFilter, nicheFilter],
   )
 
   /** Nichos únicos derivados das lojas (case-insensitive; preserva display). */
-  const niches = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const s of stores) {
-      const raw = s.niche?.trim()
-      if (!raw) continue
-      const key = raw.toLowerCase()
-      if (!seen.has(key)) seen.set(key, raw)
-    }
-    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
-  }, [stores])
+  const niches = useMemo(() => deriveNiches(stores), [stores])
 
   const activeNicheLabel = useMemo(() => {
     if (nicheFilter === "todos") return null
@@ -502,42 +474,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
       // clipboard indisponível
     }
   }
-
-  const FilterRow = ({
-    label,
-    value,
-    options,
-    onPick,
-  }: {
-    label: string
-    value: string
-    options: Array<{ k: string; label: string }>
-    onPick: (k: string) => void
-  }) => (
-    <div className="mb-2.5">
-      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((o) => {
-          const on = value === o.k
-          return (
-            <button
-              key={o.k}
-              onClick={() => onPick(o.k)}
-              className={`rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors ${
-                on
-                  ? "border-primary bg-primary text-white"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              {o.label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
 
   const hasMaster = !!suggestion.email_draft?.blocks?.length
 

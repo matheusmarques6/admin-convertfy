@@ -2,12 +2,20 @@
 
 import { useState, type ReactNode } from "react"
 import useSWR from "swr"
-import { X, Check, Edit3, Send, Zap, Wand2, Loader2 } from "lucide-react"
+import { X, Check, Edit3, Send, Zap, Wand2, Loader2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { useToast } from "@/lib/hooks/use-toast"
 import { CountryChip } from "./country-chip"
+import {
+  FilterRow,
+  deriveNiches,
+  matchStore,
+  type LangFilter,
+  type RegionFilter,
+  type StatusFilter,
+} from "./store-filters"
 import type {
   CampaignSuggestion,
   CopyResultEntry,
@@ -133,6 +141,11 @@ export function CampaignDetailModal({
   const [sendDate, setSendDate] = useState<string>(s.send_date ?? "")
   const [channel, setChannel] = useState<string>(s.channel)
   const [targets, setTargets] = useState<SuggestionTarget[]>(s.targets)
+  const [storeStatus, setStoreStatus] = useState<StatusFilter>("todas")
+  const [storeRegion, setStoreRegion] = useState<RegionFilter>("todas")
+  const [storeLang, setStoreLang] = useState<LangFilter>("todos")
+  const [storeNiche, setStoreNiche] = useState<string>("todos")
+  const [storeQuery, setStoreQuery] = useState<string>("")
 
   const meta = TYPE_LABEL[s.type] ?? TYPE_LABEL.avulsa
   const isSuggested = s.status === "suggested"
@@ -157,6 +170,18 @@ export function CampaignDetailModal({
   )
   const pool = storesData?.stores ?? []
   const selectedIds = new Set(targets.map((t) => t.store_id))
+  const niches = deriveNiches(pool)
+  const storeQ = storeQuery.trim().toLowerCase()
+  const filteredPool = pool.filter(
+    (o) =>
+      matchStore(o, {
+        status: storeStatus,
+        region: storeRegion,
+        lang: storeLang,
+        niche: storeNiche,
+      }) &&
+      (!storeQ || o.store_name.toLowerCase().includes(storeQ)),
+  )
 
   const channelOptions = CHANNEL_OPTIONS.includes(channel)
     ? CHANNEL_OPTIONS
@@ -239,6 +264,39 @@ export function CampaignDetailModal({
     setTargets(next) // otimista
     const ok = await patchDraft({ targets: next }, "targets")
     if (!ok) setTargets(prev) // rollback
+  }
+
+  /** Marca todas as lojas do filtro atual (1 PATCH com o array completo). */
+  const markAllFiltered = async () => {
+    const ids = new Set(targets.map((t) => t.store_id))
+    const additions: SuggestionTarget[] = filteredPool
+      .filter((o) => !ids.has(o.id))
+      .map((o) => ({
+        store_id: o.id,
+        store_name: o.store_name,
+        country: (o.country ?? "BR").toUpperCase().slice(0, 2),
+      }))
+    if (additions.length === 0) return
+    const next = [...targets, ...additions]
+    const prev = targets
+    setTargets(next)
+    const ok = await patchDraft({ targets: next }, "targets")
+    if (!ok) setTargets(prev)
+  }
+
+  /** Remove do alvo as lojas do filtro atual (mantém o mínimo de 1). */
+  const clearFiltered = async () => {
+    const filteredIds = new Set(filteredPool.map((o) => o.id))
+    const next = targets.filter((t) => !filteredIds.has(t.store_id))
+    if (next.length === targets.length) return // nenhuma filtrada estava marcada
+    if (next.length === 0) {
+      toast({ title: "Mantenha ao menos 1 loja-alvo", variant: "destructive" })
+      return
+    }
+    const prev = targets
+    setTargets(next)
+    const ok = await patchDraft({ targets: next }, "targets")
+    if (!ok) setTargets(prev)
   }
 
   // ── Ações do footer (o caller revalida e fecha em caso de ok) ──────────
@@ -392,16 +450,113 @@ export function CampaignDetailModal({
             <div>
               {storesEditable ? (
                 <>
-                  <div className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Lojas-alvo · clique para incluir/remover
+                  {/* Busca por nome */}
+                  <div className="relative mb-2.5">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <input
+                      type="text"
+                      value={storeQuery}
+                      onChange={(e) => setStoreQuery(e.target.value)}
+                      placeholder="Buscar loja por nome…"
+                      className="w-full rounded-[6px] border border-border bg-card py-1.5 pl-8 pr-2.5 text-[12.5px] text-foreground/90 focus:border-primary focus:outline-none"
+                    />
                   </div>
-                  <div className="overflow-hidden rounded-[6px] border border-border bg-card">
+
+                  {/* Filtros */}
+                  <FilterRow
+                    label="Status"
+                    value={storeStatus}
+                    onPick={(k) => setStoreStatus(k as StatusFilter)}
+                    options={[
+                      { k: "todas", label: "Todas" },
+                      { k: "ativas", label: "Ativas" },
+                      { k: "inativas", label: "Inativas" },
+                    ]}
+                  />
+                  <FilterRow
+                    label="Região"
+                    value={storeRegion}
+                    onPick={(k) => setStoreRegion(k as RegionFilter)}
+                    options={[
+                      { k: "todas", label: "Todas" },
+                      { k: "BR", label: "Brasil" },
+                      { k: "EU", label: "Europa" },
+                      { k: "US", label: "EUA" },
+                    ]}
+                  />
+                  <FilterRow
+                    label="Idioma"
+                    value={storeLang}
+                    onPick={(k) => setStoreLang(k as LangFilter)}
+                    options={[
+                      { k: "todos", label: "Todos" },
+                      { k: "pt", label: "Português" },
+                      { k: "en", label: "Inglês" },
+                      { k: "es", label: "Espanhol" },
+                    ]}
+                  />
+                  {niches.length > 0 && (
+                    <div className="mb-2.5">
+                      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Nicho
+                      </div>
+                      <select
+                        value={storeNiche}
+                        onChange={(e) => setStoreNiche(e.target.value)}
+                        className="w-full rounded-[6px] border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground focus:border-primary focus:outline-none"
+                      >
+                        <option value="todos">Todos os nichos</option>
+                        {niches.map(([key, label]) => (
+                          <option key={key} value={key}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Contador + ações em massa */}
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {filteredPool.length} de {pool.length} ·{" "}
+                      <span className="text-foreground">{targets.length}</span> selecionada
+                      {targets.length !== 1 ? "s" : ""}
+                    </span>
+                    <span className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void markAllFiltered()}
+                        disabled={busy === "targets" || filteredPool.length === 0}
+                        className="text-[11.5px] font-semibold text-primary hover:underline disabled:opacity-40"
+                      >
+                        Marcar todas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void clearFiltered()}
+                        disabled={busy === "targets"}
+                        className="text-[11.5px] font-semibold text-primary hover:underline disabled:opacity-40"
+                      >
+                        Limpar
+                      </button>
+                    </span>
+                  </div>
+
+                  {/* Lista filtrada */}
+                  <div className="max-h-[300px] overflow-y-auto rounded-[6px] border border-border bg-card">
                     {pool.length === 0 ? (
                       <div className="flex items-center gap-2 px-3 py-6 text-[12px] text-muted-foreground">
                         <Loader2 size={14} className="animate-spin" /> Carregando lojas…
                       </div>
+                    ) : filteredPool.length === 0 ? (
+                      <div className="px-3.5 py-6 text-center text-[12px] text-muted-foreground">
+                        Nenhuma loja com esses filtros.
+                      </div>
                     ) : (
-                      pool.map((opt, i) => {
+                      filteredPool.map((opt, i) => {
                         const on = selectedIds.has(opt.id)
                         return (
                           <button
@@ -410,7 +565,7 @@ export function CampaignDetailModal({
                             onClick={() => void toggleStore(opt)}
                             disabled={busy === "targets"}
                             className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors disabled:opacity-60 ${
-                              i < pool.length - 1 ? "border-b border-border" : ""
+                              i < filteredPool.length - 1 ? "border-b border-border" : ""
                             } ${on ? "bg-primary/5" : "hover:bg-muted/40"}`}
                           >
                             <span
