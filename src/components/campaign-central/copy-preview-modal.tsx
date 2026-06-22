@@ -60,7 +60,7 @@ export function CopyPreviewModal({ entry, storeName, onClose }: Props) {
       aria-modal="true"
     >
       <div
-        className="flex max-h-[calc(100vh-48px)] w-[560px] max-w-full flex-col overflow-hidden rounded-[10px] border border-border bg-card shadow-2xl"
+        className="flex max-h-[calc(100vh-48px)] w-[680px] max-w-full flex-col overflow-hidden rounded-[10px] border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -107,39 +107,44 @@ export function CopyPreviewModal({ entry, storeName, onClose }: Props) {
             </div>
           ) : (
             <>
-              <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Assunto
-              </div>
-              <div className="mb-3 text-[14px] font-semibold text-foreground">
-                {entry.subject || "—"}
-              </div>
-              <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Preview
-              </div>
-              <div className="mb-3 text-[12.5px] leading-normal text-muted-foreground">
-                {preview}
-              </div>
-              {entry.strategy && (
-                <>
+              {/* Zona A — metadados (compacto, 1 cartão) */}
+              <div className="mb-4 rounded-[8px] border border-border bg-card p-4">
+                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Assunto
+                </div>
+                <div className="text-[15px] font-semibold leading-snug text-foreground">
+                  {entry.subject || "—"}
+                </div>
+                <div className="mt-2.5 border-t border-dashed border-border pt-2.5">
                   <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Estratégia
+                    Preview
                   </div>
-                  <div className="mb-3 text-[12px] italic leading-normal text-foreground/70">
-                    {entry.strategy}
+                  <div className="text-[13px] leading-normal text-muted-foreground">{preview}</div>
+                </div>
+                {entry.strategy && (
+                  <div className="mt-2.5 rounded-[6px] border-l-2 border-primary/25 bg-primary/[0.04] py-2 pl-3 pr-2.5">
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Estratégia
+                    </div>
+                    <div className="text-[12px] italic leading-relaxed text-foreground/65">
+                      {entry.strategy}
+                    </div>
                   </div>
-                </>
-              )}
+                )}
+              </div>
+
+              {/* Zona B — email (papel, protagonista) */}
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Email completo{blocks.length > 0 && ` (${blocks.length} blocos)`}
               </div>
               {blocks.length > 0 ? (
-                <div className="space-y-2.5 rounded-[6px] border border-border bg-card p-3.5">
+                <div className="space-y-5 rounded-[8px] border border-border bg-card p-6 shadow-sm">
                   {blocks.map((b, i) => (
                     <BlockPreview key={b.id ?? i} block={b} />
                   ))}
                 </div>
               ) : (
-                <div className="rounded-[6px] border border-dashed border-border bg-card px-3.5 py-6 text-center text-[12px] text-muted-foreground">
+                <div className="rounded-[8px] border border-dashed border-border bg-card px-3.5 py-8 text-center text-[12px] text-muted-foreground">
                   {meta.kind === "pending"
                     ? "A copy ainda está sendo gerada…"
                     : "Sem blocos de email para esta loja."}
