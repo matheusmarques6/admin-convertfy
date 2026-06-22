@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Sparkles, Plus, Loader2, Calendar, Activity, Columns3, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +59,23 @@ export function CampaignCentralShell() {
   const [newModalOpen, setNewModalOpen] = useState(false)
 
   const { cycle, suggestions, counts, isLoading } = central
+
+  // Re-sincroniza os snapshots dos modais (aba Performance) com a lista
+  // revalidada pelo SWR — sem isto a flag de status e o pop-up de copy ficam
+  // stale (o polling de 4s do CopyPanel chama central.mutate()). Atualiza só
+  // quando há versão fresca de MESMO id: não reseta a seleção do CopyPanel
+  // (cuja dep de reset é `suggestion?.id`) e não entra em loop (após
+  // sincronizar, fresh === snapshot).
+  useEffect(() => {
+    if (!detailSuggestion) return
+    const fresh = suggestions.find((s) => s.id === detailSuggestion.id)
+    if (fresh && fresh !== detailSuggestion) setDetailSuggestion(fresh)
+  }, [suggestions, detailSuggestion])
+  useEffect(() => {
+    if (!copySuggestion) return
+    const fresh = suggestions.find((s) => s.id === copySuggestion.id)
+    if (fresh && fresh !== copySuggestion) setCopySuggestion(fresh)
+  }, [suggestions, copySuggestion])
 
   const isGenerating = cycle?.status === "generating"
 

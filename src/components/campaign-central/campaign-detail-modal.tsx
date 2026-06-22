@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react"
 import useSWR from "swr"
-import { X, Check, Edit3, Send, Zap, Wand2, Loader2, Search } from "lucide-react"
+import { X, Check, Edit3, Send, Zap, Wand2, Loader2, Search, AlertTriangle, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
@@ -21,6 +21,8 @@ import type {
   CopyResultEntry,
   SuggestionTarget,
 } from "@/types/campaign-central"
+import { copyStatusMeta } from "./block-preview"
+import { CopyPreviewModal } from "./copy-preview-modal"
 
 /** Pool de lojas da org — mesma forma do /api/stores usada no CopyPanel. */
 interface StoreOption {
@@ -136,6 +138,8 @@ export function CampaignDetailModal({
   const { toast } = useToast()
   const [tab, setTab] = useState<TabKey>("detalhes")
   const [busy, setBusy] = useState<BusyState | null>(null)
+  /** Loja cujo pop-up de copy está aberto (empilha acima deste modal). */
+  const [previewStoreId, setPreviewStoreId] = useState<string | null>(null)
   const [brief, setBrief] = useState<string>(s.brief?.structure ?? "")
   const [briefSaved, setBriefSaved] = useState<boolean>(Boolean(s.brief?.structure))
   const [sendDate, setSendDate] = useState<string>(s.send_date ?? "")
@@ -724,42 +728,72 @@ export function CampaignDetailModal({
                     </div>
                     <div className="flex flex-col gap-2">
                       {pilotEntries.map(([storeId, cp]) => {
-                        const good = cp.quality === "good"
+                        const meta = copyStatusMeta(cp)
+                        const good = meta.kind === "approved"
+                        const pending = meta.kind === "pending"
+                        const error = meta.kind === "error"
                         return (
-                          <div
+                          <button
                             key={storeId}
-                            className={`overflow-hidden rounded-[6px] border ${
-                              good ? "border-emerald-300 dark:border-emerald-800" : "border-border"
+                            type="button"
+                            onClick={() => setPreviewStoreId(storeId)}
+                            className={`group w-full overflow-hidden rounded-[6px] border text-left transition-colors hover:border-primary/50 ${
+                              good
+                                ? "border-emerald-300 dark:border-emerald-800"
+                                : error
+                                ? "border-red-300 dark:border-red-900"
+                                : pending
+                                ? "border-primary/40"
+                                : "border-border"
                             }`}
                           >
                             <div
                               className={`flex items-center gap-2 border-b border-border px-2.5 py-1.5 ${
-                                good ? "bg-emerald-50 dark:bg-emerald-950/30" : "bg-muted/30"
+                                good
+                                  ? "bg-emerald-50 dark:bg-emerald-950/30"
+                                  : error
+                                  ? "bg-red-50 dark:bg-red-950/30"
+                                  : pending
+                                  ? "bg-primary/5"
+                                  : "bg-muted/30"
                               }`}
                             >
                               <span className="truncate text-[12px] font-semibold text-foreground">
                                 {nameById.get(storeId) ?? "Loja"}
                               </span>
                               <div className="flex-1" />
-                              {good ? (
+                              {pending ? (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-primary">
+                                  <Loader2 size={11} className="animate-spin" /> {meta.label}
+                                </span>
+                              ) : error ? (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-red-600">
+                                  <AlertTriangle size={11} /> {meta.label}
+                                </span>
+                              ) : good ? (
                                 <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-emerald-600">
-                                  <Check size={11} /> Aprovada
+                                  <Check size={11} /> {meta.label}
                                 </span>
                               ) : (
                                 <span className="text-[10.5px] text-muted-foreground">
-                                  em avaliação
+                                  {meta.label}
                                 </span>
                               )}
                             </div>
                             <div className="px-2.5 py-2">
-                              <div className="mb-0.5 text-[12.5px] font-semibold text-foreground">
-                                {cp.subject}
+                              <div className="mb-0.5 flex items-center gap-1.5">
+                                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-foreground">
+                                  {cp.subject || "—"}
+                                </span>
+                                <span className="inline-flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                                  <Eye size={11} /> ver
+                                </span>
                               </div>
-                              <div className="text-[11.5px] leading-snug text-muted-foreground">
+                              <div className="line-clamp-1 text-[11.5px] leading-snug text-muted-foreground">
                                 {cp.preheader ?? cp.preview}
                               </div>
                             </div>
-                          </div>
+                          </button>
                         )
                       })}
                     </div>
@@ -890,6 +924,11 @@ export function CampaignDetailModal({
           )}
         </div>
       </div>
+      <CopyPreviewModal
+        entry={previewStoreId ? (pilotResults[previewStoreId] ?? null) : null}
+        storeName={previewStoreId ? (nameById.get(previewStoreId) ?? "Loja") : ""}
+        onClose={() => setPreviewStoreId(null)}
+      />
     </div>
   )
 }

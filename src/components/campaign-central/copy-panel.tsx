@@ -11,8 +11,7 @@ import {
   Copy as CopyIcon,
   RefreshCw,
   Edit3,
-  ChevronDown,
-  ChevronRight,
+  Eye,
   Send,
   ArrowRight,
   Sparkles,
@@ -21,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/lib/hooks/use-toast"
-import type { CampaignSuggestion, CopyResultEntry, EmailDraftBlock } from "@/types/campaign-central"
+import type { CampaignSuggestion, CopyResultEntry } from "@/types/campaign-central"
 import {
   FilterRow,
   LANG_LABEL,
@@ -30,6 +29,8 @@ import {
   langKey,
   matchStore,
 } from "./store-filters"
+import { copyBlocksToText } from "./block-preview"
+import { CopyPreviewModal } from "./copy-preview-modal"
 
 interface StoreOption {
   id: string
@@ -50,47 +51,6 @@ interface Props {
 
 type Phase = "pilot" | "rollout"
 
-function copyBlocksToText(entry: CopyResultEntry): string {
-  const lines: string[] = []
-  lines.push(`Assunto: ${entry.subject}`)
-  lines.push(`Preview: ${entry.preheader ?? entry.preview}`)
-  lines.push("")
-  for (const block of entry.blocks ?? []) {
-    switch (block.type) {
-      case "heading":
-        if (block.headline) lines.push(`# ${block.headline}`)
-        if (block.sub) lines.push(block.sub)
-        lines.push("")
-        break
-      case "text":
-        if (block.value) lines.push(block.value, "")
-        break
-      case "image":
-        if (block.caption) lines.push(`[Imagem: ${block.caption}]`, "")
-        break
-      case "offer":
-        if (block.value) lines.push(`>> ${block.value}`, "")
-        break
-      case "button":
-        if (block.value) lines.push(`>> [${block.value}]`, "")
-        break
-      case "divider":
-        lines.push("---", "")
-        break
-      case "footer":
-        if (block.value) lines.push(block.value)
-        break
-      case "products":
-        for (const item of block.items ?? []) {
-          lines.push(`• ${item.name ?? "Produto"} — ${item.price ?? ""}`)
-        }
-        lines.push("")
-        break
-    }
-  }
-  return lines.join("\n").trim()
-}
-
 export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const { toast } = useToast()
   const open = !!suggestion
@@ -103,7 +63,8 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [nicheFilter, setNicheFilter] = useState<string>("todos")
   const [selectedPilot, setSelectedPilot] = useState<Set<string>>(new Set())
   const [selectedRollout, setSelectedRollout] = useState<Set<string>>(new Set())
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
+  /** Loja cujo pop-up de copy está aberto (empilha acima do painel). */
+  const [previewStoreId, setPreviewStoreId] = useState<string | null>(null)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [qualityBusy, setQualityBusy] = useState<string | null>(null)
@@ -137,10 +98,9 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (!suggestion) return
-    const hasPilot = Object.keys(pilotResults).length > 0
     const hasRollout = Object.keys(rolloutResults).length > 0
     setPhase(hasRollout && canRollout ? "rollout" : "pilot")
-    setExpandedCards(new Set())
+    setPreviewStoreId(null)
     // Pré-select: targets da campanha já vêm marcados, pra refletir o
     // escopo escolhido pelo COO ao criar a campanha. O COO ainda pode
     // adicionar piloto fora do escopo via lista completa, mas o default
@@ -151,7 +111,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
       setSelectedPilot(new Set(suggestion.targets.map((t) => t.store_id)))
     }
     setSelectedRollout(new Set())
-    if (hasPilot) setExpandedCards(new Set(Object.keys(pilotResults).slice(0, 1)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestion?.id])
 
@@ -251,14 +210,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
   const toggle = (id: string) =>
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-
-  const toggleExpand = (id: string) =>
-    setExpandedCards((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -791,7 +742,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                 {Object.entries(results).map(([storeId, entry]) => {
                   const store = storeById.get(storeId)
                   const isGood = entry.quality === "good"
-                  const isExpanded = expandedCards.has(storeId)
                   const isRegen = regeneratingId === storeId
                   const isPending =
                     pendingMode === mode && (pendingStoreIds.has(storeId) || entry.status === "pending")
@@ -861,21 +811,12 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                         </div>
                         {entry.blocks && entry.blocks.length > 0 && (
                           <button
-                            onClick={() => toggleExpand(storeId)}
+                            onClick={() => setPreviewStoreId(storeId)}
                             className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline"
                           >
-                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                            {isExpanded
-                              ? "Ocultar email completo"
-                              : `Ver email completo (${entry.blocks.length} blocos)`}
+                            <Eye size={13} />
+                            Ver email completo ({entry.blocks.length} blocos)
                           </button>
-                        )}
-                        {isExpanded && entry.blocks && (
-                          <div className="mt-2.5 space-y-2.5 rounded-[6px] border border-border/70 bg-muted/30 p-3">
-                            {entry.blocks.map((b, i) => (
-                              <BlockPreview key={b.id ?? i} block={b} />
-                            ))}
-                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2 px-3.5 pb-3">
@@ -964,70 +905,13 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
           )}
         </div>
       </aside>
+      <CopyPreviewModal
+        entry={previewStoreId ? (results[previewStoreId] ?? null) : null}
+        storeName={
+          previewStoreId ? (storeById.get(previewStoreId)?.store_name ?? previewStoreId) : ""
+        }
+        onClose={() => setPreviewStoreId(null)}
+      />
     </>
   )
-}
-
-function BlockPreview({ block }: { block: EmailDraftBlock }) {
-  switch (block.type) {
-    case "image":
-      return (
-        <div className="rounded-[4px] border border-dashed border-border bg-muted px-2 py-2 font-mono text-[10.5px] text-muted-foreground">
-          [Imagem] {block.caption ?? ""}
-        </div>
-      )
-    case "heading":
-      return (
-        <div>
-          <div className="text-[14px] font-bold leading-tight text-foreground">
-            {block.headline ?? "—"}
-          </div>
-          {block.sub && (
-            <div className="mt-0.5 text-[12px] text-muted-foreground">{block.sub}</div>
-          )}
-        </div>
-      )
-    case "text":
-      return (
-        <div className="text-[12.5px] leading-relaxed text-foreground/85">{block.value}</div>
-      )
-    case "offer":
-      return (
-        <div className="rounded-[4px] border border-primary/20 bg-primary/5 px-2 py-1.5 text-center text-[12.5px] font-semibold text-primary">
-          {block.value}
-        </div>
-      )
-    case "button":
-      return (
-        <div className="text-center">
-          <span className="inline-block rounded-[4px] bg-primary px-4 py-1.5 text-[12px] font-semibold text-white">
-            {block.value}
-          </span>
-        </div>
-      )
-    case "divider":
-      return <hr className="border-border" />
-    case "footer":
-      return (
-        <div className="text-center text-[10.5px] text-muted-foreground/70">{block.value}</div>
-      )
-    case "products": {
-      const cols = block.columns ?? 3
-      return (
-        <div className={`grid gap-2 ${cols === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-          {(block.items ?? []).map((it, i) => (
-            <div key={i} className="rounded-[4px] border border-border bg-card p-1.5">
-              <div className="mb-1 h-12 rounded-[3px] border border-dashed border-border/70 bg-muted/60" />
-              <div className="truncate text-[11px] font-semibold text-foreground">
-                {it.name ?? "—"}
-              </div>
-              <div className="text-[10.5px] font-bold text-primary">{it.price ?? ""}</div>
-            </div>
-          ))}
-        </div>
-      )
-    }
-    default:
-      return null
-  }
 }
