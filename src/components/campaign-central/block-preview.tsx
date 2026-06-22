@@ -1,5 +1,6 @@
 "use client"
 
+import { AlertTriangle } from "lucide-react"
 import type { CopyResultEntry, EmailDraftBlock } from "@/types/campaign-central"
 
 /**
@@ -62,6 +63,60 @@ export function copyStatusMeta(entry: CopyResultEntry): { kind: CopyStatusKind; 
   if (entry.status === "error") return { kind: "error", label: "Erro" }
   if (entry.quality === "good") return { kind: "approved", label: "Aprovada" }
   return { kind: "ready", label: "em avaliação" }
+}
+
+export type CopyOriginTone = "n8n" | "ai" | "fallback" | "legacy"
+
+/**
+ * Deriva um rótulo de ORIGEM da copy a partir de `generated_via`. Existe pra
+ * que o COO nunca confunda a copy real do n8n com o fallback genérico que o
+ * watchdog injeta quando o n8n não responde a tempo — foi a causa de uma
+ * confusão real. Retorna `null` quando a origem é desconhecida (entries antigas
+ * sem o campo), pra não poluir a UI nesses casos.
+ */
+export function copyOriginMeta(
+  entry: CopyResultEntry,
+): { label: string; tone: CopyOriginTone } | null {
+  switch (entry.generated_via) {
+    case "n8n":
+      return { label: "via n8n", tone: "n8n" }
+    case "ai_master_adapt":
+      return { label: "via IA", tone: "ai" }
+    case "inline_fallback":
+      return { label: "fallback genérica", tone: "fallback" }
+    case "subject_only_legacy":
+      return { label: "legado", tone: "legacy" }
+    default:
+      return null
+  }
+}
+
+/**
+ * Badge compacto de origem da copy. `fallback` ganha tom de aviso (âmbar) pra
+ * sinalizar que NÃO é a copy do n8n; as demais origens usam tom neutro. Renderiza
+ * `null` quando a origem é desconhecida.
+ */
+export function CopyOriginBadge({ entry }: { entry: CopyResultEntry }) {
+  const origin = copyOriginMeta(entry)
+  if (!origin) return null
+  const isFallback = origin.tone === "fallback"
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-[5px] border px-1.5 py-0.5 text-[10px] font-semibold ${
+        isFallback
+          ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400"
+          : "border-border bg-muted/50 text-muted-foreground"
+      }`}
+      title={
+        isFallback
+          ? "Copy genérica de fallback — o n8n não respondeu a tempo. Não é a copy gerada pelo n8n."
+          : `Origem da copy: ${origin.label}`
+      }
+    >
+      {isFallback && <AlertTriangle size={10} />}
+      {origin.label}
+    </span>
+  )
 }
 
 /** Render read-only de um bloco do email (esqueleto + copy adaptada). */

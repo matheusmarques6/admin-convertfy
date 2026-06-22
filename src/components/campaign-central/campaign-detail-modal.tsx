@@ -21,7 +21,7 @@ import type {
   CopyResultEntry,
   SuggestionTarget,
 } from "@/types/campaign-central"
-import { copyStatusMeta } from "./block-preview"
+import { CopyOriginBadge, copyStatusMeta } from "./block-preview"
 import { CopyPreviewModal } from "./copy-preview-modal"
 
 /** Pool de lojas da org — mesma forma do /api/stores usada no CopyPanel. */
@@ -792,6 +792,11 @@ export function CampaignDetailModal({
                               <div className="line-clamp-1 text-[11.5px] leading-snug text-muted-foreground">
                                 {cp.preheader ?? cp.preview}
                               </div>
+                              {cp.generated_via && (
+                                <div className="mt-1.5">
+                                  <CopyOriginBadge entry={cp} />
+                                </div>
+                              )}
                             </div>
                           </button>
                         )

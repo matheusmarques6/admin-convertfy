@@ -29,7 +29,7 @@ import {
   langKey,
   matchStore,
 } from "./store-filters"
-import { copyBlocksToText } from "./block-preview"
+import { copyBlocksToText, CopyOriginBadge } from "./block-preview"
 import { CopyPreviewModal } from "./copy-preview-modal"
 
 interface StoreOption {
@@ -809,6 +809,11 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                         <div className="mb-2 text-[12.5px] leading-normal text-muted-foreground">
                           {entry.preheader ?? entry.preview}
                         </div>
+                        {entry.generated_via && (
+                          <div className="mb-2">
+                            <CopyOriginBadge entry={entry} />
+                          </div>
+                        )}
                         {entry.blocks && entry.blocks.length > 0 && (
                           <button
                             onClick={() => setPreviewStoreId(storeId)}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Check, Loader2, AlertTriangle, Copy as CopyIcon } from "lucide-react"
 import type { CopyResultEntry } from "@/types/campaign-central"
-import { BlockPreview, copyBlocksToText, copyStatusMeta } from "./block-preview"
+import { BlockPreview, CopyOriginBadge, copyBlocksToText, copyStatusMeta } from "./block-preview"
 
 interface Props {
   /** Copy da loja a exibir. `null` mantém o pop-up fechado. */
@@ -73,6 +73,7 @@ export function CopyPreviewModal({ entry, storeName, onClose }: Props) {
               {storeName}
             </div>
           </div>
+          <CopyOriginBadge entry={entry} />
           {meta.kind === "pending" ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-primary/30 bg-primary/5 px-2 py-1 text-[11px] font-semibold text-primary">
               <Loader2 size={12} className="animate-spin" /> {meta.label}
