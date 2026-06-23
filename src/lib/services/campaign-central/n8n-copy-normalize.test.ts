@@ -98,6 +98,40 @@ describe("normalizeBlock", () => {
   it("bloco não-objeto vira bloco de texto", () => {
     expect(normalizeBlock("texto solto")).toEqual({ type: "text", value: "texto solto" })
   })
+
+  it("mapeia nomes de campo alternativos pros canônicos (body→value, cta_text→value, title→headline)", () => {
+    expect(normalizeBlock({ type: "text", body: "Corpo do email" })).toEqual({
+      type: "text",
+      value: "Corpo do email",
+    })
+    expect(normalizeBlock({ type: "button", cta_text: "Comprar agora" })).toEqual({
+      type: "button",
+      value: "Comprar agora",
+    })
+    expect(normalizeBlock({ type: "heading", title: "Título", subtitle: "Sub" })).toEqual({
+      type: "heading",
+      headline: "Título",
+      sub: "Sub",
+    })
+  })
+
+  it("campo canônico direto vence o sinônimo", () => {
+    expect(normalizeBlock({ type: "text", value: "Direto", body: "Alias" })).toEqual({
+      type: "text",
+      value: "Direto",
+    })
+  })
+
+  it("mapeia sinônimos dentro de items de products (title→name, cost→price)", () => {
+    const out = normalizeBlock({
+      type: "products",
+      items: [{ title: "Produto X", cost: 199 }],
+    })
+    expect((out.items as Array<Record<string, unknown>>)[0]).toEqual({
+      name: "Produto X",
+      price: "199",
+    })
+  })
 })
 
 describe("sanitizeN8nCopyPayload", () => {

@@ -118,6 +118,67 @@ function coerceText(raw: unknown): string | undefined {
 const TEXT_FIELDS = ["headline", "sub", "value", "caption"] as const
 const ITEM_FIELDS = ["name", "price", "image_caption"] as const
 
+/** True se o valor é uma string com conteúdo (após trim). */
+function hasText(v: unknown): boolean {
+  return typeof v === "string" && v.trim().length > 0
+}
+
+/**
+ * Sinônimos de NOME DE CAMPO (nível do bloco). O n8n/LLM às vezes nomeia o
+ * conteúdo fora do canônico do `emailDraftBlockSchema` (ex.: `body`/`cta_text`
+ * em vez de `value`, `title` em vez de `headline`). Sem mapear, o Zod stripa
+ * esses campos e o bloco aparece VAZIO no preview ("diz 11, mostra menos").
+ */
+const FIELD_SYNONYMS: Record<string, string> = {
+  body: "value",
+  text: "value",
+  content: "value",
+  copy: "value",
+  paragraph: "value",
+  description: "value",
+  desc: "value",
+  cta_text: "value",
+  button_text: "value",
+  label: "value",
+  title: "headline",
+  header: "headline",
+  subtitle: "sub",
+  subheadline: "sub",
+  subheading: "sub",
+  subhead: "sub",
+  alt: "caption",
+  image_alt: "caption",
+  image_description: "caption",
+}
+
+/** Sinônimos de campo dentro de cada item de `products`. */
+const ITEM_FIELD_SYNONYMS: Record<string, string> = {
+  title: "name",
+  product_name: "name",
+  product: "name",
+  cost: "price",
+  amount: "price",
+}
+
+/**
+ * Move conteúdo de campos-sinônimo pro nome canônico, só quando o canônico
+ * ainda está vazio (campo direto sempre vence). Coage o valor a string e
+ * remove o alias pra não deixar lixo no objeto persistido.
+ */
+function applyFieldSynonyms(
+  out: Record<string, unknown>,
+  source: Record<string, unknown>,
+  synonyms: Record<string, string>,
+): void {
+  for (const [alias, canonical] of Object.entries(synonyms)) {
+    if (alias in source && !hasText(out[canonical])) {
+      const v = coerceText(source[alias])
+      if (v && v.trim()) out[canonical] = v
+    }
+    if (alias !== canonical && alias in out) delete out[alias]
+  }
+}
+
 function normalizeItem(raw: unknown): Record<string, unknown> {
   if (typeof raw !== "object" || raw === null) return {}
   const item = raw as Record<string, unknown>
@@ -129,6 +190,7 @@ function normalizeItem(raw: unknown): Record<string, unknown> {
       else out[k] = v
     }
   }
+  applyFieldSynonyms(out, item, ITEM_FIELD_SYNONYMS)
   return out
 }
 
@@ -150,6 +212,10 @@ function normalizeBlock(raw: unknown): Record<string, unknown> {
       else out[k] = v
     }
   }
+
+  // Mapeia nomes de campo alternativos (body→value, title→headline…) pros
+  // canônicos. Roda DEPOIS dos diretos pra que o campo canônico explícito vença.
+  applyFieldSynonyms(out, b, FIELD_SYNONYMS)
 
   if ("columns" in b) {
     const c = coerceColumns(b.columns)
