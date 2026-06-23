@@ -113,7 +113,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 2) PATCH email_flow_emails: subject, preheader, status, copy_ready_at
+    // 2) PATCH email_flow_emails: subject, preheader, status, copy_ready_at.
+    //
+    // Limpeza de artefatos da fase 2 anterior: html, qa_issues,
+    // failure_reason e timers viram null/[]. Sem isso, um email que ja
+    // passou por `rendering` (mesmo antes do GATE 2 existir) carrega o
+    // HTML/QA antigos pra eternidade quando a copy roda de novo.
     const nowIso = new Date().toISOString()
     const { error: updEmailErr } = await admin
       .from("email_flow_emails")
@@ -123,9 +128,68 @@ export async function POST(request: NextRequest) {
         status: "copy_ready",
         copy_ready_at: nowIso,
         updated_at: nowIso,
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+        rendering_started_at: null,
+        qa_started_at: null,
       })
       .eq("id", body.email_id)
     if (updEmailErr) throw updEmailErr
+
+    // 2.5) Limpa imagens residuais (image_url/image_alt + telemetria de
+    // regen manual) dos blocos do email ANTES de aplicar a copy nova.
+    // Cobre o caso classico: email passou por `rendering` numa rodada
+    // anterior (ex.: antes do GATE 2), gerou image_url, falhou, e agora
+    // recebe uma copy nova — sem isso o image_url antigo sobrevive
+    // mesmo apos a brand mudar / nao estar confirmada.
+    const { data: blocksWithImages, error: blocksImgErr } = await admin
+      .from("email_blocks")
+      .select("id, content")
+      .eq("email_id", body.email_id)
+    if (blocksImgErr) {
+      log.warn("email_copy.image_cleanup.read_failed", {
+        email_id: body.email_id,
+        error: blocksImgErr.message,
+      })
+    }
+    let blocksImageCleared = 0
+    const IMAGE_KEYS = [
+      "image_url",
+      "image_alt",
+      "image_last_generated_at",
+      "image_last_prompt",
+    ] as const
+    for (const blk of (blocksWithImages ?? []) as Array<{
+      id: string
+      content: Record<string, unknown> | null
+    }>) {
+      const content = blk.content ?? {}
+      const hasAny = IMAGE_KEYS.some((k) => k in content)
+      if (!hasAny) continue
+      const cleaned = { ...content }
+      for (const k of IMAGE_KEYS) delete cleaned[k]
+      const { error: clearErr } = await admin
+        .from("email_blocks")
+        .update({ content: cleaned })
+        .eq("id", blk.id)
+      if (clearErr) {
+        log.warn("email_copy.image_cleanup.update_failed", {
+          email_id: body.email_id,
+          block_id: blk.id,
+          error: clearErr.message,
+        })
+        continue
+      }
+      blocksImageCleared++
+    }
+    if (blocksImageCleared > 0) {
+      log.info("email_copy.artifacts_cleared", {
+        email_id: body.email_id,
+        store_id: body.store_id,
+        blocks_image_cleared: blocksImageCleared,
+      })
+    }
 
     // 3) PATCH email_blocks.content por block_id (com sanitizacao de tokens)
     let blocksWritten = 0

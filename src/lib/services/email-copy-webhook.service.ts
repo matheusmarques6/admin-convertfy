@@ -585,9 +585,21 @@ export async function dispatchEmailCopyWebhook(
   })
 
   if (dispatchStatus === "success") {
+    // Reset cinto-suspensorio: ao re-disparar copy, limpamos artefatos
+    // de qualquer fase 2 anterior (html, qa_issues, failure_reason,
+    // timers). A limpeza definitiva acontece no callback do n8n
+    // (`/api/webhooks/n8n/email-copy`); este UPDATE garante o invariante
+    // mesmo se algo abortar antes do callback chegar.
     await admin
       .from("email_flow_emails")
-      .update({ status: "in_progress" })
+      .update({
+        status: "in_progress",
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+        rendering_started_at: null,
+        qa_started_at: null,
+      })
       .in("id", emailIds)
       .in("status", ["draft"])
   }
