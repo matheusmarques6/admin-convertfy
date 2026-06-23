@@ -150,12 +150,35 @@ describe("sanitizeN8nCopyPayload", () => {
     }
     const out = sanitizeN8nCopyPayload(input)
     expect(out.status).toBe("success")
+    // Blocos são colapsados num único bloco de texto com toda a copy.
     expect((out.copy as Record<string, unknown>).blocks).toEqual([
-      { type: "button", value: "Comprar" },
+      { type: "text", value: "Comprar" },
     ])
     // não muta a entrada
     expect(input.status).toBe("completed")
     expect((input.copy.blocks[0] as Record<string, unknown>).type).toBe("cta")
+  })
+
+  it("colapsa todos os blocos num único bloco de texto com a copy inteira", () => {
+    const out = sanitizeN8nCopyPayload({
+      status: "success",
+      copy: {
+        subject: "S",
+        preheader: "P",
+        blocks: [
+          { type: "heading", headline: "Título do email" },
+          { type: "text", body: "Primeiro parágrafo." },
+          { type: "products", items: [{ title: "Produto A", cost: 199 }] },
+          { type: "button", cta_text: "Comprar agora" },
+        ],
+      },
+    })
+    const blocks = (out.copy as Record<string, unknown>).blocks as Array<Record<string, unknown>>
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].type).toBe("text")
+    expect(blocks[0].value).toBe(
+      "Título do email\n\nPrimeiro parágrafo.\n\n• Produto A — 199\n\nComprar agora",
+    )
   })
 
   it("preserva identificadores do job (não coage job_id/mode)", () => {

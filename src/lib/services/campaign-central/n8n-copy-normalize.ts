@@ -251,6 +251,78 @@ function coerceStatus(raw: unknown): unknown {
 }
 
 /**
+ * Junta TODO o texto de um bloco do n8n num parágrafo — qualquer campo de texto
+ * (canônico ou apelido) + os itens de produtos. Varre todas as strings do
+ * objeto pra não perder conteúdo com nome inesperado; pula metadados e
+ * links/imagens (que poluiriam o texto). Numbers/booleans viram string.
+ */
+function blockToPlainText(raw: unknown): string {
+  const lines: string[] = []
+  const seen = new Set<string>()
+  const push = (v: unknown) => {
+    const t = coerceText(v)?.trim()
+    if (!t || seen.has(t)) return
+    lines.push(t)
+    seen.add(t)
+  }
+
+  if (typeof raw !== "object" || raw === null) {
+    push(raw)
+    return lines.join("\n")
+  }
+  const b = raw as Record<string, unknown>
+
+  // Ordem de leitura natural (título → corpo → cta).
+  const ORDER = [
+    "headline", "title", "header", "heading",
+    "sub", "subtitle", "subheadline", "subheading", "subhead",
+    "value", "body", "text", "content", "copy", "paragraph", "description", "desc",
+    "caption", "cta_text", "button_text", "label",
+  ]
+  for (const k of ORDER) push(b[k])
+
+  // Qualquer outra string não-coberta (nome de campo inesperado), exceto
+  // metadados e links/imagens.
+  const SKIP = new Set<string>([
+    ...ORDER, "type", "id", "columns", "items",
+    "url", "link", "href", "src", "image", "image_url", "image_src",
+    "image_caption", "link_url", "button_url", "cta_url",
+  ])
+  for (const [k, v] of Object.entries(b)) {
+    if (!SKIP.has(k) && typeof v === "string") push(v)
+  }
+
+  // Produtos: "Nome — Preço" por item.
+  if (Array.isArray(b.items)) {
+    for (const it of b.items) {
+      if (typeof it !== "object" || it === null) continue
+      const item = it as Record<string, unknown>
+      const name = coerceText(item.name ?? item.title ?? item.product_name ?? item.product)?.trim()
+      const price = coerceText(item.price ?? item.cost ?? item.amount)?.trim()
+      const parts = [name, price].filter((p): p is string => !!p)
+      if (parts.length) push(`• ${parts.join(" — ")}`)
+    }
+  }
+
+  return lines.join("\n")
+}
+
+/**
+ * Colapsa TODOS os blocos do n8n num único bloco de `text` com a copy inteira.
+ * Decisão de produto (jun/2026): o modelo de blocos tipados se mostrou frágil
+ * (campos perdidos na validação, blocos sumindo no preview). Um texto único
+ * captura todo o conteúdo de qualquer formato e sempre exibe completo. Vale pra
+ * toda copy gerada daqui pra frente; as já gravadas não mudam.
+ */
+function collapseToSingleTextBlock(blocks: unknown[]): Array<Record<string, unknown>> {
+  const value = blocks
+    .map(blockToPlainText)
+    .filter((t) => t.length > 0)
+    .join("\n\n")
+  return [{ type: "text", value }]
+}
+
+/**
  * Normaliza o corpo bruto do callback do n8n. Não muta a entrada.
  * Mantém intactos os campos que o schema valida por conta própria
  * (`job_id`/`suggestion_id`/`store_id`/`mode`) — coerção errada ali esconderia
@@ -277,7 +349,10 @@ export function sanitizeN8nCopyPayload(
     }
 
     if (Array.isArray(copy.blocks)) {
-      copyOut.blocks = copy.blocks.map(normalizeBlock)
+      // Colapsa TODOS os blocos do n8n num único bloco de texto com a copy
+      // inteira. Vale pra toda copy gerada daqui pra frente; as já gravadas
+      // não mudam.
+      copyOut.blocks = collapseToSingleTextBlock(copy.blocks)
     }
 
     out.copy = copyOut
