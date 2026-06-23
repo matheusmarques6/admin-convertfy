@@ -185,6 +185,23 @@ describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
     )
     expect(copyRun).toBeDefined()
   })
+
+  it("zera artefatos de fase 2 anterior no UPDATE de email_flow_emails", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+
+    const statusUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(statusUpdate).toBeDefined()
+    // Chaves de limpeza adicionadas pra eliminar residuo pre-GATE 2
+    expect(statusUpdate?.data.html).toBeNull()
+    expect(statusUpdate?.data.qa_issues).toEqual([])
+    expect(statusUpdate?.data.failure_reason).toBeNull()
+    expect(statusUpdate?.data.rendering_started_at).toBeNull()
+    expect(statusUpdate?.data.qa_started_at).toBeNull()
+  })
 })
 
 describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {

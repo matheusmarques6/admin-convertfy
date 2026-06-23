@@ -156,7 +156,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 2) PATCH email_flow_emails: subject, preheader, status, copy_ready_at
+    // 2) PATCH email_flow_emails: subject, preheader, status, copy_ready_at.
+    // Limpa tambem artefatos de uma fase 2 ANTERIOR (html/qa_issues/timers/
+    // failure_reason). Sem isso, um email pre-GATE 2 que ja tinha html+imagem
+    // renderizada antes da migration de brand-gate continuava exibindo a
+    // imagem-fantasma no preview ate a nova fase 2 sobrescrever — re-disparar
+    // a copy nao apagava nada. Agora cada copy nova zera o estado da fase 2.
     const nowIso = new Date().toISOString()
     const { error: updEmailErr } = await admin
       .from("email_flow_emails")
@@ -166,6 +171,11 @@ export async function POST(request: NextRequest) {
         status: "copy_ready",
         copy_ready_at: nowIso,
         updated_at: nowIso,
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+        rendering_started_at: null,
+        qa_started_at: null,
       })
       .eq("id", body.email_id)
     if (updEmailErr) throw updEmailErr
@@ -179,14 +189,61 @@ export async function POST(request: NextRequest) {
     // re-semeada depois do dispatch -> novos ids), casa a copy pelo bloco na
     // MESMA posicao (a ordem do array do callback espelha a ordem dos blocos).
     // Assim a copy nao se perde quando os ids mudam.
+    //
+    // Buscamos `content` junto pra fazer o cleanup do passo 2.5 numa unica
+    // leitura.
     const { data: emailBlocksOrdered } = await admin
       .from("email_blocks")
-      .select("id")
+      .select("id, content")
       .eq("email_id", body.email_id)
       .order("position", { ascending: true })
-    const orderedIds = ((emailBlocksOrdered ?? []) as Array<{ id: string }>).map(
-      (r) => r.id,
-    )
+    const orderedIds = (
+      (emailBlocksOrdered ?? []) as Array<{ id: string; content: unknown }>
+    ).map((r) => r.id)
+
+    // 2.5) Limpa artefatos pre-GATE 2: chaves de imagem persistidas em
+    // email_blocks.content por uma renderizacao ANTERIOR a confirmacao da
+    // identidade visual. Pre-condicao: a nova copy vai ser escrita logo
+    // abaixo. Mantemos `image_instruction` (input do designer, nao artefato).
+    const IMAGE_ARTIFACT_KEYS = [
+      "image_url",
+      "image_alt",
+      "image_last_generated_at",
+      "image_last_prompt",
+    ] as const
+    let blocksCleared = 0
+    for (const row of (emailBlocksOrdered ?? []) as Array<{
+      id: string
+      content: Record<string, unknown> | null
+    }>) {
+      const c = row.content
+      if (!c || typeof c !== "object") continue
+      const hasArtifact = IMAGE_ARTIFACT_KEYS.some((k) =>
+        Object.prototype.hasOwnProperty.call(c, k),
+      )
+      if (!hasArtifact) continue
+      const cleaned: Record<string, unknown> = { ...c }
+      for (const k of IMAGE_ARTIFACT_KEYS) delete cleaned[k]
+      const { error: clearErr } = await admin
+        .from("email_blocks")
+        .update({ content: cleaned })
+        .eq("id", row.id)
+      if (clearErr) {
+        log.warn("email_copy.artifact_clear_failed", {
+          email_id: body.email_id,
+          block_id: row.id,
+          error: clearErr.message,
+        })
+        continue
+      }
+      blocksCleared++
+    }
+    if (blocksCleared > 0) {
+      log.info("email_copy.artifacts_cleared", {
+        email_id: body.email_id,
+        blocks_cleared: blocksCleared,
+      })
+    }
 
     let blocksWritten = 0
     let blocksByPosition = 0

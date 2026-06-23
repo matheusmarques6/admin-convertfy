@@ -792,7 +792,19 @@ export async function dispatchEmailCopyWebhook(
     // (já em copy_ready) viram no-op.
     await admin
       .from("email_flow_emails")
-      .update({ status: "in_progress", updated_at: new Date().toISOString() })
+      .update({
+        status: "in_progress",
+        updated_at: new Date().toISOString(),
+        // Cinto-suspensorio do cleanup do callback: ja zera os artefatos
+        // de fase 2 anterior aqui, antes da copy nova chegar. Garante que,
+        // mesmo se o callback falhar/atrasar, o estado intermediario nao
+        // mostre html/imagem velha no preview.
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+        rendering_started_at: null,
+        qa_started_at: null,
+      })
       .in("id", emailIds)
       .in("status", [
         "draft",
