@@ -149,12 +149,11 @@ Pipeline: `Trends → Suggestions → [Copy Master / Parser] → Copy Adapter (p
 - **Modelo:** `claude-sonnet-4-6`, T=0.8, max 4000.
 - **Prompt (system):** "Você é diretor de copywriting sênior… crie a COPY MASTER (carta-mãe) em pt-BR com estrutura fixa de 8 blocos {image, heading, text, products, offer, text, button, footer}." Fonte: `20260720_copy_master_workflow.sql:76-101`.
 
-### 2.4 Copy Parser
-- **Arquivo:** `campaign-central/copy-master.service.ts:282` (`parseMasterFromText`). Prompt **hardcoded**.
-- **Ativação:** botão "Colar texto" → `POST /suggestions/[id]/parse-master`.
-- **Input:** texto bruto colado. **Output:** `campaign_suggestions.email_draft` (mesma estrutura).
-- **Modelo:** `claude-sonnet-4-6` (Anthropic direto), T=0.2, max 4000.
-- **Prompt (system):** "Você é um parser de copy de email… converta texto bruto em blocos {image,heading,text,offer,button,divider,footer,products}. Mantenha o texto original, não reescreva." Fonte: `copy-master.service.ts:204-217`.
+### 2.4 "Usar estrutura como master" — ⚠️ DETERMINÍSTICO (não usa mais IA)
+- **Arquivo:** `campaign-central/copy-master.service.ts` (`setMasterFromStructure`, monta via `buildLiteralMaster`).
+- **Ativação:** botão "Usar minha estrutura como master" → `POST /suggestions/[id]/parse-master`.
+- **Input:** texto da "Estrutura & tom da copy" (brief). **Output:** `campaign_suggestions.email_draft` — 1 bloco `text` com o texto **LITERAL** (subject/preheader/strategy vazios; têm campo dedicado próprio).
+- **Modelo:** nenhum. Preserva a copy do COO 1:1, sem reescrever. (Antes passava por `claude-sonnet-4-6` com um prompt de "parser"; trocado por montagem literal — o COO já escreveu a copy, a IA não deve mexer.)
 
 ### 2.5 Copy Adapter (por loja)
 - **Arquivo:** `campaign-central/campaign-copy.service.ts:350` (`generateCampaignCopy`). Prompt **hardcoded**.

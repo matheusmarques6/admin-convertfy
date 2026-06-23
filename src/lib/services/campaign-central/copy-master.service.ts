@@ -7,9 +7,9 @@
  *    Prompt versionado em email_agent_configs (agent_type =
  *    'campaign_copy_master').
  *
- * 2. parseMasterFromText: usa IA pra converter texto bruto colado pelo
- *    COO (do Claude, ChatGPT, qualquer lugar) em estrutura de blocks
- *    compatível com o builder.
+ * 2. setMasterFromStructure: usa o texto da "Estrutura & tom da copy"
+ *    (brief) como master preservando-o LITERALMENTE — sem a IA reescrever
+ *    (o COO já escreveu a copy; só a embrulhamos num bloco de texto).
  *
  * Persiste em campaign_suggestions.email_draft. Telemetria em
  * campaign_ai_runs (kind='copy_master' | 'copy_parse').
@@ -209,61 +209,30 @@ export async function generateMasterFromAngle(params: {
   return { ok: false, error: errorMessage ?? "Falha desconhecida" }
 }
 
-const PARSE_SYSTEM_PROMPT = `Você é um parser de copy de email. Recebe texto bruto colado por um copywriter (do Claude, ChatGPT, Google Docs etc) e converte em estrutura de blocos compatível com nosso builder.
+/**
+ * Monta a copy master a partir do texto LITERAL da "Estrutura & tom da copy"
+ * (brief), SEM passar pela IA. O COO já escreveu a copy — preservamos o texto
+ * exatamente como está, num único bloco de `text`. subject/preheader/strategy
+ * ficam vazios de propósito: têm campo dedicado próprio na fase de produção e
+ * não devem se misturar ao corpo. Função pura (sem I/O) — testável isolada.
+ */
+export function buildLiteralMaster(rawText: string): EmailDraft {
+  return {
+    subject: "",
+    preheader: "",
+    strategy: "",
+    blocks: [{ id: newBlockId(), type: "text", value: rawText.trim() }],
+  }
+}
 
-REGRAS:
-1. Identifique no texto: subject (assunto), preheader (preview text), strategy (uma explicação curta da estratégia se houver), e os blocos do corpo.
-2. Tipos de bloco disponíveis: 'image' (placeholders visuais — caption descritiva), 'heading' (título com subtítulo), 'text' (parágrafo de corpo), 'offer' (oferta destacada com cupom/desconto), 'button' (CTA), 'divider' (linha divisória), 'footer' (rodapé), 'products' (grid de produtos — 2 ou 3 colunas, items com name+price).
-3. Se o texto NÃO indicar uma imagem hero explicitamente, ASSUMA que existe e inclua um bloco 'image' com caption descritiva no topo.
-4. Se mencionar produtos numerados ou em lista, gere um bloco 'products' com items extraídos (name+price). Se não houver produtos explícitos, inclua um bloco products placeholder com 3 items genéricos.
-5. CTAs como "Compre agora", "Ver coleção", "Garantir" viram blocos 'button'.
-6. Frases tipo "Frete grátis até R$ 199", "15% OFF com cupom X" viram blocos 'offer'.
-7. Marcadores tipo "🎯 HERO", "📝 BODY", "🛍️ PRODUTOS", "ℹ️ INFO", "🎯 CTA" são pistas de seção — use-os como guia, mas não inclua os emojis nos textos.
-8. Mantenha o texto original sempre que possível, sem reescrever. Só corte emojis das marcações de seção (não dos textos em si).
-9. Subject e preheader: se não encontrar explicitamente, deixe vazio.
-
-OUTPUT: JSON {subject, preheader, strategy, blocks: [...]}. APENAS o JSON, sem markdown.`
-
-const PARSE_OUTPUT_SCHEMA = {
-  type: "object",
-  required: ["subject", "preheader", "strategy", "blocks"],
-  properties: {
-    subject: { type: "string" },
-    preheader: { type: "string" },
-    strategy: { type: "string" },
-    blocks: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["type"],
-        properties: {
-          type: {
-            type: "string",
-            enum: ["image", "heading", "text", "offer", "button", "divider", "footer", "products"],
-          },
-          headline: { type: "string" },
-          sub: { type: "string" },
-          value: { type: "string" },
-          caption: { type: "string" },
-          columns: { type: "number" },
-          items: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                price: { type: "string" },
-                image_caption: { type: "string" },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-} as const
-
-export async function parseMasterFromText(params: {
+/**
+ * Usa o texto da "Estrutura & tom da copy" como copy master preservando-o
+ * LITERALMENTE — sem a IA reescrever. Persiste em
+ * campaign_suggestions.email_draft. Registra em campaign_ai_runs (kind=
+ * 'copy_parse') só como auditoria de que o COO usou a estrutura; não há chamada
+ * de IA aqui, então model/raw_output ficam nulos.
+ */
+export async function setMasterFromStructure(params: {
   suggestionId: string
   orgId: string
   rawText: string
@@ -280,66 +249,34 @@ export async function parseMasterFromText(params: {
   if (!row) return { ok: false, error: "Sugestão não encontrada" }
 
   const t0 = Date.now()
-  let runStatus: "completed" | "failed" | "invalid_output" = "completed"
+  let runStatus: "completed" | "failed" = "completed"
   let errorMessage: string | null = null
-  let rawOutput: string | null = null
-  let parsedOutput: unknown = null
   let draft: EmailDraft | null = null
 
   try {
-    const result = await callAnthropicJson({
-      model: FALLBACK_MODEL,
-      system: PARSE_SYSTEM_PROMPT,
-      user: `Texto a parsear:\n\n---\n${rawText}\n---`,
-      maxTokens: 4000,
-      temperature: 0.2,
-      outputSchema: PARSE_OUTPUT_SCHEMA as unknown as Record<string, unknown>,
-    })
-    rawOutput = result.rawText
-
-    if (!result.parsed) {
-      runStatus = "invalid_output"
-      errorMessage = result.parseError ?? "Output sem JSON"
+    const candidate = buildLiteralMaster(rawText)
+    const validation = emailDraftSchema.safeParse(candidate)
+    if (!validation.success) {
+      runStatus = "failed"
+      errorMessage = validation.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ")
     } else {
-      const candidate = result.parsed as {
-        subject?: string
-        preheader?: string
-        strategy?: string
-        blocks?: Array<Omit<EmailDraftBlock, "id"> & { id?: string }>
-      }
-      const enriched = {
-        subject: candidate.subject ?? "",
-        preheader: candidate.preheader ?? "",
-        strategy: candidate.strategy ?? "",
-        blocks: withIds(candidate.blocks ?? []),
-      }
-      const validation = emailDraftSchema.safeParse(enriched)
-      if (!validation.success) {
-        runStatus = "invalid_output"
-        errorMessage = validation.error.issues
-          .map((i) => `${i.path.join(".")}: ${i.message}`)
-          .join("; ")
-      } else {
-        draft = validation.data
-        parsedOutput = validation.data
-      }
-    }
-
-    if (draft) {
       const { error: updateErr } = await admin
         .from("campaign_suggestions")
-        .update({ email_draft: draft })
+        .update({ email_draft: validation.data })
         .eq("id", suggestionId)
       if (updateErr) {
         runStatus = "failed"
         errorMessage = updateErr.message
-        draft = null
+      } else {
+        draft = validation.data
       }
     }
   } catch (err) {
     runStatus = "failed"
     errorMessage = err instanceof Error ? err.message : String(err)
-    log.error("master.parse_failed", { suggestionId, error: errorMessage })
+    log.error("master.structure_failed", { suggestionId, error: errorMessage })
   }
 
   await admin.from("campaign_ai_runs").insert({
@@ -347,11 +284,11 @@ export async function parseMasterFromText(params: {
     cycle_id: row.cycle_id,
     suggestion_id: suggestionId,
     kind: "copy_parse",
-    model: FALLBACK_MODEL,
+    model: null,
     status: runStatus,
     input_vars: { raw_text_length: rawText.length },
-    raw_output: rawOutput,
-    parsed_output: parsedOutput,
+    raw_output: null,
+    parsed_output: draft,
     error_message: errorMessage,
     duration_ms: Date.now() - t0,
   })

@@ -3,9 +3,9 @@
  *
  * Body: { raw_text: string }
  *
- * Converte texto bruto colado pelo COO em estrutura de blocks do builder.
- * Usa IA pra detectar seções, produtos, ofertas, CTAs. Persiste em
- * campaign_suggestions.email_draft.
+ * Usa o texto da "Estrutura & tom da copy" (brief) como copy master,
+ * preservando-o LITERALMENTE — sem a IA reescrever. Persiste em
+ * campaign_suggestions.email_draft (path mantido por compat com o front).
  */
 
 import { NextRequest } from "next/server"
@@ -18,10 +18,10 @@ import {
 } from "@/lib/api/errors"
 import { getUserOrgRole } from "@/lib/api/onboarding-permissions"
 import { parseMasterSchema } from "@/lib/validations/campaign-central"
-import { parseMasterFromText } from "@/lib/services/campaign-central/copy-master.service"
+import { setMasterFromStructure } from "@/lib/services/campaign-central/copy-master.service"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 120
+export const maxDuration = 30
 
 export async function POST(
   request: NextRequest,
@@ -36,7 +36,7 @@ export async function POST(
 
     const body = await parseAndValidate(request, parseMasterSchema)
 
-    const result = await parseMasterFromText({
+    const result = await setMasterFromStructure({
       suggestionId: id,
       orgId: ctx.orgId,
       rawText: body.raw_text,
@@ -45,7 +45,7 @@ export async function POST(
     if (!result.ok) {
       return errorResponse(
         request,
-        new Error(result.error ?? "Falha ao parsear texto"),
+        new Error(result.error ?? "Falha ao usar a estrutura como master"),
         "parse-master",
       )
     }
