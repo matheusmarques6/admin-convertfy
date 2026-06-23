@@ -119,57 +119,102 @@ export function CopyOriginBadge({ entry }: { entry: CopyResultEntry }) {
   )
 }
 
-/** Render read-only de um bloco do email (esqueleto + copy adaptada). */
+/** Primeiro campo de texto não-vazio (após trim). O n8n às vezes coloca o
+ *  conteúdo num campo diferente do canônico do tipo (ex.: texto em `headline`
+ *  num bloco que a normalização converteu pra `text`, que só lê `value`);
+ *  varrer os campos evita que conteúdo real "suma" do preview. */
+function firstNonEmpty(...vals: Array<string | undefined>): string {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v
+  }
+  return ""
+}
+
+/** Marca visível pra um bloco sem conteúdo. Garante que TODO bloco ocupe
+ *  espaço — senão o "(N blocos)" do rótulo não bate com o que aparece na tela
+ *  (blocos vazios sumiam como um <div> de altura ~0). Tom âmbar discreto pra
+ *  sinalizar "vazio" sem competir com a copy real. */
+function EmptyBlockMark({ kind }: { kind: string }) {
+  return (
+    <div className="rounded-[4px] border border-dashed border-amber-300/60 bg-amber-50/40 px-2.5 py-1.5 text-[11px] italic text-amber-700/80 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-500/80">
+      bloco de {kind} sem conteúdo
+    </div>
+  )
+}
+
+/** Render read-only de um bloco do email (esqueleto + copy adaptada). Nenhum
+ *  bloco renderiza vazio: ou mostra o conteúdo (de qualquer campo disponível),
+ *  ou uma marca de "sem conteúdo" — pra o total do rótulo bater com a tela. */
 export function BlockPreview({ block }: { block: EmailDraftBlock }) {
   switch (block.type) {
     case "image":
       return (
         <div className="rounded-[4px] border border-dashed border-border bg-muted px-2 py-3 font-mono text-[10.5px] text-muted-foreground">
-          [Imagem] {block.caption ?? ""}
+          [Imagem] {firstNonEmpty(block.caption, block.value, block.headline)}
         </div>
       )
-    case "heading":
+    case "heading": {
+      const head = firstNonEmpty(block.headline, block.value)
+      const sub = firstNonEmpty(block.sub, block.caption)
+      if (!head && !sub) return <EmptyBlockMark kind="título" />
       return (
         <div>
-          <div className="text-[17px] font-bold leading-snug text-foreground">
-            {block.headline ?? "—"}
-          </div>
-          {block.sub && (
-            <div className="mt-1 text-[13px] text-muted-foreground">{block.sub}</div>
+          {head && (
+            <div className="text-[17px] font-bold leading-snug text-foreground">{head}</div>
           )}
+          {sub && <div className="mt-1 text-[13px] text-muted-foreground">{sub}</div>}
         </div>
       )
-    case "text":
-      return (
-        <div className="text-[13px] leading-relaxed text-foreground/85">{block.value}</div>
+    }
+    case "text": {
+      const txt = firstNonEmpty(block.value, block.headline, block.sub, block.caption)
+      return txt ? (
+        <div className="text-[13px] leading-relaxed text-foreground/85">{txt}</div>
+      ) : (
+        <EmptyBlockMark kind="texto" />
       )
-    case "offer":
-      return (
+    }
+    case "offer": {
+      const txt = firstNonEmpty(block.value, block.headline, block.caption)
+      return txt ? (
         <div className="rounded-[4px] border border-primary/20 bg-primary/5 px-3 py-2.5 text-center text-[13px] font-semibold text-primary">
-          {block.value}
+          {txt}
         </div>
+      ) : (
+        <EmptyBlockMark kind="oferta" />
       )
-    case "button":
-      return (
+    }
+    case "button": {
+      const txt = firstNonEmpty(block.value, block.headline, block.caption)
+      return txt ? (
         <div className="text-center">
           <span className="inline-block rounded-[4px] bg-primary px-5 py-2.5 text-[13px] font-semibold text-white">
-            {block.value}
+            {txt}
           </span>
         </div>
+      ) : (
+        <EmptyBlockMark kind="botão" />
       )
+    }
     case "divider":
       return <hr className="border-border" />
-    case "footer":
-      return (
+    case "footer": {
+      const txt = firstNonEmpty(block.value, block.sub, block.caption)
+      return txt ? (
         <div className="text-center text-[11px] leading-relaxed text-muted-foreground/70">
-          {block.value}
+          {txt}
         </div>
+      ) : (
+        <EmptyBlockMark kind="rodapé" />
       )
+    }
     case "products": {
+      const items = block.items ?? []
+      if (items.length === 0) return <EmptyBlockMark kind="produtos" />
       const cols = block.columns ?? 3
       return (
         <div className={`grid gap-3 ${cols === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-          {(block.items ?? []).map((it, i) => (
+          {items.map((it, i) => (
             <div key={i} className="rounded-[4px] border border-border bg-card p-2">
               <div className="mb-1.5 h-20 rounded-[3px] border border-dashed border-border/70 bg-muted/60" />
               <div className="truncate text-[12px] font-semibold text-foreground">
@@ -182,6 +227,6 @@ export function BlockPreview({ block }: { block: EmailDraftBlock }) {
       )
     }
     default:
-      return null
+      return <EmptyBlockMark kind="desconhecido" />
   }
 }
