@@ -70,6 +70,8 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const [qualityBusy, setQualityBusy] = useState<string | null>(null)
   const [approveBusy, setApproveBusy] = useState(false)
   const [generatingMaster, setGeneratingMaster] = useState(false)
+  /** Loading do botão "Usar minha estrutura" (parse-master do brief). */
+  const [usingStructure, setUsingStructure] = useState(false)
   /** Lojas com dispatch em andamento — UI mostra spinner ate receber callback. */
   const [pendingStoreIds, setPendingStoreIds] = useState<Set<string>>(new Set())
   /** Mode do dispatch atual — pendingStoreIds e relativo a esse mode. */
@@ -207,6 +209,11 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const results = phase === "pilot" ? pilotResults : rolloutResults
   const selected = phase === "pilot" ? selectedPilot : selectedRollout
   const setSelected = phase === "pilot" ? setSelectedPilot : setSelectedRollout
+
+  // Texto da "Estrutura & tom" (brief do COO). parse-master exige 20..20000
+  // chars — se válido, o COO pode usar o texto direto como master, sem gerar.
+  const briefStructure = suggestion.brief?.structure?.trim() ?? ""
+  const canUseStructure = briefStructure.length >= 20 && briefStructure.length <= 20_000
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -358,6 +365,40 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     }
   }
 
+  /** Usa o texto da "Estrutura & tom" (brief) como copy master, SEM a IA
+   *  reescrever: converte em blocks via parse-master (preserva o texto) e
+   *  persiste no email_draft. Resolve "já escrevi a copy, não quero gerar
+   *  de novo" — destrava o piloto na hora. */
+  const useStructureAsMaster = async () => {
+    if (!canUseStructure) return
+    setUsingStructure(true)
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestion.id}/parse-master`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_text: briefStructure }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      toast({
+        title: "Copy master pronta",
+        description: "Sua estrutura virou a copy master. Agora gere o piloto.",
+      })
+      onSavedRef.current()
+    } catch (err) {
+      toast({
+        title: "Falha ao usar a estrutura",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setUsingStructure(false)
+    }
+  }
+
   const approveAndSendToDesigners = async () => {
     setApproveBusy(true)
     try {
@@ -498,13 +539,30 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
             <div className="mb-4 rounded-[6px] border border-primary/30 bg-primary/5 px-3.5 py-3 text-[12.5px]">
               <div className="mb-2 text-foreground/85">
                 <strong className="font-bold text-foreground">Falta a copy master.</strong>{" "}
-                Ela é o ponto de partida pra adaptar a copy por loja. Gere agora pra liberar
-                o piloto.
+                {canUseStructure
+                  ? "Você já escreveu a estrutura — use-a direto como copy master, ou deixe a IA gerar a partir dela."
+                  : "Ela é o ponto de partida pra adaptar a copy por loja. Gere agora pra liberar o piloto."}
               </div>
+              {canUseStructure && (
+                <Button
+                  size="sm"
+                  onClick={useStructureAsMaster}
+                  disabled={usingStructure || generatingMaster || busy !== null}
+                  className="mb-2 w-full"
+                >
+                  {usingStructure ? (
+                    <Loader2 size={14} className="mr-1.5 animate-spin" />
+                  ) : (
+                    <Check size={14} className="mr-1.5" />
+                  )}
+                  {usingStructure ? "Usando sua estrutura…" : "Usar minha estrutura como master"}
+                </Button>
+              )}
               <Button
+                variant={canUseStructure ? "secondary" : "primary"}
                 size="sm"
                 onClick={generateMaster}
-                disabled={generatingMaster || busy !== null}
+                disabled={generatingMaster || usingStructure || busy !== null}
                 className="w-full"
               >
                 {generatingMaster ? (
@@ -512,7 +570,11 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                 ) : (
                   <Sparkles size={14} className="mr-1.5" />
                 )}
-                {generatingMaster ? "Gerando copy master…" : "Gerar copy master"}
+                {generatingMaster
+                  ? "Gerando copy master…"
+                  : canUseStructure
+                  ? "Gerar com IA"
+                  : "Gerar copy master"}
               </Button>
             </div>
           )}

@@ -150,6 +150,8 @@ export function CampaignDetailModal({
   const [storeLang, setStoreLang] = useState<LangFilter>("todos")
   const [storeNiche, setStoreNiche] = useState<string>("todos")
   const [storeQuery, setStoreQuery] = useState<string>("")
+  /** Loading do botão "Usar como copy master" (parse-master do brief). */
+  const [usingStructure, setUsingStructure] = useState(false)
 
   const meta = TYPE_LABEL[s.type] ?? TYPE_LABEL.avulsa
   const isSuggested = s.status === "suggested"
@@ -163,6 +165,13 @@ export function CampaignDetailModal({
   const approvedPilotCount = pilotEntries.filter(([, c]) => c.quality === "good").length
   const hasPilotGood = approvedPilotCount > 0
   const prodCount = Object.keys(s.copy_results?.production ?? {}).length
+
+  // "Usar como copy master": converte o brief escrito em master (parse-master),
+  // sem a IA reescrever. Só faz sentido enquanto não há master e o texto cabe
+  // no limite do parser (20..20000 chars).
+  const hasMaster = !!s.email_draft?.blocks?.length
+  const briefLen = brief.trim().length
+  const canUseStructureAsMaster = !hasMaster && briefLen >= 20 && briefLen <= 20_000
 
   const nameById = new Map(targets.map((t) => [t.store_id, t.store_name]))
 
@@ -227,6 +236,39 @@ export function CampaignDetailModal({
         title: "Briefing salvo",
         description: "Aplicado na próxima geração de copy (teste e produção).",
       })
+    }
+  }
+
+  /** Usa o texto da "Estrutura & tom" como copy master direto, via parse-master
+   *  (preserva o texto, sem a IA reescrever). Persiste no email_draft e revalida
+   *  o board. Mesmo caminho do CopyPanel. */
+  const useStructureAsMaster = async () => {
+    if (!canUseStructureAsMaster) return
+    setUsingStructure(true)
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${s.id}/parse-master`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_text: brief.trim() }),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      toast({
+        title: "Copy master pronta",
+        description: "Sua estrutura virou a copy master. Abra a geração de teste pra criar o piloto.",
+      })
+      onChanged?.()
+    } catch (err) {
+      toast({
+        title: "Falha ao usar a estrutura",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setUsingStructure(false)
     }
   }
 
@@ -692,6 +734,22 @@ export function CampaignDetailModal({
                     {brief.length} caracteres
                   </span>
                 </div>
+                {canUseStructureAsMaster && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={useStructureAsMaster}
+                    disabled={usingStructure || busy !== null}
+                    className="mt-2.5 w-full"
+                  >
+                    {usingStructure ? (
+                      <Loader2 size={13} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Check size={13} className="mr-1.5" />
+                    )}
+                    {usingStructure ? "Usando sua estrutura…" : "Usar como copy master"}
+                  </Button>
+                )}
               </div>
 
               {/* Copy de teste · por loja */}
