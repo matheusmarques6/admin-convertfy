@@ -73,7 +73,7 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
     "subject": "Assunto da master",
     "preheader": "Preheader da master",
     "strategy": "Resumo da estratégia/ângulo",
-    "blocks": [ /* EmailDraftBlock[] — estrutura do email a ser adaptado */ ]
+    "blocks": [ { "type": "text", "value": "A COPY MASTER INTEIRA num único bloco de texto" } ]
   },
   "campaign": {
     "title": "Black Friday Antecipada",
@@ -99,7 +99,7 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
 | Campo | Observação |
 |-------|------------|
 | `mode` | `"test"` (piloto) ou `"production"` (rollout). **Deve ser ecoado no callback.** |
-| `master` | Copy "mãe" da campanha — o flow adapta isso para cada loja (idioma/tom/produtos). |
+| `master` | Copy "mãe" da campanha — o flow adapta isso para cada loja (idioma/tom/produtos). **`master.blocks` vem como UM único bloco `text` com a copy inteira; devolva também 1 bloco `text`.** |
 | `stores[]` | Lojas que ESTE dispatch deve gerar. Itere sobre elas. |
 | `pilot_references[]` | **Só vem preenchido em `mode:"production"`** — até 2 lojas piloto aprovadas (`quality:"good"`), para usar como _few-shot_ e manter o tom no rollout. Em `mode:"test"` vem `[]`. |
 | `job_id` / `suggestion_id` | Devem ser ecoados em **todos** os callbacks. |
@@ -199,7 +199,7 @@ gravado em `src/app/api/webhooks/n8n/campaign-copy/route.ts:165-211`.
 Regras do receiver:
 - `job_id` + `suggestion_id` + `mode` precisam **bater com o job** original (senão `400`).
 - `status:"success"` **exige** `copy` (senão `400`).
-- `copy.blocks` segue o tipo `EmailDraftBlock` (`type` ∈ image/heading/text/offer/button/divider/footer/products`; `headline`/`sub`/`value`/`caption`/`columns`/`items` conforme o tipo). `id` pode ser omitido.
+- `copy.blocks` deve ser **UM único bloco** `{ "type": "text", "value": "<a copy adaptada inteira>" }` — toda a copy num texto só (use quebras de linha pra separar seções/CTA). **NÃO** fragmente em vários blocos tipados: o admin trata a copy como texto corrido, e qualquer outra coisa é colapsada num único texto na entrada. `id` pode ser omitido.
 - `meta` é opcional (telemetria — vai para `campaign_ai_runs`).
 
 ---

@@ -15,6 +15,8 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { collapseBlocksToText } from "./n8n-copy-normalize"
+import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
 import type {
   CampaignSuggestion,
   CopyResultEntry,
@@ -81,7 +83,13 @@ function collectPilotReferencesForDispatch(
       store_id: storeId,
       store_name: ctx?.store_name ?? "loja piloto",
       language: ctx?.language ?? "pt-BR",
-      copy: entry,
+      // few-shot pro n8n também como 1 bloco de texto, pra ele "aprender" o formato.
+      copy: {
+        ...entry,
+        blocks: [
+          { type: "text", value: collapseBlocksToText(entry.blocks ?? []), id: newBlockId() },
+        ],
+      },
     })
     if (refs.length >= maxRefs) break
   }
@@ -263,7 +271,10 @@ export async function dispatchCampaignCopyToN8n(
       subject: draft.subject,
       preheader: draft.preheader,
       strategy: draft.strategy,
-      blocks: draft.blocks,
+      // Manda a copy master como UM bloco de texto (não os blocos tipados). O
+      // n8n mantém a estrutura recebida, então 1 bloco de entrada → ele devolve
+      // 1 bloco com a copy inteira, em vez de fragmentar em offer/heading/etc.
+      blocks: [{ type: "text", value: collapseBlocksToText(draft.blocks) }],
     },
     campaign: {
       title: suggestion.title,

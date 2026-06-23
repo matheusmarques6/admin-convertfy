@@ -24,6 +24,7 @@ import { logger } from "@/lib/logger"
 import { callAnthropicJson } from "./anthropic-client"
 import { copyResultEntrySchema } from "@/lib/validations/campaign-central"
 import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
+import { collapseBlocksToText } from "./n8n-copy-normalize"
 import type {
   CampaignSuggestion,
   CopyResultEntry,
@@ -430,7 +431,10 @@ export async function generateCampaignCopy(params: {
           subject: candidate.subject ?? "",
           preheader: candidate.preheader ?? "",
           strategy: candidate.strategy,
-          blocks: (candidate.blocks ?? []).map((b) => ({ ...b, id: b.id ?? newBlockId() })),
+          // Colapsa em 1 bloco de texto (mesma decisão do dispatch/n8n).
+          blocks: [
+            { type: "text", value: collapseBlocksToText(candidate.blocks ?? []), id: newBlockId() },
+          ],
         })
         if (!validation.success) {
           runStatus = "invalid_output"

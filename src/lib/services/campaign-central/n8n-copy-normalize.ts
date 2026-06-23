@@ -308,18 +308,24 @@ function blockToPlainText(raw: unknown): string {
 }
 
 /**
- * Colapsa TODOS os blocos do n8n num único bloco de `text` com a copy inteira.
- * Decisão de produto (jun/2026): o modelo de blocos tipados se mostrou frágil
- * (campos perdidos na validação, blocos sumindo no preview). Um texto único
- * captura todo o conteúdo de qualquer formato e sempre exibe completo. Vale pra
- * toda copy gerada daqui pra frente; as já gravadas não mudam.
+ * Junta todos os blocos do n8n num texto único (a copy inteira). Exportado pra
+ * reuso no DISPATCH (enviar a master como 1 bloco) e no fallback inline.
  */
-function collapseToSingleTextBlock(blocks: unknown[]): Array<Record<string, unknown>> {
-  const value = blocks
+export function collapseBlocksToText(blocks: unknown[]): string {
+  return blocks
     .map(blockToPlainText)
     .filter((t) => t.length > 0)
     .join("\n\n")
-  return [{ type: "text", value }]
+}
+
+/**
+ * Colapsa TODOS os blocos do n8n num único bloco de `text` com a copy inteira.
+ * Decisão de produto (jun/2026): o modelo de blocos tipados se mostrou frágil
+ * (campos perdidos na validação, blocos sumindo no preview). Um texto único
+ * captura todo o conteúdo de qualquer formato e sempre exibe completo.
+ */
+function collapseToSingleTextBlock(blocks: unknown[]): Array<Record<string, unknown>> {
+  return [{ type: "text", value: collapseBlocksToText(blocks) }]
 }
 
 /**
