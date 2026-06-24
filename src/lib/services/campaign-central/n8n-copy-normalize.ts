@@ -119,7 +119,7 @@ const TEXT_FIELDS = ["headline", "sub", "value", "caption"] as const
 const ITEM_FIELDS = ["name", "price", "image_caption"] as const
 
 /** True se o valor é uma string com conteúdo (após trim). */
-function hasText(v: unknown): boolean {
+export function hasText(v: unknown): boolean {
   return typeof v === "string" && v.trim().length > 0
 }
 
@@ -316,6 +316,37 @@ export function collapseBlocksToText(blocks: unknown[]): string {
     .map(blockToPlainText)
     .filter((t) => t.length > 0)
     .join("\n\n")
+}
+
+/** Tamanho-alvo do subject derivado (assunto de email curto recomendado). */
+const DERIVED_SUBJECT_MAX_LEN = 60
+
+/**
+ * Deriva um subject de FALLBACK a partir da copy do n8n: a 1ª linha de texto
+ * não-vazia dos blocks, truncada em ~60 chars.
+ *
+ * Rede de segurança: desde que o admin passou a mandar a estrutura do COO como
+ * tema (`brief.structure`), ele envia `master.subject` vazio esperando que o n8n
+ * gere o assunto. Quando o n8n NÃO gera, o callback chega com `copy.subject`
+ * vazio e o schema (`subject.min(1)`) rejeitava o payload inteiro com 400 — a
+ * campanha travava em "Gerando". Em vez de barrar, derivamos um assunto
+ * provisório (o COO pode reescrever; o ideal é o n8n mandar pronto).
+ *
+ * Aceita o `copy` cru ou já normalizado (1 bloco de texto). Retorna "" quando
+ * não há texto algum — aí o n8n não gerou copy de verdade e o erro de validação
+ * segue valendo (não mascaramos payload vazio).
+ */
+export function deriveSubjectFromCopy(copy: unknown): string {
+  if (!copy || typeof copy !== "object") return ""
+  const blocks = (copy as Record<string, unknown>).blocks
+  if (!Array.isArray(blocks)) return ""
+  const firstLine = collapseBlocksToText(blocks)
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0)
+  if (!firstLine) return ""
+  if (firstLine.length <= DERIVED_SUBJECT_MAX_LEN) return firstLine
+  return firstLine.slice(0, DERIVED_SUBJECT_MAX_LEN - 1).trimEnd() + "…"
 }
 
 /**

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { sanitizeN8nCopyPayload, __internal } from "./n8n-copy-normalize"
+import {
+  sanitizeN8nCopyPayload,
+  deriveSubjectFromCopy,
+  hasText,
+  __internal,
+} from "./n8n-copy-normalize"
 
 const { coerceType, coerceColumns, coerceStatus, normalizeBlock } = __internal
 
@@ -207,5 +212,52 @@ describe("sanitizeN8nCopyPayload", () => {
     const out = sanitizeN8nCopyPayload({ status: "error", error_message: "falhou" })
     expect(out.status).toBe("error")
     expect(out.copy).toBeUndefined()
+  })
+})
+
+describe("hasText", () => {
+  it("true só para string com conteúdo (após trim)", () => {
+    expect(hasText("abc")).toBe(true)
+    expect(hasText("  x ")).toBe(true)
+    expect(hasText("")).toBe(false)
+    expect(hasText("   ")).toBe(false)
+    expect(hasText(123)).toBe(false)
+    expect(hasText(null)).toBe(false)
+    expect(hasText(undefined)).toBe(false)
+  })
+})
+
+describe("deriveSubjectFromCopy", () => {
+  it("deriva o assunto da 1ª linha da copy", () => {
+    const out = deriveSubjectFromCopy({
+      blocks: [{ type: "text", value: "Sua oferta chegou\nveja os detalhes abaixo" }],
+    })
+    expect(out).toBe("Sua oferta chegou")
+  })
+
+  it("usa o conteúdo do 1º bloco quando há vários (heading vence)", () => {
+    const out = deriveSubjectFromCopy({
+      blocks: [
+        { type: "heading", headline: "Bem-vindo de volta" },
+        { type: "text", value: "Corpo do email aqui" },
+      ],
+    })
+    expect(out).toBe("Bem-vindo de volta")
+  })
+
+  it("trunca linha longa em ~60 chars com reticências", () => {
+    const long = "x".repeat(80)
+    const out = deriveSubjectFromCopy({ blocks: [{ type: "text", value: long }] })
+    expect(out.length).toBeLessThanOrEqual(60)
+    expect(out.endsWith("…")).toBe(true)
+    expect(out).toBe("x".repeat(59) + "…")
+  })
+
+  it("retorna vazio quando não há texto algum (não mascara payload vazio)", () => {
+    expect(deriveSubjectFromCopy({ blocks: [] })).toBe("")
+    expect(deriveSubjectFromCopy({ blocks: [{ type: "divider" }] })).toBe("")
+    expect(deriveSubjectFromCopy({})).toBe("")
+    expect(deriveSubjectFromCopy(null)).toBe("")
+    expect(deriveSubjectFromCopy("nope")).toBe("")
   })
 })

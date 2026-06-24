@@ -206,6 +206,15 @@ gravado em `src/app/api/webhooks/n8n/campaign-copy/route.ts:165-211`.
 Regras do receiver:
 - `job_id` + `suggestion_id` + `mode` precisam **bater com o job** original (senão `400`).
 - `status:"success"` **exige** `copy` (senão `400`).
+- **`copy.subject` é obrigatório e não pode ser vazio** (o admin valida `min(1)`). Como
+  `master.subject` chega **vazio** quando há `brief.structure`, **é o n8n que gera** o `subject`
+  (≤ ~50 chars) e o `preheader` (≤ ~90 chars) a partir da estrutura/tema. No nó que monta o
+  callback ("Preparador"), mapeie `copy.subject`/`copy.preheader` **do output do modelo** — nunca
+  de `master.*` (que vem vazio).
+  > ⚠️ **Rede de segurança (jun/2026):** se o `subject` ainda vier vazio, o admin **não rejeita
+  > mais** — deriva um assunto provisório da 1ª linha da copy (`deriveSubjectFromCopy`) e loga
+  > `campaign_copy.subject_derived`. Isso destrava a UI, mas o assunto sai pior; **o n8n deve
+  > mandar o subject pronto.** Só continua `400` se a copy vier sem texto algum.
 - `copy.blocks` deve ser **UM único bloco** `{ "type": "text", "value": "<a copy adaptada inteira>" }` — toda a copy num texto só (use quebras de linha pra separar seções/CTA). **NÃO** fragmente em vários blocos tipados: o admin trata a copy como texto corrido, e qualquer outra coisa é colapsada num único texto na entrada. `id` pode ser omitido.
 - `meta` é opcional (telemetria — vai para `campaign_ai_runs`).
 

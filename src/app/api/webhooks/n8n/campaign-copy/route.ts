@@ -31,7 +31,11 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { campaignCopyCallbackSchema } from "@/lib/validations/campaign-central"
-import { sanitizeN8nCopyPayload } from "@/lib/services/campaign-central/n8n-copy-normalize"
+import {
+  sanitizeN8nCopyPayload,
+  deriveSubjectFromCopy,
+  hasText,
+} from "@/lib/services/campaign-central/n8n-copy-normalize"
 import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
 import type { CampaignSuggestion, CopyResultEntry } from "@/types/campaign-central"
 
@@ -88,6 +92,33 @@ export async function POST(request: NextRequest) {
     // com 400 e a copy do n8n nunca chega em copy_results (a aba mostra fallback).
     // Ver src/lib/services/campaign-central/n8n-copy-normalize.ts.
     const normalized = sanitizeN8nCopyPayload(rawJson)
+
+    // Rede de segurança: com a estrutura do COO virando tema, o admin manda o
+    // subject vazio esperando o n8n gerá-lo. Quando o n8n volta sem subject, o
+    // schema (`subject.min(1)`) rejeitava o payload (400) e a campanha travava em
+    // "Gerando". Em vez de barrar, derivamos um assunto provisório da 1ª linha da
+    // copy — o COO pode reescrever; o ideal é o n8n mandar pronto.
+    let subjectDerived = false
+    if (
+      normalized.status === "success" &&
+      normalized.copy &&
+      typeof normalized.copy === "object"
+    ) {
+      const copyObj = normalized.copy as Record<string, unknown>
+      if (!hasText(copyObj.subject)) {
+        const derived = deriveSubjectFromCopy(copyObj)
+        if (derived) {
+          copyObj.subject = derived
+          subjectDerived = true
+          log.warn("campaign_copy.subject_derived", {
+            job_id: rawJson.job_id ?? null,
+            store_id: rawJson.store_id ?? null,
+            derived_subject: derived,
+          })
+        }
+      }
+    }
+
     const validated = campaignCopyCallbackSchema.safeParse(normalized)
     if (!validated.success) {
       log.warn("campaign_copy.validation_failed", {
@@ -301,6 +332,8 @@ export async function POST(request: NextRequest) {
       job_status: newStatus,
       // true => callback chegou após o watchdog e sobrescreveu o fallback genérico.
       overrode_fallback: jobAlreadySettled,
+      // true => n8n veio sem subject e derivamos da 1ª linha da copy (rede de segurança).
+      subject_derived: subjectDerived,
     })
 
     return successResponse(request, {
