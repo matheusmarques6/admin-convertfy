@@ -1,13 +1,13 @@
 /**
- * Geração de copy de campanha POR LOJA — adaptação da copy MASTER.
+ * Geração de copy de campanha POR LOJA — adaptação do TEMA/estrutura mestre.
  *
- * Recebe a master (subject + preheader + blocks) gerada via copy-master
- * service e adapta pra cada loja-alvo:
+ * Recebe o tema mestre — a "Estrutura & tom da copy" do COO (brief.structure)
+ * quando existe, senão a master (email_draft) — e adapta pra cada loja-alvo:
  * - traduz pro idioma da loja (language)
  * - aplica o tom de voz da marca (brand briefing)
- * - substitui placeholders genéricos do bloco 'products' por TOP PRODUCTS
- *   reais da loja (store_top_products)
- * - mantém estrutura/ordem dos blocks
+ * - preenche placeholders ([NÚMERO]/[NOME]/…) com dados reais quando houver
+ * - SEGUE a estrutura à risca: NÃO inventa seções (grid de produtos) que o COO
+ *   não pôs. Top products só entram se a estrutura pedir um bloco de produtos.
  *
  * Modos:
  * - 'test' (PILOTO): COO seleciona 2-3 lojas, valida qualidade
@@ -36,34 +36,26 @@ const log = logger.child("CampaignCopy")
 const MAX_CONCURRENT = 3
 const COPY_MODEL = "claude-sonnet-4-6"
 
-const SYSTEM_PROMPT = `Você é um copywriter sênior de email marketing para e-commerce, especialista em adaptar copy master para múltiplas lojas mantendo estratégia consistente mas voz local.
+const SYSTEM_PROMPT = `Você é um copywriter sênior de email marketing para e-commerce, especialista em adaptar uma estrutura/tema mestre para múltiplas lojas mantendo a estrutura consistente, mas com voz local.
 
 Você recebe:
-1. Uma COPY MASTER em português brasileiro (subject + preheader + blocks de estrutura completa)
-2. O contexto de UMA loja específica (idioma, tom de voz, top products reais, branding)
-3. (Opcional) Adaptações já APROVADAS de outras lojas piloto — use como referência de qualidade
+1. Um TEMA / estrutura mestre (a "Estrutura & tom da copy" escrita pelo time, em pt-BR). É a FONTE DA VERDADE do que o email deve conter e em que ordem.
+2. O contexto de UMA loja específica (idioma, tom de voz, top products reais, branding).
+3. (Opcional) Adaptações já APROVADAS de outras lojas piloto — use como referência de qualidade.
 
-Sua tarefa: gerar a versão adaptada do email completo para a loja informada, mantendo a ESTRUTURA da master (mesmos blocos, mesma ordem) mas adaptando o CONTEÚDO.
+Sua tarefa: gerar a versão adaptada do email para a loja, SEGUINDO À RISCA a estrutura mestre — as MESMAS seções, na MESMA ordem, sem adicionar nem remover nada.
 
 REGRAS:
-1. **Idioma**: escreva NO IDIOMA da loja (campo language: pt-BR → português, en-* → inglês, es → espanhol). Traduza tudo: subject, preheader, headlines, textos, CTA do botão, rodapé.
-2. **Tom de voz**: aplique o tom de voz da marca quando informado. Confidente/casual/formal/jovem — siga.
-3. **Subject**: máx 50 caracteres, gera curiosidade/urgência, no idioma. Emojis com parcimônia (no máximo 1, e só se a master usar).
-4. **Preheader**: máx 90 caracteres, complementa o subject sem repetir.
-5. **Blocks** — mantenha a mesma ORDEM e os mesmos TIPOS da master. Para cada bloco, adapte:
-   - 'image': mantenha caption (descritiva)
-   - 'heading': traduza headline + sub
-   - 'text': reescreva no tom da marca, mesmo comprimento e intenção
-   - 'offer': mantenha valores numéricos/cupons EXATOS, só traduza palavras
-   - 'button': traduza CTA
-   - 'divider': mantenha
-   - 'footer': use placeholder {{loja}} pra nome da loja
-   - 'products' (CRÍTICO): substitua os items placeholder por TOP PRODUCTS REAIS da loja. Use exatamente os produtos fornecidos (name + price). Mantenha o mesmo número de columns.
-6. **Storytelling local**: pode citar slogan/diferencial/persona da loja se fizerem sentido no fluxo. Não force.
-7. Se a master cita valores específicos (desconto, cupom, prazo), MANTENHA-os exatamente. Nunca invente números.
-8. Se houver REFERÊNCIAS de qualidade (lojas piloto aprovadas), use-as como guia de tom e estrutura — não copie literalmente, só inspire-se.
+1. **Fidelidade à estrutura (REGRA DE OURO)**: replique a estrutura mestre exatamente. Se ela tem hero + depoimentos + CTA, gere hero + depoimentos + CTA. NUNCA invente seções que não estão na estrutura — em especial, NÃO adicione um grid/seção de produtos (bestsellers, "produtos em destaque") a menos que a estrutura PEÇA explicitamente. Os "top products" da loja só entram SE a estrutura tiver um bloco de produtos; caso contrário, IGNORE-os por completo.
+2. **Placeholders**: a estrutura pode ter placeholders ([NÚMERO], [NOME], [TÍTULO DO DEPOIMENTO], [Texto do depoimento…], [LOJA]). Preencha com dados REAIS da loja quando existirem no contexto; quando NÃO houver dado real, MANTENHA o placeholder como está. Nunca invente depoimentos, números de clientes ou nomes.
+3. **Idioma**: escreva NO IDIOMA da loja (language: pt-BR → português, en-* → inglês, es → espanhol, de → alemão). Traduza tudo: subject, preheader, headlines, textos, CTA, rodapé.
+4. **Tom de voz**: aplique o tom de voz da marca quando informado. Confidente/casual/formal/jovem — siga.
+5. **Subject**: máx 50 caracteres, no idioma. Emojis com parcimônia (no máximo 1).
+6. **Preheader**: máx 90 caracteres, complementa o subject sem repetir.
+7. **Valores exatos**: se a estrutura cita desconto/cupom/prazo/número específico, MANTENHA-o exatamente. Nunca invente números.
+8. Se houver REFERÊNCIAS de qualidade (lojas piloto aprovadas), use-as como guia de tom — não copie literalmente.
 
-OUTPUT: APENAS JSON {subject, preheader, strategy, blocks: [...]} no idioma da loja. Sem markdown.`
+OUTPUT: APENAS JSON {subject, preheader, strategy, blocks: [...]} no idioma da loja, refletindo fielmente a estrutura mestre. Sem markdown.`
 
 const OUTPUT_SCHEMA = {
   type: "object",
@@ -216,7 +208,30 @@ function buildUserPrompt(
   referenceCopies: Array<{ store_name: string; language: string; copy: CopyResultEntry }>,
 ): string {
   const draft = suggestion.email_draft
-  const masterBlocks = draft?.blocks ? blocksWithoutIds(draft.blocks) : []
+  const structureText = suggestion.brief?.structure?.trim() || ""
+
+  // Quando o COO escreveu a "Estrutura & tom da copy", ELA é o tema mestre a
+  // adaptar (texto literal, placeholders intactos) — não os blocos do
+  // email_draft (que podem ter vindo com grid de produtos da IA). Espelha o que
+  // o dispatch envia ao n8n. Sem estrutura, cai pra master (email_draft).
+  const masterSection = structureText
+    ? [
+        `## TEMA mestre — a "Estrutura & tom da copy" do COO (SIGA À RISCA, não invente seções)`,
+        structureText,
+      ]
+    : [
+        `## Copy MASTER (em pt-BR) — adapte mantendo a mesma estrutura`,
+        JSON.stringify(
+          {
+            subject: draft?.subject ?? suggestion.subject ?? "",
+            preheader: draft?.preheader ?? "",
+            strategy: draft?.strategy ?? suggestion.angle ?? "",
+            blocks: draft?.blocks ? blocksWithoutIds(draft.blocks) : [],
+          },
+          null,
+          1,
+        ),
+      ]
 
   const parts: string[] = [
     `## Loja-alvo`,
@@ -235,25 +250,18 @@ function buildUserPrompt(
       1,
     ),
     ``,
-    `## Copy MASTER (em pt-BR) — adapte mantendo a mesma estrutura`,
-    JSON.stringify(
-      {
-        subject: draft?.subject ?? suggestion.subject ?? "",
-        preheader: draft?.preheader ?? "",
-        strategy: draft?.strategy ?? suggestion.angle ?? "",
-        blocks: masterBlocks,
-      },
-      null,
-      1,
-    ),
+    ...masterSection,
     ``,
     `## Contexto da campanha`,
     `Título: ${suggestion.title}`,
     `Tipo: ${suggestion.type}`,
     `Gatilho: ${suggestion.trigger?.label ?? ""} — ${suggestion.trigger?.detail ?? ""}`,
     suggestion.send_date ? `Data de envio: ${suggestion.send_date}` : "",
-    // Seção ADITIVA: brief de estrutura & tom do COO (vazia se não houver).
-    ...buildBriefSection(suggestion.brief),
+    // Seção ADITIVA: tom/restrições/deve-incluir do COO. Quando a estrutura já é
+    // o tema mestre acima, não repete a structure aqui (evita duplicação).
+    ...buildBriefSection(
+      structureText ? { ...suggestion.brief, structure: undefined } : suggestion.brief,
+    ),
   ].filter(Boolean)
 
   if (referenceCopies.length > 0) {

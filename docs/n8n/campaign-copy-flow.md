@@ -73,7 +73,13 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
     "subject": "Assunto da master",
     "preheader": "Preheader da master",
     "strategy": "Resumo da estratégia/ângulo",
-    "blocks": [ { "type": "text", "value": "A COPY MASTER INTEIRA num único bloco de texto" } ]
+    "blocks": [ { "type": "text", "value": "A ESTRUTURA/copy inteira num único bloco de texto" } ]
+  },
+  "brief": {
+    "structure": "A 'Estrutura & tom da copy' do COO — o TEMA a seguir (placeholders [NÚMERO]/[NOME]/… intactos)",
+    "tone": "Tom de voz desejado (ou null)",
+    "constraints": "Restrições (ou null)",
+    "must_include": "O que a copy deve incluir (ou null)"
   },
   "campaign": {
     "title": "Black Friday Antecipada",
@@ -99,7 +105,8 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
 | Campo | Observação |
 |-------|------------|
 | `mode` | `"test"` (piloto) ou `"production"` (rollout). **Deve ser ecoado no callback.** |
-| `master` | Copy "mãe" da campanha — o flow adapta isso para cada loja (idioma/tom/produtos). **`master.blocks` vem como UM único bloco `text` com a copy inteira; devolva também 1 bloco `text`.** |
+| `master` | Conteúdo "mãe" a adaptar para cada loja (idioma/tom). **`master.blocks` vem como UM único bloco `text` com a estrutura/copy inteira; devolva também 1 bloco `text`.** Quando `brief.structure` existe, `master` reflete essa estrutura literal (subject/preheader/strategy vêm vazios — você os gera). |
+| `brief` | A **"Estrutura & tom da copy" do COO** — o TEMA mestre. **SIGA-A À RISCA:** mesmas seções, mesma ordem. Preencha placeholders (`[NÚMERO]`, `[NOME]`, `[Texto do depoimento…]`) com dados reais quando houver; senão mantenha o placeholder. **NÃO invente seções (grid de produtos, ofertas) que não estão na estrutura.** |
 | `stores[]` | Lojas que ESTE dispatch deve gerar. Itere sobre elas. |
 | `pilot_references[]` | **Só vem preenchido em `mode:"production"`** — até 2 lojas piloto aprovadas (`quality:"good"`), para usar como _few-shot_ e manter o tom no rollout. Em `mode:"test"` vem `[]`. |
 | `job_id` / `suggestion_id` | Devem ser ecoados em **todos** os callbacks. |
@@ -138,7 +145,7 @@ Fonte: `src/app/api/admin/campaign-central/stores/[id]/context/route.ts`. Respos
 }
 ```
 
-Use `language`/`tone`/`positioning`/`top_products` para adaptar a master ao idioma e à voz da loja.
+Use `language`/`tone`/`positioning` para adaptar ao idioma e à voz da loja. **`top_products` só deve ser usado se a estrutura/`brief` pedir um bloco de produtos** — NÃO monte um grid de produtos por conta própria quando a estrutura do COO não tem um.
 É o **mesmo formato** do pipeline de email (familiaridade entre os dois flows).
 
 ---

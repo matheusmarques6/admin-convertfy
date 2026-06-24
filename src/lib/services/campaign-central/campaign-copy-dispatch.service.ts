@@ -96,6 +96,47 @@ function collectPilotReferencesForDispatch(
   return refs
 }
 
+/**
+ * Monta o que vai pro n8n a partir da sugestão: o TEMA mestre (`master`) + o
+ * `brief`. A "Estrutura & tom da copy" do COO (`brief.structure`) tem
+ * prioridade — vira o conteúdo literal de `master.blocks` (1 bloco texto,
+ * placeholders intactos), com subject/preheader/strategy vazios (o n8n gera).
+ * Sem estrutura escrita, cai pro `email_draft` (master). Função pura — testável.
+ */
+export function buildN8nTheme(suggestion: Pick<CampaignSuggestion, "brief" | "email_draft">): {
+  master: {
+    subject: string
+    preheader: string
+    strategy: string
+    blocks: Array<{ type: "text"; value: string }>
+  }
+  brief: {
+    structure: string | null
+    tone: string | null
+    constraints: string | null
+    must_include: string | null
+  }
+} {
+  const structureText = suggestion.brief?.structure?.trim() || ""
+  const draft = suggestion.email_draft
+  return {
+    master: {
+      subject: structureText ? "" : (draft?.subject ?? ""),
+      preheader: structureText ? "" : (draft?.preheader ?? ""),
+      strategy: structureText ? "" : (draft?.strategy ?? ""),
+      blocks: [
+        { type: "text", value: structureText || (draft ? collapseBlocksToText(draft.blocks) : "") },
+      ],
+    },
+    brief: {
+      structure: suggestion.brief?.structure ?? null,
+      tone: suggestion.brief?.tone ?? null,
+      constraints: suggestion.brief?.constraints ?? null,
+      must_include: suggestion.brief?.must_include ?? null,
+    },
+  }
+}
+
 export async function dispatchCampaignCopyToN8n(
   params: DispatchCampaignCopyParams,
 ): Promise<DispatchCampaignCopyResult> {
@@ -122,7 +163,12 @@ export async function dispatchCampaignCopyToN8n(
 
   const suggestion = suggestionRaw as CampaignSuggestion
 
-  if (!suggestion.email_draft || !suggestion.email_draft.blocks?.length) {
+  // Fonte do conteúdo enviado ao n8n: a "Estrutura & tom da copy" do COO
+  // (brief.structure) é o TEMA e tem prioridade. Cai pro email_draft (master)
+  // só quando não há estrutura escrita. O dispatch precisa de uma das duas.
+  const structureText = suggestion.brief?.structure?.trim() || ""
+  const hasMaster = !!suggestion.email_draft?.blocks?.length
+  if (!structureText && !hasMaster) {
     return {
       ok: false,
       job_id: null,
@@ -243,7 +289,7 @@ export async function dispatchCampaignCopyToN8n(
       ? collectPilotReferencesForDispatch(suggestion, storeMap)
       : []
 
-  const draft = suggestion.email_draft
+  const { master, brief } = buildN8nTheme(suggestion)
   const targetStores = validTargetStoreIds.map((id) => {
     const s = storeMap.get(id)!
     return {
@@ -267,15 +313,11 @@ export async function dispatchCampaignCopyToN8n(
       secret: process.env.N8N_WEBHOOK_SECRET ?? "",
     },
     context_url_template: `${appUrl}/api/admin/campaign-central/stores/{store_id}/context`,
-    master: {
-      subject: draft.subject,
-      preheader: draft.preheader,
-      strategy: draft.strategy,
-      // Manda a copy master como UM bloco de texto (não os blocos tipados). O
-      // n8n mantém a estrutura recebida, então 1 bloco de entrada → ele devolve
-      // 1 bloco com a copy inteira, em vez de fragmentar em offer/heading/etc.
-      blocks: [{ type: "text", value: collapseBlocksToText(draft.blocks) }],
-    },
+    // master = a estrutura literal do COO como o tema (subject/preheader/strategy
+    // vazios → o n8n gera); brief = a "Estrutura & tom" que o n8n deve SEGUIR à
+    // risca, sem inventar grid de produtos. Ver buildN8nTheme.
+    master,
+    brief,
     campaign: {
       title: suggestion.title,
       type: suggestion.type,
