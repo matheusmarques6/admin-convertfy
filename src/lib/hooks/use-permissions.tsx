@@ -1,6 +1,8 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react"
+import type { OrgRole } from "@/types/organization"
+import { canAccess as canAccessItem, isReadOnly as isReadOnlyItem, type NavItemId } from "@/lib/permissions/role-access"
 
 export interface StoreAccess {
   store_id: string
@@ -15,26 +17,20 @@ export interface StoreAccess {
 }
 
 export interface Permissions {
+  /** Funções ativas da conta. Fonte de verdade do gating. */
+  roles: OrgRole[]
+  /** True se o profile global é admin (`profiles.role = 'admin'`). Bypass total. */
   isAdmin: boolean
+  /** @deprecated Use `roles.includes('admin')`. Mantido para compat até a próxima limpeza. */
   isOrgOwner: boolean
+  /** @deprecated Use `roles[0]` ou o helper `canAccess`. */
   orgRole: string | null
+  /**
+   * @deprecated Sistema de features está sendo retirado. Tabela mantida
+   * inerte por 1 release. Não dependa deste array para gating.
+   */
   features: string[]
   storeAccess: StoreAccess[]
-  // Computed permissions
-  canCreateClients: boolean
-  canManagePortalUsers: boolean
-  canViewReports: boolean
-  canViewFinancial: boolean
-  canControlOnboarding: boolean
-  canViewOnboarding: boolean
-  canControlTeam: boolean
-  canViewTeam: boolean
-  canControlCampaigns: boolean
-  canViewCampaigns: boolean
-  canGenerateCopy: boolean
-  canControlRequests: boolean
-  canExecuteRequests: boolean
-  canControlCalendar: boolean
 }
 
 export interface PermissionsData {
@@ -47,33 +43,27 @@ interface PermissionsContextValue {
   permissions: Permissions | null
   isLoading: boolean
   error: string | null
+  /** Gate principal: passa o id do NavItem e retorna se a conta vê. */
+  canAccess: (itemId: NavItemId) => boolean
+  /** True se o item é somente leitura para esta conta (ex.: Equipe para Suporte). */
+  isReadOnly: (itemId: NavItemId) => boolean
+  /** @deprecated noop transicional — features estão desativadas. Sempre `false`. */
   hasFeature: (featureKey: string) => boolean
+  /** @deprecated idem. */
   hasAnyFeature: (featureKeys: string[]) => boolean
+  /** @deprecated idem. */
   hasAllFeatures: (featureKeys: string[]) => boolean
   canAccessStore: (storeId: string) => boolean
   refetch: () => Promise<void>
 }
 
 const defaultPermissions: Permissions = {
+  roles: [],
   isAdmin: false,
   isOrgOwner: false,
   orgRole: null,
   features: [],
   storeAccess: [],
-  canCreateClients: false,
-  canManagePortalUsers: false,
-  canViewReports: false,
-  canViewFinancial: false,
-  canControlOnboarding: false,
-  canViewOnboarding: false,
-  canControlTeam: false,
-  canViewTeam: false,
-  canControlCampaigns: false,
-  canViewCampaigns: false,
-  canGenerateCopy: false,
-  canControlRequests: false,
-  canExecuteRequests: false,
-  canControlCalendar: false,
 }
 
 const PermissionsContext = createContext<PermissionsContextValue | null>(null)
@@ -115,27 +105,26 @@ export function PermissionsProvider({
     }
   }, [fetchPermissions, initialPermissions])
 
-  const hasFeature = useCallback((featureKey: string): boolean => {
+  const canAccess = useCallback((itemId: NavItemId): boolean => {
     if (!permissions) return false
-    if (permissions.isAdmin || permissions.isOrgOwner) return true
-    return permissions.features.includes(featureKey)
+    if (permissions.isAdmin) return true
+    return canAccessItem(itemId, permissions.roles)
   }, [permissions])
 
-  const hasAnyFeature = useCallback((featureKeys: string[]): boolean => {
+  const isReadOnly = useCallback((itemId: NavItemId): boolean => {
     if (!permissions) return false
-    if (permissions.isAdmin || permissions.isOrgOwner) return true
-    return featureKeys.some(key => permissions.features.includes(key))
+    if (permissions.isAdmin) return false
+    return isReadOnlyItem(itemId, permissions.roles)
   }, [permissions])
 
-  const hasAllFeatures = useCallback((featureKeys: string[]): boolean => {
-    if (!permissions) return false
-    if (permissions.isAdmin || permissions.isOrgOwner) return true
-    return featureKeys.every(key => permissions.features.includes(key))
-  }, [permissions])
+  // hasFeature/hasAnyFeature/hasAllFeatures retornam false para forçar a
+  // migração dos consumidores para `canAccess`. Mantidos apenas para não
+  // quebrar imports até a próxima limpeza.
+  const noopFeature = useCallback((): boolean => false, [])
 
   const canAccessStore = useCallback((storeId: string): boolean => {
     if (!permissions) return false
-    if (permissions.isAdmin || permissions.isOrgOwner) return true
+    if (permissions.isAdmin || permissions.roles.includes("admin") || permissions.roles.includes("dev")) return true
     return permissions.storeAccess.some(
       access => access.store_id === storeId && access.can_view
     )
@@ -147,9 +136,11 @@ export function PermissionsProvider({
         permissions,
         isLoading,
         error,
-        hasFeature,
-        hasAnyFeature,
-        hasAllFeatures,
+        canAccess,
+        isReadOnly,
+        hasFeature: noopFeature,
+        hasAnyFeature: noopFeature,
+        hasAllFeatures: noopFeature,
         canAccessStore,
         refetch: fetchPermissions,
       }}
@@ -167,42 +158,31 @@ export function usePermissions() {
   return context
 }
 
-// Hook para verificar se o usuário pode acessar uma rota específica
+/**
+ * Resolve acesso a uma rota usando a matriz central de NavItem.
+ * Rota desconhecida → libera (default permissivo, igual ao comportamento legado).
+ */
+const ROUTE_TO_NAV_ITEM: Record<string, NavItemId> = {
+  "/admin/board": "geral.board",
+  "/admin/clients": "ops.clients",
+  "/admin/team": "geral.team",
+  "/admin/onboarding": "ops.onboarding",
+  "/admin/stores": "ops.stores",
+  "/admin/financial": "geral.financial",
+  "/admin/meetings": "comercial.meetings",
+  "/admin/campaigns": "ops.campaigns.list",
+  "/admin/reports": "geral.reports",
+  "/admin/automations": "ops.automacoes",
+}
+
 export function useCanAccessRoute(routePath: string): boolean {
-  const { permissions, isLoading } = usePermissions()
+  const { permissions, isLoading, canAccess } = usePermissions()
 
   if (isLoading || !permissions) return false
-  if (permissions.isAdmin || permissions.isOrgOwner) return true
+  if (permissions.isAdmin) return true
+  if (routePath === "/admin/stores") return permissions.storeAccess.length > 0
 
-  // Mapeamento de rotas para features necessárias
-  const routePermissions: Record<string, string[]> = {
-    "/admin/dashboard": [], // Sempre acessível
-    "/admin/board": ["request_control", "request_execute"],
-    "/admin/clients": ["create_clients"],
-    "/admin/team": ["team_control", "team_view"],
-    "/admin/onboarding": ["onboarding_control", "onboarding_view"],
-    "/admin/stores": [], // Controlado por storeAccess
-    "/admin/pipeline": ["request_control", "request_execute"],
-    "/admin/financial": ["view_financial"],
-    "/admin/meetings": ["calendar_control"],
-    "/admin/campaigns": ["campaign_control", "campaign_view"],
-    "/admin/reports": ["view_reports"],
-    "/admin/automations": ["campaign_control"],
-    "/admin/tools": [], // Sempre acessível
-    "/admin/settings": [], // Sempre acessível
-  }
-
-  const requiredFeatures = routePermissions[routePath]
-
-  // Se não há features requeridas, permite acesso
-  if (!requiredFeatures || requiredFeatures.length === 0) {
-    // Caso especial para /admin/stores - precisa ter acesso a pelo menos uma loja
-    if (routePath === "/admin/stores") {
-      return permissions.storeAccess.length > 0
-    }
-    return true
-  }
-
-  // Verifica se tem pelo menos uma das features necessárias
-  return requiredFeatures.some(feature => permissions.features.includes(feature))
+  const navItem = ROUTE_TO_NAV_ITEM[routePath]
+  if (!navItem) return true
+  return canAccess(navItem)
 }

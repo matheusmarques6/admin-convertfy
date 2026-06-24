@@ -23,14 +23,15 @@ const log = logger.child("OrgMemberInvite")
 
 export interface InviteOrgMemberInput {
   orgId: string
-  role: OrgRole
+  /** Funções da conta (1+). A primeira é gravada em `org_members.role`; todas
+   *  são gravadas em `org_member_roles`. */
+  roles: OrgRole[]
   /** Se informado, adiciona um profile existente à org (não cria auth user). */
   profileId?: string
   /** Obrigatórios quando `profileId` não é informado (cria novo usuário). */
   email?: string
   name?: string
   jobTitle?: string | null
-  features?: string[]
   storeIds?: string[]
   /** Profile id de quem está convidando (para `invited_by` e logs). */
   invitedBy: string
@@ -56,9 +57,12 @@ export interface InviteOrgMemberResult {
 export async function inviteOrgMember(
   input: InviteOrgMemberInput,
 ): Promise<InviteOrgMemberResult> {
-  if (!input.orgId || !input.role) {
-    throw new AppError("Campos obrigatórios: org_id, role", 400)
+  if (!input.orgId || !input.roles || input.roles.length === 0) {
+    throw new AppError("Campos obrigatórios: org_id, roles[]", 400)
   }
+  const primaryRole = input.roles[0]
+  // Dedup preservando a ordem da seleção do usuário.
+  const allRoles = Array.from(new Set(input.roles))
 
   const admin = createAdminClient()
 
@@ -192,13 +196,13 @@ export async function inviteOrgMember(
     throw new AppError("Este usuário já é membro desta organização", 400)
   }
 
-  // Criar org member
+  // Criar org member (role single = primaryRole; junção carrega todas)
   const { data: member, error: insertError } = await admin
     .from("org_members")
     .insert({
       org_id: input.orgId,
       profile_id: profileId,
-      role: input.role,
+      role: primaryRole,
       job_title: input.jobTitle || null,
       invited_by: input.invitedBy,
       invite_accepted_at: new Date().toISOString(),
@@ -217,15 +221,19 @@ export async function inviteOrgMember(
     throw new AppError("Erro ao criar membro: " + insertError.message, 500)
   }
 
-  // Features (opcional)
-  if (input.features && input.features.length > 0) {
-    const featureInserts = input.features.map((featureKey) => ({
-      org_member_id: member.id,
-      feature_key: featureKey,
-      enabled: true,
-      granted_by: input.invitedBy,
-    }))
-    await admin.from("org_member_features").insert(featureInserts)
+  // Persistir TODAS as funções na junction (fonte de verdade do gating).
+  const roleInserts = allRoles.map((role) => ({
+    org_member_id: member.id,
+    role,
+    granted_by: input.invitedBy,
+  }))
+  const { error: rolesError } = await admin
+    .from("org_member_roles")
+    .insert(roleInserts)
+
+  if (rolesError) {
+    log.error("Roles insert error:", rolesError)
+    throw new AppError("Erro ao atribuir funções: " + rolesError.message, 500)
   }
 
   // Acesso a lojas (opcional)
@@ -263,7 +271,7 @@ export async function inviteOrgMember(
     user_id: input.invitedBy,
     type: "member_added",
     description: `Membro "${member.profile?.name}" adicionado à organização`,
-    metadata: { member_id: member.id, role: input.role },
+    metadata: { member_id: member.id, roles: allRoles },
   })
 
   return { member, tempPassword: tempPasswordForResponse }

@@ -50,7 +50,9 @@ import {
 import { getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { TeamMemberDialog } from "./team-member-dialog"
-import type { FeatureCatalog, MemberWithDetails, Organization } from "@/types"
+import type { MemberWithDetails, Organization } from "@/types"
+import { ORG_ROLE_LABELS } from "@/lib/permissions/role-access"
+import type { OrgRole } from "@/types/organization"
 
 interface StoreWithClient {
   id: string
@@ -62,7 +64,6 @@ interface StoreWithClient {
 
 interface TeamTableProps {
   members: MemberWithDetails[]
-  features: FeatureCatalog[]
   organizations: Organization[]
   stores: StoreWithClient[]
 }
@@ -93,18 +94,16 @@ function getActivityColor(dateStr: string | null | undefined): string {
   return "bg-muted-foreground/40"
 }
 
-const roleLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
-  owner: { label: "Owner", variant: "info" },
-  manager: { label: "Gerente", variant: "positive" },
-  coordinator: { label: "Coordenador", variant: "warning" },
-  copywriter: { label: "Copywriter", variant: "neutral" },
-  designer: { label: "Designer", variant: "neutral" },
-  developer: { label: "Desenvolvedor", variant: "neutral" },
-  support: { label: "Suporte", variant: "neutral" },
-  analyst: { label: "Analista", variant: "neutral" },
+const roleLabels: Record<OrgRole, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+  admin: { label: ORG_ROLE_LABELS.admin, variant: "negative" },
+  dev: { label: ORG_ROLE_LABELS.dev, variant: "negative" },
+  coo: { label: ORG_ROLE_LABELS.coo, variant: "info" },
+  suporte: { label: ORG_ROLE_LABELS.suporte, variant: "neutral" },
+  designer: { label: ORG_ROLE_LABELS.designer, variant: "neutral" },
+  implementacao: { label: ORG_ROLE_LABELS.implementacao, variant: "neutral" },
 }
 
-export function TeamTable({ members, features, organizations, stores }: TeamTableProps) {
+export function TeamTable({ members, organizations, stores }: TeamTableProps) {
   const router = useRouter()
   const [deleteMember, setDeleteMember] = useState<MemberWithDetails | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -189,7 +188,6 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
           onClose={handleDialogClose}
           onSuccess={handleDialogSuccess}
           member={editingMember}
-          features={features}
           organizations={organizations}
           stores={stores}
         />
@@ -204,9 +202,8 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
           <TableHeader>
             <TableRow>
               <TableHead className="w-[250px]">Membro</TableHead>
-              <TableHead>Cargo</TableHead>
+              <TableHead>Funções</TableHead>
               <TableHead>Organização</TableHead>
-              <TableHead>Features</TableHead>
               <TableHead>Lojas</TableHead>
               <TableHead>Última atividade</TableHead>
               <TableHead>Status</TableHead>
@@ -215,7 +212,11 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
           </TableHeader>
           <TableBody>
             {members.map((member) => {
-              const roleInfo = roleLabels[member.role] || roleLabels.support
+              const memberRoles: OrgRole[] = (member.roles && member.roles.length > 0
+                ? member.roles
+                : [member.role]) as OrgRole[]
+              const primaryRole = memberRoles[0]
+              const roleInfo = roleLabels[primaryRole] || roleLabels.suporte
 
               return (
                 <TableRow key={member.id}>
@@ -237,7 +238,14 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                   </TableCell>
                   <TableCell>
                     <div className="space-y-1">
-                      <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {memberRoles.map((r) => {
+                          const info = roleLabels[r] || roleLabels.suporte
+                          return (
+                            <Badge key={r} variant={info.variant}>{info.label}</Badge>
+                          )
+                        })}
+                      </div>
                       {member.job_title && (
                         <p className="text-xs text-muted-foreground">{member.job_title}</p>
                       )}
@@ -245,34 +253,6 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                   </TableCell>
                   <TableCell>
                     <span className="text-sm">{member.organization?.name || "-"}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1 cursor-help">
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">
-                            {member.enabled_features?.length || 0} features
-                          </span>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-xs">
-                        {member.enabled_features && member.enabled_features.length > 0 ? (
-                          <div className="space-y-1">
-                            {member.enabled_features.map((key) => {
-                              const feature = features.find((f) => f.key === key)
-                              return (
-                                <p key={key} className="text-xs">
-                                  {feature?.name || key}
-                                </p>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-xs">Nenhuma feature atribuída</p>
-                        )}
-                      </TooltipContent>
-                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
@@ -364,7 +344,6 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
         onClose={handleDialogClose}
         onSuccess={handleDialogSuccess}
         member={editingMember}
-        features={features}
         organizations={organizations}
         stores={stores}
       />

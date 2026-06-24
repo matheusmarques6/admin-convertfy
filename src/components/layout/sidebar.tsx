@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useCommandPaletteSafe } from "@/components/ui/command-palette"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import type { NavItemId } from "@/lib/permissions/role-access"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
 import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
@@ -68,16 +69,18 @@ import { WorkspaceSwitcher } from "./workspace-switcher"
 //
 // Cada workspace e um "sistema separado": comercial mostra so itens
 // comerciais, operacional so operacionais. Inbox aparece nos dois.
-// Cada item pode ter requiredFeatures pra esconder de quem nao tem
-// permissao.
+//
+// O gate de cada item e por FUNCAO (role-set), centralizado em
+// `src/lib/permissions/role-access.ts`. Cada NavItem declara um `id`
+// estavel; o filtro abaixo consulta `canAccess(id, roles)`.
 // ---------------------------------------------------------------------------
 
 interface NavItem {
+  id: NavItemId
   name: string
   href: string
   icon: LucideIcon
   group?: string
-  requiredFeatures?: string[]
   requiresStoreAccess?: boolean
   badge?: string
 }
@@ -105,36 +108,31 @@ const COMERCIAL_NAV: NavGroup[] = [
     key: "overview",
     label: "",
     items: [
-      { name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
+      { id: "comercial.dashboard", name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
     ],
   },
   {
     key: "vendas",
     label: "Vendas",
     items: [
-      { name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
-      { name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
-      { name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
+      { id: "comercial.pipelines", name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
+      { id: "comercial.leads", name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
+      { id: "comercial.forms", name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },
   {
     key: "atendimento",
     label: "Atendimento",
     items: [
-      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
-      {
-        name: "Reunioes",
-        href: ROUTES.ADMIN.MEETINGS.LIST,
-        icon: Calendar,
-        requiredFeatures: ["calendar_control"],
-      },
+      { id: "comercial.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
     ],
   },
   {
     key: "analise",
     label: "Analise",
     items: [
-      { name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
+      { id: "comercial.reports", name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
     ],
   },
 ]
@@ -144,117 +142,73 @@ const OPERACIONAL_NAV: NavGroup[] = [
     key: "overview",
     label: "",
     items: [
-      { name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
+      { id: "ops.dashboard", name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
     ],
   },
   {
     key: "clientes",
     label: "Clientes",
     items: [
-      {
-        name: "Clientes",
-        href: ROUTES.ADMIN.CLIENTS.LIST,
-        icon: Users,
-        requiredFeatures: ["create_clients", "onboarding_control"],
-      },
-      {
-        name: "Lojas",
-        href: ROUTES.ADMIN.STORES.LIST,
-        icon: Store,
-        requiresStoreAccess: true,
-      },
-      { name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
+      { id: "ops.clients", name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users },
+      { id: "ops.stores", name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, requiresStoreAccess: true },
+      { id: "ops.health", name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
     ],
   },
   {
     key: "customer-success",
     label: "Customer Success",
     items: [
-      {
-        name: "Formulários CS",
-        href: ROUTES.ADMIN.OPERACIONAL.FORMS,
-        icon: FileText,
-      },
+      { id: "ops.cs.forms", name: "Formulários CS", href: ROUTES.ADMIN.OPERACIONAL.FORMS, icon: FileText },
     ],
   },
   {
     key: "workflows",
     label: "Workflows",
     items: [
-      {
-        name: "Pipelines CS",
-        href: ROUTES.ADMIN.OPERACIONAL.PIPELINES,
-        icon: HeartHandshake,
-      },
-      {
-        name: "Ritual de Sexta",
-        href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL,
-        icon: Sparkles,
-      },
+      { id: "ops.cs.pipelines", name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      { id: "ops.cs.ritual", name: "Ritual de Sexta", href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL, icon: Sparkles },
     ],
   },
   {
     key: "onboarding",
     label: "Onboarding",
     items: [
-      {
-        name: "Onboarding",
-        href: ROUTES.ADMIN.ONBOARDING_V2.LIST,
-        icon: Rocket,
-      },
-      {
-        name: "Cadências",
-        href: ROUTES.ADMIN.OPERACIONAL.CS.CADENCES,
-        icon: Settings,
-      },
-      {
-        name: "Tutorial cliente",
-        href: ROUTES.ADMIN.ONBOARDING_HELP.LIST,
-        icon: LifeBuoy,
-      },
+      { id: "ops.onboarding", name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING_V2.LIST, icon: Rocket },
+      { id: "ops.cs.cadences", name: "Cadências", href: ROUTES.ADMIN.OPERACIONAL.CS.CADENCES, icon: Settings },
+      { id: "ops.onboarding.tutorial", name: "Tutorial cliente", href: ROUTES.ADMIN.ONBOARDING_HELP.LIST, icon: LifeBuoy },
     ],
   },
   {
     key: "pipelines",
     label: "Pipelines",
     items: [
-      { name: "Configurar pipelines", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN, icon: Settings },
+      { id: "ops.pipelines.admin", name: "Configurar pipelines", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN, icon: Settings },
     ],
   },
   {
     key: "marketing",
     label: "Marketing",
     items: [
-      {
-        name: "Central de Campanhas",
-        href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL,
-        icon: Megaphone,
-        requiredFeatures: ["campaign_control", "campaign_view"],
-      },
-      {
-        name: "Campanhas",
-        href: ROUTES.ADMIN.CAMPAIGNS.LIST,
-        icon: Mail,
-        requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"],
-      },
-      { name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
-      { name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
+      { id: "ops.campaigns.central", name: "Central de Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL, icon: Megaphone },
+      { id: "ops.campaigns.list", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail },
+      { id: "ops.insights", name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
+      { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
     ],
   },
   {
     key: "atendimento",
     label: "Atendimento",
     items: [
-      { name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
-      { name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
-      { name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
+      { id: "ops.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      { id: "ops.canais", name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
+      { id: "ops.automacoes", name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
     ],
   },
   {
     key: "analise",
     label: "Analise",
     items: [
-      { name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3 },
+      { id: "ops.reports", name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3 },
     ],
   },
 ]
@@ -264,81 +218,43 @@ const GERAL_NAV: NavGroup[] = [
     key: "overview",
     label: "",
     items: [
-      { name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
-      { name: "Minhas tarefas", href: ROUTES.ADMIN.ME, icon: ListFilter },
-      { name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
+      { id: "geral.home", name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
+      { id: "geral.me", name: "Minhas tarefas", href: ROUTES.ADMIN.ME, icon: ListFilter },
+      { id: "geral.board", name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
     ],
   },
   {
     key: "agenda",
     label: "Agenda",
     items: [
-      {
-        name: "Reunioes",
-        href: ROUTES.ADMIN.MEETINGS.LIST,
-        icon: Calendar,
-        requiredFeatures: ["calendar_control"],
-      },
+      { id: "geral.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
     ],
   },
   {
     key: "time",
     label: "Time",
     items: [
-      { name: "Equipe", href: ROUTES.ADMIN.TEAM, icon: Users2 },
+      { id: "geral.team", name: "Equipe", href: ROUTES.ADMIN.TEAM, icon: Users2 },
     ],
   },
   {
     key: "financeiro",
     label: "Financeiro",
     items: [
-      {
-        name: "Financeiro",
-        href: ROUTES.ADMIN.FINANCIAL,
-        icon: DollarSign,
-        requiredFeatures: ["view_financial"],
-      },
-      {
-        name: "Relatorios",
-        href: ROUTES.ADMIN.REPORTS.LIST,
-        icon: FileBarChart,
-        requiredFeatures: ["view_reports"],
-      },
+      { id: "geral.financial", name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign },
+      { id: "geral.reports", name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart },
     ],
   },
   {
     key: "ferramentas",
     label: "Ferramentas",
     items: [
-      { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
-      { name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
-      {
-        name: "Geração de Emails",
-        href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION,
-        icon: Mail,
-        // Página consolidada: agentes (prompts), blueprints, configurações,
-        // referências e teste do pipeline AE. Link só pra admin/owner;
-        // devs com tag 'dev' acessam por URL direta (mesmo padrão dos
-        // antigos /admin/agents/prompts e /admin/email-blueprints, que
-        // agora redirecionam pra cá).
-        requiredFeatures: ["__admin_only__"],
-      },
-      {
-        name: "Custo de IA",
-        href: ROUTES.ADMIN.AI_USAGE,
-        icon: Cpu,
-        // Dashboard de observabilidade: cada execução de agente com
-        // tokens e custo. Mesmo gate da Geração de Emails.
-        requiredFeatures: ["__admin_only__"],
-      },
-      {
-        name: "Logs de geração",
-        href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION_LOGS,
-        icon: ListChecks,
-        // Logs operacionais do pipeline AE — específico, fiel à maquete
-        // (KPIs, custo no tempo, resumo por agente, tabela detalhada).
-        requiredFeatures: ["__admin_only__"],
-      },
+      // Grupo restrito a admin/dev — gate centralizado em role-access.ts.
+      { id: "tools.tools", name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
+      { id: "tools.currency_audit", name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
+      { id: "tools.email_generation", name: "Geração de Emails", href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION, icon: Mail },
+      { id: "tools.ai_usage", name: "Custo de IA", href: ROUTES.ADMIN.AI_USAGE, icon: Cpu },
+      { id: "tools.email_logs", name: "Logs de geração", href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION_LOGS, icon: ListChecks },
     ],
   },
 ]
@@ -367,7 +283,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
   const pathname = usePathname()
   const { isExpanded, isMobileOpen, toggle, closeMobile } = useSidebar()
   const collapsed = forceExpanded ? false : !isExpanded
-  const { permissions, hasAnyFeature, isLoading } = usePermissions()
+  const { permissions, canAccess, isLoading } = usePermissions()
   const workspace = useWorkspace()
   const wsMeta = WORKSPACES[workspace]
   const { unreadCount: notificationsUnread } = useReportNotifications()
@@ -380,18 +296,17 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
-  // Filter nav by permissions, dentro do workspace ativo
+  // Filter nav by role (gate centralizado em role-access.ts), dentro do workspace ativo.
   const filteredGroups = useMemo<NavGroup[]>(() => {
     const groups = NAV_BY_WORKSPACE[workspace]
     if (isLoading || !permissions) return []
 
     const checkPermission = (item: NavItem): boolean => {
-      if (permissions.isAdmin || permissions.isOrgOwner) return true
-      if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
-        if (item.requiresStoreAccess) return permissions.storeAccess.length > 0
-        return true
+      if (!canAccess(item.id)) return false
+      if (item.requiresStoreAccess && !permissions.isAdmin && !permissions.roles.includes("dev")) {
+        return permissions.storeAccess.length > 0
       }
-      return hasAnyFeature(item.requiredFeatures)
+      return true
     }
 
     return groups
@@ -400,7 +315,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
         items: group.items.filter(checkPermission),
       }))
       .filter((group) => group.items.length > 0)
-  }, [workspace, permissions, hasAnyFeature, isLoading])
+  }, [workspace, permissions, canAccess, isLoading])
 
   return (
     <TooltipProvider delayDuration={0}>

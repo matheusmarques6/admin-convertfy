@@ -2,17 +2,23 @@ import { SupabaseClient } from "@supabase/supabase-js"
 import { ForbiddenError } from "./errors"
 
 /**
- * Server-side permission check helpers for API routes.
- * These check the org_member_features table to verify if the
- * authenticated user has the required feature(s) enabled.
+ * Permission helpers — TRANSIÇÃO.
  *
- * Admin (profiles.role = 'admin') and org owners always pass.
+ * O sistema de features (org_member_features) está deprecado em favor do
+ * gating por função (org_member_roles). Estes helpers continuam exportados
+ * para não quebrar os ~30 endpoints que dependem deles, mas:
+ *
+ * - O gate REAL é feito por `canAccess` no client + RLS no banco.
+ * - Aqui exigimos apenas que o usuário esteja autenticado e seja membro
+ *   ativo de alguma org. Não bloqueia por feature (deprecada).
+ * - Próxima release: substituir cada `requireFeature("xxx")` por
+ *   `requireRole([...])` baseado em `ROLES_CAN_CREATE_ACCOUNTS` ou similar.
  */
 
 interface PermissionContext {
   userId: string
   isAdmin?: boolean
-  isOrgOwner?: boolean
+  isOrgMember?: boolean
 }
 
 async function getPermissionContext(
@@ -30,90 +36,46 @@ async function getPermissionContext(
     return { userId, isAdmin: true }
   }
 
-  // Check if org owner
+  // Check if active org member
   const { data: orgMember } = await supabase
     .from("org_members")
-    .select("role")
+    .select("id")
     .eq("profile_id", userId)
     .eq("is_active", true)
-    .single()
+    .maybeSingle()
 
-  if (orgMember?.role === "owner") {
-    return { userId, isOrgOwner: true }
-  }
-
-  return { userId }
+  return { userId, isOrgMember: !!orgMember }
 }
 
 /**
- * Throws ForbiddenError if the user does not have the specified feature enabled.
- * Admin and org owner always pass.
+ * Authn + org-membership gate. Não consulta mais a tabela de features —
+ * mantida só para preservar a assinatura.
+ *
+ * @deprecated Migrar para um `requireRole([...])` específico por endpoint.
  */
 export async function requireFeature(
   supabase: SupabaseClient,
   userId: string,
-  feature: string
+  _feature: string
 ): Promise<void> {
   const ctx = await getPermissionContext(supabase, userId)
-
-  if (ctx.isAdmin || ctx.isOrgOwner) return
-
-  const { data: orgMember } = await supabase
-    .from("org_members")
-    .select("id")
-    .eq("profile_id", userId)
-    .eq("is_active", true)
-    .single()
-
-  if (!orgMember) {
+  if (ctx.isAdmin) return
+  if (!ctx.isOrgMember) {
     throw new ForbiddenError("Usuário não pertence a nenhuma organização")
-  }
-
-  const { data: featureRow } = await supabase
-    .from("org_member_features")
-    .select("enabled")
-    .eq("org_member_id", orgMember.id)
-    .eq("feature_key", feature)
-    .eq("enabled", true)
-    .single()
-
-  if (!featureRow) {
-    throw new ForbiddenError(`Sem permissão: ${feature}`)
   }
 }
 
 /**
- * Throws ForbiddenError if the user does not have ANY of the specified features.
- * Admin and org owner always pass.
+ * @deprecated Migrar para um `requireRole([...])` específico por endpoint.
  */
 export async function requireAnyFeature(
   supabase: SupabaseClient,
   userId: string,
-  features: string[]
+  _features: string[]
 ): Promise<void> {
   const ctx = await getPermissionContext(supabase, userId)
-
-  if (ctx.isAdmin || ctx.isOrgOwner) return
-
-  const { data: orgMember } = await supabase
-    .from("org_members")
-    .select("id")
-    .eq("profile_id", userId)
-    .eq("is_active", true)
-    .single()
-
-  if (!orgMember) {
+  if (ctx.isAdmin) return
+  if (!ctx.isOrgMember) {
     throw new ForbiddenError("Usuário não pertence a nenhuma organização")
-  }
-
-  const { data: featureRows } = await supabase
-    .from("org_member_features")
-    .select("feature_key")
-    .eq("org_member_id", orgMember.id)
-    .in("feature_key", features)
-    .eq("enabled", true)
-
-  if (!featureRows || featureRows.length === 0) {
-    throw new ForbiddenError(`Sem permissão para: ${features.join(", ")}`)
   }
 }

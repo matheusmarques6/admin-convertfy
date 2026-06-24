@@ -3,6 +3,8 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { ROLES_CAN_CREATE_ACCOUNTS } from "@/lib/permissions/role-access"
+import type { OrgRole } from "@/types"
 
 const log = logger.child("AdminOrgMembers")
 
@@ -39,14 +41,12 @@ export async function GET(
       throw new AppError("Membro não encontrado", 404)
     }
 
-    // Fetch features
-    const { data: features } = await supabase
-      .from("org_member_features")
-      .select(`
-        *,
-        feature:features_catalog(key, name, description, category, icon)
-      `)
+    // Fetch roles da junção
+    const { data: roleRows } = await supabase
+      .from("org_member_roles")
+      .select("role")
       .eq("org_member_id", id)
+    const roles = (roleRows ?? []).map((r) => r.role as OrgRole)
 
     // Fetch store access
     const { data: storeAccess } = await supabase
@@ -60,7 +60,7 @@ export async function GET(
     return NextResponse.json({
       member: {
         ...member,
-        features: features || [],
+        roles,
         store_access: storeAccess || [],
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
@@ -101,23 +101,33 @@ export async function PUT(
 
     const { data: userOrgMember } = await supabase
       .from("org_members")
-      .select("role")
+      .select("id")
       .eq("org_id", targetMember.org_id)
       .eq("profile_id", user.id)
       .single()
 
-    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
+    let canEdit = false
+    if (userOrgMember) {
+      const { data: roleRows } = await supabase
+        .from("org_member_roles")
+        .select("role")
+        .eq("org_member_id", userOrgMember.id)
+      const editorRoles = (roleRows ?? []).map((r) => r.role as OrgRole)
+      canEdit = editorRoles.some((r) => ROLES_CAN_CREATE_ACCOUNTS.includes(r))
+    }
 
-    if (!isSystemAdmin && !isOrgAdmin) {
+    if (!isSystemAdmin && !canEdit) {
       throw new AppError("Acesso negado", 403)
     }
 
     const body = await request.json()
     const adminClient = createAdminClient()
 
-    // Update member basic info
+    // Update member basic info (primary role = roles[0] quando fornecido).
     const updateData: Record<string, unknown> = {}
-    if (body.role) updateData.role = body.role
+    if (Array.isArray(body.roles) && body.roles.length > 0) {
+      updateData.role = body.roles[0]
+    }
     if (body.job_title !== undefined) updateData.job_title = body.job_title
     if (body.is_active !== undefined) updateData.is_active = body.is_active
 
@@ -137,26 +147,21 @@ export async function PUT(
       throw new AppError("Erro ao atualizar membro", 500)
     }
 
-    // Update features if provided
-    if (body.features !== undefined) {
-      // Remove all existing features
+    // Update junction de funções (sobrescreve set completo quando fornecido).
+    if (Array.isArray(body.roles)) {
       await adminClient
-        .from("org_member_features")
+        .from("org_member_roles")
         .delete()
         .eq("org_member_id", id)
 
-      // Add new features
-      if (body.features.length > 0) {
-        const featureInserts = body.features.map((featureKey: string) => ({
+      if (body.roles.length > 0) {
+        const uniqueRoles = Array.from(new Set(body.roles as OrgRole[]))
+        const inserts = uniqueRoles.map((role) => ({
           org_member_id: id,
-          feature_key: featureKey,
-          enabled: true,
+          role,
           granted_by: user.id,
         }))
-
-        await adminClient
-          .from("org_member_features")
-          .insert(featureInserts)
+        await adminClient.from("org_member_roles").insert(inserts)
       }
     }
 
@@ -225,14 +230,22 @@ export async function DELETE(
 
     const { data: userOrgMember } = await supabase
       .from("org_members")
-      .select("role")
+      .select("id")
       .eq("org_id", targetMember.org_id)
       .eq("profile_id", user.id)
       .single()
 
-    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
+    let canDelete = false
+    if (userOrgMember) {
+      const { data: roleRows } = await supabase
+        .from("org_member_roles")
+        .select("role")
+        .eq("org_member_id", userOrgMember.id)
+      const editorRoles = (roleRows ?? []).map((r) => r.role as OrgRole)
+      canDelete = editorRoles.some((r) => ROLES_CAN_CREATE_ACCOUNTS.includes(r))
+    }
 
-    if (!isSystemAdmin && !isOrgAdmin) {
+    if (!isSystemAdmin && !canDelete) {
       throw new AppError("Acesso negado", 403)
     }
 

@@ -2,7 +2,19 @@ import type { User } from "./user"
 import type { ClientStore } from "./client"
 
 // Organization & Agent Types
-export type OrgRole = "owner" | "manager" | "coo" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
+//
+// Funções canônicas da org (6). Multi-função: a conta vê a UNIÃO do que cada
+// função libera. Migração 20260801_roles_simplification.sql remapeia valores
+// legados ('owner' → 'admin', 'developer' → 'implementacao', 'support' →
+// 'suporte', demais → 'suporte').
+export type OrgRole =
+  | "admin"           // bypass total (Convertfy + ferramentas internas)
+  | "dev"             // bypass total (engenharia)
+  | "coo"             // operação inteira; não vê Comercial nem Ferramentas
+  | "suporte"         // Comercial completo + operação parcial + Equipe (read-only)
+  | "designer"        // Operacional restrito (Dashboard, Lojas, Onboarding) + Geral mínimo
+  | "implementacao"   // mesmo conjunto que designer por enquanto
+
 export type OrgType = "internal" | "agency" | "partner"
 
 export interface Organization {
@@ -20,7 +32,10 @@ export interface OrgMember {
   id: string
   org_id: string
   profile_id: string
+  /** Primary role (legacy). A fonte de verdade para gating é `roles[]`. */
   role: OrgRole
+  /** Lista de funções ativas via tabela junction `org_member_roles`. */
+  roles?: OrgRole[]
   job_title?: string
   is_active: boolean
   invited_by?: string
@@ -40,9 +55,9 @@ export interface OrgMemberFormData {
   profile_id?: string
   email?: string
   name?: string
-  role: OrgRole
+  /** Lista de funções (uma OU mais). Substitui o legado `role` único. */
+  roles: OrgRole[]
   job_title?: string
-  features?: string[]
   store_ids?: string[]
 }
 

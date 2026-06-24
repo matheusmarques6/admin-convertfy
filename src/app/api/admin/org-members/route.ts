@@ -5,6 +5,8 @@ import { OrgMemberFormData } from "@/types"
 import { inviteOrgMember } from "@/lib/services/org-member-invite.service"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { ROLES_CAN_CREATE_ACCOUNTS } from "@/lib/permissions/role-access"
+import type { OrgRole } from "@/types"
 
 const log = logger.child("AdminOrgMembers")
 
@@ -94,12 +96,11 @@ export async function GET(request: NextRequest) {
       return successResponse(request, { members: [] })
     }
 
-    const [featuresRes, accessRes] = await Promise.all([
+    const [rolesRes, accessRes] = await Promise.all([
       supabase
-        .from("org_member_features")
-        .select("org_member_id, feature_key")
-        .in("org_member_id", memberIds)
-        .eq("enabled", true),
+        .from("org_member_roles")
+        .select("org_member_id, role")
+        .in("org_member_id", memberIds),
       supabase
         .from("agent_store_access")
         .select("org_member_id, id")
@@ -107,11 +108,11 @@ export async function GET(request: NextRequest) {
         .eq("can_view", true),
     ])
 
-    const featuresByMember = new Map<string, string[]>()
-    featuresRes.data?.forEach((f) => {
-      const list = featuresByMember.get(f.org_member_id) || []
-      list.push(f.feature_key)
-      featuresByMember.set(f.org_member_id, list)
+    const rolesByMember = new Map<string, OrgRole[]>()
+    rolesRes.data?.forEach((r) => {
+      const list = rolesByMember.get(r.org_member_id) || []
+      list.push(r.role as OrgRole)
+      rolesByMember.set(r.org_member_id, list)
     })
 
     const accessCountByMember = new Map<string, number>()
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
 
     const membersWithDetails = (members || []).map((member) => ({
       ...member,
-      enabled_features: featuresByMember.get(member.id) || [],
+      roles: rolesByMember.get(member.id) || [member.role as OrgRole],
       store_access_count: accessCountByMember.get(member.id) || 0,
     }))
 
@@ -139,12 +140,13 @@ export async function POST(request: NextRequest) {
 
     const body: OrgMemberFormData = await request.json()
 
-    // Validate required fields first (Fix 3.6)
-    if (!body.org_id || !body.role) {
-      throw new AppError("Campos obrigatórios: org_id, role", 400)
+    // Validate required fields (multi-função: roles[] obrigatório).
+    if (!body.org_id || !body.roles || body.roles.length === 0) {
+      throw new AppError("Campos obrigatórios: org_id, roles[]", 400)
     }
 
-    // Check if user has permission: system admin OR org owner/admin
+    // Gate: system admin OU conta com função autorizada a criar contas
+    // (admin/dev/coo) na org alvo.
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -153,32 +155,37 @@ export async function POST(request: NextRequest) {
 
     const isSystemAdmin = profile?.role === "admin"
 
-    // Check if user is owner/admin of the target organization
-    let isOrgAdmin = false
+    let canCreate = false
     if (body.org_id) {
       const { data: orgMember } = await supabase
         .from("org_members")
-        .select("role")
+        .select("id")
         .eq("org_id", body.org_id)
         .eq("profile_id", user.id)
         .single()
 
-      isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "manager"
+      if (orgMember) {
+        const { data: roleRows } = await supabase
+          .from("org_member_roles")
+          .select("role")
+          .eq("org_member_id", orgMember.id)
+        const inviterRoles = (roleRows ?? []).map((r) => r.role as OrgRole)
+        canCreate = inviterRoles.some((r) => ROLES_CAN_CREATE_ACCOUNTS.includes(r))
+      }
     }
 
-    if (!isSystemAdmin && !isOrgAdmin) {
+    if (!isSystemAdmin && !canCreate) {
       throw new AppError("Acesso negado", 403)
     }
 
     // Núcleo de criação compartilhado com /api/team/invite
     const { member, tempPassword } = await inviteOrgMember({
       orgId: body.org_id,
-      role: body.role,
+      roles: body.roles,
       profileId: body.profile_id,
       email: body.email,
       name: body.name,
       jobTitle: body.job_title,
-      features: body.features,
       storeIds: body.store_ids,
       invitedBy: user.id,
     })

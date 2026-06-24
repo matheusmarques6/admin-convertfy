@@ -5,6 +5,7 @@ import { MobileTopBar } from "@/components/layout/mobile-top-bar"
 import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wrapper"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
+import type { OrgRole } from "@/types/organization"
 import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
 import { WelcomeTour } from "@/components/ui/welcome-tour"
@@ -42,40 +43,44 @@ async function getPermissions(userId: string): Promise<Permissions | null> {
       .limit(1)
       .single()
 
-    // Get enabled features
-    let features: string[] = []
+    // Carrega TODAS as funções da conta a partir da junction org_member_roles.
+    // Acesso = união. Admin/Dev são bypass.
+    let roles: OrgRole[] = []
     let isOrgOwner = false
 
     if (orgMember) {
-      isOrgOwner = orgMember.role === "owner"
-
       try {
-        if (isAdmin || isOrgOwner) {
-          const { data: allFeatures } = await supabase
-            .from("features_catalog")
-            .select("key")
-            .eq("is_active", true)
+        const { data: roleRows } = await supabase
+          .from("org_member_roles")
+          .select("role")
+          .eq("org_member_id", orgMember.id)
 
-          features = allFeatures?.map((f) => f.key) || []
-        } else {
-          const { data: memberFeatures } = await supabase
-            .from("org_member_features")
-            .select("feature_key")
-            .eq("org_member_id", orgMember.id)
-            .eq("enabled", true)
+        roles = (roleRows?.map((r) => r.role as OrgRole) ?? []).filter(Boolean)
 
-          features = memberFeatures?.map((f) => f.feature_key) || []
+        // Fallback: se a junction não tem entradas para esta conta, usa a
+        // role canônica que está em org_members.role. Cobre o gap entre o
+        // momento do backfill da migration e a primeira atribuição via UI.
+        if (roles.length === 0 && orgMember.role) {
+          roles = [orgMember.role as OrgRole]
         }
       } catch (err) {
-        console.error("[Layout] Error fetching features:", err)
+        console.error("[Layout] Error fetching roles:", err)
+        if (orgMember.role) roles = [orgMember.role as OrgRole]
       }
+
+      isOrgOwner = roles.includes("admin")
     }
 
-    // Get store access
+    // Sistema de features está desativado (tabelas inertes). Mantido vazio
+    // para preservar a interface de Permissions até a próxima limpeza.
+    const features: string[] = []
+
+    // Get store access. Bypass para admin/dev (acesso a todas as lojas).
+    const hasStoreBypass = isAdmin || roles.includes("admin") || roles.includes("dev")
     let storeAccess: StoreAccess[] = []
 
     try {
-      if (isAdmin || isOrgOwner) {
+      if (hasStoreBypass) {
         const { data: allStores } = await supabase
           .from("client_stores")
           .select(`
@@ -129,55 +134,23 @@ async function getPermissions(userId: string): Promise<Permissions | null> {
       console.error("[Layout] Error fetching store access:", err)
     }
 
-    // Helper function to check if user has a specific feature
-    const hasFeature = (featureKey: string) => {
-      if (isAdmin || isOrgOwner) return true
-      return features.includes(featureKey)
-    }
-
     return {
+      roles,
       isAdmin,
       isOrgOwner,
       orgRole: orgMember?.role || null,
       features,
       storeAccess,
-      canCreateClients: hasFeature("create_clients"),
-      canManagePortalUsers: hasFeature("manage_portal_users"),
-      canViewReports: hasFeature("view_reports"),
-      canViewFinancial: hasFeature("view_financial"),
-      canControlOnboarding: hasFeature("onboarding_control"),
-      canViewOnboarding: hasFeature("onboarding_view") || hasFeature("onboarding_control"),
-      canControlTeam: hasFeature("team_control"),
-      canViewTeam: hasFeature("team_view") || hasFeature("team_control"),
-      canControlCampaigns: hasFeature("campaign_control"),
-      canViewCampaigns: hasFeature("campaign_view") || hasFeature("campaign_control"),
-      canGenerateCopy: hasFeature("campaign_copy"),
-      canControlRequests: hasFeature("request_control"),
-      canExecuteRequests: hasFeature("request_execute"),
-      canControlCalendar: hasFeature("calendar_control"),
     }
   } catch (error) {
     console.error("[Layout] Error fetching permissions:", error)
     return {
+      roles: [],
       isAdmin: false,
       isOrgOwner: false,
       orgRole: null,
       features: [],
       storeAccess: [],
-      canCreateClients: false,
-      canManagePortalUsers: false,
-      canViewReports: false,
-      canViewFinancial: false,
-      canControlOnboarding: false,
-      canViewOnboarding: false,
-      canControlTeam: false,
-      canViewTeam: false,
-      canControlCampaigns: false,
-      canViewCampaigns: false,
-      canGenerateCopy: false,
-      canControlRequests: false,
-      canExecuteRequests: false,
-      canControlCalendar: false,
     }
   }
 }

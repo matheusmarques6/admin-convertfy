@@ -744,49 +744,21 @@ export interface CalendarCampaign {
 // Organization & Agent Types
 // ===========================================
 
-export type OrgRole = "owner" | "manager" | "coo" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
-export type OrgType = "internal" | "agency" | "partner"
+// Unificado: tipos canônicos vivem em `./organization.ts`. Importar local e
+// re-exportar evita drift entre as duas fontes (e mantém acessível neste módulo).
+import type {
+  OrgRole as OrgRoleCanonical,
+  OrgType as OrgTypeCanonical,
+  Organization as OrganizationCanonical,
+  OrgMember as OrgMemberCanonical,
+  OrgMemberFormData as OrgMemberFormDataCanonical,
+} from "./organization"
 
-export interface Organization {
-  id: string
-  name: string
-  slug: string
-  type: OrgType
-  settings: Record<string, unknown>
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface OrgMember {
-  id: string
-  org_id: string
-  profile_id: string
-  role: OrgRole
-  job_title?: string
-  is_active: boolean
-  invited_by?: string
-  invited_at: string
-  invite_accepted_at?: string
-  created_at: string
-  updated_at: string
-  // Joined data
-  organization?: Organization
-  profile?: User
-  features?: OrgMemberFeature[]
-  store_access?: AgentStoreAccess[]
-}
-
-export interface OrgMemberFormData {
-  org_id: string
-  profile_id?: string
-  email?: string
-  name?: string
-  role: OrgRole
-  job_title?: string
-  features?: string[]
-  store_ids?: string[]
-}
+export type OrgRole = OrgRoleCanonical
+export type OrgType = OrgTypeCanonical
+export type Organization = OrganizationCanonical
+export type OrgMember = OrgMemberCanonical
+export type OrgMemberFormData = OrgMemberFormDataCanonical
 
 export interface FeatureCatalog {
   key: string
@@ -804,7 +776,10 @@ export interface MemberWithDetails {
   id: string
   org_id: string
   profile_id: string
+  /** Primary role (legacy). A fonte de verdade é `roles`. */
   role: OrgRole
+  /** Lista de funções da junction `org_member_roles`. */
+  roles?: OrgRole[]
   is_active: boolean
   invited_at?: string
   joined_at?: string
@@ -813,6 +788,7 @@ export interface MemberWithDetails {
   job_title?: string
   organization?: Organization
   profile?: { id: string; name: string; email: string; avatar_url?: string; last_sign_in_at?: string }
+  /** @deprecated Tabelas de features estão inertes. */
   enabled_features?: string[]
   store_access_count?: number
 }

@@ -9,11 +9,8 @@ import {
   Pencil,
   Send,
   Trash2,
-  ShieldAlert,
-  ShieldCheck,
-  Shield,
-  Eye,
   Key,
+  Info,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +39,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import { ALL_ORG_ROLES, ORG_ROLE_LABELS } from "@/lib/permissions/role-access"
+import type { OrgRole } from "@/types/organization"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,22 +51,9 @@ interface TeamMember {
   avatar_url: string | null
   role: string
   org_role: string
+  org_roles: OrgRole[]
   last_sign_in_at: string | null
   is_active: boolean
-}
-
-// ── Permission Matrix (static, from original) ──────────────────────────────
-
-const roles = [
-  { name: "Admin", icon: ShieldAlert, color: "negative" as const, permissions: { clients: "Total", pipeline: "Total", reports: "Total", settings: "Total", team: "Total", financial: "Total", integrations: "Total", delete: "Sim" } },
-  { name: "Manager", icon: ShieldCheck, color: "info" as const, permissions: { clients: "Total", pipeline: "Total", reports: "Total", settings: "Leitura", team: "Leitura", financial: "Leitura", integrations: "Leitura", delete: "Não" } },
-  { name: "Member", icon: Shield, color: "neutral" as const, permissions: { clients: "Próprios", pipeline: "Edição", reports: "Leitura", settings: "Não", team: "Não", financial: "Não", integrations: "Não", delete: "Não" } },
-  { name: "Viewer", icon: Eye, color: "warning" as const, permissions: { clients: "Leitura", pipeline: "Leitura", reports: "Leitura", settings: "Não", team: "Não", financial: "Não", integrations: "Não", delete: "Não" } },
-]
-
-const permissionLabels: Record<string, string> = {
-  clients: "Clientes", pipeline: "Pipeline", reports: "Relatórios", settings: "Configurações",
-  team: "Equipe", financial: "Financeiro", integrations: "Integrações", delete: "Excluir dados",
 }
 
 // ── InviteMemberModal ───────────────────────────────────────────────────────
@@ -75,19 +61,23 @@ const permissionLabels: Record<string, string> = {
 function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClose: () => void; onInvited: () => void }) {
   const { toast } = useToast()
   const [email, setEmail] = useState("")
-  const [role, setRole] = useState("member")
+  const [roles, setRoles] = useState<OrgRole[]>(["suporte"])
   const [sending, setSending] = useState(false)
-  // Senha provisória retornada pela API (quando um novo usuário é criado).
-  // Exibida pro admin copiar caso o e-mail de boas-vindas não chegue.
   const [tempPassword, setTempPassword] = useState<string | null>(null)
   const [invitedEmail, setInvitedEmail] = useState("")
 
   function resetAndClose() {
     setEmail("")
-    setRole("member")
+    setRoles(["suporte"])
     setTempPassword(null)
     setInvitedEmail("")
     onClose()
+  }
+
+  function toggleRole(role: OrgRole) {
+    setRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
   }
 
   function copyPassword() {
@@ -97,13 +87,13 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
   }
 
   async function handleInvite() {
-    if (!email) return
+    if (!email || roles.length === 0) return
     setSending(true)
     try {
       const response = await fetch("/api/team/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify({ email, roles }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -112,7 +102,6 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
       onInvited()
       const pwd = data.data?.temp_password || data.temp_password || null
       if (pwd) {
-        // Mostra a senha provisória — não fecha o modal ainda
         setInvitedEmail(email)
         setTempPassword(pwd)
       } else {
@@ -128,7 +117,7 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
 
   return (
     <Dialog open={open} onOpenChange={resetAndClose}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{tempPassword ? "Membro criado" : "Convidar membro"}</DialogTitle>
         </DialogHeader>
@@ -161,23 +150,38 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@empresa.com" />
               </FormField>
 
-              <FormField label="Role" required>
-                <SegmentedTabs value={role} onValueChange={setRole}>
-                  <SegmentedTabItem value="admin">Admin</SegmentedTabItem>
-                  <SegmentedTabItem value="manager">Manager</SegmentedTabItem>
-                  <SegmentedTabItem value="member">Membro</SegmentedTabItem>
-                </SegmentedTabs>
+              <FormField label="Funções (1 ou mais)" required>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_ORG_ROLES.map((r) => (
+                    <label
+                      key={r}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-[6px] border cursor-pointer text-[13px]",
+                        "border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+                        roles.includes(r)
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-[#0F1117] border-transparent"
+                          : "bg-white dark:bg-[#1A1D27] text-gray-700 dark:text-[#EAEDF3] hover:bg-gray-50 dark:hover:bg-[#242836]"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={roles.includes(r)}
+                        onChange={() => toggleRole(r)}
+                        className="sr-only"
+                      />
+                      {ORG_ROLE_LABELS[r]}
+                    </label>
+                  ))}
+                </div>
                 <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-2">
-                  {role === "admin" && "Acesso total ao sistema, incluindo configurações e equipe."}
-                  {role === "manager" && "Gerencia clientes, lojas e campanhas. Sem acesso a configurações."}
-                  {role === "member" && "Acesso limitado às lojas atribuídas. Sem financeiro ou equipe."}
+                  Multi-função: a conta vê a união do que cada função libera.
                 </p>
               </FormField>
             </div>
 
             <DialogFooter className="flex flex-col sm:flex-row gap-2">
               <Button variant="ghost" size="md" onClick={resetAndClose} className="w-full sm:w-auto">Cancelar</Button>
-              <Button variant="primary" size="md" onClick={handleInvite} disabled={!email || sending} className="w-full sm:w-auto">
+              <Button variant="primary" size="md" onClick={handleInvite} disabled={!email || roles.length === 0 || sending} className="w-full sm:w-auto">
                 {sending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Enviar convite
               </Button>
@@ -207,7 +211,8 @@ export default function TeamSettingsPage() {
         .from("org_members")
         .select(`
           id, role, is_active,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at),
+          roles:org_member_roles(role)
         `)
         .eq("is_active", true)
         .order("created_at", { ascending: false })
@@ -216,13 +221,16 @@ export default function TeamSettingsPage() {
 
       const mapped: TeamMember[] = (data || []).map((m: Record<string, unknown>) => {
         const p = m.profile as Record<string, unknown> | null
+        const rolesRaw = (m.roles as Array<{ role: OrgRole }> | null) ?? []
+        const orgRoles = rolesRaw.map((r) => r.role).filter(Boolean)
         return {
           id: m.id as string,
           name: (p?.name as string) || "—",
           email: (p?.email as string) || "—",
           avatar_url: (p?.avatar_url as string) || null,
           role: (p?.role as string) || "member",
-          org_role: (m.role as string) || "member",
+          org_role: (m.role as string) || "suporte",
+          org_roles: orgRoles.length > 0 ? orgRoles : [(m.role as OrgRole) || "suporte"],
           last_sign_in_at: (p?.last_sign_in_at as string) || null,
           is_active: m.is_active as boolean,
         }
@@ -260,9 +268,9 @@ export default function TeamSettingsPage() {
     return date.toLocaleDateString("pt-BR")
   }
 
-  function getRoleBadgeVariant(role: string) {
-    if (role === "admin" || role === "owner") return "negative" as const
-    if (role === "manager") return "info" as const
+  function getRoleBadgeVariant(role: OrgRole) {
+    if (role === "admin" || role === "dev") return "negative" as const
+    if (role === "coo") return "info" as const
     return "neutral" as const
   }
 
@@ -271,7 +279,7 @@ export default function TeamSettingsPage() {
       <PageHeader
         title="Equipe"
         badge={members.length}
-        description="Gerencie usuários, roles e permissões de acesso."
+        description="Gerencie usuários e funções de acesso."
         actions={
           <Button variant="primary" size="md" onClick={() => setShowInvite(true)}>
             <UserPlus className="h-4 w-4 mr-2" />
@@ -304,7 +312,7 @@ export default function TeamSettingsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Membro</TableHead>
-                      <TableHead>Role</TableHead>
+                      <TableHead>Funções</TableHead>
                       <TableHead>Último acesso</TableHead>
                       <TableHead className="w-[48px]"></TableHead>
                     </TableRow>
@@ -328,9 +336,13 @@ export default function TeamSettingsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getRoleBadgeVariant(member.org_role)} showDot={false} className="capitalize">
-                            {member.org_role}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1">
+                            {member.org_roles.map((r) => (
+                              <Badge key={r} variant={getRoleBadgeVariant(r)} showDot={false}>
+                                {ORG_ROLE_LABELS[r] ?? r}
+                              </Badge>
+                            ))}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm font-mono tabular-nums text-gray-400 dark:text-[#5C6378]">
@@ -367,7 +379,7 @@ export default function TeamSettingsPage() {
                 </Table>
               </div>
 
-              {/* Mobile card stack — Rule 22 */}
+              {/* Mobile card stack */}
               <div className="md:hidden space-y-2">
                 {members.map((member) => (
                   <div
@@ -391,9 +403,13 @@ export default function TeamSettingsPage() {
                           <p className="text-xs text-gray-400 dark:text-[#5C6378] truncate">{member.email}</p>
                         </div>
                       </div>
-                      <Badge variant={getRoleBadgeVariant(member.org_role)} showDot={false} className="capitalize shrink-0">
-                        {member.org_role}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1 justify-end max-w-[40%]">
+                        {member.org_roles.map((r) => (
+                          <Badge key={r} variant={getRoleBadgeVariant(r)} showDot={false}>
+                            {ORG_ROLE_LABELS[r] ?? r}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.04)]">
                       <span className="text-xs font-mono tabular-nums text-gray-400 dark:text-[#5C6378]">
@@ -411,48 +427,36 @@ export default function TeamSettingsPage() {
         </>
       )}
 
-      {/* Permissions tab (static matrix) */}
+      {/* Permissions tab (informational) */}
       {tab === "permissions" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Icon icon={Key} size={16} className="text-gray-400 dark:text-[#5C6378]" />
-              Matriz de Permissões
+              <Icon icon={Info} size={16} className="text-gray-400 dark:text-[#5C6378]" />
+              Permissões por função
             </CardTitle>
             <CardDescription>
-              As permissões são gerenciadas via RLS no banco de dados.
+              Cada conta tem uma ou mais funções; o acesso a cada item do menu é a UNIÃO do que
+              suas funções liberam. Admin e Dev têm acesso total. A matriz oficial vive em
+              <code className="ml-1">src/lib/permissions/role-access.ts</code>.
             </CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-40">Recurso</TableHead>
-                  {roles.map((role) => (
-                    <TableHead key={role.name} className="text-center">
-                      <Badge variant={role.color} showDot={false}>{role.name}</Badge>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.keys(permissionLabels).map((key) => (
-                  <TableRow key={key}>
-                    <TableCell className="font-medium text-sm">{permissionLabels[key]}</TableCell>
-                    {roles.map((role) => {
-                      const val = role.permissions[key as keyof typeof role.permissions]
-                      return (
-                        <TableCell key={role.name} className="text-center text-sm">
-                          <span className={val === "Não" ? "text-muted-foreground" : val === "Total" || val === "Sim" ? "text-success font-medium" : ""}>
-                            {val}
-                          </span>
-                        </TableCell>
-                      )
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {ALL_ORG_ROLES.map((r) => (
+                <div
+                  key={r}
+                  className="rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] p-3"
+                >
+                  <Badge variant={getRoleBadgeVariant(r)} showDot={false} className="mb-2">
+                    {ORG_ROLE_LABELS[r]}
+                  </Badge>
+                  <p className="text-[12px] text-gray-500 dark:text-[#8B92A5]">
+                    {roleDescription(r)}
+                  </p>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -460,4 +464,21 @@ export default function TeamSettingsPage() {
       <InviteMemberModal open={showInvite} onClose={() => setShowInvite(false)} onInvited={loadMembers} />
     </div>
   )
+}
+
+function roleDescription(role: OrgRole): string {
+  switch (role) {
+    case "admin":
+      return "Acesso total a tudo, inclusive Ferramentas e configurações internas."
+    case "dev":
+      return "Acesso total (engenharia). Mesmo bypass do Admin."
+    case "coo":
+      return "Operação inteira + Geral. Não vê Comercial nem Ferramentas."
+    case "suporte":
+      return "Comercial completo + operação parcial. Equipe em modo leitura."
+    case "designer":
+      return "Operacional restrito (Dashboard, Lojas, Onboarding) + Geral mínimo."
+    case "implementacao":
+      return "Mesmo conjunto que Designer por enquanto."
+  }
 }

@@ -10,6 +10,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { inviteOrgMember } from "@/lib/services/org-member-invite.service"
+import { ROLES_CAN_CREATE_ACCOUNTS } from "@/lib/permissions/role-access"
 import type { OrgRole } from "@/types"
 
 const log = logger.child("TeamInvite")
@@ -18,17 +19,11 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// O modal "Convidar membro" (settings/team) só coleta email + role com rótulos
-// simplificados. Mapeamos para o enum real `org_role`.
-const SIMPLE_ROLE_TO_ORG_ROLE: Record<string, OrgRole> = {
-  admin: "owner",
-  manager: "manager",
-  member: "support",
-}
+const ORG_ROLE_VALUES = ["admin", "dev", "coo", "suporte", "designer", "implementacao"] as const
 
 const inviteSchema = z.object({
   email: z.string().email("Email inválido"),
-  role: z.enum(["admin", "manager", "member"]),
+  roles: z.array(z.enum(ORG_ROLE_VALUES)).min(1, "Selecione ao menos uma função"),
 })
 
 /** "rickmusic70@gmail.com" → "Rickmusic70" (o modal não coleta nome). */
@@ -37,15 +32,16 @@ function nameFromEmail(email: string): string {
   return local.charAt(0).toUpperCase() + local.slice(1)
 }
 
-// POST - Convite simplificado de membro (email + role) na org do convidante
+// POST - Convite simplificado de membro (email + roles[]) na org do convidante
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
-    const { email, role } = inviteSchema.parse(await request.json())
+    const { email, roles } = inviteSchema.parse(await request.json())
 
-    // Gate: system admin OU owner/manager de alguma org
+    // Gate: system admin OU conta com função autorizada a criar contas
+    // (admin/dev/coo) em pelo menos uma org.
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -54,23 +50,31 @@ export async function POST(request: NextRequest) {
 
     const isSystemAdmin = profile?.role === "admin"
 
-    // Org do convidante (onde ele é owner/manager). Fallback: primeira org.
     const { data: ownerships } = await supabase
       .from("org_members")
-      .select("org_id, role")
+      .select("id, org_id, role")
       .eq("profile_id", user.id)
-      .in("role", ["owner", "manager"])
 
-    const isOrgAdmin = (ownerships?.length ?? 0) > 0
+    const memberIds = (ownerships ?? []).map((m) => m.id)
 
-    if (!isSystemAdmin && !isOrgAdmin) {
+    let inviterRoles: OrgRole[] = []
+    if (memberIds.length > 0) {
+      const { data: roleRows } = await supabase
+        .from("org_member_roles")
+        .select("role")
+        .in("org_member_id", memberIds)
+      inviterRoles = (roleRows ?? []).map((r) => r.role as OrgRole)
+    }
+
+    const canCreate = inviterRoles.some((r) => ROLES_CAN_CREATE_ACCOUNTS.includes(r))
+
+    if (!isSystemAdmin && !canCreate) {
       throw new AppError("Acesso negado", 403)
     }
 
     let orgId = ownerships?.[0]?.org_id as string | undefined
 
     if (!orgId) {
-      // System admin sem org própria: usar a primeira organização (default)
       const admin = createAdminClient()
       const { data: defaultOrg } = await admin
         .from("organizations")
@@ -86,13 +90,13 @@ export async function POST(request: NextRequest) {
 
     const { member, tempPassword } = await inviteOrgMember({
       orgId,
-      role: SIMPLE_ROLE_TO_ORG_ROLE[role],
+      roles: roles as OrgRole[],
       email,
       name: nameFromEmail(email),
       invitedBy: user.id,
     })
 
-    log.info("Convite simplificado criado", { email, role, orgId })
+    log.info("Convite simplificado criado", { email, roles, orgId })
 
     const response: {
       member: typeof member

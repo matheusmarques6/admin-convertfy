@@ -2,16 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import type { OrgRole } from "@/types/organization"
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
-// GET - Get current user's permissions, features, and store access
+// GET - Get current user's roles, permissions and store access
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -28,7 +25,6 @@ export async function GET(request: NextRequest) {
       throw new AppError("Perfil não encontrado", 404)
     }
 
-    // Check if user is admin (global admin)
     const isAdmin = profile.role === "admin"
 
     // Get org membership
@@ -40,38 +36,31 @@ export async function GET(request: NextRequest) {
       `)
       .eq("profile_id", user.id)
       .eq("is_active", true)
-      .order("role", { ascending: true }) // 'owner' comes first alphabetically
+      .order("role", { ascending: true })
       .limit(1)
       .single()
 
-    // Get enabled features
-    let features: string[] = []
+    // Carrega todas as funções da conta (multi-função via org_member_roles).
+    let roles: OrgRole[] = []
     let isOrgOwner = false
 
     if (orgMember) {
-      isOrgOwner = orgMember.role === "owner"
+      const { data: roleRows } = await supabase
+        .from("org_member_roles")
+        .select("role")
+        .eq("org_member_id", orgMember.id)
 
-      if (isAdmin || isOrgOwner) {
-        // Admins and owners have all features
-        const { data: allFeatures } = await supabase
-          .from("features_catalog")
-          .select("key")
-          .eq("is_active", true)
+      roles = (roleRows?.map((r) => r.role as OrgRole) ?? []).filter(Boolean)
 
-        features = allFeatures?.map((f) => f.key) || []
-      } else {
-        // Get assigned features
-        const { data: memberFeatures } = await supabase
-          .from("org_member_features")
-          .select("feature_key")
-          .eq("org_member_id", orgMember.id)
-          .eq("enabled", true)
-
-        features = memberFeatures?.map((f) => f.feature_key) || []
+      if (roles.length === 0 && orgMember.role) {
+        roles = [orgMember.role as OrgRole]
       }
+
+      isOrgOwner = roles.includes("admin")
     }
 
-    // Get store access
+    const hasStoreBypass = isAdmin || roles.includes("admin") || roles.includes("dev")
+
     let storeAccess: Array<{
       store_id: string
       store_name: string
@@ -84,8 +73,7 @@ export async function GET(request: NextRequest) {
       can_manage_reports: boolean
     }> = []
 
-    if (isAdmin || isOrgOwner) {
-      // Admins and owners can access all stores
+    if (hasStoreBypass) {
       const { data: allStores } = await supabase
         .from("client_stores")
         .select(`
@@ -110,7 +98,6 @@ export async function GET(request: NextRequest) {
         }
       })
     } else if (orgMember) {
-      // Get specific store access
       const { data: access } = await supabase
         .from("agent_store_access")
         .select(`
@@ -137,36 +124,16 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Helper function to check if user has a specific feature
-    const hasFeature = (featureKey: string) => {
-      if (isAdmin || isOrgOwner) return true
-      return features.includes(featureKey)
-    }
-
     return NextResponse.json({
       profile,
       orgMember: orgMember || null,
       permissions: {
+        roles,
         isAdmin,
         isOrgOwner,
         orgRole: orgMember?.role || null,
-        features,
+        features: [],
         storeAccess,
-        // Computed permissions for quick checks
-        canCreateClients: hasFeature("create_clients"),
-        canManagePortalUsers: hasFeature("manage_portal_users"),
-        canViewReports: hasFeature("view_reports"),
-        canViewFinancial: hasFeature("view_financial"),
-        canControlOnboarding: hasFeature("onboarding_control"),
-        canViewOnboarding: hasFeature("onboarding_view") || hasFeature("onboarding_control"),
-        canControlTeam: hasFeature("team_control"),
-        canViewTeam: hasFeature("team_view") || hasFeature("team_control"),
-        canControlCampaigns: hasFeature("campaign_control"),
-        canViewCampaigns: hasFeature("campaign_view") || hasFeature("campaign_control"),
-        canGenerateCopy: hasFeature("campaign_copy"),
-        canControlRequests: hasFeature("request_control"),
-        canExecuteRequests: hasFeature("request_execute"),
-        canControlCalendar: hasFeature("calendar_control"),
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {

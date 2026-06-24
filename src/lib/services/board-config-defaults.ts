@@ -17,41 +17,35 @@ export interface BoardConfigDefaults {
  * Quando um membro não tem config salva, esses defaults são usados
  * como sugestão pré-preenchida baseada na sua função.
  */
+const ADMIN_LIKE: BoardConfigDefaults = {
+  show_onboarding_tasks: true,
+  show_meeting_tasks: true,
+  show_campaign_tasks: true,
+  show_feedback_tasks: true,
+  show_report_tasks: true,
+  show_contract_tasks: true,
+  show_manual_tasks: true,
+  calendar_view_mode: "monthly",
+  show_personal_events: true,
+}
+
+const OPERATOR: BoardConfigDefaults = {
+  show_onboarding_tasks: true,
+  show_meeting_tasks: true,
+  show_campaign_tasks: true,
+  show_feedback_tasks: false,
+  show_report_tasks: false,
+  show_contract_tasks: false,
+  show_manual_tasks: true,
+  calendar_view_mode: "weekly",
+  show_personal_events: true,
+}
+
 export const BOARD_CONFIG_DEFAULTS: Record<OrgRole, BoardConfigDefaults> = {
-  owner: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: true,
-    show_feedback_tasks: true,
-    show_report_tasks: true,
-    show_contract_tasks: true,
-    show_manual_tasks: true,
-    calendar_view_mode: "monthly",
-    show_personal_events: true,
-  },
-  manager: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: true,
-    show_feedback_tasks: true,
-    show_report_tasks: true,
-    show_contract_tasks: true,
-    show_manual_tasks: true,
-    calendar_view_mode: "monthly",
-    show_personal_events: true,
-  },
-  coo: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: true,
-    show_feedback_tasks: true,
-    show_report_tasks: true,
-    show_contract_tasks: true,
-    show_manual_tasks: true,
-    calendar_view_mode: "monthly",
-    show_personal_events: true,
-  },
-  coordinator: {
+  admin: ADMIN_LIKE,
+  dev: ADMIN_LIKE,
+  coo: ADMIN_LIKE,
+  suporte: {
     show_onboarding_tasks: true,
     show_meeting_tasks: true,
     show_campaign_tasks: false,
@@ -62,65 +56,12 @@ export const BOARD_CONFIG_DEFAULTS: Record<OrgRole, BoardConfigDefaults> = {
     calendar_view_mode: "monthly",
     show_personal_events: true,
   },
-  copywriter: {
-    show_onboarding_tasks: false,
-    show_meeting_tasks: false,
-    show_campaign_tasks: true,
-    show_feedback_tasks: false,
-    show_report_tasks: false,
-    show_contract_tasks: false,
-    show_manual_tasks: true,
-    calendar_view_mode: "weekly",
-    show_personal_events: true,
-  },
-  designer: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: true,
-    show_feedback_tasks: false,
-    show_report_tasks: false,
-    show_contract_tasks: false,
-    show_manual_tasks: true,
-    calendar_view_mode: "weekly",
-    show_personal_events: true,
-  },
-  developer: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: true,
-    show_feedback_tasks: false,
-    show_report_tasks: false,
-    show_contract_tasks: false,
-    show_manual_tasks: true,
-    calendar_view_mode: "weekly",
-    show_personal_events: true,
-  },
-  support: {
-    show_onboarding_tasks: true,
-    show_meeting_tasks: true,
-    show_campaign_tasks: false,
-    show_feedback_tasks: true,
-    show_report_tasks: true,
-    show_contract_tasks: true,
-    show_manual_tasks: true,
-    calendar_view_mode: "monthly",
-    show_personal_events: true,
-  },
-  analyst: {
-    show_onboarding_tasks: false,
-    show_meeting_tasks: true,
-    show_campaign_tasks: false,
-    show_feedback_tasks: false,
-    show_report_tasks: true,
-    show_contract_tasks: false,
-    show_manual_tasks: true,
-    calendar_view_mode: "monthly",
-    show_personal_events: true,
-  },
+  designer: OPERATOR,
+  implementacao: OPERATOR,
 }
 
 export function getDefaultsForRole(role: OrgRole): BoardConfigDefaults {
-  return BOARD_CONFIG_DEFAULTS[role] ?? BOARD_CONFIG_DEFAULTS.support
+  return BOARD_CONFIG_DEFAULTS[role] ?? BOARD_CONFIG_DEFAULTS.suporte
 }
 
 /**

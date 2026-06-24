@@ -23,10 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+/* Select still used for org_id dropdown below. */
 import { toast } from "@/lib/hooks/use-toast"
 import { AgentBoardConfig, type BoardConfigState } from "./agent-board-config"
+import { ALL_ORG_ROLES, ORG_ROLE_LABELS } from "@/lib/permissions/role-access"
+import { cn } from "@/lib/utils"
 
-import type { FeatureCatalog, MemberWithDetails, Organization, OrgRole } from "@/types"
+import type { MemberWithDetails, Organization, OrgRole } from "@/types"
 
 interface StoreWithClient {
   id: string
@@ -41,7 +44,6 @@ interface TeamMemberDialogProps {
   onClose: () => void
   onSuccess: () => void
   member: MemberWithDetails | null
-  features: FeatureCatalog[]
   organizations: Organization[]
   stores: StoreWithClient[]
 }
@@ -49,56 +51,22 @@ interface TeamMemberDialogProps {
 const schema = z.object({
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional().or(z.literal("")),
-  role: z.enum(["owner", "manager", "coo", "coordinator", "copywriter", "designer", "developer", "support", "analyst"]),
+  roles: z.array(z.enum(["admin", "dev", "coo", "suporte", "designer", "implementacao"])).min(1, "Selecione ao menos uma função"),
   job_title: z.string().optional(),
   org_id: z.string().min(1, "Organização é obrigatória"),
 })
 
 type FormData = z.infer<typeof schema>
 
-const roleOptions: { value: OrgRole; label: string }[] = [
-  { value: "owner", label: "Owner (Acesso total)" },
-  { value: "manager", label: "Gerente" },
-  { value: "coo", label: "COO (Diretor de Operações)" },
-  { value: "coordinator", label: "Coordenador" },
-  { value: "copywriter", label: "Copywriter" },
-  { value: "designer", label: "Designer" },
-  { value: "developer", label: "Desenvolvedor" },
-  { value: "support", label: "Suporte" },
-  { value: "analyst", label: "Analista" },
-]
-
-// Group features by category
-function groupFeaturesByCategory(features: FeatureCatalog[]) {
-  return features.reduce((acc, feature) => {
-    if (!acc[feature.category]) {
-      acc[feature.category] = []
-    }
-    acc[feature.category].push(feature)
-    return acc
-  }, {} as Record<string, FeatureCatalog[]>)
-}
-
-const categoryLabels: Record<string, string> = {
-  onboarding: "Onboarding",
-  team: "Equipe",
-  campaign: "Campanhas",
-  request: "Solicitações",
-  calendar: "Calendário",
-  admin: "Administração",
-}
-
 export function TeamMemberDialog({
   open,
   onClose,
   onSuccess,
   member,
-  features,
   organizations,
   stores,
 }: TeamMemberDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [selectedStores, setSelectedStores] = useState<string[]>([])
   const [boardConfig, setBoardConfig] = useState<BoardConfigState | null>(null)
   const [boardConfigLoading, setBoardConfigLoading] = useState(false)
@@ -117,34 +85,42 @@ export function TeamMemberDialog({
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      role: "support",
+      roles: ["suporte"],
       org_id: organizations[0]?.id || "",
     },
   })
 
-  const selectedRole = watch("role")
+  const selectedRoles = (watch("roles") || []) as OrgRole[]
+  const primaryRole: OrgRole = selectedRoles[0] || "suporte"
+  const hasBypass = selectedRoles.includes("admin") || selectedRoles.includes("dev")
+
+  function toggleRole(role: OrgRole) {
+    const next = selectedRoles.includes(role)
+      ? selectedRoles.filter((r) => r !== role)
+      : [...selectedRoles, role]
+    setValue("roles", next as FormData["roles"], { shouldValidate: true })
+  }
 
   // Reset form when dialog opens/closes or member changes
   useEffect(() => {
     if (open) {
       if (member) {
-        setValue("role", member.role)
+        const memberRoles = (member.roles && member.roles.length > 0
+          ? member.roles
+          : [member.role]) as OrgRole[]
+        setValue("roles", memberRoles as FormData["roles"])
         setValue("job_title", member.job_title || "")
         setValue("org_id", member.org_id)
-        setSelectedFeatures(member.enabled_features || [])
-        // Load store access for editing
         loadMemberStoreAccess(member.id)
-        // Load board config
         loadBoardConfig(member.id)
       } else {
         reset({
           email: "",
           name: "",
-          role: "support",
+          roles: ["suporte"],
           job_title: "",
           org_id: organizations[0]?.id || "",
         })
-        setSelectedFeatures([])
         setSelectedStores([])
         setBoardConfig(null)
         setTempPassword(null)
@@ -200,14 +176,6 @@ export function TeamMemberDialog({
     }
   }
 
-  function toggleFeature(featureKey: string) {
-    setSelectedFeatures((prev) =>
-      prev.includes(featureKey)
-        ? prev.filter((f) => f !== featureKey)
-        : [...prev, featureKey]
-    )
-  }
-
   function toggleStore(storeId: string) {
     setSelectedStores((prev) =>
       prev.includes(storeId)
@@ -261,18 +229,16 @@ export function TeamMemberDialog({
 
       const body = isEditing
         ? {
-            role: data.role,
+            roles: data.roles,
             job_title: data.job_title,
-            features: selectedFeatures,
             store_ids: selectedStores,
           }
         : {
             org_id: data.org_id,
             email: data.email,
             name: data.name,
-            role: data.role,
+            roles: data.roles,
             job_title: data.job_title,
-            features: selectedFeatures,
             store_ids: selectedStores,
           }
 
@@ -321,11 +287,6 @@ export function TeamMemberDialog({
     }
   }
 
-  const groupedFeatures = groupFeaturesByCategory(features)
-
-  // Check if role is owner/manager (they have all features)
-  const hasAllFeatures = selectedRole === "owner" || selectedRole === "manager"
-
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -368,9 +329,8 @@ export function TeamMemberDialog({
         ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="info">Informações</TabsTrigger>
-              <TabsTrigger value="features">Features</TabsTrigger>
               <TabsTrigger value="stores">Lojas</TabsTrigger>
               <TabsTrigger value="board">Board</TabsTrigger>
             </TabsList>
@@ -437,24 +397,33 @@ export function TeamMemberDialog({
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="role">Cargo *</Label>
-                  <Select
-                    value={watch("role")}
-                    onValueChange={(value) => setValue("role", value as OrgRole)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cargo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roleOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.role && (
-                    <p className="text-sm text-destructive">{errors.role.message}</p>
+                  <Label>Funções *</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Selecione uma ou mais. O acesso é a união do que cada função libera.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_ORG_ROLES.map((r) => (
+                      <label
+                        key={r}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-sm",
+                          selectedRoles.includes(r)
+                            ? "bg-foreground text-background border-transparent"
+                            : "bg-background hover:bg-muted/50"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.includes(r)}
+                          onChange={() => toggleRole(r)}
+                          className="sr-only"
+                        />
+                        {ORG_ROLE_LABELS[r]}
+                      </label>
+                    ))}
+                  </div>
+                  {errors.roles && (
+                    <p className="text-sm text-destructive">{errors.roles.message as string}</p>
                   )}
                 </div>
 
@@ -468,54 +437,11 @@ export function TeamMemberDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="features" className="mt-0 space-y-4">
-                {hasAllFeatures ? (
-                  <div className="p-4 bg-muted rounded-lg text-center">
-                    <p className="text-sm text-muted-foreground">
-                      {selectedRole === "owner" ? "Owners" : "Gerentes"} têm acesso a todas as features automaticamente.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {Object.entries(groupedFeatures).map(([category, categoryFeatures]) => (
-                      <div key={category} className="space-y-2">
-                        <h4 className="font-medium text-sm">
-                          {categoryLabels[category] || category}
-                        </h4>
-                        <div className="grid gap-2">
-                          {categoryFeatures.map((feature) => (
-                            <label
-                              key={feature.key}
-                              className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedFeatures.includes(feature.key)}
-                                onChange={() => toggleFeature(feature.key)}
-                                className="h-4 w-4 rounded border-border"
-                              />
-                              <div className="flex-1">
-                                <p className="font-medium text-sm">{feature.name}</p>
-                                {feature.description && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {feature.description}
-                                  </p>
-                                )}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
               <TabsContent value="stores" className="mt-0 space-y-4">
-                {hasAllFeatures ? (
+                {hasBypass ? (
                   <div className="p-4 bg-muted rounded-lg text-center">
                     <p className="text-sm text-muted-foreground">
-                      {selectedRole === "owner" ? "Owners" : "Gerentes"} têm acesso a todas as lojas automaticamente.
+                      Admin e Dev têm acesso a todas as lojas automaticamente.
                     </p>
                   </div>
                 ) : (
@@ -572,7 +498,7 @@ export function TeamMemberDialog({
               <TabsContent value="board" className="mt-0">
                 <AgentBoardConfig
                   orgMemberId={member?.id || ""}
-                  role={selectedRole as OrgRole}
+                  role={primaryRole}
                   value={boardConfig}
                   onChange={setBoardConfig}
                   isLoading={boardConfigLoading}
