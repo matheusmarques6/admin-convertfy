@@ -329,7 +329,7 @@ export default function TeamSettingsPage() {
         .from("org_members")
         .select(`
           id, role, is_active,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role)
         `)
         .eq("is_active", true)
         .order("created_at", { ascending: false })
@@ -366,7 +366,7 @@ export default function TeamSettingsPage() {
           role: (p?.role as string) || "member",
           org_role: legacyRole,
           org_roles: orgRoles,
-          last_sign_in_at: (p?.last_sign_in_at as string) || null,
+          last_sign_in_at: null,
           is_active: m.is_active as boolean,
         }
       })
