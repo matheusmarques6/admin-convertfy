@@ -371,8 +371,19 @@ export default function TeamSettingsPage() {
         }
       })
       setMembers(mapped)
-    } catch {
-      toast({ variant: "destructive", title: "Erro", description: "Erro ao carregar equipe." })
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : JSON.stringify(err)
+      console.error("[team] loadMembers failed:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar equipe",
+        description: msg || "Erro desconhecido — abra o DevTools (Console) para detalhes.",
+      })
     } finally {
       setLoading(false)
     }
