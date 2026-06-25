@@ -232,3 +232,55 @@ export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
   designer: "Designer",
   implementacao: "Implementação",
 }
+
+// Mapa de funções legadas (ENUM antigo) → 6 funções canônicas. Usado para
+// exibir e pré-preencher a edição de contas migradas antes do backfill da
+// junção `org_member_roles`. DEVE espelhar o CASE de backfill da migration
+// 20260801. Qualquer valor desconhecido cai em "suporte".
+const LEGACY_ROLE_MAP: Record<string, OrgRole> = {
+  // já canônicos (passthrough)
+  admin: "admin",
+  dev: "dev",
+  coo: "coo",
+  suporte: "suporte",
+  designer: "designer",
+  implementacao: "implementacao",
+  // legados
+  owner: "admin",
+  developer: "implementacao",
+  support: "suporte",
+  manager: "suporte",
+  coordinator: "suporte",
+  copywriter: "suporte",
+  analyst: "suporte",
+  sdr: "suporte",
+  techlead: "dev",
+  ops: "suporte",
+  estrategista: "suporte",
+  cs: "suporte",
+  financeiro: "suporte",
+  member: "suporte",
+}
+
+/** Converte qualquer valor de role (legado ou canônico) numa das 6 funções. */
+export function toCanonicalRole(raw: string | null | undefined): OrgRole {
+  if (!raw) return "suporte"
+  return LEGACY_ROLE_MAP[raw] ?? "suporte"
+}
+
+/**
+ * Resolve o conjunto canônico de funções de um membro. Prioriza a junção
+ * `org_member_roles` (fonte de verdade); se vazia/indisponível, faz fallback
+ * para o `org_members.role` legado mapeado. Sempre retorna ≥1 função, sem
+ * duplicatas.
+ */
+export function resolveMemberRoles(
+  junctionRoles: readonly (string | null | undefined)[] | null | undefined,
+  legacyRole: string | null | undefined,
+): OrgRole[] {
+  const fromJunction = (junctionRoles ?? [])
+    .map((r) => (r ? toCanonicalRole(r) : null))
+    .filter((r): r is OrgRole => r !== null)
+  const base = fromJunction.length > 0 ? fromJunction : [toCanonicalRole(legacyRole)]
+  return Array.from(new Set(base))
+}

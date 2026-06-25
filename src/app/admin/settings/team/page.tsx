@@ -39,7 +39,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
-import { ALL_ORG_ROLES, ORG_ROLE_LABELS } from "@/lib/permissions/role-access"
+import { ALL_ORG_ROLES, ORG_ROLE_LABELS, resolveMemberRoles } from "@/lib/permissions/role-access"
 import type { OrgRole } from "@/types/organization"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -193,6 +193,120 @@ function InviteMemberModal({ open, onClose, onInvited }: { open: boolean; onClos
   )
 }
 
+// ── EditRolesModal ──────────────────────────────────────────────────────────
+
+function EditRolesModal({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: TeamMember | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const [roles, setRoles] = useState<OrgRole[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (member) setRoles(member.org_roles)
+  }, [member])
+
+  function toggleRole(role: OrgRole) {
+    setRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
+  }
+
+  async function handleSave() {
+    if (!member || roles.length === 0) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/admin/org-members/${member.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roles }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || "Erro ao salvar funções")
+      toast({ title: "Funções atualizadas", description: `Acesso de ${member.name} atualizado.` })
+      onSaved()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: err instanceof Error ? err.message : "Erro ao salvar funções",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!member} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Editar funções</DialogTitle>
+        </DialogHeader>
+        {member && (
+          <>
+            <div className="space-y-4 py-4">
+              <div className="p-3 rounded-[6px] bg-gray-50 dark:bg-[#242836] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+                <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">{member.name}</p>
+                <p className="text-xs text-gray-400 dark:text-[#5C6378]">{member.email}</p>
+              </div>
+
+              <FormField label="Funções (1 ou mais)" required>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_ORG_ROLES.map((r) => (
+                    <label
+                      key={r}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-[6px] border cursor-pointer text-[13px]",
+                        "border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]",
+                        roles.includes(r)
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-[#0F1117] border-transparent"
+                          : "bg-white dark:bg-[#1A1D27] text-gray-700 dark:text-[#EAEDF3] hover:bg-gray-50 dark:hover:bg-[#242836]"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={roles.includes(r)}
+                        onChange={() => toggleRole(r)}
+                        className="sr-only"
+                      />
+                      {ORG_ROLE_LABELS[r]}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-2">
+                  A conta vê a união do que cada função libera.
+                </p>
+              </FormField>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="ghost" size="md" onClick={onClose} className="w-full sm:w-auto">
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleSave}
+                disabled={roles.length === 0 || saving}
+                className="w-full sm:w-auto"
+              >
+                {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Salvar
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── TeamSettingsPage ────────────────────────────────────────────────────────
 
 type TeamTab = "members" | "permissions"
@@ -203,34 +317,55 @@ export default function TeamSettingsPage() {
   const [members, setMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
 
   const loadMembers = useCallback(async () => {
     try {
       const supabase = createClient()
+      // Sem embed em org_member_roles: o embed do PostgREST derruba a query
+      // inteira (400) se a junction estiver ausente/sem grant, e a tela some.
+      // Buscamos a junction numa query separada e tolerante a falha.
       const { data, error } = await supabase
         .from("org_members")
         .select(`
           id, role, is_active,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at),
-          roles:org_member_roles(role)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role, last_sign_in_at)
         `)
         .eq("is_active", true)
         .order("created_at", { ascending: false })
 
       if (error) throw error
 
-      const mapped: TeamMember[] = (data || []).map((m: Record<string, unknown>) => {
+      const rows = (data || []) as Array<Record<string, unknown>>
+      const ids = rows.map((m) => m.id as string)
+
+      // Junction (fonte de verdade). Se falhar (tabela ausente/sem grant),
+      // caímos no fallback pelo org_members.role legado.
+      const rolesByMember = new Map<string, string[]>()
+      if (ids.length > 0) {
+        const { data: roleRows } = await supabase
+          .from("org_member_roles")
+          .select("org_member_id, role")
+          .in("org_member_id", ids)
+        ;(roleRows ?? []).forEach((r: { org_member_id: string; role: string }) => {
+          const list = rolesByMember.get(r.org_member_id) ?? []
+          list.push(r.role)
+          rolesByMember.set(r.org_member_id, list)
+        })
+      }
+
+      const mapped: TeamMember[] = rows.map((m) => {
         const p = m.profile as Record<string, unknown> | null
-        const rolesRaw = (m.roles as Array<{ role: OrgRole }> | null) ?? []
-        const orgRoles = rolesRaw.map((r) => r.role).filter(Boolean)
+        const legacyRole = (m.role as string) || "suporte"
+        const orgRoles = resolveMemberRoles(rolesByMember.get(m.id as string), legacyRole)
         return {
           id: m.id as string,
           name: (p?.name as string) || "—",
           email: (p?.email as string) || "—",
           avatar_url: (p?.avatar_url as string) || null,
           role: (p?.role as string) || "member",
-          org_role: (m.role as string) || "suporte",
-          org_roles: orgRoles.length > 0 ? orgRoles : [(m.role as OrgRole) || "suporte"],
+          org_role: legacyRole,
+          org_roles: orgRoles,
           last_sign_in_at: (p?.last_sign_in_at as string) || null,
           is_active: m.is_active as boolean,
         }
@@ -357,7 +492,7 @@ export default function TeamSettingsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setEditingMember(member)}>
                                 <Pencil className="h-4 w-4 mr-2" />
                                 Editar permissões
                               </DropdownMenuItem>
@@ -415,9 +550,14 @@ export default function TeamSettingsPage() {
                       <span className="text-xs font-mono tabular-nums text-gray-400 dark:text-[#5C6378]">
                         {member.last_sign_in_at ? formatRelativeTime(member.last_sign_in_at) : "Nunca acessou"}
                       </span>
-                      <Button variant="ghost" size="icon-sm" onClick={() => handleRemoveMember(member)}>
-                        <Trash2 className="h-4 w-4 text-[#991B1B] dark:text-[#FCA5A5]" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => setEditingMember(member)}>
+                          <Pencil className="h-4 w-4 text-gray-500 dark:text-[#8B92A5]" />
+                        </Button>
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleRemoveMember(member)}>
+                          <Trash2 className="h-4 w-4 text-[#991B1B] dark:text-[#FCA5A5]" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -462,6 +602,14 @@ export default function TeamSettingsPage() {
       )}
 
       <InviteMemberModal open={showInvite} onClose={() => setShowInvite(false)} onInvited={loadMembers} />
+      <EditRolesModal
+        member={editingMember}
+        onClose={() => setEditingMember(null)}
+        onSaved={() => {
+          setEditingMember(null)
+          loadMembers()
+        }}
+      />
     </div>
   )
 }

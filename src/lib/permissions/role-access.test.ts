@@ -3,6 +3,8 @@ import {
   canAccess,
   isReadOnly,
   canCreateAccounts,
+  toCanonicalRole,
+  resolveMemberRoles,
   ACCESS_BY_ROLE,
   ALL_ORG_ROLES,
   type NavItemId,
@@ -152,5 +154,54 @@ describe("ACCESS_BY_ROLE — sanidade", () => {
     for (const role of ALL_ORG_ROLES) {
       expect(ACCESS_BY_ROLE[role]).toBeInstanceOf(Set)
     }
+  })
+})
+
+describe("toCanonicalRole — legado → 6 canônicas", () => {
+  it.each([
+    ["owner", "admin"],
+    ["developer", "implementacao"],
+    ["support", "suporte"],
+    ["manager", "suporte"],
+    ["coordinator", "suporte"],
+    ["copywriter", "suporte"],
+    ["analyst", "suporte"],
+    ["techlead", "dev"],
+    ["coo", "coo"],
+    ["designer", "designer"],
+    // passthrough das canônicas
+    ["admin", "admin"],
+    ["dev", "dev"],
+    ["suporte", "suporte"],
+    ["implementacao", "implementacao"],
+    // desconhecido / vazio → suporte
+    ["xpto", "suporte"],
+    ["", "suporte"],
+  ])("%s → %s", (raw, expected) => {
+    expect(toCanonicalRole(raw)).toBe(expected)
+  })
+
+  it("null/undefined → suporte", () => {
+    expect(toCanonicalRole(null)).toBe("suporte")
+    expect(toCanonicalRole(undefined)).toBe("suporte")
+  })
+})
+
+describe("resolveMemberRoles — junction vence, legado é fallback", () => {
+  it("usa a junction quando presente (mapeando legados)", () => {
+    expect(resolveMemberRoles(["coo", "designer"], "owner")).toEqual(["coo", "designer"])
+  })
+
+  it("fallback pro org_members.role legado quando junction vazia", () => {
+    expect(resolveMemberRoles([], "owner")).toEqual(["admin"])
+    expect(resolveMemberRoles(null, "developer")).toEqual(["implementacao"])
+  })
+
+  it("dedup após canonicalizar (manager e support → suporte)", () => {
+    expect(resolveMemberRoles(["manager", "support"], null)).toEqual(["suporte"])
+  })
+
+  it("sempre retorna ao menos uma função", () => {
+    expect(resolveMemberRoles(null, null)).toEqual(["suporte"])
   })
 })
