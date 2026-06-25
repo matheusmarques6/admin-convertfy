@@ -100,6 +100,10 @@ export interface EmailDraftProductItem {
 export interface EmailDraftBlock {
   id: string
   type: "image" | "heading" | "text" | "offer" | "button" | "divider" | "footer" | "products"
+  /** Rótulo de seção (HERO/REVIEW/FOOTER…), quando a copy é fatiada por seção
+   *  na normalização do callback. Vazio em blocos legados/não-seccionados.
+   *  É `section` (não `label`) porque `label` já é texto de botão no n8n. */
+  section?: string
   headline?: string
   sub?: string
   value?: string

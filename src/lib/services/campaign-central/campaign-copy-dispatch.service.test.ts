@@ -87,4 +87,18 @@ describe("buildN8nTheme", () => {
     expect(master.subject).toBe("Assunto")
     expect(master.blocks[0].value).toContain("corpo da copy")
   })
+
+  it("extrai brief.sections das seções ## da estrutura (contrato pro n8n)", () => {
+    const structure = "OBJETIVO\nVender.\n\n## HERO\nGancho.\n\n## CTA\nClique."
+    const { brief } = buildN8nTheme({ brief: { structure }, email_draft: null })
+    expect(brief.sections).toEqual([
+      { tag: "HERO", instructions: "Gancho." },
+      { tag: "CTA", instructions: "Clique." },
+    ])
+  })
+
+  it("estrutura sem marcadores ## → brief.sections vazio (sem regressão)", () => {
+    const { brief } = buildN8nTheme({ brief: { structure: STRUCTURE }, email_draft: null })
+    expect(brief.sections).toEqual([])
+  })
 })

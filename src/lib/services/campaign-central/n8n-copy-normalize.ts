@@ -284,7 +284,7 @@ function blockToPlainText(raw: unknown): string {
   // Qualquer outra string não-coberta (nome de campo inesperado), exceto
   // metadados e links/imagens.
   const SKIP = new Set<string>([
-    ...ORDER, "type", "id", "columns", "items",
+    ...ORDER, "type", "id", "section", "columns", "items",
     "url", "link", "href", "src", "image", "image_url", "image_src",
     "image_caption", "link_url", "button_url", "cta_url",
   ])
@@ -318,6 +318,149 @@ export function collapseBlocksToText(blocks: unknown[]): string {
     .join("\n\n")
 }
 
+// ── Fatiamento por seção (HERO/REVIEW/FOOTER…) ───────────────────────────
+
+/**
+ * Marcador de seção: heading markdown em linha própria (`## HERO`, `### Review`).
+ * Usamos `#` (não `[SEÇÃO]`) de propósito — a copy é cheia de placeholders entre
+ * colchetes (`[NÚMERO]`, `[NOME]`, `[LOGO]`); fatiar por `[...]` cortaria no
+ * lugar errado. Exige espaço após os `#` pra não casar `#hashtag`.
+ */
+const SECTION_HEADING_RE = /^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/
+
+/** Comprimento-alvo do rótulo de seção (rótulos são curtos: HERO, REVIEW…). */
+const SECTION_LABEL_MAX_LEN = 40
+
+/** Rótulo de seção normalizado: trim, espaços colapsados, MAIÚSCULAS, truncado. */
+function normalizeSectionLabel(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, " ").toUpperCase()
+  return t.length <= SECTION_LABEL_MAX_LEN ? t : t.slice(0, SECTION_LABEL_MAX_LEN).trimEnd()
+}
+
+/**
+ * Lê o rótulo de seção de um bloco do n8n. Só o campo `section` — NÃO `label`,
+ * que no `emailDraftBlockSchema`/sinônimos significa texto de botão/link
+ * (`{type:"button", label:"Comprar"}`); usá-lo aqui confundiria conteúdo com
+ * rótulo de seção.
+ */
+function readBlockSectionLabel(b: Record<string, unknown>): string | undefined {
+  return hasText(b.section) ? normalizeSectionLabel(b.section as string) : undefined
+}
+
+interface RawSection {
+  section?: string
+  value: string
+}
+
+/**
+ * Fatia um texto plano nas seções marcadas por `## SEÇÃO` (linha própria). O
+ * texto ANTES do 1º marcador vira uma seção sem rótulo (preâmbulo). Seções
+ * totalmente vazias (preâmbulo em branco) são descartadas; uma seção rotulada
+ * sem corpo é mantida (sinaliza ao COO que aquela seção não foi preenchida).
+ * Sem nenhum marcador, devolve uma única seção sem rótulo com o texto inteiro
+ * (equivale ao comportamento antigo de 1 bloco).
+ */
+function splitTextBySectionMarkers(text: string): RawSection[] {
+  const sections: Array<{ section?: string; lines: string[] }> = []
+  let current: { section?: string; lines: string[] } | null = null
+  for (const line of text.split("\n")) {
+    const m = line.match(SECTION_HEADING_RE)
+    if (m) {
+      current = { section: normalizeSectionLabel(m[1]), lines: [] }
+      sections.push(current)
+    } else if (!current) {
+      current = { lines: [line] }
+      sections.push(current)
+    } else {
+      current.lines.push(line)
+    }
+  }
+  return sections
+    .map((s) => ({ section: s.section, value: s.lines.join("\n").trim() }))
+    .filter((s) => s.value.length > 0 || s.section !== undefined)
+}
+
+/**
+ * Agrupa blocos do n8n que já vêm rotulados (campo `section`) em 1 bloco de
+ * texto por seção. Blocos sem rótulo herdam a seção corrente; blocos antes do
+ * 1º rótulo viram preâmbulo sem rótulo.
+ */
+function groupBlocksBySectionLabel(blocks: unknown[]): RawSection[] {
+  const groups: Array<{ section?: string; blocks: unknown[] }> = []
+  let current: { section?: string; blocks: unknown[] } | null = null
+  for (const b of blocks) {
+    const section =
+      typeof b === "object" && b !== null
+        ? readBlockSectionLabel(b as Record<string, unknown>)
+        : undefined
+    if (section && (!current || current.section !== section)) {
+      current = { section, blocks: [b] }
+      groups.push(current)
+    } else if (!current) {
+      current = { blocks: [b] }
+      groups.push(current)
+    } else {
+      current.blocks.push(b)
+    }
+  }
+  return groups
+    .map((g) => ({ section: g.section, value: collapseBlocksToText(g.blocks) }))
+    .filter((s) => s.value.length > 0 || s.section !== undefined)
+}
+
+/** True se ALGUM bloco do n8n traz rótulo de seção (campo `section`). */
+function blocksHaveSectionLabels(blocks: unknown[]): boolean {
+  return blocks.some(
+    (b) =>
+      typeof b === "object" &&
+      b !== null &&
+      readBlockSectionLabel(b as Record<string, unknown>) !== undefined,
+  )
+}
+
+/** RawSection[] → blocos de texto persistíveis (`{type:"text", section?, value}`). */
+function sectionsToTextBlocks(sections: RawSection[]): Array<Record<string, unknown>> {
+  return sections.map((s) =>
+    s.section
+      ? { type: "text", section: s.section, value: s.value }
+      : { type: "text", value: s.value },
+  )
+}
+
+/**
+ * Fatia a copy do n8n em UM bloco de texto POR SEÇÃO (HERO/REVIEW/FOOTER…),
+ * mantendo cada bloco como texto simples — robusto, sempre exibe completo
+ * (herança da decisão jun/2026; não voltamos a blocos tipados frágeis).
+ *
+ * Precedência: (1) se o n8n já rotulou os blocos (campo `section`), agrupa por
+ * rótulo; (2) senão, colapsa tudo em texto e fatia pelos marcadores `## SEÇÃO`;
+ * (3) sem rótulo nem marcador, vira 1 bloco de texto único (idêntico ao antigo).
+ *
+ * Copy sem texto algum → `[]`; o schema (`blocks.min(1)`) rejeita com 400 — não
+ * inventamos um bloco vazio (mesma filosofia do `deriveSubjectFromCopy`).
+ */
+function splitIntoSectionedTextBlocks(blocks: unknown[]): Array<Record<string, unknown>> {
+  if (blocksHaveSectionLabels(blocks)) {
+    const grouped = groupBlocksBySectionLabel(blocks)
+    if (grouped.length > 0) return sectionsToTextBlocks(grouped)
+  }
+  return sectionsToTextBlocks(splitTextBySectionMarkers(collapseBlocksToText(blocks)))
+}
+
+/**
+ * Extrai as seções declaradas numa "Estrutura & tom" do COO (`## SEÇÃO` + corpo).
+ * Usado no dispatch pra mandar ao n8n um contrato explícito das seções esperadas.
+ * Só retorna seções COM rótulo (ignora o preâmbulo sem marcador).
+ */
+export function parseStructureSections(
+  text: string | null | undefined,
+): Array<{ tag: string; instructions: string }> {
+  if (!text || !text.trim()) return []
+  return splitTextBySectionMarkers(text)
+    .filter((s): s is { section: string; value: string } => s.section !== undefined)
+    .map((s) => ({ tag: s.section, instructions: s.value }))
+}
+
 /** Tamanho-alvo do subject derivado (assunto de email curto recomendado). */
 const DERIVED_SUBJECT_MAX_LEN = 60
 
@@ -343,20 +486,10 @@ export function deriveSubjectFromCopy(copy: unknown): string {
   const firstLine = collapseBlocksToText(blocks)
     .split("\n")
     .map((l) => l.trim())
-    .find((l) => l.length > 0)
+    .find((l) => l.length > 0 && !SECTION_HEADING_RE.test(l))
   if (!firstLine) return ""
   if (firstLine.length <= DERIVED_SUBJECT_MAX_LEN) return firstLine
   return firstLine.slice(0, DERIVED_SUBJECT_MAX_LEN - 1).trimEnd() + "…"
-}
-
-/**
- * Colapsa TODOS os blocos do n8n num único bloco de `text` com a copy inteira.
- * Decisão de produto (jun/2026): o modelo de blocos tipados se mostrou frágil
- * (campos perdidos na validação, blocos sumindo no preview). Um texto único
- * captura todo o conteúdo de qualquer formato e sempre exibe completo.
- */
-function collapseToSingleTextBlock(blocks: unknown[]): Array<Record<string, unknown>> {
-  return [{ type: "text", value: collapseBlocksToText(blocks) }]
 }
 
 /**
@@ -386,10 +519,9 @@ export function sanitizeN8nCopyPayload(
     }
 
     if (Array.isArray(copy.blocks)) {
-      // Colapsa TODOS os blocos do n8n num único bloco de texto com a copy
-      // inteira. Vale pra toda copy gerada daqui pra frente; as já gravadas
-      // não mudam.
-      copyOut.blocks = collapseToSingleTextBlock(copy.blocks)
+      // Fatia a copy em 1 bloco de texto POR SEÇÃO (## SEÇÃO ou section/label do
+      // n8n). Sem marcação → 1 bloco único (comportamento antigo, sem regressão).
+      copyOut.blocks = splitIntoSectionedTextBlocks(copy.blocks)
     }
 
     out.copy = copyOut
@@ -399,4 +531,12 @@ export function sanitizeN8nCopyPayload(
 }
 
 /** Exportado para testes. */
-export const __internal = { coerceType, coerceColumns, coerceStatus, normalizeBlock }
+export const __internal = {
+  coerceType,
+  coerceColumns,
+  coerceStatus,
+  normalizeBlock,
+  splitIntoSectionedTextBlocks,
+  splitTextBySectionMarkers,
+  normalizeSectionLabel,
+}

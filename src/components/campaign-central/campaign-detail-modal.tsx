@@ -46,7 +46,10 @@ function langLabel(language: string | null | undefined): string {
   return LANG_LABEL[(language ?? "pt").slice(0, 2).toLowerCase()] ?? "Português"
 }
 
-/** Placeholder do briefing (mostra o formato esperado). Espelha o protótipo. */
+/** Placeholder do briefing (mostra o formato esperado). Espelha o protótipo.
+ *  As seções do EMAIL usam "## NOME" (linha própria) — a normalização do
+ *  callback fatia a copy por esses marcadores; o resto (objetivo/tom/regras)
+ *  é contexto pra IA e fica sem "##". */
 const BRIEF_PLACEHOLDER = `Ex.:
 
 OBJETIVO
@@ -55,22 +58,30 @@ Recuperar clientes inativos sem queimar a base. Foco em reengajar.
 TOM GERAL
 Próximo e caloroso, com leve urgência. Nada agressivo.
 
-ESTRUTURA (bloco a bloco)
-1. Assunto — curiosidade + nome da loja. Máx. 45 caracteres.
-2. Abertura — reconhecer a ausência com empatia.
-3. Corpo — 1 benefício claro do retorno + prova social curta.
-4. Oferta — destaque visual, condição e prazo.
-5. CTA — verbo de ação, 1ª pessoa. 1 só CTA.
-6. Rodapé — opção de descadastro amigável.
-
 REGRAS
-- Sem emoji no assunto.
-- Frases curtas.
+- Sem emoji no assunto. Frases curtas.
+- Evitar clichês e gatilhos de spam (GRÁTIS!!!, URGENTE).
 
-EVITAR
-- Clichês e gatilhos de spam (GRÁTIS!!!, URGENTE).`
+ESTRUTURA DO EMAIL
+Marque cada seção com "## NOME" — a copy volta separada por seção:
 
-/** Gera um modelo inicial de briefing a partir da campanha. */
+## HERO
+Abertura: reconhecer a ausência com empatia + gancho do retorno.
+
+## CORPO
+1 benefício claro do retorno + prova social curta.
+
+## OFERTA
+Condição e prazo, com destaque visual.
+
+## CTA
+Verbo de ação, 1ª pessoa. 1 só CTA.
+
+## RODAPÉ
+Descadastro amigável + assinatura da loja.`
+
+/** Gera um modelo inicial de briefing a partir da campanha. As seções do email
+ *  já vêm marcadas com "## NOME" pra a copy voltar separada por seção. */
 function buildBriefTemplate(s: CampaignSuggestion): string {
   const storeCount = s.targets.length
   return `OBJETIVO
@@ -79,20 +90,27 @@ ${s.angle || "Defina o objetivo central desta campanha."}
 TOM GERAL
 Defina o tom da campanha "${s.title}". Ex.: confiante e direto, alinhado à marca de cada loja.
 
-ESTRUTURA (bloco a bloco)
-1. Assunto — gancho principal. Máx. 45 caracteres.
-2. Abertura — contexto/gatilho (${s.trigger?.label ?? "—"}).
-3. Corpo — benefício central + prova.
-4. Oferta — condição e prazo, com destaque.
-5. CTA — 1 só, verbo de ação.
-6. Rodapé — assinatura da loja.
-
 REGRAS
-- Canal: ${s.channel}.
-- Adaptar idioma e voz por loja (${storeCount} loja(s)).
+- Canal: ${s.channel}. Adaptar idioma e voz por loja (${storeCount} loja(s)).
+- Evitar clichês e gatilhos de spam.
 
-EVITAR
-- Clichês e gatilhos de spam.`
+ESTRUTURA DO EMAIL
+Marque cada seção com "## NOME" — a copy volta separada por seção:
+
+## HERO
+Gancho principal + contexto/gatilho (${s.trigger?.label ?? "—"}).
+
+## CORPO
+Benefício central + prova.
+
+## OFERTA
+Condição e prazo, com destaque.
+
+## CTA
+1 só, verbo de ação.
+
+## RODAPÉ
+Assinatura da loja.`
 }
 
 const TYPE_LABEL: Record<string, { label: string; tone: "info" | "positive" | "warning" | "neutral" }> = {
@@ -698,8 +716,16 @@ export function CampaignDetailModal({
                   </button>
                 </div>
                 <p className="mb-2.5 text-[11.5px] leading-snug text-muted-foreground">
-                  Descreva como a copy deve ser gerada — estrutura por bloco, tom, regras e o que
-                  evitar. A IA usa isto como guia ao gerar teste e produção.
+                  Descreva objetivo, tom e regras. Marque cada seção do email com{" "}
+                  <span className="rounded bg-muted px-1 font-mono text-[10.5px] text-foreground/80">
+                    ## HERO
+                  </span>
+                  ,{" "}
+                  <span className="rounded bg-muted px-1 font-mono text-[10.5px] text-foreground/80">
+                    ## REVIEW
+                  </span>
+                  … pra a copy chegar <strong className="font-semibold">separada por seção</strong>{" "}
+                  pros designers.
                 </p>
                 <textarea
                   value={brief}

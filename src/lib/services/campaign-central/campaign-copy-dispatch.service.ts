@@ -15,7 +15,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { collapseBlocksToText } from "./n8n-copy-normalize"
+import { collapseBlocksToText, parseStructureSections } from "./n8n-copy-normalize"
 import { newBlockId } from "@/components/campaign-central/email-builder/default-draft"
 import type {
   CampaignSuggestion,
@@ -102,6 +102,10 @@ function collectPilotReferencesForDispatch(
  * prioridade — vira o conteúdo literal de `master.blocks` (1 bloco texto,
  * placeholders intactos), com subject/preheader/strategy vazios (o n8n gera).
  * Sem estrutura escrita, cai pro `email_draft` (master). Função pura — testável.
+ *
+ * `brief.sections` extrai as seções marcadas com `## SEÇÃO` na estrutura (HERO,
+ * REVIEW, FOOTER…) — contrato explícito pro n8n gerar a copy seção a seção e
+ * preservar os marcadores, pra que a normalização do callback fatie por seção.
  */
 export function buildN8nTheme(suggestion: Pick<CampaignSuggestion, "brief" | "email_draft">): {
   master: {
@@ -115,6 +119,7 @@ export function buildN8nTheme(suggestion: Pick<CampaignSuggestion, "brief" | "em
     tone: string | null
     constraints: string | null
     must_include: string | null
+    sections: Array<{ tag: string; instructions: string }>
   }
 } {
   const structureText = suggestion.brief?.structure?.trim() || ""
@@ -133,6 +138,7 @@ export function buildN8nTheme(suggestion: Pick<CampaignSuggestion, "brief" | "em
       tone: suggestion.brief?.tone ?? null,
       constraints: suggestion.brief?.constraints ?? null,
       must_include: suggestion.brief?.must_include ?? null,
+      sections: parseStructureSections(suggestion.brief?.structure),
     },
   }
 }

@@ -77,6 +77,10 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
   },
   "brief": {
     "structure": "A 'Estrutura & tom da copy' do COO — o TEMA a seguir (placeholders [NÚMERO]/[NOME]/… intactos)",
+    "sections": [
+      { "tag": "HERO", "instructions": "Abertura com gancho" },
+      { "tag": "REVIEW", "instructions": "Depoimentos verificados" }
+    ],
     "tone": "Tom de voz desejado (ou null)",
     "constraints": "Restrições (ou null)",
     "must_include": "O que a copy deve incluir (ou null)"
@@ -105,8 +109,9 @@ Disparado em `campaign-copy-dispatch.service.ts:250-277`.
 | Campo | Observação |
 |-------|------------|
 | `mode` | `"test"` (piloto) ou `"production"` (rollout). **Deve ser ecoado no callback.** |
-| `master` | Conteúdo "mãe" a adaptar para cada loja (idioma/tom). **`master.blocks` vem como UM único bloco `text` com a estrutura/copy inteira; devolva também 1 bloco `text`.** Quando `brief.structure` existe, `master` reflete essa estrutura literal (subject/preheader/strategy vêm vazios — você os gera). |
+| `master` | Conteúdo "mãe" a adaptar para cada loja (idioma/tom). **`master.blocks` vem como UM único bloco `text` com a estrutura/copy inteira** (mantém os marcadores `## SEÇÃO`; ver §6 para o formato de volta). Quando `brief.structure` existe, `master` reflete essa estrutura literal (subject/preheader/strategy vêm vazios — você os gera). |
 | `brief` | A **"Estrutura & tom da copy" do COO** — o TEMA mestre. **SIGA-A À RISCA:** mesmas seções, mesma ordem. Preencha placeholders (`[NÚMERO]`, `[NOME]`, `[Texto do depoimento…]`) com dados reais quando houver; senão mantenha o placeholder. **NÃO invente seções (grid de produtos, ofertas) que não estão na estrutura.** |
+| `brief.sections` | Seções extraídas da estrutura (`[{ "tag": "HERO", "instructions": "…" }]`) — o contrato das seções esperadas. **Gere a copy seção a seção e devolva cada uma marcada com `## TAG`** (ver §6). Vazio quando a estrutura não usa `## SEÇÃO`. |
 | `stores[]` | Lojas que ESTE dispatch deve gerar. Itere sobre elas. |
 | `pilot_references[]` | **Só vem preenchido em `mode:"production"`** — até 2 lojas piloto aprovadas (`quality:"good"`), para usar como _few-shot_ e manter o tom no rollout. Em `mode:"test"` vem `[]`. |
 | `job_id` / `suggestion_id` | Devem ser ecoados em **todos** os callbacks. |
@@ -215,7 +220,19 @@ Regras do receiver:
   > mais** — deriva um assunto provisório da 1ª linha da copy (`deriveSubjectFromCopy`) e loga
   > `campaign_copy.subject_derived`. Isso destrava a UI, mas o assunto sai pior; **o n8n deve
   > mandar o subject pronto.** Só continua `400` se a copy vier sem texto algum.
-- `copy.blocks` deve ser **UM único bloco** `{ "type": "text", "value": "<a copy adaptada inteira>" }` — toda a copy num texto só (use quebras de linha pra separar seções/CTA). **NÃO** fragmente em vários blocos tipados: o admin trata a copy como texto corrido, e qualquer outra coisa é colapsada num único texto na entrada. `id` pode ser omitido.
+- `copy.blocks` — a copy é **texto**, mas **separe as seções com marcadores `## SEÇÃO`** (HERO,
+  REVIEW, FOOTER…, os mesmos `tag` de `brief.sections`) para os designers receberem a copy
+  **fatiada por seção**. Duas formas equivalentes (use UMA):
+  - **(recomendado)** UM bloco `{ "type": "text", "value": "## HERO\n…\n\n## REVIEW\n…" }` — toda
+    a copy num texto só, com cada seção iniciada por uma linha `## NOME`. O admin fatia em 1 bloco
+    por seção automaticamente.
+  - **(alternativa)** vários blocos `{ "type": "text", "section": "HERO", "value": "…" }` — um por
+    seção, identificada pelo campo `section`. **NÃO** use blocos tipados (heading/products/button)
+    com campos próprios: o admin lê só `value` (+ `section`); o resto é colapsado.
+  - **Sem nenhum marcador**, a copy vira **1 bloco único** (comportamento antigo, sem separação) —
+    nada quebra, mas o designer recebe tudo junto. Sempre prefira marcar as seções.
+  - ⚠️ Use `##` (não `[SEÇÃO]`): a copy é cheia de placeholders entre colchetes (`[NÚMERO]`,
+    `[NOME]`, `[LOGO]`) e o admin fatia só por linhas `## …`. `id` pode ser omitido.
 - `meta` é opcional (telemetria — vai para `campaign_ai_runs`).
 
 ---

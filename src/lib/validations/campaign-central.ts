@@ -82,6 +82,9 @@ export type AiTrend = z.infer<typeof aiTrendSchema>
 export const emailDraftBlockSchema = z.object({
   id: z.string(),
   type: z.enum(["image", "heading", "text", "offer", "button", "divider", "footer", "products"]),
+  /** Rótulo de seção (HERO/REVIEW/FOOTER…). A normalização do callback o
+   *  preenche ao fatiar a copy por seção; sem ele o Zod estriparia o campo. */
+  section: z.string().optional(),
   headline: z.string().optional(),
   sub: z.string().optional(),
   value: z.string().optional(),

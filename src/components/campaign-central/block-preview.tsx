@@ -16,6 +16,8 @@ export function copyBlocksToText(entry: CopyResultEntry): string {
   lines.push(`Preview: ${entry.preheader ?? entry.preview}`)
   lines.push("")
   for (const block of entry.blocks ?? []) {
+    // Cabeçalho de seção (HERO/REVIEW/FOOTER…) pra "Copiar tudo" sair seccionado.
+    if (block.section) lines.push(`## ${block.section}`, "")
     switch (block.type) {
       case "heading":
         if (block.headline) lines.push(`# ${block.headline}`)
@@ -49,6 +51,14 @@ export function copyBlocksToText(entry: CopyResultEntry): string {
     }
   }
   return lines.join("\n").trim()
+}
+
+/** Rótulo de contagem: "N seções" quando os blocos têm rótulo de seção
+ *  (HERO/REVIEW/FOOTER…); senão "N blocos" — comportamento antigo. */
+export function blockCountLabel(blocks: EmailDraftBlock[]): string {
+  const n = blocks.length
+  if (blocks.some((b) => b.section)) return `${n} ${n === 1 ? "seção" : "seções"}`
+  return `${n} ${n === 1 ? "bloco" : "blocos"}`
 }
 
 export type CopyStatusKind = "pending" | "error" | "approved" | "ready"
@@ -142,10 +152,11 @@ function EmptyBlockMark({ kind }: { kind: string }) {
   )
 }
 
-/** Render read-only de um bloco do email (esqueleto + copy adaptada). Nenhum
- *  bloco renderiza vazio: ou mostra o conteúdo (de qualquer campo disponível),
- *  ou uma marca de "sem conteúdo" — pra o total do rótulo bater com a tela. */
-export function BlockPreview({ block }: { block: EmailDraftBlock }) {
+/** Corpo de um bloco (render por tipo). O cabeçalho de seção é adicionado pelo
+ *  BlockPreview wrapper. Nenhum bloco renderiza vazio: ou mostra o conteúdo (de
+ *  qualquer campo disponível), ou uma marca de "sem conteúdo" — pra o total do
+ *  rótulo bater com a tela. */
+function BlockBody({ block }: { block: EmailDraftBlock }) {
   switch (block.type) {
     case "image":
       return (
@@ -229,4 +240,22 @@ export function BlockPreview({ block }: { block: EmailDraftBlock }) {
     default:
       return <EmptyBlockMark kind="desconhecido" />
   }
+}
+
+/** Render read-only de um bloco. Quando o bloco tem `section` (HERO/REVIEW/
+ *  FOOTER…), exibe um cabeçalho de seção acima do conteúdo — é o que separa
+ *  visualmente a copy pros designers. Sem ele, renderiza só o corpo. */
+export function BlockPreview({ block }: { block: EmailDraftBlock }) {
+  if (!block.section) return <BlockBody block={block} />
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-foreground/70">
+          {block.section}
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <BlockBody block={block} />
+    </div>
+  )
 }

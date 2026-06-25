@@ -159,7 +159,7 @@ function validBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/webhooks/n8n/campaign-copy — blocks sem id (regressão)", () => {
-  it("aceita callback do n8n com blocks SEM id, persiste e regenera os ids", async () => {
+  it("aceita callback do n8n com blocks SEM id, persiste e regenera o id", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(makeRequest(validBody()) as any)
     expect(res.status).toBe(200)
@@ -173,8 +173,12 @@ describe("POST /api/webhooks/n8n/campaign-copy — blocks sem id (regressão)", 
     expect(entry.status).toBe("success")
     expect(entry.generated_via).toBe("n8n")
     expect(entry.subject).toBe("Oferta especial")
-    expect(entry.blocks).toHaveLength(2)
-    // ids regenerados no servidor (route.ts: id: b.id ?? newBlockId())
+    // Sem marcadores de seção, a copy colapsa num único bloco de texto.
+    expect(entry.blocks).toHaveLength(1)
+    expect(entry.blocks[0].type).toBe("text")
+    expect(entry.blocks[0].value).toContain("Olá")
+    expect(entry.blocks[0].value).toContain("corpo do email")
+    // id regenerado no servidor (route.ts: id: b.id ?? newBlockId())
     for (const b of entry.blocks) {
       expect(typeof b.id).toBe("string")
       expect(b.id.length).toBeGreaterThan(0)
@@ -198,7 +202,7 @@ describe("POST /api/webhooks/n8n/campaign-copy — blocks sem id (regressão)", 
 })
 
 describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n8n", () => {
-  it("coage type fora do enum (paragraph→text, cta→button) e persiste", async () => {
+  it("type fora do enum (paragraph/cta) não derruba o payload; conteúdo preservado", async () => {
     const body = validBody({
       copy: {
         subject: "Promo",
@@ -216,9 +220,34 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
     const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
+    // Sem marcadores, tudo colapsa em 1 bloco de texto — sem rejeitar types fora do enum.
+    expect(entry.blocks).toHaveLength(1)
     expect(entry.blocks[0].type).toBe("text")
-    expect(entry.blocks[1].type).toBe("button")
+    expect(entry.blocks[0].value).toContain("corpo")
+    expect(entry.blocks[0].value).toContain("Comprar agora")
     expect(entry.generated_via).toBe("n8n")
+  })
+
+  it("fatia a copy por ## SEÇÃO em blocos rotulados (section) com ids regenerados", async () => {
+    const body = validBody({
+      copy: {
+        subject: "Promo",
+        preheader: "p",
+        blocks: [{ type: "text", value: "## HERO\nBem-vindo\n\n## FOOTER\nAté logo" }],
+      },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(body) as any)
+    expect(res.status).toBe(200)
+    const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
+    expect(entry.blocks).toHaveLength(2)
+    expect(entry.blocks[0].section).toBe("HERO")
+    expect(entry.blocks[0].value).toBe("Bem-vindo")
+    expect(entry.blocks[1].section).toBe("FOOTER")
+    expect(entry.blocks[1].value).toBe("Até logo")
+    for (const b of entry.blocks) expect(typeof b.id).toBe("string")
   })
 
   it("coage status 'completed' → success e persiste", async () => {
@@ -232,7 +261,7 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
     expect(entry.status).toBe("success")
   })
 
-  it("coage columns string e price number sem rejeitar", async () => {
+  it("products com columns string e price number não derruba o payload", async () => {
     const body = validBody({
       copy: {
         subject: "Grade",
@@ -252,8 +281,10 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
     const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
-    expect(entry.blocks[0].columns).toBe(2)
-    expect(entry.blocks[0].items[0].price).toBe("99")
+    // O produto colapsa como "• P1 — 99" no texto.
+    expect(entry.blocks).toHaveLength(1)
+    expect(entry.blocks[0].value).toContain("P1")
+    expect(entry.blocks[0].value).toContain("99")
   })
 })
 
@@ -326,13 +357,17 @@ describe("POST /api/webhooks/n8n/campaign-copy — override do fallback (Parte D
 })
 
 describe("POST /api/webhooks/n8n/campaign-copy — validação e erros", () => {
-  it("retorna 400 quando copy.subject está vazio", async () => {
+  it("deriva o subject da copy quando vem vazio (rede de segurança; não rejeita)", async () => {
     const body = validBody({
-      copy: { subject: "", preheader: "p", blocks: [{ type: "text", value: "x" }] },
+      copy: { subject: "", preheader: "p", blocks: [{ type: "text", value: "Texto da copy" }] },
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(makeRequest(body) as any)
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
+    const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
+    expect(entry.subject).toBe("Texto da copy")
   })
 
   it("retorna 400 quando copy não tem blocks", async () => {

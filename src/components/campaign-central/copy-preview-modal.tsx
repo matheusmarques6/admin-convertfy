@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react"
 import { X, Check, Loader2, AlertTriangle, Copy as CopyIcon } from "lucide-react"
 import type { CopyResultEntry } from "@/types/campaign-central"
-import { BlockPreview, CopyOriginBadge, copyBlocksToText, copyStatusMeta } from "./block-preview"
+import {
+  BlockPreview,
+  CopyOriginBadge,
+  blockCountLabel,
+  copyBlocksToText,
+  copyStatusMeta,
+} from "./block-preview"
 
 interface Props {
   /** Copy da loja a exibir. `null` mantém o pop-up fechado. */
@@ -136,7 +142,7 @@ export function CopyPreviewModal({ entry, storeName, onClose }: Props) {
 
               {/* Zona B — email (papel, protagonista) */}
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Email completo{blocks.length > 0 && ` (${blocks.length} blocos)`}
+                Email completo{blocks.length > 0 && ` (${blockCountLabel(blocks)})`}
               </div>
               {blocks.length > 0 ? (
                 <div className="space-y-5 rounded-[8px] border border-border bg-card p-6 shadow-sm">

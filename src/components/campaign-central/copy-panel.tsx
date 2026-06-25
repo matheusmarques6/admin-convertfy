@@ -29,7 +29,7 @@ import {
   langKey,
   matchStore,
 } from "./store-filters"
-import { copyBlocksToText, CopyOriginBadge } from "./block-preview"
+import { copyBlocksToText, CopyOriginBadge, blockCountLabel } from "./block-preview"
 import { CopyPreviewModal } from "./copy-preview-modal"
 
 interface StoreOption {
@@ -882,7 +882,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                             className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline"
                           >
                             <Eye size={13} />
-                            Ver email completo ({entry.blocks.length} blocos)
+                            Ver email completo ({blockCountLabel(entry.blocks)})
                           </button>
                         )}
                       </div>

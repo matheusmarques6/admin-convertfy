@@ -2,11 +2,19 @@ import { describe, it, expect } from "vitest"
 import {
   sanitizeN8nCopyPayload,
   deriveSubjectFromCopy,
+  parseStructureSections,
   hasText,
   __internal,
 } from "./n8n-copy-normalize"
 
-const { coerceType, coerceColumns, coerceStatus, normalizeBlock } = __internal
+const {
+  coerceType,
+  coerceColumns,
+  coerceStatus,
+  normalizeBlock,
+  splitIntoSectionedTextBlocks,
+  normalizeSectionLabel,
+} = __internal
 
 describe("coerceType", () => {
   it("mantém os 8 tipos canônicos", () => {
@@ -155,7 +163,7 @@ describe("sanitizeN8nCopyPayload", () => {
     }
     const out = sanitizeN8nCopyPayload(input)
     expect(out.status).toBe("success")
-    // Blocos são colapsados num único bloco de texto com toda a copy.
+    // Sem marcadores de seção, os blocos colapsam num único bloco de texto.
     expect((out.copy as Record<string, unknown>).blocks).toEqual([
       { type: "text", value: "Comprar" },
     ])
@@ -164,7 +172,7 @@ describe("sanitizeN8nCopyPayload", () => {
     expect((input.copy.blocks[0] as Record<string, unknown>).type).toBe("cta")
   })
 
-  it("colapsa todos os blocos num único bloco de texto com a copy inteira", () => {
+  it("colapsa todos os blocos num único bloco quando não há marcadores de seção", () => {
     const out = sanitizeN8nCopyPayload({
       status: "success",
       copy: {
@@ -259,5 +267,152 @@ describe("deriveSubjectFromCopy", () => {
     expect(deriveSubjectFromCopy({})).toBe("")
     expect(deriveSubjectFromCopy(null)).toBe("")
     expect(deriveSubjectFromCopy("nope")).toBe("")
+  })
+
+  it("ignora a linha do marcador ## e pega a 1ª linha de texto real", () => {
+    const out = deriveSubjectFromCopy({
+      blocks: [{ type: "text", value: "## HERO\nSua oferta chegou\nveja abaixo" }],
+    })
+    expect(out).toBe("Sua oferta chegou")
+  })
+})
+
+describe("splitIntoSectionedTextBlocks (fatiamento por seção)", () => {
+  it("fatia a copy por marcadores ## SEÇÃO em blocos rotulados, na ordem", () => {
+    const out = splitIntoSectionedTextBlocks([
+      {
+        type: "text",
+        value:
+          "## HERO\nBem-vindo de volta!\n\n## REVIEW\n5 estrelas de clientes reais.\n\n## FOOTER\nDescadastre quando quiser.",
+      },
+    ])
+    expect(out).toEqual([
+      { type: "text", section: "HERO", value: "Bem-vindo de volta!" },
+      { type: "text", section: "REVIEW", value: "5 estrelas de clientes reais." },
+      { type: "text", section: "FOOTER", value: "Descadastre quando quiser." },
+    ])
+  })
+
+  it("normaliza o rótulo do marcador (maiúsculas, espaços colapsados)", () => {
+    const out = splitIntoSectionedTextBlocks([
+      { type: "text", value: "## Hero  principal\nConteúdo." },
+    ])
+    expect(out).toEqual([{ type: "text", section: "HERO PRINCIPAL", value: "Conteúdo." }])
+  })
+
+  it("NÃO confunde placeholders [X] com seções (só ## em linha própria fatia)", () => {
+    const out = splitIntoSectionedTextBlocks([
+      {
+        type: "text",
+        value:
+          "## HERO\n[LOGO] Olá [NOME], temos [NÚMERO]+ clientes felizes.\n\n## CTA\nAproveite [NOME]!",
+      },
+    ])
+    expect(out).toEqual([
+      {
+        type: "text",
+        section: "HERO",
+        value: "[LOGO] Olá [NOME], temos [NÚMERO]+ clientes felizes.",
+      },
+      { type: "text", section: "CTA", value: "Aproveite [NOME]!" },
+    ])
+  })
+
+  it("agrupa blocos já rotulados pelo n8n (campo section) — caminho 1", () => {
+    const out = splitIntoSectionedTextBlocks([
+      { type: "heading", section: "HERO", headline: "Título" },
+      { type: "text", section: "HERO", value: "Subtítulo do hero." },
+      { type: "text", section: "REVIEW", value: "Depoimento." },
+    ])
+    expect(out).toEqual([
+      { type: "text", section: "HERO", value: "Título\n\nSubtítulo do hero." },
+      { type: "text", section: "REVIEW", value: "Depoimento." },
+    ])
+  })
+
+  it("preâmbulo antes do 1º ## vira bloco sem label", () => {
+    const out = splitIntoSectionedTextBlocks([
+      { type: "text", value: "Introdução solta.\n\n## CORPO\nMiolo do email." },
+    ])
+    expect(out).toEqual([
+      { type: "text", value: "Introdução solta." },
+      { type: "text", section: "CORPO", value: "Miolo do email." },
+    ])
+  })
+
+  it("sem marcação nenhuma → 1 bloco único (fallback, sem regressão)", () => {
+    const out = splitIntoSectionedTextBlocks([
+      { type: "heading", headline: "Título" },
+      { type: "text", value: "Corpo." },
+    ])
+    expect(out).toEqual([{ type: "text", value: "Título\n\nCorpo." }])
+  })
+
+  it("mantém seção rotulada mesmo sem corpo (sinaliza seção vazia)", () => {
+    const out = splitIntoSectionedTextBlocks([
+      { type: "text", value: "## HERO\n\n## FOOTER\nRodapé." },
+    ])
+    expect(out).toEqual([
+      { type: "text", section: "HERO", value: "" },
+      { type: "text", section: "FOOTER", value: "Rodapé." },
+    ])
+  })
+
+  it("copy sem texto algum → [] (deixa o schema rejeitar; não inventa bloco vazio)", () => {
+    expect(splitIntoSectionedTextBlocks([])).toEqual([])
+    expect(splitIntoSectionedTextBlocks([{ type: "divider" }])).toEqual([])
+  })
+})
+
+describe("sanitizeN8nCopyPayload — seções", () => {
+  it("persiste blocos rotulados quando a copy do n8n traz ## SEÇÃO", () => {
+    const out = sanitizeN8nCopyPayload({
+      status: "success",
+      copy: {
+        subject: "S",
+        preheader: "P",
+        blocks: [{ type: "text", value: "## HERO\nOlá\n\n## FOOTER\nTchau" }],
+      },
+    })
+    const blocks = (out.copy as Record<string, unknown>).blocks
+    expect(blocks).toEqual([
+      { type: "text", section: "HERO", value: "Olá" },
+      { type: "text", section: "FOOTER", value: "Tchau" },
+    ])
+  })
+})
+
+describe("normalizeSectionLabel", () => {
+  it("trim + maiúsculas + colapsa espaços", () => {
+    expect(normalizeSectionLabel("  hero   principal ")).toBe("HERO PRINCIPAL")
+  })
+
+  it("trunca rótulos muito longos (~40 chars)", () => {
+    expect(normalizeSectionLabel("x".repeat(60)).length).toBeLessThanOrEqual(40)
+  })
+})
+
+describe("parseStructureSections", () => {
+  it("extrai as seções ## da estrutura do COO (ignora o preâmbulo)", () => {
+    const structure = `OBJETIVO
+Vender mais.
+
+ESTRUTURA DO EMAIL
+## HERO
+Gancho forte.
+
+## CTA
+Compre já.`
+    expect(parseStructureSections(structure)).toEqual([
+      { tag: "HERO", instructions: "Gancho forte." },
+      { tag: "CTA", instructions: "Compre já." },
+    ])
+  })
+
+  it("estrutura sem marcadores → lista vazia", () => {
+    expect(parseStructureSections("Só texto livre, sem seções.")).toEqual([])
+    expect(parseStructureSections("")).toEqual([])
+    expect(parseStructureSections(null)).toEqual([])
+    expect(parseStructureSections(undefined)).toEqual([])
   })
 })
