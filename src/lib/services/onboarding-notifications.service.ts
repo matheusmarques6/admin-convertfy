@@ -9,23 +9,81 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import {
+  getOnboardingStageResponsibleRole,
+  normalizeOnboardingRole,
+} from "@/lib/permissions/onboarding-stage-access"
 import type { OperationalPipelineColumn } from "@/types/onboarding-pipeline"
+import type { OrgRole } from "@/types/organization"
 
 const log = logger.child("OnboardingNotifications")
 
-async function profilesByRole(
+// Roles com bypass total — sempre recebem alertas relevantes do onboarding.
+const BYPASS_TARGET_ROLES: OrgRole[] = ["admin", "dev", "coo"]
+
+/**
+ * Resolve profiles cujas funções (canônicas) batem com `targetRoles`.
+ * Consulta TODAS as funções da conta via `org_member_roles` (multi-função),
+ * com fallback pra `org_members.role` quando a junction está vazia. Normaliza
+ * legados (cs/estrategista→suporte, ops→implementacao) antes de comparar.
+ */
+async function profilesByCanonicalRoles(
   admin: ReturnType<typeof createAdminClient>,
   orgId: string,
-  roles: string[],
+  targetRoles: Array<string | null | undefined>,
 ): Promise<string[]> {
-  if (!roles.length) return []
-  const { data } = await admin
+  const wanted = new Set(
+    targetRoles
+      .map((r) => normalizeOnboardingRole(r))
+      .filter((r): r is OrgRole => r !== null),
+  )
+  if (wanted.size === 0) return []
+
+  const { data: members } = await admin
     .from("org_members")
-    .select("profile_id")
+    .select("id, profile_id, role")
     .eq("org_id", orgId)
     .eq("is_active", true)
-    .in("role", roles)
-  return (data ?? []).map((r) => r.profile_id as string).filter(Boolean)
+  const memberRows = (members ?? []) as Array<{
+    id: string
+    profile_id: string
+    role: string | null
+  }>
+  if (memberRows.length === 0) return []
+
+  const { data: roleRows } = await admin
+    .from("org_member_roles")
+    .select("org_member_id, role")
+    .in(
+      "org_member_id",
+      memberRows.map((m) => m.id),
+    )
+  const rolesByMember = new Map<string, string[]>()
+  for (const row of (roleRows ?? []) as Array<{
+    org_member_id: string
+    role: string
+  }>) {
+    const list = rolesByMember.get(row.org_member_id) ?? []
+    list.push(row.role)
+    rolesByMember.set(row.org_member_id, list)
+  }
+
+  const profileIds = new Set<string>()
+  for (const member of memberRows) {
+    const junctionRoles = rolesByMember.get(member.id)
+    const effectiveRoles =
+      junctionRoles && junctionRoles.length > 0
+        ? junctionRoles
+        : member.role
+          ? [member.role]
+          : []
+    const hasMatch = effectiveRoles.some((r) => {
+      const canonical = normalizeOnboardingRole(r)
+      return canonical !== null && wanted.has(canonical)
+    })
+    if (hasMatch && member.profile_id) profileIds.add(member.profile_id)
+  }
+  return Array.from(profileIds)
 }
 
 async function insertNotifications(
@@ -90,10 +148,15 @@ export async function notifyColumnChange(params: {
     const ctx = await loadOnboardingContext(admin, params.onboardingId)
     if (!ctx) return
 
-    const role = params.toCol.default_assignee_role
+    // Mira a FUNÇÃO RESPONSÁVEL canônica da NOVA etapa (transferência de
+    // visibilidade). Fallback pro default_assignee_role normalizado se o slug
+    // não estiver na matriz.
+    const role =
+      getOnboardingStageResponsibleRole(params.toCol.slug) ??
+      params.toCol.default_assignee_role
     if (!role) return
 
-    const userIds = await profilesByRole(admin, params.orgId, [role])
+    const userIds = await profilesByCanonicalRoles(admin, params.orgId, [role])
     await insertNotifications(admin, userIds, {
       title: `Onboarding entrou em ${params.toCol.name}`,
       body: `${ctx.client} · ${ctx.store}`,
@@ -118,11 +181,11 @@ export async function notifyBriefingReady(params: {
     const admin = createAdminClient()
     const ctx = await loadOnboardingContext(admin, params.onboardingId)
     if (!ctx) return
-    const userIds = await profilesByRole(admin, params.orgId, [
-      "ops",
-      "estrategista",
-      "admin",
-      "owner",
+    // Briefing aprovado → onboarding entra em preview_producao (designer).
+    // Notifica o responsável da próxima etapa + bypass roles.
+    const userIds = await profilesByCanonicalRoles(admin, params.orgId, [
+      getOnboardingStageResponsibleRole("preview_producao"),
+      ...BYPASS_TARGET_ROLES,
     ])
     await insertNotifications(admin, userIds, {
       title: `Briefing confirmado pelo cliente`,
@@ -147,10 +210,12 @@ export async function notifyStuck(params: {
     const ctx = await loadOnboardingContext(admin, params.onboardingId)
     if (!ctx) return
 
+    // Normaliza a função responsável (legado→canônico) e adiciona bypass.
+    // Sem função explícita, cobre suporte+implementacao (donos operacionais).
     const roles = params.assigneeRole
-      ? [params.assigneeRole, "admin", "owner"]
-      : ["ops", "cs", "admin", "owner"]
-    const userIds = await profilesByRole(admin, params.orgId, roles)
+      ? [params.assigneeRole, ...BYPASS_TARGET_ROLES]
+      : ["suporte", "implementacao", ...BYPASS_TARGET_ROLES]
+    const userIds = await profilesByCanonicalRoles(admin, params.orgId, roles)
 
     await insertNotifications(admin, userIds, {
       title: `Onboarding travado há ${params.daysStuck} dias`,

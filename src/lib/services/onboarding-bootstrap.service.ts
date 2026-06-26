@@ -50,7 +50,8 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     position: 1,
     color: "#0EA5E9",
     is_initial: true,
-    default_assignee_role: "cs",
+    // Canonico (matriz ONBOARDING_STAGE_RESPONSIBLE_ROLE). Legados cs/estrategista→suporte.
+    default_assignee_role: "suporte",
     sla_hours: 2,
     checklist_template: [
       chk("entrada_whatsapp_group", "Criar grupo no WhatsApp com cliente + time", 1, { slug: "entrada_whatsapp_group" }),
@@ -72,7 +73,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     slug: "cliente_formulario",
     position: 2,
     color: "#6366F1",
-    default_assignee_role: "cs",
+    default_assignee_role: "suporte",
     sla_hours: 72,
     checklist_template: [
       chk("form_marca", "Cliente preencheu secao \"Sobre a marca\"", 1, {
@@ -104,7 +105,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "briefing_confirmed",
         action: "send_notification",
-        params: { to_role: "estrategista", message: "Briefing aprovado por {{client_name}} ({{store_name}})" },
+        params: { to_role: "suporte", message: "Briefing aprovado por {{client_name}} ({{store_name}})" },
       },
     ],
   },
@@ -143,7 +144,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "completed",
         action: "create_task",
-        params: { title: "Enviar pilotos pro cliente", assignee_role: "estrategista" },
+        params: { title: "Enviar pilotos pro cliente", assignee_role: "suporte" },
       },
       { trigger: "completed", action: "advance_to_next", params: {} },
     ],
@@ -153,7 +154,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     slug: "preview_aprovacao",
     position: 4,
     color: "#F59E0B",
-    default_assignee_role: "estrategista",
+    default_assignee_role: "suporte",
     sla_hours: 48,
     checklist_template: [
       chk("aprovacao_enviar", "Enviar pilotos ao cliente via WhatsApp", 1, { slug: "aprovacao_enviar" }),
@@ -317,7 +318,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "completed",
         action: "create_task",
-        params: { title: "Configurar emails na Omnisend", assignee_role: "ops" },
+        params: { title: "Configurar emails na Omnisend", assignee_role: "implementacao" },
       },
       { trigger: "completed", action: "generate_tutorial_token", params: {} },
       { trigger: "completed", action: "advance_to_next", params: {} },
@@ -328,7 +329,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     slug: "implementacao",
     position: 6,
     color: "#FBBF24",
-    default_assignee_role: "ops",
+    default_assignee_role: "implementacao",
     sla_hours: 36,
     checklist_template: [
       chk("impl_acesso_instrucoes", "Enviar instrucoes pra cliente criar conta Klaviyo/Omnisend", 1, { slug: "impl_acesso_instrucoes" }),
@@ -356,7 +357,7 @@ export const SEED_COLUMNS: ColumnSeed[] = [
       {
         trigger: "completed",
         action: "create_task",
-        params: { title: "Notificar cliente da entrega", assignee_role: "estrategista" },
+        params: { title: "Notificar cliente da entrega", assignee_role: "suporte" },
       },
       { trigger: "completed", action: "advance_to_next", params: {} },
     ],
@@ -367,7 +368,8 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     position: 7,
     color: "#22C55E",
     is_final: true,
-    default_assignee_role: "estrategista",
+    // Matriz: cliente_ativo é responsabilidade do designer (handoff final).
+    default_assignee_role: "designer",
     sla_hours: 8,
     checklist_template: [
       chk("ativo_email_conta", "Email automatico \"Conta ativa\" enviado ao cliente", 1, {
