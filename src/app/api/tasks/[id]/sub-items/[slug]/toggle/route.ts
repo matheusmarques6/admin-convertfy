@@ -1,36 +1,23 @@
-/**
- * POST /api/tasks/[id]/sub-items/[slug]/toggle
- *
- * Marca/desmarca um sub_item dentro de tasks.metadata.sub_items.
- * Body opcional: { completed?: boolean } - se omitido, faz toggle do estado atual.
- *
- * Usado na Etapa 05 do onboarding pra marcar emails individuais dentro de um flow.
- */
-
 import { NextRequest } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
 import {
-  errorResponse,
-  successResponse,
-  requireAuth,
   AppError,
+  errorResponse,
+  requireAuth,
+  successResponse,
 } from "@/lib/api/errors"
+import { requireTaskAccess } from "@/lib/api/onboarding-task-access"
+import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
 interface SubItem {
   slug: string
   label: string
-  from_preview?: string
   completed?: boolean
-  preview_deliverable_id?: string | null
-  preview_file_url?: string | null
   completed_at?: string | null
   completed_by?: string | null
-}
-
-interface ToggleBody {
-  completed?: boolean
+  [key: string]: unknown
 }
 
 export async function POST(
@@ -39,66 +26,75 @@ export async function POST(
 ) {
   try {
     const { id, slug } = await context.params
-    const sb = await createClient()
-    const user = await requireAuth(sb)
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const body = (await request.json().catch(() => ({}))) as {
+      completed?: boolean
+    }
     const admin = createAdminClient()
 
-    const { data: orgMember } = await admin
-      .from("org_members")
-      .select("id, org_id, role")
-      .eq("profile_id", user.id)
-      .eq("is_active", true)
-      .maybeSingle()
-    if (!orgMember) throw new AppError("Sem org membership", 403)
+    let updatedTask: Record<string, unknown> | null = null
+    let updatedSubItem: SubItem | null = null
+    let access = await requireTaskAccess(user.id, id, "work")
 
-    const { data: task } = await admin
-      .from("tasks")
-      .select("id, org_id, metadata, assignee_id, assignee_role, status")
-      .eq("id", id)
-      .eq("org_id", orgMember.org_id)
-      .maybeSingle()
-    if (!task) throw new AppError("Task nao encontrada", 404)
+    for (let attempt = 0; attempt < 3 && !updatedTask; attempt += 1) {
+      const metadata = (access.task.metadata ?? {}) as Record<string, unknown> & {
+        sub_items?: SubItem[]
+      }
+      const subItems = Array.isArray(metadata.sub_items)
+        ? metadata.sub_items.map((item) => ({ ...item }))
+        : []
+      const index = subItems.findIndex((item) => item.slug === slug)
+      if (index < 0) throw new AppError("Sub-item nao encontrado", 404)
 
-    // Autorizacao: mesma regra de complete (dono, dono do role, ou elevated)
-    const role = orgMember.role as string
-    const isElevated = ["owner", "manager", "coo"].includes(role)
-    const isOwnTask =
-      task.assignee_id === orgMember.id || task.assignee_id === user.id
-    const isRoleTask = !task.assignee_id && task.assignee_role === role
-    if (!isElevated && !isOwnTask && !isRoleTask) {
-      throw new AppError("Sem permissao pra editar essa task", 403)
+      const completed =
+        typeof body.completed === "boolean"
+          ? body.completed
+          : subItems[index].completed !== true
+      updatedSubItem = {
+        ...subItems[index],
+        completed,
+        completed_at: completed ? new Date().toISOString() : null,
+        completed_by: completed ? user.id : null,
+      }
+      subItems[index] = updatedSubItem
+
+      const patch: Record<string, unknown> = {
+        metadata: { ...metadata, sub_items: subItems },
+      }
+      if (!completed && access.task.status === "completed") {
+        patch.status = "in_progress"
+        patch.completed_at = null
+      }
+
+      const result = await admin
+        .from("tasks")
+        .update(patch)
+        .eq("id", id)
+        .eq("updated_at", access.task.updated_at as string)
+        .select("id, onboarding_id, metadata, status, updated_at")
+        .maybeSingle()
+      if (result.error) throw result.error
+      updatedTask = result.data
+      if (!updatedTask) access = await requireTaskAccess(user.id, id, "work")
     }
 
-    const meta = (task.metadata ?? {}) as Record<string, unknown> & {
-      sub_items?: SubItem[]
-    }
-    const subItems = Array.isArray(meta.sub_items) ? meta.sub_items : []
-    const idx = subItems.findIndex((s) => s.slug === slug)
-    if (idx === -1) throw new AppError("Sub-item nao encontrado", 404)
-
-    const body = (await request.json().catch(() => ({}))) as ToggleBody
-    const currentCompleted = subItems[idx].completed === true
-    const nextCompleted =
-      typeof body.completed === "boolean" ? body.completed : !currentCompleted
-
-    subItems[idx] = {
-      ...subItems[idx],
-      completed: nextCompleted,
-      completed_at: nextCompleted ? new Date().toISOString() : null,
-      completed_by: nextCompleted ? user.id : null,
+    if (!updatedTask || !updatedSubItem) {
+      throw new AppError("Task foi alterada por outra pessoa; tente novamente", 409)
     }
 
-    const { data: updated, error: updateErr } = await admin
-      .from("tasks")
-      .update({ metadata: { ...meta, sub_items: subItems } })
-      .eq("id", id)
-      .select("id, metadata")
-      .maybeSingle()
-    if (updateErr) throw updateErr
+    let handoff = "not_ready"
+    if (access.task.onboarding_id) {
+      handoff = await attemptOnboardingHandoff({
+        onboardingId: access.task.onboarding_id,
+        actorId: user.id,
+      })
+    }
 
     return successResponse(request, {
-      task: updated,
-      sub_item: subItems[idx],
+      task: updatedTask,
+      sub_item: updatedSubItem,
+      handoff,
     })
   } catch (error) {
     return errorResponse(request, error, "sub-item-toggle")

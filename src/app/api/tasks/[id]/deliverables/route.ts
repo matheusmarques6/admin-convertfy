@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
 import {
-  errorResponse,
-  successResponse,
-  requireAuth,
   AppError,
+  errorResponse,
+  requireAuth,
+  successResponse,
 } from "@/lib/api/errors"
-import { resolveOrgId } from "@/lib/api/resolve-org"
-import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
+import { requireTaskAccess } from "@/lib/api/onboarding-task-access"
+import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
@@ -16,24 +16,21 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id: taskId } = await context.params
-    const sb = await createClient()
-    const user = await requireAuth(sb)
-    const orgId = await resolveOrgId(user.id)
+    const { id } = await context.params
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const access = await requireTaskAccess(user.id, id, "read")
     const admin = createAdminClient()
-    const { data: task } = await admin
-      .from("tasks")
-      .select("id")
-      .eq("id", taskId)
-      .eq("org_id", orgId)
-      .maybeSingle()
-    if (!task) throw new AppError("Task nao encontrada", 404)
     const { data, error } = await admin
       .from("task_deliverables")
       .select("*")
-      .eq("task_id", taskId)
+      .eq("task_id", id)
     if (error) throw error
-    return successResponse(request, { deliverables: data ?? [] })
+    return successResponse(request, {
+      deliverables: data ?? [],
+      can_work: access.canWork,
+      can_admin: access.canAdmin,
+    })
   } catch (error) {
     return errorResponse(request, error, "task-deliverables-get")
   }
@@ -44,22 +41,11 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id: taskId } = await context.params
-    const sb = await createClient()
-    const user = await requireAuth(sb)
-    const orgId = await resolveOrgId(user.id)
-    await requireOnboardingPermission(user.id, "work")
-    const admin = createAdminClient()
+    const { id } = await context.params
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const access = await requireTaskAccess(user.id, id, "admin")
     const body = await request.json()
-
-    const { data: task } = await admin
-      .from("tasks")
-      .select("id")
-      .eq("id", taskId)
-      .eq("org_id", orgId)
-      .maybeSingle()
-    if (!task) throw new AppError("Task nao encontrada", 404)
-
     if (!body.field_slug || !body.field_label || !body.field_type) {
       throw new AppError(
         "field_slug, field_label e field_type sao obrigatorios",
@@ -67,28 +53,36 @@ export async function POST(
       )
     }
 
-    const payload = {
-      task_id: taskId,
-      field_slug: body.field_slug,
-      field_label: body.field_label,
-      field_type: body.field_type,
-      required: !!body.required,
-      value: body.value ?? null,
-      file_url: body.file_url ?? null,
-      file_name: body.file_name ?? null,
-      file_size_bytes: body.file_size_bytes ?? null,
-      metadata: body.metadata ?? {},
-      filled_at: body.value || body.file_url ? new Date().toISOString() : null,
-      filled_by: body.value || body.file_url ? user.id : null,
-    }
-
+    const hasValue = Boolean(body.value || body.file_url)
+    const admin = createAdminClient()
     const { data, error } = await admin
       .from("task_deliverables")
-      .insert(payload)
+      .insert({
+        task_id: id,
+        field_slug: body.field_slug,
+        field_label: body.field_label,
+        field_type: body.field_type,
+        required: Boolean(body.required),
+        value: body.value ?? null,
+        file_url: body.file_url ?? null,
+        file_name: body.file_name ?? null,
+        file_size_bytes: body.file_size_bytes ?? null,
+        metadata: body.metadata ?? {},
+        filled_at: hasValue ? new Date().toISOString() : null,
+        filled_by: hasValue ? user.id : null,
+      })
       .select("*")
       .single()
     if (error) throw error
-    return successResponse(request, { deliverable: data })
+
+    let handoff = "not_ready"
+    if (access.task.onboarding_id) {
+      handoff = await attemptOnboardingHandoff({
+        onboardingId: access.task.onboarding_id,
+        actorId: user.id,
+      })
+    }
+    return successResponse(request, { deliverable: data, handoff })
   } catch (error) {
     return errorResponse(request, error, "task-deliverable-create")
   }
