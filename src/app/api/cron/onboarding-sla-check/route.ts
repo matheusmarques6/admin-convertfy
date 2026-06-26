@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { notifyStuck } from "@/lib/services/onboarding-notifications.service"
+import { reconcileStuckHandoffs } from "@/lib/services/onboarding-task-completion.service"
+import { getOnboardingStageResponsibleRole } from "@/lib/permissions/onboarding-stage-access"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingSLACron")
@@ -20,6 +22,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient()
+
+    // Reconciliador da janela de corrida do auto-advance: re-tenta o handoff
+    // em onboardings ativos cuja etapa esteja concluida mas que ficaram
+    // parados por leituras concorrentes "ainda pendente". Idempotente e
+    // protegido por CAS (ver reconcileStuckHandoffs). Roda ANTES da checagem
+    // de SLA para nao notificar como "travado" um onboarding que acabou de
+    // ser destravado nesta mesma passagem.
+    const reconcile = await reconcileStuckHandoffs()
+
     const { data: rows } = await admin
       .from("onboardings")
       .select(
@@ -39,6 +50,7 @@ export async function GET(request: NextRequest) {
       ) as
         | {
             sla_hours: number
+            slug: string
             default_assignee_role: string | null
             name: string
           }
@@ -49,11 +61,17 @@ export async function GET(request: NextRequest) {
       if (hours < col.sla_hours) continue
 
       const daysStuck = Math.floor(hours / 24)
+      // Função responsável canônica da etapa (matriz); fallback pro
+      // default_assignee_role. notifyStuck normaliza e resolve por multi-função.
+      const responsibleRole =
+        getOnboardingStageResponsibleRole(col.slug) ??
+        col.default_assignee_role ??
+        null
       await notifyStuck({
         onboardingId: r.id,
         orgId: r.org_id,
         daysStuck,
-        assigneeRole: col.default_assignee_role ?? null,
+        assigneeRole: responsibleRole,
       })
       notified += 1
     }
@@ -61,11 +79,13 @@ export async function GET(request: NextRequest) {
     log.info("SLA check done", {
       total: rows?.length ?? 0,
       notified,
+      reconcile,
     })
     return NextResponse.json({
       success: true,
       total: rows?.length ?? 0,
       notified,
+      reconcile,
     })
   } catch (e) {
     return NextResponse.json(

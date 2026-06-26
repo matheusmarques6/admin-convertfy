@@ -579,6 +579,11 @@ export async function advanceColumn(
 
   const currentCol = sortedCols[currentIdx]
   const nextCol = sortedCols[currentIdx + 1]
+  // Snapshot do estado esperado pra Compare-And-Swap (CAS). Só a requisição
+  // que ainda enxerga (current_column_id + current_version) efetua a transição;
+  // requisições concorrentes batem no guard e saem como "ja avancado".
+  const expectedColumnId = onb.current_column_id as string
+  const expectedVersion = (onb.current_version ?? 1) as number
 
   // Valida checklist + deliverables (a menos que override)
   if (!opts.forceOverride) {
@@ -598,7 +603,8 @@ export async function advanceColumn(
 
   // Se eh coluna final, marca como completed
   if (!nextCol || currentCol.is_final) {
-    await admin
+    // CAS: só completa se ainda estiver na coluna/versao esperadas e em progresso.
+    const { data: completed } = await admin
       .from("onboardings")
       .update({
         status: "completed",
@@ -606,6 +612,13 @@ export async function advanceColumn(
         last_column_change_at: new Date().toISOString(),
       })
       .eq("id", opts.onboardingId)
+      .eq("status", "in_progress")
+      .eq("current_column_id", expectedColumnId)
+      .eq("current_version", expectedVersion)
+      .select("id")
+      .maybeSingle()
+    // Outra requisição já completou/avançou — idempotente, sem reprocessar.
+    if (!completed) return { ok: true }
     await admin.from("events").insert({
       event_type: "onboarding.completed",
       entity_type: "onboarding",
@@ -631,14 +644,21 @@ export async function advanceColumn(
     return { ok: true }
   }
 
-  // Avanca
-  await admin
+  // Avanca (CAS): só transiciona quem ainda enxerga a coluna/versao esperadas.
+  const { data: moved } = await admin
     .from("onboardings")
     .update({
       current_column_id: nextCol.id,
       last_column_change_at: new Date().toISOString(),
     })
     .eq("id", opts.onboardingId)
+    .eq("status", "in_progress")
+    .eq("current_column_id", expectedColumnId)
+    .eq("current_version", expectedVersion)
+    .select("id")
+    .maybeSingle()
+  // Requisição concorrente já avançou — não duplica tasks/eventos/side-effects.
+  if (!moved) return { ok: true }
 
   // Marca task da coluna atual como concluida
   await admin
@@ -648,7 +668,7 @@ export async function advanceColumn(
     .eq("operational_column_id", currentCol.id)
     .neq("status", "completed")
 
-  // Instancia task da proxima coluna
+  // Instancia task da proxima coluna (idempotente — dedup por coluna+versao)
   await instantiateTaskForColumn(opts.onboardingId, nextCol.id, opts.actorId)
 
   // Eventos pra automacoes da coluna
@@ -1094,6 +1114,10 @@ export async function confirmBriefing(
       .update({ status: "completed", completed_at: now })
       .eq("onboarding_id", onb.id)
       .eq("operational_column_id", onb.current_column_id)
+    // CAS defensivo: so move se o onboarding ainda estiver na coluna/versao
+    // observadas no inicio desta funcao. Ja protegido upstream pelo CAS de
+    // `briefing_confirmed_by_client`, mas mantem o update condicional por
+    // consistencia (sem alterar o caminho feliz).
     await admin
       .from("onboardings")
       .update({
@@ -1101,6 +1125,8 @@ export async function confirmBriefing(
         last_column_change_at: now,
       })
       .eq("id", onb.id)
+      .eq("current_column_id", onb.current_column_id)
+      .eq("current_version", onb.current_version)
     await instantiateTaskForColumn(onb.id, nextCol.id, null)
   }
 
