@@ -9,6 +9,10 @@ import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+import {
+  canAccessOnboardingStage,
+  getOnboardingStageAccess,
+} from "@/lib/permissions/onboarding-stage-access"
 
 // Cache em memoria de quando rodou ensureOnboardingBootstrap por org.
 // Garante que checklist_template/deliverables_template das colunas estao
@@ -33,11 +37,25 @@ export async function GET(request: NextRequest) {
     // Get user's org membership for multi-tenant
     const { data: orgMember } = await supabase
       .from("org_members")
-      .select("org_id")
+      .select("id, org_id")
       .eq("profile_id", user.id)
       .single()
 
     const orgId = orgMember?.org_id
+
+    // Carrega TODAS as funções da conta (multi-função) via org_member_roles.
+    // Usado pra filtrar a visibilidade dos onboardings por etapa NO SERVIDOR
+    // (a UI não reimplementa a regra — recebe can_work/can_admin prontos).
+    let userRoles: string[] = []
+    if (orgMember?.id) {
+      const { data: roleRows } = await supabase
+        .from("org_member_roles")
+        .select("role")
+        .eq("org_member_id", orgMember.id)
+      userRoles = (roleRows ?? [])
+        .map((r) => r.role as string)
+        .filter(Boolean)
+    }
 
     // Lazy re-sync dos templates de coluna do pipeline de onboarding.
     // Garante que mudancas no SEED_COLUMNS (ex: allow_other no language)
@@ -249,6 +267,16 @@ export async function GET(request: NextRequest) {
               helpText?: string
             }>
           } | null
+
+          // FILTRO SERVER-SIDE de visibilidade por etapa: o grupo virtual do
+          // onboarding só entra no board se a função do usuário pode acessar a
+          // etapa ATUAL (bypass vê tudo). Atribuição individual NÃO concede
+          // acesso — a regra é puramente função × etapa.
+          const stageSlug = col?.slug ?? null
+          if (!canAccessOnboardingStage(userRoles, stageSlug)) {
+            continue
+          }
+          const stageAccess = getOnboardingStageAccess(userRoles, stageSlug)
           // Indexa template por field_slug pra enriquecer cada task_deliverable
           // com options/validation/etc (nao guardado no row do banco).
           const tplBySlug = new Map<string, {
@@ -392,6 +420,11 @@ export async function GET(request: NextRequest) {
               stage_slug: col?.slug,
               stage_color: col?.color,
               stage_role: col?.default_assignee_role,
+              // Flags de permissão resolvidas no servidor — a UI consome direto
+              // sem reimplementar a matriz de visibilidade por etapa.
+              can_work: stageAccess.canWork,
+              can_admin: stageAccess.canAdmin,
+              responsible_role: stageAccess.responsibleRole,
               plan: onb.plan,
               mrr_value: onb.mrr_value,
               client_id: client?.id,
