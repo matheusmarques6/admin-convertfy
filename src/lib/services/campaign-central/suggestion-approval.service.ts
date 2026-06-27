@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 import { ConflictError, NotFoundError } from "@/lib/api/errors"
 import { instantiateCampaignStage } from "./campaign-design-instantiate.service"
+import { dispatchCampaignCopyToN8n } from "./campaign-copy-dispatch.service"
 
 const log = logger.child("CampaignSuggestionApproval")
 
@@ -205,6 +206,24 @@ export async function approveSuggestion(params: {
       await admin.from("tasks").delete().eq("id", designTaskId)
     }
     throw updateErr
+  }
+
+  // Aprovada de verdade: dispara a geração de copy de PRODUÇÃO para TODAS as
+  // lojas-alvo (não só a piloto). NON-BLOCKING: uma falha do dispatch (ex.: n8n
+  // fora) não pode abortar a aprovação nem reverter o status já gravado.
+  try {
+    await dispatchCampaignCopyToN8n({
+      suggestionId,
+      orgId,
+      mode: "production",
+      storeIds: s.targets.map((t) => t.store_id),
+      triggeredBy: userId ?? "approval",
+    })
+  } catch (err) {
+    log.error("approve.copy_dispatch_failed", {
+      suggestionId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
   log.info("approve.done", { suggestionId, pipelineId, designTaskId })
