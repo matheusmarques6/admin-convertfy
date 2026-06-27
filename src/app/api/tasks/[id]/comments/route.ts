@@ -1,72 +1,102 @@
 import { NextRequest } from "next/server"
-import {
-  AppError,
-  errorResponse,
-  requireAuth,
-  successResponse,
-} from "@/lib/api/errors"
-import { requireTaskAccess } from "@/lib/api/onboarding-task-access"
-import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+import { guardOnboardingTask } from "@/lib/api/onboarding-task-access"
 
-export const dynamic = "force-dynamic"
+const log = logger.child("TasksComments")
 
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
+
+
+
+
+
+// GET - Get comments for a task
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    const access = await requireTaskAccess(user.id, id, "read")
-    const admin = createAdminClient()
-    const { data, error } = await admin
+    await guardOnboardingTask(user.id, id, "read")
+
+    const adminClient = createAdminClient()
+
+    const { data: comments, error } = await adminClient
       .from("task_comments")
-      .select(
-        "*, author:profiles!task_comments_author_id_fkey(id, name, email, avatar_url)",
-      )
+      .select(`
+        *,
+        author:profiles(id, name, email, avatar_url)
+      `)
       .eq("task_id", id)
       .order("created_at", { ascending: true })
-    if (error) throw error
-    return successResponse(request, {
-      comments: data ?? [],
-      can_work: access.canWork,
-    })
+
+    if (error) {
+      log.error("[Task Comments] Error fetching:", error)
+      throw new AppError("Erro ao buscar comentários", 500)
+    }
+
+    return successResponse(request, { comments: comments || [] })
   } catch (error) {
-    return errorResponse(request, error, "task-comments-get")
+    return errorResponse(request, error, "TasksComments")
   }
 }
 
+// POST - Add comment to task
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    await requireTaskAccess(user.id, id, "work")
-    const body = await request.json()
-    const content = String(body.content ?? "").trim()
-    if (!content) throw new AppError("Conteudo obrigatorio", 400)
+    await guardOnboardingTask(user.id, id, "work")
 
-    const admin = createAdminClient()
-    const { data, error } = await admin
+    const body = await request.json()
+
+    if (!body.content) {
+      throw new AppError("Conteúdo é obrigatório", 400)
+    }
+
+    const adminClient = createAdminClient()
+
+    const { data: comment, error: insertError } = await adminClient
       .from("task_comments")
       .insert({
         task_id: id,
         author_id: user.id,
-        content,
-        mentions: Array.isArray(body.mentions) ? body.mentions : [],
-        attachments: Array.isArray(body.attachments) ? body.attachments : [],
+        content: body.content,
+        mentions: body.mentions || [],
+        attachments: body.attachments || [],
       })
-      .select(
-        "*, author:profiles!task_comments_author_id_fkey(id, name, email, avatar_url)",
-      )
+      .select(`
+        *,
+        author:profiles(id, name, email, avatar_url)
+      `)
       .single()
-    if (error) throw error
-    return successResponse(request, { comment: data }, { status: 201 })
+
+    if (insertError) {
+      log.error("[Task Comments] Insert error:", insertError)
+      throw new AppError("Erro ao adicionar comentário", 500)
+    }
+
+    // Record in history
+    await adminClient.from("task_history").insert({
+      task_id: id,
+      actor_id: user.id,
+      action: "commented",
+      new_value: { comment_id: comment.id },
+    })
+
+    return successResponse(request, { comment, message: "Comentário adicionado" }, { status: 201 })
   } catch (error) {
-    return errorResponse(request, error, "task-comments-create")
+    return errorResponse(request, error, "TasksComments")
   }
 }

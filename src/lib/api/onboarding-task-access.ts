@@ -138,3 +138,35 @@ export async function requireTaskAccess(
 
   return context
 }
+
+/**
+ * Gate ESCOPADO: aplica a regra de visibilidade por etapa apenas a tasks de
+ * ONBOARDING. Tasks comuns (sem onboarding_id) mantem o comportamento original
+ * (qualquer membro da org), retornando o contexto sem bloquear.
+ *
+ * Use isto nos endpoints de sub-recursos (comments, checklists, timeline, etc.)
+ * para nao restringir tasks de produtividade que nao fazem parte do onboarding.
+ */
+export async function guardOnboardingTask(
+  userId: string,
+  taskId: string,
+  action: TaskAccessAction,
+): Promise<TaskAccessContext> {
+  const context = await getTaskAccessContext(userId, taskId)
+  if (!context) {
+    throw new AppError("Task nao encontrada", 404)
+  }
+  if (!context.onboarding) {
+    return context
+  }
+  if (!context.canRead) {
+    throw new AppError("Task nao encontrada", 404)
+  }
+  if (action === "work" && !context.canWork) {
+    throw new AppError("Sem permissao para trabalhar nesta task", 403)
+  }
+  if (action === "admin" && !context.canAdmin) {
+    throw new AppError("Sem permissao administrativa nesta task", 403)
+  }
+  return context
+}

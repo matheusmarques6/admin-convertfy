@@ -1,57 +1,68 @@
 import { NextRequest } from "next/server"
-import {
-  AppError,
-  errorResponse,
-  requireAuth,
-  successResponse,
-} from "@/lib/api/errors"
-import { requireTaskAccess } from "@/lib/api/onboarding-task-access"
-import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { handleCorsPreFlight } from "@/lib/cors"
+import { guardOnboardingTask } from "@/lib/api/onboarding-task-access"
 
-export const dynamic = "force-dynamic"
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    const access = await requireTaskAccess(user.id, id, "read")
+    await guardOnboardingTask(user.id, id, "read")
+
+    const admin = createAdminClient()
+    const { data: task, error } = await admin
+      .from("tasks")
+      .select("id, acceptance_criteria")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (error || !task) throw new AppError("Task não encontrada", 404)
+
     return successResponse(request, {
-      criteria: (access.task.acceptance_criteria as string[] | null) ?? [],
-      can_work: access.canWork,
+      criteria: (task.acceptance_criteria as string[]) ?? [],
     })
   } catch (error) {
-    return errorResponse(request, error, "task-criteria-get")
+    return errorResponse(request, error, "TasksAcceptanceCriteria")
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    await requireTaskAccess(user.id, id, "work")
+    await guardOnboardingTask(user.id, id, "work")
+
     const body = await request.json()
-    if (
-      !Array.isArray(body.criteria) ||
-      !body.criteria.every((item: unknown) => typeof item === "string")
-    ) {
-      throw new AppError("criteria deve ser um array de strings", 400)
+    if (!Array.isArray(body.criteria) || !body.criteria.every((c: unknown) => typeof c === "string")) {
+      throw new AppError("Campo criteria deve ser array de strings", 400)
     }
+
     const admin = createAdminClient()
-    const { error } = await admin
+    const { error: updateErr } = await admin
       .from("tasks")
-      .update({ acceptance_criteria: body.criteria })
+      .update({
+        acceptance_criteria: body.criteria,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id)
-    if (error) throw error
+
+    if (updateErr) throw new AppError("Erro ao salvar critérios", 500)
+
     return successResponse(request, { criteria: body.criteria })
   } catch (error) {
-    return errorResponse(request, error, "task-criteria-update")
+    return errorResponse(request, error, "TasksAcceptanceCriteria")
   }
 }
