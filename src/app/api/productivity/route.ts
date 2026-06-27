@@ -13,6 +13,7 @@ import {
   canAccessOnboardingStage,
   getOnboardingStageAccess,
 } from "@/lib/permissions/onboarding-stage-access"
+import { listCampaignDesignProjectGroups } from "@/lib/services/campaign-central/campaign-design-board.service"
 
 // Cache em memoria de quando rodou ensureOnboardingBootstrap por org.
 // Garante que checklist_template/deliverables_template das colunas estao
@@ -435,6 +436,36 @@ export async function GET(request: NextRequest) {
       }
     } catch (e) {
       console.error("[productivity GET] onboardings projection failed", e)
+    }
+
+    // ── Campanhas em design como projetos virtuais (Fase 7) ──────────────
+    // Espelha a projecao de onboarding: cada campanha com design ATIVO vira um
+    // grupo no board, filtrada por funcao × etapa no servidor. Aditivo — nao
+    // mexe na projecao de onboarding nem nos grupos legados.
+    try {
+      const campaignGroups = await listCampaignDesignProjectGroups({
+        orgId: orgId as string,
+        roles: userRoles,
+      })
+      for (const cg of campaignGroups) {
+        groups.push({
+          id: cg.id,
+          name: cg.name,
+          color: cg.color,
+          position: cg.position,
+          items: cg.items as never,
+          ...({
+            source_type: "campaign_suggestion",
+            suggestion_id: cg.suggestion_id,
+            stage_slug: cg.design_stage,
+            can_work: cg.can_work,
+            can_admin: cg.can_admin,
+            responsible_role: cg.responsible_role,
+          } as Record<string, unknown>),
+        })
+      }
+    } catch (e) {
+      console.error("[productivity GET] campaign design projection failed", e)
     }
 
     // Process habits into weekly grid
