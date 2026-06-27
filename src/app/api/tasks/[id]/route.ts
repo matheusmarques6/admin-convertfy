@@ -54,7 +54,7 @@ export async function GET(
     // seguem inalteradas.
     const access = await getTaskAccessContext(user.id, id)
     if (!access) throw new AppError("Tarefa não encontrada", 404)
-    if (access.onboarding && !access.canRead) {
+    if ((access.onboarding || access.campaign) && !access.canRead) {
       throw new AppError("Tarefa não encontrada", 404)
     }
 
@@ -146,7 +146,7 @@ export async function PUT(
     // Tasks comuns mantem o comportamento original (qualquer membro da org).
     const access = await getTaskAccessContext(user.id, id)
     if (!access) throw new AppError("Tarefa não encontrada", 404)
-    if (access.onboarding) {
+    if (access.onboarding || access.campaign) {
       if (!access.canRead) throw new AppError("Tarefa não encontrada", 404)
       const touchesAdmin = ONBOARDING_ADMIN_FIELDS.some(
         (field) => body[field] !== undefined,
@@ -353,7 +353,7 @@ export async function DELETE(
     // Tasks comuns mantem o comportamento original.
     const access = await getTaskAccessContext(user.id, id)
     if (!access) throw new AppError("Tarefa não encontrada", 404)
-    if (access.onboarding && !access.canAdmin) {
+    if ((access.onboarding || access.campaign) && !access.canAdmin) {
       throw new AppError("Sem permissão administrativa nesta task", 403)
     }
 

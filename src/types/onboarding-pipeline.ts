@@ -6,7 +6,7 @@
  * operacional NOVA sem conflitar com o legado.
  */
 
-export type OperationalPipelineType = "onboarding" | "acompanhamento" | "feedback" | "suporte"
+export type OperationalPipelineType = "onboarding" | "acompanhamento" | "feedback" | "suporte" | "campaign_design"
 export type OnboardingPaymentStatus = "pending" | "paid" | "overdue" | "renewal_due"
 export type OnboardingContractStatus = "pending" | "sent" | "signed" | "expiring"
 export type OnboardingPipelineStatus = "in_progress" | "completed" | "cancelled"
