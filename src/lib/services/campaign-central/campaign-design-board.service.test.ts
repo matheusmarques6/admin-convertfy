@@ -170,4 +170,20 @@ describe("listCampaignDesignProjectGroups — Fase 7", () => {
     expect(groups[0].design_stage).toBe("producao")
     expect(groups[0].responsible_role).toBe("designer")
   })
+
+  it("expoe source_type/stage_name/stage_color/stage_role pro header do board", async () => {
+    h.db.operational_pipeline_columns.push({
+      id: colId("estrutura"),
+      slug: "estrutura",
+      name: "Estrutura de design",
+      color: "#A855F7",
+    })
+    seedCampaign("s1", "estrutura")
+    seedTask("s1", "estrutura", 1)
+    const groups = await listCampaignDesignProjectGroups({ orgId: ORG, roles: ["designer"] })
+    expect(groups[0].source_type).toBe("campaign_design")
+    expect(groups[0].stage_name).toBe("Estrutura de design")
+    expect(groups[0].stage_color).toBe("#A855F7")
+    expect(groups[0].stage_role).toBe("designer")
+  })
 })

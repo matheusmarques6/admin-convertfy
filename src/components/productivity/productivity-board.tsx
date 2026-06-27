@@ -1148,6 +1148,11 @@ function TableView({
           client_name?: string
         }
         const isOnboardingGroup = gAny.source_type === "onboarding"
+        // Grupos de campanha em design tambem sao "projetos virtuais": usam o
+        // mesmo header rico (nome + chip da etapa de design via stage_name/
+        // stage_color/stage_role). plan/mrr ficam undefined e nao renderizam.
+        const isProjectGroup =
+          isOnboardingGroup || gAny.source_type === "campaign_design"
         const plan = gAny.plan
         const mrr = gAny.mrr_value
         const mrrLabel =
@@ -1163,8 +1168,8 @@ function TableView({
                 {...dp.draggableProps}
                 className={ds.isDragging ? "shadow-xl bg-white dark:bg-[#1A1D27]" : ""}
               >
-            {/* Group header — projeto (onboarding) ou grupo legado */}
-            {isOnboardingGroup ? (
+            {/* Group header — projeto (onboarding/campanha) ou grupo legado */}
+            {isProjectGroup ? (
               <>
                 {/* Nivel 1: Projeto */}
                 <div

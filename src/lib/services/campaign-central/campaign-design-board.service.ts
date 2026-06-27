@@ -32,6 +32,12 @@ export interface CampaignDesignGroup {
   can_admin: boolean
   responsible_role: string | null
   design_stage: string | null
+  // Campos de display consumidos pelo board (mesmo shape do grupo de onboarding):
+  // o header rico do board renderiza quando source_type e um "projeto virtual".
+  source_type: "campaign_design"
+  stage_name: string | null
+  stage_color: string | null
+  stage_role: string | null
 }
 
 interface CampaignRow {
@@ -283,6 +289,10 @@ export async function listCampaignDesignProjectGroups(params: {
       can_admin: access.canAdmin,
       responsible_role: access.responsibleRole,
       design_stage: slug,
+      source_type: "campaign_design",
+      stage_name: column?.name ?? null,
+      stage_color: column?.color ?? null,
+      stage_role: access.responsibleRole,
     })
     order += 1
   }
