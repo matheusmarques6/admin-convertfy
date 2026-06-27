@@ -28,8 +28,26 @@ import {
   type CampaignDesignStageSlug,
 } from "./campaign-design-bootstrap.service"
 import { instantiateCampaignStage } from "./campaign-design-instantiate.service"
+import { notifyCampaignDesignStage } from "./campaign-design-notify.service"
 
 const log = logger.child("CampaignDesignHandoff")
+
+/**
+ * Notifica a funcao responsavel da etapa (fire-and-forget). NUNCA pode quebrar
+ * o handoff — qualquer erro e engolido e logado.
+ */
+async function notifyStageSafe(params: {
+  suggestionId: string
+  orgId: string
+  stageSlug: CampaignDesignStageSlug
+  event: "entered" | "changes_requested"
+}): Promise<void> {
+  try {
+    await notifyCampaignDesignStage(params)
+  } catch (e) {
+    log.error("notifyCampaignDesignStage", e)
+  }
+}
 
 export type CampaignDesignHandoffResult =
   | "advanced"
@@ -298,6 +316,15 @@ export async function attemptCampaignDesignHandoff(
     createdBy: params.actorId,
   })
 
+  // Fase 5: notifica a funcao responsavel da nova etapa (ex: aprovacao -> COO
+  // avalia o Figma; finalizacao -> designer). Non-blocking.
+  await notifyStageSafe({
+    suggestionId: params.suggestionId,
+    orgId: params.orgId,
+    stageSlug: next,
+    event: "entered",
+  })
+
   return "advanced"
 }
 
@@ -328,6 +355,14 @@ export async function approveCampaignDesign(
     stageSlug: "producao",
     pilotStoreId: ctx.campaign.design_pilot_store_id,
     createdBy: params.actorId,
+  })
+
+  // Fase 5: producao -> notifica os designers (Figma aprovado, mao na massa).
+  await notifyStageSafe({
+    suggestionId: params.suggestionId,
+    orgId: params.orgId,
+    stageSlug: "producao",
+    event: "entered",
   })
 
   return "advanced"
@@ -370,6 +405,14 @@ export async function requestCampaignDesignChanges(
     stageSlug: "estrutura",
     pilotStoreId: ctx.campaign.design_pilot_store_id,
     createdBy: params.actorId,
+  })
+
+  // Fase 5: estrutura volta pros designers com o pedido de mudancas do COO.
+  await notifyStageSafe({
+    suggestionId: params.suggestionId,
+    orgId: params.orgId,
+    stageSlug: "estrutura",
+    event: "changes_requested",
   })
 
   return "reworked"
