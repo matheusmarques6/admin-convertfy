@@ -29,8 +29,25 @@ import {
 } from "./campaign-design-bootstrap.service"
 import { instantiateCampaignStage } from "./campaign-design-instantiate.service"
 import { notifyCampaignDesignStage } from "./campaign-design-notify.service"
+import { syncCampaignDesignToPipelineItem } from "./campaign-design-sync.service"
 
 const log = logger.child("CampaignDesignHandoff")
+
+/**
+ * Fase 6: espelha o sub-estagio de design no card do Campaign Central
+ * (`campaign_pipeline_items`). NUNCA pode quebrar o handoff — qualquer erro e
+ * engolido e logado. Inerte quando a campanha nao tem card/design ativo.
+ */
+async function syncSafe(params: {
+  suggestionId: string
+  orgId: string
+}): Promise<void> {
+  try {
+    await syncCampaignDesignToPipelineItem(params)
+  } catch (e) {
+    log.error("syncCampaignDesignToPipelineItem", e)
+  }
+}
 
 /**
  * Notifica a funcao responsavel da etapa (fire-and-forget). NUNCA pode quebrar
@@ -325,6 +342,9 @@ export async function attemptCampaignDesignHandoff(
     event: "entered",
   })
 
+  // Fase 6: espelha o sub-estagio no card do Campaign Central (non-blocking).
+  await syncSafe({ suggestionId: params.suggestionId, orgId: params.orgId })
+
   return "advanced"
 }
 
@@ -364,6 +384,9 @@ export async function approveCampaignDesign(
     stageSlug: "producao",
     event: "entered",
   })
+
+  // Fase 6: espelha o sub-estagio no card do Campaign Central (non-blocking).
+  await syncSafe({ suggestionId: params.suggestionId, orgId: params.orgId })
 
   return "advanced"
 }
@@ -414,6 +437,9 @@ export async function requestCampaignDesignChanges(
     stageSlug: "estrutura",
     event: "changes_requested",
   })
+
+  // Fase 6: espelha o sub-estagio no card do Campaign Central (non-blocking).
+  await syncSafe({ suggestionId: params.suggestionId, orgId: params.orgId })
 
   return "reworked"
 }
