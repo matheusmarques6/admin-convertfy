@@ -117,6 +117,11 @@ export async function GET(
         comments: comments || [],
         checklists: checklists || [],
         history: history || [],
+        // Flags de permissao por etapa (UI esconde acoes de admin sem
+        // reimplementar a regra). Para tasks comuns, canAdmin reflete bypass.
+        can_work: access.canWork,
+        can_admin: access.canAdmin,
+        stage_slug: access.stageSlug,
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {

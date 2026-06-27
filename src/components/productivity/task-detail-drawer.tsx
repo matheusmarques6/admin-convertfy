@@ -808,6 +808,29 @@ export function TaskDetailDrawer({
     !!task.source_type || !!task.onboarding_id
   const isOverdue = false // pode derivar de due_date depois
 
+  // Permissao administrativa por etapa (so afeta tasks de onboarding). Default
+  // permissivo: a UI apenas esconde acoes que o backend ja rejeita (403). Para
+  // tasks comuns canAdmin fica true e nada muda.
+  const [canAdmin, setCanAdmin] = useState(true)
+  useEffect(() => {
+    if (!isOnboarding) {
+      setCanAdmin(true)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/tasks/${task.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return
+        const ca = json?.task?.can_admin ?? json?.data?.task?.can_admin
+        if (typeof ca === "boolean") setCanAdmin(ca)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [task.id, isOnboarding])
+
   // Mapeia status do board (pending/progress/review/done) pro status real
   // do banco (pending/in_progress/in_review/completed). O store usa o
   // shorthand do board mas a tabela `tasks` usa o nome completo.
@@ -1487,14 +1510,18 @@ export function TaskDetailDrawer({
                   <span className="text-gray-400">{I.history({ size: 13 })}</span>
                   Arquivar
                 </button>
-                <div className="border-t my-1" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
-                <button
-                  onClick={deleteTask}
-                  className="w-full text-left px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50 flex items-center gap-2"
-                >
-                  <span>{I.close({ size: 13 })}</span>
-                  Excluir
-                </button>
+                {(!isOnboarding || canAdmin) && (
+                  <>
+                    <div className="border-t my-1" style={{ borderColor: "rgba(0,0,0,0.06)" }} />
+                    <button
+                      onClick={deleteTask}
+                      className="w-full text-left px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <span>{I.close({ size: 13 })}</span>
+                      Excluir
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
