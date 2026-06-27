@@ -43,6 +43,7 @@ vi.mock("@/lib/api/onboarding-permissions", () => ({
 import {
   getTaskAccessContext,
   guardOnboardingTask,
+  requireTaskAccess,
 } from "./onboarding-task-access"
 
 const ORG = "org1"
@@ -221,5 +222,65 @@ describe("guardOnboardingTask — gateia campanha (e nao quebra task comum)", ()
       withPipeline: false,
     })
     await expect(guardOnboardingTask("u1", "ct1", "work")).resolves.toBeTruthy()
+  })
+})
+
+describe("edge cases e fiacao completa da matriz", () => {
+  it("designer tambem acessa a etapa de PRODUCAO (matriz alem de estrutura)", async () => {
+    mockMember = { orgId: ORG, memberId: "m1", role: "designer", roles: ["designer"] }
+    seedCampaignTask({
+      taskColumnId: "c-prod",
+      designColumnId: "c-prod",
+      columnSlug: "producao",
+    })
+    const ctx = await getTaskAccessContext("u1", "ct1")
+    expect(ctx?.stageSlug).toBe("producao")
+    expect(ctx?.canWork).toBe(true)
+  })
+
+  it("campanha NAO encontrada (source_id orfao): cai como task comum", async () => {
+    mockMember = { orgId: ORG, memberId: "m1", role: "designer", roles: ["designer"] }
+    db.tasks.push({
+      id: "ct1",
+      org_id: ORG,
+      onboarding_id: null,
+      source_type: "campaign_suggestion",
+      source_id: "fantasma",
+      operational_pipeline_id: "pipe-campaign",
+      operational_column_id: "c-estrutura",
+      version: 1,
+      status: "pending",
+      assignee_role: null,
+    })
+    const ctx = await getTaskAccessContext("u1", "ct1")
+    expect(ctx?.campaign).toBeNull()
+    expect(ctx?.canWork).toBe(true) // comum, role null
+  })
+
+  it("design NAO iniciado (design_column_id null): task nao e da etapa atual", async () => {
+    mockMember = { orgId: ORG, memberId: "m1", role: "designer", roles: ["designer"] }
+    seedCampaignTask({
+      taskColumnId: "c-estrutura",
+      designColumnId: null,
+      columnSlug: "estrutura",
+    })
+    const ctx = await getTaskAccessContext("u1", "ct1")
+    expect(ctx?.campaign?.id).toBe("camp1")
+    expect(ctx?.isCurrentStage).toBe(false)
+    expect(ctx?.canRead).toBe(false)
+  })
+
+  it("requireTaskAccess: 404 pra quem nao tem a funcao; ok pro responsavel", async () => {
+    seedCampaignTask({
+      taskColumnId: "c-estrutura",
+      designColumnId: "c-estrutura",
+      columnSlug: "estrutura",
+    })
+    mockMember = { orgId: ORG, memberId: "m1", role: "suporte", roles: ["suporte"] }
+    await expect(requireTaskAccess("u1", "ct1", "read")).rejects.toMatchObject({
+      statusCode: 404,
+    })
+    mockMember = { orgId: ORG, memberId: "m2", role: "designer", roles: ["designer"] }
+    await expect(requireTaskAccess("u1", "ct1", "work")).resolves.toBeTruthy()
   })
 })
