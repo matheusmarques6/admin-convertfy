@@ -44,7 +44,11 @@ vi.mock("@/lib/api/onboarding-permissions", () => ({
   getUserOrgRole: async () => mockMember,
 }))
 
-import { getTaskAccessContext, requireTaskAccess } from "./onboarding-task-access"
+import {
+  getTaskAccessContext,
+  guardOnboardingTask,
+  requireTaskAccess,
+} from "./onboarding-task-access"
 import { AppError } from "@/lib/api/errors"
 
 const ORG = "org1"
@@ -261,6 +265,82 @@ describe("requireTaskAccess — guards de API", () => {
     })
     const ctx = await requireTaskAccess("u1", "t1", "admin")
     expect(ctx.canAdmin).toBe(true)
+  })
+})
+
+describe("guardOnboardingTask — gate escopado (não restringe tasks comuns)", () => {
+  it("REGRESSÃO: task comum (sem onboarding) passa para QUALQUER função, sem bloquear", async () => {
+    // Esta é a garantia contra a sobre-restrição: o gate so vale para tasks de
+    // onboarding. Uma task de produtividade com assignee_role de OUTRA funcao
+    // (designer) deve continuar editavel por um suporte.
+    mockMember = {
+      orgId: ORG,
+      memberId: "m1",
+      role: "suporte",
+      roles: ["suporte"],
+    }
+    db.tasks.push({
+      id: "t1",
+      org_id: ORG,
+      onboarding_id: null,
+      operational_column_id: null,
+      version: null,
+      status: "pending",
+      assignee_role: "designer",
+      assignee_id: null,
+    })
+    // Mesmo pedindo "work" e "admin", task comum nao e bloqueada pelo gate.
+    await expect(guardOnboardingTask("u1", "t1", "work")).resolves.toBeTruthy()
+    await expect(guardOnboardingTask("u1", "t1", "admin")).resolves.toBeTruthy()
+  })
+
+  it("task de onboarding: esconde (404) de quem não tem a função da etapa", async () => {
+    mockMember = {
+      orgId: ORG,
+      memberId: "m1",
+      role: "suporte",
+      roles: ["suporte"],
+    }
+    seedOnboardingTask({
+      taskColumnId: "c-emails",
+      onboardingColumnId: "c-emails",
+      columnSlug: "emails_finais",
+      assigneeRole: "designer",
+    })
+    await expect(
+      guardOnboardingTask("u1", "t1", "read"),
+    ).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  it("task de onboarding: função operacional trabalha, mas admin é só bypass (403)", async () => {
+    mockMember = {
+      orgId: ORG,
+      memberId: "m1",
+      role: "designer",
+      roles: ["designer"],
+    }
+    seedOnboardingTask({
+      taskColumnId: "c-emails",
+      onboardingColumnId: "c-emails",
+      columnSlug: "emails_finais",
+      assigneeRole: "designer",
+    })
+    await expect(guardOnboardingTask("u1", "t1", "work")).resolves.toBeTruthy()
+    await expect(
+      guardOnboardingTask("u1", "t1", "admin"),
+    ).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it("task inexistente → 404", async () => {
+    mockMember = {
+      orgId: ORG,
+      memberId: "m1",
+      role: "designer",
+      roles: ["designer"],
+    }
+    await expect(
+      guardOnboardingTask("u1", "inexistente", "read"),
+    ).rejects.toMatchObject({ statusCode: 404 })
   })
 })
 
