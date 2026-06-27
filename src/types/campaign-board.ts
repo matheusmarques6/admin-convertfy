@@ -53,6 +53,11 @@ export interface BoardCard {
   has_production_copy: boolean
   /** Nº de copies de produção geradas (chip "Copy" no card). */
   production_copy_count: number
+  /** Sub-etapa do pipeline de DESIGN (estrutura/aprovacao/producao/finalizacao),
+   *  de design_data. null = campanha ainda nao entrou em design. */
+  design_stage: string | null
+  /** Versao do retrabalho de design (incrementa quando o COO pede mudancas). */
+  design_version: number | null
 }
 
 export interface BoardResponse {

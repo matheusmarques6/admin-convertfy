@@ -112,7 +112,7 @@ export async function getBoard(orgId: string): Promise<BoardResponse> {
   // 1) Pipeline items da Central (campanhas com produção por loja).
   const { data: items, error: itemsErr } = await admin
     .from("campaign_pipeline_items")
-    .select("id, title, subject_line, description, stage, copy_data, deploy_config, target_stores, tags, created_at")
+    .select("id, title, subject_line, description, stage, copy_data, design_data, deploy_config, target_stores, tags, created_at")
     .eq("org_id", orgId)
     .contains("tags", ["central"])
     .order("created_at", { ascending: false })
@@ -204,6 +204,13 @@ export async function getBoard(orgId: string): Promise<BoardResponse> {
       }
     })
 
+    const designData = (it.design_data ?? {}) as Record<string, unknown>
+    const designStage = (designData.design_stage as string | null) ?? null
+    const designVersion =
+      typeof designData.design_version === "number"
+        ? designData.design_version
+        : null
+
     const sid = (copy.suggestion_id as string | null) ?? null
     if (sid) consumedSuggestionIds.add(sid)
     const meta = sid ? sugMeta.get(sid) : null
@@ -245,6 +252,8 @@ export async function getBoard(orgId: string): Promise<BoardResponse> {
       has_pilot_good: hasPilotGood(meta),
       has_production_copy: productionCopyCount(meta) > 0,
       production_copy_count: productionCopyCount(meta),
+      design_stage: designStage,
+      design_version: designVersion,
     })
   }
 
@@ -290,6 +299,9 @@ export async function getBoard(orgId: string): Promise<BoardResponse> {
       has_pilot_good: hasPilotGood(meta),
       has_production_copy: productionCopyCount(meta) > 0,
       production_copy_count: productionCopyCount(meta),
+      // Card só-sugestão ainda não tem pipeline_item → sem design ativo.
+      design_stage: null,
+      design_version: null,
     })
   }
 

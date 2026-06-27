@@ -4,6 +4,7 @@ import {
   resolveProdStages,
   stageToProdIndex,
   boardColumnIndex,
+  campaignDesignStageLabel,
   BOARD_COLUMN_ORDER,
   type BoardDerivationInput,
 } from "./board-mapping"
@@ -154,5 +155,20 @@ describe("ordem e adjacência das colunas", () => {
     expect(boardColumnIndex("sugestao")).toBe(0)
     expect(boardColumnIndex("copy")).toBe(2)
     expect(boardColumnIndex("enviada")).toBe(6)
+  })
+})
+
+describe("campaignDesignStageLabel — sub-etapa do design", () => {
+  it("mapeia cada slug para rótulo PT-BR", () => {
+    expect(campaignDesignStageLabel("estrutura")).toBe("Estrutura")
+    expect(campaignDesignStageLabel("aprovacao")).toBe("Aprovação")
+    expect(campaignDesignStageLabel("producao")).toBe("Produção")
+    expect(campaignDesignStageLabel("finalizacao")).toBe("Finalização")
+  })
+
+  it("slug desconhecido ou null → null", () => {
+    expect(campaignDesignStageLabel("bogus")).toBeNull()
+    expect(campaignDesignStageLabel(null)).toBeNull()
+    expect(campaignDesignStageLabel(undefined)).toBeNull()
   })
 })

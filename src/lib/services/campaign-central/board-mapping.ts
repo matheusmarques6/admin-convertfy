@@ -47,6 +47,20 @@ export function boardColumnIndex(col: BoardColumnKey): number {
   return BOARD_COLUMN_ORDER.indexOf(col)
 }
 
+/** Rótulo PT-BR da sub-etapa do pipeline de design (design_data.design_stage). */
+const CAMPAIGN_DESIGN_STAGE_LABELS: Record<string, string> = {
+  estrutura: "Estrutura",
+  aprovacao: "Aprovação",
+  producao: "Produção",
+  finalizacao: "Finalização",
+}
+export function campaignDesignStageLabel(
+  slug: string | null | undefined,
+): string | null {
+  if (!slug) return null
+  return CAMPAIGN_DESIGN_STAGE_LABELS[slug] ?? null
+}
+
 /**
  * Fallback: stage global do item → estágio por loja (0..4) para itens antigos
  * (sem prod_stage no JSONB target_stores). DEVE espelhar `stageToProdIndex` de

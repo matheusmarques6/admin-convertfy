@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import type { BoardCard, BoardColumnKey } from "@/types/campaign-board"
 import type { CampaignSuggestionType } from "@/types/campaign-central"
 import type { ProductionDesigner } from "@/types/campaign-production"
-import { BOARD_COLUMNS } from "@/lib/services/campaign-central/board-mapping"
+import {
+  BOARD_COLUMNS,
+  campaignDesignStageLabel,
+} from "@/lib/services/campaign-central/board-mapping"
 import { storeBrand, storeInitials, designerInitials } from "../production/helpers"
 
 const TYPE_META: Record<
@@ -141,6 +144,14 @@ export function BoardCardView({
       {/* Top badges + handle/confidence */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <Badge variant={meta.tone}>{meta.label}</Badge>
+        {card.design_stage && campaignDesignStageLabel(card.design_stage) && (
+          <Badge variant="info" showDot>
+            Design: {campaignDesignStageLabel(card.design_stage)}
+            {card.design_version && card.design_version > 1
+              ? ` · v${card.design_version}`
+              : ""}
+          </Badge>
+        )}
         {card.low_perf && (
           <Badge variant="negative" showDot>
             Baixa perf.
