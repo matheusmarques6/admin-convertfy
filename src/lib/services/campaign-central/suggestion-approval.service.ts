@@ -20,7 +20,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 import { ConflictError, NotFoundError } from "@/lib/api/errors"
-import { createUnifiedTask } from "@/lib/services/tasks-unified.service"
+import { instantiateCampaignStage } from "./campaign-design-instantiate.service"
 
 const log = logger.child("CampaignSuggestionApproval")
 
@@ -151,41 +151,42 @@ export async function approveSuggestion(params: {
   // GATE: aprovação requer pelo menos 1 piloto marcado como 'good'.
   // Sem isso, a campanha vai pros designers sem teste validado pelo COO.
   const pilot = (s.copy_results?.test ?? {}) as Record<string, { quality?: "good" | null }>
-  const goodCount = Object.values(pilot).filter((e) => e.quality === "good").length
-  if (goodCount === 0) {
+  const goodEntries = Object.entries(pilot).filter(([, e]) => e.quality === "good")
+  if (goodEntries.length === 0) {
     throw new ConflictError(
       "Gere a copy de teste e marque pelo menos 1 loja como 'Boa' antes de aprovar.",
     )
   }
+  // Loja piloto = a PRIMEIRA marcada 'good' (vai pro Figma da etapa estrutura).
+  const pilotStoreId = goodEntries[0][0]
 
   const pipelineId = await ensurePipelineItem(s, userId)
 
+  // Inicia o pipeline de DESIGN: instancia a etapa `estrutura` pra loja piloto.
+  // instantiateCampaignStage e idempotente e ja seta design_pipeline_id/
+  // design_column_id/design_pilot_store_id na campanha.
+  // Inicia o design como side-effect NAO-BLOQUEANTE: a aprovacao nao deve
+  // falhar (nem deixar pipeline_item orfao sem status) se o pipeline de design
+  // nao conseguir iniciar. Em producao o bootstrap e idempotente e cria o
+  // board, entao isso quase nunca falha; quando falhar, fica logado e o design
+  // pode ser re-disparado pelo proximo gatilho.
   let designTaskId: string | null = s.design_task_id ?? null
   if (!designTaskId) {
-    const copyCount = countCopyEntries(s)
-    const draft = s.email_draft
-    const triggerLabel = `${s.trigger?.label ?? ""} — ${s.trigger?.detail ?? ""}`.trim()
-    const description = (draft?.strategy && draft.strategy.trim()) || s.angle || triggerLabel
-    const task = await createUnifiedTask({
-      orgId,
-      title: `[Design] ${s.title}`,
-      description: [description, `Sugestão: ${s.id}`, copyCount > 0 ? `${copyCount} copies geradas` : null]
-        .filter(Boolean)
-        .join("\n"),
-      sourceType: "campaign_suggestion",
-      sourceId: suggestionId,
-      sourceMetadata: {
-        pipeline_item_id: pipelineId,
-        suggestion_title: s.title,
-        suggestion_type: s.type,
-        copy_results_count: copyCount,
-        send_date: s.send_date,
-      },
-      assigneeRole: "designer",
-      priority: "medium",
-      createdBy: userId,
-    })
-    designTaskId = task?.id ?? null
+    try {
+      const { taskIds } = await instantiateCampaignStage({
+        suggestionId,
+        orgId,
+        stageSlug: "estrutura",
+        pilotStoreId,
+        createdBy: userId,
+      })
+      designTaskId = taskIds[0] ?? null
+    } catch (err) {
+      log.error("approve.design_start_failed", {
+        suggestionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const { error: updateErr } = await admin
@@ -208,12 +209,6 @@ export async function approveSuggestion(params: {
 
   log.info("approve.done", { suggestionId, pipelineId, designTaskId })
   return { pipeline_item_id: pipelineId }
-}
-
-function countCopyEntries(s: CampaignSuggestion): number {
-  const pilot = Object.keys(s.copy_results?.test ?? {}).length
-  const prod = Object.keys(s.copy_results?.production ?? {}).length
-  return pilot + prod
 }
 
 export async function dismissSuggestion(params: {

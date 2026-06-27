@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger"
 import { guardEmailProductionCompletion } from "@/lib/api/email-production-guard"
 import { getTaskAccessContext } from "@/lib/api/onboarding-task-access"
 import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
+import { attemptCampaignDesignHandoffForTask } from "@/lib/services/campaign-central/campaign-design-trigger.service"
 
 const log = logger.child("Tasks")
 
@@ -329,6 +330,21 @@ export async function PUT(
         })
       } catch (handoffErr) {
         log.error("Onboarding handoff failed (non-blocking):", handoffErr)
+      }
+    }
+
+    // --- Auto-handoff de etapa do design de campanha ao concluir (non-blocking) ---
+    // Dispara o avanco do pipeline de design quando a task concluida pertence a
+    // uma campanha. No-op para tasks que nao sejam de campanha.
+    if (
+      task &&
+      body.status === "completed" &&
+      existingTask.status !== "completed"
+    ) {
+      try {
+        await attemptCampaignDesignHandoffForTask({ taskId: id, actorId: user.id })
+      } catch (campaignErr) {
+        log.error("Campaign design handoff failed (non-blocking):", campaignErr)
       }
     }
 

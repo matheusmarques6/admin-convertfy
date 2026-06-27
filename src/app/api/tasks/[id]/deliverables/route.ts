@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/errors"
 import { requireTaskAccess } from "@/lib/api/onboarding-task-access"
 import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
+import { attemptCampaignDesignHandoffForTask } from "@/lib/services/campaign-central/campaign-design-trigger.service"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
@@ -82,6 +83,15 @@ export async function POST(
         actorId: user.id,
       })
     }
+
+    // Dispatcher de design de campanha (non-blocking): ao entregar o Figma o
+    // pipeline pode avancar. No-op para tasks que nao sejam de campanha.
+    try {
+      await attemptCampaignDesignHandoffForTask({ taskId: id, actorId: user.id })
+    } catch (campaignErr) {
+      console.error("Campaign design handoff failed (non-blocking):", campaignErr)
+    }
+
     return successResponse(request, { deliverable: data, handoff })
   } catch (error) {
     return errorResponse(request, error, "task-deliverable-create")
