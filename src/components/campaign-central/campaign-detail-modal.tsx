@@ -182,7 +182,6 @@ export function CampaignDetailModal({
   const pilotEntries = Object.entries(pilotResults)
   const approvedPilotCount = pilotEntries.filter(([, c]) => c.quality === "good").length
   const hasPilotGood = approvedPilotCount > 0
-  const prodCount = Object.keys(s.copy_results?.production ?? {}).length
 
   // "Usar como copy master": converte o brief escrito em master (parse-master),
   // sem a IA reescrever. Só faz sentido enquanto não há master e o texto cabe
@@ -373,6 +372,13 @@ export function CampaignDetailModal({
           title: "Não foi possível aprovar",
           description: res.error,
           variant: "destructive",
+        })
+      } else if (res.ok) {
+        toast({
+          title: "Campanha aprovada",
+          description: `Gerando as copies finais para ${targets.length} loja${
+            targets.length !== 1 ? "s" : ""
+          }. Acompanhe em "Em produção".`,
         })
       }
     } finally {
@@ -890,24 +896,6 @@ export function CampaignDetailModal({
                 )}
               </div>
 
-              {/* Copy de produção */}
-              <div className="rounded-[6px] border border-border bg-card p-3.5">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <Check size={14} className="text-emerald-600" />
-                  <span className="text-[13px] font-semibold text-foreground">Copy de produção</span>
-                  {prodCount > 0 && (
-                    <Badge variant="positive" showDot>
-                      pronta
-                    </Badge>
-                  )}
-                </div>
-                <p className="mb-2.5 text-[11.5px] leading-snug text-muted-foreground">
-                  Versão final aplicada às {targets.length} loja(s) da campanha.
-                </p>
-                <Button size="sm" onClick={onGenerateCopy}>
-                  <Zap size={13} className="mr-1.5" /> Gerar copy de produção
-                </Button>
-              </div>
             </div>
           )}
 
@@ -987,7 +975,7 @@ export function CampaignDetailModal({
                 disabled={busy !== null || !hasPilotGood}
                 title={
                   hasPilotGood
-                    ? "Aprovar campanha"
+                    ? "Aprovar e gerar as copies finais para todas as lojas"
                     : "Aprovação requer ao menos 1 piloto marcado como 'Boa' no painel de copy."
                 }
               >

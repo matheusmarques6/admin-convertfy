@@ -33,6 +33,14 @@ vi.mock("@/lib/logger", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
+// approveSuggestion agora dispara a geração de produção; mockamos o dispatch
+// pra não tocar a rede e pra inspecionar os argumentos.
+vi.mock("./campaign-copy-dispatch.service", () => ({
+  dispatchCampaignCopyToN8n: vi.fn(async () => ({ ok: true, job_id: "job-test", stores_count: 1 })),
+}))
+
+import { dispatchCampaignCopyToN8n } from "./campaign-copy-dispatch.service"
+
 function makeAdmin() {
   return {
     from: (table: string) => makeQuery(table),
@@ -245,6 +253,66 @@ describe("approveSuggestion", () => {
       approveSuggestion({ suggestionId: "sug-gate", orgId: "org-1", userId: "user-1" }),
     ).rejects.toThrow(/Boa/)
     expect(captured.inserts).toHaveLength(0)
+  })
+
+  it("dispara geração de produção (mode:production) p/ todas as lojas-alvo após aprovar", async () => {
+    const { approveSuggestion } = await import("./suggestion-approval.service")
+    const dispatchMock = vi.mocked(dispatchCampaignCopyToN8n)
+    dispatchMock.mockClear()
+
+    fixtures.suggestions.set("sug-prod", {
+      id: "sug-prod",
+      org_id: "org-1",
+      status: "suggested",
+      type: "data",
+      title: "Campanha com rollout automático",
+      trigger: { label: "x", detail: "y", source: "z" },
+      targets: [
+        { store_id: "store-1", store_name: "Loja A", country: "BR" },
+        { store_id: "store-2", store_name: "Loja B", country: "US" },
+      ],
+      email_draft: null,
+      // Gate: 1 piloto 'good'; a produção deve sair p/ as DUAS lojas-alvo.
+      copy_results: { test: { "store-1": { quality: "good" } } },
+      pipeline_item_id: null,
+    })
+
+    await approveSuggestion({ suggestionId: "sug-prod", orgId: "org-1", userId: "user-1" })
+
+    expect(dispatchMock).toHaveBeenCalledTimes(1)
+    const arg = dispatchMock.mock.calls[0][0]
+    expect(arg.mode).toBe("production")
+    expect(arg.suggestionId).toBe("sug-prod")
+    expect(arg.storeIds).toEqual(["store-1", "store-2"])
+  })
+
+  it("falha no dispatch de produção NÃO reverte a aprovação", async () => {
+    const { approveSuggestion } = await import("./suggestion-approval.service")
+    const dispatchMock = vi.mocked(dispatchCampaignCopyToN8n)
+    dispatchMock.mockClear()
+    dispatchMock.mockRejectedValueOnce(new Error("n8n offline"))
+
+    fixtures.suggestions.set("sug-fail", {
+      id: "sug-fail",
+      org_id: "org-1",
+      status: "suggested",
+      type: "data",
+      title: "Campanha com n8n fora",
+      trigger: { label: "x", detail: "y", source: "z" },
+      targets: [{ store_id: "store-1", store_name: "Loja A", country: "BR" }],
+      email_draft: null,
+      copy_results: { test: { "store-1": { quality: "good" } } },
+      pipeline_item_id: null,
+    })
+
+    const result = await approveSuggestion({
+      suggestionId: "sug-fail",
+      orgId: "org-1",
+      userId: "user-1",
+    })
+
+    expect(result.pipeline_item_id).toBeTruthy()
+    expect(fixtures.suggestions.get("sug-fail")!.status).toBe("approved")
   })
 })
 

@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger"
 import type { CampaignSuggestion } from "@/types/campaign-central"
 import { ConflictError, NotFoundError } from "@/lib/api/errors"
 import { createUnifiedTask } from "@/lib/services/tasks-unified.service"
+import { dispatchCampaignCopyToN8n } from "@/lib/services/campaign-central/campaign-copy-dispatch.service"
 
 const log = logger.child("CampaignSuggestionApproval")
 
@@ -207,6 +208,37 @@ export async function approveSuggestion(params: {
   }
 
   log.info("approve.done", { suggestionId, pipelineId, designTaskId })
+
+  // Aprovar dispara a geração das copies finais (produção) para TODAS as
+  // lojas-alvo, automaticamente — sem passo manual. As copies de teste já
+  // marcadas 'good' entram como few-shot (collectPilotReferencesForDispatch).
+  // Fire-and-forget tolerante: se o dispatch falhar (n8n fora), o watchdog
+  // gera o fallback inline; a aprovação NÃO é revertida por isso.
+  const productionStoreIds = s.targets.map((t) => t.store_id)
+  if (productionStoreIds.length > 0) {
+    try {
+      const dispatch = await dispatchCampaignCopyToN8n({
+        suggestionId,
+        orgId,
+        mode: "production",
+        storeIds: productionStoreIds,
+        triggeredBy: userId,
+      })
+      log.info("approve.production_dispatched", {
+        suggestionId,
+        jobId: dispatch.job_id,
+        stores: dispatch.stores_count,
+        ok: dispatch.ok,
+        reason: dispatch.reason ?? null,
+      })
+    } catch (err) {
+      log.error("approve.production_dispatch_failed", {
+        suggestionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   return { pipeline_item_id: pipelineId }
 }
 

@@ -4,10 +4,17 @@ Este flow gera a **copy de cada loja** das campanhas da Central. Substitui a ger
 (que roda como _fallback_ quando o n8n não responde). **Sem dependência de Google Docs / Drive** —
 toda a master e o contexto vêm no payload do webhook + no endpoint de contexto por loja.
 
-> **Ponto-chave:** geração de **teste (piloto)** e de **produção (rollout)** usam **o MESMO
-> webhook**. A única diferença é o campo `mode` (`"test"` | `"production"`) no payload — e o array
+> **Ponto-chave:** geração de **teste (piloto)** e de **produção** usam **o MESMO webhook**. A
+> única diferença é o campo `mode` (`"test"` | `"production"`) no payload — e o array
 > `pilot_references`, que só vem preenchido em produção. O callback devolve o mesmo `mode`, e é ele
 > que decide se a copy cai em `copy_results.test[store_id]` ou `copy_results.production[store_id]`.
+>
+> **Quem dispara cada `mode`:** o **teste** é disparado manualmente no CopyPanel ("Gerar copy"). A
+> **produção NÃO é mais um botão manual** — ela é disparada **automaticamente quando o COO aprova a
+> campanha**: `approveSuggestion()` chama `dispatchCampaignCopyToN8n({ mode: "production" })` para
+> **todas as lojas-alvo**, usando as copies de teste `quality:"good"` como `pilot_references`. Ver
+> `src/lib/services/campaign-central/suggestion-approval.service.ts`. Se o dispatch falhar (n8n
+> fora), a aprovação não é revertida — o watchdog gera o fallback inline.
 
 ---
 
@@ -305,8 +312,9 @@ Não há SSE/WebSocket — é polling simples.
 3. Conferir que o n8n recebeu o payload, fez `GET` no contexto de cada loja, e fez `POST` no callback
    por loja → `copy_results.test[store_id]` populado, status `success`.
 4. Marcar pelo menos 1 loja como **"Boa"** (`quality:"good"`).
-5. **Gerar rollout** (`mode:"production"`) → conferir que `pilot_references` chegou preenchido no
-   payload e que `copy_results.production[store_id]` populou.
+5. **Aprovar a campanha** → o approve dispara `mode:"production"` automaticamente para todas as
+   lojas-alvo. Conferir que `pilot_references` chegou preenchido no payload e que
+   `copy_results.production[store_id]` populou.
 6. Forçar timeout (n8n offline) e validar o **fallback inline**: o job vira `fallback_inline` e a copy
    é gerada mesmo assim (telemetria `generated_via:"inline_fallback"` em `campaign_ai_runs`).
 

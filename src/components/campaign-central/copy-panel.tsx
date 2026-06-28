@@ -13,7 +13,6 @@ import {
   Edit3,
   Eye,
   Send,
-  ArrowRight,
   Sparkles,
   AlertTriangle,
 } from "lucide-react"
@@ -49,20 +48,16 @@ interface Props {
   onSaved: () => void
 }
 
-type Phase = "pilot" | "rollout"
-
 export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
   const { toast } = useToast()
   const open = !!suggestion
 
-  const [phase, setPhase] = useState<Phase>("pilot")
-  const [busy, setBusy] = useState<"generating" | "rollout" | null>(null)
+  const [busy, setBusy] = useState<"generating" | null>(null)
   const [statusFilter, setStatusFilter] = useState<"todas" | "ativas" | "inativas">("ativas")
   const [regionFilter, setRegionFilter] = useState<"todas" | "BR" | "EU" | "US">("todas")
   const [langFilter, setLangFilter] = useState<"todos" | "pt" | "en" | "es">("todos")
   const [nicheFilter, setNicheFilter] = useState<string>("todos")
   const [selectedPilot, setSelectedPilot] = useState<Set<string>>(new Set())
-  const [selectedRollout, setSelectedRollout] = useState<Set<string>>(new Set())
   /** Loja cujo pop-up de copy está aberto (empilha acima do painel). */
   const [previewStoreId, setPreviewStoreId] = useState<string | null>(null)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
@@ -91,28 +86,21 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     () => (suggestion?.copy_results?.test ?? {}) as Record<string, CopyResultEntry>,
     [suggestion?.copy_results?.test],
   )
-  const rolloutResults = useMemo(
-    () => (suggestion?.copy_results?.production ?? {}) as Record<string, CopyResultEntry>,
-    [suggestion?.copy_results?.production],
-  )
   const approvedPilotCount = Object.values(pilotResults).filter((c) => c.quality === "good").length
-  const canRollout = approvedPilotCount > 0
+  const canApprove = approvedPilotCount > 0
 
   useEffect(() => {
     if (!suggestion) return
-    const hasRollout = Object.keys(rolloutResults).length > 0
-    setPhase(hasRollout && canRollout ? "rollout" : "pilot")
     setPreviewStoreId(null)
     // Pré-select: targets da campanha já vêm marcados, pra refletir o
     // escopo escolhido pelo COO ao criar a campanha. O COO ainda pode
-    // adicionar piloto fora do escopo via lista completa, mas o default
+    // adicionar lojas fora do escopo via lista completa, mas o default
     // bate com "essa campanha é pra essas lojas".
     if (suggestion.pilot_store_ids?.length) {
       setSelectedPilot(new Set(suggestion.pilot_store_ids))
     } else {
       setSelectedPilot(new Set(suggestion.targets.map((t) => t.store_id)))
     }
-    setSelectedRollout(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestion?.id])
 
@@ -185,30 +173,19 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     return () => clearInterval(tick)
   }, [pendingStoreIds, pendingMode, suggestion, toast])
 
-  // IMPORTANTE: os useMemos abaixo precisam ficar ANTES do early return
-  // pra respeitar rules-of-hooks (React #310: rendered more hooks than
-  // during the previous render). Guards internos lidam com suggestion null.
-  const rolloutCandidateIds = useMemo(() => {
-    if (!suggestion || phase !== "rollout") return new Set<string>()
-    const fromTargets = new Set(suggestion.targets.map((t) => t.store_id))
-    for (const [sid, entry] of Object.entries(pilotResults)) {
-      if (entry.quality !== "good") fromTargets.add(sid)
-    }
-    return fromTargets
-  }, [phase, suggestion, pilotResults])
-
+  // visibleStores fica ANTES do early return pra respeitar rules-of-hooks
+  // (React #310: rendered more hooks than during the previous render).
   const visibleStores = useMemo(() => {
     if (!suggestion) return []
-    if (phase === "pilot") return matched
-    return matched.filter((s) => rolloutCandidateIds.has(s.id))
-  }, [phase, matched, rolloutCandidateIds, suggestion])
+    return matched
+  }, [matched, suggestion])
 
   if (!suggestion) return null
 
-  const mode = phase === "pilot" ? "test" : "production"
-  const results = phase === "pilot" ? pilotResults : rolloutResults
-  const selected = phase === "pilot" ? selectedPilot : selectedRollout
-  const setSelected = phase === "pilot" ? setSelectedPilot : setSelectedRollout
+  const mode = "test" as const
+  const results = pilotResults
+  const selected = selectedPilot
+  const setSelected = setSelectedPilot
 
   // Texto da "Estrutura & tom" (brief do COO). parse-master exige 20..20000
   // chars — se válido, o COO pode usar o texto direto como master, sem gerar.
@@ -259,13 +236,11 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     if (genList.length === 0) return
     const storeIds = genList.map((s) => s.id)
     const targetMode = mode
-    setBusy(phase === "pilot" ? "generating" : "rollout")
+    setBusy("generating")
     setPendingStoreIds(new Set(storeIds))
     setPendingMode(targetMode)
     try {
-      if (phase === "pilot") {
-        await callSetPilot(storeIds)
-      }
+      await callSetPilot(storeIds)
       const result = await callGenerate(storeIds, targetMode)
       onSavedRef.current()
       const description =
@@ -273,7 +248,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
           ? "Webhook n8n não configurado — fallback inline rodará no próximo watchdog (até 5min)."
           : `Aguarde — ${storeIds.length} loja(s) entram em fila.`
       toast({
-        title: phase === "pilot" ? "Piloto enfileirado" : "Rollout enfileirado",
+        title: "Geração enfileirada",
         description,
       })
     } catch (err) {
@@ -414,7 +389,8 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
       toast({
         title: "Campanha aprovada",
-        description: "Enviada pros designers. Acompanhe na aba 'Em produção'.",
+        description:
+          "Gerando as copies finais e enviando pros designers. Acompanhe em 'Em produção'.",
       })
       onSavedRef.current()
       onClose()
@@ -500,38 +476,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               <X size={18} />
             </button>
           </div>
-
-          <div className="mt-3 flex items-center gap-2 text-[11.5px]">
-            <button
-              onClick={() => setPhase("pilot")}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold ${
-                phase === "pilot"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-muted-foreground"
-              }`}
-            >
-              <span className="inline-flex size-4 items-center justify-center rounded-full bg-current/15 text-[10px]">
-                1
-              </span>
-              Piloto
-              {approvedPilotCount > 0 && <Badge variant="positive">{approvedPilotCount} OK</Badge>}
-            </button>
-            <ArrowRight size={13} className="text-muted-foreground/50" />
-            <button
-              onClick={() => canRollout && setPhase("rollout")}
-              disabled={!canRollout}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
-                phase === "rollout"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-muted-foreground"
-              }`}
-            >
-              <span className="inline-flex size-4 items-center justify-center rounded-full bg-current/15 text-[10px]">
-                2
-              </span>
-              Rollout (todas)
-            </button>
-          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -590,29 +534,13 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
               <span className="text-muted-foreground">Canal</span>
               <span className="font-semibold text-foreground/90">{suggestion.channel}</span>
             </div>
-            {phase === "rollout" && (
-              <div className="flex justify-between border-t border-dashed border-border py-1">
-                <span className="text-muted-foreground">Referências</span>
-                <span className="font-semibold text-emerald-600">
-                  {approvedPilotCount} piloto(s) aprovada(s)
-                </span>
-              </div>
-            )}
           </div>
 
-          {phase === "pilot" ? (
-            <div className="mb-3 rounded-[6px] border border-border bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
-              <strong className="font-bold text-foreground">Etapa 1 — Piloto.</strong> Escolha 2-3
-              lojas pra validar a copy. Marque <em>Boa</em> nas que aprovar — elas serão a
-              referência de qualidade no rollout.
-            </div>
-          ) : (
-            <div className="mb-3 rounded-[6px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
-              <strong className="font-bold">Etapa 2 — Rollout.</strong> A IA vai usar as{" "}
-              {approvedPilotCount} adaptação(ões) aprovada(s) como referência pra gerar as demais
-              lojas com o mesmo padrão de qualidade.
-            </div>
-          )}
+          <div className="mb-3 rounded-[6px] border border-border bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
+            <strong className="font-bold text-foreground">Gere e valide a copy.</strong> Teste nas
+            lojas e marque <em>Boa</em> nas que aprovar. Ao aprovar a campanha, as copies finais de
+            todas as lojas são geradas automaticamente.
+          </div>
 
           <div className="mb-4">
             <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -673,7 +601,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
 
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {phase === "pilot" ? "Lojas piloto" : "Lojas para rollout"}
+                Lojas
               </span>
               <span className="flex gap-3">
                 {activeNicheLabel && (
@@ -775,16 +703,12 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
           >
             {busy ? (
               <Loader2 size={16} className="mr-1.5 animate-spin" />
-            ) : phase === "pilot" ? (
-              <Zap size={16} className="mr-1.5" />
             ) : (
-              <Sparkles size={16} className="mr-1.5" />
+              <Zap size={16} className="mr-1.5" />
             )}
-            {busy === "generating" || busy === "rollout"
+            {busy === "generating"
               ? "Gerando…"
-              : phase === "pilot"
-              ? `Gerar piloto · ${genList.length} loja${genList.length !== 1 ? "s" : ""}`
-              : `Gerar para ${genList.length} loja${genList.length !== 1 ? "s" : ""}`}
+              : `Gerar copy · ${genList.length} loja${genList.length !== 1 ? "s" : ""}`}
           </Button>
 
           {Object.keys(results).length > 0 && (
@@ -793,7 +717,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                 <span className="text-[12.5px] font-semibold text-foreground/90">
                   {Object.keys(results).length} loja
                   {Object.keys(results).length !== 1 ? "s" : ""} com copy
-                  {phase === "pilot" && (
+                  {approvedPilotCount > 0 && (
                     <span className="ml-1.5 text-emerald-600">
                       ({approvedPilotCount} aprovada{approvedPilotCount !== 1 ? "s" : ""})
                     </span>
@@ -930,32 +854,22 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                   )
                 })}
               </div>
-              {phase === "pilot" && canRollout && (
-                <button
-                  onClick={() => setPhase("rollout")}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-100"
-                >
-                  <Send size={14} /> Avançar para rollout (todas as outras lojas)
-                  <ArrowRight size={14} />
-                </button>
-              )}
-
-              {/* Gate de envio aos designers: só após pelo menos 1 piloto bom. */}
+              {/* Gate: aprovar exige ≥1 loja boa; aprovar gera as copies finais. */}
               {suggestion.status !== "approved" && (
                 <div className="mt-4 rounded-[6px] border border-border bg-card px-3.5 py-3">
                   <div className="mb-2 text-[12px] text-muted-foreground">
-                    {canRollout
-                      ? `${approvedPilotCount} piloto(s) aprovado(s). Pronto para enviar pros designers.`
-                      : "Marque pelo menos 1 loja-piloto como 'Boa' pra liberar o envio."}
+                    {canApprove
+                      ? `${approvedPilotCount} loja(s) aprovada(s). Ao aprovar, geramos as copies finais de todas as lojas e enviamos pros designers.`
+                      : "Marque pelo menos 1 loja como 'Boa' pra liberar a aprovação."}
                   </div>
                   <Button
                     size="md"
                     className="w-full"
                     onClick={approveAndSendToDesigners}
-                    disabled={!canRollout || approveBusy}
+                    disabled={!canApprove || approveBusy}
                     title={
-                      !canRollout
-                        ? "Aprovação requer pelo menos 1 piloto marcado como 'Boa'."
+                      !canApprove
+                        ? "Aprovação requer pelo menos 1 loja marcada como 'Boa'."
                         : undefined
                     }
                   >
@@ -964,7 +878,7 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                     ) : (
                       <Send size={14} className="mr-1.5" />
                     )}
-                    Aprovar e enviar pros designers
+                    Aprovar e gerar as copies finais
                   </Button>
                 </div>
               )}
