@@ -265,7 +265,65 @@ Por isso **o callback precisa devolver o mesmo `mode`** que veio no payload de e
 
 ---
 
-## 8. Erros, timeout e fallback inline
+## 8. Webhook de conclusão da produção (Copy → Design)
+
+Depois de mandar **todos** os callbacks por loja da §6 de um lote de **produção**, o n8n faz **UM
+único POST final** sinalizando que a geração de copy da campanha inteira terminou. Esse sinal é o
+que **avança o card do board de Copy → Design** sem ninguém clicar "Concluir copy" no admin.
+
+> **Só em produção.** O lote de **teste** (piloto) **não** dispara este webhook — teste não move o
+> board. Se o n8n chamar com `mode:"test"`, o admin responde `200` e ignora (no-op).
+
+**Endpoint:** `POST /api/webhooks/n8n/campaign-copy-complete`
+Validado por `campaignCopyCompleteSchema`; handler em
+`src/app/api/webhooks/n8n/campaign-copy-complete/route.ts`.
+
+**Quando chamar:** uma vez, ao concluir o último callback por loja do lote de **produção** (todas as
+lojas de `stores[]` já tiveram o callback da §6 enviado, com sucesso ou erro).
+
+**Payload:**
+```json
+{
+  "job_id": "uuid",
+  "suggestion_id": "uuid",
+  "org_id": "uuid",
+  "mode": "production"
+}
+```
+
+| Campo | Observação |
+|-------|------------|
+| `job_id` | O mesmo `job_id` do payload de entrada da §3 (rastreio). |
+| `suggestion_id` | O mesmo `suggestion_id` ecoado nos callbacks. |
+| `org_id` | O mesmo `org_id` do payload de entrada. |
+| `mode` | **Precisa ser `"production"`** para mover o board. `"test"` → no-op `200`. |
+
+**Auth:** header `x-webhook-secret` (igual a `N8N_WEBHOOK_SECRET`) — o mesmo dos demais webhooks.
+
+**Efeito (idempotente):**
+1. **Garante as tasks de design "estrutura"** — rede de segurança. Em geral já foram criadas na
+   aprovação da campanha (`approveSuggestion → instantiateCampaignStage`); re-instanciar é no-op.
+2. **Avança o board Copy → Design** — seta `prod_stage = 1` em todas as `target_stores` do
+   pipeline item. O board deriva a coluna do `max(prod_stage)`; `prod_stage=1` é a coluna **Design**.
+
+**Idempotência & tolerância a falha:**
+- Re-chamar **não duplica** tasks nem regride o board (lojas já em `prod_stage ≥ 1` são puladas).
+- Se a campanha ainda **não está aprovada** ou sem `pipeline_item_id`, o admin responde `200` e
+  ignora (no-op) — o webhook nunca é o caminho crítico da aprovação.
+- Falha ao garantir as tasks **não bloqueia** o avanço do board (loga e segue).
+
+**Resposta de sucesso:**
+```json
+{ "ok": true, "suggestion_id": "uuid", "stores_moved": 3 }
+```
+
+> ℹ️ Este webhook é a **escolha explícita** de deixar o n8n sinalizar o fim do lote. Como
+> alternativa, o próprio callback por loja da §6 poderia avançar o board ao detectar que foi o
+> último da produção — mas o contrato atual é este POST final dedicado.
+
+---
+
+## 9. Erros, timeout e fallback inline
 
 - **Falha por loja** não derruba as outras — mande `status:"error"` para a loja que falhou e siga.
 - **Watchdog** (`src/app/api/cron/campaign-copy-watchdog/route.ts`, cron a cada 5min): se o job ficar
@@ -277,7 +335,7 @@ Por isso **o callback precisa devolver o mesmo `mode`** que veio no payload de e
 
 ---
 
-## 9. Status no app + polling
+## 10. Status no app + polling
 
 `copy_results[mode][store_id].status`:
 
@@ -290,7 +348,7 @@ Não há SSE/WebSocket — é polling simples.
 
 ---
 
-## 10. Segurança & idempotência
+## 11. Segurança & idempotência
 
 - **Auth:** header `x-webhook-secret` comparado com `N8N_WEBHOOK_SECRET` via `timingSafeEqual`
   (`src/lib/api/n8n-auth.ts`). Vale para o **callback** e para o **endpoint de contexto**.
@@ -300,7 +358,7 @@ Não há SSE/WebSocket — é polling simples.
 
 ---
 
-## 11. Variáveis de ambiente
+## 12. Variáveis de ambiente
 
 | Var | Uso | Default |
 |-----|-----|---------|
@@ -312,7 +370,7 @@ Não há SSE/WebSocket — é polling simples.
 
 ---
 
-## 12. Checklist de teste E2E
+## 13. Checklist de teste E2E
 
 1. Configurar `N8N_CAMPAIGN_COPY_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET` + `NEXT_PUBLIC_APP_URL`.
 2. No CopyPanel, selecionar 2-3 lojas piloto e **gerar piloto** (`mode:"test"`).
@@ -322,12 +380,16 @@ Não há SSE/WebSocket — é polling simples.
 5. **Aprovar a campanha** → o approve dispara `mode:"production"` automaticamente para todas as
    lojas-alvo. Conferir que `pilot_references` chegou preenchido no payload e que
    `copy_results.production[store_id]` populou.
-6. Forçar timeout (n8n offline) e validar o **fallback inline**: o job vira `fallback_inline` e a copy
+6. Ao terminar todos os callbacks da produção, o n8n faz o **POST de conclusão** (§8) em
+   `/api/webhooks/n8n/campaign-copy-complete` com `mode:"production"`. Conferir que o card foi para
+   **Design** (`target_stores[].prod_stage=1`) e que as tasks de **"estrutura"** estão presentes.
+   Re-postar o mesmo payload **não** duplica tasks nem regride o board (idempotência).
+7. Forçar timeout (n8n offline) e validar o **fallback inline**: o job vira `fallback_inline` e a copy
    é gerada mesmo assim (telemetria `generated_via:"inline_fallback"` em `campaign_ai_runs`).
 
 ---
 
-## 13. Referências (código)
+## 14. Referências (código)
 
 | O quê | Arquivo |
 |-------|---------|
@@ -335,7 +397,11 @@ Não há SSE/WebSocket — é polling simples.
 | Endpoint disparado pela UI | `src/app/api/admin/campaign-central/suggestions/[id]/generate-copy/route.ts` |
 | Endpoint de contexto da loja | `src/app/api/admin/campaign-central/stores/[id]/context/route.ts` |
 | Callback (persistência) | `src/app/api/webhooks/n8n/campaign-copy/route.ts:52-283` |
+| Webhook de conclusão (Copy → Design) | `src/app/api/webhooks/n8n/campaign-copy-complete/route.ts` |
 | Schema Zod do callback | `src/lib/validations/campaign-central.ts:196-213` |
+| Schema Zod da conclusão | `campaignCopyCompleteSchema` em `src/lib/validations/campaign-central.ts` |
+| Instanciação das tasks de design | `src/lib/services/campaign-central/campaign-design-instantiate.service.ts` |
+| Avanço do board (prod_stage) | `src/lib/services/campaign-central/production.service.ts` (`updateProductionStore`) |
 | Auth do webhook | `src/lib/api/n8n-auth.ts` |
 | Watchdog / fallback inline | `src/app/api/cron/campaign-copy-watchdog/route.ts` · `src/lib/services/campaign-central/campaign-copy.service.ts` |
 | Polling da UI | `src/components/campaign-central/copy-panel.tsx:184-225` |

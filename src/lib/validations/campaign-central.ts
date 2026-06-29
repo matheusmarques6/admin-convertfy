@@ -229,6 +229,18 @@ export const campaignCopyCallbackSchema = z.object({
     .optional(),
 })
 
+/**
+ * Payload que o n8n posta em /api/webhooks/n8n/campaign-copy-complete ao
+ * concluir TODA a geração de copy de produção de uma campanha (sinal único de
+ * fim de lote). Avança o board Copy → Design e garante as tasks de design.
+ */
+export const campaignCopyCompleteSchema = z.object({
+  job_id: z.string().uuid(),
+  suggestion_id: z.string().uuid(),
+  org_id: z.string().uuid(),
+  mode: z.enum(["test", "production"]),
+})
+
 // ── Produção (aba "Em produção") ─────────────────────────────────────
 
 /** Atualiza estágio (0..4) e/ou designer de UMA loja de uma campanha. */
