@@ -193,14 +193,23 @@ describe("(A) approveSuggestion — inicia o pipeline de design", () => {
     ).toBe(true)
   })
 
-  it("mantem o GATE: sem piloto 'good' lanca erro e NAO inicia design", async () => {
+  it("GATE: sem copy de teste gerada lanca erro e NAO inicia design", async () => {
     seedPipeline()
-    seedSuggestion({ copy_results: { test: { sA: { quality: null } } } })
+    seedSuggestion({ copy_results: { test: {} } })
     await expect(
       approveSuggestion({ suggestionId: SUG, orgId: ORG, userId: "u1" }),
     ).rejects.toBeTruthy()
     expect(camp().design_column_id).toBeNull()
     expect(tasksIn("estrutura")).toHaveLength(0)
+  })
+
+  it("aprova SEM 'good': usa a primeira loja-alvo como piloto do design", async () => {
+    seedPipeline()
+    seedSuggestion({ copy_results: { test: { sA: { quality: null }, sB: { quality: null } } } })
+    await approveSuggestion({ suggestionId: SUG, orgId: ORG, userId: "u1" })
+    expect(camp().status).toBe("approved")
+    expect(camp().design_pilot_store_id).toBe("sA")
+    expect(tasksIn("estrutura")).toHaveLength(1)
   })
 
   it("idempotente: ja aprovada nao re-instancia a estrutura", async () => {

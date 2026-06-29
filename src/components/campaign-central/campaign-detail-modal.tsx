@@ -181,7 +181,6 @@ export function CampaignDetailModal({
   const pilotResults = (s.copy_results?.test ?? {}) as Record<string, CopyResultEntry>
   const pilotEntries = Object.entries(pilotResults)
   const approvedPilotCount = pilotEntries.filter(([, c]) => c.quality === "good").length
-  const hasPilotGood = approvedPilotCount > 0
 
   // "Usar como copy master": converte o brief escrito em master (parse-master),
   // sem a IA reescrever. Só faz sentido enquanto não há master e o texto cabe
@@ -812,9 +811,11 @@ export function CampaignDetailModal({
                       <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
                         Copies geradas
                       </span>
-                      <span className="text-[11px] font-semibold tabular-nums text-emerald-600">
-                        {approvedPilotCount}/{pilotEntries.length} aprovadas
-                      </span>
+                      {approvedPilotCount > 0 && (
+                        <span className="text-[11px] font-semibold tabular-nums text-emerald-600">
+                          {approvedPilotCount} marcada{approvedPilotCount !== 1 ? "s" : ""} como Boa
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-col gap-2">
                       {pilotEntries.map(([storeId, cp]) => {
@@ -972,12 +973,8 @@ export function CampaignDetailModal({
               <Button
                 size="md"
                 onClick={() => void handleApprove()}
-                disabled={busy !== null || !hasPilotGood}
-                title={
-                  hasPilotGood
-                    ? "Aprovar e gerar as copies finais para todas as lojas"
-                    : "Aprovação requer ao menos 1 piloto marcado como 'Boa' no painel de copy."
-                }
+                disabled={busy !== null}
+                title="Aprovar e gerar as copies finais para todas as lojas"
               >
                 {busy === "approve" ? (
                   <Loader2 size={15} className="mr-1.5 animate-spin" />

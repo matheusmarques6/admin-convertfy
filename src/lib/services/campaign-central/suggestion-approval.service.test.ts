@@ -225,7 +225,7 @@ describe("approveSuggestion", () => {
     expect(captured.inserts).toHaveLength(0)
   })
 
-  it("bloqueia aprovação sem piloto 'good' (gate de qualidade)", async () => {
+  it("bloqueia aprovação sem copy de teste gerada (gate)", async () => {
     const { approveSuggestion } = await import("./suggestion-approval.service")
 
     fixtures.suggestions.set("sug-gate", {
@@ -233,7 +233,7 @@ describe("approveSuggestion", () => {
       org_id: "org-1",
       status: "suggested",
       type: "data",
-      title: "Sem piloto validado",
+      title: "Sem copy gerada",
       trigger: { label: "x", detail: "y", source: "z" },
       targets: [{ store_id: "s1", store_name: "S1", country: "BR" }],
       email_draft: null,
@@ -243,8 +243,33 @@ describe("approveSuggestion", () => {
 
     await expect(
       approveSuggestion({ suggestionId: "sug-gate", orgId: "org-1", userId: "user-1" }),
-    ).rejects.toThrow(/Boa/)
+    ).rejects.toThrow(/Gere a copy de teste/)
     expect(captured.inserts).toHaveLength(0)
+  })
+
+  it("aprova sem nenhuma copy marcada 'good' (basta ter copy de teste gerada)", async () => {
+    const { approveSuggestion } = await import("./suggestion-approval.service")
+
+    fixtures.suggestions.set("sug-nogood", {
+      id: "sug-nogood",
+      org_id: "org-1",
+      status: "suggested",
+      type: "data",
+      title: "Sem good, com copy",
+      trigger: { label: "x", detail: "y", source: "z" },
+      targets: [{ store_id: "s1", store_name: "S1", country: "BR" }],
+      email_draft: null,
+      copy_results: { test: { s1: { quality: null } } },
+      pipeline_item_id: null,
+    })
+
+    const result = await approveSuggestion({
+      suggestionId: "sug-nogood",
+      orgId: "org-1",
+      userId: "user-1",
+    })
+    expect(result.pipeline_item_id).toBeTruthy()
+    expect(fixtures.suggestions.get("sug-nogood")!.status).toBe("approved")
   })
 })
 

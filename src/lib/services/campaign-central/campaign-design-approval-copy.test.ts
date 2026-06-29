@@ -167,14 +167,23 @@ describe("Fase 9 (gap #3) — copy de producao para todas as lojas na aprovacao"
     expect(camp.status).toBe("approved")
   })
 
-  it("nao dispara copy quando a aprovacao e barrada pelo gate (sem piloto good)", async () => {
+  it("nao dispara copy quando barrada pelo gate (sem copy de teste gerada)", async () => {
     seed()
     const camp = h.db.campaign_suggestions.find((c) => c.id === SUG)!
-    camp.copy_results = { test: { sA: { quality: null } } }
+    camp.copy_results = { test: {} }
     await expect(
       approveSuggestion({ suggestionId: SUG, orgId: ORG, userId: "u1" }),
     ).rejects.toBeTruthy()
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it("aprova e dispara copy mesmo SEM loja marcada 'good'", async () => {
+    seed()
+    const camp = h.db.campaign_suggestions.find((c) => c.id === SUG)!
+    camp.copy_results = { test: { sA: { quality: null }, sB: { quality: null } } }
+    await approveSuggestion({ suggestionId: SUG, orgId: ORG, userId: "u1" })
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect(camp.status).toBe("approved")
   })
 
   it("idempotente: ja-aprovada nao re-dispara copy", async () => {

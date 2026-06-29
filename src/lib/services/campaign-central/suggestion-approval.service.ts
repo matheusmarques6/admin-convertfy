@@ -149,17 +149,19 @@ export async function approveSuggestion(params: {
     return { pipeline_item_id: s.pipeline_item_id }
   }
 
-  // GATE: aprovação requer pelo menos 1 piloto marcado como 'good'.
-  // Sem isso, a campanha vai pros designers sem teste validado pelo COO.
+  // GATE: aprovação requer que a copy de teste já tenha sido gerada (≥1 loja em
+  // copy_results.test). O COO lê as copies no modal e aprova quando achar pronto —
+  // NÃO precisa marcar cada uma como 'Boa'. A marcação 'good' segue opcional
+  // (destaca a melhor copy e alimenta o few-shot da produção).
   const pilot = (s.copy_results?.test ?? {}) as Record<string, { quality?: "good" | null }>
-  const goodEntries = Object.entries(pilot).filter(([, e]) => e.quality === "good")
-  if (goodEntries.length === 0) {
-    throw new ConflictError(
-      "Gere a copy de teste e marque pelo menos 1 loja como 'Boa' antes de aprovar.",
-    )
+  const pilotEntries = Object.entries(pilot)
+  if (pilotEntries.length === 0) {
+    throw new ConflictError("Gere a copy de teste antes de aprovar.")
   }
-  // Loja piloto = a PRIMEIRA marcada 'good' (vai pro Figma da etapa estrutura).
-  const pilotStoreId = goodEntries[0][0]
+  // Loja piloto do design (Figma da etapa estrutura): a marcada 'Boa' se houver
+  // (respeita a escolha do COO); senão, a primeira loja-alvo.
+  const pilotStoreId =
+    pilotEntries.find(([, e]) => e.quality === "good")?.[0] ?? s.targets[0]?.store_id ?? null
 
   const pipelineId = await ensurePipelineItem(s, userId)
 

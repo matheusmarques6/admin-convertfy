@@ -87,7 +87,6 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
     [suggestion?.copy_results?.test],
   )
   const approvedPilotCount = Object.values(pilotResults).filter((c) => c.quality === "good").length
-  const canApprove = approvedPilotCount > 0
 
   useEffect(() => {
     if (!suggestion) return
@@ -854,24 +853,19 @@ export function CopyPanel({ suggestion, onClose, onSaved }: Props) {
                   )
                 })}
               </div>
-              {/* Gate: aprovar exige ≥1 loja boa; aprovar gera as copies finais. */}
+              {/* Aprovar gera as copies finais e envia pros designers — marcar "Boa" é opcional. */}
               {suggestion.status !== "approved" && (
                 <div className="mt-4 rounded-[6px] border border-border bg-card px-3.5 py-3">
                   <div className="mb-2 text-[12px] text-muted-foreground">
-                    {canApprove
-                      ? `${approvedPilotCount} loja(s) aprovada(s). Ao aprovar, geramos as copies finais de todas as lojas e enviamos pros designers.`
-                      : "Marque pelo menos 1 loja como 'Boa' pra liberar a aprovação."}
+                    Ao aprovar, geramos as copies finais de todas as lojas e enviamos pros
+                    designers.
                   </div>
                   <Button
                     size="md"
                     className="w-full"
                     onClick={approveAndSendToDesigners}
-                    disabled={!canApprove || approveBusy}
-                    title={
-                      !canApprove
-                        ? "Aprovação requer pelo menos 1 loja marcada como 'Boa'."
-                        : undefined
-                    }
+                    disabled={approveBusy}
+                    title="Aprovar e gerar as copies finais"
                   >
                     {approveBusy ? (
                       <Loader2 size={14} className="mr-1.5 animate-spin" />
