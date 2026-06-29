@@ -519,9 +519,14 @@ export function sanitizeN8nCopyPayload(
     }
 
     if (Array.isArray(copy.blocks)) {
-      // Fatia a copy em 1 bloco de texto POR SEÇÃO (## SEÇÃO ou section/label do
-      // n8n). Sem marcação → 1 bloco único (comportamento antigo, sem regressão).
-      copyOut.blocks = splitIntoSectionedTextBlocks(copy.blocks)
+      // Blocos TIPADOS do n8n (heading/products/button/…) são PRESERVADOS — cada um
+      // normalizado (sinônimos de campo, coerção de tipo, items). Quando o n8n manda
+      // só texto, mantém o fatiamento por seção (## SEÇÃO / section), sem regressão.
+      const normalized = copy.blocks.map(normalizeBlock)
+      const hasTypedBlocks = normalized.some(
+        (b) => typeof b.type === "string" && b.type !== "text",
+      )
+      copyOut.blocks = hasTypedBlocks ? normalized : splitIntoSectionedTextBlocks(copy.blocks)
     }
 
     out.copy = copyOut

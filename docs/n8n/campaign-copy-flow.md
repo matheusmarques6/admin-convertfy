@@ -197,7 +197,14 @@ gravado em `src/app/api/webhooks/n8n/campaign-copy/route.ts:165-211`.
     "subject": "Assunto adaptado (≤ ~50 chars recomendado)",
     "preheader": "Preheader adaptado (≤ ~90 chars)",
     "strategy": "Resumo opcional da estratégia",
-    "blocks": [ /* EmailDraftBlock[] — min 1 bloco; `id` opcional (o servidor regenera) */ ]
+    "blocks": [
+      { "type": "heading", "headline": "Novidades que combinam com você" },
+      { "type": "text", "value": "Selecionamos peças pensando no seu estilo." },
+      { "type": "products", "columns": 3, "items": [
+          { "name": "Vestido Lia", "price": "R$ 189", "image_caption": "Vestido midi off-white" }
+      ]},
+      { "type": "button", "value": "Ver coleção" }
+    ]
   },
   "meta": { "model": "…", "tokens_input": 0, "tokens_output": 0, "duration_ms": 0 }
 }
@@ -227,19 +234,19 @@ Regras do receiver:
   > mais** — deriva um assunto provisório da 1ª linha da copy (`deriveSubjectFromCopy`) e loga
   > `campaign_copy.subject_derived`. Isso destrava a UI, mas o assunto sai pior; **o n8n deve
   > mandar o subject pronto.** Só continua `400` se a copy vier sem texto algum.
-- `copy.blocks` — a copy é **texto**, mas **separe as seções com marcadores `## SEÇÃO`** (HERO,
-  REVIEW, FOOTER…, os mesmos `tag` de `brief.sections`) para os designers receberem a copy
-  **fatiada por seção**. Duas formas equivalentes (use UMA):
-  - **(recomendado)** UM bloco `{ "type": "text", "value": "## HERO\n…\n\n## REVIEW\n…" }` — toda
-    a copy num texto só, com cada seção iniciada por uma linha `## NOME`. O admin fatia em 1 bloco
-    por seção automaticamente.
-  - **(alternativa)** vários blocos `{ "type": "text", "section": "HERO", "value": "…" }` — um por
-    seção, identificada pelo campo `section`. **NÃO** use blocos tipados (heading/products/button)
-    com campos próprios: o admin lê só `value` (+ `section`); o resto é colapsado.
-  - **Sem nenhum marcador**, a copy vira **1 bloco único** (comportamento antigo, sem separação) —
-    nada quebra, mas o designer recebe tudo junto. Sempre prefira marcar as seções.
-  - ⚠️ Use `##` (não `[SEÇÃO]`): a copy é cheia de placeholders entre colchetes (`[NÚMERO]`,
-    `[NOME]`, `[LOGO]`) e o admin fatia só por linhas `## …`. `id` pode ser omitido.
+- `copy.blocks` — **use BLOCOS TIPADOS** (o admin **preserva** o tipo e os campos). Tipos e campos:
+  - `heading` → `headline` (+ `sub` opcional)
+  - `text` → `value`
+  - `products` → `columns` (2 ou 3) + `items: [{ name, price, image_caption }]`
+  - `button` → `value`
+  - também aceitos: `image` (`caption`), `offer` (`value`), `divider`, `footer`
+  - `id` é opcional (o servidor regenera). O campo `section` opcional rotula o bloco numa seção
+    (HERO/REVIEW/FOOTER…, os mesmos `tag` de `brief.sections`) — a UI mostra o rótulo acima do bloco.
+  - **Fallback (compat):** se o n8n mandar só texto, ainda funciona — UM bloco
+    `{ "type": "text", "value": "## HERO\n…\n## REVIEW\n…" }` é fatiado por seção pelos marcadores
+    `## NOME`. Mas o formato **preferido agora é blocos tipados**.
+  - ⚠️ Nos `value`/`headline`, mantenha os placeholders entre colchetes (`[NÚMERO]`, `[NOME]`,
+    `[LOGO]`) quando ainda não houver dado real.
 - `meta` é opcional (telemetria — vai para `campaign_ai_runs`).
 
 ---

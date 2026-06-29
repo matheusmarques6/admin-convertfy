@@ -148,7 +148,7 @@ describe("normalizeBlock", () => {
 })
 
 describe("sanitizeN8nCopyPayload", () => {
-  it("normaliza status + blocks de copy sem mutar a entrada", () => {
+  it("normaliza status e PRESERVA bloco tipado (cta→button) sem mutar a entrada", () => {
     const input = {
       job_id: "j",
       suggestion_id: "s",
@@ -163,35 +163,64 @@ describe("sanitizeN8nCopyPayload", () => {
     }
     const out = sanitizeN8nCopyPayload(input)
     expect(out.status).toBe("success")
-    // Sem marcadores de seção, os blocos colapsam num único bloco de texto.
+    // Bloco tipado é PRESERVADO (cta→button), não colapsado em texto.
     expect((out.copy as Record<string, unknown>).blocks).toEqual([
-      { type: "text", value: "Comprar" },
+      { type: "button", value: "Comprar" },
     ])
     // não muta a entrada
     expect(input.status).toBe("completed")
     expect((input.copy.blocks[0] as Record<string, unknown>).type).toBe("cta")
   })
 
-  it("colapsa todos os blocos num único bloco quando não há marcadores de seção", () => {
+  it("PRESERVA blocos tipados (heading/text/products/button) com seus campos", () => {
     const out = sanitizeN8nCopyPayload({
       status: "success",
       copy: {
         subject: "S",
         preheader: "P",
         blocks: [
-          { type: "heading", headline: "Título do email" },
-          { type: "text", body: "Primeiro parágrafo." },
-          { type: "products", items: [{ title: "Produto A", cost: 199 }] },
-          { type: "button", cta_text: "Comprar agora" },
+          { id: "b1", type: "heading", headline: "Novidades que combinam com você" },
+          { id: "b2", type: "text", value: "Selecionamos peças pensando no seu estilo." },
+          {
+            id: "b3",
+            type: "products",
+            columns: 3,
+            items: [{ name: "Vestido Lia", price: "R$ 189", image_caption: "Vestido midi off-white" }],
+          },
+          { id: "b4", type: "button", value: "Ver coleção" },
         ],
       },
     })
     const blocks = (out.copy as Record<string, unknown>).blocks as Array<Record<string, unknown>>
-    expect(blocks).toHaveLength(1)
-    expect(blocks[0].type).toBe("text")
-    expect(blocks[0].value).toBe(
-      "Título do email\n\nPrimeiro parágrafo.\n\n• Produto A — 199\n\nComprar agora",
-    )
+    expect(blocks).toHaveLength(4)
+    expect(blocks[0]).toMatchObject({ type: "heading", headline: "Novidades que combinam com você" })
+    expect(blocks[1]).toMatchObject({
+      type: "text",
+      value: "Selecionamos peças pensando no seu estilo.",
+    })
+    expect(blocks[2]).toMatchObject({ type: "products", columns: 3 })
+    expect((blocks[2].items as Array<Record<string, unknown>>)[0]).toMatchObject({
+      name: "Vestido Lia",
+      price: "R$ 189",
+      image_caption: "Vestido midi off-white",
+    })
+    expect(blocks[3]).toMatchObject({ type: "button", value: "Ver coleção" })
+  })
+
+  it("colapsa em texto e fatia por seção quando o n8n manda só texto (## TAG)", () => {
+    const out = sanitizeN8nCopyPayload({
+      status: "success",
+      copy: {
+        subject: "S",
+        preheader: "P",
+        blocks: [{ type: "text", value: "## HERO\nOlá\n\n## FOOTER\nTchau" }],
+      },
+    })
+    const blocks = (out.copy as Record<string, unknown>).blocks
+    expect(blocks).toEqual([
+      { type: "text", section: "HERO", value: "Olá" },
+      { type: "text", section: "FOOTER", value: "Tchau" },
+    ])
   })
 
   it("preserva identificadores do job (não coage job_id/mode)", () => {

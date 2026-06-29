@@ -173,11 +173,12 @@ describe("POST /api/webhooks/n8n/campaign-copy — blocks sem id (regressão)", 
     expect(entry.status).toBe("success")
     expect(entry.generated_via).toBe("n8n")
     expect(entry.subject).toBe("Oferta especial")
-    // Sem marcadores de seção, a copy colapsa num único bloco de texto.
-    expect(entry.blocks).toHaveLength(1)
-    expect(entry.blocks[0].type).toBe("text")
-    expect(entry.blocks[0].value).toContain("Olá")
-    expect(entry.blocks[0].value).toContain("corpo do email")
+    // Blocos tipados são PRESERVADOS (heading + text), não colapsados em texto.
+    expect(entry.blocks).toHaveLength(2)
+    expect(entry.blocks[0].type).toBe("heading")
+    expect(entry.blocks[0].headline).toBe("Olá")
+    expect(entry.blocks[1].type).toBe("text")
+    expect(entry.blocks[1].value).toBe("corpo do email")
     // id regenerado no servidor (route.ts: id: b.id ?? newBlockId())
     for (const b of entry.blocks) {
       expect(typeof b.id).toBe("string")
@@ -220,11 +221,12 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
     const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
-    // Sem marcadores, tudo colapsa em 1 bloco de texto — sem rejeitar types fora do enum.
-    expect(entry.blocks).toHaveLength(1)
+    // Types fora do enum são normalizados (paragraph→text, cta→button) e PRESERVADOS.
+    expect(entry.blocks).toHaveLength(2)
     expect(entry.blocks[0].type).toBe("text")
-    expect(entry.blocks[0].value).toContain("corpo")
-    expect(entry.blocks[0].value).toContain("Comprar agora")
+    expect(entry.blocks[0].value).toBe("corpo")
+    expect(entry.blocks[1].type).toBe("button")
+    expect(entry.blocks[1].value).toBe("Comprar agora")
     expect(entry.generated_via).toBe("n8n")
   })
 
@@ -281,10 +283,12 @@ describe("POST /api/webhooks/n8n/campaign-copy — normalização do output do n
     const sugUpdate = updateCalls.find((c) => c.table === "campaign_suggestions")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entry = (sugUpdate!.data.copy_results as any).production[MOCK_STORE_ID]
-    // O produto colapsa como "• P1 — 99" no texto.
+    // O bloco de produtos é PRESERVADO: columns coergido (2) e items normalizados.
     expect(entry.blocks).toHaveLength(1)
-    expect(entry.blocks[0].value).toContain("P1")
-    expect(entry.blocks[0].value).toContain("99")
+    expect(entry.blocks[0].type).toBe("products")
+    expect(entry.blocks[0].columns).toBe(2)
+    expect(entry.blocks[0].items[0].name).toBe("P1")
+    expect(String(entry.blocks[0].items[0].price)).toBe("99")
   })
 })
 

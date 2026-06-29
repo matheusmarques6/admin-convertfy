@@ -227,7 +227,9 @@ function BlockBody({ block }: { block: EmailDraftBlock }) {
         <div className={`grid gap-3 ${cols === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
           {items.map((it, i) => (
             <div key={i} className="rounded-[4px] border border-border bg-card p-2">
-              <div className="mb-1.5 h-20 rounded-[3px] border border-dashed border-border/70 bg-muted/60" />
+              <div className="mb-1.5 flex h-20 items-center justify-center rounded-[3px] border border-dashed border-border/70 bg-muted/60 px-1.5 text-center text-[10px] leading-tight text-muted-foreground">
+                {it.image_caption ?? ""}
+              </div>
               <div className="truncate text-[12px] font-semibold text-foreground">
                 {it.name ?? "—"}
               </div>
