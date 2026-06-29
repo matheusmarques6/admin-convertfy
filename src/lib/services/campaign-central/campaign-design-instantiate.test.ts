@@ -22,9 +22,11 @@ const h = vi.hoisted(() => {
     task_deliverables: [],
   }
   let seq = 0
+  const flags = { failTasksInsert: false }
   function reset() {
     for (const k of Object.keys(db)) db[k] = []
     seq = 0
+    flags.failTasksInsert = false
   }
   function from(table: string) {
     if (!db[table]) db[table] = []
@@ -50,6 +52,20 @@ const h = vi.hoisted(() => {
       then: (resolve: (v: unknown) => unknown) =>
         resolve({ data: rows(), error: null }),
       insert: (input: Row | Row[]) => {
+        if (table === "tasks" && flags.failTasksInsert) {
+          const errVal = {
+            data: null,
+            error: { message: "column tasks.operational_pipeline_id does not exist" },
+          }
+          return {
+            select: () => ({
+              single: async () => errVal,
+              maybeSingle: async () => errVal,
+              then: (resolve: (v: unknown) => unknown) => resolve(errVal),
+            }),
+            then: (resolve: (v: unknown) => unknown) => resolve(errVal),
+          }
+        }
         const arr = Array.isArray(input) ? input : [input]
         const inserted = arr.map((r) => ({ id: r.id ?? `id-${++seq}`, ...r }))
         db[table].push(...inserted)
@@ -102,7 +118,7 @@ const h = vi.hoisted(() => {
     }
     return chain
   }
-  return { db, reset, client: { from } }
+  return { db, reset, client: { from }, flags }
 })
 
 vi.mock("@/lib/supabase/server", () => ({ createAdminClient: () => h.client }))
@@ -177,7 +193,6 @@ describe("instantiateCampaignStage — Fase 2", () => {
     expect(t.org_id).toBe(ORG)
     expect(t.source_type).toBe("campaign_suggestion")
     expect(t.source_id).toBe(SUG)
-    expect(t.operational_pipeline_id).toBe(PIPE)
     expect(t.assignee_role).toBe("designer")
     expect(t.version).toBe(1)
   })
@@ -274,5 +289,19 @@ describe("instantiateCampaignStage — Fase 2", () => {
       pilotStoreId: "store-a",
     })
     expect(tasksInColumn("estrutura")[0].version).toBe(2)
+  })
+
+  it("LANCA quando o INSERT de tasks falha (nao engole erro de schema)", async () => {
+    seedPipelineAndCampaign()
+    h.flags.failTasksInsert = true
+    await expect(
+      instantiateCampaignStage({
+        suggestionId: SUG,
+        orgId: ORG,
+        stageSlug: "estrutura",
+        pilotStoreId: "store-a",
+      }),
+    ).rejects.toThrow(/Falha ao inserir tasks/)
+    expect(tasksInColumn("estrutura")).toHaveLength(0)
   })
 })

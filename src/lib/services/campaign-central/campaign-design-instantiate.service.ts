@@ -121,7 +121,6 @@ export async function instantiateCampaignStage(params: {
       priority: "medium" as const,
       source_type: "campaign_suggestion",
       source_id: suggestionId,
-      operational_pipeline_id: pipelineId,
       operational_column_id: columnId,
       version,
       assignee_role: defaultRole,
@@ -150,7 +149,6 @@ export async function instantiateCampaignStage(params: {
       priority: "medium" as const,
       source_type: "campaign_suggestion",
       source_id: suggestionId,
-      operational_pipeline_id: pipelineId,
       operational_column_id: columnId,
       version,
       assignee_role: item.assignee_role ?? defaultRole,
@@ -166,10 +164,18 @@ export async function instantiateCampaignStage(params: {
     }))
   }
 
-  const { data: insertedTasks } = await admin
+  const { data: insertedTasks, error: insertErr } = await admin
     .from("tasks")
     .insert(taskRows)
     .select("id")
+  if (insertErr) {
+    // Falha de schema/permissão NÃO pode passar silenciosa: era a razão do bug
+    // "card em Design sem tasks". Lançar faz o chamador logar (approve /
+    // webhook campaign-copy-complete) em vez de retornar taskIds vazio.
+    throw new Error(
+      `Falha ao inserir tasks da etapa "${stageSlug}": ${insertErr.message}`,
+    )
+  }
   const inserted = (insertedTasks ?? []) as Array<{ id: string }>
 
   // 6. Deliverables na task ANCORA (primeira).

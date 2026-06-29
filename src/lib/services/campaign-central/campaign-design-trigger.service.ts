@@ -5,9 +5,9 @@
  * deliverable) e o orquestrador de handoff (`attemptCampaignDesignHandoff`).
  *
  * Dada uma task qualquer, resolve se ela pertence ao pipeline de design de
- * campanha (source_type='campaign_suggestion' + operational_pipeline_id +
- * source_id). Se sim, delega pro handoff da campanha correspondente; caso
- * contrario (task de onboarding/comum ou inexistente) e um no-op silencioso.
+ * campanha (source_type='campaign_suggestion' + source_id). Se sim, delega pro
+ * handoff da campanha correspondente; caso contrario (task de onboarding/comum
+ * ou inexistente) e um no-op silencioso.
  *
  * Chamado de forma non-blocking (try/catch) ao lado do handoff de onboarding.
  *
@@ -26,14 +26,13 @@ export async function attemptCampaignDesignHandoffForTask(params: {
 
   const { data: task } = await admin
     .from("tasks")
-    .select("id, org_id, source_type, source_id, operational_pipeline_id")
+    .select("id, org_id, source_type, source_id")
     .eq("id", taskId)
     .maybeSingle()
 
   if (
     !task ||
     task.source_type !== "campaign_suggestion" ||
-    !task.operational_pipeline_id ||
     !task.source_id
   ) {
     return null

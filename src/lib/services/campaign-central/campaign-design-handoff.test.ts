@@ -170,7 +170,6 @@ function addTask(slug: string, status: string, version = 1) {
     org_id: ORG,
     source_type: "campaign_suggestion",
     source_id: SUG,
-    operational_pipeline_id: PIPE,
     operational_column_id: colId(slug),
     version,
     status,

@@ -174,7 +174,6 @@ async function runAction(
         priority: "medium",
         assignee_id: auto.config.subtask_assignee_id ?? task.assignee_id,
         source_type: "manual",
-        operational_pipeline_id: pipeline.id,
         operational_column_id: ctx.columnId,
         metadata: { parent_task_id: task.id },
       })
