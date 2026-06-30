@@ -1063,6 +1063,62 @@ describe("telemetria (email_generation_runs)", () => {
     expect(successUpdates).toHaveLength(1)
   })
 
+  it("nenhum run fica preso em 'running': todo log vira success/error 1x (mix)", async () => {
+    // Mix de lojas OK e falha num único lote. Invariante load-bearing: cada
+    // run logado ('running') recebe EXATAMENTE um update terminal — senão o
+    // run ficaria 'running' pra sempre e inflaria a contagem "Running" da UI.
+    seedSuggestion({
+      targets: [{ store_id: STORE_A }, { store_id: STORE_B }, { store_id: STORE_C }],
+    })
+    seedConfig()
+    seedBatch()
+    generateEmailImageMock.mockImplementation(async (_p, storeId: string) => {
+      if (storeId === STORE_B) throw new Error("boom")
+      return `img-${storeId}.png`
+    })
+
+    await svc.generateBatch(BATCH, ORG)
+
+    // 1 log 'running' por loja; nenhum log já nasce terminal.
+    expect(logGenerationRunMock).toHaveBeenCalledTimes(3)
+    for (const c of logGenerationRunMock.mock.calls) {
+      expect((c[0] as Record<string, unknown>).status).toBe("running")
+    }
+    // 1 update terminal por loja (3 logs -> 3 updates), nenhum órfão.
+    expect(updateGenerationRunMock).toHaveBeenCalledTimes(3)
+    const terminal = updateGenerationRunMock.mock.calls.map(
+      (c) => (c[1] as Record<string, unknown>).status,
+    )
+    expect(terminal.filter((s) => s === "success")).toHaveLength(2)
+    expect(terminal.filter((s) => s === "error")).toHaveLength(1)
+  })
+
+  it("o caminho de falha mapeia 'failed' (service) -> 'error' (runs CHECK), nunca 'failed'", async () => {
+    // O CHECK de email_generation_runs.status aceita
+    // running|success|error|skipped — NÃO 'failed'. Se o service vazasse o
+    // próprio 'failed' pro updateGenerationRun, o UPDATE quebraria (23514) e o
+    // run ficaria preso em 'running'. Guarda contra esse regress.
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    seedBatch()
+    generateEmailImageMock.mockRejectedValue(new Error("kaboom"))
+
+    const out = await svc.generateBatch(BATCH, ORG)
+    // result row continua 'failed' (semântica do domínio, coluna própria).
+    expect(out.results[0].status).toBe("failed")
+
+    // mas TODO status mandado pra telemetria é CHECK-valid (jamais 'failed').
+    const VALID = new Set(["running", "success", "error", "skipped"])
+    for (const c of updateGenerationRunMock.mock.calls) {
+      expect(VALID.has((c[1] as Record<string, unknown>).status as string)).toBe(true)
+    }
+    expect(
+      updateGenerationRunMock.mock.calls.some(
+        (c) => (c[1] as Record<string, unknown>).status === "error",
+      ),
+    ).toBe(true)
+  })
+
   it("regenerateResult loga e atualiza exatamente 1x (sem double-log)", async () => {
     seedSuggestion()
     seedConfig()
