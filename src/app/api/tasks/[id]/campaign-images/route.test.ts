@@ -166,6 +166,43 @@ describe("POST /api/tasks/[id]/campaign-images", () => {
     expect(res.status).toBe(400)
   })
 
+  it("create_batch com text_context válido -> 201 e repassa ao service", async () => {
+    const res = await POST(
+      postReq({
+        action: "create_batch",
+        name: "Hero",
+        format: "hero",
+        text_context: {
+          nicho: { include: true },
+          headline: { include: true, value: "50% OFF" },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(201)
+    const [, , input] = createBatchMock.mock.calls[0]
+    expect(input.text_context).toEqual({
+      nicho: { include: true },
+      headline: { include: true, value: "50% OFF" },
+    })
+  })
+
+  it("create_batch com chave desconhecida dentro de text field -> 400 (strict)", async () => {
+    const res = await POST(
+      postReq({
+        action: "create_batch",
+        name: "Hero",
+        format: "hero",
+        text_context: { nicho: { include: true, foo: "bar" } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(createBatchMock).not.toHaveBeenCalled()
+  })
+
   it("generate_batch com batch_id não-uuid -> 400 (Zod)", async () => {
     const res = await POST(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

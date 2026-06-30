@@ -30,15 +30,68 @@ vi.mock("@/lib/agents/chains/image.chain", () => ({
   generateEmailImage: generateEmailImageMock,
 }))
 
-// Puros mas puxam deps de derivação — mockados pra focar na lógica do service.
-vi.mock("@/lib/agents/image/template-renderer", () => ({
-  renderImageTemplate: (tpl: string, vars: Record<string, string>) =>
-    `${tpl}::${vars.INSTRUCAO_ADICIONAL ?? ""}`,
-}))
+// renderImageTemplate usa a implementação REAL (handlebars-lite puro, sem deps
+// pesadas) para que os testes do contexto textual opt-in exercitem o template
+// gated de verdade (gates {{#if INCLUDE_*}} caindo/aparecendo).
+vi.mock("@/lib/agents/image/template-renderer", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/agents/image/template-renderer")
+  >("@/lib/agents/image/template-renderer")
+  return { renderImageTemplate: actual.renderImageTemplate }
+})
+// buildImagePromptVars é mockado (puxa derivers pesados); devolve um bag
+// realista de vars-base pra resolver os fallbacks de loja do opt-in.
 const buildImagePromptVarsMock = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/agents/image/prompt-vars-builder", () => ({
   buildImagePromptVars: buildImagePromptVarsMock,
 }))
+
+/**
+ * Template gated REAL (cópia da migration 20260808). O núcleo visual é
+ * incondicional; as 5 linhas textuais são gated por {{#if INCLUDE_*}}.
+ * Mantido em sincronia com supabase/migrations/20260808_campaign_image_text_context.sql.
+ */
+const GATED_TEMPLATE = `Generate a campaign image for the brand {{MARCA}}.
+
+Visual identity (anchor the image to these):
+- Palette: {{PALETA_1}} + {{PALETA_2}}, neutral {{NEUTRO}}
+- Logo style: {{LOGO_STYLE}}
+- Mood: {{MOOD}}
+- Scene hint: {{CENARIO}}
+
+Product hero: {{PRODUTO_HEROI}}
+{{#if INCLUDE_NICHO}}Niche / context: {{NICHO}}
+{{/if}}{{#if INCLUDE_PUBLICO}}Target audience: {{PUBLICO}}
+{{/if}}{{#if INCLUDE_TOM}}Tone of voice: {{TOM_VOZ}}
+{{/if}}{{#if INCLUDE_MOEDA}}Locale / currency: {{IDIOMA}} / {{MOEDA}}
+{{/if}}{{#if INCLUDE_HEADLINE}}Campaign headline to EVOKE (do NOT render literal text in the image): "{{HEADLINE}}"
+{{/if}}
+{{#if INSTRUCAO_ADICIONAL}}
+ART DIRECTION (batch instruction + per-store adaptation):
+{{INSTRUCAO_ADICIONAL}}
+{{/if}}
+
+Render a single campaign-quality image that {{MARCA}} would proudly use. Anchor it to the brand palette, mood and niche above.`
+
+/** Bag de vars-base realista (espelha o shape de buildImagePromptVars). */
+function baseVars(instrucaoAdicional = ""): Record<string, string> {
+  return {
+    MARCA: "Loja Teste",
+    PALETA_1: "#111111",
+    PALETA_2: "#222222",
+    NEUTRO: "#FFFFFF",
+    LOGO_STYLE: "flat",
+    MOOD: "bold",
+    CENARIO: "studio",
+    PRODUTO_HEROI: "Tênis X",
+    nicho: "moda fitness",
+    PUBLICO: "corredoras urbanas",
+    tom_voz: "energético",
+    MOEDA: "BRL",
+    IDIOMA: "pt-BR",
+    INSTRUCAO_ADICIONAL: instrucaoAdicional,
+  }
+}
 vi.mock("@/lib/agents/top-products", () => ({
   loadTopProducts: vi.fn(async () => []),
 }))
@@ -315,7 +368,7 @@ function seedConfig(): void {
   fx.config = {
     model: "openai/gpt-5.4-image-2",
     system_prompt: "SYS",
-    user_template: "TPL",
+    user_template: GATED_TEMPLATE,
   }
 }
 
@@ -348,7 +401,11 @@ beforeEach(async () => {
   fx.insertedBatches = []
   generateEmailImageMock.mockReset()
   buildImagePromptVarsMock.mockReset()
-  buildImagePromptVarsMock.mockReturnValue({ INSTRUCAO_ADICIONAL: "" })
+  // Default: devolve o bag de vars-base, repassando instrucaoAdicional ->
+  // INSTRUCAO_ADICIONAL (o service passa instrucaoAdicional pro builder).
+  buildImagePromptVarsMock.mockImplementation(
+    (input: { instrucaoAdicional?: string }) => baseVars(input.instrucaoAdicional ?? ""),
+  )
   svc = await import("./campaign-image-generation.service")
 })
 
@@ -443,31 +500,32 @@ describe("generateBatch", () => {
     expect(opts.aspect).toBe("4:3") // hero
   })
 
-  it("usa heading da copy de produção; fallback p/ subject; vazio sem copy", async () => {
+  it("headline opt-in: usa heading da copy; fallback p/ subject; ausente sem copy", async () => {
     seedSuggestion({
       targets: [{ store_id: STORE_A }, { store_id: STORE_B }, { store_id: STORE_C }],
     })
     seedConfig()
-    seedBatch()
-    generateEmailImageMock.mockResolvedValue("img.png")
-    const seen: Record<string, string> = {}
-    buildImagePromptVarsMock.mockImplementation((input: { instrucaoAdicional?: string }) => {
-      // store-id não chega direto aqui; capturamos via instrucaoAdicional
-      return { INSTRUCAO_ADICIONAL: input.instrucaoAdicional ?? "" }
+    // headline LIGADO (sem value custom) -> usa headlineFromCopy(production).
+    seedBatch({ text_context: { headline: { include: true } } })
+    // Captura o prompt renderizado por loja (pool não garante ordem).
+    const prompts: Record<string, string> = {}
+    generateEmailImageMock.mockImplementation(async (prompt: string, storeId: string) => {
+      prompts[storeId] = prompt
+      return `img-${storeId}.png`
     })
-    // Captura por ordem de chamada não é confiável (pool); validamos via os
-    // textos gerados conterem cada headline esperada.
-    void seen
 
     await svc.generateBatch(BATCH, ORG)
-    const instrs = buildImagePromptVarsMock.mock.calls.map(
-      (c) => (c[0] as { instrucaoAdicional?: string }).instrucaoAdicional ?? "",
+
+    // STORE_A: heading da copy de produção.
+    expect(prompts[STORE_A]).toContain(
+      'Campaign headline to EVOKE (do NOT render literal text in the image): "Headline da Loja A"',
     )
-    const joined = instrs.join("\n---\n")
-    expect(joined).toContain('Headline da campanha desta loja: "Headline da Loja A"')
-    expect(joined).toContain('Headline da campanha desta loja: "Sub B fallback"')
-    // STORE_C não tem copy de produção -> sem linha de headline pra ele.
-    // (não dá pra isolar por loja aqui, mas A e B cobrem heading+subject)
+    // STORE_B: fallback pro subject (sem heading nos blocks).
+    expect(prompts[STORE_B]).toContain(
+      'Campaign headline to EVOKE (do NOT render literal text in the image): "Sub B fallback"',
+    )
+    // STORE_C: sem copy de produção -> headline vazia -> gate cai (sem linha).
+    expect(prompts[STORE_C]).not.toContain("Campaign headline to EVOKE")
   })
 
   it("loja que falha vira 'failed' com error_message; pool não perde lojas", async () => {
@@ -526,6 +584,93 @@ describe("generateBatch", () => {
     expect(out.results).toHaveLength(7)
     expect(out.results.every((r) => r.status === "ready")).toBe(true)
     expect(generateEmailImageMock).toHaveBeenCalledTimes(7)
+  })
+})
+
+describe("text_context opt-in (prompt)", () => {
+  // Captura o prompt renderizado da única loja-alvo (STORE_A).
+  async function promptFor(textContext: Row): Promise<string> {
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    seedBatch({ text_context: textContext })
+    let captured = ""
+    generateEmailImageMock.mockImplementation(async (prompt: string) => {
+      captured = prompt
+      return "img.png"
+    })
+    await svc.generateBatch(BATCH, ORG)
+    return captured
+  }
+
+  it("contexto vazio -> prompt sem nenhuma das 5 linhas textuais", async () => {
+    const prompt = await promptFor({})
+    expect(prompt).not.toContain("Niche / context:")
+    expect(prompt).not.toContain("Target audience:")
+    expect(prompt).not.toContain("Tone of voice:")
+    expect(prompt).not.toContain("Locale / currency:")
+    expect(prompt).not.toContain("Campaign headline to EVOKE")
+    // ...mas o núcleo visual continua sempre.
+    expect(prompt).toContain("Visual identity (anchor the image to these):")
+    expect(prompt).toContain("Product hero: Tênis X")
+  })
+
+  it("nicho ligado sem value -> usa o nicho da loja (vars-base)", async () => {
+    const prompt = await promptFor({ nicho: { include: true } })
+    expect(prompt).toContain("Niche / context: moda fitness")
+    // só nicho ligado: os outros campos não aparecem.
+    expect(prompt).not.toContain("Target audience:")
+    expect(prompt).not.toContain("Campaign headline to EVOKE")
+  })
+
+  it("nicho ligado com value custom -> usa o value (sobrescreve a loja)", async () => {
+    const prompt = await promptFor({ nicho: { include: true, value: "alta costura" } })
+    expect(prompt).toContain("Niche / context: alta costura")
+    expect(prompt).not.toContain("moda fitness")
+  })
+
+  it("headline ligada com value -> usa exatamente esse value", async () => {
+    const prompt = await promptFor({ headline: { include: true, value: "50% OFF HOJE" } })
+    expect(prompt).toContain(
+      'Campaign headline to EVOKE (do NOT render literal text in the image): "50% OFF HOJE"',
+    )
+  })
+
+  it("headline DESLIGADA -> ausente mesmo com copy de produção tendo heading", async () => {
+    // production[STORE_A] tem heading "Headline da Loja A" (seedSuggestion default),
+    // mas headline off -> não entra no prompt.
+    seedSuggestion()
+    seedConfig()
+    seedBatch({ text_context: {} })
+    let captured = ""
+    generateEmailImageMock.mockImplementation(async (prompt: string, storeId: string) => {
+      if (storeId === STORE_A) captured = prompt
+      return "img.png"
+    })
+    await svc.generateBatch(BATCH, ORG)
+    expect(captured).not.toContain("Campaign headline to EVOKE")
+    expect(captured).not.toContain("Headline da Loja A")
+  })
+
+  it("moeda ligada -> injeta IDIOMA / MOEDA da loja; desligada -> ausente", async () => {
+    const on = await promptFor({ moeda: { include: true } })
+    expect(on).toContain("Locale / currency: pt-BR / BRL")
+    const off = await promptFor({})
+    expect(off).not.toContain("Locale / currency:")
+  })
+
+  it("todos ligados -> todas as 5 linhas presentes", async () => {
+    const prompt = await promptFor({
+      nicho: { include: true },
+      publico: { include: true },
+      tom: { include: true },
+      moeda: { include: true },
+      headline: { include: true, value: "Promo" },
+    })
+    expect(prompt).toContain("Niche / context: moda fitness")
+    expect(prompt).toContain("Target audience: corredoras urbanas")
+    expect(prompt).toContain("Tone of voice: energético")
+    expect(prompt).toContain("Locale / currency: pt-BR / BRL")
+    expect(prompt).toContain('Campaign headline to EVOKE (do NOT render literal text in the image): "Promo"')
   })
 })
 
