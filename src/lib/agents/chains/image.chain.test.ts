@@ -260,6 +260,52 @@ describe("generateEmailImage — AE-13 multimodal (product_ref)", () => {
     expect(url).toBe("https://signed.example/img.png")
   })
 
+  it("fallback multimodal com N refs (base+logo+produto): o retry remove TODAS as imagens (text2img puro), não só uma", async () => {
+    // Concern do review: o retry de "multimodal não suportado" deve reenviar
+    // refs=[] (text2img PURO), não apenas dropar 1 imagem. Com 3 refs no 1º
+    // request, a 2ª chamada tem que ser string content (zero image_url).
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({ error: { message: "does not support image input" } }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
+          }),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const onMeta = vi.fn()
+    const url = await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      referenceImages: [
+        { label: "Base reference:", url: "https://cdn/base.jpg" },
+        { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
+        { label: "Hero product — reproduce faithfully:", url: "https://cdn/prod.jpg" },
+      ],
+      onMeta,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 1ª chamada: 3 imagens + prompt (multimodal).
+    const body1 = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    const imgs1 = (
+      body1.messages[0].content as Array<{ image_url?: { url: string } }>
+    ).filter((c) => c.image_url)
+    expect(imgs1).toHaveLength(3)
+    // 2ª chamada (retry): text2img PURO — string content, ZERO image_url.
+    const body2 = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)
+    expect(body2.messages).toEqual([{ role: "user", content: "the prompt" }])
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
   it("sem mode ou sem referenceImageUrl: body legacy (string content, sem array)", async () => {
     const fetchMock = mockFetchOk()
     global.fetch = fetchMock as unknown as typeof fetch
@@ -633,6 +679,31 @@ describe("extractUsage — usage do envelope OpenRouter", () => {
     const raw = `...,"usage":{"prompt_tokens":50}}`
     expect(extractUsage(raw)).toEqual({ tokensInput: 50, tokensOutput: 0 })
   })
+
+  it("a palavra 'usage' SEM aspas (e dígitos) antes do envelope real não sequestra a âncora", () => {
+    // O alvo do anchoring é a substring `"usage"` COM aspas — que o alfabeto
+    // base64 (A-Za-z0-9+/=) não pode conter. Aqui um blob base64 inclui a
+    // sequência crua `usage1234` (sem aspas) ANTES do envelope verdadeiro; a
+    // âncora `indexOf('"usage"')` pula o lixo e isola os tokens reais.
+    const noise = "ZGusage1234567890usagemnopQRSTusage0987".repeat(30)
+    const raw =
+      `{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,${noise}"}}]}}],` +
+      `"usage":{"prompt_tokens":2048,"completion_tokens":11}}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 2048, tokensOutput: 11 })
+  })
+
+  it("janela de ~400 chars cobre completion_tokens mesmo com *_details entre os campos", () => {
+    // Pior caso realista de ordenação do provedor: prompt_tokens_details
+    // (cached/audio/text/image) serializado ENTRE prompt_tokens e
+    // completion_tokens. O prefixo do envelope até completion_tokens fica
+    // ~160 chars (< 400), então o recorte ainda captura os dois campos. Guarda
+    // a premissa do slice: se alguém encolher a janela, este teste quebra.
+    const raw =
+      `{"id":"x","usage":{"prompt_tokens":123456,` +
+      `"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0,"text_tokens":99999,"image_tokens":123456},` +
+      `"completion_tokens":654321,"total_tokens":777777}}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 123456, tokensOutput: 654321 })
+  })
 })
 
 // ── onMeta: captura de usage + refsSent reportados ao caller ───────────
@@ -791,6 +862,122 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
         content: [
           { type: "image_url", image_url: { url: "https://cdn/x.jpg" } },
           { type: "text", text: "P" },
+        ],
+      },
+    ])
+  })
+})
+
+// ── REGRESSÃO load-bearing: caminho de EMAIL (phase2-runner) intocado ──
+// O phase2-runner/rotas de email chamam generateEmailImage com `referenceImageUrl`
+// ÚNICO e SEM onMeta/referenceImages. Estes testes congelam: (a) a message shape
+// é byte-idêntica ao baseline single-ref `[{image_url},{text:prompt}]` (nenhum
+// texto de label injetado que mudaria o prompt que o modelo de email vê); (b) com
+// usage no body mas SEM onMeta, nada de usage é reportado e o resultado é igual.
+// Uma regressão aqui quebra a geração de imagem de email em produção.
+describe("generateEmailImage — REGRESSÃO caminho de email (single ref, sem onMeta)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    uploadMock.mockResolvedValue({ error: null })
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: "https://signed.example/img.png" },
+      error: null,
+    })
+    getPublicUrlMock.mockReturnValue({
+      data: { publicUrl: "https://public.example/img.png" },
+    })
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized-bytes"))
+  })
+
+  // Body com usage propositalmente presente: se o caminho de email parseasse
+  // usage sem onMeta, ainda assim NÃO há canal pra reportar — provamos que a
+  // ausência de onMeta não muda NEM a shape NEM o resultado.
+  function bodyWithUsage(): string {
+    return JSON.stringify({
+      choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
+      usage: { prompt_tokens: 5000, completion_tokens: 42 },
+    })
+  }
+
+  it("referenceImageUrl único, SEM onMeta: shape == baseline [{image_url},{text:prompt}], NENHUM label injetado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => bodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("email prompt", "store-1", {
+      aspect: "1:1",
+      overlayReserveBottom: false,
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/hero-product.jpg",
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    // shape EXATA do baseline: imagem primeiro, prompt depois, ZERO {type:text}
+    // de label antes da imagem (o modelo de email vê o mesmo prompt de sempre).
+    expect(body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: "https://cdn/hero-product.jpg" } },
+          { type: "text", text: "email prompt" },
+        ],
+      },
+    ])
+    // nenhum content-part é um label de ref (Base/Brand/Hero) — defesa contra
+    // vazamento dos labels de campanha no prompt do email.
+    const textParts = (
+      body.messages[0].content as Array<{ type: string; text?: string }>
+    ).filter((c) => c.type === "text")
+    expect(textParts).toEqual([{ type: "text", text: "email prompt" }])
+    // resultado intacto apesar do usage no body (nenhum onMeta pra consumir).
+    expect(url).toBe("https://signed.example/img.png")
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("text2img puro (sem ref, sem onMeta): body legacy string, usage no body é ignorado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => bodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("email prompt", "store-1", { aspect: "1:1" })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([{ role: "user", content: "email prompt" }])
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
+  it("systemPrompt + referenceImageUrl único, SEM onMeta: [system, user[image,text]] (shape baseline v2)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => bodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("email prompt", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/hero.jpg",
+      systemPrompt: "Master prompt part A",
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([
+      { role: "system", content: "Master prompt part A" },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: "https://cdn/hero.jpg" } },
+          { type: "text", text: "email prompt" },
         ],
       },
     ])
