@@ -470,7 +470,6 @@ function buildBatchInstruction(opts: {
   if (opts.flags.cores) adapt.push("paleta de cores da marca")
   if (opts.flags.logo) adapt.push("estilo do logo da marca")
   if (opts.flags.catalogo) adapt.push("produtos reais do catálogo da loja")
-  if (opts.flags.tom) adapt.push("tom de voz da marca")
   if (adapt.length > 0) {
     parts.push(`Adaptar para esta loja: ${adapt.join(", ")}.`)
   }

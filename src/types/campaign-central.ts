@@ -263,6 +263,11 @@ export interface CampaignImageAdaptFlags {
   cores?: boolean
   logo?: boolean
   catalogo?: boolean
+  /**
+   * @deprecated Removido da UI e do prompt (duplicava o `text_context.tom`).
+   * Mantido só pra TOLERAR lotes já salvos com a flag (o Zod `.strict()` rejeitaria
+   * o re-save sem este campo). É inerte — não tem efeito no prompt.
+   */
   tom?: boolean
 }
 

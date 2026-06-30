@@ -44,7 +44,6 @@ const FLAG_LABELS: Array<{ key: keyof CampaignImageAdaptFlags; label: string }> 
   { key: "cores", label: "Cores" },
   { key: "logo", label: "Logo" },
   { key: "catalogo", label: "Catálogo" },
-  { key: "tom", label: "Tom de voz" },
 ]
 
 /**
@@ -193,7 +192,7 @@ export function CampaignImageHandoff({
           name: `Lote ${batches.length + 1}`,
           format: "hero",
           instruction: "",
-          adapt_flags: { idioma: true, cores: true, logo: true, catalogo: true, tom: true },
+          adapt_flags: { idioma: true, cores: true, logo: true, catalogo: true },
           // Contexto textual começa todo desligado (prompt enxuto).
           text_context: {},
         }),
