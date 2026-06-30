@@ -80,7 +80,12 @@ function mockFetchOk() {
 }
 
 // Imports DEPOIS dos mocks
-import { generateEmailImage } from "./image.chain"
+import {
+  generateEmailImage,
+  __buildMessagesForTest as buildMessages,
+  __buildUserMessageForTest as buildUserMessage,
+  __extractUsageForTest as extractUsage,
+} from "./image.chain"
 
 describe("generateEmailImage — resize via sharp", () => {
   beforeEach(() => {
@@ -522,5 +527,272 @@ describe("generateEmailImage — retry em falha transitória", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(url).toBe("https://signed.example/img.png")
+  })
+})
+
+// ── Multi-ref: buildMessages / buildUserMessage (content array shape) ──
+describe("buildUserMessage / buildMessages — refs interleaved+labeled", () => {
+  it("0 refs: content é a string crua do prompt (body legacy)", () => {
+    const msg = buildUserMessage("the prompt", [])
+    expect(msg).toEqual({ role: "user", content: "the prompt" })
+  })
+
+  it("1 ref com label: [label, image, {text:prompt}] nessa ordem", () => {
+    const msg = buildUserMessage("the prompt", [
+      { label: "Base reference:", url: "https://cdn/base.jpg" },
+    ])
+    expect(msg).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "Base reference:" },
+        { type: "image_url", image_url: { url: "https://cdn/base.jpg" } },
+        { type: "text", text: "the prompt" },
+      ],
+    })
+  })
+
+  it("1 ref SEM label: [image, {text:prompt}] (retrocompat referenceImageUrl)", () => {
+    const msg = buildUserMessage("the prompt", [{ url: "https://cdn/x.jpg" }])
+    expect(msg).toEqual({
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: "https://cdn/x.jpg" } },
+        { type: "text", text: "the prompt" },
+      ],
+    })
+  })
+
+  it("3 refs labeled: [l,img,l,img,l,img,{text:prompt}] na ordem", () => {
+    const msg = buildUserMessage("P", [
+      { label: "Base reference:", url: "u-base" },
+      { label: "Brand logo — match this exactly:", url: "u-logo" },
+      { label: "Hero product — reproduce faithfully:", url: "u-prod" },
+    ])
+    expect(msg).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "Base reference:" },
+        { type: "image_url", image_url: { url: "u-base" } },
+        { type: "text", text: "Brand logo — match this exactly:" },
+        { type: "image_url", image_url: { url: "u-logo" } },
+        { type: "text", text: "Hero product — reproduce faithfully:" },
+        { type: "image_url", image_url: { url: "u-prod" } },
+        { type: "text", text: "P" },
+      ],
+    })
+  })
+
+  it("buildMessages prepende system message quando systemPrompt setado", () => {
+    const msgs = buildMessages("P", [{ url: "u" }], "SYS")
+    expect(msgs).toEqual([
+      { role: "system", content: "SYS" },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: "u" } },
+          { type: "text", text: "P" },
+        ],
+      },
+    ])
+  })
+
+  it("buildMessages sem systemPrompt: só a user message (0 refs)", () => {
+    const msgs = buildMessages("P", [])
+    expect(msgs).toEqual([{ role: "user", content: "P" }])
+  })
+
+  it("buildMessages: systemPrompt só de espaços não prepende system", () => {
+    const msgs = buildMessages("P", [])
+    expect(msgs).toEqual([{ role: "user", content: "P" }])
+    const msgs2 = buildMessages("P", [], "   ")
+    expect(msgs2).toEqual([{ role: "user", content: "P" }])
+  })
+})
+
+// ── extractUsage: regex ancorado no bloco "usage" (sem JSON.parse) ─────
+describe("extractUsage — usage do envelope OpenRouter", () => {
+  it("extrai prompt_tokens/completion_tokens do bloco usage", () => {
+    const raw = `{"choices":[{}],"usage":{"prompt_tokens":1234,"completion_tokens":7}}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 1234, tokensOutput: 7 })
+  })
+
+  it("sem bloco usage: retorna {0,0}", () => {
+    const raw = `{"choices":[{"message":{"content":"data:image/png;base64,AAAA"}}]}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 0, tokensOutput: 0 })
+  })
+
+  it("base64 com dígitos ANTES do usage não quebra a âncora", () => {
+    // Um blob base64 cheio de dígitos precede o bloco usage; o índice de
+    // "usage" isola o envelope e o recorte de ~400 chars pega os tokens certos.
+    const b64 = "iVBORw0KGgo1234567890ABCDEFmnopQRST0987654321xyz".repeat(50)
+    const raw = `{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,${b64}"}}]}}],"usage":{"prompt_tokens":4096,"completion_tokens":3}}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 4096, tokensOutput: 3 })
+  })
+
+  it("usage presente mas só prompt_tokens: completion = 0", () => {
+    const raw = `...,"usage":{"prompt_tokens":50}}`
+    expect(extractUsage(raw)).toEqual({ tokensInput: 50, tokensOutput: 0 })
+  })
+})
+
+// ── onMeta: captura de usage + refsSent reportados ao caller ───────────
+describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    uploadMock.mockResolvedValue({ error: null })
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: "https://signed.example/img.png" },
+      error: null,
+    })
+    getPublicUrlMock.mockReturnValue({
+      data: { publicUrl: "https://public.example/img.png" },
+    })
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized-bytes"))
+  })
+
+  function okBodyWithUsage(): string {
+    return JSON.stringify({
+      choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
+      usage: { prompt_tokens: 321, completion_tokens: 9 },
+    })
+  }
+
+  it("multimodal + onMeta: reporta tokens e as refs anexadas", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => okBodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const refs = [
+      { label: "Base reference:", url: "https://cdn/base.jpg" },
+      { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
+    ]
+    const onMeta = vi.fn()
+    await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      referenceImages: refs,
+      onMeta,
+    })
+
+    // body usa content array interleaved+labeled
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "Base reference:" },
+      { type: "image_url", image_url: { url: "https://cdn/base.jpg" } },
+      { type: "text", text: "Brand logo — match this exactly:" },
+      { type: "image_url", image_url: { url: "https://cdn/logo.png" } },
+      { type: "text", text: "the prompt" },
+    ])
+
+    expect(onMeta).toHaveBeenCalledTimes(1)
+    expect(onMeta).toHaveBeenCalledWith({
+      tokensInput: 321,
+      tokensOutput: 9,
+      refsSent: refs,
+    })
+  })
+
+  it("referenceImages supersede referenceImageUrl", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => okBodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await generateEmailImage("P", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/legacy.jpg",
+      referenceImages: [{ label: "Hero:", url: "https://cdn/new.jpg" }],
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "Hero:" },
+      { type: "image_url", image_url: { url: "https://cdn/new.jpg" } },
+      { type: "text", text: "P" },
+    ])
+  })
+
+  it("cap de 3 refs: a 4ª é descartada", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => okBodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const onMeta = vi.fn()
+    await generateEmailImage("P", "store-1", {
+      mode: "product_ref",
+      referenceImages: [
+        { url: "u1" },
+        { url: "u2" },
+        { url: "u3" },
+        { url: "u4" },
+      ],
+      onMeta,
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    // 3 imagens + 1 text(prompt) = 4 entradas; u4 fora.
+    const imageUrls = (
+      body.messages[0].content as Array<{ image_url?: { url: string } }>
+    )
+      .filter((c) => c.image_url)
+      .map((c) => c.image_url!.url)
+    expect(imageUrls).toEqual(["u1", "u2", "u3"])
+    expect(onMeta.mock.calls[0][0].refsSent).toHaveLength(3)
+  })
+
+  it("text2img (sem refs) + onMeta: refsSent vazio, tokens capturados", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => okBodyWithUsage(),
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const onMeta = vi.fn()
+    await generateEmailImage("P", "store-1", { onMeta })
+
+    expect(onMeta).toHaveBeenCalledWith({
+      tokensInput: 321,
+      tokensOutput: 9,
+      refsSent: [],
+    })
+    // body legacy (string content)
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([{ role: "user", content: "P" }])
+  })
+
+  it("sem onMeta: caminho de email intocado (string content, sem captura)", async () => {
+    const fetchMock = mockFetchOk()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    // referenceImageUrl único, sem onMeta → 1 ref sem rótulo, igual a hoje.
+    await generateEmailImage("P", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/x.jpg",
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: "https://cdn/x.jpg" } },
+          { type: "text", text: "P" },
+        ],
+      },
+    ])
   })
 })

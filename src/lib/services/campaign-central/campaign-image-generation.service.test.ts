@@ -92,8 +92,9 @@ function baseVars(instrucaoAdicional = ""): Record<string, string> {
     INSTRUCAO_ADICIONAL: instrucaoAdicional,
   }
 }
+const loadTopProductsMock = vi.hoisted(() => vi.fn(async () => [] as unknown[]))
 vi.mock("@/lib/agents/top-products", () => ({
-  loadTopProducts: vi.fn(async () => []),
+  loadTopProducts: loadTopProductsMock,
 }))
 
 // ── Mock da telemetria (two-phase: running -> success/error) ─────────
@@ -133,12 +134,16 @@ const fx: {
   batches: Map<string, Row>
   results: Map<string, Row> // key = `${batch_id}:${store_id}`
   insertedBatches: Row[]
+  // Override do store_brand_identity single (loadStoreContext) — controla
+  // logo_main_png/svg por teste. Null => default (sem logo).
+  brandOverride: Row | null
 } = {
   suggestion: null,
   config: null,
   batches: new Map(),
   results: new Map(),
   insertedBatches: [],
+  brandOverride: null,
 }
 
 function resultKey(batchId: unknown, storeId: unknown): string {
@@ -275,7 +280,14 @@ function makeQuery(table: string): any {
           version: 1,
         }))
       }
-      return { store_id: eqVal("store_id"), colors_primary: [{ hex: "#ABC123" }], version: 1 }
+      return {
+        store_id: eqVal("store_id"),
+        colors_primary: [{ hex: "#ABC123" }],
+        version: 1,
+        logo_main_png: null,
+        logo_main_svg: null,
+        ...(fx.brandOverride ?? {}),
+      }
     }
     if (table === "store_briefings") return null
     return null
@@ -413,7 +425,10 @@ beforeEach(async () => {
   fx.batches = new Map()
   fx.results = new Map()
   fx.insertedBatches = []
+  fx.brandOverride = null
   generateEmailImageMock.mockReset()
+  loadTopProductsMock.mockReset()
+  loadTopProductsMock.mockResolvedValue([])
   buildImagePromptVarsMock.mockReset()
   logGenerationRunMock.mockReset()
   updateGenerationRunMock.mockReset()
@@ -1176,5 +1191,222 @@ describe("telemetria (email_generation_runs)", () => {
     expect(out.results[0].image_url).toBe("img.png")
     // updateGenerationRun foi chamado com runId "" (no-op no helper real).
     expect(updateGenerationRunMock).toHaveBeenCalledWith("", expect.objectContaining({ status: "success" }))
+  })
+})
+
+// ── Referências visuais (logo + produto via adapt_flags) + onMeta ─────
+describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
+  // Captura as options passadas ao agente de imagem e dispara onMeta com tokens
+  // fixos, simulando o provedor reportando usage de imagem.
+  function captureOptionsAndEmitMeta(
+    meta = { tokensInput: 999, tokensOutput: 5, refsSent: [] as unknown[] },
+  ): void {
+    generateEmailImageMock.mockImplementation(
+      async (
+        _p: string,
+        _s: string,
+        opts: { onMeta?: (m: unknown) => void },
+      ) => {
+        opts.onMeta?.(meta)
+        return "img.png"
+      },
+    )
+  }
+
+  function setup(batchOver: Row): void {
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    seedBatch(batchOver)
+  }
+
+  function lastOptions(): {
+    mode: string
+    referenceImages?: Array<{ label?: string; url: string }>
+  } {
+    return generateEmailImageMock.mock.calls.at(-1)![2]
+  }
+
+  it("logo ON + logo_main_png: anexa o logo (label) e mode=product_ref", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png", logo_main_svg: null }
+    setup({ adapt_flags: { logo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("product_ref")
+    expect(opts.referenceImages).toContainEqual({
+      label: "Brand logo — match this exactly:",
+      url: "https://cdn/logo.png",
+    })
+  })
+
+  it("catalogo ON + produto com image_url: anexa o produto-herói (label)", async () => {
+    loadTopProductsMock.mockResolvedValue([
+      { name: "Tênis", price: 1, image_url: "https://cdn/prod.jpg" },
+    ])
+    setup({ adapt_flags: { catalogo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("product_ref")
+    expect(opts.referenceImages).toContainEqual({
+      label: "Hero product — reproduce faithfully:",
+      url: "https://cdn/prod.jpg",
+    })
+  })
+
+  it("logo OFF + catalogo OFF, sem base: nenhuma ref e mode=text2img", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png" }
+    loadTopProductsMock.mockResolvedValue([
+      { name: "X", price: 1, image_url: "https://cdn/prod.jpg" },
+    ])
+    setup({ adapt_flags: { cores: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("text2img")
+    expect(opts.referenceImages).toBeUndefined()
+  })
+
+  it("reference_image_url presente: vira a 1ª ref rotulada 'Base reference:'", async () => {
+    setup({ adapt_flags: {}, reference_image_url: "https://cdn/base.jpg" })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("product_ref")
+    expect(opts.referenceImages![0]).toEqual({
+      label: "Base reference:",
+      url: "https://cdn/base.jpg",
+    })
+  })
+
+  it("base + logo + produto: 3 refs na ordem base, logo, produto", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png" }
+    loadTopProductsMock.mockResolvedValue([
+      { name: "X", price: 1, image_url: "https://cdn/prod.jpg" },
+    ])
+    setup({
+      adapt_flags: { logo: true, catalogo: true },
+      reference_image_url: "https://cdn/base.jpg",
+    })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.referenceImages).toEqual([
+      { label: "Base reference:", url: "https://cdn/base.jpg" },
+      { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
+      { label: "Hero product — reproduce faithfully:", url: "https://cdn/prod.jpg" },
+    ])
+  })
+
+  it("SVG-only (png null, svg set): anexa a URL do SVG", async () => {
+    fx.brandOverride = {
+      logo_main_png: null,
+      logo_main_svg: "https://cdn/logo.svg",
+    }
+    setup({ adapt_flags: { logo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    expect(lastOptions().referenceImages).toContainEqual({
+      label: "Brand logo — match this exactly:",
+      url: "https://cdn/logo.svg",
+    })
+  })
+
+  it("logo ON mas brand sem logo: nenhuma ref de logo (mode text2img)", async () => {
+    // brandOverride null => default png/svg null.
+    setup({ adapt_flags: { logo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("text2img")
+    expect(opts.referenceImages).toBeUndefined()
+  })
+
+  it("catalogo ON mas produto sem image_url: não anexa produto", async () => {
+    loadTopProductsMock.mockResolvedValue([
+      { name: "X", price: 1, image_url: "" },
+    ])
+    setup({ adapt_flags: { catalogo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    expect(lastOptions().mode).toBe("text2img")
+    expect(lastOptions().referenceImages).toBeUndefined()
+  })
+
+  it("inputVars.refs_sent espelha as refs; mode incluso no running-phase log", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png" }
+    setup({
+      adapt_flags: { logo: true },
+      reference_image_url: "https://cdn/base.jpg",
+    })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const logArg = logGenerationRunMock.mock.calls.at(-1)![0] as {
+      inputVars: { mode: string; refs_sent: Array<{ label?: string; url: string }> }
+    }
+    expect(logArg.inputVars.mode).toBe("product_ref")
+    expect(logArg.inputVars.refs_sent).toEqual([
+      { label: "Base reference:", url: "https://cdn/base.jpg" },
+      { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
+    ])
+  })
+
+  it("onMeta → tokensInput/tokensOutput no update de sucesso", async () => {
+    setup({ adapt_flags: {}, reference_image_url: "https://cdn/base.jpg" })
+    captureOptionsAndEmitMeta({ tokensInput: 999, tokensOutput: 5, refsSent: [] })
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const successUpd = updateGenerationRunMock.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((u) => u.status === "success")!
+    expect(successUpd.tokensInput).toBe(999)
+    expect(successUpd.tokensOutput).toBe(5)
+  })
+
+  it("regenerateResult também anexa as refs e propaga tokens", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png" }
+    seedSuggestion()
+    seedConfig()
+    seedBatch({ adapt_flags: { logo: true }, reference_image_url: null })
+    fx.results.set(resultKey(BATCH, STORE_A), {
+      id: "r1",
+      batch_id: BATCH,
+      store_id: STORE_A,
+      status: "ready",
+      image_url: "old.png",
+      adjustment_notes: null,
+      error_message: null,
+      generated_via: null,
+      generated_at: null,
+    })
+    captureOptionsAndEmitMeta({ tokensInput: 42, tokensOutput: 1, refsSent: [] })
+
+    await svc.regenerateResult(BATCH, ORG, STORE_A, null)
+
+    expect(lastOptions().referenceImages).toContainEqual({
+      label: "Brand logo — match this exactly:",
+      url: "https://cdn/logo.png",
+    })
+    const upd = updateGenerationRunMock.mock.calls.at(-1)![1] as Record<string, unknown>
+    expect(upd.tokensInput).toBe(42)
   })
 })
