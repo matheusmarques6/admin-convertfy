@@ -17,6 +17,7 @@ export type PipelineAgentKey =
   | "qavision"
   | "seed"
   | "copy_dispatch"
+  | "campaign_image"
 
 export interface AgentVisual {
   name: string
@@ -112,6 +113,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#E5E7EB",
     kind: "sistema",
   },
+  campaign_image: {
+    name: "Imagem de campanha",
+    desc: "Gera imagem por loja na produção da campanha",
+    color: "#0D9488",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
+    kind: "imagem",
+  },
 }
 
 /** Ordem canônica de exibição dos agentes operacionais (sem 'seed'). */
@@ -124,6 +133,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "html",
   "qa",
   "qavision",
+  "campaign_image",
 ]
 
 /** Slug do flow → label PT-BR (mostrado nas badges). */
