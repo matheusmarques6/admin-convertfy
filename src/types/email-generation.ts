@@ -67,6 +67,10 @@ export type AgentType =
   | "campaign_suggestion"
   | "campaign_trends"
   | "campaign_architect"
+  // campaign_image: arte por loja — gera imagens de campanha adaptadas à marca
+  // de cada loja-alvo (etapa de produção). Reusa o agente de imagem do pipeline
+  // de email via generateEmailImage (config-driven).
+  | "campaign_image"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em

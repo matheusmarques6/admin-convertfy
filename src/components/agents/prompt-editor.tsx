@@ -139,6 +139,24 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "produtos", desc: "Dados disponíveis pro grid (nome, preço de/por, prova social)" },
     { key: "blocos_disponiveis", desc: "Enum de blocos permitidos (PREHEADER, HERO, GRID_PRODUTOS, ...)" },
   ],
+  // Imagens de campanha — arte por loja. Vars de buildImagePromptVars
+  // (image/prompt-vars-builder) renderizadas por
+  // campaign-image-generation.service por loja-alvo.
+  campaign_image: [
+    { key: "MARCA", desc: "Nome da loja/marca" },
+    { key: "NICHO", desc: "Nicho do negócio" },
+    { key: "PALETA_1", desc: "Cor primária da marca (hex)" },
+    { key: "PALETA_2", desc: "Cor secundária da marca (hex)" },
+    { key: "NEUTRO", desc: "Cor neutra derivada" },
+    { key: "LOGO_STYLE", desc: "Estilo do logo derivado da fonte" },
+    { key: "MOOD", desc: "Mood derivado do tom de voz" },
+    { key: "PUBLICO", desc: "Persona-alvo (ICP)" },
+    { key: "CENARIO", desc: "Cenário sugerido (nicho + posicionamento)" },
+    { key: "PRODUTO_HEROI", desc: "Produto-herói (top product / override)" },
+    { key: "IDIOMA", desc: "Idioma/contexto cultural da loja" },
+    { key: "MOEDA", desc: "Moeda da loja" },
+    { key: "INSTRUCAO_ADICIONAL", desc: "Instrução do lote + flags de adaptação + headline + notas de ajuste" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

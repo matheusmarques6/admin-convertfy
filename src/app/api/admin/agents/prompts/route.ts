@@ -41,7 +41,7 @@ async function authorize(supabase: ReturnType<typeof createAdminClient>, userId:
 }
 
 const postSchema = z.object({
-  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "campaign_suggestion", "campaign_trends", "campaign_architect"]),
+  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "campaign_suggestion", "campaign_trends", "campaign_architect", "campaign_image"]),
   model: z.string().min(3),
   system_prompt: z.string().min(10).max(20000),
   user_template: z.string().min(10).max(20000),
