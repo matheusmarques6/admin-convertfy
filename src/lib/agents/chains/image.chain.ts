@@ -145,6 +145,7 @@ async function callOpenRouterImage(
   prompt: string,
   referenceImageUrl?: string,
   systemPrompt?: string,
+  model: string = OPENROUTER_IMAGE_MODEL,
 ): Promise<Response> {
   try {
     return await fetchWithTimeout(
@@ -156,7 +157,7 @@ async function callOpenRouterImage(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: OPENROUTER_IMAGE_MODEL,
+          model,
           messages: buildMessages(prompt, referenceImageUrl, systemPrompt),
           response_format: "b64_json",
         }),
@@ -209,6 +210,13 @@ export async function generateEmailImage(
      * user message (sem perda de instrução).
      */
     systemPrompt?: string
+    /**
+     * Modelo de imagem a usar no OpenRouter. Default: `OPENROUTER_IMAGE_MODEL`
+     * (constante). Config-driven: callers que carregam o agente do DB
+     * (`email_agent_configs.model`) passam o valor pra cá — ex.: o pipeline de
+     * imagens de campanha usa o model do agent_type `campaign_image`.
+     */
+    model?: string
   },
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY
@@ -217,6 +225,7 @@ export async function generateEmailImage(
   const mode = options?.mode ?? "text2img"
   const useMultimodal = mode === "product_ref" && !!options?.referenceImageUrl
   const systemPrompt = options?.systemPrompt?.trim() || undefined
+  const model = options?.model?.trim() || OPENROUTER_IMAGE_MODEL
 
   log.info("image.generate.start", {
     storeId,
@@ -234,7 +243,7 @@ export async function generateEmailImage(
     log.info("image.multimodal.attempted", {
       storeId,
       refUrl: options?.referenceImageUrl,
-      model: OPENROUTER_IMAGE_MODEL,
+      model,
     })
   }
 
@@ -252,6 +261,7 @@ export async function generateEmailImage(
       prompt,
       useMultimodal ? options?.referenceImageUrl : undefined,
       systemPrompt,
+      model,
     )
 
     // Master Prompt v2: se o modelo rejeitou role=system, retry UMA vez
@@ -278,6 +288,7 @@ export async function generateEmailImage(
           concatenated,
           useMultimodal ? options?.referenceImageUrl : undefined,
           undefined,
+          model,
         )
       } else {
         // Reembrulha pra cair na 4xx genérica abaixo sem perder o body
@@ -300,7 +311,7 @@ export async function generateEmailImage(
           status: res.status,
           errorSnippet: errText.slice(0, 200),
         })
-        res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt)
+        res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt, model)
       } else {
         // AE-13 review: se o body menciona "image" mas nao casa keywords
         // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra

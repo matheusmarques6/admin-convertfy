@@ -241,6 +241,86 @@ export interface CampaignHandoffStore {
   copy: CopyResultEntry | null
 }
 
+// ── Geração de Imagens por Loja (etapa de PRODUÇÃO) ──────────────────
+
+/** Formato/aspecto-alvo de um lote de imagens. Mapeia pra AspectKey no service. */
+export type CampaignImageFormat = "hero" | "square" | "story"
+
+/** Status ao vivo de uma imagem por loja (espelha o CHECK da tabela). */
+export type CampaignImageResultStatus =
+  | "queued"
+  | "generating"
+  | "ready"
+  | "adjustment"
+  | "failed"
+
+/**
+ * Flags de adaptação por loja de um lote. Cada flag liga uma faceta da
+ * marca da loja na direção de arte injetada no prompt.
+ */
+export interface CampaignImageAdaptFlags {
+  idioma?: boolean
+  cores?: boolean
+  logo?: boolean
+  catalogo?: boolean
+  tom?: boolean
+}
+
+/** Um lote de instrução (= um tipo de imagem). */
+export interface CampaignImageBatch {
+  id: string
+  suggestion_id: string
+  task_id: string | null
+  name: string
+  format: CampaignImageFormat
+  instruction: string
+  reference_image_url: string | null
+  adapt_flags: CampaignImageAdaptFlags
+  created_at: string
+  updated_at: string
+}
+
+/** Resultado de geração de um lote para UMA loja. */
+export interface CampaignImageResult {
+  id: string
+  batch_id: string
+  store_id: string
+  store_name: string
+  country: string
+  language: string | null
+  status: CampaignImageResultStatus
+  image_url: string | null
+  adjustment_notes: string | null
+  error_message: string | null
+  generated_at: string | null
+}
+
+/** Lote + seus resultados por loja (item da lista no painel). */
+export interface CampaignImageBatchWithResults extends CampaignImageBatch {
+  results: CampaignImageResult[]
+}
+
+/** Loja-alvo do painel (com brand resumida pros chips). */
+export interface CampaignImageTargetStore {
+  store_id: string
+  store_name: string
+  country: string
+  language: string | null
+  logo_url: string | null
+  primary_color: string | null
+}
+
+/** Payload de GET /api/tasks/[id]/campaign-images — alimenta o painel. */
+export interface CampaignImagePayload {
+  suggestion_id: string
+  title: string
+  send_date: string | null
+  /** Lojas-alvo da campanha (todas as targets). */
+  stores: CampaignImageTargetStore[]
+  /** Lotes existentes com resultados por loja. */
+  batches: CampaignImageBatchWithResults[]
+}
+
 /** Payload de GET /api/tasks/[id]/campaign-copies — alimenta o painel. */
 export interface CampaignHandoffPayload {
   suggestion_id: string
