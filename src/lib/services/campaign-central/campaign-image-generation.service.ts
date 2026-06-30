@@ -530,6 +530,14 @@ async function generateOneStoreImage(
   // quebra a geração.
   let runId = ""
   let t0 = Date.now()
+  // Instrumentação de ingestão (preenchida pelo onMeta do agente de imagem):
+  // tokens de input de imagem reportados pelo provedor + refs efetivamente
+  // anexadas. Default zerado pro caminho de erro/sem-ref não quebrar.
+  let meta = {
+    tokensInput: 0,
+    tokensOutput: 0,
+    refsSent: [] as { label?: string; url: string }[],
+  }
   try {
     const ctx = await loadStoreContext(admin, storeId)
     const topProducts = await loadTopProducts(admin, storeId, ctx.storeUrl)
@@ -543,7 +551,28 @@ async function generateOneStoreImage(
     })
 
     const aspect = FORMAT_TO_ASPECT[batch.format] ?? "4:3"
-    const hasRef = !!batch.reference_image_url
+
+    // Referências visuais por URL que o modelo vai ENXERGAR (não só descrição
+    // textual): a imagem-base do lote sempre; o LOGO quando adapt_flags.logo;
+    // a foto do produto-herói quando adapt_flags.catalogo. Preferir PNG pro
+    // logo (SVG pode não ser ingerível; anexa só se for o único). Refs guardam
+    // contra URL vazia.
+    const refs: { label?: string; url: string }[] = []
+    if (batch.reference_image_url) {
+      refs.push({ label: "Base reference:", url: batch.reference_image_url })
+    }
+    if (flags.logo) {
+      const logo = ctx.brand?.logo_main_png || ctx.brand?.logo_main_svg
+      if (logo) refs.push({ label: "Brand logo — match this exactly:", url: logo })
+    }
+    if (flags.catalogo) {
+      const productImg = topProducts[0]?.image_url
+      if (productImg) {
+        refs.push({ label: "Hero product — reproduce faithfully:", url: productImg })
+      }
+    }
+    const hasRef = refs.length > 0
+    const mode = hasRef ? "product_ref" : "text2img"
 
     const vars = buildImagePromptVars({
       brand: ctx.brand,
@@ -553,7 +582,7 @@ async function generateOneStoreImage(
       blockPurpose: `campaign image (${batch.format})`,
       instrucaoAdicional,
       aspect,
-      mode: hasRef ? "product_ref" : "text2img",
+      mode,
     })
 
     // Contexto textual OPT-IN: para cada campo ligado, computa INCLUDE_* +
@@ -600,21 +629,36 @@ async function generateOneStoreImage(
       agentConfigId: config.id,
       status: "running",
       model: config.model,
-      inputVars: { format: batch.format, store_id: storeId, batch_id: batch.id },
+      // refs_sent prova o wiring na UI de logs independente do provedor
+      // reportar token de imagem (o delta de tokens é a prova adicional).
+      inputVars: {
+        format: batch.format,
+        store_id: storeId,
+        batch_id: batch.id,
+        mode,
+        refs_sent: refs.map((r) => ({ label: r.label, url: r.url })),
+      },
       renderedPrompt: prompt,
     })
 
     const imageUrl = await generateEmailImage(prompt, storeId, {
       aspect,
-      mode: hasRef ? "product_ref" : "text2img",
-      referenceImageUrl: batch.reference_image_url ?? undefined,
+      mode,
+      // A imagem-base agora viaja como a 1ª ref rotulada (não mais
+      // referenceImageUrl) — logo+produto seguem junto via adapt_flags.
+      referenceImages: hasRef ? refs : undefined,
       systemPrompt: config.system_prompt || undefined,
       model: config.model,
+      onMeta: (m) => {
+        meta = m
+      },
     })
 
     await safeUpdateRun(runId, {
       status: "success",
       durationMs: Date.now() - t0,
+      tokensInput: meta.tokensInput,
+      tokensOutput: meta.tokensOutput,
     })
 
     return {
