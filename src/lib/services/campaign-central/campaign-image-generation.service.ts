@@ -36,6 +36,8 @@ import type {
   CampaignImageResult,
   CampaignImageResultStatus,
   CampaignImageTargetStore,
+  CampaignImageTextContext,
+  CampaignImageTextField,
   CopyResultEntry,
   SuggestionTarget,
 } from "@/types/campaign-central"
@@ -72,6 +74,7 @@ interface BatchRow {
   instruction: string
   reference_image_url: string | null
   adapt_flags: CampaignImageAdaptFlags | null
+  text_context: CampaignImageTextContext | null
   created_at: string
   updated_at: string
 }
@@ -109,6 +112,7 @@ function mapBatchRow(row: BatchRow): CampaignImageBatch {
     instruction: row.instruction,
     reference_image_url: row.reference_image_url,
     adapt_flags: row.adapt_flags ?? {},
+    text_context: row.text_context ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -295,6 +299,7 @@ export interface CreateBatchInput {
   instruction: string
   reference_image_url?: string | null
   adapt_flags?: CampaignImageAdaptFlags
+  text_context?: CampaignImageTextContext
   task_id?: string | null
 }
 
@@ -319,6 +324,7 @@ export async function createBatch(
       instruction: input.instruction.trim(),
       reference_image_url: input.reference_image_url ?? null,
       adapt_flags: input.adapt_flags ?? {},
+      text_context: input.text_context ?? {},
       created_by: createdBy,
     })
     .select("*")
@@ -335,6 +341,7 @@ export interface UpdateBatchInput {
   instruction?: string
   reference_image_url?: string | null
   adapt_flags?: CampaignImageAdaptFlags
+  text_context?: CampaignImageTextContext
 }
 
 export async function updateBatch(
@@ -351,6 +358,7 @@ export async function updateBatch(
     patch.reference_image_url = input.reference_image_url
   }
   if (input.adapt_flags !== undefined) patch.adapt_flags = input.adapt_flags
+  if (input.text_context !== undefined) patch.text_context = input.text_context
 
   const { data, error } = await admin
     .from("campaign_image_batches")

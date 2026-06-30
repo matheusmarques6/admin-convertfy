@@ -34,6 +34,21 @@ const adaptFlagsSchema = z
   })
   .strict()
 
+// Contexto textual opt-in: cada campo é { include, value? }. value opcional
+// sobrescreve o dado real da loja. .strict() rejeita chaves desconhecidas.
+const textFieldSchema = z
+  .object({ include: z.boolean(), value: z.string().max(500).optional() })
+  .strict()
+const textContextSchema = z
+  .object({
+    nicho: textFieldSchema.optional(),
+    publico: textFieldSchema.optional(),
+    tom: textFieldSchema.optional(),
+    moeda: textFieldSchema.optional(),
+    headline: textFieldSchema.optional(),
+  })
+  .strict()
+
 const patchSchema = z.object({
   batch_id: z.string().uuid(),
   name: z.string().min(1).max(120).optional(),
@@ -41,6 +56,7 @@ const patchSchema = z.object({
   instruction: z.string().max(4000).optional(),
   reference_image_url: z.string().url().nullable().optional(),
   adapt_flags: adaptFlagsSchema.optional(),
+  text_context: textContextSchema.optional(),
 })
 
 export async function PATCH(
@@ -65,6 +81,7 @@ export async function PATCH(
       instruction: body.instruction,
       reference_image_url: body.reference_image_url,
       adapt_flags: body.adapt_flags,
+      text_context: body.text_context,
     })
 
     // Devolve o lote já com os resultados atuais (o cliente preserva os seus,
