@@ -304,6 +304,12 @@ describe("generateEmailImage — AE-13 multimodal (product_ref)", () => {
     const body2 = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)
     expect(body2.messages).toEqual([{ role: "user", content: "the prompt" }])
     expect(url).toBe("https://signed.example/img.png")
+    // FIX: o fallback REMOVEU as imagens (retry text2img) → o refs_sent reportado
+    // ao caller deve ser [] (não as 3 refs originais), senão a telemetria mentiria
+    // que o modelo viu logo/produto quando foram removidos. refs_sent é a prova de
+    // ingestão, então tem que refletir o que foi EFETIVAMENTE enviado.
+    expect(onMeta).toHaveBeenCalledTimes(1)
+    expect(onMeta.mock.calls[0][0].refsSent).toEqual([])
   })
 
   it("sem mode ou sem referenceImageUrl: body legacy (string content, sem array)", async () => {

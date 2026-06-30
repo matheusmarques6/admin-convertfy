@@ -323,6 +323,11 @@ export async function generateEmailImage(
   // preenchido dentro do fetch da última tentativa bem-sucedida e reportado
   // após o retry resolver.
   let lastUsage = { tokensInput: 0, tokensOutput: 0 }
+  // Refs EFETIVAMENTE enviadas na tentativa bem-sucedida. Difere de `refs` quando
+  // o fallback de multimodal-unsupported reenvia SEM imagens (text2img) — aí
+  // `refs_sent` precisa refletir [] (senão a telemetria mentiria que o modelo viu
+  // o logo/produto quando na verdade foram removidos). É a prova de ingestão.
+  let lastRefsSent: RefImage[] = []
 
   // ── Uma tentativa completa: chama OpenRouter + extrai o buffer ──────────
   //
@@ -333,6 +338,9 @@ export async function generateEmailImage(
   // texto, formato inesperado) NÃO são retryable: propagam direto.
   const fetchImageBuffer = async (attempt: number): Promise<Buffer> => {
     const attemptT0 = Date.now()
+    // Vira true se o fallback de multimodal-unsupported remover as imagens nesta
+    // tentativa (o reenvio sai puro text2img, sem refs).
+    let strippedThisAttempt = false
     let res = await callOpenRouterImage(
       apiKey,
       prompt,
@@ -388,6 +396,7 @@ export async function generateEmailImage(
           status: res.status,
           errorSnippet: errText.slice(0, 200),
         })
+        strippedThisAttempt = true
         res = await callOpenRouterImage(apiKey, prompt, [], systemPrompt, model)
       } else {
         // AE-13 review: se o body menciona "image" mas nao casa keywords
@@ -516,6 +525,8 @@ export async function generateEmailImage(
     // caminho de email (sem onMeta) este bloco nem roda.
     if (onMeta) {
       lastUsage = extractUsage(rawText)
+      // Refs reais desta tentativa: [] se o multimodal foi removido no fallback.
+      lastRefsSent = useMultimodal && !strippedThisAttempt ? refs : []
     }
 
     return imageBuffer
@@ -537,7 +548,7 @@ export async function generateEmailImage(
   // Reporta a instrumentação ao caller (opt-in): tokens de input/output e quais
   // refs foram efetivamente anexadas (vazio quando não foi multimodal).
   if (onMeta) {
-    onMeta({ ...lastUsage, refsSent: useMultimodal ? refs : [] })
+    onMeta({ ...lastUsage, refsSent: lastRefsSent })
   }
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o

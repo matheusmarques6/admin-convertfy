@@ -18,7 +18,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { NotFoundError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { generateEmailImage } from "@/lib/agents/chains/image.chain"
+import { generateEmailImage, type RefImage } from "@/lib/agents/chains/image.chain"
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import { buildImagePromptVars } from "@/lib/agents/image/prompt-vars-builder"
 import { loadTopProducts } from "@/lib/agents/top-products"
@@ -536,7 +536,7 @@ async function generateOneStoreImage(
   let meta = {
     tokensInput: 0,
     tokensOutput: 0,
-    refsSent: [] as { label?: string; url: string }[],
+    refsSent: [] as RefImage[],
   }
   try {
     const ctx = await loadStoreContext(admin, storeId)
@@ -557,7 +557,7 @@ async function generateOneStoreImage(
     // a foto do produto-herói quando adapt_flags.catalogo. Preferir PNG pro
     // logo (SVG pode não ser ingerível; anexa só se for o único). Refs guardam
     // contra URL vazia.
-    const refs: { label?: string; url: string }[] = []
+    const refs: RefImage[] = []
     if (batch.reference_image_url) {
       refs.push({ label: "Base reference:", url: batch.reference_image_url })
     }
