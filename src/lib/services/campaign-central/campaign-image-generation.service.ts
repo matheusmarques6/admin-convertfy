@@ -22,6 +22,10 @@ import { generateEmailImage } from "@/lib/agents/chains/image.chain"
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import { buildImagePromptVars } from "@/lib/agents/image/prompt-vars-builder"
 import { loadTopProducts } from "@/lib/agents/top-products"
+import {
+  logGenerationRun,
+  updateGenerationRun,
+} from "@/lib/agents/callbacks/telemetry.callback"
 import type { AspectKey } from "@/lib/agents/image/aspect-ratio"
 import type {
   StoreBrandIdentity,
@@ -376,6 +380,7 @@ export async function updateBatch(
 // ── Geração (prompt + agente de imagem) ──────────────────────────────
 
 interface AgentConfig {
+  id: string
   model: string
   system_prompt: string
   user_template: string
@@ -384,7 +389,7 @@ interface AgentConfig {
 async function loadCampaignImageConfig(admin: AdminClient): Promise<AgentConfig | null> {
   const { data } = await admin
     .from("email_agent_configs")
-    .select("model, system_prompt, user_template")
+    .select("id, model, system_prompt, user_template")
     .eq("agent_type", "campaign_image")
     .eq("is_active", true)
     .order("version", { ascending: false })
@@ -489,6 +494,14 @@ async function generateOneStoreImage(
   production: Record<string, CopyResultEntry>,
   adjustmentNotes?: string | null,
 ): Promise<{ status: "ready" | "failed"; image_url: string | null; error: string | null; via: string }> {
+  // Telemetria two-phase (best-effort): loga um run em email_generation_runs
+  // pra esta imagem aparecer na página de logs "assim como os outros agentes".
+  // runId/t0 vivem fora do try pra o caminho de erro fechar o run mesmo se a
+  // falha acontecer depois do logGenerationRun. logGenerationRun nunca lança
+  // (devolve "" em falha) e updateGenerationRun("") é no-op — telemetria não
+  // quebra a geração.
+  let runId = ""
+  let t0 = Date.now()
   try {
     const ctx = await loadStoreContext(admin, storeId)
     const topProducts = await loadTopProducts(admin, storeId, ctx.storeUrl)
@@ -551,12 +564,29 @@ async function generateOneStoreImage(
 
     const prompt = renderImageTemplate(config.user_template, finalVars)
 
+    t0 = Date.now()
+    runId = await logGenerationRun({
+      storeId,
+      batchId: batch.id,
+      agent: "campaign_image",
+      agentConfigId: config.id,
+      status: "running",
+      model: config.model,
+      inputVars: { format: batch.format, store_id: storeId, batch_id: batch.id },
+      renderedPrompt: prompt,
+    })
+
     const imageUrl = await generateEmailImage(prompt, storeId, {
       aspect,
       mode: hasRef ? "product_ref" : "text2img",
       referenceImageUrl: batch.reference_image_url ?? undefined,
       systemPrompt: config.system_prompt || undefined,
       model: config.model,
+    })
+
+    await updateGenerationRun(runId, {
+      status: "success",
+      durationMs: Date.now() - t0,
     })
 
     return {
@@ -568,6 +598,14 @@ async function generateOneStoreImage(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.warn("generate.store.failed", { batchId: batch.id, storeId, error: message })
+    // Fecha o run (mapeia o 'failed' do service pro status 'error' do runs —
+    // o CHECK aceita running|success|error|skipped, não 'failed'). No-op se
+    // runId == "" (falha antes do logGenerationRun).
+    await updateGenerationRun(runId, {
+      status: "error",
+      durationMs: Date.now() - t0,
+      errorMessage: message.slice(0, 500),
+    })
     return { status: "failed", image_url: null, error: message.slice(0, 500), via: "campaign_image" }
   }
 }
