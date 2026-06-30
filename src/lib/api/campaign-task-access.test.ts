@@ -54,7 +54,6 @@ function seedCampaignTask(opts: {
   designColumnId: string | null
   designVersion?: number
   columnSlug: string
-  withPipeline?: boolean // false simula a design task LEGADA (sem pipeline)
 }) {
   db.tasks.push({
     id: "ct1",
@@ -62,7 +61,6 @@ function seedCampaignTask(opts: {
     onboarding_id: null,
     source_type: "campaign_suggestion",
     source_id: "camp1",
-    operational_pipeline_id: opts.withPipeline === false ? null : "pipe-campaign",
     operational_column_id: opts.taskColumnId,
     version: opts.taskVersion ?? 1,
     status: "pending",
@@ -169,22 +167,6 @@ describe("getTaskAccessContext — pipeline de design de campanha", () => {
     expect(ctx?.canRead).toBe(false)
   })
 
-  it("GUARDA ARQUITETURAL: design task LEGADA (sem pipeline) cai como task comum", async () => {
-    // source_type=campaign_suggestion mas SEM operational_pipeline_id -> nao e
-    // tratada como pipeline de campanha; segue a regra de task comum
-    // (assignee_role null = qualquer membro trabalha).
-    mockMember = { orgId: ORG, memberId: "m1", role: "designer", roles: ["designer"] }
-    seedCampaignTask({
-      taskColumnId: "c-estrutura",
-      designColumnId: "c-estrutura",
-      columnSlug: "estrutura",
-      withPipeline: false,
-    })
-    const ctx = await getTaskAccessContext("u1", "ct1")
-    expect(ctx?.campaign).toBeNull()
-    expect(ctx?.onboarding).toBeNull()
-    expect(ctx?.canWork).toBe(true) // task comum, role null
-  })
 })
 
 describe("guardOnboardingTask — gateia campanha (e nao quebra task comum)", () => {
@@ -213,16 +195,6 @@ describe("guardOnboardingTask — gateia campanha (e nao quebra task comum)", ()
     })
   })
 
-  it("design task LEGADA (comum) NAO e restringida pelo gate", async () => {
-    mockMember = { orgId: ORG, memberId: "m1", role: "suporte", roles: ["suporte"] }
-    seedCampaignTask({
-      taskColumnId: "c-estrutura",
-      designColumnId: "c-estrutura",
-      columnSlug: "estrutura",
-      withPipeline: false,
-    })
-    await expect(guardOnboardingTask("u1", "ct1", "work")).resolves.toBeTruthy()
-  })
 })
 
 describe("edge cases e fiacao completa da matriz", () => {
@@ -246,7 +218,6 @@ describe("edge cases e fiacao completa da matriz", () => {
       onboarding_id: null,
       source_type: "campaign_suggestion",
       source_id: "fantasma",
-      operational_pipeline_id: "pipe-campaign",
       operational_column_id: "c-estrutura",
       version: 1,
       status: "pending",

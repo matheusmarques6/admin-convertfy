@@ -21,7 +21,6 @@ export interface TaskAccessContext {
     assignee_role: string | null
     source_type?: string | null
     source_id?: string | null
-    operational_pipeline_id?: string | null
   }
   member: {
     orgId: string
@@ -70,12 +69,13 @@ export async function getTaskAccessContext(
   const canAdmin = isOnboardingBypass(member.roles)
 
   if (!typedTask.onboarding_id) {
-    // Task do pipeline de DESIGN de campanha? (source_type campaign_suggestion
-    // + vinculada a um operational pipeline). Distingue da design task legada
-    // (que nao tem operational_pipeline_id).
+    // Task do pipeline de DESIGN de campanha? Identificada por
+    // source_type='campaign_suggestion' + source_id (a campanha-fonte). Antes
+    // dependia de operational_pipeline_id, coluna REMOVIDA no schema v2 do
+    // onboarding (tasks ligam-se a coluna via operational_column_id, nao ao
+    // pipeline). Com a coluna ausente, o gate de campanha nunca rodava.
     if (
       typedTask.source_type === "campaign_suggestion" &&
-      typedTask.operational_pipeline_id &&
       typedTask.source_id
     ) {
       const campaignCtx = await resolveCampaignAccess(
