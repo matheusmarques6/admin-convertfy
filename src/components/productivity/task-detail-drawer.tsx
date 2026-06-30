@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { useProductivityStore } from "@/stores/productivity-store"
 import type { ProductivityTask } from "@/types/productivity"
@@ -23,6 +24,7 @@ import { BlockCriteriosAceitacao } from "./blocks/block-criterios-aceitacao"
 import { BlockTimelineUnificada } from "./blocks/block-timeline-unificada"
 import { BlockAnotacoesPessoais } from "./blocks/block-anotacoes-pessoais"
 import { TaskWorkspaceModal } from "./task-workspace-modal"
+import { CampaignCopyHandoff } from "@/components/campaign-central/campaign-copy-handoff"
 import type {
   AllowedEmailRef,
   WorkspaceMode,
@@ -709,6 +711,7 @@ export function TaskDetailDrawer({
   const [statusMenu, setStatusMenu] = useState(false)
   const [prioMenu, setPrioMenu] = useState(false)
   const [assigneeMenu, setAssigneeMenu] = useState(false)
+  const [showHandoff, setShowHandoff] = useState(false)
 
   // Click-outside fecha todos os dropdowns de meta (delegacao no document)
   useEffect(() => {
@@ -2215,6 +2218,29 @@ export function TaskDetailDrawer({
               )}
             </Section>
           )}
+
+          {/* Copy da campanha (handoff) — só pra task de design de campanha */}
+          {task.source_type === "campaign_suggestion" && (
+            <Section title="Copy da campanha">
+              <button
+                type="button"
+                onClick={() => setShowHandoff(true)}
+                className="w-full rounded-md bg-gray-900 px-3 py-2 text-[12.5px] font-semibold text-white hover:bg-gray-800"
+              >
+                Ver copy da campanha →
+              </button>
+            </Section>
+          )}
+          {showHandoff &&
+            task.source_type === "campaign_suggestion" &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <CampaignCopyHandoff
+                taskId={String(task.id)}
+                onClose={() => setShowHandoff(false)}
+              />,
+              document.body,
+            )}
 
           {/* Comentarios — logo apos Anexos & Links, encerra o body da task */}
           <div id="task-section-comentarios" />

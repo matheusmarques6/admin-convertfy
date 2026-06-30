@@ -224,3 +224,32 @@ export interface BenchmarkEmail {
   open_rate: number
   recipients: number
 }
+
+// ── Painel "Copy da Campanha (Handoff)" (etapa de design) ────────────
+
+/** Status derivado de uma copy de PRODUÇÃO por loja no painel de handoff. */
+export type CampaignHandoffStatus = "pending" | "ready" | "error" | "missing"
+
+/** Uma loja no painel "Copy da campanha (Handoff)" do designer. */
+export interface CampaignHandoffStore {
+  store_id: string
+  store_name: string
+  country: string
+  language: string | null
+  status: CampaignHandoffStatus
+  /** Copy de PRODUÇÃO da loja (null enquanto não gerada). */
+  copy: CopyResultEntry | null
+}
+
+/** Payload de GET /api/tasks/[id]/campaign-copies — alimenta o painel. */
+export interface CampaignHandoffPayload {
+  suggestion_id: string
+  title: string
+  channel: string
+  send_date: string | null
+  /** Assunto base (master) da campanha. */
+  subject: string | null
+  /** Loja escolhida pelo designer como base (★). */
+  pilot_store_id: string | null
+  stores: CampaignHandoffStore[]
+}
