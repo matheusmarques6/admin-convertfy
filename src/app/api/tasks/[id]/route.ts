@@ -25,7 +25,6 @@ const ONBOARDING_ADMIN_FIELDS = [
   "position",
   "tags",
   "operational_column_id",
-  "operational_pipeline_id",
 ] as const
 
 // Sem cache: mutations frequentes precisam reflectir imediato.
@@ -166,9 +165,7 @@ export async function PUT(
     // pra disparar triggers de automacao quando relevante.
     const { data: existingTask, error: fetchError } = await adminClient
       .from("tasks")
-      .select(
-        "id, assignee_id, status, operational_pipeline_id, operational_column_id",
-      )
+      .select("id, assignee_id, status, operational_column_id")
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
@@ -230,8 +227,6 @@ export async function PUT(
     if (body.metadata !== undefined) updateData.metadata = body.metadata
     if (body.operational_column_id !== undefined)
       updateData.operational_column_id = body.operational_column_id
-    if (body.operational_pipeline_id !== undefined)
-      updateData.operational_pipeline_id = body.operational_pipeline_id
 
     const { data: task, error: updateError } = await adminClient
       .from("tasks")
