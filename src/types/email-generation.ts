@@ -157,6 +157,9 @@ export type GenerationRunAgent =
   | "blueprint"
   | "assembler"
   | "assembler_chooser"
+  // campaign_image: arte por loja (Central de Campanhas) loga um run por
+  // imagem em email_generation_runs pra aparecer na página de logs.
+  | "campaign_image"
 
 export interface EmailGenerationRun {
   id: string
