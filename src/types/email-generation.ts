@@ -157,6 +157,10 @@ export type GenerationRunAgent =
   | "blueprint"
   | "assembler"
   | "assembler_chooser"
+  // copy_dispatch: telemetria do disparo de copy pro n8n (email-copy-webhook).
+  // Já aceito pelo CHECK do banco (migration 20260728) — incluído aqui pra
+  // restaurar a paridade union↔CHECK.
+  | "copy_dispatch"
   // campaign_image: arte por loja (Central de Campanhas) loga um run por
   // imagem em email_generation_runs pra aparecer na página de logs.
   | "campaign_image"
