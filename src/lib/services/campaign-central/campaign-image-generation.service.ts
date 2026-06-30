@@ -448,11 +448,13 @@ function headlineFromCopy(copy: CopyResultEntry | undefined): string {
  * das flags de adaptação ligadas (descrição textual) e — quando regerando —
  * das notas de ajuste. As flags listam EXPLICITAMENTE o que adaptar pra que
  * o modelo priorize cada faceta da marca da loja.
+ *
+ * A headline NÃO entra mais aqui: virou opt-in via `text_context`/template
+ * (`{{#if INCLUDE_HEADLINE}}`), resolvida em `generateOneStoreImage`.
  */
 function buildBatchInstruction(opts: {
   instruction: string
   flags: CampaignImageAdaptFlags
-  headline: string
   adjustmentNotes?: string | null
 }): string {
   const parts: string[] = []
@@ -468,9 +470,6 @@ function buildBatchInstruction(opts: {
     parts.push(`Adaptar para esta loja: ${adapt.join(", ")}.`)
   }
 
-  if (opts.headline.trim()) {
-    parts.push(`Headline da campanha desta loja: "${opts.headline.trim()}".`)
-  }
   if (opts.adjustmentNotes && opts.adjustmentNotes.trim()) {
     parts.push(`AJUSTE SOLICITADO: ${opts.adjustmentNotes.trim()}`)
   }
@@ -499,7 +498,6 @@ async function generateOneStoreImage(
     const instrucaoAdicional = buildBatchInstruction({
       instruction: batch.instruction,
       flags,
-      headline,
       adjustmentNotes,
     })
 
@@ -517,7 +515,41 @@ async function generateOneStoreImage(
       mode: hasRef ? "product_ref" : "text2img",
     })
 
-    const prompt = renderImageTemplate(config.user_template, vars)
+    // Contexto textual OPT-IN: para cada campo ligado, computa INCLUDE_* +
+    // valor (override custom OU dado real da loja) e mescla por cima das
+    // vars-base. Campo desligado => INCLUDE="" (falsy no renderer) + valor "".
+    const tc = batch.text_context ?? {}
+    const resolve = (
+      f: CampaignImageTextField | undefined,
+      storeVal: string,
+    ): [string, string] => {
+      if (!f?.include) return ["", ""]
+      const v = (f.value?.trim() || storeVal || "").trim()
+      return [v ? "true" : "", v]
+    }
+    const [INCLUDE_NICHO, NICHO] = resolve(tc.nicho, vars.nicho ?? "")
+    const [INCLUDE_PUBLICO, PUBLICO] = resolve(tc.publico, vars.PUBLICO ?? "")
+    const [INCLUDE_TOM, TOM_VOZ] = resolve(tc.tom, vars.tom_voz ?? "")
+    const [INCLUDE_MOEDA, MOEDA] = resolve(tc.moeda, vars.MOEDA ?? "")
+    const IDIOMA = INCLUDE_MOEDA ? (vars.IDIOMA ?? "") : ""
+    const [INCLUDE_HEADLINE, HEADLINE] = resolve(tc.headline, headline)
+
+    const finalVars = {
+      ...vars,
+      INCLUDE_NICHO,
+      NICHO,
+      INCLUDE_PUBLICO,
+      PUBLICO,
+      INCLUDE_TOM,
+      TOM_VOZ,
+      INCLUDE_MOEDA,
+      MOEDA,
+      IDIOMA,
+      INCLUDE_HEADLINE,
+      HEADLINE,
+    }
+
+    const prompt = renderImageTemplate(config.user_template, finalVars)
 
     const imageUrl = await generateEmailImage(prompt, storeId, {
       aspect,
