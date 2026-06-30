@@ -561,6 +561,10 @@ async function seedResults(
     status: "generating" as const,
     error_message: null,
     generated_at: null,
+    // Gerar o lote inteiro NÃO reaplica notas de ajuste por loja
+    // (generateBatch chama generateOneStoreImage sem notas). Zeramos a nota
+    // antiga pra não exibir um ajuste que a imagem nova ignorou.
+    adjustment_notes: null,
   }))
   // onConflict (batch_id, store_id): re-gerar reusa a linha existente.
   const { error } = await admin
@@ -616,7 +620,10 @@ export async function generateBatch(
       .from("campaign_image_results")
       .update({
         status: res.status,
-        image_url: res.image_url,
+        // Em falha preserva a imagem anterior (undefined = não toca a coluna),
+        // igual ao regenerateResult — evita perder um resultado bom por uma
+        // falha transitória numa loja durante a geração do lote.
+        image_url: res.image_url ?? undefined,
         error_message: res.error,
         generated_via: res.via,
         generated_at: res.status === "ready" ? new Date().toISOString() : null,
