@@ -25,6 +25,7 @@ import { BlockTimelineUnificada } from "./blocks/block-timeline-unificada"
 import { BlockAnotacoesPessoais } from "./blocks/block-anotacoes-pessoais"
 import { TaskWorkspaceModal } from "./task-workspace-modal"
 import { CampaignCopyHandoff } from "@/components/campaign-central/campaign-copy-handoff"
+import { CampaignImageHandoff } from "@/components/campaign-central/campaign-image-handoff"
 import type {
   AllowedEmailRef,
   WorkspaceMode,
@@ -842,6 +843,7 @@ export function TaskDetailDrawer({
   const [prioMenu, setPrioMenu] = useState(false)
   const [assigneeMenu, setAssigneeMenu] = useState(false)
   const [showHandoff, setShowHandoff] = useState(false)
+  const [showImageHandoff, setShowImageHandoff] = useState(false)
 
   // Click-outside fecha todos os dropdowns de meta (delegacao no document)
   useEffect(() => {
@@ -2380,6 +2382,30 @@ export function TaskDetailDrawer({
               <CampaignCopyHandoff
                 taskId={String(task.id)}
                 onClose={() => setShowHandoff(false)}
+              />,
+              document.body,
+            )}
+
+          {/* Geração de imagens — só na etapa de PRODUÇÃO da campanha */}
+          {task.source_type === "campaign_suggestion" &&
+            (task.metadata?.column_slug as string | undefined) === "producao" && (
+              <Section title="Imagens da campanha">
+                <button
+                  type="button"
+                  onClick={() => setShowImageHandoff(true)}
+                  className="w-full rounded-md bg-gray-900 px-3 py-2 text-[12.5px] font-semibold text-white hover:bg-gray-800"
+                >
+                  Gerar imagens →
+                </button>
+              </Section>
+            )}
+          {showImageHandoff &&
+            task.source_type === "campaign_suggestion" &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <CampaignImageHandoff
+                taskId={String(task.id)}
+                onClose={() => setShowImageHandoff(false)}
               />,
               document.body,
             )}
