@@ -30,6 +30,7 @@ import type {
   CampaignImageResult,
   CampaignImageResultStatus,
   CampaignImageTargetStore,
+  CampaignImageTextContext,
 } from "@/types/campaign-central"
 
 const FORMAT_LABEL: Record<CampaignImageFormat, string> = {
@@ -44,6 +45,23 @@ const FLAG_LABELS: Array<{ key: keyof CampaignImageAdaptFlags; label: string }> 
   { key: "logo", label: "Logo" },
   { key: "catalogo", label: "Catálogo" },
   { key: "tom", label: "Tom de voz" },
+]
+
+/**
+ * Campos textuais OPT-IN do agente de imagem. Cada um é um toggle + valor
+ * custom opcional; desligado por padrão (prompt enxuto). `hint` mostra de
+ * onde sai o dado da loja quando o valor custom fica vazio.
+ */
+const TEXT_FIELD_LABELS: Array<{
+  key: keyof CampaignImageTextContext
+  label: string
+  hint: string
+}> = [
+  { key: "nicho", label: "Nicho", hint: "nicho da loja" },
+  { key: "publico", label: "Persona/público", hint: "persona do briefing" },
+  { key: "tom", label: "Tom de voz", hint: "tom de voz da marca" },
+  { key: "moeda", label: "Moeda/locale", hint: "moeda/idioma da loja" },
+  { key: "headline", label: "Headline", hint: "headline da copy de produção" },
 ]
 
 function initials(name: string): string {
@@ -176,6 +194,8 @@ export function CampaignImageHandoff({
           format: "hero",
           instruction: "",
           adapt_flags: { idioma: true, cores: true, logo: true, catalogo: true, tom: true },
+          // Contexto textual começa todo desligado (prompt enxuto).
+          text_context: {},
         }),
       })
       if (!res.ok) {
@@ -429,6 +449,9 @@ function BatchEditor({
   const [format, setFormat] = useState<CampaignImageFormat>(batch.format)
   const [instruction, setInstruction] = useState(batch.instruction)
   const [flags, setFlags] = useState<CampaignImageAdaptFlags>(batch.adapt_flags ?? {})
+  const [textContext, setTextContext] = useState<CampaignImageTextContext>(
+    batch.text_context ?? {},
+  )
   const [refUrl, setRefUrl] = useState<string | null>(batch.reference_image_url)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -441,6 +464,7 @@ function BatchEditor({
       format: CampaignImageFormat
       instruction: string
       adapt_flags: CampaignImageAdaptFlags
+      text_context: CampaignImageTextContext
       reference_image_url: string | null
     }>) => {
       setSaving(true)
@@ -494,6 +518,34 @@ function BatchEditor({
     const next = { ...flags, [key]: !flags[key] }
     setFlags(next)
     void saveBatch({ adapt_flags: next })
+  }
+
+  // Liga/desliga um campo textual. Ligar preserva o value já digitado; salva
+  // imediatamente (espelha toggleFlag).
+  const toggleTextField = (key: keyof CampaignImageTextContext) => {
+    const cur = textContext[key]
+    const next: CampaignImageTextContext = {
+      ...textContext,
+      [key]: { include: !cur?.include, value: cur?.value },
+    }
+    setTextContext(next)
+    void saveBatch({ text_context: next })
+  }
+
+  // Atualiza só o estado local do value (controlado); persiste no onBlur
+  // (espelha o input de nome/instrução).
+  const setTextFieldValue = (key: keyof CampaignImageTextContext, value: string) => {
+    setTextContext((cur) => ({
+      ...cur,
+      [key]: { include: cur[key]?.include ?? true, value },
+    }))
+  }
+
+  // Persiste o value custom (no blur). Só salva se o campo estiver ligado.
+  const commitTextField = (key: keyof CampaignImageTextContext) => {
+    const field = textContext[key]
+    if (!field?.include) return
+    void saveBatch({ text_context: textContext })
   }
 
   const results = batch.results
@@ -637,6 +689,55 @@ function BatchEditor({
               )
             })}
           </div>
+        </div>
+
+        {/* Contexto textual opt-in */}
+        <div className="lg:col-span-2">
+          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Contexto textual (opcional)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {TEXT_FIELD_LABELS.map(({ key, label }) => {
+              const on = !!textContext[key]?.include
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleTextField(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium ${
+                    on
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {on && <CheckCircle2 size={12} />}
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          {/* Inputs de valor custom dos campos ligados */}
+          {TEXT_FIELD_LABELS.some(({ key }) => textContext[key]?.include) && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {TEXT_FIELD_LABELS.filter(({ key }) => textContext[key]?.include).map(
+                ({ key, label, hint }) => (
+                  <div key={key} className="flex flex-col gap-1">
+                    <span className="text-[10.5px] font-medium text-muted-foreground">
+                      {label}
+                    </span>
+                    <input
+                      value={textContext[key]?.value ?? ""}
+                      onChange={(e) => setTextFieldValue(key, e.target.value)}
+                      onBlur={() => commitTextField(key)}
+                      maxLength={500}
+                      placeholder={`valor custom (opcional) — usa o ${hint} se vazio`}
+                      className="w-full rounded-[5px] border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+                    />
+                  </div>
+                ),
+              )}
+            </div>
+          )}
         </div>
       </div>
 
