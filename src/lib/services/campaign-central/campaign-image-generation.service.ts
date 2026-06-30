@@ -481,6 +481,34 @@ function buildBatchInstruction(opts: {
   return parts.join("\n")
 }
 
+// ── Telemetria best-effort ───────────────────────────────────────────
+// Os helpers reais (telemetry.callback) já engolem os próprios erros, mas
+// envelopamos aqui também pra GARANTIR que uma exceção de telemetria nunca
+// desvie a geração pro caminho de falha (nem mascare o erro original no
+// caminho de erro). Telemetria é puramente aditiva.
+
+async function safeLogRun(
+  params: Parameters<typeof logGenerationRun>[0],
+): Promise<string> {
+  try {
+    return await logGenerationRun(params)
+  } catch (e) {
+    log.warn("telemetry.log_failed", { error: e instanceof Error ? e.message : String(e) })
+    return ""
+  }
+}
+
+async function safeUpdateRun(
+  runId: string,
+  update: Parameters<typeof updateGenerationRun>[1],
+): Promise<void> {
+  try {
+    await updateGenerationRun(runId, update)
+  } catch (e) {
+    log.warn("telemetry.update_failed", { error: e instanceof Error ? e.message : String(e) })
+  }
+}
+
 /**
  * Gera UMA imagem para um (lote × loja). Constrói o contexto da loja, renderiza
  * o prompt e chama o agente de imagem. Best-effort: não lança — devolve o
@@ -565,7 +593,7 @@ async function generateOneStoreImage(
     const prompt = renderImageTemplate(config.user_template, finalVars)
 
     t0 = Date.now()
-    runId = await logGenerationRun({
+    runId = await safeLogRun({
       storeId,
       batchId: batch.id,
       agent: "campaign_image",
@@ -584,7 +612,7 @@ async function generateOneStoreImage(
       model: config.model,
     })
 
-    await updateGenerationRun(runId, {
+    await safeUpdateRun(runId, {
       status: "success",
       durationMs: Date.now() - t0,
     })
@@ -601,7 +629,7 @@ async function generateOneStoreImage(
     // Fecha o run (mapeia o 'failed' do service pro status 'error' do runs —
     // o CHECK aceita running|success|error|skipped, não 'failed'). No-op se
     // runId == "" (falha antes do logGenerationRun).
-    await updateGenerationRun(runId, {
+    await safeUpdateRun(runId, {
       status: "error",
       durationMs: Date.now() - t0,
       errorMessage: message.slice(0, 500),

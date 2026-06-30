@@ -96,6 +96,18 @@ vi.mock("@/lib/agents/top-products", () => ({
   loadTopProducts: vi.fn(async () => []),
 }))
 
+// ── Mock da telemetria (two-phase: running -> success/error) ─────────
+// logGenerationRun devolve um runId fake; updateGenerationRun é um spy. Os
+// dois são best-effort no service (não devem quebrar a geração), então os
+// testes também exercitam a resiliência (logGenerationRun rejeitando/"".)
+const RUN_ID = "run-fake-0000"
+const logGenerationRunMock = vi.hoisted(() => vi.fn())
+const updateGenerationRunMock = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/agents/callbacks/telemetry.callback", () => ({
+  logGenerationRun: logGenerationRunMock,
+  updateGenerationRun: updateGenerationRunMock,
+}))
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
@@ -364,8 +376,10 @@ function seedSuggestion(over: Partial<SugFixture> = {}): void {
   }
 }
 
+const CONFIG_ID = "cfg-campaign-image-0001"
 function seedConfig(): void {
   fx.config = {
+    id: CONFIG_ID,
     model: "openai/gpt-5.4-image-2",
     system_prompt: "SYS",
     user_template: GATED_TEMPLATE,
@@ -401,6 +415,11 @@ beforeEach(async () => {
   fx.insertedBatches = []
   generateEmailImageMock.mockReset()
   buildImagePromptVarsMock.mockReset()
+  logGenerationRunMock.mockReset()
+  updateGenerationRunMock.mockReset()
+  // Default: loga devolvendo o runId fake; update resolve sem efeito.
+  logGenerationRunMock.mockResolvedValue(RUN_ID)
+  updateGenerationRunMock.mockResolvedValue(undefined)
   // Default: devolve o bag de vars-base, repassando instrucaoAdicional ->
   // INSTRUCAO_ADICIONAL (o service passa instrucaoAdicional pro builder).
   buildImagePromptVarsMock.mockImplementation(
@@ -973,5 +992,133 @@ describe("regenerateResult", () => {
     seedConfig()
     seedBatch()
     await expect(svc.regenerateResult(BATCH, OTHER_ORG, STORE_A, null)).rejects.toThrow()
+  })
+})
+
+describe("telemetria (email_generation_runs)", () => {
+  it("generateBatch loga 1 run 'running' por loja e atualiza p/ 'success'", async () => {
+    seedSuggestion({
+      targets: [{ store_id: STORE_A }, { store_id: STORE_B }],
+    })
+    seedConfig()
+    seedBatch()
+    generateEmailImageMock.mockImplementation(async (_p, storeId: string) => `img-${storeId}.png`)
+
+    await svc.generateBatch(BATCH, ORG)
+
+    // 1 log 'running' por loja-alvo, com agent/batch/model corretos.
+    expect(logGenerationRunMock).toHaveBeenCalledTimes(2)
+    for (const call of logGenerationRunMock.mock.calls) {
+      const arg = call[0] as Record<string, unknown>
+      expect(arg.agent).toBe("campaign_image")
+      expect(arg.batchId).toBe(BATCH)
+      expect(arg.status).toBe("running")
+      expect(arg.model).toBe("openai/gpt-5.4-image-2")
+      expect(arg.agentConfigId).toBe(CONFIG_ID)
+      expect(typeof arg.renderedPrompt).toBe("string")
+    }
+
+    // 1 update 'success' por loja, com durationMs numérico >= 0.
+    expect(updateGenerationRunMock).toHaveBeenCalledTimes(2)
+    for (const call of updateGenerationRunMock.mock.calls) {
+      expect(call[0]).toBe(RUN_ID)
+      const upd = call[1] as Record<string, unknown>
+      expect(upd.status).toBe("success")
+      expect(typeof upd.durationMs).toBe("number")
+      expect(upd.durationMs as number).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it("loja que falha -> update 'error' com errorMessage; result ainda persiste 'failed'", async () => {
+    seedSuggestion({
+      targets: [{ store_id: STORE_A }, { store_id: STORE_B }],
+    })
+    seedConfig()
+    seedBatch()
+    generateEmailImageMock.mockImplementation(async (_p, storeId: string) => {
+      if (storeId === STORE_B) throw new Error("OpenRouter 500: boom")
+      return `img-${storeId}.png`
+    })
+
+    const out = await svc.generateBatch(BATCH, ORG)
+
+    // Comportamento existente preservado: STORE_B persiste 'failed'.
+    const b = out.results.find((r) => r.store_id === STORE_B)
+    expect(b?.status).toBe("failed")
+    expect(b?.error_message).toContain("boom")
+
+    // Telemetria: houve um update 'error' com a mensagem.
+    const errorUpdates = updateGenerationRunMock.mock.calls.filter(
+      (c) => (c[1] as Record<string, unknown>).status === "error",
+    )
+    expect(errorUpdates).toHaveLength(1)
+    const upd = errorUpdates[0][1] as Record<string, unknown>
+    expect(upd.errorMessage as string).toContain("boom")
+    expect(typeof upd.durationMs).toBe("number")
+
+    // E um update 'success' (STORE_A).
+    const successUpdates = updateGenerationRunMock.mock.calls.filter(
+      (c) => (c[1] as Record<string, unknown>).status === "success",
+    )
+    expect(successUpdates).toHaveLength(1)
+  })
+
+  it("regenerateResult loga e atualiza exatamente 1x (sem double-log)", async () => {
+    seedSuggestion()
+    seedConfig()
+    seedBatch()
+    fx.results.set(resultKey(BATCH, STORE_A), {
+      id: "r1",
+      batch_id: BATCH,
+      store_id: STORE_A,
+      status: "ready",
+      image_url: "old.png",
+      adjustment_notes: null,
+      error_message: null,
+      generated_via: null,
+      generated_at: null,
+    })
+    generateEmailImageMock.mockResolvedValue("new.png")
+
+    await svc.regenerateResult(BATCH, ORG, STORE_A, "mais escuro")
+
+    expect(logGenerationRunMock).toHaveBeenCalledTimes(1)
+    const logArg = logGenerationRunMock.mock.calls[0][0] as Record<string, unknown>
+    expect(logArg.agent).toBe("campaign_image")
+    expect(logArg.batchId).toBe(BATCH)
+    expect(logArg.status).toBe("running")
+
+    expect(updateGenerationRunMock).toHaveBeenCalledTimes(1)
+    const upd = updateGenerationRunMock.mock.calls[0][1] as Record<string, unknown>
+    expect(upd.status).toBe("success")
+  })
+
+  it("falha de telemetria não quebra a geração (logGenerationRun rejeita)", async () => {
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    seedBatch()
+    logGenerationRunMock.mockRejectedValue(new Error("telemetry down"))
+    generateEmailImageMock.mockResolvedValue("img.png")
+
+    const out = await svc.generateBatch(BATCH, ORG)
+    // A imagem foi gerada e persistida apesar da telemetria falhar.
+    expect(out.results).toHaveLength(1)
+    expect(out.results[0].status).toBe("ready")
+    expect(out.results[0].image_url).toBe("img.png")
+  })
+
+  it("falha de telemetria não quebra a geração (logGenerationRun devolve \"\")", async () => {
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    seedBatch()
+    // Simula o insert falhando: logGenerationRun devolve "" (run não gravado).
+    logGenerationRunMock.mockResolvedValue("")
+    generateEmailImageMock.mockResolvedValue("img.png")
+
+    const out = await svc.generateBatch(BATCH, ORG)
+    expect(out.results[0].status).toBe("ready")
+    expect(out.results[0].image_url).toBe("img.png")
+    // updateGenerationRun foi chamado com runId "" (no-op no helper real).
+    expect(updateGenerationRunMock).toHaveBeenCalledWith("", expect.objectContaining({ status: "success" }))
   })
 })
