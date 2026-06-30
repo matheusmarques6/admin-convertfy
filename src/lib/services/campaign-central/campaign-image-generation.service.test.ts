@@ -468,6 +468,65 @@ describe("createBatch", () => {
     ).rejects.toThrow()
     expect(fx.insertedBatches).toHaveLength(0)
   })
+
+  it("sem text_context -> persiste {} (default) e devolve {}", async () => {
+    seedSuggestion()
+    const out = await svc.createBatch(
+      SUG,
+      ORG,
+      { name: "X", format: "hero", instruction: "" },
+      "user-1",
+    )
+    expect(fx.insertedBatches[0].text_context).toEqual({})
+    expect(out.text_context).toEqual({})
+  })
+
+  it("com text_context -> persiste e devolve o mesmo (round-trip)", async () => {
+    seedSuggestion()
+    const tc = {
+      nicho: { include: true },
+      headline: { include: true, value: "Promo" },
+    }
+    const out = await svc.createBatch(
+      SUG,
+      ORG,
+      { name: "X", format: "hero", instruction: "", text_context: tc },
+      "user-1",
+    )
+    expect(fx.insertedBatches[0].text_context).toEqual(tc)
+    expect(out.text_context).toEqual(tc)
+  })
+})
+
+describe("updateBatch", () => {
+  it("persiste text_context no PATCH e devolve o lote atualizado (round-trip)", async () => {
+    seedSuggestion()
+    seedBatch({ text_context: {} })
+    const tc = { tom: { include: true, value: "sóbrio" }, moeda: { include: false } }
+    const out = await svc.updateBatch(BATCH, ORG, { text_context: tc })
+    expect(out.text_context).toEqual(tc)
+    // persistiu de fato na linha (fake DB).
+    expect(fx.batches.get(BATCH)?.text_context).toEqual(tc)
+  })
+
+  it("PATCH sem text_context -> NÃO sobrescreve o existente", async () => {
+    seedSuggestion()
+    const tc = { nicho: { include: true } }
+    seedBatch({ text_context: tc })
+    // só muda o nome; text_context não é tocado.
+    const out = await svc.updateBatch(BATCH, ORG, { name: "Novo nome" })
+    expect(out.name).toBe("Novo nome")
+    expect(out.text_context).toEqual(tc)
+    expect(fx.batches.get(BATCH)?.text_context).toEqual(tc)
+  })
+
+  it("lote de outra org -> NotFoundError", async () => {
+    seedSuggestion()
+    seedBatch()
+    await expect(
+      svc.updateBatch(BATCH, OTHER_ORG, { text_context: { nicho: { include: true } } }),
+    ).rejects.toThrow()
+  })
 })
 
 describe("generateBatch", () => {
@@ -602,6 +661,34 @@ describe("text_context opt-in (prompt)", () => {
     return captured
   }
 
+  // Como promptFor, mas com as vars-base ZERADAS para os campos textuais —
+  // simula loja sem nicho/persona/tom/moeda no briefing. Usado pra provar que
+  // "ligado SEM override + dado de loja vazio" => linha AUSENTE (o service
+  // computa INCLUDE="" via `v ? "true" : ""`, e o gate {{#if}} cai).
+  async function promptForEmptyStore(textContext: Row): Promise<string> {
+    // Sem copy_results.production[A] => headlineFromCopy devolve "" também.
+    seedSuggestion({ targets: [{ store_id: STORE_A }], copy_results: { production: {} } })
+    seedConfig()
+    seedBatch({ text_context: textContext })
+    buildImagePromptVarsMock.mockImplementation(
+      (input: { instrucaoAdicional?: string }) => ({
+        ...baseVars(input.instrucaoAdicional ?? ""),
+        nicho: "",
+        PUBLICO: "",
+        tom_voz: "",
+        MOEDA: "",
+        IDIOMA: "",
+      }),
+    )
+    let captured = ""
+    generateEmailImageMock.mockImplementation(async (prompt: string) => {
+      captured = prompt
+      return "img.png"
+    })
+    await svc.generateBatch(BATCH, ORG)
+    return captured
+  }
+
   it("contexto vazio -> prompt sem nenhuma das 5 linhas textuais", async () => {
     const prompt = await promptFor({})
     expect(prompt).not.toContain("Niche / context:")
@@ -672,6 +759,104 @@ describe("text_context opt-in (prompt)", () => {
     expect(prompt).toContain("Locale / currency: pt-BR / BRL")
     expect(prompt).toContain('Campaign headline to EVOKE (do NOT render literal text in the image): "Promo"')
   })
+
+  // ── publico: cobre os 4 estados (mesma matriz que nicho) ────────────
+  it("publico ligado sem value -> usa a persona da loja (vars-base)", async () => {
+    const prompt = await promptFor({ publico: { include: true } })
+    expect(prompt).toContain("Target audience: corredoras urbanas")
+  })
+
+  it("publico ligado com value custom -> override vence a persona da loja", async () => {
+    const prompt = await promptFor({
+      publico: { include: true, value: "mães millennials" },
+    })
+    expect(prompt).toContain("Target audience: mães millennials")
+    expect(prompt).not.toContain("corredoras urbanas")
+  })
+
+  it("publico ligado mas persona da loja vazia (sem override) -> linha ausente", async () => {
+    const prompt = await promptForEmptyStore({ publico: { include: true } })
+    expect(prompt).not.toContain("Target audience:")
+  })
+
+  // ── tom: lê tom_voz (não tom da flag de adaptação) ──────────────────
+  it("tom ligado sem value -> usa tom_voz da loja (vars-base)", async () => {
+    const prompt = await promptFor({ tom: { include: true } })
+    expect(prompt).toContain("Tone of voice: energético")
+  })
+
+  it("tom ligado com value custom -> override vence tom_voz da loja", async () => {
+    const prompt = await promptFor({
+      tom: { include: true, value: "sóbrio e elegante" },
+    })
+    expect(prompt).toContain("Tone of voice: sóbrio e elegante")
+    expect(prompt).not.toContain("energético")
+  })
+
+  it("tom ligado mas tom_voz da loja vazio (sem override) -> linha ausente", async () => {
+    const prompt = await promptForEmptyStore({ tom: { include: true } })
+    expect(prompt).not.toContain("Tone of voice:")
+  })
+
+  // ── moeda: override e o acoplamento IDIOMA<-INCLUDE_MOEDA ────────────
+  it("moeda ligada com value custom -> override vira a MOEDA; IDIOMA da loja entra junto", async () => {
+    const prompt = await promptFor({ moeda: { include: true, value: "USD" } })
+    // value sobrescreve a moeda; IDIOMA continua vindo da loja (pt-BR).
+    expect(prompt).toContain("Locale / currency: pt-BR / USD")
+    expect(prompt).not.toContain("/ BRL")
+  })
+
+  it("moeda DESLIGADA -> IDIOMA é zerado junto (gate cai, sem linha de locale)", async () => {
+    // Garante o acoplamento: IDIOMA só entra quando INCLUDE_MOEDA é truthy.
+    const prompt = await promptFor({
+      nicho: { include: true }, // outra linha ligada pra provar que NÃO vaza IDIOMA
+    })
+    expect(prompt).not.toContain("Locale / currency:")
+    expect(prompt).not.toContain("pt-BR")
+  })
+
+  // ── nicho: completa a matriz (ON+empty-store) ───────────────────────
+  it("nicho ligado mas niche da loja vazio (sem override) -> linha ausente", async () => {
+    const prompt = await promptForEmptyStore({ nicho: { include: true } })
+    expect(prompt).not.toContain("Niche / context:")
+  })
+
+  // ── headline: ON+empty (sem copy e sem override) -> linha ausente ───
+  it("headline ligada sem override e sem copy de produção -> linha ausente", async () => {
+    seedSuggestion({ targets: [{ store_id: STORE_A }], copy_results: { production: {} } })
+    seedConfig()
+    seedBatch({ text_context: { headline: { include: true } } })
+    let captured = ""
+    generateEmailImageMock.mockImplementation(async (prompt: string) => {
+      captured = prompt
+      return "img.png"
+    })
+    await svc.generateBatch(BATCH, ORG)
+    expect(captured).not.toContain("Campaign headline to EVOKE")
+  })
+
+  // ── coupling renderer×service: ligado + dado vazio NÃO deixa label órfão.
+  // Prova o guard `v ? "true" : ""`: se o service emitisse INCLUDE="true" com
+  // valor vazio, o template renderizaria "Niche / context: " (label órfão).
+  it("todos ligados sem override + loja vazia -> nenhum label textual órfão", async () => {
+    const prompt = await promptForEmptyStore({
+      nicho: { include: true },
+      publico: { include: true },
+      tom: { include: true },
+      moeda: { include: true },
+      // headline sem copy de produção (STORE_A sem production) -> vazia.
+      headline: { include: true },
+    })
+    expect(prompt).not.toContain("Niche / context:")
+    expect(prompt).not.toContain("Target audience:")
+    expect(prompt).not.toContain("Tone of voice:")
+    expect(prompt).not.toContain("Locale / currency:")
+    expect(prompt).not.toContain("Campaign headline to EVOKE")
+    // sem template tags vazando.
+    expect(prompt).not.toContain("{{")
+    // núcleo visual permanece.
+    expect(prompt).toContain("Visual identity (anchor the image to these):")
+  })
 })
 
 describe("regenerateResult", () => {
@@ -723,6 +908,33 @@ describe("regenerateResult", () => {
     const res = await svc.regenerateResult(BATCH, ORG, STORE_A, null)
     expect(res.status).toBe("ready")
     expect(res.image_url).toBe("retry.png")
+  })
+
+  it("honra o text_context do lote ao regerar (gate via batch.text_context)", async () => {
+    seedSuggestion()
+    seedConfig()
+    // Lote com nicho ligado + override custom -> deve aparecer no prompt da
+    // regeração também (regenerateResult lê batch.text_context, igual ao lote).
+    seedBatch({ text_context: { nicho: { include: true, value: "alta costura" } } })
+    fx.results.set(resultKey(BATCH, STORE_A), {
+      id: "r1",
+      batch_id: BATCH,
+      store_id: STORE_A,
+      status: "ready",
+      image_url: "old.png",
+      adjustment_notes: null,
+      error_message: null,
+      generated_via: null,
+      generated_at: null,
+    })
+    let captured = ""
+    generateEmailImageMock.mockImplementation(async (prompt: string) => {
+      captured = prompt
+      return "new.png"
+    })
+
+    await svc.regenerateResult(BATCH, ORG, STORE_A, "mais escuro")
+    expect(captured).toContain("Niche / context: alta costura")
   })
 
   it("falha na regeração -> status 'failed' mesmo com nota", async () => {

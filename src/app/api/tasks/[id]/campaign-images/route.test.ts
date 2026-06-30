@@ -203,6 +203,51 @@ describe("POST /api/tasks/[id]/campaign-images", () => {
     expect(createBatchMock).not.toHaveBeenCalled()
   })
 
+  it("create_batch com campo desconhecido no text_context -> 400 (strict no container)", async () => {
+    const res = await POST(
+      postReq({
+        action: "create_batch",
+        name: "Hero",
+        format: "hero",
+        text_context: { unknownField: { include: true } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(createBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("create_batch com include não-boolean -> 400 (Zod)", async () => {
+    const res = await POST(
+      postReq({
+        action: "create_batch",
+        name: "Hero",
+        format: "hero",
+        text_context: { nicho: { include: "yes" } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(createBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("create_batch com value > 500 chars -> 400 (Zod max)", async () => {
+    const res = await POST(
+      postReq({
+        action: "create_batch",
+        name: "Hero",
+        format: "hero",
+        text_context: { headline: { include: true, value: "x".repeat(501) } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(createBatchMock).not.toHaveBeenCalled()
+  })
+
   it("generate_batch com batch_id não-uuid -> 400 (Zod)", async () => {
     const res = await POST(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -143,6 +143,32 @@ describe("PATCH /api/tasks/[id]/campaign-images/batch", () => {
     expect(updateBatchMock).not.toHaveBeenCalled()
   })
 
+  it("text_context com campo desconhecido no container -> 400 (strict)", async () => {
+    const res = await PATCH(
+      patchReq({
+        batch_id: BATCH,
+        text_context: { unknownField: { include: true } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(updateBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("text_context com value > 500 chars -> 400 (Zod max)", async () => {
+    const res = await PATCH(
+      patchReq({
+        batch_id: BATCH,
+        text_context: { headline: { include: true, value: "x".repeat(501) } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+      params,
+    )
+    expect(res.status).toBe(400)
+    expect(updateBatchMock).not.toHaveBeenCalled()
+  })
+
   it("format inválido -> 400 (Zod)", async () => {
     const res = await PATCH(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
