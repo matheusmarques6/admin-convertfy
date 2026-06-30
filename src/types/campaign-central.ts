@@ -266,6 +266,30 @@ export interface CampaignImageAdaptFlags {
   tom?: boolean
 }
 
+/**
+ * Um campo textual OPT-IN do agente de imagem. `include` liga a injeção do
+ * campo no prompt; `value` (opcional) sobrescreve o dado real da loja. Quando
+ * ligado sem `value`, usa o dado da loja; quando desligado, o campo não entra.
+ */
+export interface CampaignImageTextField {
+  include: boolean
+  value?: string
+}
+
+/**
+ * Contexto textual opt-in de um lote. Os 5 campos textuais (nicho, persona/
+ * público, tom de voz, moeda/locale, headline) são liga/desliga por lote;
+ * por padrão ficam desligados (prompt enxuto). A identidade VISUAL continua
+ * sempre no prompt — não faz parte deste contexto.
+ */
+export interface CampaignImageTextContext {
+  nicho?: CampaignImageTextField
+  publico?: CampaignImageTextField
+  tom?: CampaignImageTextField
+  moeda?: CampaignImageTextField
+  headline?: CampaignImageTextField
+}
+
 /** Um lote de instrução (= um tipo de imagem). */
 export interface CampaignImageBatch {
   id: string
@@ -276,6 +300,8 @@ export interface CampaignImageBatch {
   instruction: string
   reference_image_url: string | null
   adapt_flags: CampaignImageAdaptFlags
+  /** Contexto textual opt-in por lote (default {} = todos desligados). */
+  text_context: CampaignImageTextContext
   created_at: string
   updated_at: string
 }
