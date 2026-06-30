@@ -154,6 +154,7 @@ type TaskComment = {
 type TaskAugmented = ProductivityTask & {
   description?: string | null
   source_type?: string
+  source_id?: string | null
   onboarding_id?: string
   metadata?: Record<string, unknown>
   deliverables?: Deliverable[]
@@ -697,6 +698,86 @@ function CommentRowComp({
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
+/** Card de decisão do COO na etapa de APROVAÇÃO do design de campanha. Os 2
+ *  botões chamam o endpoint design-decision (aprovar -> produção; pedir
+ *  mudanças -> estrutura v2). Substitui o fluxo genérico de "concluir", que
+ *  NÃO avança o pipeline nessa etapa (handoff retorna awaiting_decision). */
+function CampaignDecisionBar({
+  suggestionId,
+  onDone,
+}: {
+  suggestionId: string
+  onDone: () => void
+}) {
+  const [busy, setBusy] = useState<null | "approve" | "request_changes">(null)
+  const [err, setErr] = useState<string | null>(null)
+  const decide = async (decision: "approve" | "request_changes") => {
+    if (!suggestionId) {
+      setErr("Campanha não identificada nesta task.")
+      return
+    }
+    setBusy(decision)
+    setErr(null)
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-central/suggestions/${suggestionId}/design-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        },
+      )
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error || `Erro ${res.status}`)
+      }
+      onDone()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao registrar a decisão")
+      setBusy(null)
+    }
+  }
+  return (
+    <div
+      className="rounded-[10px] p-3.5 border"
+      style={{
+        background: "#FFFFFF",
+        borderColor: "rgba(0,0,0,0.06)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      <div className="text-[12.5px] font-semibold text-gray-900 mb-0.5 leading-tight">
+        Decisão da estrutura
+      </div>
+      <div className="text-[11px] text-gray-600 mb-3 leading-snug">
+        Avalie a estrutura no Figma e a copy da campanha. Aprovar libera a produção; pedir
+        mudanças volta pros designers numa nova versão.
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => decide("approve")}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-white text-[12.5px] font-semibold transition-all hover:-translate-y-px disabled:opacity-60 disabled:translate-y-0"
+          style={{ background: C.green, boxShadow: `0 1px 2px ${C.green}40` }}
+        >
+          {busy === "approve" ? "Aprovando…" : "Aprovar estrutura"}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => decide("request_changes")}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold border transition-all hover:-translate-y-px disabled:opacity-60 disabled:translate-y-0"
+          style={{ borderColor: "#FCD34D", color: "#B45309", background: "#FFFBEB" }}
+        >
+          {busy === "request_changes" ? "Enviando…" : "Pedir mudanças"}
+        </button>
+      </div>
+      {err && <div className="mt-2 text-[11px] font-medium text-red-600">{err}</div>}
+    </div>
+  )
+}
+
 export function TaskDetailDrawer({
   task,
   onClose,
@@ -1599,7 +1680,18 @@ export function TaskDetailDrawer({
           </h1>
 
           <div className="mb-4">
-            <GuidedActionBar task={task} onAdvance={handleAdvance} />
+            {task.source_type === "campaign_suggestion" &&
+            (task.metadata?.column_slug as string | undefined) === "aprovacao" ? (
+              <CampaignDecisionBar
+                suggestionId={String(task.source_id ?? "")}
+                onDone={() => {
+                  fetchData()
+                  onClose()
+                }}
+              />
+            ) : (
+              <GuidedActionBar task={task} onAdvance={handleAdvance} />
+            )}
             {workspaceTarget &&
               (task.status === "progress" || task.status === "review") && (
                 <button
