@@ -8,7 +8,8 @@
  *
  * Query params:
  *   - days: janela em dias (default 14, max 365)
- *   - agent: 'copy'|'blueprint'|'assembler'|'image'|'html'|'qa'|'qavision'|'seed'
+ *   - agent: 'copy'|'blueprint'|'assembler'|'assembler_chooser'|'image'|'html'|
+ *     'qa'|'qavision'|'seed'|'copy_dispatch'|'campaign_image'
  *     ('qavision' filtra is_qa_vision=true; 'qa' filtra is_qa_vision=false)
  *   - status: 'success'|'error'|'running'
  *   - store_id: UUID
@@ -109,7 +110,8 @@ function bucketOf(row: LogRow): PipelineAgentKey {
     row.agent === "html" ||
     row.agent === "qa" ||
     row.agent === "seed" ||
-    row.agent === "copy_dispatch"
+    row.agent === "copy_dispatch" ||
+    row.agent === "campaign_image"
   ) {
     return row.agent as PipelineAgentKey
   }

@@ -1369,10 +1369,10 @@ function DetailRow({ row }: { row: RecentRow }) {
             ...TNUM,
           }}
         >
-          {row.tokens_input != null
-            ? fmtTok((row.tokens_input ?? 0) + (row.tokens_output ?? 0))
-            : row.agent === "image"
-              ? "1 img"
+          {AGENT_VISUAL[row.agent]?.kind === "imagem"
+            ? "1 img"
+            : row.tokens_input != null
+              ? fmtTok((row.tokens_input ?? 0) + (row.tokens_output ?? 0))
               : dash}
         </span>
       </div>
