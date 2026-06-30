@@ -251,5 +251,8 @@ export interface CampaignHandoffPayload {
   subject: string | null
   /** Loja escolhida pelo designer como base (★). */
   pilot_store_id: string | null
+  /** Link do Figma entregue na etapa estrutura (versão atual), se houver. */
+  figma_link: string | null
+  figma_filled_at: string | null
   stores: CampaignHandoffStore[]
 }

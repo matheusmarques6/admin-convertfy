@@ -52,6 +52,29 @@ export async function PATCH(
     if (error) throw error
     if (!data) throw new AppError("Entregavel nao encontrado", 404)
 
+    // Auto-conclui a task de design de campanha quando TODOS os deliverables
+    // required estão preenchidos: entregar o Figma já finaliza a estrutura (sem
+    // o designer clicar "Concluir"). Hoje só a etapa estrutura tem deliverable
+    // required, então só ela auto-conclui. O handoff abaixo então avança a etapa.
+    if (
+      access.task.source_type === "campaign_suggestion" &&
+      (access.task.status as string | undefined) !== "completed"
+    ) {
+      const { data: delivs } = await admin
+        .from("task_deliverables")
+        .select("required, value, file_url")
+        .eq("task_id", id)
+      const required = (delivs ?? []).filter((d) => d.required)
+      const allFilled =
+        required.length > 0 && required.every((d) => Boolean(d.value || d.file_url))
+      if (allFilled) {
+        await admin
+          .from("tasks")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("id", id)
+      }
+    }
+
     let handoff = "not_ready"
     if (access.task.onboarding_id) {
       handoff = await attemptOnboardingHandoff({

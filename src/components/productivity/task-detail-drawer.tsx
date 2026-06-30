@@ -703,14 +703,34 @@ function CommentRowComp({
  *  mudanças -> estrutura v2). Substitui o fluxo genérico de "concluir", que
  *  NÃO avança o pipeline nessa etapa (handoff retorna awaiting_decision). */
 function CampaignDecisionBar({
+  taskId,
   suggestionId,
   onDone,
 }: {
+  taskId: string
   suggestionId: string
   onDone: () => void
 }) {
   const [busy, setBusy] = useState<null | "approve" | "request_changes">(null)
   const [err, setErr] = useState<string | null>(null)
+  const [figma, setFigma] = useState<{ link: string | null; filledAt: string | null }>({
+    link: null,
+    filledAt: null,
+  })
+  useEffect(() => {
+    if (!taskId) return
+    let cancelled = false
+    fetch(`/api/tasks/${taskId}/campaign-copies`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j)
+          setFigma({ link: j.figma_link ?? null, filledAt: j.figma_filled_at ?? null })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [taskId])
   const decide = async (decision: "approve" | "request_changes") => {
     if (!suggestionId) {
       setErr("Campanha não identificada nesta task.")
@@ -753,6 +773,35 @@ function CampaignDecisionBar({
         Avalie a estrutura no Figma e a copy da campanha. Aprovar libera a produção; pedir
         mudanças volta pros designers numa nova versão.
       </div>
+      {figma.link ? (
+        <a
+          href={figma.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[12px] font-semibold transition-colors hover:opacity-90"
+          style={{
+            borderColor: "rgba(124,58,237,0.25)",
+            background: "#F5F3FF",
+            color: "#6D28D9",
+          }}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            {I.eye({ size: 13 })} Abrir estrutura no Figma
+          </span>
+          {figma.filledAt && (
+            <span className="text-[10px] font-normal text-gray-500">
+              entregue {new Date(figma.filledAt).toLocaleDateString("pt-BR")}
+            </span>
+          )}
+        </a>
+      ) : (
+        <div
+          className="mb-3 rounded-lg border border-dashed px-3 py-2 text-[11px] text-gray-500"
+          style={{ borderColor: "rgba(0,0,0,0.1)" }}
+        >
+          A estrutura ainda não foi entregue no Figma.
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           type="button"
@@ -1683,6 +1732,7 @@ export function TaskDetailDrawer({
             {task.source_type === "campaign_suggestion" &&
             (task.metadata?.column_slug as string | undefined) === "aprovacao" ? (
               <CampaignDecisionBar
+                taskId={String(task.id)}
                 suggestionId={String(task.source_id ?? "")}
                 onDone={() => {
                   fetchData()

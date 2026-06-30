@@ -27,10 +27,13 @@ interface MockSug {
   targets: Array<{ store_id: string; store_name: string; country: string }>
   copy_results: { production?: Record<string, Record<string, unknown>> }
   design_pilot_store_id: string | null
+  design_pipeline_id?: string | null
+  design_version?: number | null
 }
 
 let mockSuggestion: MockSug
 let mockStores: Array<{ id: string; language: string | null; country: string | null }>
+let mockFigma: { col: unknown; anchor: unknown; deliv: unknown }
 const mockUpdateCalls: Array<{ table: string; patch: Record<string, unknown> }> = []
 let mockTaskCtx: { task: { source_type: string; source_id: string | null }; member: { orgId: string } }
 
@@ -63,6 +66,7 @@ function reset() {
     { id: STORE_B, language: "en", country: "PT" },
   ]
   mockUpdateCalls.length = 0
+  mockFigma = { col: null, anchor: null, deliv: null }
   mockTaskCtx = {
     task: { source_type: "campaign_suggestion", source_id: SUG },
     member: { orgId: ORG },
@@ -74,15 +78,22 @@ function buildQuery(table: string): any {
   const self: any = {}
   self.select = () => self
   self.eq = () => self
+  self.neq = () => self
+  self.order = () => self
+  self.limit = () => self
   self.in = () => ({
     then: (resolve: (v: { data: unknown; error: null }) => void) =>
       resolve({ data: table === "client_stores" ? mockStores : [], error: null }),
   })
-  self.maybeSingle = () =>
-    Promise.resolve({
-      data: table === "campaign_suggestions" ? mockSuggestion : null,
-      error: null,
-    })
+  self.maybeSingle = () => {
+    const byTable: Record<string, unknown> = {
+      campaign_suggestions: mockSuggestion,
+      operational_pipeline_columns: mockFigma.col,
+      tasks: mockFigma.anchor,
+      task_deliverables: mockFigma.deliv,
+    }
+    return Promise.resolve({ data: byTable[table] ?? null, error: null })
+  }
   self.update = (patch: Record<string, unknown>) => {
     mockUpdateCalls.push({ table, patch })
     const chain: any = {
@@ -157,6 +168,7 @@ describe("GET /api/tasks/[id]/campaign-copies", () => {
     expect(json.channel).toBe("Email + SMS")
     expect(json.subject).toBe("Assunto base da campanha")
     expect(json.pilot_store_id).toBeNull()
+    expect(json.figma_link).toBeNull()
     expect(json.stores).toHaveLength(2)
 
     const a = json.stores.find((s: { store_id: string }) => s.store_id === STORE_A)
@@ -176,6 +188,21 @@ describe("GET /api/tasks/[id]/campaign-copies", () => {
     const b = json.stores.find((s: { store_id: string }) => s.store_id === STORE_B)
     expect(b.status).toBe("missing")
     expect(b.copy).toBeNull()
+  })
+
+  it("inclui figma_link quando a estrutura foi entregue", async () => {
+    mockSuggestion.design_pipeline_id = "pipe-1"
+    mockSuggestion.design_version = 1
+    mockFigma = {
+      col: { id: "col-est" },
+      anchor: { id: "anchor-1" },
+      deliv: { value: "https://figma.com/x", filled_at: "2026-06-30T00:00:00Z" },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(getReq() as any, params)
+    const json = await res.json()
+    expect(json.figma_link).toBe("https://figma.com/x")
+    expect(json.figma_filled_at).toBe("2026-06-30T00:00:00Z")
   })
 
   it("task que não é de campanha -> 400", async () => {

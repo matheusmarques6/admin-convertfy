@@ -30,6 +30,8 @@ interface SugRow {
   targets: SuggestionTarget[] | null
   copy_results: { production?: Record<string, CopyResultEntry> } | null
   design_pilot_store_id: string | null
+  design_pipeline_id: string | null
+  design_version: number | null
 }
 
 /** Estado da copy de produção da loja (sincroniza com copyStatusMeta da UI). */
@@ -49,7 +51,7 @@ export async function getCampaignHandoff(
   const { data: sug } = await admin
     .from("campaign_suggestions")
     .select(
-      "id, title, channel, send_date, subject, targets, copy_results, design_pilot_store_id",
+      "id, title, channel, send_date, subject, targets, copy_results, design_pilot_store_id, design_pipeline_id, design_version",
     )
     .eq("id", suggestionId)
     .eq("org_id", orgId)
@@ -87,6 +89,41 @@ export async function getCampaignHandoff(
     }
   })
 
+  // Link do Figma entregue na etapa estrutura (versão atual) — pro COO avaliar
+  // na aprovação. Fica no deliverable figma_structure_link da task âncora.
+  let figmaLink: string | null = null
+  let figmaFilledAt: string | null = null
+  if (sug.design_pipeline_id && sug.design_version != null) {
+    const { data: estruturaCol } = await admin
+      .from("operational_pipeline_columns")
+      .select("id")
+      .eq("pipeline_id", sug.design_pipeline_id)
+      .eq("slug", "estrutura")
+      .maybeSingle()
+    if (estruturaCol?.id) {
+      const { data: anchorTask } = await admin
+        .from("tasks")
+        .select("id")
+        .eq("source_id", suggestionId)
+        .eq("operational_column_id", estruturaCol.id as string)
+        .eq("version", sug.design_version)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (anchorTask?.id) {
+        const { data: figma } = await admin
+          .from("task_deliverables")
+          .select("value, filled_at")
+          .eq("task_id", anchorTask.id as string)
+          .eq("field_slug", "figma_structure_link")
+          .maybeSingle()
+        figmaLink = (figma?.value as string | null) ?? null
+        figmaFilledAt = (figma?.filled_at as string | null) ?? null
+      }
+    }
+  }
+
   return {
     suggestion_id: sug.id,
     title: sug.title ?? "",
@@ -94,6 +131,8 @@ export async function getCampaignHandoff(
     send_date: sug.send_date ?? null,
     subject: sug.subject ?? null,
     pilot_store_id: sug.design_pilot_store_id ?? null,
+    figma_link: figmaLink,
+    figma_filled_at: figmaFilledAt,
     stores,
   }
 }
