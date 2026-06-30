@@ -100,6 +100,13 @@ function isSystemRoleUnsupportedError(body: string): boolean {
   )
 }
 
+/**
+ * Referencia visual por URL anexada ao content multimodal. `label` (opcional)
+ * é um texto curto que precede a imagem pro modelo saber o PAPEL dela (ex.:
+ * "Brand logo — match this exactly:"). Sem label, só a imagem é anexada.
+ */
+export type RefImage = { label?: string; url: string }
+
 type UserMessage =
   | { role: "user"; content: string }
   | {
@@ -112,38 +119,62 @@ type UserMessage =
 type SystemMessage = { role: "system"; content: string }
 type ChatMessage = UserMessage | SystemMessage
 
-function buildUserMessage(
-  prompt: string,
-  referenceImageUrl?: string,
-): UserMessage {
-  if (referenceImageUrl) {
-    return {
-      role: "user",
-      content: [
-        { type: "image_url", image_url: { url: referenceImageUrl } },
-        { type: "text", text: prompt },
-      ],
+/**
+ * Monta a user message. Com `refs` não-vazio: content array INTERLEAVED e
+ * ROTULADO — para cada ref, empurra `{text:label}` (se houver label) seguido de
+ * `{image_url:url}`, e por fim `{text:prompt}`. Com `refs` vazio: content é a
+ * string crua do prompt (body legacy, idêntico ao caminho text2img).
+ */
+function buildUserMessage(prompt: string, refs: RefImage[]): UserMessage {
+  if (refs.length > 0) {
+    const content: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = []
+    for (const ref of refs) {
+      if (ref.label) content.push({ type: "text", text: ref.label })
+      content.push({ type: "image_url", image_url: { url: ref.url } })
     }
+    content.push({ type: "text", text: prompt })
+    return { role: "user", content }
   }
   return { role: "user", content: prompt }
 }
 
 function buildMessages(
   prompt: string,
-  referenceImageUrl?: string,
+  refs: RefImage[],
   systemPrompt?: string,
 ): ChatMessage[] {
-  const userMsg = buildUserMessage(prompt, referenceImageUrl)
+  const userMsg = buildUserMessage(prompt, refs)
   if (systemPrompt && systemPrompt.trim()) {
     return [{ role: "system", content: systemPrompt }, userMsg]
   }
   return [userMsg]
 }
 
+/**
+ * Extrai `prompt_tokens`/`completion_tokens` do bloco `"usage"` da resposta
+ * crua do OpenRouter SEM `JSON.parse` (o body pode ter ~5MB de base64). Ancora
+ * no primeiro índice de `"usage"` e regexa só num recorte curto a partir dali —
+ * isola o envelope do payload e evita colisão com dígitos de um base64.
+ */
+function extractUsage(rawText: string): { tokensInput: number; tokensOutput: number } {
+  const idx = rawText.indexOf('"usage"')
+  if (idx === -1) return { tokensInput: 0, tokensOutput: 0 }
+  const slice = rawText.slice(idx, idx + 400)
+  const inMatch = slice.match(/"prompt_tokens"\s*:\s*(\d+)/)
+  const outMatch = slice.match(/"completion_tokens"\s*:\s*(\d+)/)
+  return {
+    tokensInput: inMatch ? Number(inMatch[1]) : 0,
+    tokensOutput: outMatch ? Number(outMatch[1]) : 0,
+  }
+}
+
 async function callOpenRouterImage(
   apiKey: string,
   prompt: string,
-  referenceImageUrl?: string,
+  refs: RefImage[],
   systemPrompt?: string,
   model: string = OPENROUTER_IMAGE_MODEL,
 ): Promise<Response> {
@@ -158,7 +189,7 @@ async function callOpenRouterImage(
         },
         body: JSON.stringify({
           model,
-          messages: buildMessages(prompt, referenceImageUrl, systemPrompt),
+          messages: buildMessages(prompt, refs, systemPrompt),
           response_format: "b64_json",
         }),
       },
@@ -200,8 +231,30 @@ export async function generateEmailImage(
      * visual quando mode='product_ref'. Sem isso, mode degrada
      * automaticamente pra text2img (caller ja deveria ter resolvido via
      * `resolveImageMode`, mas a chain tambem se defende).
+     *
+     * Retrocompat: tratado como UMA ref sem rótulo. Quando `referenceImages`
+     * é passado (length>0), ele SUPERSEDE este campo.
      */
     referenceImageUrl?: string
+    /**
+     * Múltiplas referências visuais por URL (base + logo + produto), cada uma
+     * com um `label` opcional que diz ao modelo o papel da imagem. Quando
+     * presente (length>0), supersede `referenceImageUrl`. Cap de 3 (excedente
+     * é descartado com log.warn). Caminho de campanha usa isto; o de email
+     * continua com o `referenceImageUrl` único.
+     */
+    referenceImages?: RefImage[]
+    /**
+     * Callback OPT-IN de instrumentação. Quando fornecido, a chain captura o
+     * `usage` da resposta do OpenRouter (tokens de input de imagem) e reporta
+     * quais refs foram efetivamente anexadas. Sem ele, ZERO trabalho extra
+     * (caminho de email intocado, sem overhead).
+     */
+    onMeta?: (m: {
+      tokensInput: number
+      tokensOutput: number
+      refsSent: RefImage[]
+    }) => void
     /**
      * Master Prompt v2: prompt de sistema do agente de imagem (Part A do
      * `email_agent_configs.system_prompt`). Enviado como `role:"system"` na
@@ -223,7 +276,20 @@ export async function generateEmailImage(
   if (!apiKey) throw new Error("OPENROUTER_API_KEY não configurada")
 
   const mode = options?.mode ?? "text2img"
-  const useMultimodal = mode === "product_ref" && !!options?.referenceImageUrl
+  // Normaliza as refs: `referenceImages` supersede `referenceImageUrl` (que vira
+  // 1 ref sem rótulo, retrocompat). Cap em 3 (base+logo+produto); excedente é
+  // descartado com aviso pra ops.
+  let refs: RefImage[] = options?.referenceImages?.length
+    ? options.referenceImages
+    : options?.referenceImageUrl
+      ? [{ url: options.referenceImageUrl }]
+      : []
+  if (refs.length > 3) {
+    log.warn("image.refs.capped", { storeId, passed: refs.length, kept: 3 })
+    refs = refs.slice(0, 3)
+  }
+  const useMultimodal = mode === "product_ref" && refs.length > 0
+  const onMeta = options?.onMeta
   const systemPrompt = options?.systemPrompt?.trim() || undefined
   const model = options?.model?.trim() || OPENROUTER_IMAGE_MODEL
 
@@ -234,6 +300,7 @@ export async function generateEmailImage(
     overlayReserveBottom: options?.overlayReserveBottom,
     mode,
     useMultimodal,
+    refCount: refs.length,
     hasSystemPrompt: !!systemPrompt,
     systemPromptLength: systemPrompt?.length ?? 0,
   })
@@ -242,10 +309,20 @@ export async function generateEmailImage(
   if (useMultimodal) {
     log.info("image.multimodal.attempted", {
       storeId,
-      refUrl: options?.referenceImageUrl,
+      refUrl: refs[0]?.url,
+      model,
+    })
+    log.info("image.refs.attached", {
+      count: refs.length,
+      labels: refs.map((r) => r.label ?? null),
       model,
     })
   }
+
+  // Captura de usage só roda quando `onMeta` existe (opt-in). `lastUsage` é
+  // preenchido dentro do fetch da última tentativa bem-sucedida e reportado
+  // após o retry resolver.
+  let lastUsage = { tokensInput: 0, tokensOutput: 0 }
 
   // ── Uma tentativa completa: chama OpenRouter + extrai o buffer ──────────
   //
@@ -259,7 +336,7 @@ export async function generateEmailImage(
     let res = await callOpenRouterImage(
       apiKey,
       prompt,
-      useMultimodal ? options?.referenceImageUrl : undefined,
+      useMultimodal ? refs : [],
       systemPrompt,
       model,
     )
@@ -286,7 +363,7 @@ export async function generateEmailImage(
         res = await callOpenRouterImage(
           apiKey,
           concatenated,
-          useMultimodal ? options?.referenceImageUrl : undefined,
+          useMultimodal ? refs : [],
           undefined,
           model,
         )
@@ -311,7 +388,7 @@ export async function generateEmailImage(
           status: res.status,
           errorSnippet: errText.slice(0, 200),
         })
-        res = await callOpenRouterImage(apiKey, prompt, undefined, systemPrompt, model)
+        res = await callOpenRouterImage(apiKey, prompt, [], systemPrompt, model)
       } else {
         // AE-13 review: se o body menciona "image" mas nao casa keywords
         // conhecidas, OpenRouter pode ter mudado a mensagem — logar pra
@@ -434,6 +511,13 @@ export async function generateEmailImage(
       )
     }
 
+    // Instrumentação OPT-IN: imagem extraída com sucesso → captura o `usage`
+    // do envelope (tokens de input de imagem). Só quando `onMeta` existe; no
+    // caminho de email (sem onMeta) este bloco nem roda.
+    if (onMeta) {
+      lastUsage = extractUsage(rawText)
+    }
+
     return imageBuffer
   }
 
@@ -449,6 +533,12 @@ export async function generateEmailImage(
         }),
     },
   )
+
+  // Reporta a instrumentação ao caller (opt-in): tokens de input/output e quais
+  // refs foram efetivamente anexadas (vazio quando não foi multimodal).
+  if (onMeta) {
+    onMeta({ ...lastUsage, refsSent: useMultimodal ? refs : [] })
+  }
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o
   // resize falhar, segue com o buffer original (pipeline nao quebra).
@@ -514,4 +604,14 @@ export async function generateEmailImage(
   log.info("image.generate.done", { storeId, path, durationMs })
 
   return signedData.signedUrl
+}
+
+/**
+ * Test-only exports — permitem testar a montagem de mensagens e a extração de
+ * usage sem mockar fetch + supabase. NÃO usar em produção.
+ */
+export {
+  buildMessages as __buildMessagesForTest,
+  buildUserMessage as __buildUserMessageForTest,
+  extractUsage as __extractUsageForTest,
 }
