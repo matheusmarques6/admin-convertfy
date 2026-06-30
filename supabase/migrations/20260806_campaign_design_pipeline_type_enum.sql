@@ -1,0 +1,17 @@
+-- Adiciona 'campaign_design' ao enum operational_pipeline_type.
+--
+-- A migration 20260805_campaign_design_pipeline.sql introduziu o pipeline de
+-- design de campanha — `ensureCampaignDesignPipeline` insere
+-- `operational_pipelines.type = 'campaign_design'` — mas o valor NUNCA foi
+-- adicionado ao enum, que foi criado em 20260513015053 apenas com
+-- ('onboarding', 'acompanhamento', 'feedback', 'suporte').
+--
+-- Sem este valor, o bootstrap falha com:
+--   invalid input value for enum operational_pipeline_type: "campaign_design"
+-- e as tasks de design NUNCA sao criadas (a campanha fica no board de Design
+-- sem nenhuma task). O erro so ficou visivel depois que o instantiate passou a
+-- propagar o erro do INSERT em vez de engoli-lo.
+--
+-- NOTA: ALTER TYPE ... ADD VALUE nao pode rodar dentro de um bloco de
+-- transacao (BEGIN/COMMIT) no PostgreSQL — mantenha este statement isolado.
+ALTER TYPE operational_pipeline_type ADD VALUE IF NOT EXISTS 'campaign_design';
