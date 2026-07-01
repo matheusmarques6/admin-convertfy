@@ -219,6 +219,49 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.logo_svg).not.toContain("data:image/png;base64")
   })
 
+  it("fallback: logo SÓ em logo_alt_svg (sem main) → SVG inline via variante alt", async () => {
+    // Antes do pickBrandLogo, build-vars so lia logo_main_* → esta marca saia
+    // sem logo. Agora o fallback atravessa variantes e faz o inline do alt.
+    const soAlt = {
+      ...baseBrand,
+      logo_main_svg: null,
+      logo_main_png: null,
+      logo_alt_svg: "https://storage.example/logo-alt.svg",
+    }
+    const vars = await setup({ brand: soAlt })
+    expect(vars.logo_svg).toContain("<svg")
+  })
+
+  it("fallback: logo SÓ em logo_monogram_png (sem main/svg) → <img> PNG", async () => {
+    const soMono = {
+      ...baseBrand,
+      logo_main_svg: null,
+      logo_main_png: null,
+      logo_monogram_png: "https://cdn.externo.com/mono.png",
+    }
+    const vars = await setup({ brand: soMono })
+    expect(vars.logo_svg).toContain('<img src="https://cdn.externo.com/mono.png"')
+    expect(vars.logo_svg).not.toContain("<svg")
+  })
+
+  it("não-regressão: main preferido sobre alt (SVG do main é o inline)", async () => {
+    // main tem svg, alt tem png. O main (1º da cadeia) vence → inline SVG do
+    // main, nao o <img> do alt. fetch e' chamado com a URL do main.
+    const mainEAlt = {
+      ...baseBrand,
+      logo_main_svg: "https://storage.example/logo-main.svg",
+      logo_main_png: null,
+      logo_alt_png: "https://cdn.externo.com/alt.png",
+    }
+    const vars = await setup({ brand: mainEAlt })
+    expect(vars.logo_svg).toContain("<svg")
+    expect(vars.logo_svg).not.toContain("<img")
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://storage.example/logo-main.svg",
+      expect.anything(),
+    )
+  })
+
   it("relaxedBrandCheck=true + brand sem cores nem logo → nao joga, logo_svg vazio", async () => {
     const vazia = {
       ...baseBrand,

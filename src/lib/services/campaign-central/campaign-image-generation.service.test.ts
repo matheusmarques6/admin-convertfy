@@ -1324,6 +1324,46 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
     })
   })
 
+  it("fallback: logo SÓ em logo_alt_png (sem main): anexa a variante alt", async () => {
+    // Antes do pickBrandLogo, logo fora do slot `main` era IGNORADA — este
+    // caso saía sem ref de logo. Agora o fallback multi-variante anexa a alt.
+    fx.brandOverride = {
+      logo_main_png: null,
+      logo_main_svg: null,
+      logo_alt_png: "https://cdn/logo-alt.png",
+    }
+    setup({ adapt_flags: { logo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("product_ref")
+    expect(opts.referenceImages).toContainEqual({
+      label: "Brand logo — match this exactly:",
+      url: "https://cdn/logo-alt.png",
+    })
+  })
+
+  it("não-regressão: logo_main_png presente vence variantes (mesma url de sempre)", async () => {
+    // Marca com main E alt: o main continua sendo escolhido (1º da cadeia),
+    // garantindo comportamento idêntico ao anterior pro caso comum.
+    fx.brandOverride = {
+      logo_main_png: "https://cdn/logo-main.png",
+      logo_main_svg: null,
+      logo_alt_png: "https://cdn/logo-alt.png",
+    }
+    setup({ adapt_flags: { logo: true }, reference_image_url: null })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    expect(lastOptions().referenceImages).toContainEqual({
+      label: "Brand logo — match this exactly:",
+      url: "https://cdn/logo-main.png",
+    })
+  })
+
   it("logo ON mas brand sem logo: nenhuma ref de logo (mode text2img)", async () => {
     // brandOverride null => default png/svg null.
     setup({ adapt_flags: { logo: true }, reference_image_url: null })
