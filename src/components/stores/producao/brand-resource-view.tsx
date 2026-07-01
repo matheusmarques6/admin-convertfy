@@ -1065,18 +1065,16 @@ export function BrandResourceView({
                   preview={renderVariantPreview(v.slot)}
                 />
               ))}
-            </div>
 
-            {/* "Adicionar variante" (so em edit): revela o card de upload de uma
-                variante ainda ausente. Some quando as 3 ja estao presentes. */}
-            {mode === "edit" &&
-              (() => {
-                const available = LOGO_VARIANTS.filter(
-                  (v) => !variantFilled(brand, v.slot) && !addingVariants.has(v.slot),
-                )
-                if (available.length === 0) return null
-                return (
-                  <div style={{ marginTop: 12 }}>
+              {/* "Adicionar variante" (so em edit): ultima celula da grade — card
+                  tracejado igual ao "Adicionar cor". Some quando as 3 ja presentes. */}
+              {mode === "edit" &&
+                (() => {
+                  const available = LOGO_VARIANTS.filter(
+                    (v) => !variantFilled(brand, v.slot) && !addingVariants.has(v.slot),
+                  )
+                  if (available.length === 0) return null
+                  return (
                     <AddVariantControl
                       options={available}
                       onSelect={(slot) =>
@@ -1087,9 +1085,9 @@ export function BrandResourceView({
                         })
                       }
                     />
-                  </div>
-                )
-              })()}
+                  )
+                })()}
+            </div>
 
             {/* Cores principais */}
             <SectionTitle title="Cores principais" style={{ marginTop: 40 }} />
@@ -2006,26 +2004,29 @@ function AddVariantControl({
   const [open, setOpen] = useState(false)
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div style={{ position: "relative", display: "block", width: "100%", height: "100%" }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        className="cf-focusable"
         style={{
-          height: 30,
-          padding: "0 12px",
-          background: "var(--crm-gray-0)",
+          width: "100%",
+          height: "100%",
+          minHeight: 180,
+          background: "var(--crm-gray-50)",
           border: "1px dashed var(--crm-border)",
-          borderRadius: 6,
-          color: "var(--crm-gray-700)",
+          borderRadius: 10,
+          color: "var(--crm-gray-500)",
           fontSize: 12,
           fontWeight: 600,
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           gap: 6,
           cursor: "pointer",
         }}
       >
-        <Plus className="h-3 w-3" />
+        <Plus className="h-4 w-4" />
         Adicionar variante
       </button>
       {open && (
