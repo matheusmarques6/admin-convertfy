@@ -860,6 +860,25 @@ function ResultCard({
   const regenerate = useCallback(
     async (adjustmentNotes: string | null) => {
       setBusy(true)
+      // Otimista: marca 'generating' local (mantendo a imagem antiga). Isso liga o
+      // polling do modal (anyPending) → mostra "Gerando…" na hora E puxa a imagem
+      // nova do banco quando ficar pronta, mesmo se a resposta longa (15-90s) cair.
+      const base: CampaignImageResult = {
+        id: result?.id ?? `tmp-${store.store_id}`,
+        batch_id: batchId,
+        store_id: store.store_id,
+        store_name: store.store_name,
+        country: store.country,
+        language: store.language,
+        status: "generating",
+        image_url: result?.image_url ?? null,
+        adjustment_notes: adjustmentNotes,
+        error_message: null,
+        generated_at: result?.generated_at ?? null,
+      }
+      onResultChange(base)
+      setAdjusting(false)
+      setNotes("")
       try {
         const res = await fetch(`/api/tasks/${taskId}/campaign-images/results`, {
           method: "PATCH",
@@ -873,16 +892,24 @@ function ResultCard({
         if (res.ok) {
           const j = (await res.json()) as { result: CampaignImageResult }
           onResultChange(j.result)
-          setAdjusting(false)
-          setNotes("")
+        } else {
+          const j = (await res.json().catch(() => ({}))) as {
+            error?: string | { message?: string }
+          }
+          const msg =
+            typeof j.error === "string"
+              ? j.error
+              : j.error?.message || `Erro ${res.status}`
+          onResultChange({ ...base, status: "failed", error_message: msg })
         }
       } catch {
-        /* silencioso */
+        // Rede/timeout do cliente: o servidor pode seguir gerando. Deixa
+        // 'generating' — o polling resolve pro estado real quando o banco atualizar.
       } finally {
         setBusy(false)
       }
     },
-    [taskId, batchId, store.store_id, onResultChange],
+    [taskId, batchId, store, result, onResultChange],
   )
 
   return (
