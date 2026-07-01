@@ -968,7 +968,19 @@ function ResultCard({
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  // imgReady controla o veil de carregamento: começa true (imagem atual já ok no
+  // open), e só volta a false quando a URL MUDA (nova geração/regeração) — aí o
+  // veil segura até o onLoad, pra imagem nova entrar "de fato", não trocada no escuro.
+  const [imgReady, setImgReady] = useState(true)
+  const prevImgUrl = useRef(result?.image_url)
   const toast = useToast()
+
+  useEffect(() => {
+    if (prevImgUrl.current !== result?.image_url) {
+      prevImgUrl.current = result?.image_url
+      if (result?.image_url) setImgReady(false)
+    }
+  }, [result?.image_url])
 
   const status = result?.status ?? "queued"
   const sm = statusMeta(status)
@@ -1068,16 +1080,31 @@ function ResultCard({
           <img
             src={result.image_url}
             alt={`Imagem de ${store.store_name}`}
+            onLoad={() => setImgReady(true)}
+            onError={() => setImgReady(true)}
             className="h-full w-full object-cover"
           />
-        ) : (
+        ) : !isPending ? (
           <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            {isPending ? (
-              <Loader2 className="animate-spin" size={20} />
-            ) : status === "failed" ? (
+            {status === "failed" ? (
               <AlertTriangle size={20} className="text-rose-500" />
             ) : (
               <ImagePlus size={20} className="opacity-40" />
+            )}
+          </div>
+        ) : null}
+
+        {/* Overlay de progresso: cobre a imagem antiga (ou o vazio) enquanto
+            (re)gera E enquanto a imagem nova ainda carrega. O badge minúsculo
+            sozinho passava batido ("nem parece que regerou"); ao concluir, o
+            overlay se levanta revelando a imagem nova — a troca fica visível. */}
+        {(isPending || !imgReady) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-background/70 backdrop-blur-[1px]">
+            <Loader2 className="animate-spin text-foreground/70" size={22} />
+            {isPending && (
+              <span className="text-[11px] font-medium text-foreground/80">
+                {result?.adjustment_notes ? "Ajustando…" : "Gerando…"}
+              </span>
             )}
           </div>
         )}
