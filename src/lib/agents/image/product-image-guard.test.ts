@@ -77,4 +77,19 @@ describe("isUsableProductImage", () => {
     expect(r.usable).toBe(false)
     expect(r.reason).toBe("fetch_error")
   })
+
+  it("rasterOnly: reprova image/svg+xml (modelo de imagem não baixa/decodifica SVG)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse(200, "image/svg+xml")))
+    const r = await isUsableProductImage("https://cdn/logo.svg", undefined, {
+      rasterOnly: true,
+    })
+    expect(r.usable).toBe(false)
+    expect(r.reason).toBe("svg_not_raster")
+  })
+
+  it("sem rasterOnly: image/svg+xml passa (default inalterado)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse(200, "image/svg+xml")))
+    const r = await isUsableProductImage("https://cdn/logo.svg")
+    expect(r.usable).toBe(true)
+  })
 })

@@ -29,6 +29,7 @@ export interface ProductImageCheck {
 export async function isUsableProductImage(
   url: string | null | undefined,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  opts?: { rasterOnly?: boolean },
 ): Promise<ProductImageCheck> {
   if (!url || !/^https?:\/\//i.test(url)) {
     return { usable: false, reason: "missing_or_invalid_url" }
@@ -54,6 +55,11 @@ export async function isUsableProductImage(
     }
     if (!contentType || !/^image\//i.test(contentType)) {
       return { usable: false, reason: "not_image", status: res.status, contentType }
+    }
+    // rasterOnly: SVG passa no image/* mas o modelo de imagem não baixa/decodifica
+    // (causa 400). Reprova pra ser dropado/substituído pelo caller.
+    if (opts?.rasterOnly && /^image\/svg\+xml/i.test(contentType)) {
+      return { usable: false, reason: "svg_not_raster", status: res.status, contentType }
     }
     return { usable: true, status: res.status, contentType }
   } catch (err) {

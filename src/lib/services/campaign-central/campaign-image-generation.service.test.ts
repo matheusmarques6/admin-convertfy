@@ -97,6 +97,13 @@ vi.mock("@/lib/agents/top-products", () => ({
   loadTopProducts: loadTopProductsMock,
 }))
 
+// Guard das URLs de referência: mockado como "usable" por padrão (sem rede nos
+// testes). Testes específicos sobrescrevem por URL pra exercitar o descarte.
+const isUsableProductImageMock = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/agents/image/product-image-guard", () => ({
+  isUsableProductImage: isUsableProductImageMock,
+}))
+
 // ── Mock da telemetria (two-phase: running -> success/error) ─────────
 // logGenerationRun devolve um runId fake; updateGenerationRun é um spy. Os
 // dois são best-effort no service (não devem quebrar a geração), então os
@@ -429,6 +436,9 @@ beforeEach(async () => {
   generateEmailImageMock.mockReset()
   loadTopProductsMock.mockReset()
   loadTopProductsMock.mockResolvedValue([])
+  isUsableProductImageMock.mockReset()
+  // Default: toda ref é usável (sem rede). Testes de descarte sobrescrevem.
+  isUsableProductImageMock.mockResolvedValue({ usable: true })
   buildImagePromptVarsMock.mockReset()
   logGenerationRunMock.mockReset()
   updateGenerationRunMock.mockReset()
@@ -1353,6 +1363,71 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
       { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
       { label: "Hero product — reproduce faithfully:", url: "https://cdn/prod.jpg" },
     ])
+  })
+
+  it("descarta SÓ o produto quebrado (4xx) e MANTÉM base+logo (não cai em text2img)", async () => {
+    fx.brandOverride = { logo_main_png: "https://cdn/logo.png" }
+    loadTopProductsMock.mockResolvedValue([
+      { name: "X", price: 1, image_url: "https://cdn/prod-quebrado.jpg" },
+    ])
+    setup({
+      adapt_flags: { logo: true, catalogo: true },
+      reference_image_url: "https://cdn/base.jpg",
+    })
+    // Produto 404 (URL externa quebrada); base e logo ok.
+    isUsableProductImageMock.mockImplementation(async (url: string) =>
+      url.includes("prod-quebrado")
+        ? { usable: false, reason: "http_404", status: 404 }
+        : { usable: true },
+    )
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    const opts = lastOptions()
+    expect(opts.mode).toBe("product_ref") // NÃO virou text2img
+    // a base (fundo) e o logo sobrevivem; só o produto some.
+    expect(opts.referenceImages).toEqual([
+      { label: "Base reference:", url: "https://cdn/base.jpg" },
+      { label: "Brand logo — match this exactly:", url: "https://cdn/logo.png" },
+    ])
+  })
+
+  it("ref com falha TRANSITÓRIA (timeout) é MANTIDA (não penaliza a base)", async () => {
+    loadTopProductsMock.mockResolvedValue([
+      { name: "X", price: 1, image_url: "https://cdn/prod.jpg" },
+    ])
+    setup({
+      adapt_flags: { catalogo: true },
+      reference_image_url: "https://cdn/base.jpg",
+    })
+    // timeout é transitório → mantém a ref (o fallback do image.chain cobre).
+    isUsableProductImageMock.mockImplementation(async (url: string) =>
+      url.includes("prod") ? { usable: false, reason: "timeout" } : { usable: true },
+    )
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    expect(lastOptions().referenceImages).toContainEqual({
+      label: "Hero product — reproduce faithfully:",
+      url: "https://cdn/prod.jpg",
+    })
+  })
+
+  it("todas as refs definitivamente quebradas → text2img", async () => {
+    setup({ adapt_flags: {}, reference_image_url: "https://cdn/base.jpg" })
+    isUsableProductImageMock.mockResolvedValue({
+      usable: false,
+      reason: "http_403",
+      status: 403,
+    })
+    captureOptionsAndEmitMeta()
+
+    await svc.generateBatch(BATCH, ORG)
+
+    expect(lastOptions().mode).toBe("text2img")
+    expect(lastOptions().referenceImages).toBeUndefined()
   })
 
   it("SVG-only (png null, svg set): NÃO anexa o logo (rasterOnly — modelo não baixa SVG)", async () => {

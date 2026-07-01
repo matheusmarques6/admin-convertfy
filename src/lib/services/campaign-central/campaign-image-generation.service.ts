@@ -23,6 +23,7 @@ import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import { buildImagePromptVars } from "@/lib/agents/image/prompt-vars-builder"
 import { loadTopProducts } from "@/lib/agents/top-products"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
+import { isUsableProductImage } from "@/lib/agents/image/product-image-guard"
 import {
   logGenerationRun,
   updateGenerationRun,
@@ -50,6 +51,44 @@ import type {
 const log = logger.child("CampaignImageGen")
 
 type AdminClient = ReturnType<typeof createAdminClient>
+
+/**
+ * Valida cada ref de imagem (base/logo/produto) em paralelo e descarta SÓ as
+ * DEFINITIVAMENTE ruins: URL quebrada/403/404 (4xx), não-imagem ou SVG. Mantém
+ * em falha TRANSITÓRIA (timeout/rede/5xx) — não penaliza uma ref boa (ex.: a
+ * base) por um blip; o fallback do image.chain cobre esse caso raro.
+ *
+ * Motivo: o provedor de imagem baixa CADA URL; se UMA falha, o fallback derruba
+ * TODAS (text2img) e a base é perdida → o modelo ignora "mantenha o fundo".
+ * Filtrar aqui preserva a base quando só o produto (URL externa) está quebrado.
+ */
+async function filterUsableRefs(refs: RefImage[]): Promise<RefImage[]> {
+  if (refs.length === 0) return refs
+  const checks = await Promise.all(
+    refs.map((r) => isUsableProductImage(r.url, undefined, { rasterOnly: true })),
+  )
+  const kept: RefImage[] = []
+  refs.forEach((r, i) => {
+    const c = checks[i]
+    const definitivelyBad =
+      !c.usable &&
+      (c.reason === "not_image" ||
+        c.reason === "svg_not_raster" ||
+        c.reason === "missing_or_invalid_url" ||
+        (typeof c.status === "number" && c.status >= 400 && c.status < 500))
+    if (definitivelyBad) {
+      log.warn("generate.ref.dropped", {
+        label: r.label,
+        url: r.url,
+        reason: c.reason,
+        status: c.status,
+      })
+    } else {
+      kept.push(r)
+    }
+  })
+  return kept
+}
 
 /** Concorrência máxima de gerações simultâneas dentro de um lote. */
 const GENERATION_POOL_SIZE = 3
@@ -575,28 +614,32 @@ async function generateOneStoreImage(
     // a foto do produto-herói quando adapt_flags.catalogo. Logo via
     // pickBrandLogo (fallback multi-variante main→alt→monogram→reverse,
     // prefere PNG por ingeribilidade). Refs guardam contra URL vazia.
-    const refs: RefImage[] = []
+    const candidateRefs: RefImage[] = []
     if (batch.reference_image_url) {
       // Com ajuste, a base vira GUIA SOLTO (senão o modelo copia a base e ignora
       // o ajuste). Sem ajuste, é a referência-base normal do lote.
       const baseLabel = adjustmentNotes?.trim()
         ? "Previous composition — loose guide ONLY; you MUST apply the requested change below, do not copy it:"
         : "Base reference:"
-      refs.push({ label: baseLabel, url: batch.reference_image_url })
+      candidateRefs.push({ label: baseLabel, url: batch.reference_image_url })
     }
     if (flags.logo) {
       // rasterOnly: nunca manda SVG como referência (o modelo não baixa SVG →
       // 400). Sem PNG ⇒ picked=null ⇒ gera sem logo (sem erro). Uploads novos de
       // SVG já geram um PNG automático; isto cobre logos legados só-SVG.
       const picked = pickBrandLogo(ctx.brand, "png", { rasterOnly: true })
-      if (picked) refs.push({ label: "Brand logo — match this exactly:", url: picked.url })
+      if (picked) candidateRefs.push({ label: "Brand logo — match this exactly:", url: picked.url })
     }
     if (flags.catalogo) {
       const productImg = topProducts[0]?.image_url
       if (productImg) {
-        refs.push({ label: "Hero product — reproduce faithfully:", url: productImg })
+        candidateRefs.push({ label: "Hero product — reproduce faithfully:", url: productImg })
       }
     }
+    // Descarta refs definitivamente quebradas (produto com hotlink/404, etc.) SEM
+    // derrubar as boas — preserva a base pra o modelo manter o fundo. Se o provedor
+    // ainda falhar numa ref que passou aqui, o fallback do image.chain cobre.
+    const refs = await filterUsableRefs(candidateRefs)
     const hasRef = refs.length > 0
     const mode = hasRef ? "product_ref" : "text2img"
 
