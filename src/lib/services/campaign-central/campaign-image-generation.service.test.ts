@@ -1450,3 +1450,54 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
     expect(upd.tokensInput).toBe(42)
   })
 })
+
+describe("getBatchDownloadItems", () => {
+  function seedResult(
+    storeId: string,
+    status: string,
+    imageUrl: string | null,
+  ): void {
+    fx.results.set(resultKey(BATCH, storeId), {
+      id: `res-${storeId}`,
+      batch_id: BATCH,
+      store_id: storeId,
+      status,
+      image_url: imageUrl,
+      adjustment_notes: null,
+      error_message: null,
+      generated_via: "campaign_image:m",
+      generated_at: status === "ready" ? "2026-06-30T01:00:00Z" : null,
+    })
+  }
+
+  it("só retorna imagens prontas (ready/adjustment) com image_url + nome do lote", async () => {
+    seedBatch() // name "Hero", format "hero"
+    seedResult(STORE_A, "ready", "https://cdn/a.png")
+    seedResult(STORE_B, "adjustment", "https://cdn/b.png")
+    seedResult(STORE_C, "failed", null)
+
+    const out = await svc.getBatchDownloadItems(BATCH, ORG)
+    expect(out.batchName).toBe("Hero")
+    expect(out.format).toBe("hero")
+    expect(out.items).toHaveLength(2)
+    expect(out.items).toEqual(
+      expect.arrayContaining([
+        { storeName: "Loja 1111", imageUrl: "https://cdn/a.png" },
+        { storeName: "Loja 2222", imageUrl: "https://cdn/b.png" },
+      ]),
+    )
+  })
+
+  it("ignora ready sem image_url e pendentes (generating/queued)", async () => {
+    seedBatch()
+    seedResult(STORE_A, "ready", null) // pronto mas sem imagem
+    seedResult(STORE_B, "generating", null)
+    const out = await svc.getBatchDownloadItems(BATCH, ORG)
+    expect(out.items).toEqual([])
+  })
+
+  it("lote de outra org -> NotFoundError", async () => {
+    seedBatch()
+    await expect(svc.getBatchDownloadItems(BATCH, OTHER_ORG)).rejects.toThrow()
+  })
+})

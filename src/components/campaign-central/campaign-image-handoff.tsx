@@ -13,7 +13,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
+  Archive,
   CheckCircle2,
+  Download,
   ImagePlus,
   Loader2,
   Plus,
@@ -32,6 +34,7 @@ import type {
   CampaignImageTargetStore,
   CampaignImageTextContext,
 } from "@/types/campaign-central"
+import { useToast } from "@/lib/hooks/use-toast"
 
 const FORMAT_LABEL: Record<CampaignImageFormat, string> = {
   hero: "Hero (4:3)",
@@ -107,6 +110,66 @@ function countByStatus(results: CampaignImageResult[]): {
     else pending++
   }
   return { ready, pending, failed }
+}
+
+// ── Download helpers (client) ────────────────────────────────────────
+// As imagens são signed URLs cross-origin do Supabase Storage — `<a download>`
+// puro é ignorado, então baixamos via fetch → blob → objectURL.
+
+/** Dispara o download de um Blob no browser (objectURL + <a download>). */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** Extensão do path da URL (ignora query string); default png. */
+function extFromUrl(url: string): string {
+  const path = url.split("?")[0] ?? ""
+  const m = path.match(/\.([a-z0-9]{3,4})$/i)
+  return m ? m[1].toLowerCase() : "png"
+}
+
+/** Nome de arquivo seguro pra imagem individual: {loja}_{formato}.{ext}. */
+function imageFilename(storeName: string, format: string, url: string): string {
+  const safe =
+    storeName
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "imagem"
+  return `${safe}_${format}.${extFromUrl(url)}`
+}
+
+/** Baixa uma imagem por URL (signed URL cross-origin → fetch+blob). */
+async function downloadImageUrl(url: string, filename: string): Promise<void> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Falha ao baixar (HTTP ${res.status})`)
+  triggerBlobDownload(await res.blob(), filename)
+}
+
+/** Baixa o corpo de uma resposta como arquivo (filename do Content-Disposition). */
+async function downloadResponseAsFile(res: Response, fallback: string): Promise<void> {
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as {
+      error?: string | { message?: string }
+    }
+    const msg =
+      typeof j.error === "string"
+        ? j.error
+        : j.error?.message || `Falha ao baixar (HTTP ${res.status})`
+    throw new Error(msg)
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? ""
+  const match = disposition.match(/filename="?([^"]+)"?/)
+  triggerBlobDownload(await res.blob(), match?.[1] ?? fallback)
 }
 
 export function CampaignImageHandoff({
@@ -454,7 +517,9 @@ function BatchEditor({
   const [refUrl, setRefUrl] = useState<string | null>(batch.reference_image_url)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [downloadingAll, setDownloadingAll] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const toast = useToast()
 
   // Persiste edição do lote (PATCH via POST create? não — usa endpoint dedicado).
   const saveBatch = useCallback(
@@ -551,6 +616,26 @@ function BatchEditor({
   const anyPending = results.some(
     (r) => r.status === "queued" || r.status === "generating",
   )
+  const readyCount = countByStatus(results).ready
+
+  // Baixa todas as imagens prontas do lote num .zip (montado no servidor).
+  const handleDownloadAll = useCallback(async () => {
+    setDownloadingAll(true)
+    try {
+      const res = await fetch(
+        `/api/tasks/${taskId}/campaign-images/download-zip?batch_id=${batch.id}`,
+      )
+      await downloadResponseAsFile(res, `${batch.name || "imagens"}.zip`)
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao baixar",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setDownloadingAll(false)
+    }
+  }, [taskId, batch.id, batch.name, toast])
 
   return (
     <div>
@@ -764,25 +849,44 @@ function BatchEditor({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onGenerate}
-          disabled={generating || anyPending || stores.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-[6px] bg-foreground px-3.5 py-2 text-[12.5px] font-semibold text-background hover:opacity-90 disabled:opacity-50"
-        >
-          {generating || anyPending ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Sparkles size={14} />
+        <div className="flex items-center gap-1.5">
+          {readyCount > 0 && (
+            <button
+              type="button"
+              onClick={handleDownloadAll}
+              disabled={downloadingAll}
+              title={`Baixar ${readyCount} imagem${readyCount === 1 ? "" : "ns"} em .zip`}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-3 py-2 text-[12.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
+            >
+              {downloadingAll ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Archive size={14} />
+              )}
+              Baixar todas
+            </button>
           )}
-          Gerar {stores.length} imagem{stores.length === 1 ? "" : "ns"}
-        </button>
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating || anyPending || stores.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-[6px] bg-foreground px-3.5 py-2 text-[12.5px] font-semibold text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {generating || anyPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Sparkles size={14} />
+            )}
+            Gerar {stores.length} imagem{stores.length === 1 ? "" : "ns"}
+          </button>
+        </div>
       </div>
 
       {/* Grid de resultados por loja */}
       <ResultsGrid
         taskId={taskId}
         batchId={batch.id}
+        format={batch.format}
         stores={stores}
         results={results}
         onResultChange={onResultChange}
@@ -796,12 +900,14 @@ function BatchEditor({
 function ResultsGrid({
   taskId,
   batchId,
+  format,
   stores,
   results,
   onResultChange,
 }: {
   taskId: string
   batchId: string
+  format: CampaignImageFormat
   stores: CampaignImageTargetStore[]
   results: CampaignImageResult[]
   onResultChange: (r: CampaignImageResult) => void
@@ -827,6 +933,7 @@ function ResultsGrid({
           key={s.store_id}
           taskId={taskId}
           batchId={batchId}
+          format={format}
           store={s}
           result={byStore.get(s.store_id) ?? null}
           onResultChange={onResultChange}
@@ -839,12 +946,14 @@ function ResultsGrid({
 function ResultCard({
   taskId,
   batchId,
+  format,
   store,
   result,
   onResultChange,
 }: {
   taskId: string
   batchId: string
+  format: CampaignImageFormat
   store: CampaignImageTargetStore
   result: CampaignImageResult | null
   onResultChange: (r: CampaignImageResult) => void
@@ -852,10 +961,34 @@ function ResultCard({
   const [adjusting, setAdjusting] = useState(false)
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const toast = useToast()
 
   const status = result?.status ?? "queued"
   const sm = statusMeta(status)
   const isPending = status === "queued" || status === "generating"
+  const canDownload =
+    !!result?.image_url && (status === "ready" || status === "adjustment")
+
+  // Baixa esta imagem (signed URL cross-origin → fetch+blob).
+  const handleDownload = useCallback(async () => {
+    if (!result?.image_url) return
+    setDownloading(true)
+    try {
+      await downloadImageUrl(
+        result.image_url,
+        imageFilename(store.store_name, format, result.image_url),
+      )
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao baixar",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setDownloading(false)
+    }
+  }, [result?.image_url, store.store_name, format, toast])
 
   const regenerate = useCallback(
     async (adjustmentNotes: string | null) => {
@@ -986,6 +1119,22 @@ function ResultCard({
               >
                 <Sparkles size={12} />
                 Regerar com ajuste
+              </button>
+            )}
+            {canDownload && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
+                title="Baixar imagem"
+                className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
+              >
+                {downloading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Download size={12} />
+                )}
+                Baixar
               </button>
             )}
           </div>

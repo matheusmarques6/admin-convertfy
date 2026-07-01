@@ -879,6 +879,61 @@ export async function regenerateResult(
   return mapResultRow(data as ResultRow, meta)
 }
 
+/**
+ * Itens de UM lote prontos pra download (imagem gerada). Alimenta a rota de ZIP
+ * em lote. Valida `org_id` na leitura do lote e devolve só resultados com imagem
+ * (status ready/adjustment). `format` é do lote — igual pra todos os itens.
+ */
+export async function getBatchDownloadItems(
+  batchId: string,
+  orgId: string,
+): Promise<{
+  batchName: string
+  format: CampaignImageFormat
+  items: Array<{ storeName: string; imageUrl: string }>
+}> {
+  const admin = createAdminClient()
+
+  const { data: batchData } = await admin
+    .from("campaign_image_batches")
+    .select("id, name, format")
+    .eq("id", batchId)
+    .eq("org_id", orgId)
+    .maybeSingle<{ id: string; name: string; format: CampaignImageFormat }>()
+  if (!batchData) throw new NotFoundError("Lote")
+
+  // Traz todos os resultados do lote e filtra em JS os que têm imagem pronta
+  // (ready/adjustment). Um lote tem poucos resultados (1 por loja-alvo).
+  const { data: resultRows } = await admin
+    .from("campaign_image_results")
+    .select("store_id, status, image_url")
+    .eq("batch_id", batchId)
+
+  const rows =
+    (resultRows as Array<{
+      store_id: string
+      status: CampaignImageResultStatus
+      image_url: string | null
+    }> | null) ?? []
+
+  const ready = rows.filter(
+    (r): r is { store_id: string; status: CampaignImageResultStatus; image_url: string } =>
+      (r.status === "ready" || r.status === "adjustment") && !!r.image_url,
+  )
+
+  const meta = await loadStoreMeta(
+    admin,
+    ready.map((r) => r.store_id),
+  )
+
+  const items = ready.map((r) => ({
+    storeName: meta.get(r.store_id)?.store_name ?? "Loja",
+    imageUrl: r.image_url,
+  }))
+
+  return { batchName: batchData.name, format: batchData.format, items }
+}
+
 /** Recarrega 1 lote + resultados (usado após geração). */
 async function loadBatchWithResults(
   admin: AdminClient,
