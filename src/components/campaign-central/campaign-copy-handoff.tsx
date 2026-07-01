@@ -55,15 +55,6 @@ const TYPE_LABEL: Record<string, string> = {
   footer: "Rodapé",
 }
 
-const BADGE_COLORS = [
-  "bg-blue-600",
-  "bg-emerald-600",
-  "bg-amber-500",
-  "bg-violet-600",
-  "bg-rose-500",
-  "bg-slate-700",
-]
-
 function initials(name: string): string {
   return (
     name
@@ -413,20 +404,8 @@ export function CampaignCopyHandoff({
                         {(current.copy.blocks ?? []).map((b, i) => (
                           <div key={b.id ?? i} className="flex gap-3 px-3 py-3">
                             <div className="flex w-36 shrink-0 flex-col gap-1">
-                              <span className="flex items-center gap-1.5">
-                                <span
-                                  className={`flex h-5 w-5 items-center justify-center rounded-[5px] text-[11px] font-bold text-white ${
-                                    BADGE_COLORS[i % BADGE_COLORS.length]
-                                  }`}
-                                >
-                                  {i + 1}
-                                </span>
-                                <span className="text-[12.5px] font-semibold text-foreground">
-                                  {b.section || TYPE_LABEL[b.type] || b.type}
-                                </span>
-                              </span>
-                              <span className="text-[11px] text-muted-foreground">
-                                {TYPE_LABEL[b.type] || b.type}
+                              <span className="text-[12.5px] font-semibold text-foreground">
+                                {b.section || TYPE_LABEL[b.type] || b.type}
                               </span>
                             </div>
                             <div className="min-w-0 flex-1">
