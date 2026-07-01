@@ -262,6 +262,47 @@ describe("buildHtmlPromptVars", () => {
     )
   })
 
+  it("não-regressão T3.2: SVG do main falha (404) mas há PNG do main → <img> do PNG do MAIN", async () => {
+    // Path load-bearing: main tem svg E png. O fetch do svg falha; o fallback
+    // NAO desiste do logo — cai pro PNG DA MESMA VARIANTE (main). Comportamento
+    // identico ao pre-pickBrandLogo (que lia brand.logo_main_png direto).
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      text: async () => "",
+    })
+    const mainSvgAndPng = {
+      ...baseBrand,
+      logo_main_svg: "https://storage.example/logo-main.svg",
+      logo_main_png: "https://cdn.externo.com/main.png",
+    }
+    const vars = await setup({ brand: mainSvgAndPng })
+    expect(vars.logo_svg).toContain('<img src="https://cdn.externo.com/main.png"')
+    expect(vars.logo_svg).not.toContain("<svg")
+  })
+
+  it("não-regressão T3.2: SVG do main falha NÃO pula pra outra variante (usa PNG do main, não alt)", async () => {
+    // Guard contra variant-jump no fallback de formato: main tem svg (que falha)
+    // + png; alt tem png. O fallback deve usar o PNG DO MAIN (mesma variante),
+    // jamais o PNG do alt. Se pulasse variante, retornaria alt.png (regressao).
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: { get: () => null },
+      text: async () => "",
+    })
+    const mainSvgFailAltPng = {
+      ...baseBrand,
+      logo_main_svg: "https://storage.example/logo-main.svg",
+      logo_main_png: "https://cdn.externo.com/main.png",
+      logo_alt_png: "https://cdn.externo.com/alt.png",
+    }
+    const vars = await setup({ brand: mainSvgFailAltPng })
+    expect(vars.logo_svg).toContain("main.png")
+    expect(vars.logo_svg).not.toContain("alt.png")
+  })
+
   it("relaxedBrandCheck=true + brand sem cores nem logo → nao joga, logo_svg vazio", async () => {
     const vazia = {
       ...baseBrand,

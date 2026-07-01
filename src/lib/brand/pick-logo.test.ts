@@ -123,4 +123,31 @@ describe("pickBrandLogo", () => {
     const brand = { ...EMPTY, logo_main_png: "  main.png  " }
     expect(pickBrandLogo(brand, "png")?.url).toBe("main.png")
   })
+
+  it("reporta variant+format corretos ao cair numa variante intermediaria (mixed formats)", () => {
+    // main vazio; alt so tem svg (formato != prefer); monogram tem png.
+    // prefer=png: alt vence (proxima variante nao-vazia), reportando o svg do
+    // alt com format='svg' e variant='alt' (NAO pula pro png do monogram).
+    const brand = {
+      ...EMPTY,
+      logo_alt_svg: "alt.svg",
+      logo_monogram_png: "mono.png",
+    }
+    expect(pickBrandLogo(brand, "png")).toEqual({
+      url: "alt.svg",
+      format: "svg",
+      variant: "alt",
+    })
+  })
+
+  it("prefer=svg atravessando ate reverse: reporta variant='reverse' + format correto", () => {
+    // Ninguem tem svg; so reverse tem png. prefer=svg cai pro png do reverse,
+    // reportando variant='reverse' e format='png' (fim da cadeia).
+    const brand = { ...EMPTY, logo_reverse_png: "rev.png" }
+    expect(pickBrandLogo(brand, "svg")).toEqual({
+      url: "rev.png",
+      format: "png",
+      variant: "reverse",
+    })
+  })
 })
