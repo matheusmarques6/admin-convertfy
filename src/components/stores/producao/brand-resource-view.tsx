@@ -372,6 +372,50 @@ export function BrandResourceView({
     }
   }
 
+  // Remove uma variante de logo (nunca a Principal). Dois casos: variante
+  // "sendo adicionada" e ainda vazia -> so tira do addingVariants (sem backend);
+  // variante preenchida -> PATCH nulando svg+png (cria nova versao) + refetch.
+  const [removingSlot, setRemovingSlot] = useState<LogoVariantSlot | null>(null)
+
+  const removeVariant = async (slot: LogoVariantSlot) => {
+    setAddingVariants((prev) => {
+      if (!prev.has(slot)) return prev
+      const next = new Set(prev)
+      next.delete(slot)
+      return next
+    })
+    if (!variantFilled(brand, slot)) return
+    if (removingSlot) return
+    setRemovingSlot(slot)
+    try {
+      const r = await fetch(`/api/admin/stores/${storeId}/brand-identity`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [`${slot}_svg`]: null,
+          [`${slot}_png`]: null,
+        }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message || body?.error || "Falha ao remover")
+      }
+      toast.toast({
+        title: "Variante removida",
+        description: "A nova versao ja esta disponivel.",
+      })
+      onChanged()
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao remover variante",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+      })
+    } finally {
+      setRemovingSlot(null)
+    }
+  }
+
   // Upload de selo de confianca (PNG). Diferente do logo: NAO faz commit
   // no banco — retorna a URL assinada e adiciona/atualiza no brandDraft.
   // Persistencia acontece no Save geral. idx="new" = append, numero = replace
@@ -1062,6 +1106,8 @@ export function BrandResourceView({
                   uploadingPng={uploadingSlot === `${v.slot}_png`}
                   onUploadSvg={(file) => uploadLogo(`${v.slot}_svg`, file)}
                   onUploadPng={(file) => uploadLogo(`${v.slot}_png`, file)}
+                  onRemove={() => removeVariant(v.slot)}
+                  removing={removingSlot === v.slot}
                   preview={renderVariantPreview(v.slot)}
                 />
               ))}
@@ -2100,6 +2146,8 @@ function LogoCard({
   uploadingPng,
   onUploadSvg,
   onUploadPng,
+  onRemove,
+  removing,
 }: {
   title: string
   subtitle: string
@@ -2112,16 +2160,46 @@ function LogoCard({
   uploadingPng?: boolean
   onUploadSvg?: (file: File) => void
   onUploadPng?: (file: File) => void
+  onRemove?: () => void
+  removing?: boolean
 }) {
   return (
     <div
       style={{
+        position: "relative",
         background: "var(--crm-gray-0)",
         border: "1px solid var(--crm-border)",
         borderRadius: 10,
         overflow: "hidden",
       }}
     >
+      {editing && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={removing}
+          title="Remover variante"
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            zIndex: 2,
+            width: 22,
+            height: 22,
+            borderRadius: 6,
+            background: "rgba(0,0,0,0.55)",
+            color: "#fff",
+            border: 0,
+            cursor: removing ? "default" : "pointer",
+            opacity: removing ? 0.6 : 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <div
         className="flex items-center justify-center"
         style={{
