@@ -2670,6 +2670,51 @@ function ColorSwatch({
   )
 }
 
+/** Extrai um peso numerico 100-900 de "900"/"Regular 400"/"Medium 500". */
+function parseFontWeight(
+  weight: string | null | undefined,
+  fallback: number,
+): number {
+  const m = (weight ?? "").match(/[1-9]00/)
+  const n = m ? Number(m[0]) : NaN
+  return n >= 100 && n <= 900 ? n : fallback
+}
+
+// Cache de hrefs ja injetados (dedup). As fontes ficam no <head> — sao leves.
+const loadedGoogleFonts = new Set<string>()
+
+/** Carrega a familia do Google Fonts no <head> (debounced ~500ms, dedup por
+ *  href). Best-effort: so Google Fonts; fonte custom/Adobe cai no fallback
+ *  sans-serif. Faz o preview "Aa" refletir de fato a fonte digitada. */
+function useGoogleFont(
+  family: string | null | undefined,
+  weight?: string | null,
+): void {
+  useEffect(() => {
+    const fam = (family ?? "").trim()
+    if (!fam) return
+    const t = setTimeout(() => {
+      const wght = parseFontWeight(weight, 400)
+      const weights = Array.from(
+        new Set([300, 400, 500, 600, 700, 800, 900, wght]),
+      )
+        .sort((a, b) => a - b)
+        .join(";")
+      const href = `https://fonts.googleapis.com/css2?family=${fam.replace(
+        /\s+/g,
+        "+",
+      )}:wght@${weights}&display=swap`
+      if (loadedGoogleFonts.has(href)) return
+      loadedGoogleFonts.add(href)
+      const link = document.createElement("link")
+      link.rel = "stylesheet"
+      link.href = href
+      document.head.appendChild(link)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [family, weight])
+}
+
 function FontPreviewEdit({
   label,
   family,
@@ -2683,6 +2728,7 @@ function FontPreviewEdit({
   onChange: (family: string | null, weight: string | null) => void
   big?: boolean
 }) {
+  useGoogleFont(family, weight)
   return (
     <div
       style={{
@@ -2710,7 +2756,7 @@ function FontPreviewEdit({
         <div
           style={{
             fontSize: big ? 56 : 36,
-            fontWeight: big ? 900 : 400,
+            fontWeight: parseFontWeight(weight, big ? 900 : 400),
             color: "var(--crm-gray-900)",
             fontFamily: family ? `'${family}', sans-serif` : "sans-serif",
             lineHeight: 1,
@@ -2768,6 +2814,7 @@ function FontPreview({
   sample: string
   big?: boolean
 }) {
+  useGoogleFont(family, weight)
   const googleFontsUrl = `https://fonts.google.com/specimen/${encodeURIComponent(
     family.replace(/\s+/g, "+"),
   )}`
@@ -2798,7 +2845,7 @@ function FontPreview({
         <div
           style={{
             fontSize: big ? 56 : 36,
-            fontWeight: big ? 900 : 400,
+            fontWeight: parseFontWeight(weight, big ? 900 : 400),
             color: "var(--crm-gray-900)",
             fontFamily: `'${family}', sans-serif`,
             lineHeight: 1,
