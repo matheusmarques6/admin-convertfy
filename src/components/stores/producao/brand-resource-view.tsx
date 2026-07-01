@@ -137,6 +137,57 @@ function diffStore(
   return { niche: draft.niche }
 }
 
+// ── Variantes opcionais de logo ──────────────────────────────────────
+// A logo PRINCIPAL (logo_main) e' sempre renderizada em destaque (e' a que os
+// agentes usam). Estas 3 variantes so aparecem quando preenchidas OU quando o
+// designer clica "Adicionar variante". `slot` = prefixo das colunas svg/png.
+type LogoVariantSlot = "logo_alt" | "logo_monogram" | "logo_reverse"
+
+interface LogoVariantDef {
+  slot: LogoVariantSlot
+  title: string
+  subtitle: string
+  /** Fundo do preview (reversa usa fundo escuro). */
+  bg: string
+  /** Rotulo curto no menu "Adicionar variante". */
+  addLabel: string
+}
+
+const LOGO_VARIANTS: LogoVariantDef[] = [
+  {
+    slot: "logo_alt",
+    title: "Wordmark · azul",
+    subtitle: "Versão em destaque",
+    bg: "#FFFFFF",
+    addLabel: "Wordmark azul",
+  },
+  {
+    slot: "logo_monogram",
+    title: "Monograma",
+    subtitle: "Avatar · favicon · selo",
+    bg: "#FFFFFF",
+    addLabel: "Monograma",
+  },
+  {
+    slot: "logo_reverse",
+    title: "Versão reversa",
+    subtitle: "Pra fundos escuros",
+    bg: "#0F0F0F",
+    addLabel: "Versão reversa",
+  },
+]
+
+/** Uma variante esta "preenchida" se tem svg OU png. */
+function variantFilled(
+  brand: StoreBrandIdentity | null,
+  slot: LogoVariantSlot,
+): boolean {
+  return !!(
+    brand?.[`${slot}_svg` as keyof StoreBrandIdentity] ||
+    brand?.[`${slot}_png` as keyof StoreBrandIdentity]
+  )
+}
+
 interface BrandResourceViewProps {
   storeId: string
   storeName: string
@@ -200,6 +251,7 @@ export function BrandResourceView({
     setBrandDraft(initBrandDraft(brand))
     setBriefingDraft(initBriefingDraft(briefing))
     setStoreDraft(initStoreDraft(store))
+    setAddingVariants(new Set())
     setMode("edit")
   }
 
@@ -238,6 +290,54 @@ export function BrandResourceView({
   // setando o slot, então só refetchamos no fim.
   const uploadingRef = useRef<string | null>(null)
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null)
+
+  // Variantes de logo (alt/monograma/reversa) que o designer escolheu
+  // ADICIONAR mas que ainda estao vazias — mostra o card em estado de upload
+  // ate ele subir o arquivo (refetch limpa o set naturalmente pois a variante
+  // passa a estar "preenchida"). So relevante em modo edit.
+  const [addingVariants, setAddingVariants] = useState<Set<LogoVariantSlot>>(
+    () => new Set(),
+  )
+
+  // Preview visual (placeholder) de cada variante de logo — so aparece quando
+  // a variante nao tem imagem. Mesmos visuais dos cards originais.
+  const renderVariantPreview = (slot: LogoVariantSlot): React.ReactNode => {
+    const brandColor = brand?.colors_primary?.[0]?.hex ?? "var(--crm-brand)"
+    if (slot === "logo_monogram") {
+      return (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            background: brandColor,
+            color: "#fff",
+            fontSize: 36,
+            fontWeight: 900,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 10,
+          }}
+        >
+          {monogramLetter}
+        </div>
+      )
+    }
+    // logo_alt (wordmark colorido) e logo_reverse (wordmark em fundo escuro)
+    return (
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 900,
+          letterSpacing: "-0.02em",
+          color: slot === "logo_reverse" ? "#fff" : brandColor,
+          textTransform: "uppercase",
+        }}
+      >
+        {wordmark}
+      </div>
+    )
+  }
 
   const uploadLogo = async (slot: string, file: File) => {
     if (uploadingRef.current) return
@@ -347,6 +447,7 @@ export function BrandResourceView({
     setBrandDraft(initBrandDraft(brand))
     setBriefingDraft(initBriefingDraft(briefing))
     setStoreDraft(initStoreDraft(store))
+    setAddingVariants(new Set())
     setMode("view")
   }
 
@@ -906,8 +1007,8 @@ export function BrandResourceView({
       {/* Body */}
       <div style={{ padding: "32px 32px 48px" }}>
         <>
-            {/* Logos */}
-            <SectionTitle title="Logo" subtitle="Versões oficiais da marca · clique em baixar para o SVG" />
+            {/* Logos — principal em destaque + variantes opcionais */}
+            <SectionTitle title="Logo" subtitle="Versão principal da marca (usada nas automações) · variantes são opcionais" />
             <div
               className="grid gap-4"
               style={{
@@ -915,6 +1016,7 @@ export function BrandResourceView({
                 marginTop: 16,
               }}
             >
+              {/* Principal (logo_main): SEMPRE visivel, e' a que os agentes usam */}
               <LogoCard
                 title="Wordmark"
                 subtitle="Versão principal"
@@ -940,88 +1042,54 @@ export function BrandResourceView({
                   </div>
                 }
               />
-              <LogoCard
-                title="Wordmark · azul"
-                subtitle="Versão em destaque"
-                svg={brand?.logo_alt_svg ?? null}
-                png={brand?.logo_alt_png ?? null}
-                bg="#FFFFFF"
-                editing={mode === "edit"}
-                uploadingSvg={uploadingSlot === "logo_alt_svg"}
-                uploadingPng={uploadingSlot === "logo_alt_png"}
-                onUploadSvg={(file) => uploadLogo("logo_alt_svg", file)}
-                onUploadPng={(file) => uploadLogo("logo_alt_png", file)}
-                preview={
-                  <div
-                    style={{
-                      fontSize: 28,
-                      fontWeight: 900,
-                      letterSpacing: "-0.02em",
-                      color: brand?.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {wordmark}
-                  </div>
-                }
-              />
-              <LogoCard
-                title={`Monograma · ${monogramLetter}`}
-                subtitle="Avatar · favicon · selo"
-                svg={brand?.logo_monogram_svg ?? null}
-                png={brand?.logo_monogram_png ?? null}
-                bg="#FFFFFF"
-                editing={mode === "edit"}
-                uploadingSvg={uploadingSlot === "logo_monogram_svg"}
-                uploadingPng={uploadingSlot === "logo_monogram_png"}
-                onUploadSvg={(file) => uploadLogo("logo_monogram_svg", file)}
-                onUploadPng={(file) => uploadLogo("logo_monogram_png", file)}
-                preview={
-                  <div
-                    style={{
-                      width: 64,
-                      height: 64,
-                      background:
-                        brand?.colors_primary?.[0]?.hex ?? "var(--crm-brand)",
-                      color: "#fff",
-                      fontSize: 36,
-                      fontWeight: 900,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 10,
-                    }}
-                  >
-                    {monogramLetter}
-                  </div>
-                }
-              />
-              <LogoCard
-                title="Versão reversa"
-                subtitle="Pra fundos escuros"
-                svg={brand?.logo_reverse_svg ?? null}
-                png={brand?.logo_reverse_png ?? null}
-                bg="#0F0F0F"
-                editing={mode === "edit"}
-                uploadingSvg={uploadingSlot === "logo_reverse_svg"}
-                uploadingPng={uploadingSlot === "logo_reverse_png"}
-                onUploadSvg={(file) => uploadLogo("logo_reverse_svg", file)}
-                onUploadPng={(file) => uploadLogo("logo_reverse_png", file)}
-                preview={
-                  <div
-                    style={{
-                      fontSize: 28,
-                      fontWeight: 900,
-                      letterSpacing: "-0.02em",
-                      color: "#fff",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {wordmark}
-                  </div>
-                }
-              />
+
+              {/* Variantes: so renderiza as preenchidas OU as que o designer
+                  escolheu adicionar (addingVariants). Nunca cards vazios. */}
+              {LOGO_VARIANTS.filter(
+                (v) =>
+                  variantFilled(brand, v.slot) ||
+                  (mode === "edit" && addingVariants.has(v.slot)),
+              ).map((v) => (
+                <LogoCard
+                  key={v.slot}
+                  title={v.slot === "logo_monogram" ? `${v.title} · ${monogramLetter}` : v.title}
+                  subtitle={v.subtitle}
+                  svg={(brand?.[`${v.slot}_svg` as keyof StoreBrandIdentity] as string | null) ?? null}
+                  png={(brand?.[`${v.slot}_png` as keyof StoreBrandIdentity] as string | null) ?? null}
+                  bg={v.bg}
+                  editing={mode === "edit"}
+                  uploadingSvg={uploadingSlot === `${v.slot}_svg`}
+                  uploadingPng={uploadingSlot === `${v.slot}_png`}
+                  onUploadSvg={(file) => uploadLogo(`${v.slot}_svg`, file)}
+                  onUploadPng={(file) => uploadLogo(`${v.slot}_png`, file)}
+                  preview={renderVariantPreview(v.slot)}
+                />
+              ))}
             </div>
+
+            {/* "Adicionar variante" (so em edit): revela o card de upload de uma
+                variante ainda ausente. Some quando as 3 ja estao presentes. */}
+            {mode === "edit" &&
+              (() => {
+                const available = LOGO_VARIANTS.filter(
+                  (v) => !variantFilled(brand, v.slot) && !addingVariants.has(v.slot),
+                )
+                if (available.length === 0) return null
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <AddVariantControl
+                      options={available}
+                      onSelect={(slot) =>
+                        setAddingVariants((prev) => {
+                          const next = new Set(prev)
+                          next.add(slot)
+                          return next
+                        })
+                      }
+                    />
+                  </div>
+                )
+              })()}
 
             {/* Cores principais */}
             <SectionTitle title="Cores principais" style={{ marginTop: 40 }} />
@@ -1917,6 +1985,103 @@ function SectionTitle({
         >
           {subtitle}
         </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Botao "Adicionar variante" + menu das variantes ainda ausentes. Ao escolher
+ * uma, o pai revela o card dela em estado de upload. So aparece em modo edit e
+ * quando ha ao menos uma variante disponivel. Tokens CRM (radius 4-6px, border,
+ * sem sombra grande).
+ */
+function AddVariantControl({
+  options,
+  onSelect,
+}: {
+  options: LogoVariantDef[]
+  onSelect: (slot: LogoVariantSlot) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          height: 30,
+          padding: "0 12px",
+          background: "var(--crm-gray-0)",
+          border: "1px dashed var(--crm-border)",
+          borderRadius: 6,
+          color: "var(--crm-gray-700)",
+          fontSize: 12,
+          fontWeight: 600,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: "pointer",
+        }}
+      >
+        <Plus className="h-3 w-3" />
+        Adicionar variante
+      </button>
+      {open && (
+        <>
+          {/* Backdrop pra fechar ao clicar fora */}
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 10 }}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 4px)",
+              left: 0,
+              zIndex: 11,
+              minWidth: 180,
+              background: "var(--crm-gray-0)",
+              border: "1px solid var(--crm-border)",
+              borderRadius: 6,
+              padding: 4,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            }}
+          >
+            {options.map((v) => (
+              <button
+                key={v.slot}
+                type="button"
+                onClick={() => {
+                  onSelect(v.slot)
+                  setOpen(false)
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "7px 10px",
+                  background: "transparent",
+                  border: "none",
+                  borderRadius: 4,
+                  color: "var(--crm-gray-800)",
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--crm-gray-100)"
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent"
+                }}
+              >
+                {v.addLabel}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
