@@ -49,17 +49,26 @@ function cleanUrl(v: string | null | undefined): string | null {
  * Devolve a 1a logo disponivel varrendo [main, alt, monogram, reverse]; em cada
  * variante prefere `prefer` e cai pro outro formato. `null` se nao houver
  * nenhuma logo (todas as 8 colunas vazias/ausentes).
+ *
+ * `opts.rasterOnly`: NAO cai pro formato SVG (pula-o). Usado pelo agente de
+ * imagem — modelos de imagem nao baixam/decodificam SVG, entao um SVG como
+ * referencia causa 400. Com rasterOnly, prefere PNG de outra variante e, se nao
+ * houver PNG em lugar nenhum, devolve `null` (gera sem logo, sem erro).
  */
 export function pickBrandLogo(
   brand: Partial<LogoCols> | null | undefined,
   prefer: LogoFormat = "png",
+  opts?: { rasterOnly?: boolean },
 ): PickedLogo | null {
   if (!brand) return null
   const other: LogoFormat = prefer === "png" ? "svg" : "png"
+  const rasterOnly = opts?.rasterOnly ?? false
 
   for (const variant of VARIANTS) {
     const preferred = cleanUrl(brand[`logo_${variant}_${prefer}` as keyof LogoCols])
     if (preferred) return { url: preferred, format: prefer, variant }
+    // rasterOnly: nunca cai pro SVG (so um raster serve pro agente de imagem).
+    if (rasterOnly && other === "svg") continue
     const fallback = cleanUrl(brand[`logo_${variant}_${other}` as keyof LogoCols])
     if (fallback) return { url: fallback, format: other, variant }
   }

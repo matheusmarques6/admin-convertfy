@@ -150,4 +150,39 @@ describe("pickBrandLogo", () => {
       variant: "reverse",
     })
   })
+
+  describe("rasterOnly (agente de imagem: nunca SVG)", () => {
+    it("pula o svg e pega o png de variante posterior", () => {
+      // main so tem svg; alt tem png. rasterOnly pula o svg do main → alt.png.
+      const brand = { ...EMPTY, logo_main_svg: "main.svg", logo_alt_png: "alt.png" }
+      expect(pickBrandLogo(brand, "png", { rasterOnly: true })).toEqual({
+        url: "alt.png",
+        format: "png",
+        variant: "alt",
+      })
+    })
+
+    it("so svg em todas as variantes → null (gera sem logo, sem erro)", () => {
+      const brand = { ...EMPTY, logo_main_svg: "m.svg", logo_reverse_svg: "r.svg" }
+      expect(pickBrandLogo(brand, "png", { rasterOnly: true })).toBeNull()
+    })
+
+    it("png presente → retorna png normalmente", () => {
+      const brand = { ...EMPTY, logo_main_png: "main.png" }
+      expect(pickBrandLogo(brand, "png", { rasterOnly: true })).toEqual({
+        url: "main.png",
+        format: "png",
+        variant: "main",
+      })
+    })
+
+    it("sem rasterOnly (default) mantem o fallback pro svg (nao-regressao)", () => {
+      const brand = { ...EMPTY, logo_main_svg: "main.svg", logo_alt_png: "alt.png" }
+      expect(pickBrandLogo(brand, "png")).toEqual({
+        url: "main.svg",
+        format: "svg",
+        variant: "main",
+      })
+    })
+  })
 })

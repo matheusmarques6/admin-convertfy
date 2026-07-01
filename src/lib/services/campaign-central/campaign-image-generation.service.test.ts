@@ -1355,7 +1355,9 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
     ])
   })
 
-  it("SVG-only (png null, svg set): anexa a URL do SVG", async () => {
+  it("SVG-only (png null, svg set): NÃO anexa o logo (rasterOnly — modelo não baixa SVG)", async () => {
+    // Antes o SVG era anexado; agora o ref de logo é rasterOnly (o provedor não
+    // baixa/decodifica SVG → 400). Sem PNG, o logo é ignorado → text2img.
     fx.brandOverride = {
       logo_main_png: null,
       logo_main_svg: "https://cdn/logo.svg",
@@ -1365,10 +1367,8 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
 
     await svc.generateBatch(BATCH, ORG)
 
-    expect(lastOptions().referenceImages).toContainEqual({
-      label: "Brand logo — match this exactly:",
-      url: "https://cdn/logo.svg",
-    })
+    expect(lastOptions().mode).toBe("text2img")
+    expect(lastOptions().referenceImages).toBeUndefined()
   })
 
   it("fallback: logo SÓ em logo_alt_png (sem main): anexa a variante alt", async () => {

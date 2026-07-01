@@ -84,6 +84,26 @@ function isMultimodalUnsupportedError(body: string): boolean {
 }
 
 /**
+ * Heuristica pra "o provedor nao conseguiu BAIXAR a URL de referencia" (ex.:
+ * OpenRouter 400 "Error while downloading file. Upstream status code: 400" com
+ * param "url"/invalid_value). Diferente do multimodal-unsupported (o modelo
+ * ACEITA imagem, mas a URL especifica falhou). Trata igual: rebaixa pra text2img
+ * em vez de falhar duro — melhor imagem generica que erro.
+ */
+function isImageDownloadError(body: string): boolean {
+  const lower = body.toLowerCase()
+  return (
+    lower.includes("error while downloading") ||
+    lower.includes("failed to download") ||
+    lower.includes("could not download") ||
+    lower.includes("upstream status") ||
+    (lower.includes('"param"') &&
+      lower.includes('"url"') &&
+      lower.includes("invalid"))
+  )
+}
+
+/**
  * Heuristica pra detectar erro "modelo nao aceita role=system" no body
  * de uma resposta 4xx do OpenRouter. Quando dispara, a chain retry uma
  * vez concatenando system_prompt + "\n\n" + user prompt no mesmo user
@@ -398,11 +418,12 @@ export async function generateEmailImage(
     // UMA vez em modo text2img puro. Apenas pra 4xx; 5xx propaga.
     if (!res.ok && useMultimodal && res.status >= 400 && res.status < 500) {
       const errText = await res.text().catch(() => "")
-      if (isMultimodalUnsupportedError(errText)) {
+      if (isMultimodalUnsupportedError(errText) || isImageDownloadError(errText)) {
         log.warn("image.multimodal.fallback_text2img", {
           storeId,
           attempt,
           status: res.status,
+          reason: isImageDownloadError(errText) ? "ref_download_failed" : "unsupported",
           errorSnippet: errText.slice(0, 200),
         })
         strippedThisAttempt = true

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { rasterizeSvgToPng } from "@/lib/brand/rasterize-svg"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoreBrandIdentityUpload")
@@ -150,6 +151,38 @@ export async function POST(
         top_products: current?.top_products ?? [],
       }
       merged[slot] = signedUrl
+
+      // Auto-PNG: ao subir um logo SVG, gera e persiste também o PNG raster — o
+      // agente de imagem não baixa/decodifica SVG (causa 400 "downloading file").
+      // Não-destrutivo: só preenche o slot _png se estiver vazio OU se já era
+      // auto-gerado (path marcado `-fromsvg-`); nunca sobrescreve um PNG à mão.
+      // Best-effort: se a rasterização falhar, loga e segue (SVG já foi salvo).
+      if (/^logo_[a-z]+_svg$/.test(slot) && file.type === "image/svg+xml") {
+        const pngSlot = slot.replace(/_svg$/, "_png")
+        const currentPng = (current as Record<string, unknown> | null)?.[pngSlot] as
+          | string
+          | null
+          | undefined
+        if (!currentPng || currentPng.includes("-fromsvg-")) {
+          try {
+            const pngBuffer = await rasterizeSvgToPng(buffer)
+            const pngPath = `stores/${storeId}/brand/${pngSlot}-fromsvg-${ts}.png`
+            const { error: pngUploadErr } = await admin.storage
+              .from("onboarding-visual-assets")
+              .upload(pngPath, pngBuffer, { contentType: "image/png", upsert: false })
+            if (pngUploadErr) throw new Error(pngUploadErr.message)
+            const { data: pngSigned } = await admin.storage
+              .from("onboarding-visual-assets")
+              .createSignedUrl(pngPath, 60 * 60 * 24 * 7)
+            if (pngSigned?.signedUrl) merged[pngSlot] = pngSigned.signedUrl
+          } catch (e) {
+            log.warn("[Upload] auto-PNG do SVG falhou (segue só com o SVG)", {
+              slot,
+              error: e instanceof Error ? e.message : String(e),
+            })
+          }
+        }
+      }
 
       const { error: insErr } = await admin
         .from("store_brand_identity")

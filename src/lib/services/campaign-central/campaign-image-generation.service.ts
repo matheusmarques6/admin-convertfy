@@ -585,7 +585,10 @@ async function generateOneStoreImage(
       refs.push({ label: baseLabel, url: batch.reference_image_url })
     }
     if (flags.logo) {
-      const picked = pickBrandLogo(ctx.brand, "png")
+      // rasterOnly: nunca manda SVG como referência (o modelo não baixa SVG →
+      // 400). Sem PNG ⇒ picked=null ⇒ gera sem logo (sem erro). Uploads novos de
+      // SVG já geram um PNG automático; isto cobre logos legados só-SVG.
+      const picked = pickBrandLogo(ctx.brand, "png", { rasterOnly: true })
       if (picked) refs.push({ label: "Brand logo — match this exactly:", url: picked.url })
     }
     if (flags.catalogo) {

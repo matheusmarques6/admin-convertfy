@@ -260,6 +260,48 @@ describe("generateEmailImage — AE-13 multimodal (product_ref)", () => {
     expect(url).toBe("https://signed.example/img.png")
   })
 
+  it("retry text2img quando o provedor falha ao BAIXAR a ref (4xx 'Error while downloading file')", async () => {
+    // Erro real do OpenRouter: tentou baixar a URL de referência e recebeu 400
+    // upstream (ex.: logo SVG legado, produto com hotlink bloqueado). Deve cair
+    // em text2img em vez de falhar duro.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            error: {
+              message: "Provider returned error",
+              metadata: {
+                raw: '{"error":{"message":"Error while downloading file. Upstream status code: 400.","type":"invalid_request_error","param":"url","code":"invalid_value"}}',
+              },
+            },
+          }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
+          }),
+      } as unknown as Response)
+
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("the prompt", "store-1", {
+      mode: "product_ref",
+      referenceImageUrl: "https://cdn/logo.svg",
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [, init2] = fetchMock.mock.calls[1]
+    const body2 = JSON.parse((init2 as RequestInit).body as string)
+    expect(body2.messages).toEqual([{ role: "user", content: "the prompt" }])
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
   it("fallback multimodal com N refs (base+logo+produto): o retry remove TODAS as imagens (text2img puro), não só uma", async () => {
     // Concern do review: o retry de "multimodal não suportado" deve reenviar
     // refs=[] (text2img PURO), não apenas dropar 1 imagem. Com 3 refs no 1º
