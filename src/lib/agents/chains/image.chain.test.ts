@@ -665,12 +665,12 @@ describe("buildUserMessage / buildMessages — refs interleaved+labeled", () => 
 describe("extractUsage — usage do envelope OpenRouter", () => {
   it("extrai prompt_tokens/completion_tokens do bloco usage", () => {
     const raw = `{"choices":[{}],"usage":{"prompt_tokens":1234,"completion_tokens":7}}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 1234, tokensOutput: 7 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 1234, tokensOutput: 7, costUsd: 0 })
   })
 
   it("sem bloco usage: retorna {0,0}", () => {
     const raw = `{"choices":[{"message":{"content":"data:image/png;base64,AAAA"}}]}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 0, tokensOutput: 0 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 0, tokensOutput: 0, costUsd: 0 })
   })
 
   it("base64 com dígitos ANTES do usage não quebra a âncora", () => {
@@ -678,12 +678,12 @@ describe("extractUsage — usage do envelope OpenRouter", () => {
     // "usage" isola o envelope e o recorte de ~400 chars pega os tokens certos.
     const b64 = "iVBORw0KGgo1234567890ABCDEFmnopQRST0987654321xyz".repeat(50)
     const raw = `{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,${b64}"}}]}}],"usage":{"prompt_tokens":4096,"completion_tokens":3}}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 4096, tokensOutput: 3 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 4096, tokensOutput: 3, costUsd: 0 })
   })
 
   it("usage presente mas só prompt_tokens: completion = 0", () => {
     const raw = `...,"usage":{"prompt_tokens":50}}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 50, tokensOutput: 0 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 50, tokensOutput: 0, costUsd: 0 })
   })
 
   it("a palavra 'usage' SEM aspas (e dígitos) antes do envelope real não sequestra a âncora", () => {
@@ -695,7 +695,7 @@ describe("extractUsage — usage do envelope OpenRouter", () => {
     const raw =
       `{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,${noise}"}}]}}],` +
       `"usage":{"prompt_tokens":2048,"completion_tokens":11}}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 2048, tokensOutput: 11 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 2048, tokensOutput: 11, costUsd: 0 })
   })
 
   it("janela de ~400 chars cobre completion_tokens mesmo com *_details entre os campos", () => {
@@ -708,7 +708,20 @@ describe("extractUsage — usage do envelope OpenRouter", () => {
       `{"id":"x","usage":{"prompt_tokens":123456,` +
       `"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0,"text_tokens":99999,"image_tokens":123456},` +
       `"completion_tokens":654321,"total_tokens":777777}}`
-    expect(extractUsage(raw)).toEqual({ tokensInput: 123456, tokensOutput: 654321 })
+    expect(extractUsage(raw)).toEqual({ tokensInput: 123456, tokensOutput: 654321, costUsd: 0 })
+  })
+
+  it("extrai o cost (USD real do usage accounting) quando presente", () => {
+    // OpenRouter serializa o custo real em USD no bloco usage. O recorte de
+    // ~600 chars cobre `cost` mesmo depois de *_details entre os campos.
+    const raw =
+      `{"choices":[{}],"usage":{"prompt_tokens":321,"completion_tokens":9,` +
+      `"cost":0.0412,"total_tokens":330}}`
+    expect(extractUsage(raw)).toEqual({
+      tokensInput: 321,
+      tokensOutput: 9,
+      costUsd: 0.0412,
+    })
   })
 })
 
@@ -731,7 +744,7 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
   function okBodyWithUsage(): string {
     return JSON.stringify({
       choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
-      usage: { prompt_tokens: 321, completion_tokens: 9 },
+      usage: { prompt_tokens: 321, completion_tokens: 9, cost: 0.0412 },
     })
   }
 
@@ -769,6 +782,7 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
     expect(onMeta).toHaveBeenCalledWith({
       tokensInput: 321,
       tokensOutput: 9,
+      costCents: 4.12, // 0.0412 USD → centavos
       refsSent: refs,
     })
   })
@@ -842,6 +856,7 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
     expect(onMeta).toHaveBeenCalledWith({
       tokensInput: 321,
       tokensOutput: 9,
+      costCents: 4.12, // 0.0412 USD → centavos
       refsSent: [],
     })
     // body legacy (string content)

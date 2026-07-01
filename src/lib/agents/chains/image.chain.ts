@@ -154,20 +154,28 @@ function buildMessages(
 }
 
 /**
- * Extrai `prompt_tokens`/`completion_tokens` do bloco `"usage"` da resposta
- * crua do OpenRouter SEM `JSON.parse` (o body pode ter ~5MB de base64). Ancora
- * no primeiro índice de `"usage"` e regexa só num recorte curto a partir dali —
- * isola o envelope do payload e evita colisão com dígitos de um base64.
+ * Extrai `prompt_tokens`/`completion_tokens` e o `cost` (custo REAL em USD do
+ * OpenRouter — usage accounting, sempre presente na resposta; `usage:{include:true}`
+ * é deprecado) do bloco `"usage"` da resposta crua SEM `JSON.parse` (o body pode
+ * ter ~5MB de base64). Ancora no primeiro índice de `"usage"` e regexa só num
+ * recorte curto a partir dali — isola o envelope e evita colisão com dígitos de
+ * um base64.
  */
-function extractUsage(rawText: string): { tokensInput: number; tokensOutput: number } {
+function extractUsage(rawText: string): {
+  tokensInput: number
+  tokensOutput: number
+  costUsd: number
+} {
   const idx = rawText.indexOf('"usage"')
-  if (idx === -1) return { tokensInput: 0, tokensOutput: 0 }
-  const slice = rawText.slice(idx, idx + 400)
+  if (idx === -1) return { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
+  const slice = rawText.slice(idx, idx + 600)
   const inMatch = slice.match(/"prompt_tokens"\s*:\s*(\d+)/)
   const outMatch = slice.match(/"completion_tokens"\s*:\s*(\d+)/)
+  const costMatch = slice.match(/"cost"\s*:\s*([0-9.]+)/)
   return {
     tokensInput: inMatch ? Number(inMatch[1]) : 0,
     tokensOutput: outMatch ? Number(outMatch[1]) : 0,
+    costUsd: costMatch ? Number(costMatch[1]) : 0,
   }
 }
 
@@ -253,6 +261,7 @@ export async function generateEmailImage(
     onMeta?: (m: {
       tokensInput: number
       tokensOutput: number
+      costCents: number
       refsSent: RefImage[]
     }) => void
     /**
@@ -322,7 +331,7 @@ export async function generateEmailImage(
   // Captura de usage só roda quando `onMeta` existe (opt-in). `lastUsage` é
   // preenchido dentro do fetch da última tentativa bem-sucedida e reportado
   // após o retry resolver.
-  let lastUsage = { tokensInput: 0, tokensOutput: 0 }
+  let lastUsage = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
   // Refs EFETIVAMENTE enviadas na tentativa bem-sucedida. Difere de `refs` quando
   // o fallback de multimodal-unsupported reenvia SEM imagens (text2img) — aí
   // `refs_sent` precisa refletir [] (senão a telemetria mentiria que o modelo viu
@@ -548,7 +557,14 @@ export async function generateEmailImage(
   // Reporta a instrumentação ao caller (opt-in): tokens de input/output e quais
   // refs foram efetivamente anexadas (vazio quando não foi multimodal).
   if (onMeta) {
-    onMeta({ ...lastUsage, refsSent: lastRefsSent })
+    onMeta({
+      tokensInput: lastUsage.tokensInput,
+      tokensOutput: lastUsage.tokensOutput,
+      // USD real do OpenRouter → centavos (cost_cents é NUMERIC(10,4)). Arredonda
+      // pra 4 casas de centavo pra evitar ruído de float (0.0412*100 = 4.11999…).
+      costCents: Math.round(lastUsage.costUsd * 1_000_000) / 10_000,
+      refsSent: lastRefsSent,
+    })
   }
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o

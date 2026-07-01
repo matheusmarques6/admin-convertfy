@@ -1369,7 +1369,8 @@ function DetailRow({ row }: { row: RecentRow }) {
             ...TNUM,
           }}
         >
-          {AGENT_VISUAL[row.agent]?.kind === "imagem"
+          {AGENT_VISUAL[row.agent]?.kind === "imagem" &&
+          (row.tokens_input ?? 0) + (row.tokens_output ?? 0) === 0
             ? "1 img"
             : row.tokens_input != null
               ? fmtTok((row.tokens_input ?? 0) + (row.tokens_output ?? 0))

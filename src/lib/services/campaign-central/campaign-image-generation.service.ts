@@ -546,6 +546,7 @@ async function generateOneStoreImage(
   let meta = {
     tokensInput: 0,
     tokensOutput: 0,
+    costCents: 0,
     refsSent: [] as RefImage[],
   }
   try {
@@ -669,6 +670,7 @@ async function generateOneStoreImage(
       durationMs: Date.now() - t0,
       tokensInput: meta.tokensInput,
       tokensOutput: meta.tokensOutput,
+      costCents: meta.costCents,
     })
 
     return {
