@@ -21,6 +21,7 @@ import {
 import { loadEffectiveBlueprintsBatch } from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
+import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -627,7 +628,7 @@ export async function dispatchEmailCopyWebhook(
     },
     brand_identity: brand
       ? {
-          logo_url: brand.logo_main_png ?? brand.logo_main_svg ?? null,
+          logo_url: pickBrandLogo(brand, "png")?.url ?? null,
           primary_colors: brand.colors_primary ?? [],
           secondary_colors: brand.colors_secondary ?? [],
           font_heading: brand.font_heading ?? null,

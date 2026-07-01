@@ -20,6 +20,7 @@ import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { errorResponse, AppError, NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
+import { pickBrandLogo } from "@/lib/brand/pick-logo"
 
 const log = logger.child("CampaignStoreContext")
 
@@ -28,6 +29,12 @@ export const dynamic = "force-dynamic"
 interface StoreBrandIdentity {
   logo_main_png?: string | null
   logo_main_svg?: string | null
+  logo_alt_svg?: string | null
+  logo_alt_png?: string | null
+  logo_monogram_svg?: string | null
+  logo_monogram_png?: string | null
+  logo_reverse_svg?: string | null
+  logo_reverse_png?: string | null
   colors_primary?: string[] | null
   colors_secondary?: string[] | null
   font_heading?: string | null
@@ -87,7 +94,7 @@ export async function GET(
       admin
         .from("store_brand_identity")
         .select(
-          "logo_main_png, logo_main_svg, colors_primary, colors_secondary, font_heading, font_body, voice",
+          "logo_main_png, logo_main_svg, logo_alt_svg, logo_alt_png, logo_monogram_svg, logo_monogram_png, logo_reverse_svg, logo_reverse_png, colors_primary, colors_secondary, font_heading, font_body, voice",
         )
         .eq("store_id", storeId)
         .order("version", { ascending: false })
@@ -183,7 +190,7 @@ export async function GET(
       },
       brand_identity: brand
         ? {
-            logo_url: brand.logo_main_png ?? brand.logo_main_svg ?? null,
+            logo_url: pickBrandLogo(brand, "png")?.url ?? null,
             primary_colors: brand.colors_primary ?? [],
             secondary_colors: brand.colors_secondary ?? [],
             font_heading: brand.font_heading ?? null,

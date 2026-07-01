@@ -49,6 +49,7 @@ import {
   DEFAULT_HTML_USER_TEMPLATE,
 } from "./chains/html.chain"
 import { buildHtmlPromptVars } from "./html/build-vars"
+import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import {
   logGenerationRun,
   computeCostCents,
@@ -90,7 +91,7 @@ function _buildAllVars(ctx: GenerationContext): Record<string, string> {
   const b = ctx.brand
   if (b) {
     vars.voice = stringify(b.voice)
-    vars.logo_url = b.logo_main_png ?? b.logo_main_svg ?? ""
+    vars.logo_url = pickBrandLogo(b, "png")?.url ?? ""
     vars.logo_alt_url = b.logo_alt_png ?? b.logo_alt_svg ?? ""
     vars.primary_color = (b.colors_primary ?? [])[0]?.hex ?? "#1F1F1F"
     vars.primary_color_hex = vars.primary_color.replace("#", "")

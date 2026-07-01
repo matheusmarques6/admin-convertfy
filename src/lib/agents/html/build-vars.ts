@@ -40,6 +40,7 @@ import { loadGlobalReferenceTemplate } from "../reference-template"
 import { precheckBrandReady, resolveBrandTokens } from "./brand-guards"
 import { deriveColorRoles } from "./color-roles"
 import { HtmlPromptVarsSchema } from "./contract"
+import { pickBrandLogo, type LogoVariant } from "@/lib/brand/pick-logo"
 
 // Re-export pra que phase2-runner possa fazer instanceof sem importar
 // brand-guards diretamente — preserva o ponto unico de entrada do agente.
@@ -205,27 +206,35 @@ async function pngImgTagFromUrl(
  * Decide o formato do markup do logo: SVG inline se disponivel, `<img src>`
  * (URL renovada pra 365d) se so PNG, string vazia se nenhum. A var `logo_svg`
  * no contract aceita qualquer markup HTML.
+ *
+ * Fallback multi-variante via pickBrandLogo (prefer "svg" pra manter o path
+ * inline nitido): varre main→alt→monogram→reverse. Nao-regressao: uma marca
+ * com logo_main_svg/png resolve pra variante "main" (1a da cadeia) e segue o
+ * mesmo caminho de antes. So ADICIONA cobertura pras demais variantes.
  */
 async function fetchLogoMarkup(
   brand: StoreBrandIdentity | null,
   admin: SupabaseClient,
 ): Promise<string> {
   if (!brand) return ""
-  if (brand.logo_main_svg) {
-    const svg = await fetchLogoSvgInline(brand.logo_main_svg)
+  const picked = pickBrandLogo(brand, "svg")
+  if (!picked) return ""
+
+  if (picked.format === "svg") {
+    const svg = await fetchLogoSvgInline(picked.url)
     if (svg) return svg
     // T3.2: SVG falhou (404/timeout/nao-SVG) -> nao desistir do logo: cai pro
-    // PNG se houver. Antes retornava "" e o email saia sem marca.
-    if (brand.logo_main_png) {
-      log.warn("logo_svg.fallback_to_png", {})
-      return await pngImgTagFromUrl(brand.logo_main_png, admin)
+    // PNG DA MESMA VARIANTE se houver. Antes retornava "" e o email saia sem
+    // marca.
+    const siblingPng = brand[`logo_${picked.variant satisfies LogoVariant}_png`]
+    if (siblingPng) {
+      log.warn("logo_svg.fallback_to_png", { variant: picked.variant })
+      return await pngImgTagFromUrl(siblingPng, admin)
     }
     return ""
   }
-  if (brand.logo_main_png) {
-    return await pngImgTagFromUrl(brand.logo_main_png, admin)
-  }
-  return ""
+  // format === "png": nao havia SVG nessa variante (nem na cadeia antes dela).
+  return await pngImgTagFromUrl(picked.url, admin)
 }
 
 function purposeOf(

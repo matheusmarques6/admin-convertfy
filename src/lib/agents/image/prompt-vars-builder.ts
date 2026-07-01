@@ -34,6 +34,7 @@ import { mapTomVozToMood } from "./mood-mapping"
 import { deriveCenario } from "./cenario-derivation"
 import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
+import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import { deriveShotArchetype } from "./shot-archetype"
 import type { AspectKey } from "./aspect-ratio"
 import type { ImageMode } from "./mode-resolution"
@@ -184,7 +185,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     color_names: colorNames,
     font_heading: brand?.font_heading ?? "",
     font_body: brand?.font_body ?? "",
-    logo_url: brand?.logo_main_png ?? brand?.logo_main_svg ?? "",
+    logo_url: pickBrandLogo(brand, "png")?.url ?? "",
 
     // Top 5 produtos
     top_products: topProductsDesc,

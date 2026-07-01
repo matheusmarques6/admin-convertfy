@@ -22,6 +22,7 @@ import { generateEmailImage, type RefImage } from "@/lib/agents/chains/image.cha
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import { buildImagePromptVars } from "@/lib/agents/image/prompt-vars-builder"
 import { loadTopProducts } from "@/lib/agents/top-products"
+import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import {
   logGenerationRun,
   updateGenerationRun,
@@ -173,7 +174,9 @@ async function loadStoreMeta(
       .in("id", storeIds),
     admin
       .from("store_brand_identity")
-      .select("store_id, logo_main_png, logo_main_svg, colors_primary, version")
+      .select(
+        "store_id, logo_main_png, logo_main_svg, logo_alt_svg, logo_alt_png, logo_monogram_svg, logo_monogram_png, logo_reverse_svg, logo_reverse_png, colors_primary, version",
+      )
       .in("store_id", storeIds)
       .order("version", { ascending: false }),
   ])
@@ -201,13 +204,21 @@ async function loadStoreMeta(
     store_id: string
     logo_main_png: string | null
     logo_main_svg: string | null
+    logo_alt_svg: string | null
+    logo_alt_png: string | null
+    logo_monogram_svg: string | null
+    logo_monogram_png: string | null
+    logo_reverse_svg: string | null
+    logo_reverse_png: string | null
     colors_primary: Array<{ hex?: string }> | null
   }>) {
     if (brandSeen.has(b.store_id)) continue
     brandSeen.add(b.store_id)
     const meta = map.get(b.store_id)
     if (!meta) continue
-    meta.logo_url = b.logo_main_png ?? b.logo_main_svg ?? null
+    // Fallback multi-variante (main → alt → monogram → reverse); prefere PNG
+    // porque este logo_url vira imagem de referencia pro modelo.
+    meta.logo_url = pickBrandLogo(b, "png")?.url ?? null
     meta.primary_color = b.colors_primary?.[0]?.hex ?? null
   }
 
@@ -553,16 +564,16 @@ async function generateOneStoreImage(
 
     // Referências visuais por URL que o modelo vai ENXERGAR (não só descrição
     // textual): a imagem-base do lote sempre; o LOGO quando adapt_flags.logo;
-    // a foto do produto-herói quando adapt_flags.catalogo. Preferir PNG pro
-    // logo (SVG pode não ser ingerível; anexa só se for o único). Refs guardam
-    // contra URL vazia.
+    // a foto do produto-herói quando adapt_flags.catalogo. Logo via
+    // pickBrandLogo (fallback multi-variante main→alt→monogram→reverse,
+    // prefere PNG por ingeribilidade). Refs guardam contra URL vazia.
     const refs: RefImage[] = []
     if (batch.reference_image_url) {
       refs.push({ label: "Base reference:", url: batch.reference_image_url })
     }
     if (flags.logo) {
-      const logo = ctx.brand?.logo_main_png || ctx.brand?.logo_main_svg
-      if (logo) refs.push({ label: "Brand logo — match this exactly:", url: logo })
+      const picked = pickBrandLogo(ctx.brand, "png")
+      if (picked) refs.push({ label: "Brand logo — match this exactly:", url: picked.url })
     }
     if (flags.catalogo) {
       const productImg = topProducts[0]?.image_url
