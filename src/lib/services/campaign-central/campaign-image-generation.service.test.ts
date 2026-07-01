@@ -643,6 +643,26 @@ describe("generateBatch", () => {
     expect(c?.status).toBe("ready")
   })
 
+  it("blindagem: nenhum result fica em 'generating' após um run completo", async () => {
+    seedSuggestion({
+      targets: [{ store_id: STORE_A }, { store_id: STORE_B }],
+    })
+    seedConfig()
+    seedBatch()
+    generateEmailImageMock.mockImplementation(async (_p, storeId: string) => {
+      if (storeId === STORE_B) throw new Error("boom")
+      return `img-${storeId}.png`
+    })
+
+    const out = await svc.generateBatch(BATCH, ORG)
+    // Invariante: toda linha termina terminal (ready/failed), nunca presa.
+    expect(out.results.every((r) => r.status !== "generating")).toBe(true)
+    const stuck = [...fx.results.values()].filter(
+      (r) => r.batch_id === BATCH && r.status === "generating",
+    )
+    expect(stuck).toHaveLength(0)
+  })
+
   it("campanha sem lojas-alvo -> ValidationError", async () => {
     seedSuggestion({ targets: [] })
     seedConfig()
@@ -919,7 +939,10 @@ describe("regenerateResult", () => {
     const instr = (buildImagePromptVarsMock.mock.calls.at(-1)?.[0] as {
       instrucaoAdicional?: string
     }).instrucaoAdicional
-    expect(instr).toContain("AJUSTE SOLICITADO: deixe mais escuro")
+    expect(instr).toContain("deixe mais escuro")
+    // O ajuste LIDERA a instrução (unshift) e é enfático — no modo product_ref a
+    // imagem-base domina; jogar o ajuste no fim faz o modelo ignorá-lo.
+    expect(instr?.startsWith("AJUSTE OBRIGATÓRIO")).toBe(true)
   })
 
   it("sem nota (retry) -> status 'ready'", async () => {
@@ -1282,6 +1305,30 @@ describe("refs visuais por adapt_flags + instrumentação onMeta", () => {
     const opts = lastOptions()
     expect(opts.mode).toBe("product_ref")
     expect(opts.referenceImages![0]).toEqual({
+      label: "Base reference:",
+      url: "https://cdn/base.jpg",
+    })
+  })
+
+  it("regerar COM ajuste: a base vira guia solto (não 'Base reference:')", async () => {
+    setup({ adapt_flags: {}, reference_image_url: "https://cdn/base.jpg" })
+    captureOptionsAndEmitMeta()
+
+    await svc.regenerateResult(BATCH, ORG, STORE_A, "fundo mais claro")
+
+    const first = lastOptions().referenceImages![0]
+    expect(first.url).toBe("https://cdn/base.jpg")
+    expect(first.label).not.toBe("Base reference:")
+    expect(first.label).toMatch(/loose guide/i)
+  })
+
+  it("regerar SEM ajuste (retry): a base segue 'Base reference:'", async () => {
+    setup({ adapt_flags: {}, reference_image_url: "https://cdn/base.jpg" })
+    captureOptionsAndEmitMeta()
+
+    await svc.regenerateResult(BATCH, ORG, STORE_A, null)
+
+    expect(lastOptions().referenceImages![0]).toEqual({
       label: "Base reference:",
       url: "https://cdn/base.jpg",
     })

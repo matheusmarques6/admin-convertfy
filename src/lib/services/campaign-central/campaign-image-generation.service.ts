@@ -94,6 +94,7 @@ interface ResultRow {
   error_message: string | null
   generated_via: string | null
   generated_at: string | null
+  updated_at: string
 }
 
 interface StoreMeta {
@@ -239,6 +240,7 @@ function mapResultRow(row: ResultRow, meta: Map<string, StoreMeta>): CampaignIma
     adjustment_notes: row.adjustment_notes,
     error_message: row.error_message,
     generated_at: row.generated_at,
+    updated_at: row.updated_at,
   }
 }
 
@@ -280,7 +282,7 @@ export async function getCampaignImageData(
     const { data: resultRows } = await admin
       .from("campaign_image_results")
       .select(
-        "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at",
+        "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at, updated_at",
       )
       .in("batch_id", batchIds)
 
@@ -486,7 +488,12 @@ function buildBatchInstruction(opts: {
   }
 
   if (opts.adjustmentNotes && opts.adjustmentNotes.trim()) {
-    parts.push(`AJUSTE SOLICITADO: ${opts.adjustmentNotes.trim()}`)
+    // Lidera o texto (unshift) e é enfático: no modo product_ref a imagem-base
+    // domina e o modelo tende a ignorar um ajuste jogado no fim. Pôr em 1º +
+    // "acima de tudo" dá o peso necessário pro ajuste vencer a referência.
+    parts.unshift(
+      `AJUSTE OBRIGATÓRIO (prioridade máxima — aplique esta mudança acima de tudo, mesmo que difira da imagem de referência): ${opts.adjustmentNotes.trim()}`,
+    )
   }
   return parts.join("\n")
 }
@@ -570,7 +577,12 @@ async function generateOneStoreImage(
     // prefere PNG por ingeribilidade). Refs guardam contra URL vazia.
     const refs: RefImage[] = []
     if (batch.reference_image_url) {
-      refs.push({ label: "Base reference:", url: batch.reference_image_url })
+      // Com ajuste, a base vira GUIA SOLTO (senão o modelo copia a base e ignora
+      // o ajuste). Sem ajuste, é a referência-base normal do lote.
+      const baseLabel = adjustmentNotes?.trim()
+        ? "Previous composition — loose guide ONLY; you MUST apply the requested change below, do not copy it:"
+        : "Base reference:"
+      refs.push({ label: baseLabel, url: batch.reference_image_url })
     }
     if (flags.logo) {
       const picked = pickBrandLogo(ctx.brand, "png")
@@ -771,28 +783,51 @@ export async function generateBatch(
   await seedResults(admin, batchId, storeIds)
 
   await runWithPool(storeIds, GENERATION_POOL_SIZE, async (storeId) => {
-    const res = await generateOneStoreImage(
-      admin,
-      batch,
-      storeId,
-      config,
-      sug.production,
-    )
-    await admin
-      .from("campaign_image_results")
-      .update({
-        status: res.status,
-        // Em falha preserva a imagem anterior (undefined = não toca a coluna),
-        // igual ao regenerateResult — evita perder um resultado bom por uma
-        // falha transitória numa loja durante a geração do lote.
-        image_url: res.image_url ?? undefined,
-        error_message: res.error,
-        generated_via: res.via,
-        generated_at: res.status === "ready" ? new Date().toISOString() : null,
+    // Blindagem: NÃO relança. generateOneStoreImage já é best-effort (nunca
+    // lança), mas o próprio UPDATE pode falhar (rede) — se relançasse,
+    // rejeitaria o Promise.all e derrubaria as lojas irmãs, além de deixar esta
+    // linha presa em 'generating'. Qualquer sobra 'generating' é fechada pela
+    // reconciliação pós-pool abaixo.
+    try {
+      const res = await generateOneStoreImage(
+        admin,
+        batch,
+        storeId,
+        config,
+        sug.production,
+      )
+      await admin
+        .from("campaign_image_results")
+        .update({
+          status: res.status,
+          // Em falha preserva a imagem anterior (undefined = não toca a coluna),
+          // igual ao regenerateResult — evita perder um resultado bom por uma
+          // falha transitória numa loja durante a geração do lote.
+          image_url: res.image_url ?? undefined,
+          error_message: res.error,
+          generated_via: res.via,
+          generated_at: res.status === "ready" ? new Date().toISOString() : null,
+        })
+        .eq("batch_id", batchId)
+        .eq("store_id", storeId)
+    } catch (err) {
+      log.error("generate.store.unexpected", {
+        batchId,
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
       })
-      .eq("batch_id", batchId)
-      .eq("store_id", storeId)
+    }
   })
+
+  // Reconciliação: um run que RODA até o fim nunca deixa card preso. Qualquer
+  // linha ainda em 'generating' (ex.: exceção antes do UPDATE) vira 'failed'.
+  // (O caso raro de serverless morto no maxDuration é coberto pela recuperação
+  // manual no frontend.)
+  await admin
+    .from("campaign_image_results")
+    .update({ status: "failed", error_message: "Geração interrompida" })
+    .eq("batch_id", batchId)
+    .eq("status", "generating")
 
   return loadBatchWithResults(admin, batchId, orgId)
 }
@@ -871,7 +906,7 @@ export async function regenerateResult(
     .eq("batch_id", batchId)
     .eq("store_id", storeId)
     .select(
-      "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at",
+      "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at, updated_at",
     )
     .maybeSingle()
 
@@ -952,7 +987,7 @@ async function loadBatchWithResults(
   const { data: resultRows } = await admin
     .from("campaign_image_results")
     .select(
-      "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at",
+      "id, batch_id, store_id, status, image_url, adjustment_notes, error_message, generated_via, generated_at, updated_at",
     )
     .eq("batch_id", batchId)
 

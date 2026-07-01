@@ -296,6 +296,7 @@ export function CampaignImageHandoff({
                 adjustment_notes: null,
                 error_message: null,
                 generated_at: null,
+                updated_at: new Date().toISOString(),
               })),
             }
           : b,
@@ -943,6 +944,11 @@ function ResultsGrid({
   )
 }
 
+// Tempo até um card 'generating'/'queued' ser considerado preso (recuperação
+// manual). 5min = o maxDuration da rota de geração: além disso a função já
+// morreu, então zero falso-positivo mesmo num lote grande.
+const STUCK_MS = 5 * 60 * 1000
+
 function ResultCard({
   taskId,
   batchId,
@@ -969,6 +975,13 @@ function ResultCard({
   const isPending = status === "queued" || status === "generating"
   const canDownload =
     !!result?.image_url && (status === "ready" || status === "adjustment")
+  // Card preso: 'generating'/'queued' há mais que STUCK_MS. Um run que roda até
+  // o fim já reconcilia pra failed no backend; isStuck cobre o caso raro da
+  // função serverless morrer no meio (linha fica em generating pra sempre).
+  const isStuck =
+    isPending &&
+    !!result?.updated_at &&
+    Date.now() - Date.parse(result.updated_at) > STUCK_MS
 
   // Baixa esta imagem (signed URL cross-origin → fetch+blob).
   const handleDownload = useCallback(async () => {
@@ -1008,6 +1021,7 @@ function ResultCard({
         adjustment_notes: adjustmentNotes,
         error_message: null,
         generated_at: result?.generated_at ?? null,
+        updated_at: new Date().toISOString(),
       }
       onResultChange(base)
       setAdjusting(false)
@@ -1100,11 +1114,12 @@ function ResultCard({
 
         {!adjusting && (
           <div className="flex items-center gap-1.5">
-            {status === "failed" ? (
+            {status === "failed" || isStuck ? (
               <button
                 type="button"
                 onClick={() => regenerate(null)}
-                disabled={busy || isPending}
+                disabled={busy}
+                title={isStuck ? "Parece travada — gerar de novo" : undefined}
                 className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
               >
                 {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}

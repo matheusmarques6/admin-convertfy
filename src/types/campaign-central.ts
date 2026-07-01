@@ -324,6 +324,9 @@ export interface CampaignImageResult {
   adjustment_notes: string | null
   error_message: string | null
   generated_at: string | null
+  /** Última atualização da linha (ISO). Usado no frontend pra detectar card
+   *  preso em 'generating' (recuperação manual). */
+  updated_at: string
 }
 
 /** Lote + seus resultados por loja (item da lista no painel). */
