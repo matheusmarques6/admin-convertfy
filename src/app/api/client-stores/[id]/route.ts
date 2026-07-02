@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 
 const log = logger.child("ClientStoreDelete")
 
@@ -11,7 +12,9 @@ export const dynamic = "force-dynamic"
 // GET - Fetch single store with full row (todos os campos do client_stores)
 // Usado pelas abas v2 (Contexto, Setup, Atividade, Pesquisa) que precisam
 // ler campos diversos sem ter que listar cada coluna no select.
-export async function GET(
+export const GET = withTiming("client-stores/[id]", handleGet)
+
+async function handleGet(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import localFont from "next/font/local"
 import { Playfair_Display, Montserrat } from "next/font/google"
 import "./globals.css"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -54,6 +55,7 @@ export default function RootLayout({
           {children}
           <Toaster />
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   )

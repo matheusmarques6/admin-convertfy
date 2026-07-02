@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
 import type { DataStatus } from "@/lib/shared/data-status"
 
@@ -142,7 +143,9 @@ async function resolvePortalMeetings(
 
 // ─── GET - Portal dashboard (cache-first — no live API calls) ───────────────
 
-export async function GET(request: NextRequest) {
+export const GET = withTiming("portal/dashboard", handleGet)
+
+async function handleGet(request: NextRequest) {
   const startTime = Date.now()
   try {
     const supabase = await createClient()

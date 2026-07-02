@@ -3,6 +3,7 @@ import { errorResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 
 const log = logger.child("PortalAuthVerify")
 
@@ -11,7 +12,9 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 // POST - Verify if user is a portal user
-export async function POST(request: NextRequest) {
+export const POST = withTiming("portal/auth/verify", handlePost)
+
+async function handlePost(request: NextRequest) {
   try {
     // Authenticate: verify the caller has a valid session
     const supabase = await createClient()

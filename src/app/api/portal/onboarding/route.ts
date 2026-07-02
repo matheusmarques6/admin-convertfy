@@ -3,6 +3,7 @@ import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 
 const log = logger.child("PortalOnboarding")
 
@@ -20,7 +21,9 @@ export async function OPTIONS(request: NextRequest) {
  * Returns the active onboarding for the logged-in portal user's client.
  * Includes all steps grouped by category with progress info.
  */
-export async function GET(request: NextRequest) {
+export const GET = withTiming("portal/onboarding", handleGet)
+
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()

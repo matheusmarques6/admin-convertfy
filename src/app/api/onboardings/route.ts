@@ -21,12 +21,15 @@ import {
   applyEffectiveStatuses,
 } from "@/lib/services/onboarding-effective-status.service"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 
 const log = logger.child("OnboardingsApi")
 
 export const dynamic = "force-dynamic"
 
-export async function GET(request: NextRequest) {
+export const GET = withTiming("onboardings", handleGet)
+
+async function handleGet(request: NextRequest) {
   try {
     const sb = await createClient()
     const user = await requireAuth(sb)

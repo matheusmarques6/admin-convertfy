@@ -8,6 +8,7 @@ import { sanitizeStoreResponse, validateCredentialField } from "@/lib/services/c
 import { validateShopifyCredentials, validateKlaviyoCredentials, validateOmnisendCredentials } from "@/lib/services/credential-validator.service"
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
+import { withTiming } from "@/lib/api/with-timing"
 
 import { decrypt, decryptCredentialsJson } from "@/lib/crypto"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
@@ -43,7 +44,9 @@ function maskCredential(value: string | null | undefined): string | null {
  *     status: IntegrationStatus  // derived state per integration
  *   }
  */
-export async function GET(request: NextRequest) {
+export const GET = withTiming("client-stores/credentials", handleGet)
+
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
