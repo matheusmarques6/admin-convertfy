@@ -26,6 +26,7 @@ import {
   DollarSign, Package, BarChart3, Users, Mail, Send, Target, Zap, X,
   Calendar, ExternalLink, Download, Loader2,
 } from "lucide-react"
+import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, Btn, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -154,8 +155,8 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   const [customStart, setCustomStart] = useState<string>(todayYMD(30))
   const [customEnd, setCustomEnd] = useState<string>(todayYMD(0))
 
-  const { data: credData, isLoading: credLoading } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
-  const status = (credData?.status ?? {}) as Record<string, IntegrationStatus>
+  const { data: overview, isLoading: credLoading } = useStoreOverview(storeId)
+  const status = (overview?.status ?? {}) as Record<string, IntegrationStatus>
   const emailPlatformConnected = !!status.klaviyo?.connected || !!status.omnisend?.connected
   const shopifyConnected = !!status.shopify?.connected
 

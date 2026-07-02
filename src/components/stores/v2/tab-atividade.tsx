@@ -26,6 +26,7 @@ import {
   Zap, Target, Package, Mail, Link2, Phone, Bell, Plus, Filter, X,
   ChevronRight, Check, Download, ExternalLink, Image as ImageIcon,
 } from "lucide-react"
+import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, Btn, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -74,8 +75,8 @@ export function TabAtividade({ storeId }: { storeId: string }) {
   const [filterKind, setFilterKind] = useState<FilterKey>("all")
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const { data: storeData } = useSWR(`/api/client-stores/${storeId}`, fetcher, { revalidateOnFocus: false })
-  const materials = (storeData?.data?.store ?? storeData?.store ?? storeData ?? {}) as StoreMaterials
+  const { data: overview } = useStoreOverview(storeId)
+  const materials = (overview?.store ?? {}) as StoreMaterials
 
   const { data: tasksData } = useSWR(`/api/tasks?store_id=${storeId}&source_type=auto_onboarding_step&limit=50`, fetcher, { revalidateOnFocus: false })
   const deliveries = useMemo(() => ((tasksData?.tasks ?? tasksData?.data?.tasks ?? []) as TaskItem[]).slice(0, 12), [tasksData])

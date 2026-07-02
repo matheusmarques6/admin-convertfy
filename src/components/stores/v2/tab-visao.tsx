@@ -18,14 +18,12 @@
  */
 
 import { useMemo, useState } from "react"
-import useSWR from "swr"
 import {
   Info, Bell, Package, Zap, Mail, Target, Link2, Phone,
   ChevronRight,
 } from "lucide-react"
+import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, C, ChannelIcon, TNUM } from "./_primitives"
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type Range = "7d" | "30d" | "90d" | "1A"
 
@@ -122,42 +120,26 @@ function fmtCompact(value: number, currency = "BRL"): string {
 export function TabVisao({ storeId }: { storeId: string }) {
   const [range, setRange] = useState<Range>("30d")
 
-  const { data: credData } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
-  const status = useMemo(() => (credData?.status ?? {}) as Record<string, IntegrationStatus>, [credData])
+  const { data: overview } = useStoreOverview(storeId, range)
+
+  const status = useMemo(() => (overview?.status ?? {}) as Record<string, IntegrationStatus>, [overview])
   const emailPlatformConnected = !!status.klaviyo?.connected || !!status.omnisend?.connected
   const shopifyConnected = !!status.shopify?.connected
 
-  const { data: briefingData } = useSWR(`/api/onboarding/store-briefing?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
-  const hasBriefing = !!briefingData?.briefing
+  const hasBriefing = !!overview?.briefing
 
-  const { data: storeRes } = useSWR<{ store?: StoreWithHealth }>(`/api/client-stores/${storeId}`, fetcher, { revalidateOnFocus: false })
-  const store = useMemo(() => (storeRes?.store ?? {}) as StoreWithHealth, [storeRes])
+  const store = useMemo(() => (overview?.store ?? {}) as StoreWithHealth, [overview])
 
-  const { data: healthHist } = useSWR<{ history?: HealthHistoryRow[] }>(`/api/admin/stores/${storeId}/health-history?limit=2`, fetcher, { revalidateOnFocus: false })
-  const latestHealth = healthHist?.history?.[0] ?? null
-  const prevHealth = healthHist?.history?.[1] ?? null
+  const latestHealth: HealthHistoryRow | null = overview?.healthHistory?.[0] ?? null
+  const prevHealth: HealthHistoryRow | null = overview?.healthHistory?.[1] ?? null
 
-  const { data: report } = useSWR<EmailReport>(
-    emailPlatformConnected ? `/api/integrations/email-platform/report?store_id=${storeId}&period=${range}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: campaignsRaw } = useSWR<{ campaigns: CampaignRow[] }>(
-    emailPlatformConnected ? `/api/integrations/email-platform/campaigns?store_id=${storeId}&period=${range}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
-  const { data: flowsRaw } = useSWR<{ flows: FlowRow[] }>(
-    emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&period=${range}` : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true },
-  )
+  const report = overview?.report as EmailReport | undefined
+  const campaignsRaw = overview?.campaigns as { campaigns?: CampaignRow[] } | undefined
+  const flowsRaw = overview?.flows as { flows?: FlowRow[] } | undefined
 
-  const { data: activityRes } = useSWR<{ items?: Activity[] }>(`/api/admin/stores/${storeId}/activity?limit=5`, fetcher, { revalidateOnFocus: false })
-  const activities = useMemo(() => (activityRes?.items ?? []) as Activity[], [activityRes])
+  const activities = useMemo(() => ((overview?.activity ?? []) as Activity[]).slice(0, 5), [overview])
 
-  const { data: eventsRes } = useSWR<{ events?: CsEvent[] }>(`/api/admin/stores/${storeId}/events?upcoming=true`, fetcher, { revalidateOnFocus: false })
-  const events = useMemo(() => (eventsRes?.events ?? []) as CsEvent[], [eventsRes])
+  const events = useMemo(() => (overview?.events ?? []) as CsEvent[], [overview])
 
   const currency = report?.account?.currency ?? "BRL"
 

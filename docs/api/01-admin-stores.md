@@ -14,6 +14,7 @@
 | `/api/admin/stores/[id]/competitors` | GET, POST | Concorrentes | POST: `name` (obrig., max 160), `url?`, `posicionamento` (popular/similar/premium), `notas?` |
 | `/api/admin/stores/[id]/top-products` | GET | Top produtos | Lê `store_top_products`. Query: `limit` (default 5, max 50) |
 | `/api/admin/stores/[id]/health-history` | GET | Histórico de health | Últimas N linhas de `crm_health_history`. Query: `limit` (default 5, max 30) |
+| `/api/admin/stores/[id]/overview` | GET | Agregado do detalhe da loja | 1 request consolida status de integrações, loja completa (+cliente), health history (2), briefing, atividade (20), eventos futuros e report/campaigns/flows (quando Klaviyo/Omnisend conectado). Query: `period` (7d/30d/90d/1A, default 30d). Auth: `requireStoreAccess`. `maxDuration=300` |
 | `/api/admin/stores/[id]/omnisend-brand` | GET | brandID Omnisend | Chamada live ao `/v3/brands` da Omnisend; `brandId` null se falhar |
 | `/api/admin/stores/[id]/sync-from-onboarding` | POST | Espelhar formulário → loja | `onboardings.form_responses` → `client_stores` + `store_brand_identity`. Body: `mode` ∈ {overwrite, fill-empty} |
 

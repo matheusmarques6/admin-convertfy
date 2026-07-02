@@ -23,15 +23,12 @@
  * complexos (modal config, persistência) — mas wrapped em Section.
  */
 
-import { useEffect, useState } from "react"
-import useSWR from "swr"
 import { Check, Zap, Link2, Paperclip } from "lucide-react"
 import { IntegrationsPanel } from "@/components/stores/integrations-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
+import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, Btn, KV, C, TNUM, ChannelIcon } from "./_primitives"
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface SetupData {
   store_name?: string
@@ -49,18 +46,11 @@ interface SetupData {
 }
 
 export function TabSetup({ storeId }: { storeId: string }) {
-  const [data, setData] = useState<SetupData>({})
-
-  useEffect(() => {
-    fetch(`/api/client-stores/${storeId}`)
-      .then((r) => r.json())
-      .then((j) => setData((j.data?.store ?? j.store ?? j) as SetupData))
-      .catch(() => setData({}))
-  }, [storeId])
+  const { data: overview } = useStoreOverview(storeId)
+  const data = (overview?.store ?? {}) as SetupData
 
   // Credentials/integration status pra contar configuradas
-  const { data: credData } = useSWR(`/api/client-stores/credentials?store_id=${storeId}`, fetcher, { revalidateOnFocus: false })
-  const status = (credData?.status ?? {}) as Record<string, { connected: boolean }>
+  const status = (overview?.status ?? {}) as Record<string, { connected: boolean }>
   const integrationKeys = ["shopify", "klaviyo", "omnisend", "ga4", "meta", "google_ads"]
   const configured = integrationKeys.filter((k) => status[k]?.connected).length
   const completePct = Math.round((configured / integrationKeys.length) * 100)

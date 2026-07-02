@@ -12,9 +12,9 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
-import useSWR from "swr"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { StoreHero } from "./store-hero"
 import { TabVisao } from "./tab-visao"
 import { TabAtividade } from "./tab-atividade"
@@ -49,8 +49,6 @@ const LEGACY_TAB_MAP: Record<string, string> = {
   briefing: "contexto",
   reports: "performance",
 }
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface StoreDetailTabsV2Props {
   store: {
@@ -106,16 +104,12 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
   }
 
   // Activity count for Atividade tab badge (last 7d as "novidades")
-  const { data: activityRes } = useSWR<{ items?: Array<{ occurred_at: string }> }>(
-    `/api/admin/stores/${store.id}/activity?limit=20`,
-    fetcher,
-    { revalidateOnFocus: false },
-  )
+  const { data: overviewData } = useStoreOverview(store.id)
   const recentCount = useMemo(() => {
-    const items = activityRes?.items ?? []
+    const items = overviewData?.activity ?? []
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
     return items.filter((a) => new Date(a.occurred_at).getTime() >= cutoff).length
-  }, [activityRes])
+  }, [overviewData])
 
   // Plano label + meses
   const plan = store.platform === "shopify" ? "Performance" : null

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import useSWR from "swr"
+import useSWR, { useSWRConfig } from "swr"
 import {
   CheckCircle2, XCircle, AlertTriangle, Plus, Pencil, Trash2,
   RefreshCw, Loader2, ExternalLink, Zap,
@@ -43,6 +43,13 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
     fetcher,
     { revalidateOnFocus: false }
   )
+  const { mutate: mutateGlobal } = useSWRConfig()
+
+  const refreshOverview = useCallback(() => {
+    mutateGlobal(
+      (key) => typeof key === "string" && key.startsWith(`/api/admin/stores/${storeId}/overview`)
+    )
+  }, [mutateGlobal, storeId])
 
   const credentials: IntegrationCredentials | null = data?.credentials ?? null
   const status: Record<string, IntegrationStatusData> = data?.status ?? {}
@@ -50,7 +57,8 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
 
   const handleSaved = useCallback(() => {
     mutate()
-  }, [mutate])
+    refreshOverview()
+  }, [mutate, refreshOverview])
 
   const handleRevalidateAll = useCallback(async () => {
     setRevalidatingAll(true)
@@ -63,12 +71,13 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
       if (!res.ok) throw new Error("Falha ao revalidar")
       toast({ title: "Integrações revalidadas" })
       mutate()
+      refreshOverview()
     } catch {
       toast({ variant: "destructive", title: "Erro", description: "Tente novamente." })
     } finally {
       setRevalidatingAll(false)
     }
-  }, [storeId, toast, mutate])
+  }, [storeId, toast, mutate, refreshOverview])
 
   const klaviyoConfigured = Boolean(
     (credentials?.klaviyo as { configured?: boolean } | undefined)?.configured,
@@ -96,6 +105,7 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
         description: `${payload?.campaigns ?? 0} campanhas • ${payload?.automations ?? 0} automações`,
       })
       mutate()
+      refreshOverview()
     } catch (err) {
       toast({
         variant: "destructive",
@@ -105,7 +115,7 @@ export function IntegrationsPanel({ storeId, storeUrl }: IntegrationsPanelProps)
     } finally {
       setSyncingEmail(false)
     }
-  }, [storeId, toast, mutate])
+  }, [storeId, toast, mutate, refreshOverview])
 
   return (
     <div className="space-y-4">

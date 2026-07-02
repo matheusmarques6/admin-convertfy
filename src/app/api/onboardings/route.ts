@@ -40,13 +40,19 @@ async function handleGet(request: NextRequest) {
     const sp = request.nextUrl.searchParams
     const status = sp.get("status")
 
+    // Colunas do pipeline SEM os JSONB pesados (checklist_template,
+    // deliverables_template, automation_rules, whatsapp_template) — o Kanban
+    // (unico consumidor do GET de lista) so usa os campos escalares.
+    const COLUMN_FIELDS =
+      "id, pipeline_id, name, slug, position, color, is_initial, is_final, default_assignee_role, sla_hours"
+
     let q = admin
       .from("onboardings")
       .select(
         `*,
          client:clients!onboardings_client_id_fkey(id, name, company),
          store:client_stores(id, store_name, store_url, platform),
-         current_column:operational_pipeline_columns(*),
+         current_column:operational_pipeline_columns(${COLUMN_FIELDS}),
          tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, version)`,
       )
       .eq("org_id", orgId)
@@ -80,7 +86,7 @@ async function handleGet(request: NextRequest) {
     const [{ data: columns }, effective] = await Promise.all([
       admin
         .from("operational_pipeline_columns")
-        .select("*")
+        .select(COLUMN_FIELDS)
         .eq("pipeline_id", pipeline?.id ?? "")
         .order("position", { ascending: true }),
       resolveEffectiveStatuses(admin, clientIds, subscriptionIds),
