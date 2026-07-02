@@ -1,4 +1,5 @@
 import { AppError } from "@/lib/api/errors"
+import { guardRequiredDeliverables } from "@/lib/api/task-deliverables-guard"
 import { getOnboardingStageResponsibleRole } from "@/lib/permissions/onboarding-stage-access"
 import { logger } from "@/lib/logger"
 import { ensureColumnTasks } from "@/lib/services/onboarding-pipeline.service"
@@ -528,6 +529,14 @@ export async function completeTaskWithHandoff(params: {
   const admin = createAdminClient()
   let updated: Record<string, unknown> | null = null
   if (params.task.status !== "completed") {
+    // Gate de entregável obrigatório: bloqueia concluir se um anexo required
+    // (ex.: link do Figma) estiver faltando — mesmo gate do PUT /api/tasks/[id].
+    const deliverableBlock = await guardRequiredDeliverables(
+      admin,
+      params.task.id as string,
+    )
+    if (deliverableBlock) throw new AppError(deliverableBlock, 409)
+
     const result = await admin
       .from("tasks")
       .update({

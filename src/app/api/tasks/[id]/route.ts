@@ -5,6 +5,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { guardEmailProductionCompletion } from "@/lib/api/email-production-guard"
+import { guardRequiredDeliverables } from "@/lib/api/task-deliverables-guard"
 import { getTaskAccessContext } from "@/lib/api/onboarding-task-access"
 import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
 import { attemptCampaignDesignHandoffForTask } from "@/lib/services/campaign-central/campaign-design-trigger.service"
@@ -213,6 +214,12 @@ export async function PUT(
         )
         if (blockedReason) {
           throw new AppError(blockedReason, 409)
+        }
+        // Gate de entregável obrigatório: não conclui a task se um anexo
+        // required (ex.: link do Figma) estiver faltando.
+        const deliverableBlock = await guardRequiredDeliverables(adminClient, id)
+        if (deliverableBlock) {
+          throw new AppError(deliverableBlock, 409)
         }
         updateData.completed_at = new Date().toISOString()
       }

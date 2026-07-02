@@ -898,6 +898,10 @@ export function TaskDetailDrawer({
   const [editingDesc, setEditingDesc] = useState(false)
   const [desc, setDesc] = useState(task.description ?? "")
   const [showToast, setShowToast] = useState<string | null>(null)
+  // Toast de ERRO (vermelho) — separado do showToast, que é hardcoded como
+  // sucesso ("Tarefa concluída!"). Usado quando o servidor recusa a transição,
+  // ex.: 409 do gate de entregável obrigatório ao concluir a task do Figma.
+  const [blockMsg, setBlockMsg] = useState<string | null>(null)
 
   // ESC fecha
   useEffect(() => {
@@ -921,6 +925,13 @@ export function TaskDetailDrawer({
     const t = setTimeout(() => setShowToast(null), 4000)
     return () => clearTimeout(t)
   }, [showToast])
+
+  // Toast de erro auto-dismiss
+  useEffect(() => {
+    if (!blockMsg) return
+    const t = setTimeout(() => setBlockMsg(null), 5000)
+    return () => clearTimeout(t)
+  }, [blockMsg])
 
   // Sidebar interna (modo enriched para tasks de onboarding)
   const [enrichedSection, setEnrichedSection] = useState<SidebarSection>("visao-geral")
@@ -983,7 +994,9 @@ export function TaskDetailDrawer({
   const updateTaskField = async (
     fields: Record<string, unknown>,
     optimistic?: Partial<ProductivityTask>,
-  ) => {
+  ): Promise<{ ok: boolean; error?: string }> => {
+    let ok = true
+    let error: string | undefined
     if (isInTasksTable) {
       // Traduz campos do shape do store pro shape do endpoint /api/tasks
       const body: Record<string, unknown> = {}
@@ -1006,21 +1019,33 @@ export function TaskDetailDrawer({
       if (fields.assignee_id !== undefined) body.assignee_id = fields.assignee_id
       if (fields.sla_hours !== undefined) body.sla_hours = fields.sla_hours
       try {
-        await fetch(`/api/tasks/${task.id}`, {
+        const res = await fetch(`/api/tasks/${task.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         })
+        if (!res.ok) {
+          ok = false
+          const b = (await res.json().catch(() => ({}))) as {
+            error?: string
+            message?: string
+          }
+          error = b.error || b.message || "Não foi possível atualizar a tarefa."
+        }
       } catch (e) {
         console.error("[drawer] PUT task failed", e)
+        ok = false
+        error = "Falha de rede ao atualizar a tarefa."
       }
     } else {
       // Legacy: productivity_tasks via store
-      await apiAction("update_task", { id: task.id, ...fields })
+      ok = await apiAction("update_task", { id: task.id, ...fields })
+      if (!ok) error = "Não foi possível atualizar a tarefa."
     }
-    // Optimistic UI: store atualiza local pra UI nao 'piscar' enquanto
-    // fetchData traz state novo.
-    if (optimistic) {
+    // Optimistic UI: só aplica quando o servidor ACEITOU — evita "piscar"
+    // concluído e reverter no fetchData (ex.: 409 do gate de entregável
+    // obrigatório barrando a conclusão da task do Figma).
+    if (ok && optimistic) {
       const updateTasks = (tasks: ProductivityTask[]) =>
         tasks.map((t) => (t.id === task.id ? { ...t, ...optimistic } : t))
       const state = useProductivityStore.getState()
@@ -1030,6 +1055,7 @@ export function TaskDetailDrawer({
       })
     }
     fetchData()
+    return { ok, error }
   }
 
   // Persiste o modal de workspace na URL (?ws=brand|briefing|email).
@@ -1253,7 +1279,13 @@ export function TaskDetailDrawer({
   const handleAdvance = async (next: ProductivityTask["status"]) => {
     // SEMPRE atualiza status via caminho legado (PUT /api/tasks/[id]).
     // Esse é o único path responsável por status — robusto e testado.
-    await updateTaskField({ status: next }, { status: next })
+    const r = await updateTaskField({ status: next }, { status: next })
+    // Servidor recusou (ex.: 409 do gate de entregável obrigatório): mostra o
+    // motivo e NÃO segue com efeitos de conclusão/abertura de workspace.
+    if (!r.ok) {
+      setBlockMsg(r.error || "Não foi possível atualizar a tarefa.")
+      return
+    }
 
     // pending → progress: SEMPRE tenta abrir o modal. /start é idempotente
     // e retorna 422 silenciosamente pra tasks sem workspace (drawer
@@ -2537,6 +2569,25 @@ export function TaskDetailDrawer({
           <div>
             <div className="font-semibold">Tarefa concluída!</div>
             <div className="text-[11px] text-white/70 mt-0.5">{showToast}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast de erro (servidor recusou a transição — ex.: gate de entregável) */}
+      {blockMsg && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-4 py-3 rounded-[10px] text-[13px] font-medium flex items-center gap-2.5 z-[60] max-w-[90vw]"
+          style={{
+            animation: "drawer-toast-up 200ms cubic-bezier(0.16, 1, 0.3, 1)",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+          }}
+        >
+          <span className="w-6 h-6 rounded-full flex items-center justify-center bg-white/20 shrink-0 font-bold">
+            !
+          </span>
+          <div>
+            <div className="font-semibold">Não foi possível concluir</div>
+            <div className="text-[11px] text-white/80 mt-0.5">{blockMsg}</div>
           </div>
         </div>
       )}

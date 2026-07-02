@@ -19,6 +19,97 @@ import {
 import { TaskDetailDrawer } from "./task-detail-drawer"
 
 // ============================================================================
+// Conclusão de tarefa roteada por tabela (mesma lógica do drawer)
+// ============================================================================
+
+// Status do board (shorthand) -> status real da tabela `tasks` (nome completo).
+// Espelha o STATUS_TO_DB do task-detail-drawer. Usado pra concluir/reabrir
+// tasks de campanha/onboarding, que vivem em `tasks` (endpoint /api/tasks/[id]).
+const STATUS_TO_DB: Record<string, string> = {
+  pending: "pending",
+  progress: "in_progress",
+  review: "in_review",
+  done: "completed",
+}
+
+// Task do board com os campos extras que o GET injeta (mapApiTask faz spread do
+// payload cru): `source_type`/`onboarding_id` presentes => a task vive em
+// `tasks`; ausentes => board pessoal (`productivity_tasks`).
+type BoardTask = ProductivityTask & {
+  source_type?: string
+  onboarding_id?: string
+}
+
+function taskIsInTasksTable(t: ProductivityTask): boolean {
+  const bt = t as BoardTask
+  return !!bt.source_type || !!bt.onboarding_id
+}
+
+// Conclui (done) / reabre (pending) uma task roteando pra tabela certa — MESMO
+// caminho do drawer (isInTasksTable + STATUS_TO_DB). Otimista no store e
+// reconcilia com fetchData. Retorna { ok, error } pro caller decidir o toast:
+// o PUT devolve 409 quando o gate `guardRequiredDeliverables` barra a conclusão
+// por falta de entregável obrigatório (ex.: link do Figma).
+async function setTaskDone(
+  task: ProductivityTask,
+  done: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  const nextStatus: ProductivityTask["status"] = done ? "done" : "pending"
+  const prevStatus = task.status
+
+  const applyStatus = (s: ProductivityTask["status"]) => {
+    const map = (tasks: ProductivityTask[]) =>
+      tasks.map((t) => (t.id === task.id ? { ...t, status: s } : t))
+    const st = useProductivityStore.getState()
+    useProductivityStore.setState({
+      tasks: map(st.tasks),
+      groups: st.groups.map((g) => ({ ...g, items: map(g.items) })),
+    })
+  }
+
+  // Otimista: a caixinha "marca" na hora, sem esperar a rede.
+  applyStatus(nextStatus)
+
+  if (taskIsInTasksTable(task)) {
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: STATUS_TO_DB[nextStatus] }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string
+          message?: string
+        }
+        applyStatus(prevStatus) // reverte otimista — servidor recusou
+        return {
+          ok: false,
+          error:
+            body.error || body.message || "Não foi possível concluir a tarefa.",
+        }
+      }
+    } catch {
+      applyStatus(prevStatus)
+      return { ok: false, error: "Falha de rede ao concluir a tarefa." }
+    }
+    // Reconcilia (traz completed_at, handoff de etapa, avanço da campanha).
+    void useProductivityStore.getState().fetchData()
+    return { ok: true }
+  }
+
+  // Board pessoal: productivity_tasks via store (apiAction já refaz o fetch).
+  const ok = await useProductivityStore
+    .getState()
+    .apiAction("update_task", { id: task.id, status: nextStatus })
+  if (!ok) {
+    applyStatus(prevStatus)
+    return { ok: false, error: "Não foi possível concluir a tarefa." }
+  }
+  return { ok: true }
+}
+
+// ============================================================================
 // Board Page — Table + Kanban + Task Detail Panel
 // ============================================================================
 
@@ -73,6 +164,19 @@ export function ProductivityBoard() {
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set())
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+
+  // Toast do board (conclusão via caixinha / bulk). Sucesso = escuro,
+  // erro = vermelho (ex.: 409 do gate de entregável obrigatório).
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notify = useCallback(
+    (msg: string, kind: "success" | "error" = "success") => {
+      setToast({ msg, kind })
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      toastTimer.current = setTimeout(() => setToast(null), 4500)
+    },
+    [],
+  )
 
   // Load data on mount
   useEffect(() => {
@@ -252,6 +356,7 @@ export function ProductivityBoard() {
           allGroups={groups}
           onClear={() => setSelectedTaskIds(new Set())}
           apiAction={apiAction}
+          notify={notify}
         />
       )}
 
@@ -274,6 +379,7 @@ export function ProductivityBoard() {
               selectedTaskIds={selectedTaskIds}
               setSelectedTaskIds={setSelectedTaskIds}
               filteredTaskIds={filteredTaskIds}
+              notify={notify}
             />
           )}
           {boardView === "kanban" && (
@@ -294,6 +400,22 @@ export function ProductivityBoard() {
           task={selectedTask}
           onClose={() => selectTask(null)}
         />
+      )}
+
+      {/* Toast de conclusão (caixinha / bulk) */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-3 rounded-[10px] text-[13px] font-medium flex items-center gap-2.5 z-[70] text-white max-w-[90vw]",
+            toast.kind === "error" ? "bg-rose-600" : "bg-gray-900",
+          )}
+          style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}
+        >
+          <span className="w-6 h-6 rounded-full flex items-center justify-center bg-white/20 shrink-0 font-bold">
+            {toast.kind === "error" ? "!" : "✓"}
+          </span>
+          <span className="leading-snug">{toast.msg}</span>
+        </div>
       )}
     </div>
   )
@@ -462,20 +584,63 @@ function BulkActionsBar({
   allGroups,
   onClear,
   apiAction,
+  notify,
 }: {
   selectedIds: string[]
   allGroups: TaskGroup[]
   onClear: () => void
   apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
+  notify: (msg: string, kind?: "success" | "error") => void
 }) {
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const [prioMenuOpen, setPrioMenuOpen] = useState(false)
 
   async function bulkComplete() {
-    await apiAction("bulk_update_tasks", {
-      ids: selectedIds,
-      updates: { status: "done" },
-    })
+    // Indexa as tasks selecionadas p/ rotear por tabela (mesma regra do drawer):
+    // as de campanha/onboarding vivem em `tasks` (concluídas via setTaskDone, que
+    // respeita o gate 409 de entregável); as demais, em productivity_tasks.
+    const byId = new Map<string, ProductivityTask>()
+    for (const g of allGroups) for (const t of g.items) byId.set(t.id, t)
+
+    const inTasks: ProductivityTask[] = []
+    const legacyIds: string[] = []
+    for (const id of selectedIds) {
+      const t = byId.get(id)
+      if (t && taskIsInTasksTable(t)) inTasks.push(t)
+      else legacyIds.push(id)
+    }
+
+    let doneCount = 0
+    const blocked: string[] = []
+    for (const t of inTasks) {
+      if (t.status === "done") continue
+      const r = await setTaskDone(t, true)
+      if (r.ok) doneCount++
+      else blocked.push(`${t.name}: ${r.error ?? "bloqueada"}`)
+    }
+
+    if (legacyIds.length > 0) {
+      const ok = await apiAction("bulk_update_tasks", {
+        ids: legacyIds,
+        updates: { status: "done" },
+      })
+      if (ok) doneCount += legacyIds.length
+    }
+
+    // Reconcilia (handoff de etapa / avanço da campanha) após o lote.
+    void useProductivityStore.getState().fetchData()
+
+    if (blocked.length > 0) {
+      notify(
+        `${doneCount} concluída(s) · ${blocked.length} bloqueada(s): ${blocked.join(" · ")}`,
+        "error",
+      )
+    } else if (doneCount > 0) {
+      notify(
+        `${doneCount} tarefa(s) concluída(s).`,
+        "success",
+      )
+    }
     onClear()
   }
 
@@ -1063,7 +1228,7 @@ function TableView({
   expandedTasks, toggleTaskExpand,
   selectedTaskId, selectTask,
   hoveredTaskId, setHoveredTask, toggleSubtask,
-  selectedTaskIds, setSelectedTaskIds, filteredTaskIds,
+  selectedTaskIds, setSelectedTaskIds, filteredTaskIds, notify,
 }: {
   groups: TaskGroup[]
   collapsedGroups: Set<string>
@@ -1078,6 +1243,7 @@ function TableView({
   selectedTaskIds: Set<string>
   setSelectedTaskIds: (s: Set<string>) => void
   filteredTaskIds: Set<string>
+  notify: (msg: string, kind?: "success" | "error") => void
 }) {
   const { apiAction } = useProductivityStore()
 
@@ -1112,16 +1278,18 @@ function TableView({
     <div>
       {/* Table header */}
       <div className="flex items-center h-8 px-6 bg-gray-50 dark:bg-[#242836] border-b border-gray-200 dark:border-white/10 sticky top-0 z-[5]">
-        <div className="w-7 flex items-center justify-center">
+        {/* 1ª coluna (w-7) = conclusão por linha — sem controle no header. */}
+        <div className="w-7" />
+        {/* Alinha o "selecionar todas" sobre a coluna de seleção (hover) das linhas. */}
+        <div className="w-5 flex items-center justify-center">
           <input
             type="checkbox"
             checked={allVisibleSelected}
             onChange={toggleSelectAllVisible}
-            className="h-3.5 w-3.5 rounded border-slate-300 cursor-pointer"
+            className="h-3 w-3 rounded border-slate-300 cursor-pointer"
             title={allVisibleSelected ? "Desmarcar todas" : "Selecionar todas visiveis"}
           />
         </div>
-        <div className="w-5" />
         <div className="flex-1 text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Tarefa</div>
         <div className="w-[120px] text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Status</div>
         <div className="w-[50px] text-center text-[10px] font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">Resp.</div>
@@ -1331,18 +1499,45 @@ function TableView({
                       isSelected ? "bg-brand-50" : isHovered ? "bg-[rgba(0,0,0,0.015)]" : "bg-transparent"
                     )}
                   >
+                    {/* Caixinha de CONCLUSÃO: marca => conclui / desmarca => reabre.
+                        Roteia pela tabela certa (setTaskDone). 409 do gate de
+                        entregável obrigatório vira toast e reverte o check. */}
                     <div className="w-7 flex items-center justify-center">
                       <input
                         type="checkbox"
-                        checked={selectedTaskIds.has(t.id)}
-                        onChange={() => toggleSelectTaskId(t.id)}
+                        checked={isDone}
+                        onChange={async (e) => {
+                          const want = e.target.checked
+                          const r = await setTaskDone(t, want)
+                          if (!r.ok) {
+                            notify(r.error || "Não foi possível concluir a tarefa.", "error")
+                          } else if (want) {
+                            notify("Tarefa concluída!", "success")
+                          }
+                        }}
                         onClick={(e) => e.stopPropagation()}
-                        className="h-3.5 w-3.5 rounded border-slate-300 cursor-pointer"
-                        aria-label="Selecionar tarefa"
+                        className="h-3.5 w-3.5 rounded border-slate-300 cursor-pointer accent-emerald-600"
+                        aria-label={isDone ? "Reabrir tarefa" : "Concluir tarefa"}
+                        title={isDone ? "Reabrir tarefa" : "Concluir tarefa"}
                       />
                     </div>
+                    {/* Slot da prioridade: mostra o dot normalmente e, no hover
+                        (ou quando já selecionada), revela a checkbox de SELEÇÃO
+                        pro bulk — sem conflitar com a de conclusão. */}
                     <div className="w-5 flex justify-center">
-                      <PriorityDot priority={t.priority} />
+                      {isHovered || selectedTaskIds.has(t.id) ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedTaskIds.has(t.id)}
+                          onChange={() => toggleSelectTaskId(t.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-3 w-3 rounded border-slate-300 cursor-pointer"
+                          aria-label="Selecionar tarefa para ação em massa"
+                          title="Selecionar para ação em massa"
+                        />
+                      ) : (
+                        <PriorityDot priority={t.priority} />
+                      )}
                     </div>
                     <div className="w-5 flex justify-center">
                       {hasSubs && (
