@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { Check, ChevronsUpDown } from "lucide-react"
@@ -37,6 +38,13 @@ export function WorkspaceSwitcher({
   const meta = WORKSPACES[current]
   const TriggerIcon = meta.icon
   const goTo = (w: WorkspaceMeta) => router.push(w.homeHref)
+
+  // Pré-carrega as homes dos outros workspaces para a troca ser instantânea
+  useEffect(() => {
+    for (const w of Object.values(WORKSPACES)) {
+      if (w.key !== current) router.prefetch(w.homeHref)
+    }
+  }, [router, current])
 
   return (
     <div className={collapsed ? "flex justify-center" : "px-3"}>
