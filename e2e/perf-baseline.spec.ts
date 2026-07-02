@@ -45,10 +45,14 @@ test.describe("Baseline de tempos do portal", () => {
       const t0 = Date.now()
       await page.goto(path, { waitUntil: "domcontentloaded" })
       const tDom = Date.now() - t0
+      await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 30_000 })
+      const tVisible = Date.now() - t0
       await page
         .waitForLoadState("networkidle", { timeout: 30_000 })
         .catch(() => {})
-      results.push(`goto ${path}: DOM ${s(tDom)} · rede ociosa ${s(Date.now() - t0)}`)
+      results.push(
+        `goto ${path}: DOM ${s(tDom)} · conteúdo visível ${s(tVisible)} · rede ociosa ${s(Date.now() - t0)}`
+      )
       expect(page.url()).not.toContain("/login")
     }
 
