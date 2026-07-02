@@ -79,7 +79,8 @@ export default function ChangePasswordPage() {
       setSuccess(true)
 
       setTimeout(() => {
-        window.location.href = "/client/dashboard"
+        router.push("/client/dashboard")
+        router.refresh()
       }, 2000)
     } catch (err) {
       console.error("Change password error:", err)

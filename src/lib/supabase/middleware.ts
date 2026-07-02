@@ -68,8 +68,11 @@ export async function updateSession(request: NextRequest) {
   // Only call getUser() when necessary
   if (isAdminPath || isAuthPath || isRootPath || isChangePasswordPath || isClientPath) {
     try {
-      // Use getUser() with a timeout to prevent long waits
-      const { data: { user } } = await supabase.auth.getUser()
+      // getClaims() valida o JWT localmente quando o projeto usa signing keys
+      // assimetricas (cai para validacao remota no legado HS256) e ainda
+      // dispara o refresh de sessao quando o token expira.
+      const { data: claimsData } = await supabase.auth.getClaims()
+      const user = claimsData?.claims ?? null
 
       // Admin protected routes
       if (isAdminPath && !user) {

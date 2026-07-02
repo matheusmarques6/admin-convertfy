@@ -14,21 +14,36 @@ import { AiChatDrawer } from "@/components/ai/ai-chat-drawer"
 import { AiChatTrigger } from "@/components/ai/ai-chat-trigger"
 import { AiContextWatcher } from "@/components/ai/ai-context-watcher"
 
-async function getPermissions(userId: string): Promise<Permissions | null> {
+async function getPermissions(
+  userId: string,
+  profile: { role: string | null } | null
+): Promise<Permissions | null> {
   try {
     const supabase = await createClient()
-
-    // Get user profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single()
 
     if (!profile) return null
 
     // Check if user is admin (global admin)
     const isAdmin = profile.role === "admin"
+
+    const fetchAllStores = () =>
+      supabase
+        .from("client_stores")
+        .select(`
+          id,
+          store_name,
+          client:clients(id, name)
+        `)
+        .eq("is_active", true)
+
+    // Admin global sempre cai no bypass de lojas — dispara em paralelo
+    // com a busca de org membership.
+    const adminStoresPromise = isAdmin
+      ? Promise.resolve(fetchAllStores()).catch((err) => {
+          console.error("[Layout] Error fetching store access:", err)
+          return { data: null }
+        })
+      : null
 
     // Get org membership
     const { data: orgMember } = await supabase
@@ -81,14 +96,7 @@ async function getPermissions(userId: string): Promise<Permissions | null> {
 
     try {
       if (hasStoreBypass) {
-        const { data: allStores } = await supabase
-          .from("client_stores")
-          .select(`
-            id,
-            store_name,
-            client:clients(id, name)
-          `)
-          .eq("is_active", true)
+        const { data: allStores } = await (adminStoresPromise ?? fetchAllStores())
 
         storeAccess = (allStores || []).map((store) => {
           const client = Array.isArray(store.client) ? store.client[0] : store.client
@@ -174,7 +182,7 @@ export default async function DashboardLayout({
     .eq("id", user.id)
     .single()
 
-  const permissions = await getPermissions(user.id)
+  const permissions = await getPermissions(user.id, profile)
 
   const userData = profile ? {
     name: profile.name,

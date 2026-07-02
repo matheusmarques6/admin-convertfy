@@ -15,7 +15,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import {
   createOnboarding,
 } from "@/lib/services/onboarding-pipeline.service"
-import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+import { ensureOnboardingBootstrapForRead } from "@/lib/services/onboarding-bootstrap.service"
 import {
   resolveEffectiveStatuses,
   applyEffectiveStatuses,
@@ -34,7 +34,7 @@ async function handleGet(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
-    await ensureOnboardingBootstrap(orgId, user.id)
+    await ensureOnboardingBootstrapForRead(orgId, user.id)
     const admin = createAdminClient()
 
     const sp = request.nextUrl.searchParams
@@ -55,23 +55,18 @@ async function handleGet(request: NextRequest) {
     if (status) q = q.eq("status", status)
     else q = q.eq("status", "in_progress")
 
-    const { data, error } = await q
-    if (error) throw error
-
     // Tambem retorna a pipeline + colunas
-    const { data: pipeline } = await admin
-      .from("operational_pipelines")
-      .select("*")
-      .eq("org_id", orgId)
-      .eq("type", "onboarding")
-      .eq("is_active", true)
-      .maybeSingle()
-
-    const { data: columns } = await admin
-      .from("operational_pipeline_columns")
-      .select("*")
-      .eq("pipeline_id", pipeline?.id ?? "")
-      .order("position", { ascending: true })
+    const [{ data, error }, { data: pipeline }] = await Promise.all([
+      q,
+      admin
+        .from("operational_pipelines")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("type", "onboarding")
+        .eq("is_active", true)
+        .maybeSingle(),
+    ])
+    if (error) throw error
 
     // Calcula status efetivo de pagamento/contrato em runtime
     // (unified_invoices + contracts + subscriptions atreladas)
@@ -81,11 +76,15 @@ async function handleGet(request: NextRequest) {
     const subscriptionIds = (data ?? [])
       .map((o) => (o as { subscription_id?: string }).subscription_id)
       .filter((x): x is string => !!x)
-    const effective = await resolveEffectiveStatuses(
-      admin,
-      clientIds,
-      subscriptionIds,
-    )
+
+    const [{ data: columns }, effective] = await Promise.all([
+      admin
+        .from("operational_pipeline_columns")
+        .select("*")
+        .eq("pipeline_id", pipeline?.id ?? "")
+        .order("position", { ascending: true }),
+      resolveEffectiveStatuses(admin, clientIds, subscriptionIds),
+    ])
     const enriched = applyEffectiveStatuses(data ?? [], effective)
 
     return successResponse(request, {

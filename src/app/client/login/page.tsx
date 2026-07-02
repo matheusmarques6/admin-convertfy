@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -38,6 +39,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export default function ClientLoginPage() {
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -95,7 +97,8 @@ export default function ClientLoginPage() {
 
       // Must change password?
       if (verifyData.mustChangePassword) {
-        window.location.href = "/client/change-password"
+        router.push("/client/change-password")
+        router.refresh()
         return
       }
 
@@ -106,7 +109,8 @@ export default function ClientLoginPage() {
         if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete && !wizardData.data.hasApprovedOnboarding) {
           const steps = wizardData.steps
           if (steps && (!steps.personalInfo?.complete || !steps.storeData?.complete || !steps.klaviyoKeys?.complete)) {
-            window.location.href = "/client/onboarding/wizard"
+            router.push("/client/onboarding/wizard")
+            router.refresh()
             return
           }
         }
@@ -114,7 +118,8 @@ export default function ClientLoginPage() {
         // If wizard check fails, proceed to dashboard
       }
 
-      window.location.href = "/client/dashboard"
+      router.push("/client/dashboard")
+      router.refresh()
     } catch {
       setError("Erro de conexao. Tente novamente.")
       setIsLoading(false)

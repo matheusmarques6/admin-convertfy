@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import dynamic from "next/dynamic"
 import { Store, Receipt, History, Settings as SettingsIcon, LayoutDashboard } from "lucide-react"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ClientOverview, type ClientWithRelations } from "@/components/clients/client-overview"
-import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientTimeline } from "@/components/clients/client-timeline"
@@ -17,6 +18,14 @@ import {
   ClientPerformanceProvider,
   ClientPerformanceTables,
 } from "@/components/clients/client-performance-review"
+
+const ClientFinancial = dynamic(
+  () => import("@/components/clients/client-financial").then(mod => ({ default: mod.ClientFinancial })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-[10px]" />,
+    ssr: false,
+  }
+)
 
 interface ClientDetailTabsProps {
   client: ClientWithRelations

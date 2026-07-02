@@ -46,12 +46,19 @@ export async function requireStoreAccess(
 ): Promise<StoreAccessResult> {
   const adminClient = createAdminClient()
 
-  // 1. Buscar a loja
-  const { data: store, error } = await adminClient
-    .from("client_stores")
-    .select("id, org_id, store_name, client_id")
-    .eq("id", storeId)
-    .single()
+  // 1. Buscar loja e profile em paralelo (independentes: derivam de storeId/userId)
+  const [{ data: store, error }, { data: profile }] = await Promise.all([
+    adminClient
+      .from("client_stores")
+      .select("id, org_id, store_name, client_id")
+      .eq("id", storeId)
+      .single(),
+    adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single(),
+  ])
 
   if (error) {
     log.error("Failed to fetch store", { storeId, code: error.code, message: error.message })
@@ -68,12 +75,6 @@ export async function requireStoreAccess(
   }
 
   // 3. Check if system admin
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single()
-
   const isAdmin = profile?.role === "admin"
 
   // 4. Buscar org_member para este usuario nesta org
@@ -185,26 +186,26 @@ export async function getAccessibleStoreIds(
 ): Promise<string[] | null | AccessibleStoresResult> {
   const adminClient = createAdminClient()
 
-  // 1. Check if system admin
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single()
+  // 1+2. Profile e org_member em paralelo (independentes: derivam de userId/orgId)
+  const [{ data: profile }, { data: orgMember }] = await Promise.all([
+    adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single(),
+    adminClient
+      .from("org_members")
+      .select("id, role")
+      .eq("profile_id", userId)
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .single(),
+  ])
 
   if (profile?.role === "admin") {
     if (options?.detailed) return { storeIds: null, isSystemAdmin: true }
     return null
   }
-
-  // 2. Check org_member role
-  const { data: orgMember } = await adminClient
-    .from("org_members")
-    .select("id, role")
-    .eq("profile_id", userId)
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-    .single()
 
   if (!orgMember) {
     // Not a member of this org — return empty array (no stores accessible)

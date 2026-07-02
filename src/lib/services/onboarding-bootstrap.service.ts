@@ -470,6 +470,73 @@ export interface BootstrapResult {
   tutorialPageId: string
 }
 
+// Cache em memoria de quando o bootstrap completo (com re-sync de seed)
+// rodou por org neste processo. TTL curto pra cobrir deploys — mesmo padrao
+// do lazy re-sync em /api/productivity.
+const SEED_SYNC_TTL_MS = 5 * 60 * 1000
+const seedSyncAtByOrg = new Map<string, number>()
+
+/**
+ * Checagem barata (somente leitura) de que a org ja tem pipeline onboarding
+ * ativo, todas as colunas-semente e o tutorial default.
+ * Retorna o BootstrapResult quando completo, null caso contrario.
+ */
+export async function isOnboardingBootstrapped(
+  orgId: string,
+): Promise<BootstrapResult | null> {
+  const admin = createAdminClient()
+
+  const [pipeRes, tutRes] = await Promise.all([
+    admin
+      .from("operational_pipelines")
+      .select("id, operational_pipeline_columns(id, slug)")
+      .eq("org_id", orgId)
+      .eq("type", "onboarding")
+      .eq("is_active", true)
+      .maybeSingle(),
+    admin
+      .from("tutorial_pages")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("slug", TUTORIAL_DEFAULT_SLUG)
+      .maybeSingle(),
+  ])
+
+  const pipe = pipeRes.data as
+    | { id: string; operational_pipeline_columns: Array<{ id: string; slug: string }> | null }
+    | null
+  const tutorialPageId = tutRes.data?.id
+  if (!pipe?.id || !tutorialPageId) return null
+
+  const columnIds: Record<string, string> = {}
+  for (const c of pipe.operational_pipeline_columns ?? []) columnIds[c.slug] = c.id
+  if (SEED_COLUMNS.some((s) => !columnIds[s.slug])) return null
+
+  return { pipelineId: pipe.id, columnIds, tutorialPageId }
+}
+
+/**
+ * Variante pra caminhos de leitura (GET): quando o bootstrap completo ja
+ * rodou recentemente neste processo, valida com uma checagem barata e evita
+ * os UPDATEs de re-sync do seed. O re-sync completo continua garantido a
+ * cada deploy/cold start e a cada SEED_SYNC_TTL_MS por org. Servicos que
+ * precisam forcar o re-sync (resync de templates/tasks) devem continuar
+ * chamando ensureOnboardingBootstrap direto.
+ */
+export async function ensureOnboardingBootstrapForRead(
+  orgId: string,
+  userId: string | null = null,
+): Promise<BootstrapResult> {
+  const syncedAt = seedSyncAtByOrg.get(orgId) ?? 0
+  if (Date.now() - syncedAt < SEED_SYNC_TTL_MS) {
+    const fast = await isOnboardingBootstrapped(orgId)
+    if (fast) return fast
+  }
+  const result = await ensureOnboardingBootstrap(orgId, userId)
+  seedSyncAtByOrg.set(orgId, Date.now())
+  return result
+}
+
 /**
  * Garante que org tem pipeline + colunas + tutorial default.
  * Idempotente: chama múltiplas vezes sem duplicar.
@@ -546,27 +613,28 @@ export async function ensureOnboardingBootstrap(
   // Atualiza name, templates e automation_rules em cada deploy, garantindo
   // que mudancas no SEED_COLUMNS propaguem pra orgs antigas. Nao toca em
   // tasks/checklists ja instanciadas (essas usam snapshot do template).
-  for (const seed of SEED_COLUMNS) {
-    if (!existingSlugs.has(seed.slug)) continue
-    const { error: upErr } = await admin
-      .from("operational_pipeline_columns")
-      .update({
-        name: seed.name,
-        position: seed.position,
-        color: seed.color,
-        is_initial: seed.is_initial ?? false,
-        is_final: seed.is_final ?? false,
-        checklist_template: seed.checklist_template,
-        deliverables_template: seed.deliverables_template,
-        whatsapp_template: seed.whatsapp_template,
-        default_assignee_role: seed.default_assignee_role,
-        sla_hours: seed.sla_hours,
-        automation_rules: seed.automation_rules,
-      })
-      .eq("pipeline_id", pipelineId)
-      .eq("slug", seed.slug)
-    if (upErr) log.warn("Re-sync coluna falhou", { slug: seed.slug, code: upErr.code, msg: upErr.message })
-  }
+  await Promise.all(
+    SEED_COLUMNS.filter((seed) => existingSlugs.has(seed.slug)).map(async (seed) => {
+      const { error: upErr } = await admin
+        .from("operational_pipeline_columns")
+        .update({
+          name: seed.name,
+          position: seed.position,
+          color: seed.color,
+          is_initial: seed.is_initial ?? false,
+          is_final: seed.is_final ?? false,
+          checklist_template: seed.checklist_template,
+          deliverables_template: seed.deliverables_template,
+          whatsapp_template: seed.whatsapp_template,
+          default_assignee_role: seed.default_assignee_role,
+          sla_hours: seed.sla_hours,
+          automation_rules: seed.automation_rules,
+        })
+        .eq("pipeline_id", pipelineId)
+        .eq("slug", seed.slug)
+      if (upErr) log.warn("Re-sync coluna falhou", { slug: seed.slug, code: upErr.code, msg: upErr.message })
+    }),
+  )
 
   // Re-fetch para mapear slug → id
   const { data: allCols } = await admin

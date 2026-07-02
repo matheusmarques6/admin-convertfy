@@ -3,11 +3,26 @@
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import useSWR from "swr"
+import dynamic from "next/dynamic"
 import { ArrowLeft, Save, Power, PowerOff, Play } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
-import { AutomationBuilder } from "@/components/crm/automation-builder"
 import { ROUTES } from "@/lib/routes"
 import type { CrmAutomationDAG } from "@/types/crm-automation"
+
+const AutomationBuilder = dynamic(
+  () => import("@/components/crm/automation-builder").then((mod) => ({ default: mod.AutomationBuilder })),
+  {
+    loading: () => (
+      <div
+        className="p-6"
+        style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
+      >
+        Carregando builder...
+      </div>
+    ),
+    ssr: false,
+  }
+)
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
