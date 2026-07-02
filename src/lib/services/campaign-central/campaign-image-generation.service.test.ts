@@ -603,6 +603,24 @@ describe("generateBatch", () => {
     expect(opts.aspect).toBe("4:3") // hero
   })
 
+  it("mapeia os formatos novos pro aspect certo (portrait/landscape/banner/vertical)", async () => {
+    seedSuggestion({ targets: [{ store_id: STORE_A }] })
+    seedConfig()
+    generateEmailImageMock.mockResolvedValue("img.png")
+    const cases: Array<[string, string]> = [
+      ["portrait", "4:5"],
+      ["landscape", "16:9"],
+      ["banner", "2:1"],
+      ["vertical", "9:16"],
+    ]
+    for (const [format, aspect] of cases) {
+      generateEmailImageMock.mockClear()
+      seedBatch({ format })
+      await svc.generateBatch(BATCH, ORG)
+      expect(generateEmailImageMock.mock.calls[0][2].aspect).toBe(aspect)
+    }
+  })
+
   it("headline opt-in: usa heading da copy; fallback p/ subject; ausente sem copy", async () => {
     seedSuggestion({
       targets: [{ store_id: STORE_A }, { store_id: STORE_B }, { store_id: STORE_C }],

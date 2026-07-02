@@ -41,6 +41,10 @@ const FORMAT_LABEL: Record<CampaignImageFormat, string> = {
   hero: "Hero (4:3)",
   square: "Quadrado (1:1)",
   story: "Story (3:5)",
+  portrait: "Retrato (4:5)",
+  landscape: "Paisagem (16:9)",
+  banner: "Banner (2:1)",
+  vertical: "Vertical (9:16)",
 }
 
 const FLAG_LABELS: Array<{ key: keyof CampaignImageAdaptFlags; label: string }> = [

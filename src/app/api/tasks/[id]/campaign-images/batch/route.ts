@@ -52,7 +52,17 @@ const textContextSchema = z
 const patchSchema = z.object({
   batch_id: z.string().uuid(),
   name: z.string().min(1).max(120).optional(),
-  format: z.enum(["hero", "square", "story"]).optional(),
+  format: z
+    .enum([
+      "hero",
+      "square",
+      "story",
+      "portrait",
+      "landscape",
+      "banner",
+      "vertical",
+    ])
+    .optional(),
   instruction: z.string().max(4000).optional(),
   reference_image_url: z.string().url().nullable().optional(),
   adapt_flags: adaptFlagsSchema.optional(),

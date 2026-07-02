@@ -1,7 +1,7 @@
 /**
  * Aspect ratio resolution + dimensoes para o image agent (story AE-12).
  *
- * Define os 5 aspect ratios suportados pelo pipeline e a matriz por
+ * Define os aspect ratios suportados pelo pipeline e a matriz por
  * (flow_type, email_number) usada quando o blueprint nao define override.
  *
  * Resolucao em ordem de prioridade:
@@ -12,7 +12,15 @@
  * @see docs/stories/AE-12.image-aspect-ratio-resize.md
  */
 
-export type AspectKey = "4:5" | "3:5" | "4:3" | "1:1" | "3:4"
+export type AspectKey =
+  | "4:5"
+  | "3:5"
+  | "4:3"
+  | "1:1"
+  | "3:4"
+  | "16:9"
+  | "2:1"
+  | "9:16"
 
 const DIMENSIONS: Record<AspectKey, { width: number; height: number }> = {
   "4:5": { width: 1200, height: 1500 },
@@ -20,6 +28,9 @@ const DIMENSIONS: Record<AspectKey, { width: number; height: number }> = {
   "4:3": { width: 1200, height: 900 },
   "1:1": { width: 1200, height: 1200 },
   "3:4": { width: 900, height: 1200 },
+  "16:9": { width: 1600, height: 900 },
+  "2:1": { width: 1600, height: 800 },
+  "9:16": { width: 900, height: 1600 },
 }
 
 // Matriz por (flow_type, email_number). Para flows nao mapeados, usa default.
@@ -41,7 +52,14 @@ export function getAspectDimensions(aspect: AspectKey): {
 
 export function isAspectKey(s: unknown): s is AspectKey {
   return (
-    s === "4:5" || s === "3:5" || s === "4:3" || s === "1:1" || s === "3:4"
+    s === "4:5" ||
+    s === "3:5" ||
+    s === "4:3" ||
+    s === "1:1" ||
+    s === "3:4" ||
+    s === "16:9" ||
+    s === "2:1" ||
+    s === "9:16"
   )
 }
 

@@ -98,9 +98,21 @@ const FORMAT_TO_ASPECT: Record<CampaignImageFormat, AspectKey> = {
   hero: "4:3",
   square: "1:1",
   story: "3:5",
+  portrait: "4:5",
+  landscape: "16:9",
+  banner: "2:1",
+  vertical: "9:16",
 }
 
-const VALID_FORMATS: CampaignImageFormat[] = ["hero", "square", "story"]
+const VALID_FORMATS: CampaignImageFormat[] = [
+  "hero",
+  "square",
+  "story",
+  "portrait",
+  "landscape",
+  "banner",
+  "vertical",
+]
 
 export function isCampaignImageFormat(v: unknown): v is CampaignImageFormat {
   return typeof v === "string" && VALID_FORMATS.includes(v as CampaignImageFormat)

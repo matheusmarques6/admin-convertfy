@@ -244,7 +244,14 @@ export interface CampaignHandoffStore {
 // ── Geração de Imagens por Loja (etapa de PRODUÇÃO) ──────────────────
 
 /** Formato/aspecto-alvo de um lote de imagens. Mapeia pra AspectKey no service. */
-export type CampaignImageFormat = "hero" | "square" | "story"
+export type CampaignImageFormat =
+  | "hero"
+  | "square"
+  | "story"
+  | "portrait"
+  | "landscape"
+  | "banner"
+  | "vertical"
 
 /** Status ao vivo de uma imagem por loja (espelha o CHECK da tabela). */
 export type CampaignImageResultStatus =

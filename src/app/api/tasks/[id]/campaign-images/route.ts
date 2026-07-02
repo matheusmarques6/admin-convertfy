@@ -56,7 +56,15 @@ const textContextSchema = z
 const createBatchSchema = z.object({
   action: z.literal("create_batch"),
   name: z.string().min(1).max(120),
-  format: z.enum(["hero", "square", "story"]),
+  format: z.enum([
+    "hero",
+    "square",
+    "story",
+    "portrait",
+    "landscape",
+    "banner",
+    "vertical",
+  ]),
   instruction: z.string().max(4000).default(""),
   reference_image_url: z.string().url().nullable().optional(),
   adapt_flags: adaptFlagsSchema.optional(),

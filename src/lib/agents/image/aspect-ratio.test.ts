@@ -23,16 +23,27 @@ describe("getAspectDimensions", () => {
   it("retorna 900x1200 para 3:4", () => {
     expect(getAspectDimensions("3:4")).toEqual({ width: 900, height: 1200 })
   })
+  it("retorna 1600x900 para 16:9", () => {
+    expect(getAspectDimensions("16:9")).toEqual({ width: 1600, height: 900 })
+  })
+  it("retorna 1600x800 para 2:1", () => {
+    expect(getAspectDimensions("2:1")).toEqual({ width: 1600, height: 800 })
+  })
+  it("retorna 900x1600 para 9:16", () => {
+    expect(getAspectDimensions("9:16")).toEqual({ width: 900, height: 1600 })
+  })
 })
 
 describe("isAspectKey", () => {
   it("aceita strings validas", () => {
-    ;(["4:5", "3:5", "4:3", "1:1", "3:4"] as AspectKey[]).forEach((s) => {
+    ;(
+      ["4:5", "3:5", "4:3", "1:1", "3:4", "16:9", "2:1", "9:16"] as AspectKey[]
+    ).forEach((s) => {
       expect(isAspectKey(s)).toBe(true)
     })
   })
   it("rejeita strings invalidas", () => {
-    expect(isAspectKey("16:9")).toBe(false)
+    expect(isAspectKey("5:7")).toBe(false)
     expect(isAspectKey("")).toBe(false)
     expect(isAspectKey(null)).toBe(false)
     expect(isAspectKey(undefined)).toBe(false)
@@ -64,7 +75,7 @@ describe("resolveAspectForBlock — blueprint override", () => {
   it("blueprintAspect invalido (string nao-AspectKey) cai pra matriz", () => {
     expect(
       resolveAspectForBlock({
-        blueprintAspect: "16:9",
+        blueprintAspect: "5:7",
         flowType: "welcome",
         emailNumber: 3,
       }),
