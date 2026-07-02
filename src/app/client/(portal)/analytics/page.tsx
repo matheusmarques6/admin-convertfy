@@ -455,10 +455,13 @@ export default function PortalAnalyticsPage() {
 
   const handleStoreChange = (storeId: string | null) => {
     setActiveStoreId(storeId)
+    // Cookie espelha o localStorage para o servidor (RSC) ler a loja ativa
     if (storeId) {
       try { localStorage.setItem("portal_active_store", storeId) } catch { /* ignore */ }
+      document.cookie = `portal_active_store=${storeId}; path=/; max-age=31536000; samesite=lax`
     } else {
       try { localStorage.removeItem("portal_active_store") } catch { /* ignore */ }
+      document.cookie = "portal_active_store=; path=/; max-age=0"
     }
   }
 

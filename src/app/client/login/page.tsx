@@ -79,7 +79,9 @@ export default function ClientLoginPage() {
         return
       }
 
-      // Verify this is a portal user
+      // Verify this is a portal user (wizard check disparado em paralelo —
+      // só é lido se o verify passar)
+      const wizardPromise = fetch("/api/portal/onboarding/wizard").catch(() => null)
       const response = await fetch("/api/portal/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,7 +106,8 @@ export default function ClientLoginPage() {
 
       // Check if onboarding wizard is incomplete
       try {
-        const wizardRes = await fetch("/api/portal/onboarding/wizard")
+        const wizardRes = await wizardPromise
+        if (!wizardRes) throw new Error("wizard check indisponível")
         const wizardData = await wizardRes.json()
         if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete && !wizardData.data.hasApprovedOnboarding) {
           const steps = wizardData.steps
