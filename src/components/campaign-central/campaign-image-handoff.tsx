@@ -23,6 +23,7 @@ import {
   Sparkles,
   Upload,
   X,
+  ZoomIn,
 } from "lucide-react"
 import type {
   CampaignImageAdaptFlags,
@@ -973,6 +974,8 @@ function ResultCard({
   // veil segura até o onLoad, pra imagem nova entrar "de fato", não trocada no escuro.
   const [imgReady, setImgReady] = useState(true)
   const prevImgUrl = useRef(result?.image_url)
+  // Lightbox: clicar na imagem abre ela inteira (object-contain) sobre o painel.
+  const [zoom, setZoom] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -981,6 +984,27 @@ function ResultCard({
       if (result?.image_url) setImgReady(false)
     }
   }, [result?.image_url])
+
+  // Fecha o lightbox no ESC SEM derrubar o painel: o painel escuta ESC no window
+  // em bubble e chama onClose sem checar defaultPrevented. Escutamos em CAPTURA
+  // (roda antes) e damos stopPropagation → o ESC fecha só o zoom. Trava o scroll
+  // do body enquanto aberto.
+  useEffect(() => {
+    if (!zoom) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation()
+        setZoom(false)
+      }
+    }
+    window.addEventListener("keydown", onKey, true)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey, true)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [zoom])
 
   const status = result?.status ?? "queued"
   const sm = statusMeta(status)
@@ -1074,7 +1098,7 @@ function ResultCard({
   return (
     <div className="flex flex-col overflow-hidden rounded-[8px] border border-border bg-card">
       {/* Preview */}
-      <div className="relative aspect-[4/3] w-full bg-muted/40">
+      <div className="group relative aspect-[4/3] w-full bg-muted/40">
         {result?.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -1082,7 +1106,8 @@ function ResultCard({
             alt={`Imagem de ${store.store_name}`}
             onLoad={() => setImgReady(true)}
             onError={() => setImgReady(true)}
-            className="h-full w-full object-cover"
+            onClick={() => setZoom(true)}
+            className="h-full w-full cursor-zoom-in object-cover"
           />
         ) : !isPending ? (
           <div className="flex h-full w-full items-center justify-center text-muted-foreground">
@@ -1112,6 +1137,11 @@ function ResultCard({
           <span className={`h-1.5 w-1.5 rounded-full ${sm.dot}`} />
           {sm.label}
         </span>
+        {result?.image_url && !isPending && imgReady && (
+          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+            <ZoomIn size={11} /> Ver
+          </span>
+        )}
       </div>
 
       {/* Footer */}
@@ -1216,6 +1246,36 @@ function ResultCard({
           </div>
         )}
       </div>
+
+      {/* Lightbox: imagem inteira (object-contain) sobre o painel (z-[70] > z-[60]).
+          Clique fora / X / ESC fecham só o zoom (ver efeito de ESC em captura). */}
+      {zoom && result?.image_url && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setZoom(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={result.image_url}
+            alt={`Imagem de ${store.store_name}`}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-full max-w-full rounded object-contain shadow-2xl"
+          />
+          <button
+            type="button"
+            onClick={() => setZoom(false)}
+            aria-label="Fechar"
+            className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
+            <X size={18} />
+          </button>
+          <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[12px] font-medium text-white/85">
+            {store.store_name}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
