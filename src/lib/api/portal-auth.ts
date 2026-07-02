@@ -48,11 +48,24 @@ export async function resolvePortalClient(
     throw new PortalAuthError("Portal user is inactive")
   }
 
-  // 2. Buscar lojas ATIVAS do cliente (F6 fix)
+  return resolvePortalClientByClientId(adminClient, portalUser.client_id)
+}
+
+/**
+ * Resolves client_id -> active store_ids[] directly.
+ * Used by Server Components that already resolved the portal user.
+ *
+ * @throws PortalAuthError (500) if store resolution fails
+ */
+export async function resolvePortalClientByClientId(
+  adminClient: SupabaseClient,
+  clientId: string
+): Promise<PortalClientContext> {
+  // Buscar lojas ATIVAS do cliente (F6 fix)
   const { data: stores, error: stError } = await adminClient
     .from("client_stores")
     .select("id, store_name, currency, org_id")
-    .eq("client_id", portalUser.client_id)
+    .eq("client_id", clientId)
     .eq("is_active", true)
 
   if (stError || !stores) {
@@ -71,7 +84,7 @@ export async function resolvePortalClient(
   const orgId = stores[0]?.org_id ?? ""
 
   return {
-    clientId: portalUser.client_id,
+    clientId,
     orgId,
     storeIds,
     storeNameMap,

@@ -2,7 +2,8 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { deriveStatus, updateStoreCredentials } from "@/lib/services/credentials.service"
+import { updateStoreCredentials } from "@/lib/services/credentials.service"
+import { listPortalStores } from "@/lib/services/portal-stores.service"
 import { logger } from "@/lib/logger"
 import { getPortalUser } from "@/lib/portal/auth"
 
@@ -31,57 +32,7 @@ export async function GET(request: NextRequest) {
     // Use admin client to read credential presence flags
     const adminClient = createAdminClient()
 
-    const { data: stores, error } = await adminClient
-      .from("client_stores")
-      .select(`
-        id,
-        store_name,
-        platform,
-        store_url,
-        is_active,
-        created_at,
-        klaviyo_api_key,
-        klaviyo_private_key,
-        klaviyo_validated_at,
-        klaviyo_validation_error,
-        shopify_access_token,
-        shopify_validated_at,
-        shopify_validation_error,
-        shopify_store_domain
-      `)
-      .eq("client_id", portalUser.client_id)
-      .order("store_name")
-
-    if (error) {
-      log.error("[Portal Stores] Error:", error)
-      throw new AppError("Erro ao buscar lojas", 500)
-    }
-
-    // SECURITY: Convert credentials to boolean flags - never expose actual keys to client
-    // Derive status from real validation columns (same source of truth as store detail)
-    const storesWithFlags = (stores || []).map((store) => {
-      const klaviyoStatus = deriveStatus(
-        !!(store.klaviyo_private_key || store.klaviyo_api_key),
-        store.klaviyo_validated_at,
-        store.klaviyo_validation_error
-      )
-      const shopifyStatus = deriveStatus(
-        !!store.shopify_access_token,
-        store.shopify_validated_at,
-        store.shopify_validation_error
-      )
-      return {
-        id: store.id,
-        store_name: store.store_name,
-        platform: store.platform,
-        store_url: store.store_url,
-        is_active: store.is_active,
-        created_at: store.created_at,
-        hasKlaviyo: klaviyoStatus.connected || klaviyoStatus.status === "pending_validation",
-        shopify_access_token: shopifyStatus.connected || shopifyStatus.status === "pending_validation",
-        shopify_store_domain: store.shopify_store_domain || "",
-      }
-    })
+    const storesWithFlags = await listPortalStores(portalUser.client_id, adminClient)
 
     return successResponse(request, { stores: storesWithFlags })
   } catch (error) {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import useSWR, { preload } from "swr"
 import type { PortalCampaignApiResponse } from "@/types/campaign"
 
@@ -109,6 +109,11 @@ async function portalFetcher<T = unknown>(url: string): Promise<T> {
 export interface UsePortalCampaignsCalendarOptions {
   initialMonth?: number // 0-11
   initialYear?: number
+  /** Dados vindos do RSC para o mês inicial — evita o fetch no mount */
+  initialData?: {
+    campaigns: PortalCampaignApiResponse[]
+    totalCount: number
+  } | null
 }
 
 // Re-export for consumers that imported PortalCampaignApiResponse from here
@@ -155,6 +160,25 @@ export function usePortalCampaignsCalendar(
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
+  // Snapshot do mês inicial + dados do RSC (não muda entre renders)
+  const initialRef = useRef<{
+    month: number
+    year: number
+    data: { campaigns: PortalCampaignApiResponse[]; totalCount: number } | null
+  } | null>(null)
+  if (initialRef.current === null) {
+    initialRef.current = {
+      month,
+      year,
+      data: options.initialData ?? null,
+    }
+  }
+  const initial = initialRef.current
+  const fallbackData =
+    initial.data && month === initial.month && year === initial.year
+      ? { success: true, campaigns: initial.data.campaigns, totalCount: initial.data.totalCount }
+      : undefined
+
   // Build query params for a given month/year
   const buildListUrlForMonth = useCallback((m: number, y: number) => {
     const ld = new Date(y, m + 1, 0).getDate()
@@ -182,6 +206,8 @@ export function usePortalCampaignsCalendar(
       dedupingInterval: 10_000,
       errorRetryCount: 2,
       keepPreviousData: true,
+      fallbackData,
+      revalidateOnMount: fallbackData ? false : undefined,
     }
   )
 

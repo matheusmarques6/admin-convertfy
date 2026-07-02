@@ -3,6 +3,7 @@ import { z } from "zod"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { buildPortalSettings } from "@/lib/services/portal-settings.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalSettings")
@@ -29,48 +30,15 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
-    // Get portal user
-    const { data: portalUser } = await supabase
-      .from("client_portal_users")
-      .select("id, name, email, phone, avatar_url, client_id")
-      .eq("auth_user_id", user.id)
-      .eq("is_active", true)
-      .single()
+    const settings = await buildPortalSettings({ authUserId: user.id }, supabase)
 
-    if (!portalUser) {
+    if (!settings) {
       throw new AppError("Não autorizado", 401)
     }
 
-    // Get notification preferences
-    const { data: notifications } = await supabase
-      .from("client_notification_preferences")
-      .select("*")
-      .eq("portal_user_id", portalUser.id)
-      .single()
-
-    // Default notifications if not exists
-    const defaultNotifications = {
-      email_report_weekly: true,
-      email_report_monthly: true,
-      email_invoice_reminder: true,
-      email_invoice_paid: true,
-      email_campaign_sent: false,
-      email_performance_alerts: false,
-    }
-
-    return NextResponse.json(
-      {
-        profile: {
-          id: portalUser.id,
-          name: portalUser.name,
-          email: portalUser.email,
-          phone: portalUser.phone,
-          avatar_url: portalUser.avatar_url,
-        },
-        notifications: notifications || defaultNotifications,
-      },
-      { headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return NextResponse.json(settings, {
+      headers: corsHeaders(request.headers.get("origin")),
+    })
   } catch (error) {
     return errorResponse(request, error, "PortalSettings")
   }
