@@ -34,7 +34,7 @@ test.describe("Portal do cliente (autenticado)", () => {
     await page.getByPlaceholder("seu@email.com").fill(email!)
     await page.getByPlaceholder("••••••••").fill(password!)
     await page.getByRole("button", { name: "Entrar" }).click()
-    await page.waitForURL(/\/client\//, { timeout: 45_000 })
+    await page.waitForURL(/\/client\/(dashboard|onboarding)/, { timeout: 45_000 })
 
     for (const path of ["/client/campaigns", "/client/analytics", "/client/settings"]) {
       await page.goto(path)
