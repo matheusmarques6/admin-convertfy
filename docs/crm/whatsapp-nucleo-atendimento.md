@@ -29,11 +29,25 @@ templates` · UI em `src/components/crm/inbox/*`.
 
 ### 1. Migration (ANTES do deploy do código)
 
-Aplicar `supabase/migrations/20260812_whatsapp_core_messaging.sql` no
-banco de produção (idempotente — rodável 2x). Cria: colunas de janela
-em `crm_threads`, colunas de mídia em `crm_messages`,
-`crm_whatsapp_templates`, `crm_quick_replies`, `crm_webhook_events`,
-6 RPCs, publication realtime e o bucket `whatsapp-media`.
+A migration é dividida em **3 arquivos aplicados EM ORDEM, cada um como
+um "Run" separado** no SQL editor (transações curtas — uma transação
+única deadlocka contra o tráfego do webhook, que trava
+`crm_messages → crm_threads` via trigger):
+
+1. `20260812_whatsapp_core_messaging_1_columns.sql` — colunas de mídia
+   em `crm_messages` e de janela 24h em `crm_threads` (locks pesados,
+   transação curtíssima, ordem de lock alinhada à aplicação)
+2. `20260812_whatsapp_core_messaging_2_tables_rpcs.sql` —
+   `crm_whatsapp_templates`, `crm_quick_replies`, `crm_webhook_events`
+   e as 6 RPCs (zero locks em tabelas quentes)
+3. `20260812_whatsapp_core_messaging_3_publication_bucket.sql` —
+   publication realtime + bucket `whatsapp-media`
+
+Os arquivos 1 e 3 têm `SET lock_timeout = '10s'`: com tráfego segurando
+lock eles falham rápido (`55P03 lock timeout` ou `40P01 deadlock`) em
+vez de travar — **basta reaplicar o arquivo que falhou** (todos são
+idempotentes). Se o arquivo 1 insistir em falhar, aplicar numa janela
+de menor tráfego (madrugada) ou pausar temporariamente o webhook.
 
 > O repo tem a convenção `APPLY_MANUALLY_*`/`CONSOLIDATED_production_apply.sql`
 > — siga o fluxo usual de aplicação manual se for o caso.

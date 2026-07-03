@@ -1,35 +1,21 @@
 -- ============================================================
--- WhatsApp — Núcleo de atendimento (porte do worder)
+-- WhatsApp — Núcleo de atendimento · PARTE 2/3: tabelas novas + RPCs
 --
--- 1. crm_threads: janela de 24h (is_window_open, window_expires_at)
--- 2. crm_messages: colunas de mídia (storage_path, filename, size)
--- 3. crm_whatsapp_templates: templates Meta sincronizados por canal
--- 4. crm_quick_replies: respostas rápidas por org
--- 5. crm_webhook_events: fila durável de webhooks (source='whatsapp')
--- 6. RPCs: claim/reprocess/prune da fila, janela 24h, templates stale
--- 7. Realtime: crm_threads/crm_messages na publication
--- 8. Storage: bucket privado whatsapp-media
+-- Zero locks em tabelas quentes (crm_threads/crm_messages) — só cria
+-- objetos novos. Aplicar DEPOIS da parte 1 (as RPCs de janela
+-- referenciam as colunas criadas lá).
 --
--- Idempotente: rodável mais de uma vez sem efeito colateral.
+-- 1. crm_whatsapp_templates: templates Meta sincronizados por canal
+-- 2. crm_quick_replies: respostas rápidas por org
+-- 3. crm_webhook_events: fila durável de webhooks (source='whatsapp')
+-- 4. RPCs: claim/reprocess/prune da fila, janela 24h, templates stale
+--
+-- Idempotente: rodável mais de uma vez.
 -- ============================================================
 
--- ── 1. crm_threads: janela de 24h ──────────────────────────────────
-ALTER TABLE crm_threads
-  ADD COLUMN IF NOT EXISTS is_window_open BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS window_expires_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS last_customer_message_at TIMESTAMPTZ;
+SET statement_timeout = '60s';
 
-CREATE INDEX IF NOT EXISTS idx_crm_threads_open_window
-  ON crm_threads (window_expires_at)
-  WHERE is_window_open = TRUE;
-
--- ── 2. crm_messages: mídia ─────────────────────────────────────────
-ALTER TABLE crm_messages
-  ADD COLUMN IF NOT EXISTS media_storage_path TEXT,
-  ADD COLUMN IF NOT EXISTS media_filename TEXT,
-  ADD COLUMN IF NOT EXISTS media_size INTEGER;
-
--- ── 3. crm_whatsapp_templates ──────────────────────────────────────
+-- ── 1. crm_whatsapp_templates ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS crm_whatsapp_templates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -115,7 +101,7 @@ DO $$ BEGIN
     FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- ── 4. crm_quick_replies ───────────────────────────────────────────
+-- ── 2. crm_quick_replies ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS crm_quick_replies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -139,7 +125,7 @@ DO $$ BEGIN
     FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- ── 5. crm_webhook_events (fila durável) ───────────────────────────
+-- ── 3. crm_webhook_events (fila durável) ───────────────────────────
 -- Persiste o payload cru ANTES de qualquer processamento; worker/cron
 -- fazem claim atômico. source permite reutilizar pra Instagram depois.
 CREATE TABLE IF NOT EXISTS crm_webhook_events (
@@ -173,7 +159,7 @@ DO $$ BEGIN
     FOR ALL TO service_role USING (TRUE) WITH CHECK (TRUE);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- ── 6. RPCs ────────────────────────────────────────────────────────
+-- ── 4. RPCs ────────────────────────────────────────────────────────
 
 -- Claim atômico com lease de 30s (previne processamento duplo entre
 -- worker QStash e cron de reprocess). Portado do worder.
@@ -300,27 +286,3 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION stale_pending_crm_templates(INTEGER) TO service_role;
-
--- ── 7. Realtime publication ────────────────────────────────────────
-DO $$
-DECLARE
-  t TEXT;
-BEGIN
-  FOR t IN SELECT unnest(ARRAY['crm_threads', 'crm_messages'])
-  LOOP
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_publication_tables
-      WHERE pubname = 'supabase_realtime' AND tablename = t
-    ) THEN
-      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', t);
-    END IF;
-  END LOOP;
-END;
-$$;
-
--- ── 8. Storage: bucket privado whatsapp-media ──────────────────────
--- Acesso só por signed URL gerada server-side (service role) — sem
--- policies de storage adicionais. Limite 100MB (docs, teto da Meta).
-INSERT INTO storage.buckets (id, name, public, file_size_limit)
-VALUES ('whatsapp-media', 'whatsapp-media', FALSE, 104857600)
-ON CONFLICT (id) DO NOTHING;
