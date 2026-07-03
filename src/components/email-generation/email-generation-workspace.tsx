@@ -1144,7 +1144,7 @@ function TestTab() {
       } catch {
         throw new Error(
           res.status === 504 || text.includes("timed out")
-            ? "Timeout: a função do servidor expirou (300s). Verifique qual fase travou em /admin/tools/email-generation-logs e tente novamente."
+            ? "Timeout: a função do servidor expirou (300s). Verifique qual fase travou em /admin/settings/email-generation-logs e tente novamente."
             : `Resposta inválida do servidor (HTTP ${res.status})`,
         )
       }
@@ -1497,10 +1497,10 @@ function TestTab() {
               <div className="rounded-[4px] border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10 px-3 py-2 text-[12px] text-amber-900 dark:text-amber-200">
                 ⚠️ Geração parece travada na fase {fase}. Watchdog vai limpar em alguns minutos. Veja logs em{" "}
                 <a
-                  href="/admin/tools/email-generation-logs"
+                  href="/admin/settings/email-generation-logs"
                   className="underline font-medium"
                 >
-                  /admin/tools/email-generation-logs
+                  /admin/settings/email-generation-logs
                 </a>
               </div>
             )
@@ -1712,7 +1712,7 @@ function TestTab() {
               )}
               {batchId && (
                 <a
-                  href={`/admin/tools/email-generation-logs?batch=${batchId}`}
+                  href={`/admin/settings/email-generation-logs?batch=${batchId}`}
                   className="text-blue-600 dark:text-blue-400 hover:underline ml-auto"
                 >
                   Ver logs completos

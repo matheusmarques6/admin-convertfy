@@ -65,6 +65,8 @@ const nextConfig = {
 
       // ── Rotas removidas (bookmarks antigos) ───────────────────────
       { source: "/admin/me", destination: "/admin/productivity/board", permanent: true },
+      // Notificacoes/WhatsApp persistidos no banco contem a URL antiga de logs
+      { source: "/admin/tools/email-generation-logs", destination: "/admin/settings/email-generation-logs", permanent: true },
 
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },
