@@ -504,7 +504,7 @@ function SlideCover({ snapshot, monthLabel }: { snapshot: ReportSnapshot; monthL
           <img
             src="/images/logo-da-convertfy-com-escrito-branco.svg"
             alt="Convertfy"
-            style={{ height: 60, width: "auto", display: "block" }}
+            style={{ height: 84, width: "auto", display: "block" }}
           />
         </div>
 
