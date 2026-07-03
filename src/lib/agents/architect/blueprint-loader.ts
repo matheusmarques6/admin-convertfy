@@ -124,3 +124,65 @@ export async function loadEffectiveBlueprintsBatch(
 
   return result
 }
+
+/**
+ * Emails "somente texto" dos flows dados: rows GLOBAIS de email_blueprints
+ * com text_only=true, indexados por `${flow_type}:${email_number}`.
+ *
+ * Retorna o row global COMPLETO (não só a flag) porque o dispatch usa o
+ * próprio row como blueprint do payload — text_only ignora a camada
+ * store_email_blueprints por design.
+ *
+ * Fail-open: erro de query (ex.: migration da coluna ainda não aplicada)
+ * loga warn e retorna Map vazio — todos os emails se comportam como hoje.
+ */
+export async function loadTextOnlyBlueprints(
+  admin: SupabaseClient,
+  flowTypes: string[],
+): Promise<Map<string, EmailBlueprint>> {
+  const result = new Map<string, EmailBlueprint>()
+  if (flowTypes.length === 0) return result
+
+  const { data, error } = await admin
+    .from("email_blueprints")
+    .select("*")
+    .in("flow_type", flowTypes)
+    .eq("text_only", true)
+
+  if (error) {
+    log.warn("loadTextOnlyBlueprints.query_failed", {
+      flowTypes, error: error.message,
+    })
+    return result
+  }
+  for (const bp of (data ?? []) as EmailBlueprint[]) {
+    result.set(`${bp.flow_type}:${bp.email_number}`, bp)
+  }
+  return result
+}
+
+/**
+ * Checagem pontual: o par (flow_type, email_number) está marcado como
+ * "somente texto"? Mesma semântica fail-open do batch (erro => false).
+ */
+export async function isTextOnlyEmail(
+  admin: SupabaseClient,
+  flowType: string,
+  emailNumber: number,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("email_blueprints")
+    .select("id")
+    .eq("flow_type", flowType)
+    .eq("email_number", emailNumber)
+    .eq("text_only", true)
+    .maybeSingle()
+
+  if (error) {
+    log.warn("isTextOnlyEmail.query_failed", {
+      flowType, emailNumber, error: error.message,
+    })
+    return false
+  }
+  return !!data
+}

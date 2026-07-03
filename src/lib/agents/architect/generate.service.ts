@@ -13,6 +13,7 @@ import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { mapTomVozToMood } from "../image/mood-mapping"
+import { isTextOnlyEmail } from "./blueprint-loader"
 import { loadGlobalReferenceTemplate } from "../reference-template"
 import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service"
 import { resolveStructure } from "./outline-sections"
@@ -71,6 +72,21 @@ export async function generateBlueprintAndReference(
   input: GenerateArchitectInput,
 ): Promise<{ referenceSource: ReferenceSource }> {
   const admin = createAdminClient()
+
+  // Email "somente texto" (email_blueprints.text_only): NUNCA gera arquitetura
+  // por loja — sem LLM, sem upsert em store_email_*. Retornar "global" settla
+  // como 'done' na fila e conta como ok no generateForEmails; o consumidor
+  // (dispatch/build-vars) usa a estrutura global. Cobre também jobs já
+  // enfileirados antes da flag e os caminhos manuais (Testar/Regenerar).
+  if (await isTextOnlyEmail(admin, input.flowType, input.emailNumber)) {
+    log.info("architect.skip_text_only", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+    })
+    return { referenceSource: "global" }
+  }
+
   const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml] = await Promise.all([
     admin
       .from("client_stores")

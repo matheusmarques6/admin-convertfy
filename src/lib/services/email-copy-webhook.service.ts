@@ -18,7 +18,10 @@ import {
   ensureBlocksSeeded,
   reconcileBlocksAdditive,
 } from "@/lib/agents/seed-blocks"
-import { loadEffectiveBlueprintsBatch } from "@/lib/agents/architect/blueprint-loader"
+import {
+  loadEffectiveBlueprintsBatch,
+  loadTextOnlyBlueprints,
+} from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
@@ -103,6 +106,17 @@ interface ReferenceRow {
   name: string
   copy: string | null
   html: string | null
+}
+
+// "Estrutura geral" (email_outline_templates) enviada no payload dos emails
+// somente-texto — o fluxo diferente do n8n gera a copy a partir dela.
+interface OutlineRow {
+  flow_type: string
+  email_number: number
+  objective: string | null
+  guidance: string | null
+  suggested_blocks: string[] | null
+  tone_hint: string | null
 }
 
 interface TopProductRow {
@@ -294,16 +308,26 @@ export async function dispatchEmailCopyWebhook(
   // Mantemos paralelismo com emails/references; helper resolve as duas
   // queries internas (globals + store overrides) e devolve um map ja
   // mergeado.
-  const [emailsRes, effectiveBlueprints, referencesRes] = await Promise.all([
-    emailsQuery,
-    loadEffectiveBlueprintsBatch(admin, storeId, flowTypes),
-    admin
-      .from("email_reference_templates")
-      .select("id, flow_type, email_number, name, copy, html")
-      .in("flow_type", flowTypes)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false }),
-  ])
+  // Emails "somente texto": textOnlyByKey traz os rows GLOBAIS flagados
+  // (o payload deles ignora a camada da loja) e outlinesRes traz a
+  // "Estrutura geral" (email_outline_templates) que vai no payload.
+  const [emailsRes, effectiveBlueprints, referencesRes, textOnlyByKey, outlinesRes] =
+    await Promise.all([
+      emailsQuery,
+      loadEffectiveBlueprintsBatch(admin, storeId, flowTypes),
+      admin
+        .from("email_reference_templates")
+        .select("id, flow_type, email_number, name, copy, html")
+        .in("flow_type", flowTypes)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false }),
+      loadTextOnlyBlueprints(admin, flowTypes),
+      admin
+        .from("email_outline_templates")
+        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint")
+        .in("flow_type", flowTypes)
+        .eq("is_active", true),
+    ])
 
   if (emailsRes.error) {
     log.error("email_copy.webhook.emails.error", { storeId, error: emailsRes.error.message })
@@ -414,10 +438,15 @@ export async function dispatchEmailCopyWebhook(
       const flow = flowsById.get(e.flow_id)
       if (!flow) return
       try {
+        // Somente-texto: seed/reconcile SEM storeId — a cascata de defs pula
+        // store_email_blueprints (legado do Architect) e usa a global.
+        const seedStoreId = textOnlyByKey.has(`${flow.flow_type}:${e.number}`)
+          ? undefined
+          : storeId
         if (FINALIZED_STATUSES.has(e.status)) {
-          await ensureBlocksSeeded(e.id, flow.flow_type, e.number, storeId)
+          await ensureBlocksSeeded(e.id, flow.flow_type, e.number, seedStoreId)
         } else {
-          await reconcileBlocksAdditive(e.id, flow.flow_type, e.number, storeId)
+          await reconcileBlocksAdditive(e.id, flow.flow_type, e.number, seedStoreId)
         }
       } catch (err) {
         log.warn("email_copy.webhook.ensure_blocks_failed", {
@@ -475,6 +504,23 @@ export async function dispatchEmailCopyWebhook(
       messaging: bp.messaging ?? null,
       subject_hint: bp.subject_hint ?? null,
     })
+  }
+  // Somente-texto: o blueprint do payload é SEMPRE o global — desfaz o
+  // override de store_email_blueprints legado aplicado pela cascata acima.
+  for (const [key, bp] of textOnlyByKey) {
+    blueprintByKey.set(key, {
+      flow_type: bp.flow_type,
+      email_number: bp.email_number,
+      objective: bp.objective ?? null,
+      messaging: bp.messaging ?? null,
+      subject_hint: bp.subject_hint ?? null,
+    })
+  }
+
+  // "Estrutura geral" por chave — vai no payload dos emails somente-texto.
+  const outlineByKey = new Map<string, OutlineRow>()
+  for (const o of (outlinesRes.data ?? []) as OutlineRow[]) {
+    outlineByKey.set(`${o.flow_type}:${o.email_number}`, o)
   }
 
   // Reference: para cada flow_type, escolhe a referência ativa que casa com email_number
@@ -661,11 +707,26 @@ export async function dispatchEmailCopyWebhook(
     })),
     flows: flows.map((f) => {
       const flowEmails = (emailsByFlow.get(f.id) ?? []).map((e) => {
-        const bp = blueprintByKey.get(`${f.flow_type}:${e.number}`)
+        const key = `${f.flow_type}:${e.number}`
+        const bp = blueprintByKey.get(key)
+        const textOnly = textOnlyByKey.has(key)
+        // Somente-texto: o fluxo diferente do n8n usa a "Estrutura geral"
+        // (email_outline_templates) daquele email específico pra gerar o
+        // texto; sem outline curado, vai null e o n8n decide o fallback.
+        const outline = textOnly ? (outlineByKey.get(key) ?? null) : null
         return {
           email_id: e.id,
           email_number: e.number,
           name: e.name,
+          text_only: textOnly,
+          estrutura_geral: outline
+            ? {
+                objective: outline.objective,
+                guidance: outline.guidance,
+                suggested_blocks: outline.suggested_blocks ?? [],
+                tone_hint: outline.tone_hint,
+              }
+            : null,
           blueprint: bp
             ? {
                 objective: bp.objective,

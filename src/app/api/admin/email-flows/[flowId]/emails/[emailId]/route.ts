@@ -18,6 +18,7 @@ import {
   approveTaskOnEmailApproved,
   finishTaskOnEmailReady,
 } from "@/lib/services/email-task-sync.service"
+import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 
 const log = logger.child("EmailDetail")
 
@@ -47,7 +48,7 @@ export async function GET(
       )
     }
 
-    const [{ data: blocks }, { data: qa }] = await Promise.all([
+    const [{ data: blocks }, { data: qa }, { data: flowRow }] = await Promise.all([
       admin
         .from("email_blocks")
         .select("*")
@@ -58,10 +59,30 @@ export async function GET(
         .select("*")
         .eq("email_id", emailId)
         .order("position", { ascending: true }),
+      admin
+        .from("email_flows")
+        .select("flow_type")
+        .eq("id", email.flow_id as string)
+        .maybeSingle(),
     ])
 
+    // Email "somente texto" (email_blueprints.text_only): a view do designer
+    // abre direto no modo Copy (só o texto) e esconde render/HTML.
+    const textOnly = flowRow?.flow_type
+      ? await isTextOnlyEmail(
+          admin,
+          flowRow.flow_type as string,
+          email.number as number,
+        )
+      : false
+
     return successResponse(request, {
-      email: { ...email, blocks: blocks || [], qa_items: qa || [] },
+      email: {
+        ...email,
+        blocks: blocks || [],
+        qa_items: qa || [],
+        text_only: textOnly,
+      },
     })
   } catch (error) {
     log.error("Email detail GET error:", error)

@@ -63,6 +63,9 @@ interface EmailDetailResponse {
   email: EmailFlowEmail & {
     blocks: EmailBlock[]
     qa_items: EmailQAItem[]
+    // Email "somente texto" (email_blueprints.text_only): a view abre em
+    // Copy e esconde render/HTML — designers veem só o texto.
+    text_only?: boolean
   }
 }
 
@@ -99,11 +102,15 @@ export function EmailDetailView({
   const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
   const [width, setWidth] = useState<number>(600)
 
-  // Reset tab quando troca de email
+  const isTextOnly = !!email?.text_only
+
+  // Reset tab quando troca de email. Somente-texto abre direto em Copy —
+  // o render mostraria placeholders {{...}} (html null) e confundiria o
+  // designer; o entregável desses emails É o texto.
   useEffect(() => {
     setActiveTab("struct")
-    setViewMode("render")
-  }, [emailId])
+    setViewMode(isTextOnly ? "copy" : "render")
+  }, [emailId, isTextOnly])
 
   // Navegação prev/next entre emails do flow
   const emails = flow.emails ?? []
@@ -548,10 +555,30 @@ export function EmailDetailView({
               />
             </span>
             <EmailStatusBadge status={email.status} />
+            {isTextOnly && (
+              <span
+                title="Email somente texto: sem imagem nem HTML gerado — o entregável é o texto"
+                style={{
+                  fontSize: 9,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  background: "var(--crm-gray-100)",
+                  color: "var(--crm-gray-600)",
+                  border: "1px solid var(--crm-border)",
+                  flexShrink: 0,
+                }}
+              >
+                Somente texto
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Mock / Render / HTML toggle */}
+          {/* Mock / Render / HTML toggle. Somente-texto: só Copy — o render
+              cairia no renderEmailHtml (html null) com placeholders {{...}}. */}
           <div
             className="inline-flex items-center"
             style={{
@@ -560,24 +587,28 @@ export function EmailDetailView({
               borderRadius: 6,
             }}
           >
-            <ModePillBtn
-              icon={<Eye className="h-3 w-3" />}
-              label="Render"
-              active={viewMode === "render"}
-              onClick={() => setViewMode("render")}
-            />
+            {!isTextOnly && (
+              <ModePillBtn
+                icon={<Eye className="h-3 w-3" />}
+                label="Render"
+                active={viewMode === "render"}
+                onClick={() => setViewMode("render")}
+              />
+            )}
             <ModePillBtn
               icon={<FileText className="h-3 w-3" />}
               label="Copy"
               active={viewMode === "copy"}
               onClick={() => setViewMode("copy")}
             />
-            <ModePillBtn
-              icon={<CodeIcon className="h-3 w-3" />}
-              label="HTML"
-              active={viewMode === "html"}
-              onClick={() => setViewMode("html")}
-            />
+            {!isTextOnly && (
+              <ModePillBtn
+                icon={<CodeIcon className="h-3 w-3" />}
+                label="HTML"
+                active={viewMode === "html"}
+                onClick={() => setViewMode("html")}
+              />
+            )}
           </div>
           <button
             onClick={generateWithAI}
@@ -1314,8 +1345,10 @@ function KbdHint({
 }
 
 // ─── Mock preview (renderização visual) ────────────────────
+// Sem call-sites hoje (preview usa EmailRenderPreview/EmailCopyView);
+// prefixo _ marca como intencionalmente não usado pro lint.
 
-function EmailMockPreview({
+function _EmailMockPreview({
   email,
   blocks,
   width,

@@ -42,7 +42,10 @@ export function BlueprintList({
                 <span className="font-semibold text-slate-900 dark:text-white">
                   Email #{b.email_number}
                 </span>
-                <BadgeSource source={b.source} />
+                <span className="flex items-center gap-1">
+                  {b.text_only && <BadgeTextOnly />}
+                  <BadgeSource source={b.source} />
+                </span>
               </div>
               <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500 dark:text-white/40">
                 {b.objective}
@@ -60,6 +63,14 @@ export function BlueprintList({
         )}
       </div>
     </div>
+  )
+}
+
+function BadgeTextOnly() {
+  return (
+    <span className="rounded-[3px] bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+      Texto
+    </span>
   )
 }
 

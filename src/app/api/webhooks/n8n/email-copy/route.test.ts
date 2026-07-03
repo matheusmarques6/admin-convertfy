@@ -24,14 +24,18 @@ interface MockEmail {
   id: string
   flow_id: string
   status: string | null
-  flow: { store_id: string } | null
+  number?: number
+  generation_batch_id?: string | null
+  flow: { store_id: string; flow_type?: string } | null
 }
 
 let mockEmail: MockEmail | null = {
   id: MOCK_EMAIL_ID,
   flow_id: MOCK_FLOW_ID,
   status: "copy_generating",
-  flow: { store_id: MOCK_STORE_ID },
+  number: 1,
+  generation_batch_id: null,
+  flow: { store_id: MOCK_STORE_ID, flow_type: "welcome" },
 }
 
 const updateCalls: Array<{ table: string; data: Record<string, unknown> }> = []
@@ -42,7 +46,9 @@ function resetState() {
     id: MOCK_EMAIL_ID,
     flow_id: MOCK_FLOW_ID,
     status: "copy_generating",
-    flow: { store_id: MOCK_STORE_ID },
+    number: 1,
+    generation_batch_id: null,
+    flow: { store_id: MOCK_STORE_ID, flow_type: "welcome" },
   }
   updateCalls.length = 0
   insertCalls.length = 0
@@ -124,6 +130,17 @@ vi.mock("@/lib/cors", () => ({
 // a chamar runPhase2InBackground, o teste vai falhar no import resolver
 // porque o mock foi removido.
 
+// Email "somente texto": flag consultada via blueprint-loader e, quando o
+// email pertence a um batch, o callback fecha a contagem terminal.
+const isTextOnlyEmailMock = vi.fn()
+vi.mock("@/lib/agents/architect/blueprint-loader", () => ({
+  isTextOnlyEmail: (...a: unknown[]) => isTextOnlyEmailMock(...a),
+}))
+const checkBatchTerminalMock = vi.fn()
+vi.mock("@/lib/agents/phase2-runner.service", () => ({
+  checkBatchTerminal: (...a: unknown[]) => checkBatchTerminalMock(...a),
+}))
+
 vi.stubEnv("N8N_WEBHOOK_SECRET", "test-secret")
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,6 +149,8 @@ let POST: (req: any) => Promise<Response>
 beforeEach(async () => {
   vi.clearAllMocks()
   resetState()
+  isTextOnlyEmailMock.mockReset().mockResolvedValue(false)
+  checkBatchTerminalMock.mockReset().mockResolvedValue(undefined)
   const mod = await import("./route")
   POST = mod.POST
 })
@@ -201,6 +220,59 @@ describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
     expect(statusUpdate?.data.failure_reason).toBeNull()
     expect(statusUpdate?.data.rendering_started_at).toBeNull()
     expect(statusUpdate?.data.qa_started_at).toBeNull()
+  })
+})
+
+describe("POST /api/webhooks/n8n/email-copy — email somente texto (text_only)", () => {
+  it("marca status='ready' direto (com ready_at e html null), sem copy_ready", async () => {
+    isTextOnlyEmailMock.mockResolvedValue(true)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+
+    const readyUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "ready",
+    )
+    expect(readyUpdate).toBeDefined()
+    expect(readyUpdate?.data.ready_at).toBeDefined()
+    expect(readyUpdate?.data.copy_ready_at).toBeDefined()
+    expect(readyUpdate?.data.html).toBeNull()
+    expect(readyUpdate?.data.qa_issues).toEqual([])
+
+    const copyReadyUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(copyReadyUpdate).toBeUndefined()
+    // Flag consultada com flow_type + number do email
+    expect(isTextOnlyEmailMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "welcome",
+      1,
+    )
+  })
+
+  it("fecha o batch (checkBatchTerminal) quando o email text_only pertence a um batch", async () => {
+    isTextOnlyEmailMock.mockResolvedValue(true)
+    mockEmail = {
+      id: MOCK_EMAIL_ID,
+      flow_id: MOCK_FLOW_ID,
+      status: "copy_generating",
+      number: 1,
+      generation_batch_id: "batch-1",
+      flow: { store_id: MOCK_STORE_ID, flow_type: "welcome" },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    expect(checkBatchTerminalMock).toHaveBeenCalledWith(MOCK_STORE_ID, "batch-1")
+  })
+
+  it("sem batch, não chama checkBatchTerminal (fluxo natural da fila)", async () => {
+    isTextOnlyEmailMock.mockResolvedValue(true)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    expect(checkBatchTerminalMock).not.toHaveBeenCalled()
   })
 })
 

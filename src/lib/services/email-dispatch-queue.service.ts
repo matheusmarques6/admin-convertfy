@@ -29,6 +29,7 @@ import {
   isArchitectConfigured,
 } from "@/lib/agents/architect/generate.service"
 import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
+import { loadTextOnlyBlueprints } from "@/lib/agents/architect/blueprint-loader"
 import {
   dispatchEmailCopyWebhook,
   type DispatchEmailCopyOptions,
@@ -50,7 +51,10 @@ const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 240_000)
 // estourar o lease — senão outro tick re-claima e paga Opus 2×.
 const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? 360_000)
 
-export type ArchitectStatus = "pending" | "done" | "failed"
+// "skipped": email marcado "somente texto" (email_blueprints.text_only) —
+// nunca roda o Montador/Blueprint por loja; settla imediatamente (o critério
+// de dispatch é `architect !== "pending"`) e o n8n recebe a estrutura global.
+export type ArchitectStatus = "pending" | "done" | "failed" | "skipped"
 
 export interface JobEmail {
   flow_type: string
@@ -172,6 +176,14 @@ export async function enqueueDispatchJob(
     log.info("enqueue.architect_not_configured", { storeId })
   }
 
+  // Emails "somente texto" (email_blueprints.text_only): nascem 'skipped' —
+  // nunca rodam o Architect e vão pro n8n com a estrutura global. Prevalece
+  // sobre existingRefs e sobre architect-não-configurado.
+  const flowTypes = Array.from(new Set(flows.map((f) => f.flow_type)))
+  const textOnlyKeys = new Set(
+    (await loadTextOnlyBlueprints(admin, flowTypes)).keys(),
+  )
+
   // Skip-existing: emails cuja reference sob medida JÁ foi persistida entram
   // 'done' (o Montador só persiste quando gera de verdade) — não re-paga LLM.
   const existingRefs = new Set<string>()
@@ -189,11 +201,13 @@ export async function enqueueDispatchJob(
     .map((r): JobEmail | null => {
       const flowType = flowTypeById.get(r.flow_id)
       if (!flowType) return null
-      const architect: ArchitectStatus = !architectConfigured
-        ? "failed"
-        : existingRefs.has(`${flowType}:${r.number}`)
-          ? "done"
-          : "pending"
+      const architect: ArchitectStatus = textOnlyKeys.has(`${flowType}:${r.number}`)
+        ? "skipped"
+        : !architectConfigured
+          ? "failed"
+          : existingRefs.has(`${flowType}:${r.number}`)
+            ? "done"
+            : "pending"
       return { flow_type: flowType, email_number: r.number, architect, attempts: 0 }
     })
     .filter((e): e is JobEmail => e !== null)
@@ -438,6 +452,7 @@ export async function processDispatchJobs(): Promise<{
     dispatchOk,
     architectDone: job.emails.filter((e) => e.architect === "done").length,
     architectFailed: job.emails.filter((e) => e.architect === "failed").length,
+    architectSkipped: job.emails.filter((e) => e.architect === "skipped").length,
   })
 
   return { claimed: true, jobId: job.id, architectRan, dispatched: dispatchOk, done: true }

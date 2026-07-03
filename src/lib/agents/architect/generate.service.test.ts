@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // Controla o source do blueprint + spies dos passos.
 const h = vi.hoisted(() => ({
   blueprintSource: "ai" as "ai" | "manual",
+  textOnly: false,
   reconcileSpy: vi.fn(),
   assembleSpy: vi.fn(),
   blueprintSpy: vi.fn(),
@@ -55,12 +56,18 @@ vi.mock("./outline-sections", () => ({
   resolveStructure: () => [],
 }))
 
+// Flag "somente texto": controlada pelo teste (default false).
+vi.mock("./blueprint-loader", () => ({
+  isTextOnlyEmail: () => Promise.resolve(h.textOnly),
+}))
+
 import { generateBlueprintAndReference } from "./generate.service"
 
 const input = { storeId: "store1", flowType: "welcome", emailNumber: 1, batchId: "b1" }
 
 beforeEach(() => {
   h.blueprintSource = "ai"
+  h.textOnly = false
   h.reconcileSpy.mockReset()
   h.reconcileSpy.mockResolvedValue({
     reconciled: true,
@@ -94,5 +101,16 @@ describe("generateBlueprintAndReference — propaga estrutura (Fase 1)", () => {
     const res = await generateBlueprintAndReference(input)
     expect(h.reconcileSpy).toHaveBeenCalled()
     expect(res.referenceSource).toBe("llm")
+  })
+})
+
+describe("generateBlueprintAndReference — email somente texto (text_only)", () => {
+  it("curto-circuita com referenceSource='global' SEM rodar Montador/Blueprint/reconcile", async () => {
+    h.textOnly = true
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("global")
+    expect(h.assembleSpy).not.toHaveBeenCalled()
+    expect(h.blueprintSpy).not.toHaveBeenCalled()
+    expect(h.reconcileSpy).not.toHaveBeenCalled()
   })
 })

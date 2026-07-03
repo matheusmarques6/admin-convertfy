@@ -14,6 +14,8 @@ const patchSchema = z.object({
   subject_hint: z.string().nullable().optional(),
   blocks: z.array(z.record(z.string(), z.unknown())).optional(),
   tone_override: z.string().nullable().optional(),
+  // Email "somente texto" — ver migration 20260811_email_blueprints_text_only.sql.
+  text_only: z.boolean().optional(),
 })
 
 export async function PATCH(

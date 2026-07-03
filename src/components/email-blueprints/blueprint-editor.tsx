@@ -55,6 +55,7 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
     blueprint.tone_override ?? "",
   )
   const [blocks, setBlocks] = useState<BlueprintBlockDef[]>(blueprint.blocks)
+  const [textOnly, setTextOnly] = useState(blueprint.text_only ?? false)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -66,6 +67,7 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
     setSubjectHint(blueprint.subject_hint ?? "")
     setToneOverride(blueprint.tone_override ?? "")
     setBlocks(blueprint.blocks)
+    setTextOnly(blueprint.text_only ?? false)
   }
 
   const save = async () => {
@@ -108,6 +110,7 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
         subject_hint: subjectHint.trim() || null,
         tone_override: toneOverride.trim() || null,
         blocks: cleanBlocks,
+        text_only: textOnly,
       }
 
       let res: Response
@@ -152,7 +155,11 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
   const remove = async () => {
     if (!isDb || !blueprint.id) return
     const ok = window.confirm(
-      `Deletar o blueprint customizado de ${blueprint.flow_type} #${blueprint.email_number}? Volta a usar o DEFAULT do código.`,
+      `Deletar o blueprint customizado de ${blueprint.flow_type} #${blueprint.email_number}? Volta a usar o DEFAULT do código.${
+        blueprint.text_only
+          ? "\n\nATENÇÃO: este email está marcado como SOMENTE TEXTO — deletar o blueprint apaga a marcação junto (o email volta ao fluxo normal com imagens)."
+          : ""
+      }`,
     )
     if (!ok) return
 
@@ -258,6 +265,25 @@ export function BlueprintEditor({ blueprint, onSaved }: Props) {
           />
         </div>
       </div>
+
+      <label className="flex items-start gap-2 rounded-[4px] border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.03]">
+        <input
+          type="checkbox"
+          checked={textOnly}
+          onChange={(e) => setTextOnly(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 cursor-pointer"
+        />
+        <span>
+          <span className="block text-[12px] font-semibold text-slate-800 dark:text-white/90">
+            Email somente texto
+          </span>
+          <span className="block text-[11px] text-slate-500 dark:text-white/50">
+            Pula o Montador por loja; a copy vai pro n8n com a Estrutura geral
+            deste email e ele fica pronto direto — sem imagem nem HTML gerado.
+            Os designers veem só o texto. (Sincronizado com a aba Estrutura geral.)
+          </span>
+        </span>
+      </label>
 
       <div className="space-y-1">
         <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-white/60">

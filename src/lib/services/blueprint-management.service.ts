@@ -49,17 +49,33 @@ interface DbBlueprintRow {
   blocks: BlueprintBlockDef[] | null
   tone_override: string | null
   updated_at: string
+  text_only: boolean | null
 }
 
 export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
   const admin = createAdminClient()
-  const { data, error } = await admin
+  let { data, error } = await admin
     .from("email_blueprints")
     .select(
-      "id, flow_type, email_number, objective, messaging, subject_hint, blocks, tone_override, updated_at",
+      "id, flow_type, email_number, objective, messaging, subject_hint, blocks, tone_override, updated_at, text_only",
     )
     .order("flow_type")
     .order("email_number")
+
+  // Fail-open pré-migration: se a coluna text_only ainda não existe no
+  // banco, refaz o select legado (todos os rows viram text_only=false)
+  // em vez de derrubar a aba Blueprints inteira.
+  if (error) {
+    const retry = await admin
+      .from("email_blueprints")
+      .select(
+        "id, flow_type, email_number, objective, messaging, subject_hint, blocks, tone_override, updated_at",
+      )
+      .order("flow_type")
+      .order("email_number")
+    data = retry.data as typeof data
+    error = retry.error
+  }
 
   if (error) throw error
 
@@ -81,6 +97,7 @@ export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
       tone_override: r.tone_override,
       updated_at: r.updated_at,
       source: "db",
+      text_only: r.text_only ?? false,
     })
   }
 
@@ -100,6 +117,8 @@ export async function listBlueprintsWithDefaults(): Promise<BlueprintRow[]> {
         tone_override: null,
         updated_at: null,
         source: "default",
+        // A flag só existe em rows do DB — defaults nunca são text_only.
+        text_only: false,
       })
     }
   }

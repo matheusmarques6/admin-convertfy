@@ -63,13 +63,32 @@ export function OutlinesWorkspace() {
   const [form, setForm] = useState<FormState>(emptyForm("welcome"))
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // Flag "somente texto" por `${flow_type}:${email_number}` — fonte única em
+  // email_blueprints (chave ausente = false). Checkbox espelhado da aba
+  // Blueprints: escreve via PATCH /api/admin/email-blueprints/text-only.
+  const [textOnlyFlags, setTextOnlyFlags] = useState<Record<string, boolean>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/admin/outlines")
+      const [res, bpRes] = await Promise.all([
+        fetch("/api/admin/outlines"),
+        fetch("/api/admin/email-blueprints"),
+      ])
       const json = (await res.json()) as { outlines?: EmailOutlineTemplate[] }
       setOutlines(json.outlines ?? [])
+      const bpJson = (await bpRes.json()) as {
+        blueprints?: Array<{
+          flow_type: string
+          email_number: number
+          text_only?: boolean | null
+        }>
+      }
+      const flags: Record<string, boolean> = {}
+      for (const bp of bpJson.blueprints ?? []) {
+        if (bp.text_only) flags[`${bp.flow_type}:${bp.email_number}`] = true
+      }
+      setTextOnlyFlags(flags)
     } catch {
       setMessage("Falha ao carregar.")
     } finally {
@@ -160,6 +179,42 @@ export function OutlinesWorkspace() {
   const set = (patch: Partial<FormState>) =>
     setForm((f) => ({ ...f, ...patch }))
 
+  // Chave do email em edição (novo ou selecionado) no formato da flag.
+  const currentKey = `${tab}:${Number(form.email_number) || 1}`
+  const currentTextOnly = !!textOnlyFlags[currentKey]
+
+  async function toggleTextOnly(next: boolean) {
+    const key = currentKey
+    const prev = !!textOnlyFlags[key]
+    // Otimista + revert em erro.
+    setTextOnlyFlags((f) => ({ ...f, [key]: next }))
+    try {
+      const res = await fetch("/api/admin/email-blueprints/text-only", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          flow_type: tab,
+          email_number: Number(form.email_number) || 1,
+          text_only: next,
+        }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      setMessage(
+        next
+          ? "Marcado como somente texto (sincronizado com a aba Blueprints)."
+          : "Desmarcado — volta ao fluxo normal com imagens.",
+      )
+    } catch (err) {
+      setTextOnlyFlags((f) => ({ ...f, [key]: prev }))
+      setMessage(
+        `Falha ao salvar somente texto: ${err instanceof Error ? err.message : "erro"}`,
+      )
+    }
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -213,6 +268,11 @@ export function OutlinesWorkspace() {
                 }`}
               >
                 Email #{o.email_number}
+                {textOnlyFlags[`${o.flow_type}:${o.email_number}`] && (
+                  <span className="ml-2 rounded-[3px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                    texto
+                  </span>
+                )}
                 {!o.is_active && (
                   <span className="ml-2 text-[10px] text-slate-400">inativo</span>
                 )}
@@ -297,6 +357,27 @@ export function OutlinesWorkspace() {
               {form.is_active ? "Ativo" : "Inativo"}
             </label>
           </div>
+
+          {/* Flag "somente texto" — vive em email_blueprints (fonte única,
+              espelhada na aba Blueprints); salva na hora, fora do Salvar. */}
+          <label className="flex items-start gap-2 rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.03]">
+            <input
+              type="checkbox"
+              checked={currentTextOnly}
+              onChange={(e) => void toggleTextOnly(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 cursor-pointer"
+            />
+            <span>
+              <span className="block text-[12px] font-semibold text-slate-800 dark:text-white/90">
+                Email somente texto
+              </span>
+              <span className="block text-[11px] text-slate-500 dark:text-white/50">
+                Pula o Montador por loja; a copy vai pro n8n com esta Estrutura
+                geral e o email fica pronto direto, sem imagem nem HTML gerado.
+                Salva na hora (sincronizado com a aba Blueprints).
+              </span>
+            </span>
+          </label>
 
           <div className="flex items-center gap-2 pt-1">
             <button

@@ -30,6 +30,8 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
+import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
+import { checkBatchTerminal } from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("N8nEmailCopy")
 
@@ -104,9 +106,12 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient()
 
     // 1) Verifica email + flow pertencem à store (defesa contra spoofing)
+    // `number` (não email_number!) + flow_type servem à checagem text_only.
     const { data: email, error: emailErr } = await admin
       .from("email_flow_emails")
-      .select("id, flow_id, status, flow:email_flows(store_id)")
+      .select(
+        "id, flow_id, status, number, generation_batch_id, flow:email_flows(store_id, flow_type)",
+      )
       .eq("id", body.email_id)
       .maybeSingle()
 
@@ -129,6 +134,14 @@ export async function POST(request: NextRequest) {
       })
       throw new NotFoundError("Email não pertence a esta loja")
     }
+
+    // Email "somente texto" (email_blueprints.text_only): não passa pela
+    // fase 2 — a copy É o entregável e o email fica `ready` direto abaixo.
+    const flowType = (flow as { flow_type?: string } | null)?.flow_type ?? ""
+    const emailNumber = (email as { number?: number }).number ?? 0
+    const textOnly = flowType
+      ? await isTextOnlyEmail(admin, flowType, emailNumber)
+      : false
 
     // Busca store_name pra sanitizar tokens de brand que o n8n entrega
     // nao-resolvidos (ex: headline: "Bem-vindo {{BRAND_NAME}}!"). A
@@ -168,7 +181,11 @@ export async function POST(request: NextRequest) {
       .update({
         subject: body.subject,
         preheader: body.preheader ?? null,
-        status: "copy_ready",
+        // Somente-texto: pula a fase 2 inteira (imagem + HTML agent) —
+        // `ready` direto, html null; designers veem só o texto dos blocos.
+        // ready_at em paridade com o phase2-runner (que o grava no claim).
+        status: textOnly ? "ready" : "copy_ready",
+        ...(textOnly ? { ready_at: nowIso } : {}),
         copy_ready_at: nowIso,
         updated_at: nowIso,
         html: null,
@@ -340,10 +357,26 @@ export async function POST(request: NextRequest) {
     // runPhase2InBackground quando store_brand_identity.confirmed_at virar
     // NOT NULL e este email estiver em status='copy_ready'. Ver
     // supabase/migrations/20260626c_email_render_signal_type.sql.
-    log.info("email_copy.phase2_deferred", {
-      email_id: body.email_id,
-      store_id: body.store_id,
-    })
+    // Somente-texto: já ficou `ready` acima — sem fase 2. Se veio de um
+    // batch (aba Testar / legado), fecha a contagem terminal do batch
+    // (paridade com o phase2-runner, que faz isso ao marcar ready).
+    if (textOnly) {
+      const batchId = (email as { generation_batch_id?: string | null })
+        .generation_batch_id
+      if (batchId) {
+        await checkBatchTerminal(body.store_id, batchId).catch(() => {})
+      }
+      log.info("email_copy.text_only_ready", {
+        email_id: body.email_id,
+        store_id: body.store_id,
+        batch_id: batchId ?? null,
+      })
+    } else {
+      log.info("email_copy.phase2_deferred", {
+        email_id: body.email_id,
+        store_id: body.store_id,
+      })
+    }
 
     return successResponse(request, {
       ok: true,

@@ -16,6 +16,9 @@ const postSchema = z.object({
   subject_hint: z.string().optional(),
   blocks: z.array(z.record(z.string(), z.unknown())).default([]),
   tone_override: z.string().optional(),
+  // Email "somente texto": pula Architect por loja + fase 2; ver
+  // migration 20260811_email_blueprints_text_only.sql.
+  text_only: z.boolean().optional(),
 })
 
 export async function GET(request: NextRequest) {

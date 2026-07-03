@@ -22,6 +22,11 @@ export interface EmailBlueprint {
   tone_override: string | null
   updated_at: string
   updated_by: string | null
+  // Email "somente texto" (flag GLOBAL, só em email_blueprints — nunca em
+  // store_email_blueprints): pula Montador/Blueprint por loja, n8n recebe
+  // estrutura geral + text_only, e o email vai copy->ready sem imagem/HTML.
+  // Opcional: rows de store_email_blueprints passam pelo mesmo cast.
+  text_only?: boolean
   // ── Epic AE-Image Niche-Adaptive (story AE-10) ───────────
   // Briefing visual por blueprint (slot E1..E6). Opcional para
   // retrocompat com rows legacy criados antes da migration

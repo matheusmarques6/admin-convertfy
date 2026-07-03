@@ -25,6 +25,9 @@ export interface BlueprintRow {
   tone_override: string | null
   updated_at: string | null
   source: "db" | "default"
+  // Email "somente texto": pula o Architect por loja e vai pro n8n com a
+  // estrutura geral; false para defaults (flag só existe em rows do DB).
+  text_only: boolean
 }
 
 export const BLOCK_TYPE_OPTIONS = [

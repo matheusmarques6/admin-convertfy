@@ -66,10 +66,38 @@ import {
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES } from "./image/limits"
 import { loadTopProducts } from "./top-products"
-import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
+import {
+  loadEffectiveBlueprint,
+  isTextOnlyEmail,
+} from "./architect/blueprint-loader"
 import { isBrandConfirmed } from "./html/brand-guards"
 
 const log = logger.child("Phase2Runner")
+
+/**
+ * true se o email é "somente texto" (email_blueprints.text_only). No fluxo
+ * NOVO esses emails nunca chegam aqui (o callback de copy os marca `ready`
+ * direto); os guards que usam isto cobrem LEGADO — emails que já estavam em
+ * copy_ready/rendering/image_done quando a flag foi ligada.
+ */
+async function resolveTextOnlyForEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  emailId: string,
+): Promise<boolean> {
+  const { data: email } = await admin
+    .from("email_flow_emails")
+    .select("number, flow_id")
+    .eq("id", emailId)
+    .maybeSingle()
+  if (!email) return false
+  const { data: flow } = await admin
+    .from("email_flows")
+    .select("flow_type")
+    .eq("id", email.flow_id as string)
+    .maybeSingle()
+  if (!flow?.flow_type) return false
+  return isTextOnlyEmail(admin, flow.flow_type as string, email.number as number)
+}
 
 // ── QA agent — fallback seguro caso runQaAgent throwe inesperadamente ─
 // O runQaAgent ja faz degrade seguro internamente (sem config, timeout,
@@ -390,6 +418,37 @@ export async function runPhase2Image(
   const { storeId, emailId, triggeredBy } = params
   const admin = createAdminClient()
   log.info("phase2.image.start", { storeId, emailId })
+
+  // ── Guard -1: email "somente texto" NÃO passa pela fase 2 ────────────
+  // ANTES do gate de brand: text_only não depende de identidade visual.
+  // Legado (copy_ready antes da flag): vira `ready` direto, sem imagem/HTML.
+  if (await resolveTextOnlyForEmail(admin, emailId)) {
+    const nowIso = new Date().toISOString()
+    const { data: settled } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "ready",
+        ready_at: nowIso,
+        updated_at: nowIso,
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+      })
+      .eq("id", emailId)
+      .eq("status", "copy_ready")
+      .select("generation_batch_id")
+    log.info("phase2.image.skipped_text_only", {
+      storeId,
+      emailId,
+      settled: (settled ?? []).length > 0,
+    })
+    const textOnlyBatch =
+      (settled?.[0]?.generation_batch_id as string | null) ?? null
+    if (textOnlyBatch) {
+      await checkBatchTerminal(storeId, textOnlyBatch).catch(() => {})
+    }
+    return { status: "skipped" }
+  }
 
   // ── Guard 0: GATE 2 — só renderiza com brand confirmada ──────────────
   // Cobre TODOS os caminhos de entrada (watchdog Frente 4, generate-email,
@@ -974,6 +1033,37 @@ export async function runPhase2HtmlQa(
   const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
   const admin = createAdminClient()
   log.info("phase2.html_qa.start", { storeId, emailId })
+
+  // ── Guard -1: email "somente texto" NÃO gera HTML/QA ─────────────────
+  // Legado preso no meio do pipeline (image_done/rendering quando a flag
+  // foi ligada): vira `ready` direto com html null.
+  if (await resolveTextOnlyForEmail(admin, emailId)) {
+    const guardNow = new Date().toISOString()
+    const { data: settled } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "ready",
+        ready_at: guardNow,
+        updated_at: guardNow,
+        html: null,
+        qa_issues: [],
+        failure_reason: null,
+      })
+      .eq("id", emailId)
+      .in("status", ["image_done", "rendering"])
+      .select("generation_batch_id")
+    log.info("phase2.html_qa.skipped_text_only", {
+      storeId,
+      emailId,
+      settled: (settled ?? []).length > 0,
+    })
+    const textOnlyBatch =
+      (settled?.[0]?.generation_batch_id as string | null) ?? null
+    if (textOnlyBatch) {
+      await checkBatchTerminal(storeId, textOnlyBatch).catch(() => {})
+    }
+    return { status: "skipped" }
+  }
 
   // ── Claim atomico: image_done OR rendering -> rendering ──────────────
   // Aceita ambos porque:

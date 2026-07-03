@@ -165,6 +165,36 @@ describe("enqueueDispatchJob", () => {
     const job = h.tables.email_dispatch_jobs[0]
     expect((job.emails as Array<{ architect: string }>).every((e) => e.architect === "failed")).toBe(true)
   })
+
+  it("email text_only nasce architect:'skipped' e NÃO conta em architect_done", async () => {
+    h.tables.email_blueprints = [
+      { flow_type: "welcome", email_number: 1, text_only: true },
+    ]
+    const res = await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    expect(res.ok).toBe(true)
+    const job = h.tables.email_dispatch_jobs[0]
+    const emails = job.emails as Array<{ email_number: number; architect: string }>
+    expect(emails.find((e) => e.email_number === 1)?.architect).toBe("skipped")
+    expect(emails.find((e) => e.email_number === 2)?.architect).toBe("pending")
+    expect(job.architect_done).toBe(0)
+  })
+
+  it("text_only prevalece sobre reference existente E sobre Architect não configurado", async () => {
+    isArchitectConfigured.mockResolvedValue(false)
+    h.tables.store_email_references.push({
+      store_id: "store1", flow_type: "welcome", email_number: 1,
+    })
+    h.tables.email_blueprints = [
+      { flow_type: "welcome", email_number: 1, text_only: true },
+    ]
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const emails = h.tables.email_dispatch_jobs[0].emails as Array<{
+      email_number: number
+      architect: string
+    }>
+    expect(emails.find((e) => e.email_number === 1)?.architect).toBe("skipped")
+    expect(emails.find((e) => e.email_number === 2)?.architect).toBe("failed")
+  })
 })
 
 describe("processDispatchJobs", () => {
@@ -229,6 +259,26 @@ describe("processDispatchJobs", () => {
     expect(generateBlueprintAndReference).not.toHaveBeenCalled()
     expect(dispatchEmailCopyWebhook).toHaveBeenCalledTimes(1)
     expect(h.tables.email_dispatch_jobs[0].status).toBe("done")
+  })
+
+  it("job só com skipped (text_only) + done despacha no 1º tick sem rodar LLM", async () => {
+    h.tables.email_blueprints = [
+      { flow_type: "welcome", email_number: 1, text_only: true },
+    ]
+    h.tables.store_email_references.push({
+      store_id: "store1", flow_type: "welcome", email_number: 2,
+    })
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const res = await processDispatchJobs()
+    expect(res.done).toBe(true)
+    expect(res.dispatched).toBe(true)
+    expect(res.architectRan).toBe(0)
+    expect(generateBlueprintAndReference).not.toHaveBeenCalled()
+    const job = h.tables.email_dispatch_jobs[0]
+    expect(job.status).toBe("done")
+    const emails = job.emails as Array<{ email_number: number; architect: string }>
+    expect(emails.find((e) => e.email_number === 1)?.architect).toBe("skipped")
+    expect(emails.find((e) => e.email_number === 2)?.architect).toBe("done")
   })
 
   it("propaga o trigger_source do job pro dispatch", async () => {

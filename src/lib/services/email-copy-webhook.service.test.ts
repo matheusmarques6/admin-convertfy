@@ -90,11 +90,15 @@ vi.mock("@/lib/agents/seed-blocks", () => ({
   reconcileBlocksAdditive: vi.fn().mockResolvedValue(undefined),
 }))
 
+const loadEffectiveBlueprintsBatch = vi.fn()
+const loadTextOnlyBlueprints = vi.fn()
 vi.mock("@/lib/agents/architect/blueprint-loader", () => ({
-  loadEffectiveBlueprintsBatch: vi.fn().mockResolvedValue(new Map()),
+  loadEffectiveBlueprintsBatch: (...a: unknown[]) => loadEffectiveBlueprintsBatch(...a),
+  loadTextOnlyBlueprints: (...a: unknown[]) => loadTextOnlyBlueprints(...a),
 }))
 
 import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
+import { reconcileBlocksAdditive } from "@/lib/agents/seed-blocks"
 
 const fetchMock = vi.fn()
 
@@ -123,6 +127,9 @@ beforeEach(() => {
   vi.stubEnv("N8N_EMAIL_COPY_WEBHOOK_URL", "https://n8n.test/webhook")
   fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200, text: async () => "" })
   vi.stubGlobal("fetch", fetchMock)
+  loadEffectiveBlueprintsBatch.mockReset().mockResolvedValue(new Map())
+  loadTextOnlyBlueprints.mockReset().mockResolvedValue(new Map())
+  vi.mocked(reconcileBlocksAdditive).mockClear()
 })
 
 afterEach(() => {
@@ -217,5 +224,142 @@ describe("dispatchEmailCopyWebhook — auto-seed e reasons", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
     expect(e1?.status).toBe("live")
+  })
+})
+
+describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => {
+  function payloadFromFetch(): {
+    flows: Array<{
+      emails: Array<{
+        email_number: number
+        text_only: boolean
+        estrutura_geral: {
+          objective: string | null
+          guidance: string | null
+          suggested_blocks: string[]
+          tone_hint: string | null
+        } | null
+        blueprint: { objective: string | null } | null
+      }>
+    }>
+  } {
+    return JSON.parse(fetchMock.mock.calls[0][1].body as string)
+  }
+
+  it("payload leva text_only:true + estrutura_geral + blueprint GLOBAL (mesmo com override da loja)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_outline_templates = [
+      {
+        flow_type: "welcome",
+        email_number: 1,
+        objective: "OUT-OBJ",
+        guidance: "OUT-GUIDE",
+        suggested_blocks: ["header", "text", "footer"],
+        tone_hint: "caloroso",
+        is_active: true,
+      },
+    ]
+    // Cascata efetiva devolve o override da LOJA (legado do Architect)…
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ-DA-LOJA",
+            messaging: "MSG-DA-LOJA",
+            subject_hint: null,
+          },
+        ],
+      ]),
+    )
+    // …mas o email é text_only e o payload deve usar o GLOBAL.
+    loadTextOnlyBlueprints.mockResolvedValue(
+      new Map([
+        [
+          "welcome:1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ-GLOBAL",
+            messaging: "MSG-GLOBAL",
+            subject_hint: "HINT-GLOBAL",
+            text_only: true,
+          },
+        ],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    expect(res.ok).toBe(true)
+    const email = payloadFromFetch().flows[0].emails[0]
+    expect(email.text_only).toBe(true)
+    expect(email.estrutura_geral).toEqual({
+      objective: "OUT-OBJ",
+      guidance: "OUT-GUIDE",
+      suggested_blocks: ["header", "text", "footer"],
+      tone_hint: "caloroso",
+    })
+    expect(email.blueprint?.objective).toBe("OBJ-GLOBAL")
+  })
+
+  it("seed/reconcile de email text_only roda SEM storeId (pula camada da loja)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+      { id: "e2", flow_id: "flow1", number: 2, name: "Welcome 2", status: "draft" },
+    ])
+    loadTextOnlyBlueprints.mockResolvedValue(
+      new Map([
+        [
+          "welcome:1",
+          { flow_type: "welcome", email_number: 1, objective: "O", messaging: "M", subject_hint: null },
+        ],
+      ]),
+    )
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const calls = vi.mocked(reconcileBlocksAdditive).mock.calls
+    expect(calls).toContainEqual(["e1", "welcome", 1, undefined])
+    expect(calls).toContainEqual(["e2", "welcome", 2, "store1"])
+  })
+
+  it("email normal segue com text_only:false e estrutura_geral null", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_outline_templates = [
+      {
+        flow_type: "welcome",
+        email_number: 1,
+        objective: "OUT-OBJ",
+        guidance: null,
+        suggested_blocks: [],
+        tone_hint: null,
+        is_active: true,
+      },
+    ]
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const email = payloadFromFetch().flows[0].emails[0]
+    expect(email.text_only).toBe(false)
+    expect(email.estrutura_geral).toBeNull()
   })
 })
