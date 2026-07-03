@@ -1,16 +1,17 @@
 /**
  * Bootstrap idempotente do pipeline de DESIGN de campanha por org.
  *
- * Cria 1 pipeline `campaign_design` + 4 colunas (estrutura, aprovacao,
- * producao, finalizacao) com templates inline. Espelha o padrao do
- * onboarding-bootstrap, reusando o mesmo mecanismo de operational pipeline +
+ * Cria 1 pipeline `campaign_design` + 5 colunas (estrutura, aprovacao,
+ * producao, finalizacao, implementacao) com templates inline. Espelha o padrao
+ * do onboarding-bootstrap, reusando o mesmo mecanismo de operational pipeline +
  * tasks + deliverables + gate de visibilidade por funcao.
  *
  * Etapas e responsaveis:
- *   1. estrutura     (designer)  -> 1 task; entregavel = link Figma (1 loja piloto)
- *   2. aprovacao     (coo)       -> COO aprova ou pede mudancas (nova versao)
- *   3. producao      (designer)  -> 3 tasks: imagens, textos, identidade visual
- *   4. finalizacao   (designer)  -> instanciada por loja (liga no prod_stage)
+ *   1. estrutura     (designer)       -> 1 task; entregavel = link Figma (1 loja piloto)
+ *   2. aprovacao     (coo)            -> COO aprova ou pede mudancas (nova versao)
+ *   3. producao      (designer)       -> 3 tasks: imagens, textos, identidade visual
+ *   4. finalizacao   (designer)       -> instanciada por loja (liga no prod_stage)
+ *   5. implementacao (implementacao)  -> 4 tasks: corte modelo + subir por idioma
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -29,6 +30,7 @@ export type CampaignDesignStageSlug =
   | "aprovacao"
   | "producao"
   | "finalizacao"
+  | "implementacao"
 
 interface CampaignColumnSeed {
   name: string
@@ -116,12 +118,37 @@ export const CAMPAIGN_DESIGN_COLUMNS: CampaignColumnSeed[] = [
     slug: "finalizacao",
     position: 4,
     color: "#10B981",
-    is_final: true,
     default_assignee_role: "designer",
     sla_hours: 36,
     // Tasks desta etapa sao instanciadas POR LOJA (nao via template), ligando
     // no prod_stage/Omnisend existente.
     checklist_template: [],
+    deliverables_template: [],
+  },
+  {
+    name: "Implementacao",
+    slug: "implementacao",
+    position: 5,
+    color: "#059669",
+    is_final: true,
+    default_assignee_role: "implementacao",
+    sla_hours: 36,
+    checklist_template: [
+      chk("impl_corte_modelo", "Corte modelo", 1, "impl_corte_modelo"),
+      chk(
+        "impl_subir_ptbr",
+        "Subir e-mails - Portugues (Brasil)",
+        2,
+        "impl_subir_ptbr",
+      ),
+      chk("impl_subir_en", "Subir e-mails - Ingles", 3, "impl_subir_en"),
+      chk(
+        "impl_subir_outras",
+        "Subir e-mails - Outras linguas",
+        4,
+        "impl_subir_outras",
+      ),
+    ],
     deliverables_template: [],
   },
 ]

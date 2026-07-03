@@ -116,12 +116,13 @@ const STAGE_LABEL: Record<CampaignDesignStageSlug, string> = {
   aprovacao: "Aprovacao",
   producao: "Producao",
   finalizacao: "Finalizacao",
+  implementacao: "Implementacao",
 }
 
 export async function notifyCampaignDesignStage(params: {
   suggestionId: string
   orgId: string
-  stageSlug: "estrutura" | "aprovacao" | "producao" | "finalizacao"
+  stageSlug: CampaignDesignStageSlug
   event: "entered" | "changes_requested"
   campaignTitle?: string | null
 }): Promise<{ notified: number }> {

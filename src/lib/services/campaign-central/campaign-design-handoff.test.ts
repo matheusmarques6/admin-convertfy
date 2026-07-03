@@ -12,7 +12,8 @@ import { CAMPAIGN_DESIGN_COLUMNS } from "./campaign-design-bootstrap.service"
  *       deliverable Figma (required) preenchido. Senao "not_ready".
  *     - aprovacao: NUNCA auto-avanca -> "awaiting_decision".
  *     - producao: avanca p/ finalizacao SE as 3 tasks concluidas. Senao "not_ready".
- *     - finalizacao: SE todas as tasks por loja concluidas -> "completed".
+ *     - finalizacao: avanca p/ implementacao SE todas as tasks por loja concluidas.
+ *     - implementacao: SE as 4 tasks (corte + subida por idioma) concluidas -> "completed".
  *
  *   approveCampaignDesign({ suggestionId, orgId, actorId })
  *     -> "advanced" | "not_applicable"   (aprovacao -> producao)
@@ -338,7 +339,7 @@ describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
     expect(camp().design_column_id).toBe(colId("producao"))
   })
 
-  it("finalizacao: todas as tasks por loja concluidas -> completed", async () => {
+  it("finalizacao: todas as tasks por loja concluidas -> avanca p/ implementacao", async () => {
     seedBase("finalizacao")
     addTask("finalizacao", "completed")
     addTask("finalizacao", "completed")
@@ -347,7 +348,36 @@ describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
       orgId: ORG,
       actorId: "u1",
     })
+    expect(status).toBe("advanced")
+    expect(camp().design_column_id).toBe(colId("implementacao"))
+    // 4 tasks do checklist (corte modelo + subida por idioma)
+    expect(tasksIn("implementacao")).toHaveLength(4)
+  })
+
+  it("implementacao: todas as tasks concluidas -> completed (terminal)", async () => {
+    seedBase("implementacao")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "completed")
+    const status = await attemptCampaignDesignHandoff({
+      suggestionId: SUG,
+      orgId: ORG,
+      actorId: "u1",
+    })
     expect(status).toBe("completed")
+  })
+
+  it("implementacao: NAO completa com task pendente", async () => {
+    seedBase("implementacao")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "pending")
+    const status = await attemptCampaignDesignHandoff({
+      suggestionId: SUG,
+      orgId: ORG,
+      actorId: "u1",
+    })
+    expect(status).toBe("not_ready")
   })
 })
 

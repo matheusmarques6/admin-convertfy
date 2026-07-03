@@ -1,9 +1,9 @@
 /**
  * Fase 3 do pipeline de DESIGN de campanha — orquestrador de handoff.
  *
- * Avanca uma `campaign_suggestion` pelas 4 etapas do pipeline `campaign_design`
- * (estrutura -> aprovacao -> producao -> finalizacao), espelhando o padrao do
- * onboarding (`attemptOnboardingHandoff` + `advanceColumn`):
+ * Avanca uma `campaign_suggestion` pelas 5 etapas do pipeline `campaign_design`
+ * (estrutura -> aprovacao -> producao -> finalizacao -> implementacao),
+ * espelhando o padrao do onboarding (`attemptOnboardingHandoff` + `advanceColumn`):
  *   - "todas as tasks da etapa concluidas (+ deliverables required) -> avanca";
  *   - avanco com Compare-And-Swap (CAS) anti-concorrencia: o UPDATE so casa
  *     quando `design_column_id` ainda aponta pra etapa esperada;
@@ -281,14 +281,15 @@ export async function attemptCampaignDesignHandoff(
     version,
   )
 
-  // finalizacao: terminal. Todas as tasks por loja concluidas -> completed.
-  if (stageSlug === "finalizacao") {
+  // implementacao: terminal. Todas as tasks (corte modelo + subir por idioma)
+  // concluidas -> completed.
+  if (stageSlug === "implementacao") {
     if (!allCompleted(tasks)) return "not_ready"
     return "completed"
   }
 
-  // estrutura / producao: avancam quando as tasks (e deliverables required)
-  // da etapa estao concluidos.
+  // estrutura / producao / finalizacao: avancam quando as tasks (e
+  // deliverables required) da etapa estao concluidos.
   if (!allCompleted(tasks)) return "not_ready"
 
   if (stageSlug === "estrutura") {

@@ -53,6 +53,7 @@ const CAMPAIGN_DESIGN_STAGE_LABELS: Record<string, string> = {
   aprovacao: "Aprovação",
   producao: "Produção",
   finalizacao: "Finalização",
+  implementacao: "Implementação",
 }
 export function campaignDesignStageLabel(
   slug: string | null | undefined,
