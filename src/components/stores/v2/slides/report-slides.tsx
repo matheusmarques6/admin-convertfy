@@ -146,7 +146,10 @@ function fmtCurrency(value: number, currency = "BRL", opts?: { compact?: boolean
   const sym = currencySymbol(currency)
   if (!isFinite(value) || value === 0) return `${sym} 0`
   if (opts?.compact) {
-    if (value >= 1_000_000) return `${sym} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
+    // Thresholds ficam ANTES do ponto de rollover do arredondamento:
+    // 999.950 com toFixed(1) viraria "1000,0 mil" — promove a unidade.
+    if (value >= 999_995_000) return `${sym} ${(value / 1_000_000_000).toFixed(2).replace(".", ",")} bi`
+    if (value >= 999_950) return `${sym} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
     if (value >= 10_000) return `${sym} ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
   }
   try {
@@ -182,6 +185,17 @@ function fmtYMD(ymd: string): string {
   const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (!m) return ymd
   return `${m[3]}/${m[2]}/${m[1]}`
+}
+
+/**
+ * Reduz o font-size quando a string não cabe no orçamento de largura do
+ * call-site. Como o palco é fixo em 1280px, os budgets são constantes por
+ * componente. Aproximação: dígito/char em Playfair bold ≈ 0.58em de largura.
+ */
+function fitFontSize(text: string, basePx: number, budgetPx: number): number {
+  const estimated = text.length * 0.58 * basePx
+  if (estimated <= budgetPx) return basePx
+  return Math.max(16, Math.floor(budgetPx / (text.length * 0.58)))
 }
 
 const BENCHMARKS = {
@@ -719,6 +733,10 @@ function HeroParticipation({
   const arc = (pct / 100) * c
   const others = Math.max(0, totalRevenue - attributed)
   const pctOthers = 100 - pct
+  // Miolo útil do donut ≈ 126px (2×(r − strokeWidth/2) − folga) — "100,0%"
+  // a 34px fixos estourava o anel.
+  const donutLabel = `${pct.toFixed(1).replace(".", ",")}%`
+  const donutFont = fitFontSize(donutLabel, 34, 112)
 
   return (
     <div
@@ -770,8 +788,8 @@ function HeroParticipation({
             strokeLinecap="round"
             transform="rotate(-90 80 80)"
           />
-          <text x="80" y="82" textAnchor="middle" fontFamily={F_SERIF} fontSize="34" fontWeight="700" fill="#fff" style={TNUM}>
-            {pct.toFixed(1).replace(".", ",")}%
+          <text x="80" y="82" textAnchor="middle" fontFamily={F_SERIF} fontSize={donutFont} fontWeight="700" fill="#fff" style={TNUM}>
+            {donutLabel}
           </text>
           <text
             x="80"
@@ -801,7 +819,8 @@ function HeroParticipation({
           <div
             style={{
               fontFamily: F_SERIF,
-              fontSize: 64,
+              // Coluna do número ≈ 250px (grid 1.05fr menos donut 160 + gap)
+              fontSize: fitFontSize(pct.toFixed(2).replace(".", ","), 64, 250),
               fontWeight: 700,
               color: "#fff",
               letterSpacing: "-0.03em",
@@ -1086,7 +1105,8 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             <div
               style={{
                 fontFamily: F_SERIF,
-                fontSize: 72,
+                // Interior do hero ≈ 520px (coluna 1.05fr menos padding 36×2)
+                fontSize: fitFontSize(fmtCurrency(attributed, currency, { compact: true }), 72, 520),
                 fontWeight: 700,
                 color: "#fff",
                 letterSpacing: "-0.03em",
