@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         id, status, contact_name, contact_external_id, contact_avatar_url,
         last_message_at, last_message_preview, last_message_direction, unread_count,
         assigned_to, lead_id, deal_id, client_id, channel_id,
+        is_window_open, window_expires_at,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url),
         channel:crm_channels (id, type, display_name)
