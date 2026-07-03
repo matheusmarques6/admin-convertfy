@@ -8,18 +8,16 @@
  */
 
 import "@/app/globals.css"
+import { inter, playfair } from "@/lib/fonts"
 
 export default function PrintLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
       <head>
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap"
-        />
+        {/* Fontes via next/font (self-hosted em @/lib/fonts): elimina a race
+            condition do <link> do Google Fonts antes do Cmd+P. */}
         <style>{`
-          html, body { margin: 0; padding: 0; background: #fff; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+          html, body { margin: 0; padding: 0; background: #fff; font-family: var(--font-inter), sans-serif; -webkit-font-smoothing: antialiased; }
           @page { size: 297mm 167mm; margin: 0; }
           @media print {
             body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -51,7 +49,7 @@ export default function PrintLayout({ children }: { children: React.ReactNode })
           }
         `}</style>
       </head>
-      <body>{children}</body>
+      <body className={`${inter.variable} ${playfair.variable}`}>{children}</body>
     </html>
   )
 }

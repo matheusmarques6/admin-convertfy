@@ -1,27 +1,16 @@
 import type { Metadata } from "next"
 import localFont from "next/font/local"
-import { Playfair_Display, Montserrat } from "next/font/google"
+import { Montserrat } from "next/font/google"
 import "./globals.css"
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { inter, playfair } from "@/lib/fonts"
 import { SWRProvider } from "@/components/providers/swr-provider"
 import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
-const inter = localFont({
-  src: "./fonts/InterVariable.woff2",
-  variable: "--font-inter",
-  display: "swap",
-})
-
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
-  display: "swap",
-})
-
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-playfair",
   display: "swap",
 })
 

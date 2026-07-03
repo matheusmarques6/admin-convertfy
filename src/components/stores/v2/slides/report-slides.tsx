@@ -58,13 +58,18 @@ const C = {
   gradient: "linear-gradient(90deg, #4E62D8, #2137B6, #041366)",
 } as const
 
+// tnum só tem efeito real em fontes com dígitos tabulares (Inter tem;
+// Playfair NÃO — sobre F_SERIF é inócuo, mantido por consistência nos
+// valores isolados). Colunas numéricas alinhadas exigem F_SANS + TNUM.
 const TNUM = {
   fontVariantNumeric: "tabular-nums lining-nums" as const,
   fontFeatureSettings: '"tnum" 1, "lnum" 1',
 }
 
-const F_SANS = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
-const F_SERIF = '"Playfair Display", Georgia, serif'
+// next/font registra as famílias com nome hasheado — o nome literal não
+// resolve. As variáveis vêm do <body> do layout root (admin e print).
+const F_SANS = "var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+const F_SERIF = 'var(--font-playfair), "Playfair Display", Georgia, serif'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -1696,7 +1701,9 @@ function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot[
                     fontSize: 12.5,
                     fontWeight: 700,
                     color: C.g900,
-                    fontFamily: F_SERIF,
+                    // F_SANS (não serif): Playfair não tem tnum e desalinhava
+                    // a coluna de valores entre as linhas.
+                    fontFamily: F_SANS,
                     ...TNUM,
                   }}
                 >
