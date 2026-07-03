@@ -846,31 +846,56 @@ function HeroParticipation({
             {fmtCurrency(totalRevenue, currency, { compact: true })}
           </span>
         </div>
-        <div
-          className="flex overflow-hidden"
-          style={{ height: 38, borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)" }}
-        >
-          <div
-            className="flex items-center"
-            style={{
-              width: `${Math.max(0, Math.min(100, pct))}%`,
-              background: "linear-gradient(90deg, #7B8CEA 0%, #4E62D8 100%)",
-              paddingLeft: 12,
-            }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.04em" }}>
-              {pct.toFixed(2).replace(".", ",")}%
-            </span>
-          </div>
-          <div
-            className="flex items-center flex-1"
-            style={{ background: "rgba(255,255,255,0.06)", paddingLeft: 14 }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.55)", letterSpacing: "0.04em" }}>
-              {pctOthers.toFixed(2).replace(".", ",")}% outras fontes
-            </span>
-          </div>
-        </div>
+        {(() => {
+          const pctLabel = `${pct.toFixed(2).replace(".", ",")}%`
+          const othersLabel = `${pctOthers.toFixed(2).replace(".", ",")}% outras fontes`
+          // Segmento com largura proporcional ao dado não comporta o próprio
+          // label quando estreito — o texto migra pro segmento vizinho em vez
+          // de vazar por cima do label dele.
+          const convertfyTooNarrow = pct < 9
+          const othersTooNarrow = pct > 85
+          return (
+            <div
+              className="flex overflow-hidden"
+              style={{ height: 38, borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)" }}
+            >
+              <div
+                className="flex items-center justify-between"
+                style={{
+                  width: `${Math.max(0, Math.min(100, pct))}%`,
+                  background: "linear-gradient(90deg, #7B8CEA 0%, #4E62D8 100%)",
+                  padding: "0 12px",
+                }}
+              >
+                {!convertfyTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {pctLabel}
+                  </span>
+                )}
+                {othersTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.8)", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {othersLabel}
+                  </span>
+                )}
+              </div>
+              <div
+                className="flex items-center flex-1"
+                style={{ background: "rgba(255,255,255,0.06)", paddingLeft: 14, gap: 12 }}
+              >
+                {convertfyTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#A8B2EE", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {pctLabel} Convertfy
+                  </span>
+                )}
+                {!othersTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.55)", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {othersLabel}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })()}
         <div className="grid grid-cols-2 gap-4" style={{ marginTop: 14 }}>
           <div
             style={{
@@ -1377,29 +1402,59 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
   )
 }
 
+// Largura útil do track no stage fixo 1280px: coluna esquerda do grid do
+// slide 4 = (1168 − 28) × 1.3/2.3 ≈ 644px, menos label (90px) e gap (12px).
+const FUNNEL_TRACK_W = 542
+// Largura média por caractere do label 12px semibold + tabular-nums.
+const FUNNEL_CHAR_W = 6.8
+
 function Funnel({ steps }: { steps: Array<{ label: string; pct: number; color: string; abs: string }> }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      {steps.map((s) => (
-        <div key={s.label} className="flex items-center gap-3">
-          <span style={{ width: 90, fontSize: 12.5, fontWeight: 600, color: C.g700 }}>{s.label}</span>
-          <div className="flex-1 relative overflow-hidden" style={{ height: 32, background: C.g50, borderRadius: 4 }}>
-            <div
-              className="flex items-center h-full"
-              style={{
-                width: `${Math.max(s.pct * 100, 1.5)}%`,
-                background: s.color,
-                paddingLeft: 12,
-                minWidth: 110,
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", ...TNUM }}>
-                {s.abs}
-              </span>
+      {steps.map((s) => {
+        const barPct = Math.max(s.pct * 100, 1.5)
+        // Label branco só dentro da barra quando cabe; senão vai pra fora
+        // (à direita, escuro) — antes vazava branco sobre o fundo claro.
+        const fitsInside = (barPct / 100) * FUNNEL_TRACK_W >= s.abs.length * FUNNEL_CHAR_W + 20
+        return (
+          <div key={s.label} className="flex items-center gap-3">
+            <span style={{ width: 90, fontSize: 12.5, fontWeight: 600, color: C.g700 }}>{s.label}</span>
+            <div className="flex-1 relative overflow-hidden" style={{ height: 32, background: C.g50, borderRadius: 4 }}>
+              <div
+                className="flex items-center h-full"
+                style={{
+                  width: `${barPct}%`,
+                  background: s.color,
+                  paddingLeft: 12,
+                }}
+              >
+                {fitsInside && (
+                  <span style={{ fontSize: 12, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", ...TNUM }}>
+                    {s.abs}
+                  </span>
+                )}
+              </div>
+              {!fitsInside && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    left: `calc(${barPct}% + 8px)`,
+                    fontSize: 12,
+                    color: C.g700,
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    ...TNUM,
+                  }}
+                >
+                  {s.abs}
+                </span>
+              )}
             </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
