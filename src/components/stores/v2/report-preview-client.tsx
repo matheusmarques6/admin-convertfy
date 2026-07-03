@@ -74,8 +74,9 @@ export function ReportPreviewClient({ reportId, status }: Props) {
   }
 
   const handlePresentMode = () => {
-    // Abre a view print em outra janela em fullscreen pseudo (Cmd+P friendly)
-    window.open(`/print/relatorios/${reportId}`, "_blank", "noopener")
+    // Deck fullscreen: 1 slide por vez, fundo preto (letterbox), navegação
+    // por teclado/clique + tela cheia (F). Só os slides, como o PDF.
+    window.open(`/print/relatorios/${reportId}?present=1`, "_blank", "noopener")
   }
 
   return (

@@ -8,6 +8,7 @@ import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ReportSlides } from "@/components/stores/v2/slides/report-slides"
 import { AutoPrint } from "./auto-print"
+import { PresentDeck } from "./present-deck"
 
 export const dynamic = "force-dynamic"
 
@@ -31,10 +32,10 @@ export default async function ReportPrintPage({
   searchParams,
 }: {
   params: Promise<{ reportId: string }>
-  searchParams: Promise<{ autoprint?: string }>
+  searchParams: Promise<{ autoprint?: string; present?: string }>
 }) {
   const { reportId } = await params
-  const { autoprint } = await searchParams
+  const { autoprint, present } = await searchParams
   const report = await getReport(reportId)
   if (!report) notFound()
 
@@ -47,22 +48,33 @@ export default async function ReportPrintPage({
   const generator = (report.generator as unknown as { name: string } | null)
   const snap = (report.snapshot ?? {}) as Record<string, unknown>
 
+  const slides = (
+    <ReportSlides
+      snapshot={{
+        ...snap,
+        store_name: storeRaw?.store_name ?? undefined,
+        client_name: clientName ?? undefined,
+        cm_name: generator?.name ?? undefined,
+        month_label: report.month_label,
+      }}
+      proximosPassos={report.proximos_passos}
+      monthLabel={report.month_label}
+    />
+  )
+
+  // ?present=1 (botão "Modo apresentação"): deck fullscreen, 1 slide por vez,
+  // fundo preto (letterbox), navegação por teclado/clique. Reusa os mesmos
+  // slides do print/PDF — só muda o invólucro.
+  if (present === "1") {
+    return <PresentDeck>{slides}</PresentDeck>
+  }
+
   return (
     <>
       {/* ?autoprint=1 (botão "Baixar PDF"): abre o diálogo de impressão do
           navegador automaticamente — "Salvar como PDF" gera o deck. */}
       {autoprint === "1" && <AutoPrint />}
-      <ReportSlides
-        snapshot={{
-          ...snap,
-          store_name: storeRaw?.store_name ?? undefined,
-          client_name: clientName ?? undefined,
-          cm_name: generator?.name ?? undefined,
-          month_label: report.month_label,
-        }}
-        proximosPassos={report.proximos_passos}
-        monthLabel={report.month_label}
-      />
+      {slides}
     </>
   )
 }
