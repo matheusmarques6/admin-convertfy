@@ -218,7 +218,9 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
   const storeName = snapshot.store_name ?? "Loja"
 
   return (
-    <div className="flex flex-col items-center gap-9 py-8 px-4" style={{ fontFamily: F_SANS }}>
+    // data-slides-root: alvo do CSS de impressão (vira display:block no
+    // print — flex não fragmenta entre páginas no Chromium).
+    <div data-slides-root className="flex flex-col items-center gap-9 py-8 px-4" style={{ fontFamily: F_SANS }}>
       <SlideShell n={1} total={7} title="Capa" storeName={storeName} monthLabel={monthLabel}>
         <SlideCover snapshot={snapshot} monthLabel={monthLabel} />
       </SlideShell>

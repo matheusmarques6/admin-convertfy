@@ -1,6 +1,7 @@
 /**
- * Página imprimível do relatório. Renderizada com layout root próprio
- * (print/layout.tsx) que define <html> e bypassa o admin chrome.
+ * Página imprimível do relatório — rota própria FORA de /admin (sem chrome
+ * de sidebar/header no documento; ver layout.tsx ao lado). Protegida por
+ * sessão no middleware. ?autoprint=1 abre o diálogo de impressão sozinho.
  */
 
 import { notFound } from "next/navigation"

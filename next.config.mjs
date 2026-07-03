@@ -64,6 +64,9 @@ const nextConfig = {
       { source: "/settings", destination: "/admin/settings", permanent: true },
 
       // ── Rotas removidas (bookmarks antigos) ───────────────────────
+      // Print do relatório saiu de /admin (o layout do admin vazava chrome e
+      // cortava a impressão em 1 página) — links antigos seguem funcionando.
+      { source: "/admin/stores/relatorios/:reportId/print", destination: "/print/relatorios/:reportId", permanent: false },
       { source: "/admin/me", destination: "/admin/productivity/board", permanent: true },
       // Notificacoes/WhatsApp persistidos no banco contem a URL antiga de logs
       { source: "/admin/tools/email-generation-logs", destination: "/admin/settings/email-generation-logs", permanent: true },

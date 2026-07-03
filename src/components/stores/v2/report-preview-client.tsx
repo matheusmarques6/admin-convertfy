@@ -53,7 +53,7 @@ export function ReportPreviewClient({ reportId, status }: Props) {
     // navegador — "Salvar como PDF" gera o deck (o CSS de @page da página
     // formata 297×167mm, 1 slide por página). Sem servidor, sem espera.
     window.open(
-      `/admin/stores/relatorios/${reportId}/print?autoprint=1`,
+      `/print/relatorios/${reportId}?autoprint=1`,
       "_blank",
       "noopener",
     )
@@ -75,7 +75,7 @@ export function ReportPreviewClient({ reportId, status }: Props) {
 
   const handlePresentMode = () => {
     // Abre a view print em outra janela em fullscreen pseudo (Cmd+P friendly)
-    window.open(`/admin/stores/relatorios/${reportId}/print`, "_blank", "noopener")
+    window.open(`/print/relatorios/${reportId}`, "_blank", "noopener")
   }
 
   return (
