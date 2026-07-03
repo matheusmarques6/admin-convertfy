@@ -81,7 +81,7 @@ function playBeep() {
 
 export function ProductivityFocus() {
   const {
-    tasks, isLoaded, fetchData, apiAction,
+    tasks, isLoaded, fetchData, apiAction, apiCall,
   } = useProductivityStore()
 
   // Estado local do timer (nao usa o store global pra ter controle granular)
@@ -142,13 +142,17 @@ export function ProductivityFocus() {
       new Notification("Modo Foco", { body: title, silent: true })
     }
 
-    // Persiste fim da sessao se for foco
+    // Persiste fim da sessao se for foco. Sem id (start falhou ou resposta
+    // ainda em voo) nao ha sessao pra fechar — evita UPDATE com id null.
     if (phase === "focus" && sessionStartRef.current) {
-      const elapsedMin = Math.round((Date.now() - sessionStartRef.current.startedAt) / 60_000)
-      apiAction("end_focus", {
-        session_id: sessionStartRef.current.id,
-        actual_minutes: elapsedMin,
-      })
+      const { id: sessionId, startedAt } = sessionStartRef.current
+      if (sessionId) {
+        const elapsedMin = Math.round((Date.now() - startedAt) / 60_000)
+        apiAction("end_focus", {
+          session_id: sessionId,
+          actual_minutes: elapsedMin,
+        })
+      }
       sessionStartRef.current = null
     }
 
@@ -191,17 +195,23 @@ export function ProductivityFocus() {
     const newRunning = !running
     setRunning(newRunning)
 
-    // Inicia sessao no DB se for o primeiro start de uma fase de foco
+    // Inicia sessao no DB se for o primeiro start de uma fase de foco.
+    // Guarda o session_id devolvido pra conseguir fechar no end_focus.
     if (newRunning && phase === "focus" && !sessionStartRef.current) {
       const minutes = Math.ceil(secondsLeft / 60)
       sessionStartRef.current = { id: null, startedAt: Date.now(), minutes }
-      apiAction("start_focus", {
+      apiCall("start_focus", {
         task_id: selectedTaskId,
         duration_minutes: minutes,
         category,
+      }).then((res) => {
+        if (sessionStartRef.current) {
+          sessionStartRef.current.id =
+            typeof res?.session_id === "string" ? res.session_id : null
+        }
       })
     }
-  }, [running, phase, secondsLeft, selectedTaskId, category, apiAction, requestNotifPermission])
+  }, [running, phase, secondsLeft, selectedTaskId, category, apiCall, requestNotifPermission])
 
   const handleReset = useCallback(() => {
     setRunning(false)
