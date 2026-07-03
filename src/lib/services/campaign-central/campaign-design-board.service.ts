@@ -71,6 +71,8 @@ interface TaskRow {
   version: number | null
   metadata: Record<string, unknown> | null
   created_at: string | null
+  time_spent_seconds: number | null
+  timer_started_at: string | null
 }
 
 const priorityMap: Record<string, number> = {
@@ -140,7 +142,7 @@ export async function listCampaignDesignProjectGroups(params: {
   const { data: tasksData } = await admin
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, source_type, source_id, operational_column_id, version, metadata, created_at",
+      "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, source_type, source_id, operational_column_id, version, metadata, created_at, time_spent_seconds, timer_started_at",
     )
     .eq("source_type", "campaign_suggestion")
     .in("source_id", suggestionIds)
@@ -251,6 +253,8 @@ export async function listCampaignDesignProjectGroups(params: {
         priority: priorityMap[t.priority as string] ?? 3,
         due_date: t.due_date,
         estimated_minutes: t.sla_hours ? t.sla_hours * 60 : null,
+        time_spent_seconds: t.time_spent_seconds ?? 0,
+        timer_started_at: t.timer_started_at ?? null,
         assigned_to: t.assignee_id ? [t.assignee_id] : [],
         assignee_role: t.assignee_role,
         // Origem pro drawer renderizar o contexto de campanha.
