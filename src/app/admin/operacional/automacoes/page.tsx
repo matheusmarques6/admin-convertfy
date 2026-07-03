@@ -64,7 +64,7 @@ export default function CrmAutomationsListPage() {
         await mutate()
         setCreating(false)
         setName("")
-        window.location.href = `/admin/crm/automations/${json.id}`
+        window.location.href = `/admin/operacional/automacoes/${json.id}`
       }
     } finally {
       setSubmitting(false)
