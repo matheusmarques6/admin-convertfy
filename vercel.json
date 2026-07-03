@@ -96,6 +96,10 @@
     {
       "path": "/api/cron/whatsapp-prune-webhook-events",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-close-windows",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
