@@ -68,6 +68,9 @@ const nextConfig = {
       // Notificacoes/WhatsApp persistidos no banco contem a URL antiga de logs
       { source: "/admin/tools/email-generation-logs", destination: "/admin/settings/email-generation-logs", permanent: true },
       { source: "/admin/settings/users", destination: "/admin/settings/team", permanent: true },
+      // CRM legado — subURLs granulares ja 404avam; catch-all para bookmarks
+      { source: "/admin/crm/:path*", destination: "/admin/comercial/pipelines", permanent: false },
+      { source: "/admin/cs-crm/:path*", destination: "/admin/operacional/cs-crm/:path*", permanent: true },
 
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },

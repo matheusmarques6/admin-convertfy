@@ -153,7 +153,7 @@ function getHref(task: TaskRowData): string | null {
     return `/admin/onboarding/${task.onboarding_id}`
   }
   if (task.source_type === "crm" && task.source_id) {
-    return `/admin/crm/inbox/${task.source_id}`
+    return `/admin/inbox/${task.source_id}`
   }
   return null
 }
