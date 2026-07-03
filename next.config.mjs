@@ -6,6 +6,11 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  // Geração de PDF de relatórios (Chromium headless): esses pacotes carregam
+  // binários nativos e NÃO podem ser bundlados pelo webpack — ficam externos
+  // e são resolvidos em runtime na função serverless.
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+
   images: {
     remotePatterns: [
       {

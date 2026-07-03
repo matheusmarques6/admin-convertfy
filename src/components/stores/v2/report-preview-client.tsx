@@ -19,6 +19,10 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
 
+  // pdf_url LEGADO apontava pra própria página /print (a rota antiga não
+  // gerava arquivo nenhum) — trata como "sem PDF" pra regerar de verdade.
+  const validPdfUrl = pdfUrl && !pdfUrl.includes("/print") ? pdfUrl : null
+
   const handleAIFill = async () => {
     setBusy("ai")
     try {
@@ -52,17 +56,22 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
   const handlePDF = async () => {
     setBusy("pdf")
     try {
-      if (pdfUrl) {
-        window.open(pdfUrl, "_blank")
+      if (validPdfUrl) {
+        // PDF real já gerado — abre o arquivo direto.
+        window.open(validPdfUrl, "_blank")
+        return
+      }
+      // Gera o PDF de verdade no servidor (Chromium renderiza a /print).
+      // Leva alguns segundos; o botão mostra "Gerando…" enquanto isso.
+      const res = await fetch(`/api/admin/stores/reports/${reportId}/pdf`, { method: "POST" })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok && (j.data?.pdf_url || j.pdf_url)) {
+        window.open(j.data?.pdf_url ?? j.pdf_url, "_blank")
+        router.refresh()
       } else {
-        const res = await fetch(`/api/admin/stores/reports/${reportId}/pdf`, { method: "POST" })
-        if (res.ok) {
-          const j = await res.json()
-          if (j.data?.pdf_url) window.open(j.data.pdf_url, "_blank")
-          else router.refresh()
-        } else {
-          alert("Falha ao gerar PDF.")
-        }
+        alert(
+          `Falha ao gerar PDF: ${j?.error?.message ?? j?.error ?? res.statusText}`,
+        )
       }
     } finally {
       setBusy(null)
@@ -122,9 +131,14 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
         disabled={busy === "pdf"}
         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold disabled:opacity-50"
         style={{ borderColor: "rgba(0,0,0,0.10)" }}
+        title={
+          validPdfUrl
+            ? "Abre o arquivo PDF gerado"
+            : "Gera o PDF do deck no servidor (leva alguns segundos)"
+        }
       >
-        {busy === "pdf" ? <Loader2 className="h-3 w-3 animate-spin" /> : pdfUrl ? <ExternalLink className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-        {pdfUrl ? "Abrir PDF" : "Baixar PDF"}
+        {busy === "pdf" ? <Loader2 className="h-3 w-3 animate-spin" /> : validPdfUrl ? <ExternalLink className="h-3 w-3" /> : <Download className="h-3 w-3" />}
+        {busy === "pdf" ? "Gerando PDF…" : validPdfUrl ? "Abrir PDF" : "Gerar PDF"}
       </button>
       {status !== "sent" && status !== "presented" && (
         <button

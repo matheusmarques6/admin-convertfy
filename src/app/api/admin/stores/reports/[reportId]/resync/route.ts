@@ -352,9 +352,11 @@ export async function POST(
       insights: oldInsights,
     }
 
+    // pdf_url: null — os dados mudaram; o PDF gerado ficou obsoleto e o
+    // botão volta a "Gerar PDF" (regenera no próximo clique).
     const { error: updateErr } = await admin
       .from("client_monthly_reports")
-      .update({ snapshot })
+      .update({ snapshot, pdf_url: null })
       .eq("id", reportId)
     if (updateErr) throw updateErr
 

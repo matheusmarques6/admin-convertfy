@@ -5,6 +5,7 @@
 
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
+import { verifyPrintToken } from "@/lib/reports/print-token"
 import { ReportSlides } from "@/components/stores/v2/slides/report-slides"
 
 export const dynamic = "force-dynamic"
@@ -26,10 +27,22 @@ async function getReport(reportId: string) {
 
 export default async function ReportPrintPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ reportId: string }>
+  searchParams: Promise<{ pdf_token?: string }>
 }) {
   const { reportId } = await params
+  const { pdf_token } = await searchParams
+
+  // Com pdf_token na URL o middleware deixou passar SEM sessão (acesso do
+  // Chromium headless da geração de PDF) — a página valida o HMAC aqui;
+  // inválido/expirado → 404. Sem token, a sessão já foi exigida pelo
+  // middleware (fluxo humano normal).
+  if (pdf_token !== undefined && !verifyPrintToken(reportId, pdf_token)) {
+    notFound()
+  }
+
   const report = await getReport(reportId)
   if (!report) notFound()
 

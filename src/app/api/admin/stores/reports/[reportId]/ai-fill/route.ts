@@ -68,6 +68,8 @@ export async function POST(
         .update({
           snapshot: { ...(report.snapshot as object ?? {}), insights: fallbackInsights },
           ai_filled: false,
+          // Conteúdo mudou → PDF gerado ficou obsoleto (regenera no próximo clique)
+          pdf_url: null,
         })
         .eq("id", reportId)
       return successResponse(request, {
@@ -135,7 +137,8 @@ Regras:
     }
     await admin
       .from("client_monthly_reports")
-      .update({ snapshot: newSnapshot, ai_filled: true })
+      // pdf_url: null — insights novos tornam o PDF anterior obsoleto.
+      .update({ snapshot: newSnapshot, ai_filled: true, pdf_url: null })
       .eq("id", reportId)
 
     return successResponse(request, { ai_filled: true, insights })
