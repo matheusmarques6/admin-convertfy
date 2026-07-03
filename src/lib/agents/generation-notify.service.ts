@@ -528,7 +528,7 @@ export async function notifyGenerationError(params: {
   costCents: number
 }): Promise<void> {
   try {
-    const logUrl = `${APP_URL}/admin/tools/email-generation-logs?run=${params.runId}`
+    const logUrl = `${APP_URL}/admin/settings/email-generation-logs?run=${params.runId}`
 
     // 1. In-app notification
     try {
@@ -536,7 +536,7 @@ export async function notifyGenerationError(params: {
         title: `Erro na geracao: ${params.storeName} / ${params.emailName}`,
         body: `Agente ${params.agent} falhou: ${params.error.slice(0, 200)}`,
         type: "error",
-        link: `/admin/tools/email-generation-logs?run=${params.runId}`,
+        link: `/admin/settings/email-generation-logs?run=${params.runId}`,
         event_id: `gen-error-${params.runId}`,
         metadata: {
           source: "email-generation",

@@ -292,7 +292,7 @@ export function GenerationProgressDrawer({
           })()}
 
           <a
-            href={`/admin/tools/email-generation-logs?batch=${batchId}`}
+            href={`/admin/settings/email-generation-logs?batch=${batchId}`}
             style={{
               display: "flex",
               alignItems: "center",
