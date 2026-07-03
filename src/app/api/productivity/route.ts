@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
         const { data: onbTasks } = await supabase
           .from("tasks")
           .select(
-            "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, onboarding_id, operational_column_id, version, metadata, created_at",
+            "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, onboarding_id, operational_column_id, version, metadata, created_at, time_spent_seconds, timer_started_at",
           )
           .in("onboarding_id", onbIds)
           .neq("status", "cancelled")
@@ -368,6 +368,8 @@ export async function GET(request: NextRequest) {
               priority: priorityMap[t.priority as string] ?? 3,
               due_date: t.due_date,
               estimated_minutes: t.sla_hours ? t.sla_hours * 60 : null,
+              time_spent_seconds: t.time_spent_seconds ?? 0,
+              timer_started_at: t.timer_started_at ?? null,
               assigned_to: t.assignee_id ? [t.assignee_id] : [],
               assignee_role: t.assignee_role,
               // Marca a origem pro drawer renderizar briefing automatico
@@ -545,7 +547,10 @@ export async function GET(request: NextRequest) {
           const est = parseTimeEstimate(task.estimated_minutes)
           weeklyBars[dayOfWeek].estimated += est
           if (task.status === "done") {
-            weeklyBars[dayOfWeek].actual += task.actual_minutes || est
+            // Tempo real do time tracking; fallback pra estimativa quando a
+            // task foi concluida sem timer.
+            weeklyBars[dayOfWeek].actual +=
+              Math.round((task.time_spent_seconds || 0) / 60) || est
           }
         }
       }
@@ -638,12 +643,83 @@ export async function POST(request: NextRequest) {
 
       case "update_task": {
         const { id, ...updates } = data
+        // Auto start/stop do time tracking por status: entrar em "progress"
+        // liga o timer; sair acumula e desliga. Server-side pra cobrir
+        // mudancas vindas do board/kanban sem tocar nos componentes.
+        if (typeof updates.status === "string") {
+          const { data: current } = await supabase
+            .from("productivity_tasks")
+            .select("time_spent_seconds, timer_started_at")
+            .eq("id", id)
+            .eq("org_id", orgId)
+            .single()
+          if (current) {
+            if (updates.status === "progress" && !current.timer_started_at) {
+              updates.timer_started_at = new Date().toISOString()
+            } else if (
+              updates.status !== "progress" &&
+              current.timer_started_at
+            ) {
+              const elapsedSec = Math.max(
+                0,
+                Math.floor(
+                  (Date.now() - Date.parse(current.timer_started_at)) / 1000,
+                ),
+              )
+              updates.time_spent_seconds =
+                (current.time_spent_seconds || 0) + elapsedSec
+              updates.timer_started_at = null
+            }
+          }
+        }
         const { error } = await supabase
           .from("productivity_tasks")
           .update(updates)
           .eq("id", id)
           .eq("org_id", orgId)
         if (error) throw error
+        break
+      }
+
+      case "start_task_timer":
+      case "stop_task_timer": {
+        // Start/stop manual do time tracking (botao play/pause do drawer).
+        // Idempotente: start com timer rodando e stop com timer parado sao
+        // no-ops. O acumulo e calculado no servidor.
+        const { task_id: timerTaskId } = data
+        const { data: row, error: rowError } = await supabase
+          .from("productivity_tasks")
+          .select("time_spent_seconds, timer_started_at")
+          .eq("id", timerTaskId)
+          .eq("org_id", orgId)
+          .single()
+        if (rowError || !row) throw rowError ?? new Error("Task não encontrada")
+
+        const timerUpdates: Record<string, unknown> = {}
+        if (action === "start_task_timer") {
+          if (!row.timer_started_at) {
+            timerUpdates.timer_started_at = new Date().toISOString()
+          }
+        } else if (row.timer_started_at) {
+          const elapsedSec = Math.max(
+            0,
+            Math.floor(
+              (Date.now() - Date.parse(row.timer_started_at)) / 1000,
+            ),
+          )
+          timerUpdates.time_spent_seconds =
+            (row.time_spent_seconds || 0) + elapsedSec
+          timerUpdates.timer_started_at = null
+        }
+
+        if (Object.keys(timerUpdates).length > 0) {
+          const { error } = await supabase
+            .from("productivity_tasks")
+            .update(timerUpdates)
+            .eq("id", timerTaskId)
+            .eq("org_id", orgId)
+          if (error) throw error
+        }
         break
       }
 
@@ -701,7 +777,7 @@ export async function POST(request: NextRequest) {
 
       case "start_focus": {
         const { task_id, duration_minutes, category } = data
-        const { error } = await supabase
+        const { data: session, error } = await supabase
           .from("productivity_focus_sessions")
           .insert({
             user_id: user.id,
@@ -711,12 +787,20 @@ export async function POST(request: NextRequest) {
             started_at: new Date().toISOString(),
             org_id: orgId,
           })
+          .select("id")
+          .single()
         if (error) throw error
-        break
+        // Devolve o id pro cliente conseguir fechar a sessao no end_focus.
+        return successResponse(request, {
+          success: true,
+          session_id: session?.id ?? null,
+        })
       }
 
       case "end_focus": {
         const { session_id, actual_minutes } = data
+        // Sem id nao ha sessao pra fechar (start falhou ou resposta perdida).
+        if (!session_id) break
         const { error } = await supabase
           .from("productivity_focus_sessions")
           .update({

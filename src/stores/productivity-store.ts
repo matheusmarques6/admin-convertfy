@@ -111,6 +111,10 @@ interface ProductivityState {
   // Actions — Data
   fetchData: () => Promise<void>
   apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
+  apiCall: (
+    action: string,
+    data?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown> | null>
 
   // Actions — UI
   setBoardView: (view: "table" | "kanban") => void
@@ -282,6 +286,26 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
     }
   },
 
+  // ── Generic API call que devolve o JSON da resposta ──
+  // Igual ao apiAction, mas pra actions que retornam dados (ex.: start_focus
+  // devolve session_id). Retorna null em erro. Nao substitui apiAction pra
+  // nao mexer nos consumidores existentes.
+  apiCall: async (action: string, data?: Record<string, unknown>) => {
+    try {
+      const res = await fetch("/api/productivity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...data }),
+      })
+      if (!res.ok) return null
+      const json = await res.json().catch(() => ({}))
+      get().fetchData()
+      return (json?.data ?? json) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  },
+
   // ── UI Actions ──
   setBoardView: (view) => set({ boardView: view }),
   selectTask: (id) => set({ selectedTaskId: id }),
@@ -386,6 +410,8 @@ function mapApiTask(t: Record<string, unknown>): ProductivityTask {
     estimatedTime: t.estimated_minutes ? `${t.estimated_minutes}m` : (t.estimatedTime as string) || "",
     time: (t.scheduled_time as string) || "—",
     project: String(t.project || t.group_name || ""),
+    time_spent_seconds: Number(t.time_spent_seconds ?? 0),
+    timer_started_at: (t.timer_started_at as string | null) ?? null,
     subtasks: ((t.subtasks || []) as Array<Record<string, unknown>>).map((s) => ({
       id: String(s.id),
       name: String(s.name || s.title || ""),

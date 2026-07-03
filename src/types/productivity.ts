@@ -13,6 +13,10 @@ export interface ProductivityTask {
   time: string
   project: string
   subtasks: ProductivitySubtask[]
+  // Time tracking persistente (server-side): total acumulado + inicio da
+  // sessao corrente quando o timer esta rodando (null = parado).
+  time_spent_seconds?: number
+  timer_started_at?: string | null
 }
 
 export interface ProductivitySubtask {

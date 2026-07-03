@@ -166,7 +166,9 @@ export async function PUT(
     // pra disparar triggers de automacao quando relevante.
     const { data: existingTask, error: fetchError } = await adminClient
       .from("tasks")
-      .select("id, assignee_id, status, operational_column_id")
+      .select(
+        "id, assignee_id, status, operational_column_id, time_spent_seconds, timer_started_at",
+      )
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
@@ -189,6 +191,25 @@ export async function PUT(
     if (body.type !== undefined) updateData.type = body.type
     if (body.status !== undefined) {
       updateData.status = body.status
+
+      // Time tracking automatico: entrar em in_progress liga o timer; sair
+      // acumula o tempo decorrido e desliga. Server-side pra funcionar de
+      // qualquer superficie (drawer, board, kanban).
+      if (body.status === "in_progress") {
+        if (!existingTask.timer_started_at) {
+          updateData.timer_started_at = new Date().toISOString()
+        }
+      } else if (existingTask.timer_started_at) {
+        const elapsedSec = Math.max(
+          0,
+          Math.floor(
+            (Date.now() - Date.parse(existingTask.timer_started_at)) / 1000,
+          ),
+        )
+        updateData.time_spent_seconds =
+          (existingTask.time_spent_seconds || 0) + elapsedSec
+        updateData.timer_started_at = null
+      }
 
       // Set started_at when moving to in_progress
       if (body.status === "in_progress") {

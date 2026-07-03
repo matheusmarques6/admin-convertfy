@@ -838,7 +838,16 @@ export function TaskDetailDrawer({
   const { apiAction, members, profile, fetchData } = useProductivityStore()
   const memberList = members as Member[]
 
-  const [running, setRunning] = useState(false)
+  // Time tracking persistente — a fonte da verdade é o servidor
+  // (task.time_spent_seconds acumulado + task.timer_started_at quando
+  // rodando). O override otimista cobre o intervalo entre o clique e o
+  // fetchData reconciliar; frozenSec congela o display no stop até o
+  // servidor devolver o acumulado atualizado.
+  const [timerOverride, setTimerOverride] = useState<{
+    running: boolean
+    startedAt: number | null
+    frozenSec: number | null
+  } | null>(null)
   const [statusMenu, setStatusMenu] = useState(false)
   const [prioMenu, setPrioMenu] = useState(false)
   const [assigneeMenu, setAssigneeMenu] = useState(false)
@@ -893,7 +902,6 @@ export function TaskDetailDrawer({
   const [workspaceTarget, setWorkspaceTarget] =
     useState<TaskWorkspaceTarget | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
-  const [timerSec, setTimerSec] = useState(0)
   const [comment, setComment] = useState("")
   const [editingDesc, setEditingDesc] = useState(false)
   const [desc, setDesc] = useState(task.description ?? "")
@@ -912,12 +920,36 @@ export function TaskDetailDrawer({
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
 
-  // Timer simples (local) — quando ativo conta segundos
+  // Estado do timer derivado do servidor + override otimista local
+  const serverStartedAt = task.timer_started_at ?? null
+  const running = timerOverride ? timerOverride.running : !!serverStartedAt
+  const timerStartedAtMs = timerOverride
+    ? timerOverride.startedAt
+    : serverStartedAt
+      ? Date.parse(serverStartedAt)
+      : null
+
+  // Limpa o override quando o servidor confirma o estado esperado
+  useEffect(() => {
+    if (timerOverride && !!serverStartedAt === timerOverride.running) {
+      setTimerOverride(null)
+    }
+  }, [serverStartedAt, timerOverride])
+
+  // Tick de 1s só pra re-render enquanto o timer roda (não é fonte da verdade)
+  const [, setTimerTick] = useState(0)
   useEffect(() => {
     if (!running) return
-    const i = setInterval(() => setTimerSec((s) => s + 1), 1000)
+    const i = setInterval(() => setTimerTick((n) => n + 1), 1000)
     return () => clearInterval(i)
   }, [running])
+
+  const timerSec =
+    timerOverride?.frozenSec ??
+    (task.time_spent_seconds ?? 0) +
+      (running && timerStartedAtMs
+        ? Math.max(0, Math.floor((Date.now() - timerStartedAtMs) / 1000))
+        : 0)
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -937,9 +969,12 @@ export function TaskDetailDrawer({
   const [enrichedSection, setEnrichedSection] = useState<SidebarSection>("visao-geral")
 
   const formatTimer = () => {
-    const min = Math.floor(timerSec / 60)
+    const h = Math.floor(timerSec / 3600)
+    const min = Math.floor((timerSec % 3600) / 60)
     const sec = timerSec % 60
-    return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+    const mm = String(min).padStart(2, "0")
+    const ss = String(sec).padStart(2, "0")
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
   }
 
   const meta = task.metadata ?? {}
@@ -1056,6 +1091,39 @@ export function TaskDetailDrawer({
     }
     fetchData()
     return { ok, error }
+  }
+
+  // Play/pause do time tracking — persiste no servidor (idempotente) e
+  // reconcilia via fetchData. Override otimista pra UI responder na hora.
+  const toggleTimer = async () => {
+    const next = !running
+    setTimerOverride(
+      next
+        ? { running: true, startedAt: Date.now(), frozenSec: null }
+        : { running: false, startedAt: null, frozenSec: timerSec },
+    )
+    let ok = false
+    if (isInTasksTable) {
+      try {
+        const res = await fetch(`/api/tasks/${task.id}/timer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: next ? "start" : "stop" }),
+        })
+        ok = res.ok
+      } catch {
+        ok = false
+      }
+      if (ok) fetchData()
+    } else {
+      ok = await apiAction(next ? "start_task_timer" : "stop_task_timer", {
+        task_id: task.id,
+      })
+    }
+    if (!ok) {
+      setTimerOverride(null)
+      setBlockMsg("Não foi possível atualizar o timer.")
+    }
   }
 
   // Persiste o modal de workspace na URL (?ws=brand|briefing|email).
@@ -1294,9 +1362,14 @@ export function TaskDetailDrawer({
       await openWorkspaceForTask()
     }
 
-    if (next === "progress" && !running) setRunning(true)
+    // Timer: o servidor liga/desliga junto com a mudança de status; o
+    // override otimista faz a UI refletir na hora (fetchData reconcilia).
+    if (next === "progress" && !running) {
+      setTimerOverride({ running: true, startedAt: Date.now(), frozenSec: null })
+    } else if (next !== "progress" && running) {
+      setTimerOverride({ running: false, startedAt: null, frozenSec: timerSec })
+    }
     if (next === "done") {
-      setRunning(false)
       if (isOnboarding) {
         try {
           await fetch(`/api/tasks/${task.id}/complete`, { method: "POST" })
