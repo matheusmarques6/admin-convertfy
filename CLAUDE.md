@@ -1091,7 +1091,8 @@ para reduzir poluição da nav para devs ad-hoc.
 Tipos canônicos:
 - `EmailStatus` em `src/types/email-workspace.ts`
 - `QaIssue` em `src/types/email-generation.ts`
-- `Profile` em `src/types/profile.ts`
+- Perfil/tags: usar os tipos de `src/types/index.ts` (o antigo `src/types/profile.ts`
+  foi removido na limpeza de jul/2026 — nunca chegou a ter importadores)
 
 Referência: `docs/architecture/adr-agent-email-generation.md`.
 
