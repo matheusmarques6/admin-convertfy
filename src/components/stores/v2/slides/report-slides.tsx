@@ -497,14 +497,14 @@ function SlideCover({ snapshot, monthLabel }: { snapshot: ReportSnapshot; monthL
         }}
       >
         <div className="flex items-center">
-          {/* Logo real da Convertfy (mesma do sistema) — versão branca p/ o
-              fundo escuro da capa. <img> puro carrega direto do /public e é
-              confiável no print/PDF (evita o otimizador do next/image). */}
+          {/* Logo real da Convertfy (wordmark branca) em SVG — vetorial, fica
+              nítida em qualquer tamanho e no PDF (o PNG 788×405 borrava ao
+              ampliar). <img> puro carrega direto do /public (print-friendly). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/logo%20da%20convertfy%20com%20escrito%20branco.png"
+            src="/images/logo-da-convertfy-com-escrito-branco.svg"
             alt="Convertfy"
-            style={{ height: 34, width: "auto", display: "block" }}
+            style={{ height: 44, width: "auto", display: "block" }}
           />
         </div>
 
