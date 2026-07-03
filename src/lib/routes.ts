@@ -267,8 +267,6 @@ export const ROUTES = {
   TRACKING: {
     EMBED: "/tracking/embed",
   },
-
-  REPORT: "/report",
 } as const
 
 // ── Mapeamento de rotas antigas para novas (redirects) ──────────────────

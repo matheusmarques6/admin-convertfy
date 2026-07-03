@@ -57,23 +57,6 @@ const ASAAS_OPTIONS: SWRConfiguration = {
 }
 
 // ---------------------------------------------------------------------------
-// Hook: Store Email Platform Report
-// Dispatcher: serve Klaviyo ou Omnisend conforme email_platform da loja.
-// ---------------------------------------------------------------------------
-export function useStoreEmailReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
-  const key = storeId ? `/api/integrations/email-platform/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
-  return useSWR(key, apiFetcher, REPORT_OPTIONS)
-}
-
-// ---------------------------------------------------------------------------
-// Hook: Shopify Report
-// ---------------------------------------------------------------------------
-export function useShopifyReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
-  const key = storeId ? `/api/integrations/shopify/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
-  return useSWR(key, apiFetcher, REPORT_OPTIONS)
-}
-
-// ---------------------------------------------------------------------------
 // Hook: GA4 Report
 // ---------------------------------------------------------------------------
 export function useGA4Report(storeId: string | null, period: string, customDates?: CustomDateRange) {

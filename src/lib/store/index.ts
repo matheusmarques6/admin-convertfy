@@ -2,7 +2,6 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type {
   User,
-  Client,
   Integration,
   Pipeline,
   PipelineStage,
@@ -51,38 +50,6 @@ export const useUIStore = create<UIState>()(
     }
   )
 )
-
-// Clients Store
-interface ClientsState {
-  clients: Client[]
-  selectedClient: Client | null
-  isLoading: boolean
-  setClients: (clients: Client[]) => void
-  setSelectedClient: (client: Client | null) => void
-  addClient: (client: Client) => void
-  updateClient: (id: string, updates: Partial<Client>) => void
-  removeClient: (id: string) => void
-  setLoading: (loading: boolean) => void
-}
-
-export const useClientsStore = create<ClientsState>((set) => ({
-  clients: [],
-  selectedClient: null,
-  isLoading: false,
-  setClients: (clients) => set({ clients }),
-  setSelectedClient: (selectedClient) => set({ selectedClient }),
-  addClient: (client) =>
-    set((state) => ({ clients: [...state.clients, client] })),
-  updateClient: (id, updates) =>
-    set((state) => ({
-      clients: state.clients.map((c) =>
-        c.id === id ? { ...c, ...updates } : c
-      ),
-    })),
-  removeClient: (id) =>
-    set((state) => ({ clients: state.clients.filter((c) => c.id !== id) })),
-  setLoading: (isLoading) => set({ isLoading }),
-}))
 
 // Integrations Store
 interface IntegrationStatus {

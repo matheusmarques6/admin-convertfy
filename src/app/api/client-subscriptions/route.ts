@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { requireFeature } from "@/lib/api/check-permission"
+import { requireOrgRoles, FINANCIAL_REPORT_ROLES } from "@/lib/api/require-org-admin"
 import { validateMonetaryValue } from "@/lib/schemas/common"
 import { logger } from "@/lib/logger"
 
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    await requireFeature(supabase, user.id, "view_financial")
+    await requireOrgRoles(user.id, FINANCIAL_REPORT_ROLES)
 
     const body = await request.json()
     const { client_id, name, value, cycle, payment_method, status, start_date, next_due_date, notes } = body
@@ -214,7 +214,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    await requireFeature(supabase, user.id, "view_financial")
+    await requireOrgRoles(user.id, FINANCIAL_REPORT_ROLES)
 
     const id = request.nextUrl.searchParams.get("id")
 
@@ -241,7 +241,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
-    await requireFeature(supabase, user.id, "view_financial")
+    await requireOrgRoles(user.id, FINANCIAL_REPORT_ROLES)
 
     const body = await request.json()
     const { id } = body
