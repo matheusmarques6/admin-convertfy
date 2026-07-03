@@ -2129,7 +2129,9 @@ export function TaskDetailDrawer({
             <TimeTracking
               spent={formatTimer()}
               running={running}
-              onToggle={() => setRunning(!running)}
+              onToggle={() => {
+                void toggleTimer()
+              }}
             />
           </div>
         </div>
