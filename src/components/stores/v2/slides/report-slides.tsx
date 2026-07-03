@@ -22,6 +22,9 @@ import { useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp, Bell, Zap, Mail, Target, Send, X as XIcon, Users,
 } from "lucide-react"
+import {
+  EditableNumber, EditableText,
+} from "@/components/stores/v2/slides/report-edit-context"
 
 // ─── Tokens (mirror de _primitives.tsx) ───────────────────────
 
@@ -72,81 +75,11 @@ const F_SANS = "var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, san
 const F_SERIF = 'var(--font-playfair), "Playfair Display", Georgia, serif'
 
 // ─── Types ────────────────────────────────────────────────────
+// ReportSnapshot mora em src/types/monthly-report.ts (compartilhado com o
+// serviço de overrides e as rotas server). Re-export preserva importadores.
 
-export interface ReportSnapshot {
-  store_name?: string
-  client_name?: string
-  cm_name?: string
-  plan?: string
-  month_label?: string
-  period?: { start: string; end: string }
-  account?: { currency?: string; platform?: string | null }
-
-  // KPIs cristalizados. Campos novos (pedidos_loja, pedidos_atribuidos,
-  // etc) sao nullable: null = fonte indisponivel na geracao (slides
-  // renderizam "—"); snapshots ANTIGOS nao tem esses campos.
-  kpis?: {
-    receita_total?: number | null
-    receita_atribuida?: number | null
-    atribuicao_pct?: number | null
-    receita_campanhas?: number | null
-    receita_flows?: number | null
-    /** LEGADO: pedidos da LOJA (em snapshots antigos era o unico campo). */
-    pedidos?: number | null
-    pedidos_loja?: number | null
-    pedidos_atribuidos?: number | null
-    ticket_medio?: number | null
-    ticket_medio_atribuido?: number | null
-    novos_clientes?: number | null
-    envios?: number | null
-    total_leads?: number | null
-    open_rate?: number | null
-    click_rate?: number | null
-    opened_unique?: number | null
-    clicked_unique?: number | null
-    spam_rate?: number | null
-    recovery_rate?: number | null
-    total_campaigns?: number | null
-    total_flows?: number | null
-  }
-  email?: {
-    delivered?: number
-    open_rate?: number
-    click_rate?: number
-    ctor?: number
-    bounce_rate?: number
-    unsub_rate?: number
-  }
-  campaigns?: Array<{
-    id: string
-    name: string
-    delivered?: number
-    recipients?: number
-    openRate?: number
-    clickRate?: number
-    revenue?: number
-    revenue_estimated?: boolean
-  }>
-  flows?: Array<{
-    id: string
-    name: string
-    delivered?: number
-    recipients?: number
-    openRate?: number
-    clickRate?: number
-    revenue?: number
-    revenue_estimated?: boolean
-  }>
-  insights?: {
-    capa?: string
-    resumo?: string
-    atribuida?: string
-    email?: string
-    rankings?: string
-    trabalho?: string
-    proximos?: string
-  }
-}
+import type { ReportSnapshot } from "@/types/monthly-report"
+export type { ReportSnapshot }
 
 interface Props {
   snapshot: ReportSnapshot
@@ -729,12 +662,12 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           gap: 10,
         }}
       >
-        <ResumoTile label="Faturamento total" value={fmtCurrency(totalRevenue, currency, { compact: true })} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
-        <ResumoTile label="Pedidos" value={fmtCount(storeOrders(k))} delta="loja no período" tone={(storeOrders(k) ?? 0) > 0 ? "pos" : "default"} />
-        <ResumoTile label="Ticket médio" value={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} delta="período" />
-        <ResumoTile label="Novos clientes" value={fmtCount(k.novos_clientes)} delta="período" />
-        <ResumoTile label="Total de leads" value={fmtCount(k.total_leads)} delta="base atual" />
-        <ResumoTile label="Campanhas enviadas" value={k.total_campaigns === null || k.total_campaigns === undefined ? "—" : String(k.total_campaigns)} delta={`${fmtCount(k.total_flows)} flows ativos`} />
+        <ResumoTile label="Faturamento total" value={<EditableNumber path="kpis.receita_total" raw={k.receita_total} display={fmtCurrency(totalRevenue, currency, { compact: true })} kind="currency" />} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
+        <ResumoTile label="Pedidos" value={<EditableNumber path="kpis.pedidos_loja" raw={storeOrders(k)} display={fmtCount(storeOrders(k))} kind="count" />} delta="loja no período" tone={(storeOrders(k) ?? 0) > 0 ? "pos" : "default"} />
+        <ResumoTile label="Ticket médio" value={<EditableNumber path="kpis.ticket_medio" raw={k.ticket_medio} display={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} kind="currency" />} delta="período" />
+        <ResumoTile label="Novos clientes" value={<EditableNumber path="kpis.novos_clientes" raw={k.novos_clientes} display={fmtCount(k.novos_clientes)} kind="count" />} delta="período" />
+        <ResumoTile label="Total de leads" value={<EditableNumber path="kpis.total_leads" raw={k.total_leads} display={fmtCount(k.total_leads)} kind="count" />} delta="base atual" />
+        <ResumoTile label="Campanhas enviadas" value={<EditableNumber path="kpis.total_campaigns" raw={k.total_campaigns} display={k.total_campaigns == null ? "—" : String(k.total_campaigns)} kind="count" />} delta={<>{<EditableNumber path="kpis.total_flows" raw={k.total_flows} display={fmtCount(k.total_flows)} kind="count" />} flows ativos</>} />
       </div>
 
       <div style={{ flex: 1 }} />
@@ -1045,7 +978,7 @@ function snapshotMonthShort(): string {
   return "" // placeholder — month info ja aparece no header e indicator
 }
 
-function ResumoTile({ label, value, delta, tone = "default" }: { label: string; value: string; delta: string; tone?: "default" | "pos" }) {
+function ResumoTile({ label, value, delta, tone = "default" }: { label: string; value: React.ReactNode; delta: React.ReactNode; tone?: "default" | "pos" }) {
   return (
     <div
       style={{
@@ -1177,7 +1110,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               borderTop: "1px solid rgba(255,255,255,0.15)",
             }}
           >
-            <DarkMetric label="Faturamento E-mail" value={fmtCurrency(attributed, currency, { compact: true })} sub={`${pct.toFixed(2).replace(".", ",")}%${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos` : ""}`} />
+            <DarkMetric label="Faturamento E-mail" value={<EditableNumber path="kpis.receita_atribuida" raw={k.receita_atribuida} display={fmtCurrency(attributed, currency, { compact: true })} kind="currency" />} sub={`${pct.toFixed(2).replace(".", ",")}%${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos` : ""}`} />
             <DarkMetric label="Faturamento SMS" value={`${currencySymbol(currency)} 0`} sub="canal a ativar" mute />
           </div>
         </div>
@@ -1206,7 +1139,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             </div>
             <SplitBar
               label="Automações (Flows)"
-              value={fmtCurrency(flowRev, currency, { compact: true })}
+              value={<EditableNumber path="kpis.receita_flows" raw={k.receita_flows} display={fmtCurrency(flowRev, currency, { compact: true })} kind="currency" />}
               share={flowShare}
               sub={`${liveFlows} flows ativos · maior contribuição`}
               tone="brand"
@@ -1214,7 +1147,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             <div style={{ height: 14 }} />
             <SplitBar
               label="Campanhas pontuais"
-              value={fmtCurrency(campRev, currency, { compact: true })}
+              value={<EditableNumber path="kpis.receita_campanhas" raw={k.receita_campanhas} display={fmtCurrency(campRev, currency, { compact: true })} kind="currency" />}
               share={campShare}
               sub={`${sentCampaigns} campanhas no período`}
               tone="purple"
@@ -1232,7 +1165,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               gap: 14,
             }}
           >
-            <MicroStat label="Pedidos atribuídos" value={fmtCount(pedidos)} />
+            <MicroStat label="Pedidos atribuídos" value={<EditableNumber path="kpis.pedidos_atribuidos" raw={pedidos} display={fmtCount(pedidos)} kind="count" />} />
             <MicroStat
               label="Receita/pedido"
               value={pedidos !== null && pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
@@ -1259,7 +1192,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
   )
 }
 
-function SplitBar({ label, value, share, sub, tone }: { label: string; value: string; share: number; sub: string; tone: "brand" | "purple" }) {
+function SplitBar({ label, value, share, sub, tone }: { label: string; value: React.ReactNode; share: number; sub: React.ReactNode; tone: "brand" | "purple" }) {
   const color = tone === "brand" ? C.brand : C.purple
   return (
     <div>
@@ -1278,7 +1211,7 @@ function SplitBar({ label, value, share, sub, tone }: { label: string; value: st
   )
 }
 
-function DarkMetric({ label, value, sub, mute }: { label: string; value: string; sub?: string; mute?: boolean }) {
+function DarkMetric({ label, value, sub, mute }: { label: string; value: React.ReactNode; sub?: React.ReactNode; mute?: boolean }) {
   return (
     <div>
       <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -1302,7 +1235,7 @@ function DarkMetric({ label, value, sub, mute }: { label: string; value: string;
   )
 }
 
-function MicroStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function MicroStat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div>
       <div style={{ fontSize: 10, color: C.g500, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -1412,7 +1345,7 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
           <BenchCard
             Icon={Send}
             label="Entregues"
-            value={delivered.toLocaleString("pt-BR")}
+            value={<EditableNumber path="email.delivered" raw={delivered} display={delivered.toLocaleString("pt-BR")} kind="count" />}
             bench={`${deliveryRate.toFixed(2).replace(".", ",")}% taxa entrega`}
             tone={deliveryRate >= 99 ? "pos" : "warn"}
           />
@@ -1420,34 +1353,34 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
             Icon={XIcon}
             label="Bounces"
             value={Math.round(delivered * (bounce / 100)).toLocaleString("pt-BR")}
-            bench={`${bounce.toFixed(2).replace(".", ",")}% taxa`}
+            bench={<><EditableNumber path="email.bounce_rate" raw={bounce} display={bounce.toFixed(2).replace(".", ",")} kind="rate100" />% taxa</>}
             tone={bounce < BENCHMARKS.bounceRate ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Mail}
             label="Abertura"
-            value={`${openRate.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.open_rate" raw={openRate} display={openRate.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.openRate.toFixed(1).replace(".", ",")}% benchmark · ${openDelta >= 0 ? "+" : ""}${openDelta.toFixed(1).replace(".", ",")} p.p.`}
             tone={openDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Target}
             label="Clique"
-            value={`${clickRate.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.click_rate" raw={clickRate} display={clickRate.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.clickRate.toFixed(1).replace(".", ",")}% benchmark · ${clickDelta >= 0 ? "+" : ""}${clickDelta.toFixed(2).replace(".", ",")} p.p.`}
             tone={clickDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Zap}
             label="CTOR"
-            value={`${ctor.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.ctor" raw={ctor} display={ctor.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.ctor.toFixed(1).replace(".", ",")}% benchmark · ${ctorDelta >= 0 ? "+" : ""}${ctorDelta.toFixed(2).replace(".", ",")} p.p.`}
             tone={ctorDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Users}
             label="Unsub"
-            value={`${unsub.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.unsub_rate" raw={unsub} display={unsub.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.unsubRate.toFixed(2).replace(".", ",")}% benchmark · ${unsub < BENCHMARKS.unsubRate ? "saudável" : "atenção"}`}
             tone={unsub < BENCHMARKS.unsubRate ? "pos" : "warn"}
           />
@@ -1534,7 +1467,7 @@ function Funnel({ steps }: { steps: Array<{ label: string; pct: number; color: s
   )
 }
 
-function BenchCard({ Icon, label, value, bench, tone }: { Icon: typeof Send; label: string; value: string; bench: string; tone: "pos" | "warn" }) {
+function BenchCard({ Icon, label, value, bench, tone }: { Icon: typeof Send; label: string; value: React.ReactNode; bench: React.ReactNode; tone: "pos" | "warn" }) {
   return (
     <div style={{ padding: "14px 16px", border: `1px solid ${C.border}`, borderRadius: 10, background: C.white }}>
       <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
@@ -1621,7 +1554,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {campPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={campaigns} currency={currency} />
+          <CompactTable rows={campaigns} pathPrefix="campaigns" currency={currency} />
         </div>
 
         <div>
@@ -1655,7 +1588,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {flowPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={flows} flows currency={currency} />
+          <CompactTable rows={flows} flows pathPrefix="flows" currency={currency} />
         </div>
       </div>
 
@@ -1684,7 +1617,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
   )
 }
 
-function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string }) {
+function CompactTable({ rows, flows, currency = "BRL", pathPrefix }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string; pathPrefix?: "campaigns" | "flows" }) {
   const items = rows ?? []
   const hasEstimated = items.some((r) => r.revenue_estimated)
   return (
@@ -1733,7 +1666,7 @@ function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot[
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {r.name}
+                  {pathPrefix ? <EditableText path={`${pathPrefix}.${r.id}.name`} value={r.name} /> : r.name}
                 </td>
                 <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
                   {(r.delivered ?? r.recipients ?? 0).toLocaleString("pt-BR")}
@@ -1758,7 +1691,11 @@ function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot[
                   }}
                 >
                   {r.revenue_estimated && <span style={{ color: C.g400, marginRight: 2, fontWeight: 500 }}>~</span>}
-                  {fmtMoney(r.revenue ?? 0, currency)}
+                  {pathPrefix ? (
+                    <EditableNumber path={`${pathPrefix}.${r.id}.revenue`} raw={r.revenue ?? null} display={fmtMoney(r.revenue ?? 0, currency)} kind="currency" />
+                  ) : (
+                    fmtMoney(r.revenue ?? 0, currency)
+                  )}
                 </td>
               </tr>
             ))

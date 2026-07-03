@@ -7,6 +7,8 @@
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ReportSlides } from "@/components/stores/v2/slides/report-slides"
+import { applyKpisOverrides } from "@/lib/services/report-overrides.service"
+import type { ReportSnapshot, ReportKpisOverrides } from "@/types/monthly-report"
 import { AutoPrint } from "./auto-print"
 import { PresentDeck } from "./present-deck"
 
@@ -17,7 +19,7 @@ async function getReport(reportId: string) {
   const { data, error } = await admin
     .from("client_monthly_reports")
     .select(
-      `id, month_label, snapshot, proximos_passos,
+      `id, month_label, snapshot, kpis_overrides, proximos_passos,
        store:client_stores(store_name, clients(name)),
        generator:profiles!client_monthly_reports_generated_by_fkey(name)`,
     )
@@ -46,12 +48,17 @@ export default async function ReportPrintPage({
       : storeRaw.clients.name
     : null
   const generator = (report.generator as unknown as { name: string } | null)
-  const snap = (report.snapshot ?? {}) as Record<string, unknown>
+  // Aplica overrides de edição manual — PDF e modo apresentação saem com
+  // os números editados.
+  const { snapshot: merged } = applyKpisOverrides(
+    (report.snapshot ?? {}) as ReportSnapshot,
+    report.kpis_overrides as ReportKpisOverrides | null,
+  )
 
   const slides = (
     <ReportSlides
       snapshot={{
-        ...snap,
+        ...merged,
         store_name: storeRaw?.store_name ?? undefined,
         client_name: clientName ?? undefined,
         cm_name: generator?.name ?? undefined,

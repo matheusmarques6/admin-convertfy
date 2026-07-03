@@ -17,6 +17,8 @@ import {
   requireAuth,
   AppError,
 } from "@/lib/api/errors"
+import { applyKpisOverrides } from "@/lib/services/report-overrides.service"
+import type { ReportSnapshot, ReportKpisOverrides } from "@/types/monthly-report"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -44,10 +46,19 @@ export async function POST(
     // Carrega o relatório com snapshot
     const { data: report, error: fetchErr } = await admin
       .from("client_monthly_reports")
-      .select("snapshot, tone, month_label, store_id")
+      .select("snapshot, kpis_overrides, tone, month_label, store_id")
       .eq("id", reportId)
       .single()
     if (fetchErr || !report) throw new AppError("Relatório não encontrado", 404)
+
+    // A IA lê o snapshot JÁ com os overrides manuais aplicados (para os
+    // textos citarem os números editados). Os insights, porém, são sempre
+    // gravados sobre o snapshot CRU — nunca persistimos o merged (senão o
+    // override viraria "original" e o restaurar quebraria).
+    const { snapshot: mergedSnapshot } = applyKpisOverrides(
+      (report.snapshot ?? {}) as ReportSnapshot,
+      report.kpis_overrides as ReportKpisOverrides | null,
+    )
 
     // Carrega contexto da loja pra IA ter referencia
     const { data: store } = await admin
@@ -61,7 +72,7 @@ export async function POST(
       // Sem API key: gera fallbacks deterministicos
       const fallbackInsights: Record<string, string> = {}
       for (const s of SLIDE_PROMPTS) {
-        fallbackInsights[s.key] = fallbackInsight(s.key, report.snapshot)
+        fallbackInsights[s.key] = fallbackInsight(s.key, mergedSnapshot)
       }
       await admin
         .from("client_monthly_reports")
@@ -97,8 +108,8 @@ Regras:
 - Sem emoji, sem hashtag, sem aspas decorativas
 - Respeite o limite de caracteres pedido pra cada slide`
 
-    // Gera todos os insights em paralelo
-    const snapshotJson = JSON.stringify(report.snapshot ?? {}, null, 2)
+    // Gera todos os insights em paralelo (contexto = snapshot merged)
+    const snapshotJson = JSON.stringify(mergedSnapshot, null, 2)
     const insights: Record<string, string> = {}
 
     const promises = SLIDE_PROMPTS.map(async (s) => {
@@ -118,11 +129,11 @@ Regras:
         if (block && block.type === "text") {
           insights[s.key] = block.text.trim().replace(/^["']|["']$/g, "")
         } else {
-          insights[s.key] = fallbackInsight(s.key, report.snapshot)
+          insights[s.key] = fallbackInsight(s.key, mergedSnapshot)
         }
       } catch (err) {
         console.error(`[ai-fill] slide ${s.key} failed`, err)
-        insights[s.key] = fallbackInsight(s.key, report.snapshot)
+        insights[s.key] = fallbackInsight(s.key, mergedSnapshot)
       }
     })
     await Promise.all(promises)
