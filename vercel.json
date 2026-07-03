@@ -88,6 +88,14 @@
     {
       "path": "/api/cron/holidays-sync-yearly",
       "schedule": "0 3 1 1 *"
+    },
+    {
+      "path": "/api/cron/whatsapp-reprocess-webhooks",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-prune-webhook-events",
+      "schedule": "0 3 * * *"
     }
   ]
 }
