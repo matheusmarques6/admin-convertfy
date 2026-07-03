@@ -82,23 +82,32 @@ export interface ReportSnapshot {
   period?: { start: string; end: string }
   account?: { currency?: string; platform?: string | null }
 
-  // KPIs cristalizados
+  // KPIs cristalizados. Campos novos (pedidos_loja, pedidos_atribuidos,
+  // etc) sao nullable: null = fonte indisponivel na geracao (slides
+  // renderizam "—"); snapshots ANTIGOS nao tem esses campos.
   kpis?: {
-    receita_total?: number
-    receita_atribuida?: number
-    atribuicao_pct?: number
-    receita_campanhas?: number
-    receita_flows?: number
-    pedidos?: number
-    ticket_medio?: number
-    novos_clientes?: number
-    envios?: number
-    total_leads?: number
-    open_rate?: number
-    click_rate?: number
-    recovery_rate?: number
-    total_campaigns?: number
-    total_flows?: number
+    receita_total?: number | null
+    receita_atribuida?: number | null
+    atribuicao_pct?: number | null
+    receita_campanhas?: number | null
+    receita_flows?: number | null
+    /** LEGADO: pedidos da LOJA (em snapshots antigos era o unico campo). */
+    pedidos?: number | null
+    pedidos_loja?: number | null
+    pedidos_atribuidos?: number | null
+    ticket_medio?: number | null
+    ticket_medio_atribuido?: number | null
+    novos_clientes?: number | null
+    envios?: number | null
+    total_leads?: number | null
+    open_rate?: number | null
+    click_rate?: number | null
+    opened_unique?: number | null
+    clicked_unique?: number | null
+    spam_rate?: number | null
+    recovery_rate?: number | null
+    total_campaigns?: number | null
+    total_flows?: number | null
   }
   email?: {
     delivered?: number
@@ -146,6 +155,27 @@ interface Props {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
+
+type SnapshotKpis = NonNullable<ReportSnapshot["kpis"]>
+
+/**
+ * Pedidos ATRIBUÍDOS aos canais Convertfy. Snapshots antigos não têm o
+ * campo (o antigo `pedidos` era da LOJA e estava sendo exibido com rótulo
+ * "atribuídos" — inflação de ~4,8x) → null, renderizado como "—".
+ */
+function attributedOrders(k: SnapshotKpis): number | null {
+  return k.pedidos_atribuidos ?? null
+}
+
+/** Pedidos da LOJA no período (snapshot antigo: `pedidos` já era loja). */
+function storeOrders(k: SnapshotKpis): number | null {
+  return k.pedidos_loja ?? k.pedidos ?? null
+}
+
+/** Formata contagem distinguindo dado ausente (null → "—") de zero real. */
+function fmtCount(n: number | null | undefined): string {
+  return n === null || n === undefined ? "—" : n.toLocaleString("pt-BR")
+}
 
 function fmtCurrency(value: number, currency = "BRL", opts?: { compact?: boolean }): string {
   const sym = currencySymbol(currency)
@@ -686,7 +716,7 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           pct={pctNum}
           totalRevenue={totalRevenue}
           attributed={attributed}
-          pedidos={k.pedidos ?? 0}
+          pedidos={attributedOrders(k)}
           currency={currency}
         />
       </div>
@@ -700,11 +730,11 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
         }}
       >
         <ResumoTile label="Faturamento total" value={fmtCurrency(totalRevenue, currency, { compact: true })} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
-        <ResumoTile label="Pedidos" value={(k.pedidos ?? 0).toLocaleString("pt-BR")} delta="atribuídos" tone={(k.pedidos ?? 0) > 0 ? "pos" : "default"} />
+        <ResumoTile label="Pedidos" value={fmtCount(storeOrders(k))} delta="loja no período" tone={(storeOrders(k) ?? 0) > 0 ? "pos" : "default"} />
         <ResumoTile label="Ticket médio" value={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} delta="período" />
-        <ResumoTile label="Novos clientes" value={(k.novos_clientes ?? 0).toLocaleString("pt-BR")} delta="período" />
-        <ResumoTile label="Total de leads" value={(k.total_leads ?? 0).toLocaleString("pt-BR")} delta="base atual" />
-        <ResumoTile label="Campanhas enviadas" value={String(k.total_campaigns ?? 0)} delta={`${k.total_flows ?? 0} flows ativos`} />
+        <ResumoTile label="Novos clientes" value={fmtCount(k.novos_clientes)} delta="período" />
+        <ResumoTile label="Total de leads" value={fmtCount(k.total_leads)} delta="base atual" />
+        <ResumoTile label="Campanhas enviadas" value={k.total_campaigns === null || k.total_campaigns === undefined ? "—" : String(k.total_campaigns)} delta={`${fmtCount(k.total_flows)} flows ativos`} />
       </div>
 
       <div style={{ flex: 1 }} />
@@ -722,7 +752,11 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
             <strong style={{ color: C.g900 }}>
               {pctNum.toFixed(2).replace(".", ",")}% do faturamento total veio da Convertfy
             </strong>{" "}
-            no período · {(k.pedidos ?? 0).toLocaleString("pt-BR")} pedidos com nossos canais.
+            no período
+            {attributedOrders(k) !== null && (
+              <> · {fmtCount(attributedOrders(k))} pedidos com nossos canais</>
+            )}
+            .
           </>
         )}
       </Insight>
@@ -733,7 +767,7 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
 function HeroParticipation({
   pct, totalRevenue, attributed, pedidos, currency,
 }: {
-  pct: number; totalRevenue: number; attributed: number; pedidos: number; currency: string
+  pct: number; totalRevenue: number; attributed: number; pedidos: number | null; currency: string
 }) {
   const r = 70
   const c = 2 * Math.PI * r
@@ -959,7 +993,7 @@ function HeroParticipation({
               {fmtCurrency(attributed, currency, { compact: true })}
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2, ...TNUM }}>
-              {pedidos.toLocaleString("pt-BR")} pedidos · e-mail + SMS
+              {pedidos !== null ? `${fmtCount(pedidos)} pedidos · ` : ""}e-mail + SMS
             </div>
           </div>
           <div
@@ -1051,7 +1085,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
   const k = snapshot.kpis ?? {}
   const attributed = k.receita_atribuida ?? 0
   const pct = (k.atribuicao_pct ?? 0) * 100
-  const pedidos = k.pedidos ?? 0
+  const pedidos = attributedOrders(k)
   const campRev = k.receita_campanhas ?? 0
   const flowRev = k.receita_flows ?? 0
   const total = campRev + flowRev
@@ -1066,7 +1100,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
         n={3}
         eyebrow="Resultados financeiros"
         title="Receita atribuída Convertfy"
-        intro={`${fmtCurrency(attributed, currency, { compact: true })} em receita gerada por canais que gerenciamos (e-mail e SMS), de um faturamento total de ${fmtCurrency(k.receita_total ?? 0, currency, { compact: true })} — ${pct.toFixed(2).replace(".", ",")}% de participação · ${pedidos.toLocaleString("pt-BR")} pedidos com origem nos nossos canais.`}
+        intro={`${fmtCurrency(attributed, currency, { compact: true })} em receita gerada por canais que gerenciamos (e-mail e SMS), de um faturamento total de ${fmtCurrency(k.receita_total ?? 0, currency, { compact: true })} — ${pct.toFixed(2).replace(".", ",")}% de participação${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos com origem nos nossos canais` : ""}.`}
       />
 
       <div
@@ -1125,8 +1159,12 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               {fmtCurrency(attributed, currency, { compact: true })}
             </div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginTop: 10, lineHeight: 1.5 }}>
-              <strong style={{ color: "#fff" }}>{pct.toFixed(2).replace(".", ",")}%</strong> do faturamento da loja ·{" "}
-              <strong style={{ color: "#fff" }}>{pedidos.toLocaleString("pt-BR")} pedidos</strong> atribuídos
+              <strong style={{ color: "#fff" }}>{pct.toFixed(2).replace(".", ",")}%</strong> do faturamento da loja
+              {pedidos !== null && (
+                <>
+                  {" "}· <strong style={{ color: "#fff" }}>{fmtCount(pedidos)} pedidos</strong> atribuídos
+                </>
+              )}
             </div>
           </div>
           <div
@@ -1139,7 +1177,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               borderTop: "1px solid rgba(255,255,255,0.15)",
             }}
           >
-            <DarkMetric label="Faturamento E-mail" value={fmtCurrency(attributed, currency, { compact: true })} sub={`${pct.toFixed(2).replace(".", ",")}% · ${pedidos.toLocaleString("pt-BR")} pedidos`} />
+            <DarkMetric label="Faturamento E-mail" value={fmtCurrency(attributed, currency, { compact: true })} sub={`${pct.toFixed(2).replace(".", ",")}%${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos` : ""}`} />
             <DarkMetric label="Faturamento SMS" value={`${currencySymbol(currency)} 0`} sub="canal a ativar" mute />
           </div>
         </div>
@@ -1194,10 +1232,10 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               gap: 14,
             }}
           >
-            <MicroStat label="Pedidos atribuídos" value={pedidos.toLocaleString("pt-BR")} />
+            <MicroStat label="Pedidos atribuídos" value={fmtCount(pedidos)} />
             <MicroStat
               label="Receita/pedido"
-              value={pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
+              value={pedidos !== null && pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
             />
             <MicroStat
               label="Receita/contato"
@@ -1302,8 +1340,12 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
 
   const opened = delivered * (openRate / 100)
   const clicked = delivered * (clickRate / 100)
-  const orders = k.pedidos ?? 0
+  // Funil de e-mail: pedidos ATRIBUÍDOS (não da loja — snapshot antigo → null)
+  const orders = attributedOrders(k)
   const revenue = k.receita_atribuida ?? 0
+  // Taxa de entrega derivada do bounce/fail — nunca 100% fixo (o card
+  // antigo afirmava "100% taxa entrega" ao lado de bounces > 0)
+  const deliveryRate = Math.max(0, 100 - bounce)
 
   const openDelta = openRate - BENCHMARKS.openRate
   const clickDelta = clickRate - BENCHMARKS.clickRate
@@ -1336,7 +1378,7 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
           <Funnel
             steps={[
               { label: "Enviados", pct: 1, color: C.brandHover, abs: delivered.toLocaleString("pt-BR") },
-              { label: "Entregues", pct: 1, color: C.brand, abs: `${delivered.toLocaleString("pt-BR")} · 100,00%` },
+              { label: "Entregues", pct: deliveryRate / 100, color: C.brand, abs: `${delivered.toLocaleString("pt-BR")} · ${deliveryRate.toFixed(2).replace(".", ",")}%` },
               {
                 label: "Abertos",
                 pct: openRate / 100,
@@ -1351,9 +1393,9 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
               },
               {
                 label: "Pedidos",
-                pct: delivered > 0 ? orders / delivered : 0,
+                pct: delivered > 0 && orders !== null ? orders / delivered : 0,
                 color: C.pos,
-                abs: `${orders.toLocaleString("pt-BR")}`,
+                abs: fmtCount(orders),
               },
               {
                 label: "Receita",
@@ -1367,7 +1409,13 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
 
         {/* RIGHT — bench cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignContent: "start" }}>
-          <BenchCard Icon={Send} label="Entregues" value={delivered.toLocaleString("pt-BR")} bench="100% taxa entrega" tone="pos" />
+          <BenchCard
+            Icon={Send}
+            label="Entregues"
+            value={delivered.toLocaleString("pt-BR")}
+            bench={`${deliveryRate.toFixed(2).replace(".", ",")}% taxa entrega`}
+            tone={deliveryRate >= 99 ? "pos" : "warn"}
+          />
           <BenchCard
             Icon={XIcon}
             label="Bounces"
