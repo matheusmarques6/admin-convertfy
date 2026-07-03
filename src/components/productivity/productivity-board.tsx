@@ -1255,12 +1255,6 @@ function TableView({
     }
   }
 
-  function toggleSelectTaskId(id: string) {
-    const next = new Set(selectedTaskIds)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setSelectedTaskIds(next)
-  }
   const allVisibleSelected =
     filteredTaskIds.size > 0 && selectedTaskIds.size === filteredTaskIds.size
 
@@ -1521,23 +1515,9 @@ function TableView({
                         title={isDone ? "Reabrir tarefa" : "Concluir tarefa"}
                       />
                     </div>
-                    {/* Slot da prioridade: mostra o dot normalmente e, no hover
-                        (ou quando já selecionada), revela a checkbox de SELEÇÃO
-                        pro bulk — sem conflitar com a de conclusão. */}
+                    {/* Slot da prioridade: mostra sempre o dot de prioridade. */}
                     <div className="w-5 flex justify-center">
-                      {isHovered || selectedTaskIds.has(t.id) ? (
-                        <input
-                          type="checkbox"
-                          checked={selectedTaskIds.has(t.id)}
-                          onChange={() => toggleSelectTaskId(t.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-3 w-3 rounded border-slate-300 cursor-pointer"
-                          aria-label="Selecionar tarefa para ação em massa"
-                          title="Selecionar para ação em massa"
-                        />
-                      ) : (
-                        <PriorityDot priority={t.priority} />
-                      )}
+                      <PriorityDot priority={t.priority} />
                     </div>
                     <div className="w-5 flex justify-center">
                       {hasSubs && (
