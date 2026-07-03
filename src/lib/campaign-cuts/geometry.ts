@@ -1,0 +1,118 @@
+/**
+ * Geometria pura do mapa de cortes — operações sobre a lista de portas
+ * (fatias horizontais contíguas cobrindo 0..1 da altura da imagem).
+ *
+ * Invariante mantido por TODAS as funções: portas ordenadas por y0,
+ * portas[0].y0 === 0, última.y1 === 1, contíguas (y1[i] === y0[i+1]).
+ *
+ * Sem dependências de DOM/React — testável em node.
+ */
+
+import type { CutPort } from "@/types/campaign-cuts"
+
+/** Altura mínima absoluta de uma porta em fração (guard do servidor). */
+export const MIN_PORT_FRACTION = 0.002
+
+export function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+export function newPortId(): string {
+  // crypto.randomUUID existe em browser moderno e node 19+; fallback simples.
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return "p" + Math.random().toString(36).slice(2, 10)
+  }
+}
+
+/**
+ * Divide a porta que contém yFrac em duas. A porta original mantém o topo
+ * (y0..yFrac); a nova (type "texto", label numérica) fica com yFrac..y1.
+ * Retorna null se yFrac não respeitar o gap mínimo dos dois lados.
+ */
+export function splitPortAt(
+  ports: CutPort[],
+  yFrac: number,
+  minGap: number,
+): CutPort[] | null {
+  const y = clamp01(yFrac)
+  const k = ports.findIndex((p) => y > p.y0 + minGap && y < p.y1 - minGap)
+  if (k === -1) return null
+  const next = ports.map((p) => ({ ...p }))
+  const nova: CutPort = {
+    id: newPortId(),
+    label: `Porta ${next.length + 1}`,
+    type: "texto",
+    y0: y,
+    y1: next[k].y1,
+  }
+  next[k].y1 = y
+  next.splice(k + 1, 0, nova)
+  return next
+}
+
+/**
+ * Move a fronteira entre ports[idx] e ports[idx+1] para yFrac, clampada
+ * para preservar o gap mínimo dos dois lados. No-op se idx inválido.
+ */
+export function movePortBoundary(
+  ports: CutPort[],
+  idx: number,
+  yFrac: number,
+  minGap: number,
+): CutPort[] {
+  if (idx < 0 || idx >= ports.length - 1) return ports
+  const next = ports.map((p) => ({ ...p }))
+  const lo = next[idx].y0 + minGap
+  const hi = next[idx + 1].y1 - minGap
+  if (lo >= hi) return ports
+  const y = Math.max(lo, Math.min(hi, clamp01(yFrac)))
+  next[idx].y1 = y
+  next[idx + 1].y0 = y
+  return next
+}
+
+/**
+ * Remove a porta mesclando com a ANTERIOR (que absorve o y1). A primeira
+ * porta mescla com a seguinte (a seguinte absorve o y0). Com 1 porta só,
+ * no-op.
+ */
+export function mergePortWithPrevious(
+  ports: CutPort[],
+  portId: string,
+): CutPort[] {
+  if (ports.length <= 1) return ports
+  const k = ports.findIndex((p) => p.id === portId)
+  if (k === -1) return ports
+  const next = ports.map((p) => ({ ...p }))
+  if (k === 0) {
+    next[1].y0 = next[0].y0
+    next.splice(0, 1)
+  } else {
+    next[k - 1].y1 = next[k].y1
+    next.splice(k, 1)
+  }
+  return next
+}
+
+/** Porta única inicial cobrindo a imagem inteira (estado pós-upload). */
+export function initialPorts(): CutPort[] {
+  return [{ id: newPortId(), label: "Porta 1", type: "hero", y0: 0, y1: 1 }]
+}
+
+/**
+ * True se as portas mantêm o invariante (ordenadas, contíguas, 0..1).
+ * Usado como cinto de segurança no client; a validação com erros
+ * detalhados vive no service (validateCutMap).
+ */
+export function portsAreContiguous(ports: CutPort[], eps = 1e-4): boolean {
+  if (ports.length === 0) return false
+  if (Math.abs(ports[0].y0) > eps) return false
+  if (Math.abs(ports[ports.length - 1].y1 - 1) > eps) return false
+  for (let i = 0; i < ports.length; i++) {
+    if (ports[i].y1 - ports[i].y0 <= 0) return false
+    if (i > 0 && Math.abs(ports[i - 1].y1 - ports[i].y0) > eps) return false
+  }
+  return true
+}
