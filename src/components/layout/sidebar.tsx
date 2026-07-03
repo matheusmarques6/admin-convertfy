@@ -219,7 +219,6 @@ const GERAL_NAV: NavGroup[] = [
     label: "",
     items: [
       { id: "geral.home", name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
-      { id: "geral.me", name: "Minhas tarefas", href: ROUTES.ADMIN.ME, icon: ListFilter },
       { id: "geral.board", name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
     ],
   },

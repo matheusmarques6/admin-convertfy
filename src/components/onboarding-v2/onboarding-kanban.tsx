@@ -94,10 +94,11 @@ export function OnboardingKanban() {
     { revalidateOnFocus: false, shouldRetryOnError: false },
   )
 
-  // ID do user logado (vem do /api/me/tasks que ja é cached)
+  // ID do user logado (vem do /api/me/permissions que ja é cached pelo PermissionsProvider)
   const { data: meData } = useSWR<{
-    member: { id: string; role: string; profile_id: string }
-  }>("/api/me/tasks?status=pending", fetcher, {
+    profile: { id: string }
+    orgMember: { role: string } | null
+  }>("/api/me/permissions", fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   })
@@ -134,8 +135,8 @@ export function OnboardingKanban() {
     [data?.onboardings],
   )
   const members = useMemo(() => membersData?.members ?? [], [membersData])
-  const meProfileId = meData?.member?.profile_id ?? null
-  const meRole = meData?.member?.role ?? null
+  const meProfileId = meData?.profile?.id ?? null
+  const meRole = meData?.orgMember?.role ?? null
 
   // Helper: onboarding pertence ao usuario "me"?
   function isMine(onb: OnboardingPipelineItem): boolean {

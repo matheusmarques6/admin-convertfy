@@ -25,7 +25,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const generationId = searchParams.get("generation_id")
     const status = searchParams.get("status")
-    const myTasks = searchParams.get("my_tasks") === "true"
 
     // RLS filters by org_id automatically
     let query = supabase
@@ -53,20 +52,6 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       query = query.eq("status", status)
-    }
-
-    if (myTasks) {
-      const { data: orgMember } = await supabase
-        .from("org_members")
-        .select("id")
-        .eq("profile_id", user.id)
-        .eq("is_active", true)
-        .single()
-
-      if (!orgMember) {
-        return successResponse(request, { tasks: [] })
-      }
-      query = query.eq("assignee_id", orgMember.id)
     }
 
     const { data: tasks, error: fetchError } = await query
