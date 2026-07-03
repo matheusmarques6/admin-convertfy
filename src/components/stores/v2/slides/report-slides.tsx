@@ -651,6 +651,9 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           attributed={attributed}
           pedidos={attributedOrders(k)}
           currency={currency}
+          rawPct={k.atribuicao_pct ?? null}
+          rawTotalRevenue={k.receita_total ?? null}
+          rawAttributed={k.receita_atribuida ?? null}
         />
       </div>
 
@@ -699,8 +702,10 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
 
 function HeroParticipation({
   pct, totalRevenue, attributed, pedidos, currency,
+  rawPct, rawTotalRevenue, rawAttributed,
 }: {
   pct: number; totalRevenue: number; attributed: number; pedidos: number | null; currency: string
+  rawPct?: number | null; rawTotalRevenue?: number | null; rawAttributed?: number | null
 }) {
   const r = 70
   const c = 2 * Math.PI * r
@@ -803,8 +808,12 @@ function HeroParticipation({
               ...TNUM,
             }}
           >
-            {pct.toFixed(2).replace(".", ",")}
-            <span style={{ fontSize: 36 }}>%</span>
+            <EditableNumber
+              path="kpis.atribuicao_pct"
+              raw={rawPct}
+              kind="fraction100"
+              display={<>{pct.toFixed(2).replace(".", ",")}<span style={{ fontSize: 36 }}>%</span></>}
+            />
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginTop: 6 }}>
             do faturamento total da loja
@@ -836,7 +845,12 @@ function HeroParticipation({
               ...TNUM,
             }}
           >
-            {fmtCurrency(totalRevenue, currency, { compact: true })}
+            <EditableNumber
+              path="kpis.receita_total"
+              raw={rawTotalRevenue}
+              kind="currency"
+              display={fmtCurrency(totalRevenue, currency, { compact: true })}
+            />
           </span>
         </div>
         {(() => {
@@ -923,7 +937,12 @@ function HeroParticipation({
                 ...TNUM,
               }}
             >
-              {fmtCurrency(attributed, currency, { compact: true })}
+              <EditableNumber
+                path="kpis.receita_atribuida"
+                raw={rawAttributed}
+                kind="currency"
+                display={fmtCurrency(attributed, currency, { compact: true })}
+              />
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2, ...TNUM }}>
               {pedidos !== null ? `${fmtCount(pedidos)} pedidos · ` : ""}e-mail + SMS
@@ -1089,10 +1108,22 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
                 ...TNUM,
               }}
             >
-              {fmtCurrency(attributed, currency, { compact: true })}
+              <EditableNumber
+                path="kpis.receita_atribuida"
+                raw={k.receita_atribuida}
+                kind="currency"
+                display={fmtCurrency(attributed, currency, { compact: true })}
+              />
             </div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginTop: 10, lineHeight: 1.5 }}>
-              <strong style={{ color: "#fff" }}>{pct.toFixed(2).replace(".", ",")}%</strong> do faturamento da loja
+              <strong style={{ color: "#fff" }}>
+                <EditableNumber
+                  path="kpis.atribuicao_pct"
+                  raw={k.atribuicao_pct}
+                  kind="fraction100"
+                  display={<>{pct.toFixed(2).replace(".", ",")}%</>}
+                />
+              </strong> do faturamento da loja
               {pedidos !== null && (
                 <>
                   {" "}· <strong style={{ color: "#fff" }}>{fmtCount(pedidos)} pedidos</strong> atribuídos
