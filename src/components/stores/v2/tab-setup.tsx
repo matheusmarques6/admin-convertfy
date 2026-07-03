@@ -57,8 +57,8 @@ export function TabSetup({ storeId }: { storeId: string }) {
 
   const client = data.clients ?? {}
   const clientLink = typeof window !== "undefined"
-    ? `${window.location.origin}/cliente/${storeId}`
-    : `https://app.convertfy.me/cliente/${storeId}`
+    ? `${window.location.origin}/cliente/onboarding`
+    : "https://app.convertfy.me/cliente/onboarding"
 
   const formatMRR = (cents?: number | null) =>
     cents ? `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"

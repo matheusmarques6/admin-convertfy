@@ -366,7 +366,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
           </Btn>
           <Btn variant="primary" size="sm" icon={<Send className="h-3.5 w-3.5" />}
             onClick={() => {
-              const link = `${window.location.origin}/cliente/${storeId}`
+              const link = `${window.location.origin}/client/dashboard`
               window.prompt("Link do dashboard do cliente (copie):", link)
             }}>
             Enviar ao cliente
