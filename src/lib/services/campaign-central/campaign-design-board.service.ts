@@ -69,6 +69,9 @@ interface TaskRow {
   source_id: string | null
   operational_column_id: string | null
   version: number | null
+  // Slug do checklist item que originou a task (ex.: impl_corte_modelo) —
+  // discriminante estável pro drawer (isCutMappingTask).
+  slug: string | null
   metadata: Record<string, unknown> | null
   created_at: string | null
   time_spent_seconds: number | null
@@ -142,7 +145,7 @@ export async function listCampaignDesignProjectGroups(params: {
   const { data: tasksData } = await admin
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, source_type, source_id, operational_column_id, version, metadata, created_at, time_spent_seconds, timer_started_at",
+      "id, title, description, status, priority, due_date, sla_hours, assignee_role, assignee_id, source_type, source_id, operational_column_id, version, slug, metadata, created_at, time_spent_seconds, timer_started_at",
     )
     .eq("source_type", "campaign_suggestion")
     .in("source_id", suggestionIds)
@@ -263,6 +266,7 @@ export async function listCampaignDesignProjectGroups(params: {
         suggestion_id: campaign.id,
         operational_column_id: t.operational_column_id,
         version: t.version ?? version,
+        slug: t.slug ?? null,
         metadata: {
           ...tMeta,
           campaign_title: campaign.title ?? null,
