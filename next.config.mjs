@@ -11,6 +11,18 @@ const nextConfig = {
   // e são resolvidos em runtime na função serverless.
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
 
+  // O file-tracer da Vercel não detecta o acesso dinâmico do
+  // @sparticuz/chromium à própria pasta bin/ (o Chromium .br) e a função
+  // sobe sem o binário ("The input directory .../bin does not exist").
+  // Força a inclusão na rota de PDF — os DOIS globs cobrem o layout do
+  // pnpm (symlink em node_modules/ + real path em node_modules/.pnpm/).
+  outputFileTracingIncludes: {
+    "/api/admin/stores/reports/**": [
+      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+  },
+
   images: {
     remotePatterns: [
       {
