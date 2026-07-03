@@ -18,6 +18,7 @@
  * Sem dado: cai em "—" elegante (não invent).
  */
 
+import { useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp, Bell, Zap, Mail, Target, Send, X as XIcon, Users,
 } from "lucide-react"
@@ -229,15 +230,46 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
 const SLIDE_W = 1280
 const SLIDE_H = 720
 
+/**
+ * Escala pra caber o palco fixo 1280×720 no container fluido. Os slides são
+ * desenhados em px absolutos (fontes 64/72, paddings 56) — sem isso, container
+ * < 1280px encolhe o card mas não o texto, e os números estouram/sobrepõem.
+ * min(w/1280, h/720) também cobre o print, onde a altura é travada em 167mm.
+ * Clamp em 1: nunca amplia (≥1280px continua pixel-perfect).
+ */
+function useScaleToFit(ref: React.RefObject<HTMLDivElement | null>) {
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = (w: number, h: number) => {
+      // Sem altura travada (preview: aspect-ratio dita a altura) só a largura importa
+      const sH = h > 0 ? h / SLIDE_H : Infinity
+      setScale(Math.min(1, w / SLIDE_W, sH))
+    }
+    measure(el.clientWidth, el.clientHeight)
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) measure(e.contentRect.width, e.contentRect.height)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return scale
+}
+
 function SlideShell({
   n, total, title, storeName, monthLabel, children,
 }: {
   n: number; total: number; title: string; storeName: string; monthLabel: string; children: React.ReactNode
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const scale = useScaleToFit(viewportRef)
+
   return (
     <div data-slide style={{ width: SLIDE_W, maxWidth: "100%", position: "relative" }}>
       {/* Slide indicator */}
       <div
+        data-slide-indicator
         className="flex items-center justify-between"
         style={{
           padding: "0 6px 10px",
@@ -260,7 +292,12 @@ function SlideShell({
         <span style={TNUM}>{storeName} · {monthLabel}</span>
       </div>
 
+      {/* Viewport: fluido (mede a largura disponível); o conteúdo real vive no
+          stage fixo 1280×720 abaixo, escalado pra caber — geometria idêntica
+          em qualquer tela e no PDF. */}
       <div
+        ref={viewportRef}
+        data-slide-viewport
         style={{
           width: "100%",
           aspectRatio: `${SLIDE_W} / ${SLIDE_H}`,
@@ -271,7 +308,16 @@ function SlideShell({
           boxShadow: "0 1px 2px rgba(0,0,0,0.06), 0 30px 60px rgba(0,0,0,0.45)",
         }}
       >
-        {children}
+        <div
+          style={{
+            width: SLIDE_W,
+            height: SLIDE_H,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   )

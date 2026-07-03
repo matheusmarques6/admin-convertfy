@@ -26,15 +26,25 @@ export default function PrintLayout({ children }: { children: React.ReactNode })
             [data-slide] { page-break-after: always; page-break-inside: avoid; }
             [data-slide]:last-child { page-break-after: auto; }
           }
+          /* Barra "Slide 01 · 07" fica fora do print: texto branco invisível
+             no fundo branco e consumiria altura da @page. Escondida também na
+             tela pra medição do ResizeObserver refletir o layout impresso. */
+          [data-slide-indicator] { display: none; }
+          /* width/height FORA de @media print de propósito: o ResizeObserver
+             do SlideShell mede estas dimensões já na tela e o transform scale
+             inline persiste na impressão (JS não roda durante o print). */
           [data-slide] {
             width: 297mm;
             max-width: 297mm;
-            height: 167mm;
             margin: 0 auto 8mm;
+            page-break-inside: avoid;
+          }
+          [data-slide-viewport] {
+            height: 167mm;
+            aspect-ratio: auto !important;
             border-radius: 0 !important;
             border: none !important;
             box-shadow: 0 4px 24px rgba(0,0,0,0.08) !important;
-            page-break-inside: avoid;
           }
           @media screen {
             body { padding: 20px; background: #f1f5f9; }
