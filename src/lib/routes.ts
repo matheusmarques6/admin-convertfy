@@ -207,7 +207,6 @@ export const ROUTES = {
       APPEARANCE: "/admin/settings/appearance",
       NOTIFICATIONS: "/admin/settings/notifications",
       INTEGRATIONS: "/admin/settings/integrations",
-      USERS: "/admin/settings/users",
       PERMISSIONS: "/admin/settings/permissions",
       CUSTOM_FIELDS: "/admin/settings/custom-fields",
       TAGS: "/admin/settings/tags",
