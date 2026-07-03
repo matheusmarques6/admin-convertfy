@@ -45,18 +45,6 @@ export async function updateSession(request: NextRequest) {
     return response
   }
 
-  // Print de relatório com pdf_token: o Chromium headless (geração de PDF
-  // server-side) não tem sessão. O middleware só DEIXA PASSAR quando a URL
-  // do print traz `pdf_token`; quem valida o HMAC (report + expiração) é a
-  // própria página (src/lib/reports/print-token.ts) — token inválido → 404.
-  // Sem token, o print continua exigindo sessão normalmente.
-  const isTokenizedPrintPath =
-    /^\/admin\/stores\/relatorios\/[^/]+\/print$/.test(request.nextUrl.pathname) &&
-    !!request.nextUrl.searchParams.get("pdf_token")
-  if (isTokenizedPrintPath) {
-    return response
-  }
-
   // Client auth callback - let it handle its own auth flow
   if (request.nextUrl.pathname.startsWith("/client/auth/callback")) {
     return response

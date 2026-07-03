@@ -121,7 +121,7 @@ export default async function ReportPreviewPage({
             {report.status === "presented" ? "Apresentado" : report.status === "sent" ? "Enviado" : "Rascunho"}
           </span>
         </div>
-        <ReportPreviewClient reportId={report.id} pdfUrl={report.pdf_url} status={report.status} />
+        <ReportPreviewClient reportId={report.id} status={report.status} />
       </div>
 
       {/* Deck container — dark gradient matching prototype */}

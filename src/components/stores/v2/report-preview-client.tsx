@@ -6,22 +6,17 @@
  */
 
 import { useState } from "react"
-import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink, Maximize2, RefreshCw } from "lucide-react"
+import { Download, Send, Sparkles, CheckCircle2, Loader2, Maximize2, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface Props {
   reportId: string
-  pdfUrl: string | null
   status: "draft" | "sent" | "presented"
 }
 
-export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
+export function ReportPreviewClient({ reportId, status }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
-
-  // pdf_url LEGADO apontava pra própria página /print (a rota antiga não
-  // gerava arquivo nenhum) — trata como "sem PDF" pra regerar de verdade.
-  const validPdfUrl = pdfUrl && !pdfUrl.includes("/print") ? pdfUrl : null
 
   const handleAIFill = async () => {
     setBusy("ai")
@@ -53,29 +48,15 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
     }
   }
 
-  const handlePDF = async () => {
-    setBusy("pdf")
-    try {
-      if (validPdfUrl) {
-        // PDF real já gerado — abre o arquivo direto.
-        window.open(validPdfUrl, "_blank")
-        return
-      }
-      // Gera o PDF de verdade no servidor (Chromium renderiza a /print).
-      // Leva alguns segundos; o botão mostra "Gerando…" enquanto isso.
-      const res = await fetch(`/api/admin/stores/reports/${reportId}/pdf`, { method: "POST" })
-      const j = await res.json().catch(() => ({}))
-      if (res.ok && (j.data?.pdf_url || j.pdf_url)) {
-        window.open(j.data?.pdf_url ?? j.pdf_url, "_blank")
-        router.refresh()
-      } else {
-        alert(
-          `Falha ao gerar PDF: ${j?.error?.message ?? j?.error ?? res.statusText}`,
-        )
-      }
-    } finally {
-      setBusy(null)
-    }
+  const handlePDF = () => {
+    // Abre a página de print já disparando o diálogo de impressão do
+    // navegador — "Salvar como PDF" gera o deck (o CSS de @page da página
+    // formata 297×167mm, 1 slide por página). Sem servidor, sem espera.
+    window.open(
+      `/admin/stores/relatorios/${reportId}/print?autoprint=1`,
+      "_blank",
+      "noopener",
+    )
   }
 
   const handleStatus = async (next: "presented" | "sent") => {
@@ -128,17 +109,12 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
       </button>
       <button
         onClick={handlePDF}
-        disabled={busy === "pdf"}
-        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold"
         style={{ borderColor: "rgba(0,0,0,0.10)" }}
-        title={
-          validPdfUrl
-            ? "Abre o arquivo PDF gerado"
-            : "Gera o PDF do deck no servidor (leva alguns segundos)"
-        }
+        title='Abre o deck com o diálogo de impressão — escolha "Salvar como PDF"'
       >
-        {busy === "pdf" ? <Loader2 className="h-3 w-3 animate-spin" /> : validPdfUrl ? <ExternalLink className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-        {busy === "pdf" ? "Gerando PDF…" : validPdfUrl ? "Abrir PDF" : "Gerar PDF"}
+        <Download className="h-3 w-3" />
+        Baixar PDF
       </button>
       {status !== "sent" && status !== "presented" && (
         <button

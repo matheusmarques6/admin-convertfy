@@ -5,8 +5,8 @@
 
 import { notFound } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
-import { verifyPrintToken } from "@/lib/reports/print-token"
 import { ReportSlides } from "@/components/stores/v2/slides/report-slides"
+import { AutoPrint } from "./auto-print"
 
 export const dynamic = "force-dynamic"
 
@@ -30,19 +30,10 @@ export default async function ReportPrintPage({
   searchParams,
 }: {
   params: Promise<{ reportId: string }>
-  searchParams: Promise<{ pdf_token?: string }>
+  searchParams: Promise<{ autoprint?: string }>
 }) {
   const { reportId } = await params
-  const { pdf_token } = await searchParams
-
-  // Com pdf_token na URL o middleware deixou passar SEM sessão (acesso do
-  // Chromium headless da geração de PDF) — a página valida o HMAC aqui;
-  // inválido/expirado → 404. Sem token, a sessão já foi exigida pelo
-  // middleware (fluxo humano normal).
-  if (pdf_token !== undefined && !verifyPrintToken(reportId, pdf_token)) {
-    notFound()
-  }
-
+  const { autoprint } = await searchParams
   const report = await getReport(reportId)
   if (!report) notFound()
 
@@ -56,16 +47,21 @@ export default async function ReportPrintPage({
   const snap = (report.snapshot ?? {}) as Record<string, unknown>
 
   return (
-    <ReportSlides
-      snapshot={{
-        ...snap,
-        store_name: storeRaw?.store_name ?? undefined,
-        client_name: clientName ?? undefined,
-        cm_name: generator?.name ?? undefined,
-        month_label: report.month_label,
-      }}
-      proximosPassos={report.proximos_passos}
-      monthLabel={report.month_label}
-    />
+    <>
+      {/* ?autoprint=1 (botão "Baixar PDF"): abre o diálogo de impressão do
+          navegador automaticamente — "Salvar como PDF" gera o deck. */}
+      {autoprint === "1" && <AutoPrint />}
+      <ReportSlides
+        snapshot={{
+          ...snap,
+          store_name: storeRaw?.store_name ?? undefined,
+          client_name: clientName ?? undefined,
+          cm_name: generator?.name ?? undefined,
+          month_label: report.month_label,
+        }}
+        proximosPassos={report.proximos_passos}
+        monthLabel={report.month_label}
+      />
+    </>
   )
 }
