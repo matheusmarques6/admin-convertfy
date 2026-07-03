@@ -4,8 +4,6 @@
  * TaskRow — linha de task unificada.
  *
  * Usado em:
- *  - /admin/me (Minhas tarefas)
- *  - /admin/productivity (Tarefas do dia)
  *  - /admin/onboarding/[id] aba Checklist
  *
  * Mostra (alta densidade, inspirado em DealCard/Linear):
@@ -66,7 +64,7 @@ interface TaskRowProps {
   /** Custom delete handler. Se omitido, TaskRow chama DELETE automatico
    *  baseado no source_type (tasks ou productivity_tasks). */
   onDelete?: (taskId: string) => Promise<void> | void
-  /** Mostrar source label (badge antes do title). Default true em /admin/me, false em /admin/onboarding/[id] (redundante) */
+  /** Mostrar source label (badge antes do title). Default true; false em /admin/onboarding/[id] (redundante) */
   showSource?: boolean
   /** Compacto = sem footer com role (uso em Onboarding detail) */
   compact?: boolean

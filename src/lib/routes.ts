@@ -147,9 +147,6 @@ export const ROUTES = {
       EDIT: "/admin/onboarding-help/edit",
       EDIT_PAGE: (id: string) => `/admin/onboarding-help/${id}/edit` as const,
     },
-    /** Apontamos pro board unificado. /admin/me ainda existe e redireciona. */
-    ME: "/admin/productivity/board?view=mine",
-
     // ── Settings adicionais ──────────────────────────────────────────────
     AI_TEMPLATES: "/admin/settings/ai-templates",
 

@@ -121,7 +121,6 @@ export function ProductivityBoard() {
     isLoaded, fetchData, apiAction,
   } = useProductivityStore()
   const searchParams = useSearchParams()
-  const viewMode = searchParams.get("view") === "mine" ? "mine" : "all"
 
   // Persiste a task selecionada na URL (?task=<id>) — assim, ao recarregar
   // a pagina com um drawer aberto, ele reabre na mesma task. Tasks novas
@@ -245,7 +244,7 @@ export function ProductivityBoard() {
         <div className="flex justify-between items-center px-6 py-4">
           <div className="flex items-center gap-3">
             <h1 className="text-page-title text-gray-900 dark:text-white m-0">
-              {viewMode === "mine" ? "Minhas tarefas" : "Projetos"}
+              Projetos
             </h1>
             <span className="bg-gray-100 dark:bg-[#242836] text-gray-600 dark:text-white/70 text-[11px] font-semibold px-[7px] py-[1px] rounded-full font-mono">
               {allTasks.length}
@@ -335,19 +334,17 @@ export function ProductivityBoard() {
         </div>
       </header>
 
-      {/* Filter bar - so em modo "todos os projetos" */}
-      {viewMode !== "mine" && (
-        <FilterBar
-          priorityFilter={priorityFilter}
-          setPriorityFilter={setPriorityFilter}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          assigneeFilter={assigneeFilter}
-          setAssigneeFilter={setAssigneeFilter}
-          availableAssignees={availableAssignees}
-          hasFilters={hasFilters}
-        />
-      )}
+      {/* Filter bar */}
+      <FilterBar
+        priorityFilter={priorityFilter}
+        setPriorityFilter={setPriorityFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        assigneeFilter={assigneeFilter}
+        setAssigneeFilter={setAssigneeFilter}
+        availableAssignees={availableAssignees}
+        hasFilters={hasFilters}
+      />
 
       {/* Bulk actions bar */}
       {selectedTaskIds.size > 0 && (
@@ -360,8 +357,7 @@ export function ProductivityBoard() {
         />
       )}
 
-      {/* Content - kanban so em modo "todos os projetos" */}
-      {viewMode !== "mine" && (
+      {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-auto">
           {boardView === "table" && (
@@ -392,7 +388,6 @@ export function ProductivityBoard() {
         </div>
 
       </div>
-      )}
 
       {/* Task Detail Drawer (overlay fixed fullscreen) */}
       {selectedTask && (

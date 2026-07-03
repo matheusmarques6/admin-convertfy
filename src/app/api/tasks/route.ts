@@ -33,7 +33,6 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get("priority")
     const sourceType = searchParams.get("source_type")
     const limitParam = searchParams.get("limit")
-    const myTasks = searchParams.get("my_tasks") === "true"
 
     let query = adminClient
       .from("tasks")
@@ -62,20 +61,6 @@ export async function GET(request: NextRequest) {
     if (limitParam) {
       const n = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200)
       query = query.limit(n)
-    }
-
-    // Get current user's org_member_id for "my tasks" filter
-    if (myTasks) {
-      const { data: orgMember } = await adminClient
-        .from("org_members")
-        .select("id")
-        .eq("profile_id", user.id)
-        .eq("is_active", true)
-        .single()
-
-      if (orgMember) {
-        query = query.eq("assignee_id", orgMember.id)
-      }
     }
 
     const { data: tasks, error } = await query

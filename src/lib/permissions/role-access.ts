@@ -41,7 +41,6 @@ export type NavItemId =
   | "ops.reports"
   // Geral
   | "geral.home"
-  | "geral.me"
   | "geral.board"
   | "geral.meetings"
   | "geral.team"
@@ -81,7 +80,6 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.automacoes",
   "ops.reports",
   "geral.home",
-  "geral.me",
   "geral.board",
   "geral.meetings",
   "geral.team",
@@ -118,7 +116,6 @@ const COO_ITEMS = new Set<NavItemId>([
   "ops.automacoes",
   "ops.reports",
   "geral.home",
-  "geral.me",
   "geral.board",
   "geral.meetings",
   "geral.team",
@@ -148,7 +145,6 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "ops.canais",
   "ops.automacoes",
   "geral.home",
-  "geral.me",
   "geral.board",
   "geral.meetings",
   "geral.team",       // read-only (ver READONLY_BY_ROLE)
@@ -161,7 +157,6 @@ const DESIGNER_IMPLEM_ITEMS = new Set<NavItemId>([
   "ops.stores",
   "ops.onboarding",
   "geral.home",
-  "geral.me",
   "geral.board",
 ])
 

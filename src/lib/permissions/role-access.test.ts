@@ -49,7 +49,6 @@ const MATRIX: Matrix = {
   "ops.reports":            { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   // Geral
   "geral.home":             { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
-  "geral.me":               { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "geral.board":            { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "geral.meetings":         { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "geral.team":             { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },

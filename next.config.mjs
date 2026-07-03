@@ -63,6 +63,9 @@ const nextConfig = {
       { source: "/settings/:path*", destination: "/admin/settings/:path*", permanent: true },
       { source: "/settings", destination: "/admin/settings", permanent: true },
 
+      // ── Rotas removidas (bookmarks antigos) ───────────────────────
+      { source: "/admin/me", destination: "/admin/productivity/board", permanent: true },
+
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },
       { source: "/portal/dashboard", destination: "/client/dashboard", permanent: true },
