@@ -351,12 +351,14 @@ function SlideHeader({
         )}
       </div>
       <div className="flex items-center gap-3">
-        <div
-          className="inline-flex items-center justify-center"
-          style={{ width: 30, height: 30, borderRadius: 6, background: C.gradient, color: "#fff", fontWeight: 700, fontSize: 13 }}
-        >
-          C
-        </div>
+        {/* Ícone real da Convertfy (colorido — funciona no fundo branco do
+            cabeçalho). eslint-disable p/ usar <img> puro (print-friendly). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/convertfy%20icon.png"
+          alt="Convertfy"
+          style={{ width: 28, height: 28, objectFit: "contain", display: "block" }}
+        />
         <div style={{ fontFamily: F_SERIF, fontSize: 14, fontWeight: 600, color: C.g500, ...TNUM }}>
           {String(n).padStart(2, "0")} / 07
         </div>
@@ -494,14 +496,16 @@ function SlideCover({ snapshot, monthLabel }: { snapshot: ReportSnapshot; monthL
           justifyContent: "space-between",
         }}
       >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="inline-flex items-center justify-center"
-            style={{ width: 32, height: 32, borderRadius: 6, background: C.gradient, color: "#fff", fontWeight: 700, fontSize: 14 }}
-          >
-            C
-          </div>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Convertfy</span>
+        <div className="flex items-center">
+          {/* Logo real da Convertfy (mesma do sistema) — versão branca p/ o
+              fundo escuro da capa. <img> puro carrega direto do /public e é
+              confiável no print/PDF (evita o otimizador do next/image). */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo%20da%20convertfy%20com%20escrito%20branco.png"
+            alt="Convertfy"
+            style={{ height: 34, width: "auto", display: "block" }}
+          />
         </div>
 
         <div>
