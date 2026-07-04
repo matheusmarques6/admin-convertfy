@@ -78,10 +78,17 @@ async function figmaFetch(path: string, retried = false): Promise<unknown> {
       404: "Arquivo do Figma não encontrado — confira o link",
       429: "Rate limit do Figma — tente de novo em alguns minutos",
     }
-    throw new FigmaError(
-      msgByStatus[res.status] ?? `Figma respondeu ${res.status}`,
-      res.status,
-    )
+    // O Figma manda o motivo real no corpo ({ err } ou { message }) —
+    // anexar em vez de engolir (ex.: 400 "Render request too large").
+    let detail = ""
+    try {
+      const body = (await res.json()) as { err?: string; message?: string }
+      detail = body.err || body.message || ""
+    } catch {
+      // corpo não-JSON — segue sem detalhe
+    }
+    const base = msgByStatus[res.status] ?? `Figma respondeu ${res.status}`
+    throw new FigmaError(detail ? `${base}: ${detail}` : base, res.status)
   }
   return res.json()
 }

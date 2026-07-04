@@ -182,8 +182,8 @@ export async function importStoreEmailsFromFigma(
   }
 
   // UM batch de export para todos os frames casados. Se o batch inteiro
-  // falhar (ex.: 429 sem Retry-After honrável), todas as lojas casadas
-  // viram failed — sem 500, o caller mostra retry individual.
+  // falhar (ex.: 400 por um frame problemático, 429), cai no fallback
+  // FRAME A FRAME — isola o frame ruim em vez de derrubar todas as lojas.
   let images: Record<string, string | null> = {}
   if (toImport.length > 0) {
     try {
@@ -193,19 +193,38 @@ export async function importStoreEmailsFromFigma(
         { scale: 2, format: "png" },
       )
     } catch (error) {
-      const msg =
+      const batchMsg =
         error instanceof FigmaError ? error.message : "Erro no export do Figma"
-      log.error("export.failed", { suggestionId, error: msg })
-      for (const { store, frame } of toImport) {
-        results.set(store.store_id, {
-          store_id: store.store_id,
-          store_name: store.store_name,
-          status: "failed",
-          frame_name: frame.name,
-          error: msg,
-        })
+      log.warn("export.batch_failed_trying_individual", {
+        suggestionId,
+        error: batchMsg,
+      })
+      const stillImporting: typeof toImport = []
+      for (const item of toImport) {
+        try {
+          const single = await figmaExportImages(
+            parsed.fileKey,
+            [item.frame.id],
+            { scale: 2, format: "png" },
+          )
+          images[item.frame.id] = single[item.frame.id] ?? null
+          stillImporting.push(item)
+        } catch (singleErr) {
+          const msg =
+            singleErr instanceof FigmaError
+              ? singleErr.message
+              : "Erro no export do Figma"
+          results.set(item.store.store_id, {
+            store_id: item.store.store_id,
+            store_name: item.store.store_name,
+            status: "failed",
+            frame_name: item.frame.name,
+            error: msg,
+          })
+        }
       }
       toImport.length = 0
+      toImport.push(...stillImporting)
     }
   }
 
