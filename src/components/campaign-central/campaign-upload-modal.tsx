@@ -4,8 +4,9 @@
  * Modal fullscreen "Subir Campanha por Loja" — tasks "Subir e-mails -
  * <idioma>" (impl_subir_ptbr/en/outras) da etapa de implementação.
  *
- * Mostra, loja a loja, o email daquela loja fatiado nas MESMAS frações do
- * mapa de cortes APROVADO (campaign_cut_maps), com a copy da loja ao lado
+ * Mostra, loja a loja, o email daquela loja fatiado nos cortes do mapa
+ * APROVADO (campaign_cut_maps) com ESCALA POR LARGURA (pixels do modelo ×
+ * largura_loja ÷ largura_modelo), com a copy da loja ao lado
  * para copiar e download PNG/ZIP por corte. Imagens entram pelo import
  * automático do Figma (frames nomeados com o nome da loja) ou por upload
  * manual em massa/individual.
@@ -55,6 +56,7 @@ import {
   type TaskLangGroup,
 } from "@/lib/campaign-cuts/lang"
 import { matchNamesToStores } from "@/lib/campaign-cuts/store-match"
+import { portPixelRectWidthScaled } from "@/lib/campaign-cuts/geometry"
 import { assignBlocksToPorts } from "@/lib/campaign-cuts/copy-match"
 import { BlockPreview, copyBlocksToText } from "./block-preview"
 
@@ -100,32 +102,36 @@ function blockText(block: EmailDraftBlock): string {
   }
 }
 
-/** Fatia exibida por CSS crop: sem canvas, sem CORS. */
+/**
+ * Fatia exibida por CSS crop (sem canvas, sem CORS). O retângulo em
+ * PIXELS vem de portPixelRectWidthScaled — a mesma conta do recorte
+ * server-side, então o preview bate com o PNG baixado.
+ */
 function SliceView({
   imageUrl,
   natW,
-  natH,
-  port,
+  rect,
+  alt,
   className,
 }: {
   imageUrl: string
   natW: number
-  natH: number
-  port: CutPort
+  rect: { top: number; height: number }
+  alt: string
   className?: string
 }) {
-  const frac = Math.max(port.y1 - port.y0, 0.0001)
+  const h = Math.max(rect.height, 1)
   return (
     <div
       className={`relative w-full overflow-hidden bg-muted ${className ?? ""}`}
-      style={{ paddingTop: `${((frac * natH) / natW) * 100}%` }}
+      style={{ paddingTop: `${(h / natW) * 100}%` }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imageUrl}
-        alt={port.label}
+        alt={alt}
         className="absolute left-0 w-full max-w-none"
-        style={{ top: `-${(port.y0 / frac) * 100}%` }}
+        style={{ top: `-${(rect.top / h) * 100}%` }}
         draggable={false}
       />
     </div>
@@ -965,6 +971,8 @@ export function CampaignUploadModal({
                         view={view}
                         store={activeStore}
                         ports={ports}
+                        modelW={cutMap?.image_natural_w ?? null}
+                        modelH={cutMap?.image_natural_h ?? null}
                         copyMatch={copyMatch}
                         downloadedSet={downloadedSet}
                         busy={busy}
@@ -1052,6 +1060,8 @@ function UploadStoreContent({
   view,
   store,
   ports,
+  modelW,
+  modelH,
   copyMatch,
   downloadedSet,
   busy,
@@ -1065,6 +1075,9 @@ function UploadStoreContent({
   view: ViewMode
   store: CampaignUploadStore
   ports: CutPort[]
+  /** Dimensões naturais da imagem MODELO (do mapa de cortes). */
+  modelW: number | null
+  modelH: number | null
   copyMatch: ReturnType<typeof assignBlocksToPorts> | null
   downloadedSet: Set<string>
   busy: Set<string>
@@ -1081,6 +1094,14 @@ function UploadStoreContent({
   const imageUrl = email.image_url!
   const activePort =
     ports.find((p) => p.id === activePortId) ?? ports[0] ?? null
+
+  // Mesma conta do recorte server-side: preview = PNG baixado.
+  const rectFor = (port: CutPort) =>
+    portPixelRectWidthScaled(
+      port,
+      { w: modelW, h: modelH },
+      { w: natW, h: natH },
+    )
 
   const portCard = (port: CutPort, idx: number) => {
     const meta = PORT_TYPES[port.type]
@@ -1123,8 +1144,8 @@ function UploadStoreContent({
           <SliceView
             imageUrl={imageUrl}
             natW={natW}
-            natH={natH}
-            port={port}
+            rect={rectFor(port)}
+            alt={port.label}
             className="rounded-[6px] border border-border"
           />
           <div>
@@ -1172,7 +1193,7 @@ function UploadStoreContent({
                 }`}
                 title={p.label}
               >
-                <SliceView imageUrl={imageUrl} natW={natW} natH={natH} port={p} />
+                <SliceView imageUrl={imageUrl} natW={natW} rect={rectFor(p)} alt={p.label} />
                 <div className="flex items-center gap-1 bg-background px-1.5 py-1 text-[10px] font-semibold text-foreground">
                   <span
                     className="h-1.5 w-1.5 rounded-[2px]"

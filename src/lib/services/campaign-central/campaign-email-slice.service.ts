@@ -1,9 +1,11 @@
 /**
  * Recorte server-side das fatias ("portas") do email de uma loja.
  *
- * As frações 0..1 do mapa de cortes aprovado são aplicadas à altura
- * NATURAL da imagem de CADA loja, medida no buffer real com sharp — a
- * imagem da loja pode ter dimensões diferentes do modelo do mapa.
+ * Os cortes do mapa aprovado são convertidos em pixels DO MODELO e
+ * escalados pela LARGURA da imagem de cada loja (portPixelRectWidthScaled)
+ * — as dimensões da loja saem do buffer real medido com sharp. A última
+ * porta absorve o resto da imagem (rodapés de alturas diferentes não
+ * deslocam os cortes anteriores).
  *
  * Usado pelas rotas slice (1 porta) e download-zip (todas as portas —
  * baixa o buffer UMA vez).
@@ -12,7 +14,7 @@
 import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/server"
 import { AppError } from "@/lib/api/errors"
-import { portPixelRect } from "@/lib/campaign-cuts/geometry"
+import { portPixelRectWidthScaled } from "@/lib/campaign-cuts/geometry"
 import type { CampaignCutMap, CutPort } from "@/types/campaign-cuts"
 import type { CampaignStoreEmail } from "@/types/campaign-store-emails"
 import { logger } from "@/lib/logger"
@@ -87,7 +89,12 @@ export async function sliceStoreEmailPorts(
   for (let i = 0; i < map.portas.length; i++) {
     const port = map.portas[i]
     if (wanted && !wanted.has(port.id)) continue
-    const { top, height: sliceH } = portPixelRect(port, height)
+    // Escala por LARGURA: pixels do modelo × (largura_loja ÷ largura_modelo).
+    const { top, height: sliceH } = portPixelRectWidthScaled(
+      port,
+      { w: map.image_natural_w, h: map.image_natural_h },
+      { w: width, h: height },
+    )
     const slice = await sharp(buffer)
       .extract({ left: 0, top, width, height: sliceH })
       .png()

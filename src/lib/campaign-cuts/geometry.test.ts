@@ -12,6 +12,7 @@ import {
   initialPorts,
   portsAreContiguous,
   portPixelRect,
+  portPixelRectWidthScaled,
   MIN_PORT_FRACTION,
 } from "./geometry"
 import type { CutPort } from "@/types/campaign-cuts"
@@ -162,5 +163,38 @@ describe("portPixelRect", () => {
   it("clampa frações fora de 0..1", () => {
     const r = portPixelRect({ y0: -0.2, y1: 1.4 }, 200)
     expect(r).toEqual({ top: 0, height: 200 })
+  })
+})
+
+describe("portPixelRectWidthScaled", () => {
+  const model = { w: 600, h: 3000 }
+
+  it("mesma resolução do modelo = pixels do modelo", () => {
+    const r = portPixelRectWidthScaled({ y0: 0.1, y1: 0.3 }, model, { w: 600, h: 3000 })
+    expect(r).toEqual({ top: 300, height: 600 })
+  })
+
+  it("export 2x: escala por largura, não pela altura da loja", () => {
+    // Loja 1200 de largura e MAIS alta que 2x o modelo (6800 vs 6000):
+    // os cortes ficam nos pixels do modelo × 2, não em % de 6800.
+    const r = portPixelRectWidthScaled({ y0: 0.1, y1: 0.3 }, model, { w: 1200, h: 6800 })
+    expect(r).toEqual({ top: 600, height: 1200 })
+  })
+
+  it("última porta absorve o resto da imagem da loja", () => {
+    const r = portPixelRectWidthScaled({ y0: 0.9, y1: 1 }, model, { w: 1200, h: 6800 })
+    expect(r.top).toBe(5400) // 0.9 × 3000 × 2
+    expect(r.top + r.height).toBe(6800)
+  })
+
+  it("loja mais curta que o modelo escalado: clampa no fim da imagem", () => {
+    const r = portPixelRectWidthScaled({ y0: 0.8, y1: 0.95 }, model, { w: 600, h: 2500 })
+    expect(r.top + r.height).toBeLessThanOrEqual(2500)
+    expect(r.height).toBeGreaterThanOrEqual(1)
+  })
+
+  it("sem dimensões do modelo cai na fração da altura (mapas antigos)", () => {
+    const r = portPixelRectWidthScaled({ y0: 0, y1: 0.5 }, { w: null, h: null }, { w: 800, h: 1000 })
+    expect(r).toEqual({ top: 0, height: 500 })
   })
 })

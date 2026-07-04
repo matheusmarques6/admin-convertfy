@@ -131,3 +131,31 @@ export function portPixelRect(
   const bottom = Math.min(Math.max(top + 1, Math.round(clamp01(port.y1) * imageH)), imageH)
   return { top, height: bottom - top }
 }
+
+/**
+ * Recorte com ESCALA POR LARGURA: converte a fração da porta em pixels
+ * DO MODELO (y × altura_modelo) e escala por (largura_loja ÷
+ * largura_modelo). Exato quando o email da loja é o mesmo layout do
+ * modelo em outra resolução (ex.: export 2x do Figma) — a fração da
+ * altura total falha nesse caso quando as alturas totais divergem.
+ *
+ * A última porta (y1 ≈ 1) absorve o resto da imagem da loja (rodapé mais
+ * alto/baixo não desloca os cortes anteriores). Sem dimensões do modelo
+ * (mapas antigos), cai no portPixelRect por fração da altura.
+ */
+export function portPixelRectWidthScaled(
+  port: Pick<CutPort, "y0" | "y1">,
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): { top: number; height: number } {
+  if (!model.w || !model.h || !store.w || model.w <= 0) {
+    return portPixelRect(port, store.h)
+  }
+  const scale = store.w / model.w
+  const isLast = port.y1 >= 1 - 1e-4
+  let top = Math.round(clamp01(port.y0) * model.h * scale)
+  let bottom = isLast ? store.h : Math.round(clamp01(port.y1) * model.h * scale)
+  top = Math.min(Math.max(0, top), store.h - 1)
+  bottom = Math.min(Math.max(top + 1, bottom), store.h)
+  return { top, height: bottom - top }
+}
