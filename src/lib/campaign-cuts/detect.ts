@@ -24,3 +24,18 @@ export function isCutMappingTask(t: {
   if (t.slug && normalizeText(t.slug).includes("corte")) return true
   return normalizeText(t.name ?? "").includes("corte")
 }
+
+/**
+ * Task "Subir e-mails - <idioma>" (abre o modal de subir campanha por
+ * loja). Slugs do seed: impl_subir_ptbr/en/outras; fallback: título
+ * contendo "subir". Não colide com isCutMappingTask ("corte").
+ */
+export function isUploadTask(t: {
+  source_type?: string | null
+  slug?: string | null
+  name?: string | null
+}): boolean {
+  if (t.source_type !== "campaign_suggestion") return false
+  if (t.slug && normalizeText(t.slug).includes("subir")) return true
+  return normalizeText(t.name ?? "").includes("subir")
+}

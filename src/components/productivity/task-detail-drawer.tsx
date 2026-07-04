@@ -27,7 +27,10 @@ import { TaskWorkspaceModal } from "./task-workspace-modal"
 import { CampaignCopyHandoff } from "@/components/campaign-central/campaign-copy-handoff"
 import { CampaignImageHandoff } from "@/components/campaign-central/campaign-image-handoff"
 import { CampaignCutMappingModal } from "@/components/campaign-central/campaign-cut-mapping-modal"
-import { isCutMappingTask } from "@/lib/campaign-cuts/detect"
+import { CampaignUploadModal } from "@/components/campaign-central/campaign-upload-modal"
+import { isCutMappingTask, isUploadTask } from "@/lib/campaign-cuts/detect"
+import { taskLangGroup } from "@/lib/campaign-cuts/lang"
+import type { CampaignUploadSummary } from "@/types/campaign-store-emails"
 import type {
   AllowedEmailRef,
   WorkspaceMode,
@@ -860,10 +863,15 @@ export function TaskDetailDrawer({
   const [showCutModal, setShowCutModal] = useState(false)
   // Status do mapa de cortes pro badge da seção (null = não mapeado)
   const [cutMapStatus, setCutMapStatus] = useState<"draft" | "approved" | null>(null)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  // Resumo "X/N lojas" da seção "Subir campanha" (null = ainda não carregou)
+  const [uploadSummary, setUploadSummary] = useState<CampaignUploadSummary | null>(null)
 
   // Task "Corte modelo" da etapa de implementação — abre o modal de mapear
   // cortes ao iniciar (em vez do workspace de produção de email).
   const isCutTask = isCutMappingTask(task)
+  // Task "Subir e-mails - <idioma>" — abre o modal de subir campanha por loja.
+  const isUploadT = isUploadTask(task)
 
   // Badge da seção "Cortes da campanha": busca leve no mount e ao fechar o
   // modal (showCutModal vira false → refetch pega o status atualizado).
@@ -882,6 +890,23 @@ export function TaskDetailDrawer({
       alive = false
     }
   }, [isCutTask, task.id, showCutModal])
+
+  // Badge "X/N lojas" da seção "Subir campanha": busca leve no mount e ao
+  // fechar o modal (showUploadModal vira false → refetch pega o progresso).
+  useEffect(() => {
+    if (!isUploadT || showUploadModal) return
+    let alive = true
+    fetch(`/api/tasks/${task.id}/campaign-uploads?summary=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j) return
+        setUploadSummary((j.data ?? j) as CampaignUploadSummary)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [isUploadT, task.id, showUploadModal])
 
   // Click-outside fecha todos os dropdowns de meta (delegacao no document)
   useEffect(() => {
@@ -1392,6 +1417,9 @@ export function TaskDetailDrawer({
         // Task "Corte modelo": abre o modal de mapear cortes (o status/timer
         // já subiram pelo PUT acima; /start não tem workspace pra ela).
         setShowCutModal(true)
+      } else if (isUploadT) {
+        // Task "Subir e-mails": abre o modal de subir campanha por loja.
+        setShowUploadModal(true)
       } else {
         await openWorkspaceForTask()
       }
@@ -2611,6 +2639,55 @@ export function TaskDetailDrawer({
                 }
                 onClose={() => setShowCutModal(false)}
                 onApproved={handleCutApproved}
+              />,
+              document.body,
+            )}
+
+          {/* Subir campanha — só nas tasks "Subir e-mails - <idioma>" */}
+          {isUploadT && (
+            <Section title="Subir campanha">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex-1 rounded-md bg-gray-900 px-3 py-2 text-[12.5px] font-semibold text-white hover:bg-gray-800"
+                >
+                  Subir e-mails →
+                </button>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-[5px] px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide",
+                    uploadSummary?.cut_map_status !== "approved"
+                      ? "bg-amber-50 text-amber-700"
+                      : uploadSummary &&
+                          uploadSummary.concluidas >= uploadSummary.total &&
+                          uploadSummary.total > 0
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-gray-100 text-gray-500",
+                  )}
+                >
+                  {!uploadSummary
+                    ? "…"
+                    : uploadSummary.cut_map_status !== "approved"
+                      ? "Aguarda corte modelo"
+                      : `${uploadSummary.concluidas}/${uploadSummary.total} lojas`}
+                </span>
+              </div>
+            </Section>
+          )}
+          {showUploadModal &&
+            isUploadT &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <CampaignUploadModal
+                taskId={String(task.id)}
+                taskLang={taskLangGroup({ slug: task.slug ?? null, name: task.name })}
+                campaignTitle={
+                  (task.metadata?.campaign_title as string | undefined) ??
+                  task.project ??
+                  null
+                }
+                onClose={() => setShowUploadModal(false)}
               />,
               document.body,
             )}
