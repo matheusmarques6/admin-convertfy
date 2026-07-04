@@ -159,3 +159,28 @@ export function portPixelRectWidthScaled(
   bottom = Math.min(Math.max(top + 1, bottom), store.h)
   return { top, height: bottom - top }
 }
+
+/**
+ * Converte as portas do MAPA (frações do modelo) para frações da imagem
+ * DA LOJA usando a escala por largura — é o estado inicial do editor de
+ * ajuste fino por loja. Normaliza para manter o invariante (contíguas,
+ * 0..1) mesmo com arredondamento/clamp nas extremidades.
+ */
+export function widthScaledPortsToStoreFractions(
+  ports: CutPort[],
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): CutPort[] {
+  const out = ports.map((p) => {
+    const r = portPixelRectWidthScaled(p, model, store)
+    return { ...p, y0: r.top / store.h, y1: (r.top + r.height) / store.h }
+  })
+  for (let i = 0; i < out.length; i++) {
+    out[i].y0 = i === 0 ? 0 : out[i - 1].y1
+    if (i === out.length - 1) out[i].y1 = 1
+    if (out[i].y1 < out[i].y0 + MIN_PORT_FRACTION) {
+      out[i].y1 = Math.min(1, out[i].y0 + MIN_PORT_FRACTION)
+    }
+  }
+  return out
+}

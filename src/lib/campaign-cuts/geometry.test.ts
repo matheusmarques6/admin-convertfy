@@ -13,6 +13,7 @@ import {
   portsAreContiguous,
   portPixelRect,
   portPixelRectWidthScaled,
+  widthScaledPortsToStoreFractions,
   MIN_PORT_FRACTION,
 } from "./geometry"
 import type { CutPort } from "@/types/campaign-cuts"
@@ -196,5 +197,30 @@ describe("portPixelRectWidthScaled", () => {
   it("sem dimensões do modelo cai na fração da altura (mapas antigos)", () => {
     const r = portPixelRectWidthScaled({ y0: 0, y1: 0.5 }, { w: null, h: null }, { w: 800, h: 1000 })
     expect(r).toEqual({ top: 0, height: 500 })
+  })
+})
+
+describe("widthScaledPortsToStoreFractions", () => {
+  const model = { w: 600, h: 3000 }
+
+  it("mantém o invariante: contíguas cobrindo 0..1 da imagem da loja", () => {
+    const ports: CutPort[] = [
+      { id: "a", label: "Header", type: "header", y0: 0, y1: 0.1 },
+      { id: "b", label: "Hero", type: "hero", y0: 0.1, y1: 0.6 },
+      { id: "c", label: "Rodapé", type: "rodape", y0: 0.6, y1: 1 },
+    ]
+    const out = widthScaledPortsToStoreFractions(ports, model, { w: 1200, h: 6800 })
+    expect(portsAreContiguous(out)).toBe(true)
+    // Fronteira interna nas frações da LOJA: 0.1×3000×2 = 600px de 6800.
+    expect(out[0].y1).toBeCloseTo(600 / 6800, 5)
+    expect(out[1].y1).toBeCloseTo(3600 / 6800, 5)
+  })
+
+  it("preserva id/label/type de cada porta", () => {
+    const ports: CutPort[] = [
+      { id: "x", label: "Hero", type: "hero", y0: 0, y1: 1 },
+    ]
+    const out = widthScaledPortsToStoreFractions(ports, model, { w: 600, h: 3000 })
+    expect(out[0]).toMatchObject({ id: "x", label: "Hero", type: "hero", y0: 0, y1: 1 })
   })
 })

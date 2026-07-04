@@ -40,6 +40,7 @@ import {
   Loader2,
   RefreshCw,
   RotateCcw,
+  SlidersHorizontal,
   Upload,
   X,
 } from "lucide-react"
@@ -56,7 +57,12 @@ import {
   type TaskLangGroup,
 } from "@/lib/campaign-cuts/lang"
 import { matchNamesToStores } from "@/lib/campaign-cuts/store-match"
-import { portPixelRectWidthScaled } from "@/lib/campaign-cuts/geometry"
+import {
+  movePortBoundary,
+  portPixelRect,
+  portPixelRectWidthScaled,
+  widthScaledPortsToStoreFractions,
+} from "@/lib/campaign-cuts/geometry"
 import { assignBlocksToPorts } from "@/lib/campaign-cuts/copy-match"
 import { BlockPreview, copyBlocksToText } from "./block-preview"
 
@@ -163,6 +169,8 @@ export function CampaignUploadModal({
   const [uploadingStores, setUploadingStores] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [showFullCopy, setShowFullCopy] = useState(false)
+  const [showAdjust, setShowAdjust] = useState(false)
+  const [savingAdjust, setSavingAdjust] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const bulkInputRef = useRef<HTMLInputElement | null>(null)
@@ -258,6 +266,7 @@ export function CampaignUploadModal({
   useEffect(() => {
     setShowFullCopy(Boolean(copyMatch?.ambiguous))
     setActivePortId(null)
+    setShowAdjust(false)
   }, [activeStoreId, copyMatch?.ambiguous])
 
   const langDone = useMemo(() => {
@@ -277,7 +286,11 @@ export function CampaignUploadModal({
   const patchStore = useCallback(
     async (
       storeId: string,
-      body: { status?: string; add_downloaded_ports?: string[] },
+      body: {
+        status?: string
+        add_downloaded_ports?: string[]
+        cut_ports_override?: CutPort[] | null
+      },
     ) => {
       const res = await fetch(`/api/tasks/${taskId}/campaign-uploads`, {
         method: "PATCH",
@@ -510,6 +523,38 @@ export function CampaignUploadModal({
       if (nextStore) setActiveStoreId(nextStore.store_id)
     },
     [ports, stores, patchStore],
+  )
+
+  const handleSaveAdjust = useCallback(
+    async (store: CampaignUploadStore, override: CutPort[]) => {
+      setSavingAdjust(true)
+      try {
+        await patchStore(store.store_id, { cut_ports_override: override })
+        setShowAdjust(false)
+        showFeedback("Ajuste de cortes salvo")
+      } catch (e) {
+        showFeedback(e instanceof Error ? e.message : "Erro ao salvar ajuste")
+      } finally {
+        setSavingAdjust(false)
+      }
+    },
+    [patchStore, showFeedback],
+  )
+
+  const handleRestoreAdjust = useCallback(
+    async (store: CampaignUploadStore) => {
+      setSavingAdjust(true)
+      try {
+        await patchStore(store.store_id, { cut_ports_override: null })
+        setShowAdjust(false)
+        showFeedback("Cortes automáticos restaurados")
+      } catch (e) {
+        showFeedback(e instanceof Error ? e.message : "Erro ao restaurar")
+      } finally {
+        setSavingAdjust(false)
+      }
+    },
+    [patchStore, showFeedback],
   )
 
   const figmaDisabledReason = !payload?.figma_available
@@ -883,9 +928,25 @@ export function CampaignUploadModal({
                           <AlertTriangle size={10} /> sem copy — só imagem
                         </span>
                       )}
+                      {activeStore.email?.cut_ports_override && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-[5px] bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                          title="Esta loja tem cortes ajustados manualmente"
+                        >
+                          <SlidersHorizontal size={10} /> cortes ajustados
+                        </span>
+                      )}
                       <div className="ml-auto flex items-center gap-1.5">
                         {activeStore.email?.image_url && (
                           <>
+                            <button
+                              type="button"
+                              onClick={() => setShowAdjust(true)}
+                              className="inline-flex items-center gap-1 rounded-[5px] border border-border px-2 py-1 text-[11.5px] font-semibold text-foreground hover:bg-muted"
+                              title="Arrastar as linhas de corte desta loja (quando o layout difere do modelo)"
+                            >
+                              <SlidersHorizontal size={12} /> Ajustar cortes
+                            </button>
                             <button
                               type="button"
                               onClick={() => storeInputRef.current?.click()}
@@ -990,6 +1051,28 @@ export function CampaignUploadModal({
             </div>
           </>
         ) : null}
+
+        {/* Ajuste fino de cortes da loja ativa */}
+        {showAdjust && activeStore?.email?.image_url && cutMap && (
+          <CutAdjustOverlay
+            storeName={activeStore.store_name}
+            imageUrl={activeStore.email.image_url}
+            natW={activeStore.email.image_natural_w ?? 600}
+            natH={activeStore.email.image_natural_h ?? 2000}
+            mapPorts={ports}
+            modelW={cutMap.image_natural_w}
+            modelH={cutMap.image_natural_h}
+            initialOverride={activeStore.email.cut_ports_override}
+            saving={savingAdjust}
+            onSave={(o) => handleSaveAdjust(activeStore, o)}
+            onRestore={
+              activeStore.email.cut_ports_override
+                ? () => handleRestoreAdjust(activeStore)
+                : undefined
+            }
+            onClose={() => setShowAdjust(false)}
+          />
+        )}
 
         {/* Feedback flutuante */}
         {feedback && (
@@ -1096,12 +1179,16 @@ function UploadStoreContent({
     ports.find((p) => p.id === activePortId) ?? ports[0] ?? null
 
   // Mesma conta do recorte server-side: preview = PNG baixado.
-  const rectFor = (port: CutPort) =>
-    portPixelRectWidthScaled(
-      port,
-      { w: modelW, h: modelH },
-      { w: natW, h: natH },
-    )
+  // Ajuste fino da loja tem prioridade sobre a escala por largura.
+  const overrideById = new Map(
+    (email.cut_ports_override ?? []).map((p) => [p.id, p]),
+  )
+  const rectFor = (port: CutPort) => {
+    const o = overrideById.get(port.id)
+    return o
+      ? portPixelRect(o, natH)
+      : portPixelRectWidthScaled(port, { w: modelW, h: modelH }, { w: natW, h: natH })
+  }
 
   const portCard = (port: CutPort, idx: number) => {
     const meta = PORT_TYPES[port.type]
@@ -1265,6 +1352,179 @@ function UploadStoreContent({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Ajuste fino de cortes por loja ──────────────────────────────────────
+
+/**
+ * Overlay com a imagem inteira da loja e as linhas de corte arrastáveis.
+ * Inicia nas posições atuais (override salvo ou escala por largura) e
+ * salva em frações da imagem DA LOJA (cut_ports_override). Topo e fim
+ * continuam fixos — só as fronteiras internas movem (mesma regra da
+ * Tela 1).
+ */
+function CutAdjustOverlay({
+  storeName,
+  imageUrl,
+  natW,
+  natH,
+  mapPorts,
+  modelW,
+  modelH,
+  initialOverride,
+  saving,
+  onSave,
+  onRestore,
+  onClose,
+}: {
+  storeName: string
+  imageUrl: string
+  natW: number
+  natH: number
+  mapPorts: CutPort[]
+  modelW: number | null
+  modelH: number | null
+  initialOverride: CutPort[] | null
+  saving: boolean
+  onSave: (override: CutPort[]) => void
+  onRestore?: () => void
+  onClose: () => void
+}) {
+  const [ports, setPorts] = useState<CutPort[]>(() =>
+    initialOverride?.length === mapPorts.length && initialOverride
+      ? initialOverride
+      : widthScaledPortsToStoreFractions(
+          mapPorts,
+          { w: modelW, h: modelH },
+          { w: natW, h: natH },
+        ),
+  )
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const dragIdx = useRef<number | null>(null)
+
+  const moveTo = useCallback((idx: number, clientY: number) => {
+    const el = wrapRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const frac = (clientY - r.top) / r.height
+    const minGap = 16 / r.height
+    setPorts((prev) => movePortBoundary(prev, idx, frac, minGap))
+  }, [])
+
+  return (
+    <div className="fixed inset-0 z-[70] flex bg-black/60 p-2 sm:p-6">
+      <div className="mx-auto flex h-full w-full max-w-[760px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0 text-[13px]">
+            <span className="font-bold text-foreground">Ajustar cortes</span>
+            <span className="text-muted-foreground"> · {storeName}</span>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Arraste as linhas para onde o corte deve cair NESTA loja. Topo e fim são fixos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[5px] p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Fechar"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4">
+          <div
+            ref={wrapRef}
+            className="relative mx-auto w-full max-w-[560px] select-none"
+            onPointerMove={(e) => {
+              if (dragIdx.current != null) moveTo(dragIdx.current, e.clientY)
+            }}
+            onPointerUp={() => {
+              dragIdx.current = null
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt={storeName}
+              className="block w-full rounded-[6px] border border-border"
+              draggable={false}
+            />
+
+            {/* Faixas + rótulos por porta */}
+            {ports.map((p, i) => (
+              <div
+                key={`seg-${p.id}`}
+                className="pointer-events-none absolute left-0 right-0"
+                style={{ top: `${p.y0 * 100}%`, height: `${(p.y1 - p.y0) * 100}%` }}
+              >
+                <span
+                  className="absolute left-1 top-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold text-white"
+                  style={{ backgroundColor: PORT_TYPES[p.type]?.color ?? "#4B5563" }}
+                >
+                  {String(i + 1).padStart(2, "0")} · {p.label}
+                </span>
+              </div>
+            ))}
+
+            {/* Fronteiras internas arrastáveis */}
+            {ports.slice(0, -1).map((p, i) => (
+              <div
+                key={`line-${p.id}`}
+                className="absolute left-0 right-0 z-10 -translate-y-1/2 cursor-row-resize py-2"
+                style={{ top: `${p.y1 * 100}%`, touchAction: "none" }}
+                onPointerDown={(e) => {
+                  dragIdx.current = i
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                }}
+                onPointerMove={(e) => {
+                  if (dragIdx.current === i) moveTo(i, e.clientY)
+                }}
+                onPointerUp={() => {
+                  dragIdx.current = null
+                }}
+              >
+                <div className="h-0.5 w-full bg-red-500 shadow-[0_0_0_1px_rgba(255,255,255,0.6)]" />
+                <span className="absolute right-1 top-1/2 -translate-y-1/2 rounded-[4px] bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white">
+                  ⇕
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          {onRestore && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={onRestore}
+              className="mr-auto inline-flex items-center gap-1 rounded-[6px] border border-border px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Restaurar automático
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onClose}
+            className="rounded-[6px] border border-border px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onSave(ports)}
+            className="inline-flex items-center gap-1.5 rounded-[6px] bg-primary px-4 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            Salvar ajuste
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

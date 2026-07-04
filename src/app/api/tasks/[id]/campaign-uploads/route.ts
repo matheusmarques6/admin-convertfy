@@ -31,11 +31,24 @@ import {
 
 export const dynamic = "force-dynamic"
 
+const overridePortSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(80),
+    type: z.enum(["header", "hero", "texto", "produtos", "cupom", "cta", "rodape"]),
+    y0: z.number().min(0).max(1),
+    y1: z.number().min(0).max(1),
+  })
+  .strict()
+
 const patchSchema = z
   .object({
     store_id: z.string().uuid(),
     status: z.enum(["pendente", "andamento", "concluida"]).optional(),
     add_downloaded_ports: z.array(z.string().min(1).max(64)).max(80).optional(),
+    // Ajuste fino por loja (frações da imagem da loja); null restaura o
+    // automático. Validação de contiguidade/ids no service.
+    cut_ports_override: z.array(overridePortSchema).max(40).nullable().optional(),
   })
   .strict()
 

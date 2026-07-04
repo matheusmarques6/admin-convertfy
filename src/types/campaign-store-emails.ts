@@ -8,7 +8,7 @@
  * natural da imagem de CADA loja.
  */
 
-import type { CampaignCutMap } from "@/types/campaign-cuts"
+import type { CampaignCutMap, CutPort } from "@/types/campaign-cuts"
 import type { CopyResultEntry } from "@/types/campaign-central"
 import type { TaskLangGroup } from "@/lib/campaign-cuts/lang"
 
@@ -26,6 +26,12 @@ export interface CampaignStoreEmail {
   status: "pendente" | "andamento" | "concluida"
   /** Ids de CutPort já baixados (órfãos pós-reaprovação são ignorados na UI). */
   downloaded_ports: string[]
+  /**
+   * Ajuste fino POR LOJA: mesmas portas do mapa (ids idênticos), com
+   * y0/y1 em frações da imagem DA LOJA. Null = automático (escala por
+   * largura).
+   */
+  cut_ports_override: CutPort[] | null
   updated_at: string
 }
 

@@ -14,7 +14,10 @@
 import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/server"
 import { AppError } from "@/lib/api/errors"
-import { portPixelRectWidthScaled } from "@/lib/campaign-cuts/geometry"
+import {
+  portPixelRect,
+  portPixelRectWidthScaled,
+} from "@/lib/campaign-cuts/geometry"
 import type { CampaignCutMap, CutPort } from "@/types/campaign-cuts"
 import type { CampaignStoreEmail } from "@/types/campaign-store-emails"
 import { logger } from "@/lib/logger"
@@ -86,15 +89,23 @@ export async function sliceStoreEmailPorts(
   const wanted = opts.portIds ? new Set(opts.portIds) : null
   const out: SlicedPort[] = []
 
+  // Ajuste fino por loja tem prioridade (frações da imagem DA LOJA);
+  // sem ele, escala por largura a partir do mapa.
+  const overrideById = new Map(
+    (row.cut_ports_override ?? []).map((p) => [p.id, p]),
+  )
+
   for (let i = 0; i < map.portas.length; i++) {
     const port = map.portas[i]
     if (wanted && !wanted.has(port.id)) continue
-    // Escala por LARGURA: pixels do modelo × (largura_loja ÷ largura_modelo).
-    const { top, height: sliceH } = portPixelRectWidthScaled(
-      port,
-      { w: map.image_natural_w, h: map.image_natural_h },
-      { w: width, h: height },
-    )
+    const override = overrideById.get(port.id)
+    const { top, height: sliceH } = override
+      ? portPixelRect(override, height)
+      : portPixelRectWidthScaled(
+          port,
+          { w: map.image_natural_w, h: map.image_natural_h },
+          { w: width, h: height },
+        )
     const slice = await sharp(buffer)
       .extract({ left: 0, top, width, height: sliceH })
       .png()

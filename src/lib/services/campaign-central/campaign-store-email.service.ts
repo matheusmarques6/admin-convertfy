@@ -15,7 +15,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { AppError, NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { getCampaignHandoff } from "./campaign-handoff.service"
-import { getCutMap } from "./campaign-cut-map.service"
+import { getCutMap, validateCutMap } from "./campaign-cut-map.service"
+import type { CutPort } from "@/types/campaign-cuts"
 import { isFigmaConfigured } from "@/lib/integrations/figma/client"
 import { storeLangGroup } from "@/lib/campaign-cuts/lang"
 import type {
@@ -33,7 +34,7 @@ const BUCKET = "onboarding-visual-assets"
 const ROW_COLS =
   "id, suggestion_id, store_id, image_url, image_path, image_filename, " +
   "image_natural_w, image_natural_h, source, figma_node_id, status, " +
-  "downloaded_ports, updated_at"
+  "downloaded_ports, cut_ports_override, updated_at"
 
 export function mapStoreEmailRow(row: Record<string, unknown>): CampaignStoreEmail {
   return {
@@ -51,6 +52,9 @@ export function mapStoreEmailRow(row: Record<string, unknown>): CampaignStoreEma
     downloaded_ports: Array.isArray(row.downloaded_ports)
       ? (row.downloaded_ports as string[])
       : [],
+    cut_ports_override: Array.isArray(row.cut_ports_override)
+      ? (row.cut_ports_override as CampaignStoreEmail["cut_ports_override"])
+      : null,
     updated_at: row.updated_at as string,
   }
 }
@@ -203,8 +207,29 @@ export async function getStoreEmailWithName(
 }
 
 /**
- * PATCH por loja: status e/ou downloaded_ports. downloaded_ports faz
- * UNIÃO com o existente no servidor — o client manda só os ids novos.
+ * Validação do ajuste fino por loja: mesmo invariante do mapa
+ * (validateCutMap) + os ids têm que ser EXATAMENTE os do mapa aprovado,
+ * na mesma ordem — copy e downloaded_ports casam por id.
+ */
+export function assertValidOverride(
+  mapPorts: CutPort[],
+  override: CutPort[],
+): void {
+  validateCutMap(override, [])
+  const mapIds = mapPorts.map((p) => p.id).join("|")
+  const overrideIds = override.map((p) => p.id).join("|")
+  if (mapIds !== overrideIds) {
+    throw new AppError(
+      "Ajuste de cortes não corresponde às portas do mapa aprovado — reabra o modal",
+      409,
+    )
+  }
+}
+
+/**
+ * PATCH por loja: status, downloaded_ports e/ou ajuste fino de cortes.
+ * downloaded_ports faz UNIÃO com o existente no servidor — o client manda
+ * só os ids novos. cut_ports_override null = restaurar automático.
  */
 export async function patchStoreEmail(
   suggestionId: string,
@@ -213,6 +238,7 @@ export async function patchStoreEmail(
     store_id: string
     status?: CampaignStoreEmail["status"]
     add_downloaded_ports?: string[]
+    cut_ports_override?: CutPort[] | null
   },
 ): Promise<CampaignStoreEmail> {
   await requireTargetStore(suggestionId, orgId, input.store_id)
@@ -237,6 +263,18 @@ export async function patchStoreEmail(
     update.downloaded_ports = Array.from(
       new Set([...row.downloaded_ports, ...input.add_downloaded_ports]),
     )
+  }
+  if (input.cut_ports_override !== undefined) {
+    if (input.cut_ports_override === null) {
+      update.cut_ports_override = null
+    } else {
+      const { map } = await getCutMap(suggestionId, orgId)
+      if (!map || map.status !== "approved") {
+        throw new AppError("Mapa de cortes ainda não aprovado", 409)
+      }
+      assertValidOverride(map.portas, input.cut_ports_override)
+      update.cut_ports_override = input.cut_ports_override
+    }
   }
   if (Object.keys(update).length === 0) return row
 
