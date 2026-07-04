@@ -91,7 +91,7 @@ export async function importStoreEmailsFromFigma(
 ): Promise<FigmaImportResult> {
   if (!isFigmaConfigured()) {
     throw new AppError(
-      "FIGMA_ACCESS_TOKEN não configurado — use o upload manual",
+      "FIGMA_PERSONAL_TOKEN não configurado — use o upload manual",
       422,
     )
   }

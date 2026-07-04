@@ -2,7 +2,7 @@
  * Cliente HTTP mínimo da Figma REST API (somente o que a Tela 2 "Subir
  * Campanha por Loja" usa: ler frames de um arquivo + exportar PNGs).
  *
- * Token: env FIGMA_ACCESS_TOKEN (Personal Access Token — figma.com →
+ * Token: env FIGMA_PERSONAL_TOKEN (Personal Access Token — figma.com →
  * Settings → Personal access tokens), lido A CADA chamada (Vercel pode
  * trocar env sem rebuild do módulo).
  *
@@ -24,7 +24,7 @@ export class FigmaError extends Error {
 }
 
 export function isFigmaConfigured(): boolean {
-  return Boolean(process.env.FIGMA_ACCESS_TOKEN)
+  return Boolean(process.env.FIGMA_PERSONAL_TOKEN)
 }
 
 /**
@@ -50,10 +50,10 @@ export function parseFigmaUrl(
 }
 
 function figmaHeaders(): Record<string, string> {
-  const token = process.env.FIGMA_ACCESS_TOKEN
+  const token = process.env.FIGMA_PERSONAL_TOKEN
   if (!token) {
     throw new FigmaError(
-      "FIGMA_ACCESS_TOKEN não configurado no servidor",
+      "FIGMA_PERSONAL_TOKEN não configurado no servidor",
       401,
     )
   }
@@ -73,7 +73,7 @@ async function figmaFetch(path: string, retried = false): Promise<unknown> {
 
   if (!res.ok) {
     const msgByStatus: Record<number, string> = {
-      401: "Token do Figma inválido ou expirado (FIGMA_ACCESS_TOKEN)",
+      401: "Token do Figma inválido ou expirado (FIGMA_PERSONAL_TOKEN)",
       403: "Token do Figma sem acesso a este arquivo — peça acesso ao dono",
       404: "Arquivo do Figma não encontrado — confira o link",
       429: "Rate limit do Figma — tente de novo em alguns minutos",

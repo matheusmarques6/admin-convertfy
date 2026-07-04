@@ -46,7 +46,7 @@ export interface CampaignUploadPayload {
   suggestion_id: string
   campaign_title: string | null
   figma_link: string | null
-  /** FIGMA_ACCESS_TOKEN configurado no servidor? (habilita o modo auto). */
+  /** FIGMA_PERSONAL_TOKEN configurado no servidor? (habilita o modo auto). */
   figma_available: boolean
   cut_map_status: CutMapGateStatus
   /** Só presente quando approved — a Tela 2 nunca consome mapa em edição. */

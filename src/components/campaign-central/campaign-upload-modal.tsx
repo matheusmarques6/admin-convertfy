@@ -507,7 +507,7 @@ export function CampaignUploadModal({
   )
 
   const figmaDisabledReason = !payload?.figma_available
-    ? "FIGMA_ACCESS_TOKEN não configurado no servidor — use o upload manual"
+    ? "FIGMA_PERSONAL_TOKEN não configurado no servidor — use o upload manual"
     : !payload?.figma_link
       ? "Campanha sem link do Figma (deliverable da etapa estrutura)"
       : null

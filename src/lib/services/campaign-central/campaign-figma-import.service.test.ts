@@ -252,6 +252,6 @@ describe("importStoreEmailsFromFigma", () => {
     isFigmaConfigured.mockReturnValue(false)
     await expect(
       importStoreEmailsFromFigma("sug-1", "org-1", "user-1"),
-    ).rejects.toThrow(/FIGMA_ACCESS_TOKEN/)
+    ).rejects.toThrow(/FIGMA_PERSONAL_TOKEN/)
   })
 })
