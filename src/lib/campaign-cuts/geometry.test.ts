@@ -11,6 +11,7 @@ import {
   mergePortWithPrevious,
   initialPorts,
   portsAreContiguous,
+  portPixelRect,
   MIN_PORT_FRACTION,
 } from "./geometry"
 import type { CutPort } from "@/types/campaign-cuts"
@@ -140,5 +141,26 @@ describe("invariante em sequências de operações", () => {
     }
     expect(ports[0].y0).toBe(0)
     expect(ports[0].y1).toBe(1)
+  })
+})
+
+describe("portPixelRect", () => {
+  it("converte frações em pixels arredondados", () => {
+    expect(portPixelRect({ y0: 0, y1: 0.5 }, 1000)).toEqual({ top: 0, height: 500 })
+    expect(portPixelRect({ y0: 0.5, y1: 1 }, 1000)).toEqual({ top: 500, height: 500 })
+  })
+
+  it("porta finíssima nunca vira height 0", () => {
+    expect(portPixelRect({ y0: 0.5, y1: 0.5001 }, 100).height).toBeGreaterThanOrEqual(1)
+  })
+
+  it("última porta nunca passa da altura da imagem", () => {
+    const r = portPixelRect({ y0: 0.99, y1: 1 }, 333)
+    expect(r.top + r.height).toBe(333)
+  })
+
+  it("clampa frações fora de 0..1", () => {
+    const r = portPixelRect({ y0: -0.2, y1: 1.4 }, 200)
+    expect(r).toEqual({ top: 0, height: 200 })
   })
 })

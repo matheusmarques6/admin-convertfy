@@ -116,3 +116,18 @@ export function portsAreContiguous(ports: CutPort[], eps = 1e-4): boolean {
   }
   return true
 }
+
+/**
+ * Converte a fração de uma porta em retângulo de recorte em pixels para
+ * uma imagem de altura `imageH` (a altura da imagem de CADA loja — não a
+ * do modelo). Garante height >= 1 e top dentro da imagem, mesmo com
+ * arredondamento em portas muito finas.
+ */
+export function portPixelRect(
+  port: Pick<CutPort, "y0" | "y1">,
+  imageH: number,
+): { top: number; height: number } {
+  const top = Math.min(Math.max(0, Math.round(clamp01(port.y0) * imageH)), imageH - 1)
+  const bottom = Math.min(Math.max(top + 1, Math.round(clamp01(port.y1) * imageH)), imageH)
+  return { top, height: bottom - top }
+}
