@@ -172,6 +172,7 @@ export function CampaignUploadModal({
   const [showFullCopy, setShowFullCopy] = useState(false)
   const [showAdjust, setShowAdjust] = useState(false)
   const [savingAdjust, setSavingAdjust] = useState(false)
+  const [clearingOverrides, setClearingOverrides] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const bulkInputRef = useRef<HTMLInputElement | null>(null)
@@ -281,6 +282,13 @@ export function CampaignUploadModal({
   const downloadedSet = useMemo(
     () => new Set(activeStore?.email?.downloaded_ports ?? []),
     [activeStore],
+  )
+
+  // Lojas com QUALQUER ajuste salvo (válido ou órfão) — o botão "Zerar
+  // ajustes" limpa todos e devolve todo mundo pro corte automático.
+  const storesWithOverride = useMemo(
+    () => stores.filter((s) => (s.email?.cut_ports_override?.length ?? 0) > 0),
+    [stores],
   )
 
   // ── Ações ────────────────────────────────────────────────────────────
@@ -558,6 +566,30 @@ export function CampaignUploadModal({
     [patchStore, showFeedback],
   )
 
+  // Limpa o ajuste manual de TODAS as lojas — usado quando ajustes de uma
+  // rodada anterior (referência antiga) contaminam os cortes atuais.
+  const handleClearAllOverrides = useCallback(async () => {
+    if (
+      !window.confirm(
+        `Remover o ajuste manual de ${storesWithOverride.length} loja(s)? Todas voltam ao corte automático do mapa atual.`,
+      )
+    ) {
+      return
+    }
+    setClearingOverrides(true)
+    let ok = 0
+    for (const s of storesWithOverride) {
+      try {
+        await patchStore(s.store_id, { cut_ports_override: null })
+        ok += 1
+      } catch {
+        // segue — o contador no feedback mostra se alguma falhou
+      }
+    }
+    setClearingOverrides(false)
+    showFeedback(`Ajustes removidos em ${ok}/${storesWithOverride.length} loja(s)`)
+  }, [storesWithOverride, patchStore, showFeedback])
+
   const figmaDisabledReason = !payload?.figma_available
     ? "FIGMA_PERSONAL_TOKEN não configurado no servidor — use o upload manual"
     : !payload?.figma_link
@@ -700,8 +732,39 @@ export function CampaignUploadModal({
                 }}
               />
 
+              {storesWithOverride.length > 0 && (
+                <button
+                  type="button"
+                  disabled={clearingOverrides}
+                  onClick={() => void handleClearAllOverrides()}
+                  className="inline-flex items-center gap-1.5 rounded-[6px] border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400"
+                  title="Remove os ajustes manuais de todas as lojas — todas voltam ao corte automático do mapa atual"
+                >
+                  {clearingOverrides ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <RotateCcw size={13} />
+                  )}
+                  Zerar ajustes ({storesWithOverride.length})
+                </button>
+              )}
+
+              {/* Versão do mapa em uso — prova do que está sendo aplicado. */}
+              {cutMap && (
+                <span className="ml-auto text-[10.5px] text-muted-foreground">
+                  Mapa: {ports.length} cortes
+                  {cutMap.approved_at &&
+                    ` · aprovado ${new Date(cutMap.approved_at).toLocaleString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`}
+                </span>
+              )}
+
               {langDone && (
-                <span className="ml-auto inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-50 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-50 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                   <CheckCircle2 size={13} />
                   Todas as lojas de {LANG_GROUP_LABEL[taskLang]} concluídas — conclua a task no painel
                 </span>
@@ -929,14 +992,24 @@ export function CampaignUploadModal({
                           <AlertTriangle size={10} /> sem copy — só imagem
                         </span>
                       )}
-                      {sameCutPortIds(ports, activeStore.email?.cut_ports_override) && (
-                        <span
-                          className="inline-flex items-center gap-1 rounded-[5px] bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                          title="Esta loja tem cortes ajustados manualmente"
-                        >
-                          <SlidersHorizontal size={10} /> cortes ajustados
-                        </span>
-                      )}
+                      {/* Fonte dos cortes DESTA loja — se duas lojas iguais
+                          cortam diferente, este chip mostra o porquê. */}
+                      {activeStore.email?.image_url &&
+                        (sameCutPortIds(ports, activeStore.email?.cut_ports_override) ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-[5px] bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                            title="Esta loja usa AJUSTE MANUAL — os cortes dela ignoram a conta automática. Use Ajustar cortes → Restaurar automático para voltar."
+                          >
+                            <SlidersHorizontal size={10} /> cortes: ajuste manual
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-[5px] bg-muted px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground"
+                            title="Esta loja usa o corte automático do mapa (escala por largura) — igual para todas as lojas sem ajuste"
+                          >
+                            cortes: automáticos
+                          </span>
+                        ))}
                       {activeStore.email?.image_url && (
                         <span
                           className="text-[10.5px] text-muted-foreground"
