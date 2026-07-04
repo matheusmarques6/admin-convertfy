@@ -8,7 +8,8 @@
  * checklist_template customizado no banco podem não ter o slug do seed).
  */
 
-const norm = (s: string) =>
+/** lowercase + remo\u00e7\u00e3o de acentos \u2014 base do matching por nome (store-match). */
+export const normalizeText = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFD")
@@ -20,6 +21,6 @@ export function isCutMappingTask(t: {
   name?: string | null
 }): boolean {
   if (t.source_type !== "campaign_suggestion") return false
-  if (t.slug && norm(t.slug).includes("corte")) return true
-  return norm(t.name ?? "").includes("corte")
+  if (t.slug && normalizeText(t.slug).includes("corte")) return true
+  return normalizeText(t.name ?? "").includes("corte")
 }
