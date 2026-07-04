@@ -1218,6 +1218,7 @@ function UploadStoreContent({
     const blocks = copyMatch?.byPort[port.id] ?? []
     const downloaded = downloadedSet.has(port.id)
     const key = `${store.store_id}:${port.id}`
+    const rect = rectFor(port)
     return (
       <div key={port.id} className="rounded-[8px] border border-border bg-background">
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -1230,6 +1231,14 @@ function UploadStoreContent({
           </span>
           <span className="text-[10.5px] text-muted-foreground">
             {meta?.label ?? port.type}
+          </span>
+          {/* Faixa exata em px da imagem da loja — diagnóstico: as faixas
+              têm que ser contíguas (fim de uma = início da próxima). */}
+          <span
+            className="rounded-[4px] bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+            title="Faixa de pixels desta fatia na imagem da loja"
+          >
+            {rect.top}–{rect.top + rect.height}px
           </span>
           <div className="ml-auto flex items-center gap-1.5">
             {meta?.hasCopy && (
@@ -1254,7 +1263,7 @@ function UploadStoreContent({
           <SliceView
             imageUrl={imageUrl}
             natW={natW}
-            rect={rectFor(port)}
+            rect={rect}
             alt={port.label}
             className="rounded-[6px] border border-border"
           />
