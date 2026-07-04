@@ -228,6 +228,24 @@ export async function approveCutMap(
     throw new AppError(`Erro ao aprovar mapeamento: ${error.message}`, 500)
   }
 
+  // (Re)aprovar o mapa INVALIDA os ajustes finos por loja: eles foram
+  // calibrados contra a versão anterior do mapa (imagem/posições) e — como
+  // "Trocar imagem" preserva os ids das portas — passariam na checagem de
+  // ids e sobreporiam a conta nova com frações velhas (lojas idênticas
+  // cortando diferente). Todas as lojas voltam ao corte automático.
+  const { error: clearErr } = await admin
+    .from("campaign_store_emails")
+    .update({ cut_ports_override: null })
+    .eq("suggestion_id", suggestionId)
+    .eq("org_id", orgId)
+    .not("cut_ports_override", "is", null)
+  if (clearErr) {
+    log.warn("approve.clear_overrides_failed", {
+      suggestionId,
+      error: clearErr.message,
+    })
+  }
+
   log.info("approve.ok", {
     suggestionId,
     portas: input.portas.length,
