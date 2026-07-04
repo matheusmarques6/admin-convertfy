@@ -110,38 +110,28 @@ function blockText(block: EmailDraftBlock): string {
 }
 
 /**
- * Fatia exibida por CSS crop (sem canvas, sem CORS). O retângulo em
- * PIXELS vem de portPixelRectWidthScaled — a mesma conta do recorte
- * server-side, então o preview bate com o PNG baixado.
+ * Fatia exibida = O PRÓPRIO PNG cortado pelo servidor (rota slice com
+ * inline=1). Sem CSS crop: o que aparece na tela é byte a byte o mesmo
+ * arquivo do "Baixar PNG" — impossível preview e download divergirem.
  */
 function SliceView({
-  imageUrl,
-  natW,
-  rect,
+  src,
   alt,
   className,
 }: {
-  imageUrl: string
-  natW: number
-  rect: { top: number; height: number }
+  src: string
   alt: string
   className?: string
 }) {
-  const h = Math.max(rect.height, 1)
   return (
-    <div
-      className={`relative w-full overflow-hidden bg-muted ${className ?? ""}`}
-      style={{ paddingTop: `${(h / natW) * 100}%` }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt={alt}
-        className="absolute left-0 w-full max-w-none"
-        style={{ top: `-${(rect.top / h) * 100}%` }}
-        draggable={false}
-      />
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className={`block w-full bg-muted ${className ?? ""}`}
+      draggable={false}
+    />
   )
 }
 
@@ -1124,6 +1114,11 @@ export function CampaignUploadModal({
                         ports={ports}
                         modelW={cutMap?.image_natural_w ?? null}
                         modelH={cutMap?.image_natural_h ?? null}
+                        sliceSrc={(port) =>
+                          `/api/tasks/${taskId}/campaign-uploads/slice?store_id=${activeStore.store_id}` +
+                          `&port_id=${encodeURIComponent(port.id)}&inline=1` +
+                          `&v=${encodeURIComponent(`${cutMap?.updated_at ?? ""}|${activeStore.email?.updated_at ?? ""}`)}`
+                        }
                         copyMatch={copyMatch}
                         downloadedSet={downloadedSet}
                         busy={busy}
@@ -1239,6 +1234,7 @@ function UploadStoreContent({
   ports,
   modelW,
   modelH,
+  sliceSrc,
   copyMatch,
   downloadedSet,
   busy,
@@ -1255,6 +1251,9 @@ function UploadStoreContent({
   /** Dimensões naturais da imagem MODELO (do mapa de cortes). */
   modelW: number | null
   modelH: number | null
+  /** URL da fatia cortada pelo SERVIDOR (rota slice inline) — o preview
+   *  é o mesmo PNG do download. */
+  sliceSrc: (port: CutPort) => string
   copyMatch: ReturnType<typeof assignBlocksToPorts> | null
   downloadedSet: Set<string>
   busy: Set<string>
@@ -1268,7 +1267,6 @@ function UploadStoreContent({
   const email = store.email!
   const natW = email.image_natural_w ?? 600
   const natH = email.image_natural_h ?? 2000
-  const imageUrl = email.image_url!
   const activePort =
     ports.find((p) => p.id === activePortId) ?? ports[0] ?? null
 
@@ -1338,9 +1336,7 @@ function UploadStoreContent({
         </div>
         <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <SliceView
-            imageUrl={imageUrl}
-            natW={natW}
-            rect={rect}
+            src={sliceSrc(port)}
             alt={port.label}
             className="rounded-[6px] border border-border"
           />
@@ -1389,7 +1385,7 @@ function UploadStoreContent({
                 }`}
                 title={p.label}
               >
-                <SliceView imageUrl={imageUrl} natW={natW} rect={rectFor(p)} alt={p.label} />
+                <SliceView src={sliceSrc(p)} alt={p.label} />
                 <div className="flex items-center gap-1 bg-background px-1.5 py-1 text-[10px] font-semibold text-foreground">
                   <span
                     className="h-1.5 w-1.5 rounded-[2px]"

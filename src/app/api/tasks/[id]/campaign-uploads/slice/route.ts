@@ -25,6 +25,8 @@ export const maxDuration = 60
 const querySchema = z.object({
   store_id: z.string().uuid(),
   port_id: z.string().min(1).max(64),
+  /** inline=1 → exibir no <img> do modal (preview = PNG real, sem CSS crop). */
+  inline: z.string().optional(),
 })
 
 export async function GET(
@@ -45,6 +47,7 @@ export async function GET(
     const parsed = querySchema.safeParse({
       store_id: request.nextUrl.searchParams.get("store_id"),
       port_id: request.nextUrl.searchParams.get("port_id"),
+      inline: request.nextUrl.searchParams.get("inline") ?? undefined,
     })
     if (!parsed.success) throw new AppError("Parâmetros inválidos", 400)
 
@@ -69,13 +72,16 @@ export async function GET(
       slice.buffer.byteOffset + slice.buffer.byteLength,
     ) as ArrayBuffer
 
+    const isInline = parsed.data.inline === "1"
     return new NextResponse(ab, {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Content-Disposition": `attachment; filename="${slice.filename}"`,
+        "Content-Disposition": `${isInline ? "inline" : "attachment"}; filename="${slice.filename}"`,
         "Content-Length": String(ab.byteLength),
-        "Cache-Control": "no-store",
+        // Inline (preview do modal): cache curto no browser — o client põe
+        // ?v=<updated_at> na URL, então imagem/mapa novos furam o cache.
+        "Cache-Control": isInline ? "private, max-age=300" : "no-store",
       },
     })
   } catch (error) {
