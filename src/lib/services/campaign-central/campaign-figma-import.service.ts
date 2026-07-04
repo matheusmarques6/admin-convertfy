@@ -45,13 +45,13 @@ const BUCKET = "onboarding-visual-assets"
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const DOWNLOAD_CONCURRENCY = 3
 
-interface FrameInfo {
+export interface FrameInfo {
   id: string
   name: string
 }
 
 /** Frames top-level de todas as páginas (FRAME/COMPONENT/INSTANCE). */
-function collectTopLevelFrames(document: FigmaNode): FrameInfo[] {
+export function collectTopLevelFrames(document: FigmaNode): FrameInfo[] {
   const frames: FrameInfo[] = []
   for (const page of document.children ?? []) {
     for (const node of page.children ?? []) {

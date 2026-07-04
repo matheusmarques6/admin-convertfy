@@ -89,6 +89,8 @@ export function CampaignCutMappingModal({
   const [hoverPortId, setHoverPortId] = useState<string | null>(null)
   const [drag, setDrag] = useState<DragState>(null)
   const [uploading, setUploading] = useState(false)
+  const [figmaModelUrl, setFigmaModelUrl] = useState("")
+  const [importingFigma, setImportingFigma] = useState(false)
   const [approving, setApproving] = useState(false)
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle")
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -259,6 +261,44 @@ export function CampaignCutMappingModal({
     },
     [taskId, showFeedback],
   )
+
+  // Importa a imagem de referência direto do Figma (link do frame do
+  // email modelo). O servidor exporta em 2x — mesmo scale da Tela 2 —
+  // e devolve url/path/dimensões; daqui em diante é igual ao upload.
+  const handleImportModelFromFigma = useCallback(async () => {
+    const url = figmaModelUrl.trim()
+    if (!url) return
+    setImportingFigma(true)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/campaign-cuts/import-figma`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ figma_url: url }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `Erro ${res.status}`)
+      const up = (j.data ?? j) as {
+        url: string
+        path: string
+        filename: string
+        image_natural_w: number
+        image_natural_h: number
+      }
+      setImageUrl(up.url)
+      setImageMeta({
+        path: up.path,
+        filename: up.filename,
+        w: up.image_natural_w,
+        h: up.image_natural_h,
+      })
+      setPorts((prev) => (prev.length > 0 ? prev : initialPorts()))
+      showFeedback("Email modelo importado do Figma — marque os cortes.")
+    } catch (e) {
+      showFeedback(e instanceof Error ? e.message : "Falha no import do Figma")
+    } finally {
+      setImportingFigma(false)
+    }
+  }, [figmaModelUrl, taskId, showFeedback])
 
   // Paste global — só sem imagem e ignorando inputs.
   useEffect(() => {
@@ -505,36 +545,69 @@ export function CampaignCutMappingModal({
               ) : error ? (
                 <div className="mt-20 text-[13px] text-destructive">{error}</div>
               ) : !imageUrl ? (
-                /* Dropzone */
-                <div
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    const f = e.dataTransfer.files?.[0]
-                    if (f) void handleFile(f)
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mt-16 flex h-72 w-full max-w-[520px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-background text-center hover:border-primary/50"
-                >
-                  <Upload size={28} className="text-muted-foreground" />
-                  <div className="text-[13.5px] font-semibold text-foreground">
-                    {uploading ? "Enviando…" : "Jogue aqui a imagem do email da campanha"}
+                <div className="mt-16 flex w-full max-w-[520px] flex-col gap-3">
+                  {/* Import do Figma — referência proporcional por construção
+                      (mesmo scale 2x do import por loja da Tela 2). */}
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    <div className="mb-1.5 text-[12.5px] font-semibold text-foreground">
+                      Importar email modelo do Figma (recomendado)
+                    </div>
+                    <p className="mb-2 text-[11.5px] text-muted-foreground">
+                      No Figma: botão direito no frame do email modelo →
+                      “Copy link to selection” → cole aqui. A referência sai na
+                      MESMA escala dos emails das lojas — cortes precisos.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={figmaModelUrl}
+                        onChange={(e) => setFigmaModelUrl(e.target.value)}
+                        placeholder="https://www.figma.com/design/…?node-id=…"
+                        className="min-w-0 flex-1 rounded-[6px] border border-border bg-background px-2.5 py-1.5 text-[12px] outline-none focus:border-primary/60"
+                        disabled={importingFigma}
+                      />
+                      <button
+                        type="button"
+                        disabled={importingFigma || !figmaModelUrl.trim()}
+                        onClick={() => void handleImportModelFromFigma()}
+                        className="shrink-0 rounded-[6px] bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                      >
+                        {importingFigma ? "Importando…" : "Importar"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="max-w-[360px] text-[12px] text-muted-foreground">
-                    Arraste o arquivo, cole (Ctrl+V) ou clique para selecionar ·
-                    PNG, JPG ou WEBP · máx 10MB
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
+
+                  {/* Dropzone (upload manual) */}
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const f = e.dataTransfer.files?.[0]
                       if (f) void handleFile(f)
-                      e.target.value = ""
                     }}
-                  />
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-60 w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-background text-center hover:border-primary/50"
+                  >
+                    <Upload size={28} className="text-muted-foreground" />
+                    <div className="text-[13.5px] font-semibold text-foreground">
+                      {uploading ? "Enviando…" : "Ou jogue aqui a imagem do email"}
+                    </div>
+                    <div className="max-w-[360px] text-[12px] text-muted-foreground">
+                      Arraste o arquivo, cole (Ctrl+V) ou clique para selecionar ·
+                      PNG, JPG ou WEBP · máx 10MB
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) void handleFile(f)
+                        e.target.value = ""
+                      }}
+                    />
+                  </div>
                 </div>
               ) : (
                 /* Canvas com a imagem */
