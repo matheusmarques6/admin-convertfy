@@ -61,6 +61,7 @@ import {
   movePortBoundary,
   portPixelRect,
   portPixelRectWidthScaled,
+  sameCutPortIds,
   widthScaledPortsToStoreFractions,
 } from "@/lib/campaign-cuts/geometry"
 import { assignBlocksToPorts } from "@/lib/campaign-cuts/copy-match"
@@ -928,12 +929,28 @@ export function CampaignUploadModal({
                           <AlertTriangle size={10} /> sem copy — só imagem
                         </span>
                       )}
-                      {activeStore.email?.cut_ports_override && (
+                      {sameCutPortIds(ports, activeStore.email?.cut_ports_override) && (
                         <span
                           className="inline-flex items-center gap-1 rounded-[5px] bg-blue-50 px-2 py-0.5 text-[10.5px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
                           title="Esta loja tem cortes ajustados manualmente"
                         >
                           <SlidersHorizontal size={10} /> cortes ajustados
+                        </span>
+                      )}
+                      {activeStore.email?.image_url && (
+                        <span
+                          className="text-[10.5px] text-muted-foreground"
+                          title="Origem e horário da última imagem desta loja — se importou agora, o horário tem que ser agora"
+                        >
+                          {activeStore.email.source === "figma" ? "Figma" : "Manual"} ·{" "}
+                          {activeStore.email.image_natural_w}×{activeStore.email.image_natural_h}
+                          {" · "}
+                          {new Date(activeStore.email.updated_at).toLocaleString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       )}
                       <div className="ml-auto flex items-center gap-1.5">
@@ -1062,7 +1079,11 @@ export function CampaignUploadModal({
             mapPorts={ports}
             modelW={cutMap.image_natural_w}
             modelH={cutMap.image_natural_h}
-            initialOverride={activeStore.email.cut_ports_override}
+            initialOverride={
+              sameCutPortIds(ports, activeStore.email.cut_ports_override)
+                ? activeStore.email.cut_ports_override
+                : null
+            }
             saving={savingAdjust}
             onSave={(o) => handleSaveAdjust(activeStore, o)}
             onRestore={
@@ -1179,9 +1200,11 @@ function UploadStoreContent({
     ports.find((p) => p.id === activePortId) ?? ports[0] ?? null
 
   // Mesma conta do recorte server-side: preview = PNG baixado.
-  // Ajuste fino da loja tem prioridade sobre a escala por largura.
+  // Ajuste fino da loja tem prioridade — mas SÓ se casar por inteiro com
+  // o mapa atual (override de mapa remarcado é órfão e é ignorado).
+  const overrideValid = sameCutPortIds(ports, email.cut_ports_override)
   const overrideById = new Map(
-    (email.cut_ports_override ?? []).map((p) => [p.id, p]),
+    overrideValid ? (email.cut_ports_override ?? []).map((p) => [p.id, p]) : [],
   )
   const rectFor = (port: CutPort) => {
     const o = overrideById.get(port.id)

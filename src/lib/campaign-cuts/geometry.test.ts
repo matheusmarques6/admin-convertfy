@@ -14,6 +14,7 @@ import {
   portPixelRect,
   portPixelRectWidthScaled,
   widthScaledPortsToStoreFractions,
+  sameCutPortIds,
   MIN_PORT_FRACTION,
 } from "./geometry"
 import type { CutPort } from "@/types/campaign-cuts"
@@ -222,5 +223,30 @@ describe("widthScaledPortsToStoreFractions", () => {
     ]
     const out = widthScaledPortsToStoreFractions(ports, model, { w: 600, h: 3000 })
     expect(out[0]).toMatchObject({ id: "x", label: "Hero", type: "hero", y0: 0, y1: 1 })
+  })
+})
+
+describe("sameCutPortIds", () => {
+  const mapPorts: CutPort[] = [
+    { id: "a", label: "A", type: "hero", y0: 0, y1: 0.5 },
+    { id: "b", label: "B", type: "rodape", y0: 0.5, y1: 1 },
+  ]
+
+  it("true para mesmos ids na mesma ordem (frações podem diferir)", () => {
+    const ajustado: CutPort[] = [
+      { id: "a", label: "A", type: "hero", y0: 0, y1: 0.7 },
+      { id: "b", label: "B", type: "rodape", y0: 0.7, y1: 1 },
+    ]
+    expect(sameCutPortIds(mapPorts, ajustado)).toBe(true)
+  })
+
+  it("false para override órfão (ids de mapa antigo), null ou tamanho diferente", () => {
+    const orfao: CutPort[] = [
+      { id: "velho1", label: "A", type: "hero", y0: 0, y1: 0.5 },
+      { id: "velho2", label: "B", type: "rodape", y0: 0.5, y1: 1 },
+    ]
+    expect(sameCutPortIds(mapPorts, orfao)).toBe(false)
+    expect(sameCutPortIds(mapPorts, null)).toBe(false)
+    expect(sameCutPortIds(mapPorts, [mapPorts[0]])).toBe(false)
   })
 })

@@ -161,6 +161,20 @@ export function portPixelRectWidthScaled(
 }
 
 /**
+ * True se as duas listas têm EXATAMENTE os mesmos ids na mesma ordem.
+ * Um cut_ports_override só vale contra o mapa que o originou — depois de
+ * remarcar/reaprovar o mapa (ids novos), o override antigo é órfão e
+ * deve ser ignorado POR INTEIRO (nunca misturar porta velha com nova).
+ */
+export function sameCutPortIds(
+  a: Array<Pick<CutPort, "id">>,
+  b: Array<Pick<CutPort, "id">> | null | undefined,
+): boolean {
+  if (!b || a.length !== b.length) return false
+  return a.every((p, i) => p.id === b[i].id)
+}
+
+/**
  * Converte as portas do MAPA (frações do modelo) para frações da imagem
  * DA LOJA usando a escala por largura — é o estado inicial do editor de
  * ajuste fino por loja. Normaliza para manter o invariante (contíguas,

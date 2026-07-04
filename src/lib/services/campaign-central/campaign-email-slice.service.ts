@@ -17,6 +17,7 @@ import { AppError } from "@/lib/api/errors"
 import {
   portPixelRect,
   portPixelRectWidthScaled,
+  sameCutPortIds,
 } from "@/lib/campaign-cuts/geometry"
 import type { CampaignCutMap, CutPort } from "@/types/campaign-cuts"
 import type { CampaignStoreEmail } from "@/types/campaign-store-emails"
@@ -89,10 +90,15 @@ export async function sliceStoreEmailPorts(
   const wanted = opts.portIds ? new Set(opts.portIds) : null
   const out: SlicedPort[] = []
 
-  // Ajuste fino por loja tem prioridade (frações da imagem DA LOJA);
-  // sem ele, escala por largura a partir do mapa.
+  // Ajuste fino por loja tem prioridade (frações da imagem DA LOJA) —
+  // mas SÓ se casar por inteiro com o mapa atual: depois de remarcar o
+  // corte modelo os ids mudam e o override antigo vira órfão (ignorado,
+  // nunca misturado). Sem override válido, escala por largura.
+  const overrideValid = sameCutPortIds(map.portas, row.cut_ports_override)
   const overrideById = new Map(
-    (row.cut_ports_override ?? []).map((p) => [p.id, p]),
+    overrideValid
+      ? (row.cut_ports_override ?? []).map((p) => [p.id, p])
+      : [],
   )
 
   for (let i = 0; i < map.portas.length; i++) {
