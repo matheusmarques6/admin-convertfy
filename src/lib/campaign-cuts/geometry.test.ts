@@ -13,6 +13,8 @@ import {
   portsAreContiguous,
   portPixelRect,
   portPixelRectWidthScaled,
+  portPixelRectsWidthScaled,
+  portPixelRectsFromFractions,
   widthScaledPortsToStoreFractions,
   sameCutPortIds,
   MIN_PORT_FRACTION,
@@ -248,5 +250,49 @@ describe("sameCutPortIds", () => {
     expect(sameCutPortIds(mapPorts, orfao)).toBe(false)
     expect(sameCutPortIds(mapPorts, null)).toBe(false)
     expect(sameCutPortIds(mapPorts, [mapPorts[0]])).toBe(false)
+  })
+})
+
+describe("portPixelRectsWidthScaled / portPixelRectsFromFractions (contiguidade)", () => {
+  const model = { w: 600, h: 3000 }
+  const ports: CutPort[] = [
+    { id: "a", label: "Header", type: "header", y0: 0, y1: 0.1 },
+    { id: "b", label: "Hero", type: "hero", y0: 0.1, y1: 0.6 },
+    { id: "c", label: "Texto", type: "texto", y0: 0.6, y1: 0.9 },
+    { id: "d", label: "Rodapé", type: "rodape", y0: 0.9, y1: 1 },
+  ]
+
+  function assertContiguous(rects: Array<{ top: number; height: number }>, h: number) {
+    expect(rects[0].top).toBe(0)
+    for (let i = 1; i < rects.length; i++) {
+      expect(rects[i].top).toBe(rects[i - 1].top + rects[i - 1].height)
+    }
+    const last = rects[rects.length - 1]
+    expect(last.top + last.height).toBe(h)
+    for (const r of rects) expect(r.height).toBeGreaterThanOrEqual(1)
+  }
+
+  it("fim da porta i é exatamente o início da porta i+1 (caso normal 2x)", () => {
+    const rects = portPixelRectsWidthScaled(ports, model, { w: 1200, h: 6800 })
+    assertContiguous(rects, 6800)
+    expect(rects[0]).toEqual({ top: 0, height: 600 }) // 0.1×3000×2
+  })
+
+  it("contíguo mesmo com loja MAIS CURTA que o modelo escalado (clamp)", () => {
+    // Modelo×2 = 6000px, loja só tem 2000px — fronteiras clampam mas
+    // nunca se cruzam nem deixam buraco.
+    const rects = portPixelRectsWidthScaled(ports, model, { w: 1200, h: 2000 })
+    assertContiguous(rects, 2000)
+  })
+
+  it("contíguo no caminho de frações da loja (override)", () => {
+    const rects = portPixelRectsFromFractions(ports, 7777)
+    assertContiguous(rects, 7777)
+  })
+
+  it("sem dimensões do modelo cai nas frações da loja, contíguo", () => {
+    const rects = portPixelRectsWidthScaled(ports, { w: null, h: null }, { w: 800, h: 1000 })
+    assertContiguous(rects, 1000)
+    expect(rects[0]).toEqual({ top: 0, height: 100 })
   })
 })

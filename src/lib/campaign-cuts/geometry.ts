@@ -174,6 +174,75 @@ export function sameCutPortIds(
   return a.every((p, i) => p.id === b[i].id)
 }
 
+function rectsFromBounds(
+  bounds: number[],
+): Array<{ top: number; height: number }> {
+  const out: Array<{ top: number; height: number }> = []
+  for (let i = 0; i < bounds.length - 1; i++) {
+    out.push({ top: bounds[i], height: bounds[i + 1] - bounds[i] })
+  }
+  return out
+}
+
+/**
+ * Fronteiras internas em px da LOJA a partir de uma conversão fração→px,
+ * clampadas de forma MONÓTONA (cada fronteira ≥ anterior+1 e deixa ao
+ * menos 1px pra cada porta restante). bounds[0]=0 e bounds[n]=altura —
+ * contiguidade perfeita por construção: fim da porta i É o início da
+ * porta i+1, sempre.
+ */
+function contiguousBounds(
+  ports: Array<Pick<CutPort, "y1">>,
+  storeH: number,
+  toPx: (y1: number) => number,
+): number[] {
+  const n = ports.length
+  const bounds: number[] = [0]
+  for (let i = 0; i < n - 1; i++) {
+    const raw = Math.round(toPx(clamp01(ports[i].y1)))
+    const lo = bounds[i] + 1
+    const hi = storeH - (n - 1 - i)
+    bounds.push(Math.min(Math.max(raw, lo), Math.max(hi, lo)))
+  }
+  bounds.push(storeH)
+  return bounds
+}
+
+/**
+ * Retângulos de TODAS as portas com escala por largura, CONTÍGUOS por
+ * construção (rects[i].top + rects[i].height === rects[i+1].top). É a
+ * função canônica do recorte e do preview — nunca calcular porta isolada
+ * para exibir/cortar, senão clamp/arredondamento podem descolar bordas.
+ * Sem dimensões do modelo, cai nas frações da altura da loja.
+ */
+export function portPixelRectsWidthScaled(
+  ports: CutPort[],
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): Array<{ top: number; height: number }> {
+  if (ports.length === 0) return []
+  if (!model.w || !model.h || !store.w || model.w <= 0) {
+    return portPixelRectsFromFractions(ports, store.h)
+  }
+  const scale = store.w / model.w
+  const mh = model.h
+  return rectsFromBounds(
+    contiguousBounds(ports, store.h, (y1) => y1 * mh * scale),
+  )
+}
+
+/**
+ * Retângulos de todas as portas a partir de frações da PRÓPRIA imagem da
+ * loja (cut_ports_override), contíguos por construção.
+ */
+export function portPixelRectsFromFractions(
+  ports: CutPort[],
+  storeH: number,
+): Array<{ top: number; height: number }> {
+  if (ports.length === 0) return []
+  return rectsFromBounds(contiguousBounds(ports, storeH, (y1) => y1 * storeH))
+}
+
 /**
  * Converte as portas do MAPA (frações do modelo) para frações da imagem
  * DA LOJA usando a escala por largura — é o estado inicial do editor de
@@ -185,16 +254,11 @@ export function widthScaledPortsToStoreFractions(
   model: { w: number | null; h: number | null },
   store: { w: number; h: number },
 ): CutPort[] {
-  const out = ports.map((p) => {
-    const r = portPixelRectWidthScaled(p, model, store)
-    return { ...p, y0: r.top / store.h, y1: (r.top + r.height) / store.h }
-  })
-  for (let i = 0; i < out.length; i++) {
-    out[i].y0 = i === 0 ? 0 : out[i - 1].y1
-    if (i === out.length - 1) out[i].y1 = 1
-    if (out[i].y1 < out[i].y0 + MIN_PORT_FRACTION) {
-      out[i].y1 = Math.min(1, out[i].y0 + MIN_PORT_FRACTION)
-    }
-  }
-  return out
+  // Mesmas fronteiras contíguas do recorte/preview, convertidas em frações.
+  const rects = portPixelRectsWidthScaled(ports, model, store)
+  return ports.map((p, i) => ({
+    ...p,
+    y0: rects[i].top / store.h,
+    y1: (rects[i].top + rects[i].height) / store.h,
+  }))
 }

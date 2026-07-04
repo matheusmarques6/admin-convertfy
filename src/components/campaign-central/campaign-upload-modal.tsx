@@ -59,8 +59,8 @@ import {
 import { matchNamesToStores } from "@/lib/campaign-cuts/store-match"
 import {
   movePortBoundary,
-  portPixelRect,
-  portPixelRectWidthScaled,
+  portPixelRectsFromFractions,
+  portPixelRectsWidthScaled,
   sameCutPortIds,
   widthScaledPortsToStoreFractions,
 } from "@/lib/campaign-cuts/geometry"
@@ -1202,15 +1202,19 @@ function UploadStoreContent({
   // Mesma conta do recorte server-side: preview = PNG baixado.
   // Ajuste fino da loja tem prioridade — mas SÓ se casar por inteiro com
   // o mapa atual (override de mapa remarcado é órfão e é ignorado).
+  // Todos os retângulos saem de UMA lista contígua por construção — o
+  // fim da porta i é exatamente o início da porta i+1.
   const overrideValid = sameCutPortIds(ports, email.cut_ports_override)
-  const overrideById = new Map(
-    overrideValid ? (email.cut_ports_override ?? []).map((p) => [p.id, p]) : [],
-  )
+  const rects = overrideValid
+    ? portPixelRectsFromFractions(email.cut_ports_override!, natH)
+    : portPixelRectsWidthScaled(
+        ports,
+        { w: modelW, h: modelH },
+        { w: natW, h: natH },
+      )
   const rectFor = (port: CutPort) => {
-    const o = overrideById.get(port.id)
-    return o
-      ? portPixelRect(o, natH)
-      : portPixelRectWidthScaled(port, { w: modelW, h: modelH }, { w: natW, h: natH })
+    const i = ports.findIndex((p) => p.id === port.id)
+    return rects[i] ?? { top: 0, height: natH }
   }
 
   const portCard = (port: CutPort, idx: number) => {

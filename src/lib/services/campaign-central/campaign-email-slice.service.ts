@@ -15,8 +15,8 @@ import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/server"
 import { AppError } from "@/lib/api/errors"
 import {
-  portPixelRect,
-  portPixelRectWidthScaled,
+  portPixelRectsFromFractions,
+  portPixelRectsWidthScaled,
   sameCutPortIds,
 } from "@/lib/campaign-cuts/geometry"
 import type { CampaignCutMap, CutPort } from "@/types/campaign-cuts"
@@ -94,24 +94,21 @@ export async function sliceStoreEmailPorts(
   // mas SÓ se casar por inteiro com o mapa atual: depois de remarcar o
   // corte modelo os ids mudam e o override antigo vira órfão (ignorado,
   // nunca misturado). Sem override válido, escala por largura.
+  // Os retângulos saem TODOS de uma lista contígua por construção —
+  // o fim da porta i é exatamente o início da porta i+1.
   const overrideValid = sameCutPortIds(map.portas, row.cut_ports_override)
-  const overrideById = new Map(
-    overrideValid
-      ? (row.cut_ports_override ?? []).map((p) => [p.id, p])
-      : [],
-  )
+  const rects = overrideValid
+    ? portPixelRectsFromFractions(row.cut_ports_override!, height)
+    : portPixelRectsWidthScaled(
+        map.portas,
+        { w: map.image_natural_w, h: map.image_natural_h },
+        { w: width, h: height },
+      )
 
   for (let i = 0; i < map.portas.length; i++) {
     const port = map.portas[i]
     if (wanted && !wanted.has(port.id)) continue
-    const override = overrideById.get(port.id)
-    const { top, height: sliceH } = override
-      ? portPixelRect(override, height)
-      : portPixelRectWidthScaled(
-          port,
-          { w: map.image_natural_w, h: map.image_natural_h },
-          { w: width, h: height },
-        )
+    const { top, height: sliceH } = rects[i]
     const slice = await sharp(buffer)
       .extract({ left: 0, top, width, height: sliceH })
       .png()
