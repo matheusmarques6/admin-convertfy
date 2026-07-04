@@ -99,6 +99,10 @@ export function CampaignCutMappingModal({
   const imgWrapRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dirtyRef = useRef(false)
+  // Skip do autosave na hidratação inicial (abrir ≠ editar).
+  const justLoadedRef = useRef(false)
+  // Bloqueia autosave pendente logo após aprovar (não rebaixar pra draft).
+  const suppressSaveRef = useRef(false)
   const dragRef = useRef<DragState>(null)
   dragRef.current = drag
 
@@ -128,6 +132,7 @@ export function CampaignCutMappingModal({
         setMap(m)
         setTitle((t) => payload.campaign_title ?? t)
         if (m) {
+          justLoadedRef.current = true
           setPorts(m.portas.length > 0 ? m.portas : initialPorts())
           setAreas(m.special_areas ?? [])
           setImageUrl(m.image_url)
@@ -177,6 +182,10 @@ export function CampaignCutMappingModal({
 
   const saveDraft = useCallback(async () => {
     if (!payloadRef.current().image_url) return
+    // Depois de aprovar, um timer de autosave pendente NÃO pode regravar
+    // como rascunho (rebaixaria o mapa recém-aprovado). Uma edição real
+    // posterior reabilita o autosave no effect.
+    if (suppressSaveRef.current) return
     dirtyRef.current = false
     setSaveState("saving")
     try {
@@ -193,6 +202,14 @@ export function CampaignCutMappingModal({
 
   useEffect(() => {
     if (loading || !imageUrl) return
+    // A primeira execução após a CARGA não é edição do usuário — sem esse
+    // skip, abrir o modal já regravava o mapa como rascunho (rebaixando um
+    // mapa aprovado sem nenhuma ação do usuário).
+    if (justLoadedRef.current) {
+      justLoadedRef.current = false
+      return
+    }
+    suppressSaveRef.current = false // edição real reabilita o autosave
     dirtyRef.current = true
     if (drag) return // flush acontece no fim do drag
     const t = window.setTimeout(() => void saveDraft(), 1000)
@@ -422,6 +439,7 @@ export function CampaignCutMappingModal({
         throw new Error(j.error || `Erro ${res.status}`)
       }
       dirtyRef.current = false
+      suppressSaveRef.current = true
       const taskDone = await onApproved()
       setSuccess({ count: ports.length, taskDone })
     } catch (e) {
