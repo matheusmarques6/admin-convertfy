@@ -469,6 +469,26 @@ export function CampaignCutMappingModal({
                 <FileImage size={11} /> {imageMeta.filename}
               </span>
             )}
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Trocar a imagem de referência? As portas marcadas são mantidas, mas o mapa volta para rascunho e precisa ser reaprovado.",
+                    )
+                  ) {
+                    return
+                  }
+                  setImageUrl(null)
+                  setImageMeta({ path: null, filename: null, w: null, h: null })
+                }}
+                className="hidden items-center gap-1 rounded-[5px] border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted sm:inline-flex"
+                title="Voltar para a escolha de imagem (import do Figma ou upload)"
+              >
+                <Upload size={11} /> Trocar imagem
+              </button>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="hidden text-[11px] text-muted-foreground sm:inline">
