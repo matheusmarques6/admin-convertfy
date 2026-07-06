@@ -125,6 +125,8 @@ const COMERCIAL_NAV: NavGroup[] = [
     label: "Atendimento",
     items: [
       { id: "comercial.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      { id: "comercial.canais", name: "Canais", href: ROUTES.ADMIN.COMERCIAL.CANAIS, icon: Phone },
+      { id: "comercial.automacoes", name: "Automacoes", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
       { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
     ],
   },
@@ -193,15 +195,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
       { id: "ops.campaigns.list", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail },
       { id: "ops.insights", name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
       { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
-    ],
-  },
-  {
-    key: "atendimento",
-    label: "Atendimento",
-    items: [
-      { id: "ops.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
-      { id: "ops.canais", name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
-      { id: "ops.automacoes", name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
     ],
   },
   {

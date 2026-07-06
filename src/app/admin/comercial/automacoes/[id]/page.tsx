@@ -125,7 +125,7 @@ export default function AutomationDetailPage({
       actions={
         <>
           <Link
-            href={ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST}
+            href={ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST}
             className="crm-button-ghost"
             style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
           >

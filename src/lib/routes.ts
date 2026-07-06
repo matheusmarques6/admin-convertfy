@@ -87,6 +87,11 @@ export const ROUTES = {
       DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
       FORMS: "/admin/comercial/forms",
       FORM_DETAIL: (id: string) => `/admin/comercial/forms/${id}` as const,
+      AUTOMACOES: {
+        LIST: "/admin/comercial/automacoes",
+        DETAIL: (id: string) => `/admin/comercial/automacoes/${id}` as const,
+      },
+      CANAIS: "/admin/comercial/canais",
       REPORTS: "/admin/comercial/reports",
     },
 
@@ -102,11 +107,6 @@ export const ROUTES = {
         `/admin/operacional/deals/${id}/detail` as const,
       FORMS: "/admin/operacional/forms",
       FORM_DETAIL: (id: string) => `/admin/operacional/forms/${id}` as const,
-      AUTOMACOES: {
-        LIST: "/admin/operacional/automacoes",
-        DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,
-      },
-      CANAIS: "/admin/operacional/canais",
       REPORTS: "/admin/operacional/reports",
       // Workflows Monday-style (Onboarding Ops, Acompanhamento, Feedback,
       // Suporte) — kanbans com automacoes baseadas em triggers/actions.

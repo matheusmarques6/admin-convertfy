@@ -21,7 +21,7 @@ Gates por role centralizados em `src/lib/permissions/role-access.ts` — cada it
 ### COMERCIAL (sales, sales_manager, admin, dev)
 - **Overview**: `/admin/comercial/dashboard`
 - **Vendas**: Pipelines (`/admin/comercial/pipelines` — kanban de deals), Leads, Formulários
-- **Atendimento**: Inbox (`/admin/inbox` — WhatsApp/Instagram unificado), Reuniões
+- **Atendimento**: Inbox (`/admin/inbox` — WhatsApp/Instagram unificado), Canais (`/admin/comercial/canais`), Automações (`/admin/comercial/automacoes` — builder ReactFlow), Reuniões
 - **Análise**: Reports
 
 ### OPERACIONAL (cs, ops_manager, marketing, admin, dev)
@@ -30,7 +30,6 @@ Gates por role centralizados em `src/lib/permissions/role-access.ts` — cada it
 - **Customer Success**: Formulários CS, Pipelines CS, Ritual de Sexta, Cadências
 - **Onboarding**: `/admin/onboarding` + Tutorial do Cliente
 - **Marketing**: Central de Campanhas (`/admin/campaigns/central`), Campanhas, Insights IA, Limpeza de lista
-- **Atendimento**: Inbox, Canais, Automações (`/admin/operacional/automacoes` — builder ReactFlow)
 - **Análise**: Reports
 
 ### GERAL (todos, com filtros)

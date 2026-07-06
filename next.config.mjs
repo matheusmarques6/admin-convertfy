@@ -74,6 +74,9 @@ const nextConfig = {
       // CRM legado — subURLs granulares ja 404avam; catch-all para bookmarks
       { source: "/admin/crm/:path*", destination: "/admin/comercial/pipelines", permanent: false },
       { source: "/admin/cs-crm/:path*", destination: "/admin/operacional/cs-crm/:path*", permanent: true },
+      // Atendimento migrou do workspace Operacional para o Comercial
+      { source: "/admin/operacional/automacoes/:path*", destination: "/admin/comercial/automacoes/:path*", permanent: true },
+      { source: "/admin/operacional/canais", destination: "/admin/comercial/canais", permanent: true },
 
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },
