@@ -2,6 +2,11 @@
 const nextConfig = {
   compress: true,
   cleanDistDir: true,
+  experimental: {
+    // recharts, date-fns e lucide-react já estão na lista default do Next 15.5
+    // (node_modules/next/dist/server/config.js) — não repetir aqui.
+    optimizePackageImports: ["@hello-pangea/dnd"],
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },

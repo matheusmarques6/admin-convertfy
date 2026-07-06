@@ -11,20 +11,21 @@
  *   - Execuções recentes (50, erros destacados)
  */
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import useSWR from "swr"
 import { Loader2 } from "lucide-react"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
+
+const AiUsageCostChart = dynamic(
+  () => import("./ai-usage-cost-chart").then((m) => ({ default: m.AiUsageCostChart })),
+  {
+    loading: () => <Skeleton className="h-full w-full rounded-[6px]" />,
+    ssr: false,
+  }
+)
 
 interface Aggregate {
   runs: number
@@ -200,21 +201,7 @@ export function AiUsageDashboard() {
               Custo por dia (USD)
             </h3>
             <div className="h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={payload.by_day}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" />
-                  <XAxis
-                    dataKey="day"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(d: string) => d.slice(5)}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
-                  <Tooltip
-                    formatter={(value) => [`$${Number(value ?? 0).toFixed(4)}`, "Custo"]}
-                  />
-                  <Bar dataKey="cost_usd" fill="#1F1F1F" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <AiUsageCostChart data={payload.by_day} />
             </div>
           </div>
 
