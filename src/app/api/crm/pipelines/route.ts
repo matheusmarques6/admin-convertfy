@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 /**
  * GET /api/crm/pipelines?scope=sales|cs
  * POST /api/crm/pipelines
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic"
 
 const scopeSchema = z.enum(["sales", "cs", "internal", "all"]).default("all")
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const sb = await createClient()
     await requireAuth(sb)
@@ -176,3 +177,5 @@ export async function POST(request: NextRequest) {
     return errorResponse(request, error, "crm-pipelines-post")
   }
 }
+
+export const GET = withTiming("crm/pipelines", handleGet)

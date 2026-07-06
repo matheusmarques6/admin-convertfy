@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
@@ -14,7 +15,7 @@ const log = logger.child("StoresOverview")
 
 export const dynamic = "force-dynamic"
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const uc = await createClient()
     const user = await requireAuth(uc)
@@ -238,3 +239,5 @@ export async function GET(request: NextRequest) {
     return errorResponse(request, error, "stores-overview")
   }
 }
+
+export const GET = withTiming("dashboard/stores-overview", handleGet)

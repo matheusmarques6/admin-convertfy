@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 /**
  * GET /api/crm/inbox/threads
  *
@@ -18,7 +19,7 @@ const log = logger.child("CrmInboxThreads")
 
 export const dynamic = "force-dynamic"
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const sb = await createClient()
     const user = await requireAuth(sb)
@@ -61,3 +62,5 @@ export async function GET(request: NextRequest) {
     return errorResponse(request, error, "crm-inbox-threads")
   }
 }
+
+export const GET = withTiming("crm/inbox/threads", handleGet)

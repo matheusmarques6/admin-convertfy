@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest } from "next/server"
 import {
   AppError,
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
@@ -170,3 +171,5 @@ export async function GET(request: NextRequest) {
     return errorResponse(request, error, "me-tasks")
   }
 }
+
+export const GET = withTiming("me/tasks", handleGet)

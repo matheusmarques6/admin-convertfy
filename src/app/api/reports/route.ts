@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth } from "@/lib/api/errors"
@@ -14,7 +15,7 @@ import type { ReportJob } from "@/types/report"
  *   ?limit=10             — max results (default 20, max 100)
  *   ?cursor=<id>          — cursor-based pagination (job id)
  */
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     await requireAuth(supabase)
@@ -81,3 +82,5 @@ export async function GET(request: NextRequest) {
     return errorResponse(request, error, "ReportsList")
   }
 }
+
+export const GET = withTiming("reports", handleGet)

@@ -34,7 +34,6 @@ async function handleGet(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const orgId = await resolveOrgId(user.id)
-    await ensureOnboardingBootstrapForRead(orgId, user.id)
     const admin = createAdminClient()
 
     const sp = request.nextUrl.searchParams
@@ -61,18 +60,34 @@ async function handleGet(request: NextRequest) {
     if (status) q = q.eq("status", status)
     else q = q.eq("status", "in_progress")
 
-    // Tambem retorna a pipeline + colunas
-    const [{ data, error }, { data: pipeline }] = await Promise.all([
-      q,
+    // Tambem retorna a pipeline + colunas. O bootstrap (checagem barata +
+    // re-sync em background quando o TTL expira) roda em paralelo — a query
+    // principal nao depende dele (onboardings so existem via createOnboarding,
+    // que bootstrapa internamente).
+    const fetchPipeline = () =>
       admin
         .from("operational_pipelines")
         .select("*")
         .eq("org_id", orgId)
         .eq("type", "onboarding")
         .eq("is_active", true)
-        .maybeSingle(),
+        .maybeSingle()
+
+    const [{ data, error }, pipelineRes] = await Promise.all([
+      q,
+      fetchPipeline(),
+      ensureOnboardingBootstrapForRead(orgId, user.id),
     ])
     if (error) throw error
+
+    let pipeline = pipelineRes.data
+    if (!pipeline) {
+      // Caso raro (primeiro GET de org nova): o bootstrap acabou de criar a
+      // pipeline dentro do mesmo Promise.all — re-fetch garante payload
+      // identico ao comportamento anterior (colunas ja na primeira resposta).
+      const { data: fresh } = await fetchPipeline()
+      pipeline = fresh
+    }
 
     // Calcula status efetivo de pagamento/contrato em runtime
     // (unified_invoices + contracts + subscriptions atreladas)
