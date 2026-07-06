@@ -22,6 +22,8 @@ const orNull = <T extends z.ZodTypeAny>(s: T) => s.nullable().optional()
 
 const kpisOverridesPatchSchema = z
   .object({
+    // Moeda de exibição (ISO 4217); null = restaurar a do snapshot.
+    currency: orNull(z.string().regex(/^[A-Z]{3}$/)),
     kpis: z
       .object({
         receita_total: orNull(money),

@@ -31,7 +31,13 @@ function isEmptyOverrides(o: ReportKpisOverrides | null | undefined): boolean {
   if (!o) return true
   const hasKeys = (obj?: Record<string, unknown>) =>
     !!obj && Object.keys(obj).length > 0
-  return !hasKeys(o.kpis) && !hasKeys(o.email) && !hasKeys(o.campaigns) && !hasKeys(o.flows)
+  return (
+    !o.currency &&
+    !hasKeys(o.kpis) &&
+    !hasKeys(o.email) &&
+    !hasKeys(o.campaigns) &&
+    !hasKeys(o.flows)
+  )
 }
 
 /**
@@ -55,6 +61,12 @@ export function applyKpisOverrides(
   // Deep clone (consistente com applyMetricsOverrides do weekly)
   const out = JSON.parse(JSON.stringify(snapshot)) as ReportSnapshot
   const paths: string[] = []
+
+  // ── moeda de exibição ───────────────────────────────────────────────
+  if (o.currency) {
+    out.account = { ...(out.account ?? {}), currency: o.currency }
+    paths.push("currency")
+  }
 
   // ── kpis ────────────────────────────────────────────────────────────
   const ok = o.kpis ?? {}
@@ -147,6 +159,12 @@ export function mergeKpisOverrides(
   patch: ReportKpisOverridesPatch,
 ): ReportKpisOverrides {
   const out: ReportKpisOverrides = JSON.parse(JSON.stringify(prev ?? {}))
+
+  // Escalar top-level: moeda de exibição (null = restaurar a do snapshot).
+  if (patch.currency !== undefined) {
+    if (patch.currency === null) delete out.currency
+    else out.currency = patch.currency
+  }
 
   const mergeFlat = (branch: "kpis" | "email") => {
     const p = patch[branch]

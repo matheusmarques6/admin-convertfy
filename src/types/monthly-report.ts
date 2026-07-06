@@ -86,6 +86,9 @@ export interface ReportSnapshotRow {
  *  a edição escreve sempre em pedidos_loja, que o helper storeOrders()
  *  já prioriza sobre o campo legado). */
 export interface ReportKpisOverrides {
+  /** Moeda de EXIBIÇÃO do relatório (código ISO 4217, ex. "USD") —
+   *  sobrepõe snapshot.account.currency na leitura. */
+  currency?: string
   kpis?: Partial<{
     receita_total: number
     receita_atribuida: number
@@ -125,6 +128,8 @@ export interface ReportKpisOverrides {
 /** Patch enviado ao PATCH da API: mesmas chaves, folhas aceitam null =
  *  "restaurar" (remove a chave persistida). */
 export type ReportKpisOverridesPatch = {
+  /** null = restaurar a moeda do snapshot. */
+  currency?: string | null
   kpis?: Partial<Record<keyof NonNullable<ReportKpisOverrides["kpis"]>, number | null>>
   email?: Partial<Record<keyof NonNullable<ReportKpisOverrides["email"]>, number | null>>
   campaigns?: Record<string, { revenue?: number | null; name?: string | null }>

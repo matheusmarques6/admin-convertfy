@@ -81,17 +81,31 @@ export function ReportSlidesEditor({
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>(new Map())
+  // Moeda escolhida na sessão de edição (null = sem mudança nesta sessão).
+  const [currencyDraft, setCurrencyDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const currency =
+  const snapshotCurrency =
     (snapshot.account?.currency as string | undefined) ?? "BRL"
+  // Escolher a moeda ORIGINAL do snapshot = restaurar (null no patch).
+  const currencyPatchValue =
+    currencyDraft === null
+      ? undefined
+      : currencyDraft === snapshotCurrency
+        ? null
+        : currencyDraft
+  const currencyChanged =
+    currencyDraft !== null &&
+    currencyDraft !== (overrides.currency ?? snapshotCurrency)
 
   // Overrides efetivos: salvos + draft (draft null remove). mergeKpisOverrides
   // já trata null-removal e produz um ReportKpisOverrides limpo.
-  const effectiveOverrides = useMemo(
-    () => (editing ? mergeKpisOverrides(overrides, flatToPatch(draft)) : overrides),
-    [editing, overrides, draft],
-  )
+  const effectiveOverrides = useMemo(() => {
+    if (!editing) return overrides
+    const patch = flatToPatch(draft)
+    if (currencyPatchValue !== undefined) patch.currency = currencyPatchValue
+    return mergeKpisOverrides(overrides, patch)
+  }, [editing, overrides, draft, currencyPatchValue])
   const { snapshot: merged, overriddenPaths } = useMemo(
     () => applyKpisOverrides(snapshot, effectiveOverrides),
     [snapshot, effectiveOverrides],
@@ -128,6 +142,11 @@ export function ReportSlidesEditor({
     [editing, reportId, router],
   )
 
+  // Moeda MERGED (override/draft aplicados) — inputs de currency coerentes
+  // com o que os slides mostram.
+  const mergedCurrency =
+    (merged.account?.currency as string | undefined) ?? "BRL"
+
   const ctx: ReportEditCtx = useMemo(
     () => ({
       editing,
@@ -135,18 +154,20 @@ export function ReportSlidesEditor({
       setValue,
       resetField,
       isOverridden: (path) => overriddenSet.has(path),
-      currency,
+      currency: mergedCurrency,
     }),
-    [editing, draft, setValue, resetField, overriddenSet, currency],
+    [editing, draft, setValue, resetField, overriddenSet, mergedCurrency],
   )
 
   const startEditing = useCallback(() => {
     setDraft(new Map())
+    setCurrencyDraft(null)
     setEditing(true)
   }, [])
 
   const cancelEditing = useCallback(() => {
     setDraft(new Map())
+    setCurrencyDraft(null)
     setEditing(false)
   }, [])
 
@@ -166,12 +187,14 @@ export function ReportSlidesEditor({
           : value === original
       toSend.set(path, equal ? null : value)
     }
+    const patch = flatToPatch(toSend)
+    if (currencyPatchValue !== undefined) patch.currency = currencyPatchValue
     setSaving(true)
     try {
       const res = await fetch(`/api/admin/stores/reports/${reportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kpis_overrides: flatToPatch(toSend) }),
+        body: JSON.stringify({ kpis_overrides: patch }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -184,9 +207,30 @@ export function ReportSlidesEditor({
     } finally {
       setSaving(false)
     }
-  }, [draft, snapshot, reportId, router])
+  }, [draft, snapshot, reportId, router, currencyPatchValue])
 
-  const changedCount = draft.size
+  const changedCount = draft.size + (currencyChanged ? 1 : 0)
+
+  const CURRENCY_OPTIONS = ["BRL", "USD", "EUR", "GBP", "MXN", "CAD", "AUD"]
+  const displayCurrency = editing ? mergedCurrency : (overrides.currency ?? snapshotCurrency)
+
+  const handleCurrencySelect = (value: string) => {
+    if (value === "__other__") {
+      const raw = window.prompt(
+        "Código da moeda (3 letras, ISO 4217 — ex.: CHF, JPY, ARS):",
+        displayCurrency,
+      )
+      if (!raw) return
+      const code = raw.trim().toUpperCase()
+      if (!/^[A-Z]{3}$/.test(code)) {
+        alert("Código inválido — use exatamente 3 letras (ex.: USD).")
+        return
+      }
+      setCurrencyDraft(code)
+      return
+    }
+    setCurrencyDraft(value)
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -205,6 +249,30 @@ export function ReportSlidesEditor({
               <span className="font-normal"> — clique nos números para editar</span>
             </span>
             <div className="flex items-center gap-2">
+              <label
+                className="flex items-center gap-1.5 text-[12px] font-medium"
+                style={{ color: "#92400E" }}
+              >
+                Moeda:
+                <select
+                  value={displayCurrency}
+                  onChange={(e) => handleCurrencySelect(e.target.value)}
+                  disabled={saving}
+                  className="rounded-[6px] px-1.5 py-1 text-[12px] font-semibold"
+                  style={{ border: "1px solid #FDE68A", background: "#fff", color: "#92400E" }}
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                      {c === snapshotCurrency ? " (original)" : ""}
+                    </option>
+                  ))}
+                  {!CURRENCY_OPTIONS.includes(displayCurrency) && (
+                    <option value={displayCurrency}>{displayCurrency}</option>
+                  )}
+                  <option value="__other__">Outra…</option>
+                </select>
+              </label>
               <button
                 onClick={cancelEditing}
                 disabled={saving}
@@ -227,8 +295,9 @@ export function ReportSlidesEditor({
           <>
             <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.6)" }}>
               {overriddenSet.size > 0
-                ? `${overriddenSet.size} ${overriddenSet.size === 1 ? "número editado manualmente" : "números editados manualmente"}`
+                ? `${overriddenSet.size} ${overriddenSet.size === 1 ? "campo editado manualmente" : "campos editados manualmente"}`
                 : "Ajuste manual dos números do relatório"}
+              {overrides.currency ? ` · moeda: ${overrides.currency} (editada)` : ""}
             </span>
             <button
               onClick={startEditing}

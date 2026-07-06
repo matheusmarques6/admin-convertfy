@@ -137,6 +137,9 @@ function currencySymbol(currency: string): string {
   if (currency === "USD") return "US$"
   if (currency === "EUR") return "€"
   if (currency === "GBP") return "£"
+  if (currency === "MXN") return "MX$"
+  if (currency === "CAD") return "CA$"
+  if (currency === "AUD") return "AU$"
   return currency
 }
 
@@ -194,7 +197,7 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
         <SlideAtribuida snapshot={snapshot} currency={currency} />
       </SlideShell>
       <SlideShell n={4} total={7} title="Performance de e-mail" storeName={storeName} monthLabel={monthLabel}>
-        <SlideEmail snapshot={snapshot} />
+        <SlideEmail snapshot={snapshot} currency={currency} />
       </SlideShell>
       <SlideShell n={5} total={7} title="Campanhas & Flows" storeName={storeName} monthLabel={monthLabel}>
         <SlideRankings snapshot={snapshot} currency={currency} />
@@ -1296,7 +1299,7 @@ function MicroStat({ label, value, sub }: { label: string; value: React.ReactNod
 
 // ─── Slide 4 · Performance de e-mail ──────────────────────────
 
-function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
+function SlideEmail({ snapshot, currency }: { snapshot: ReportSnapshot; currency: string }) {
   const e = snapshot.email ?? {}
   const k = snapshot.kpis ?? {}
   const delivered = e.delivered ?? k.envios ?? 0
@@ -1369,7 +1372,7 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
                 label: "Receita",
                 pct: 0.001,
                 color: C.pos,
-                abs: fmtCurrency(revenue, "BRL", { compact: true }),
+                abs: fmtCurrency(revenue, currency, { compact: true }),
               },
             ]}
           />

@@ -206,3 +206,40 @@ describe("mergeKpisOverrides", () => {
     expect(prev.kpis?.receita_total).toBe(1_100_000)
   })
 })
+
+describe("moeda editável (currency)", () => {
+  it("apply: troca account.currency e marca o path", () => {
+    const { snapshot, overriddenPaths } = applyKpisOverrides(makeSnapshot(), {
+      currency: "USD",
+    })
+    expect(snapshot.account?.currency).toBe("USD")
+    expect(overriddenPaths).toContain("currency")
+  })
+
+  it("apply: snapshot sem account ganha account com a moeda", () => {
+    const snap = makeSnapshot({ account: undefined })
+    const { snapshot } = applyKpisOverrides(snap, { currency: "EUR" })
+    expect(snapshot.account?.currency).toBe("EUR")
+  })
+
+  it("apply: sem override de moeda o snapshot fica intacto", () => {
+    const { snapshot } = applyKpisOverrides(makeSnapshot(), {
+      kpis: { receita_total: 5 },
+    })
+    expect(snapshot.account?.currency).toBe("BRL")
+  })
+
+  it("merge: seta, sobrescreve e null restaura (chave some)", () => {
+    let o: ReportKpisOverrides = mergeKpisOverrides({}, { currency: "USD" })
+    expect(o.currency).toBe("USD")
+    o = mergeKpisOverrides(o, { currency: "EUR" })
+    expect(o.currency).toBe("EUR")
+    o = mergeKpisOverrides(o, { currency: null })
+    expect("currency" in o).toBe(false)
+  })
+
+  it("merge: patch sem currency preserva a salva", () => {
+    const o = mergeKpisOverrides({ currency: "USD" }, { kpis: { envios: 1 } })
+    expect(o.currency).toBe("USD")
+  })
+})
