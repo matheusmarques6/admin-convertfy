@@ -1,5 +1,6 @@
 import { Kanban } from "lucide-react"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
+import { getSessionUser, getProfileByUserId } from "@/lib/services/admin-auth.service"
 import { PageHeader } from "@/components/ui/page-header"
 import { PipelineContent } from "@/components/pipeline/pipeline-content"
 import { PipelineStoreInitializer } from "@/components/pipeline/pipeline-store-initializer"
@@ -8,30 +9,22 @@ import type { PipelineMemberRole } from "@/types"
 export const dynamic = "force-dynamic"
 
 async function getPipelineData(searchPipelineId?: string) {
-  const supabase = await createClient()
   const adminClient = createAdminClient()
 
-  // Get current user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // user/profile e a lista de pipelines são independentes — uma onda.
+  // (getSessionUser/getProfileByUserId dedupam com o layout via React.cache.)
+  const [{ user, profile }, { data: pipelines }] = await Promise.all([
+    getSessionUser().then(async (user) => ({
+      user,
+      profile: user ? await getProfileByUserId(user.id) : null,
+    })),
+    adminClient
+      .from("pipelines")
+      .select("*")
+      .order("created_at", { ascending: true }),
+  ])
 
-  // Check if user is admin
-  let isAdmin = false
-  if (user) {
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-    isAdmin = profile?.role === "admin"
-  }
-
-  // Fetch pipelines using adminClient to bypass RLS
-  const { data: pipelines } = await adminClient
-    .from("pipelines")
-    .select("*")
-    .order("created_at", { ascending: true })
+  const isAdmin = profile?.role === "admin"
 
   // Select pipeline: by ID param, or default, or first available
   let selectedPipeline = searchPipelineId

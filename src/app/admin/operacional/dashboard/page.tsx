@@ -12,6 +12,11 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
+import {
+  getSessionUser,
+  getProfileByUserId,
+  getActiveOrgMember,
+} from "@/lib/services/admin-auth.service"
 import type { DashboardAlert } from "@/types"
 
 export const dynamic = "force-dynamic"
@@ -32,7 +37,10 @@ async function getDashboardData() {
 
   const now = new Date()
   const { weekStart, weekEnd } = getWeekBounds(now)
+  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
+  // Nenhuma das 13 queries depende de outra — uma única onda de Promise.all
+  // (antes eram dois batches sequenciais de 9 + 4).
   const [
     { data: meetings },
     { data: activities },
@@ -43,6 +51,10 @@ async function getDashboardData() {
     { count: draftReportsCount },
     { count: draftCampaignsCount },
     { count: pendingReviewCampaignsCount },
+    { data: expiringContracts },
+    { data: lowHealthClients },
+    { data: overdueCharges },
+    { data: storeAlerts },
   ] = await Promise.all([
     supabase
       .from("meetings")
@@ -96,15 +108,6 @@ async function getDashboardData() {
       .from("campaigns")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending_review"),
-  ])
-
-  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
-  const [
-    { data: expiringContracts },
-    { data: lowHealthClients },
-    { data: overdueCharges },
-    { data: storeAlerts },
-  ] = await Promise.all([
     supabase
       .from("contracts")
       .select("id, plan_name, end_date, client:clients(id, name)")
@@ -255,12 +258,9 @@ const EMPTY_DASHBOARD_DATA = {
 }
 
 export default async function OperacionalDashboardPage() {
-  const supabase = await createClient()
-
   let authUser
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    authUser = user
+    authUser = await getSessionUser()
   } catch (err) {
     console.error("[OperacionalDashboardPage] auth.getUser() failed:", err)
     redirect("/login")
@@ -270,31 +270,19 @@ export default async function OperacionalDashboardPage() {
     redirect("/login")
   }
 
-  const { data: authProfile } = await supabase
-    .from("profiles")
-    .select("role, name")
-    .eq("id", authUser.id)
-    .single()
+  // profile, org_member e o dashboard dependem só de authUser.id — uma onda.
+  // (getSessionUser/getProfileByUserId dedupam com o layout via React.cache.)
+  const [authProfile, authOrgMember, data] = await Promise.all([
+    getProfileByUserId(authUser.id),
+    getActiveOrgMember(authUser.id),
+    getDashboardData().catch((err) => {
+      console.error("[OperacionalDashboardPage] getDashboardData() failed:", err)
+      return EMPTY_DASHBOARD_DATA
+    }),
+  ])
 
   const isAdmin = authProfile?.role === "admin"
-
-  const { data: authOrgMember } = await supabase
-    .from("org_members")
-    .select("role")
-    .eq("profile_id", authUser.id)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
-
   const userRole = isAdmin ? "owner" : (authOrgMember?.role || "support")
-
-  let data
-  try {
-    data = await getDashboardData()
-  } catch (err) {
-    console.error("[OperacionalDashboardPage] getDashboardData() failed:", err)
-    data = EMPTY_DASHBOARD_DATA
-  }
 
   const userName = authProfile?.name || authUser.email?.split("@")[0] || "Usuário"
 

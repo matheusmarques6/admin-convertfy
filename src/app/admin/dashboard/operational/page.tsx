@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import {
+  getSessionUser,
+  getProfileByUserId,
+  getActiveOrgMember,
+} from "@/lib/services/admin-auth.service"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
 import { OperationalMetrics } from "@/components/dashboard/operational/operational-metrics"
@@ -13,27 +18,18 @@ export const dynamic = "force-dynamic"
 
 async function getOperationalData() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   if (!user) redirect("/login")
 
-  // 1. Buscar org_member do agente
-  const { data: orgMember } = await supabase
-    .from("org_members")
-    .select("id, role")
-    .eq("profile_id", user.id)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
+  // org_member e profile dependem só de user.id — uma onda (dedupe com o
+  // layout via React.cache). Redirects avaliados nas mesmas condições.
+  const [orgMember, profile] = await Promise.all([
+    getActiveOrgMember(user.id),
+    getProfileByUserId(user.id),
+  ])
 
   if (!orgMember) redirect("/login")
-
-  // Se e admin/owner, redirecionar para dashboard admin
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
 
   if (profile?.role === "admin" || orgMember.role === "owner") {
     redirect("/admin/dashboard")

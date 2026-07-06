@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import { ClipboardList } from "lucide-react"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
+import { getSessionUser, getActiveOrgMember } from "@/lib/services/admin-auth.service"
 import { PageHeader } from "@/components/ui/page-header"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -22,18 +23,10 @@ interface ResolvedUser {
 }
 
 async function resolveCurrentUser(): Promise<ResolvedUser | null> {
-  const supabase = await createClient()
-  const adminClient = createAdminClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
   if (!user) return null
 
-  const { data: currentMember } = await adminClient
-    .from("org_members")
-    .select("id, org_id, role")
-    .eq("profile_id", user.id)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
+  const currentMember = await getActiveOrgMember(user.id)
 
   if (!currentMember?.org_id) return null
 
@@ -109,22 +102,8 @@ async function getTasks(orgId: string, allowedSourceTypes: TaskSourceType[], org
   return tasks || []
 }
 
-async function getTeamMembers() {
-  const supabase = await createClient()
+async function getTeamMembers(orgId: string) {
   const adminClient = createAdminClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return []
-
-  const { data: currentMember } = await adminClient
-    .from("org_members")
-    .select("org_id")
-    .eq("profile_id", user.id)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
-
-  if (!currentMember?.org_id) return []
 
   const { data: members } = await adminClient
     .from("org_members")
@@ -133,7 +112,7 @@ async function getTeamMembers() {
       role,
       profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
     `)
-    .eq("org_id", currentMember.org_id)
+    .eq("org_id", orgId)
     .eq("is_active", true)
     .order("role", { ascending: true })
 
@@ -192,23 +171,8 @@ async function getStores(orgId: string) {
   }))
 }
 
-async function getMeetings(orgId: string) {
-  const supabase = await createClient()
+async function getMeetings(orgId: string, userId: string, orgMemberId: string) {
   const adminClient = createAdminClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  const userId = user?.id
-
-  let orgMemberId: string | null = null
-  if (userId) {
-    const { data: orgMember } = await adminClient
-      .from("org_members")
-      .select("id")
-      .eq("profile_id", userId)
-      .eq("is_active", true)
-      .single()
-    orgMemberId = orgMember?.id || null
-  }
 
   const { data: meetings } = await adminClient
     .from("meetings")
@@ -309,15 +273,18 @@ export default async function BoardPage() {
     )
   }
 
-  const { orgId, orgMemberId, role } = currentUser
-  const allowedSourceTypes = await getAllowedSourceTypes(orgMemberId, role)
+  const { orgId, orgMemberId, role, userId } = currentUser
 
+  // getAllowedSourceTypes→getTasks é a única cadeia real; encadeada dentro
+  // do Promise.all para não bloquear os outros 4 fetchers.
   const [tasks, members, clients, stores, meetings] = await Promise.all([
-    getTasks(orgId, allowedSourceTypes, orgMemberId),
-    getTeamMembers(),
+    getAllowedSourceTypes(orgMemberId, role).then((allowed) =>
+      getTasks(orgId, allowed, orgMemberId)
+    ),
+    getTeamMembers(orgId),
     getClients(orgId),
     getStores(orgId),
-    getMeetings(orgId),
+    getMeetings(orgId, userId, orgMemberId),
   ])
 
   return (
