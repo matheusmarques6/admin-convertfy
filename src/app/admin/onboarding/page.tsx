@@ -1,6 +1,13 @@
 import type { Metadata } from "next"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
-import { OnboardingKanban } from "@/components/onboarding-v2/onboarding-kanban"
+import {
+  OnboardingKanban,
+  type OnboardingKanbanProps,
+} from "@/components/onboarding-v2/onboarding-kanban"
+import { invokeRouteJson } from "@/lib/api/invoke-route"
+import { GET as getOnboardings } from "@/app/api/onboardings/route"
+import { GET as getOrgMembers } from "@/app/api/admin/org-members/route"
+import { GET as getMeTasks } from "@/app/api/me/tasks/route"
 
 export const metadata: Metadata = {
   title: "Onboarding | Convertfy Admin",
@@ -9,11 +16,29 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
-export default function OnboardingPage() {
+/**
+ * RSC casca: pré-carrega os 3 payloads que o kanban busca no mount
+ * (invocando os próprios handlers in-process — byte-idênticos) e entrega
+ * como initialData. Falha em qualquer um → null → o kanban busca via SWR
+ * como antes. Mutations/refreshes continuam batendo nas rotas.
+ */
+export default async function OnboardingPage() {
+  const [initialOnboardings, initialMembers, initialMe] = await Promise.all([
+    invokeRouteJson(getOnboardings, "/api/onboardings"),
+    invokeRouteJson(getOrgMembers, "/api/admin/org-members"),
+    invokeRouteJson(getMeTasks, "/api/me/tasks?status=pending"),
+  ])
+
   return (
     <PagePermissionWrapper requiredFeatures={["onboarding_control", "onboarding_view"]}>
       <div className="h-[calc(100vh-3.5rem)]">
-        <OnboardingKanban />
+        <OnboardingKanban
+          initialOnboardings={
+            initialOnboardings as OnboardingKanbanProps["initialOnboardings"]
+          }
+          initialMembers={initialMembers as OnboardingKanbanProps["initialMembers"]}
+          initialMe={initialMe as OnboardingKanbanProps["initialMe"]}
+        />
       </div>
     </PagePermissionWrapper>
   )

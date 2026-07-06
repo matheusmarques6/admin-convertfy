@@ -10,7 +10,7 @@ import { CrmEmptyState } from "./crm-empty-state"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-interface ThreadSummary {
+export interface ThreadSummary {
   id: string
   status: string
   contact_name: string | null
@@ -53,11 +53,18 @@ interface ThreadDetail {
   }>
 }
 
-export function InboxView() {
+export function InboxView({
+  initialThreads,
+}: {
+  initialThreads?: { threads: ThreadSummary[] } | null
+}) {
   const [statusFilter, setStatusFilter] = useState<"open" | "pending" | "resolved" | "all">("open")
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
   const debouncedSearch = useDebounce(search, 250)
+  // initialThreads (RSC) só vale para a key inicial (open, sem mine/search).
+  // O refreshInterval de 10s garante o frescor a partir daí.
+  const initialThreadsRef = useRef(initialThreads ?? undefined)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [composer, setComposer] = useState("")
   const [sending, setSending] = useState(false)
@@ -72,10 +79,18 @@ export function InboxView() {
   if (mineOnly) params.set("mine", "1")
   if (debouncedSearch) params.set("search", debouncedSearch)
 
+  const isInitialThreadsKey =
+    statusFilter === "open" && !mineOnly && !debouncedSearch
+
   const { data: threadsData, mutate: mutateThreads } = useSWR<{ threads: ThreadSummary[] }>(
     `/api/crm/inbox/threads?${params.toString()}`,
     fetcher,
-    { refreshInterval: 10000 },
+    {
+      refreshInterval: 10000,
+      fallbackData: isInitialThreadsKey ? initialThreadsRef.current : undefined,
+      revalidateOnMount:
+        isInitialThreadsKey && initialThreadsRef.current ? false : undefined,
+    },
   )
 
   const { data: detailData, mutate: mutateDetail } = useSWR<ThreadDetail>(

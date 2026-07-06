@@ -9,7 +9,7 @@
  * parado, flags de pagamento/contrato.
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
@@ -78,20 +78,53 @@ function initials(name: string): string {
     .toUpperCase()
 }
 
-export function OnboardingKanban() {
+export interface OnboardingKanbanProps {
+  /** Payloads das rotas, pré-carregados pelo RSC (byte-idênticos aos fetches). */
+  initialOnboardings?: {
+    columns: OperationalPipelineColumn[]
+    onboardings: OnboardingPipelineItem[]
+  } | null
+  initialMembers?: { members: OrgMember[] } | null
+  initialMe?: {
+    member: { id: string; role: string; profile_id: string }
+  } | null
+}
+
+export function OnboardingKanban({
+  initialOnboardings,
+  initialMembers,
+  initialMe,
+}: OnboardingKanbanProps = {}) {
+  // Congela os initialData do RSC (as 3 keys são estáticas — filtros de
+  // tab/search/member são client-side, em memória).
+  const initialRef = useRef({
+    onboardings: initialOnboardings ?? undefined,
+    members: initialMembers ?? undefined,
+    me: initialMe ?? undefined,
+  })
+
+  // fallbackData pinta os dados do RSC imediatamente; o SWR ainda revalida
+  // em background no mount (revalidateOnMount default) — frescor idêntico ao
+  // comportamento anterior, sem bloquear o primeiro paint. Importante para o
+  // caso raro de re-sync de colunas pós-deploy (roda em background no GET).
   const { data, mutate, isLoading } = useSWR<{
     columns: OperationalPipelineColumn[]
     onboardings: OnboardingPipelineItem[]
   }>("/api/onboardings", fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
+    fallbackData: initialRef.current.onboardings,
   })
 
   // Members pra filtro de responsavel
   const { data: membersData } = useSWR<{ members: OrgMember[] }>(
     "/api/admin/org-members",
     fetcher,
-    { revalidateOnFocus: false, shouldRetryOnError: false },
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+      fallbackData: initialRef.current.members,
+    },
   )
 
   // ID do user logado (vem do /api/me/tasks que ja é cached)
@@ -100,6 +133,7 @@ export function OnboardingKanban() {
   }>("/api/me/tasks?status=pending", fetcher, {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
+    fallbackData: initialRef.current.me,
   })
 
   const [newOpen, setNewOpen] = useState(false)
