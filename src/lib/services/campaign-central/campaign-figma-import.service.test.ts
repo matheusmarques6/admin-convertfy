@@ -254,4 +254,75 @@ describe("importStoreEmailsFromFigma", () => {
       importStoreEmailsFromFigma("sug-1", "org-1", "user-1"),
     ).rejects.toThrow(/FIGMA_PERSONAL_TOKEN/)
   })
+
+  it("onStoreResult é chamado a cada loja settlada (progresso ao vivo)", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([
+        { store_id: "s1", store_name: "Clube Rock" },
+        { store_id: "s2", store_name: "Loja Fantasma" },
+      ]),
+    )
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock"]))
+    figmaExportImages.mockResolvedValue({ "1:0": "https://s3.example/a.png" })
+
+    const seen: Array<{ store_id: string; status: string }> = []
+    await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      onStoreResult: async (r) => {
+        seen.push({ store_id: r.store_id, status: r.status })
+      },
+    })
+    expect(seen).toHaveLength(2)
+    expect(seen.find((s) => s.store_id === "s1")?.status).toBe("imported")
+    expect(seen.find((s) => s.store_id === "s2")?.status).toBe("no_frame")
+  })
+
+  it("falha do onStoreResult não derruba o import", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([{ store_id: "s1", store_name: "Clube Rock" }]),
+    )
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock"]))
+    figmaExportImages.mockResolvedValue({ "1:0": "https://s3.example/a.png" })
+
+    const r = await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      onStoreResult: async () => {
+        throw new Error("heartbeat quebrou")
+      },
+    })
+    expect(r.results[0].status).toBe("imported")
+  })
+
+  it("deadlineAt estourado no fallback deixa lojas não tentadas FORA do resultado", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([
+        { store_id: "s1", store_name: "Clube Rock" },
+        { store_id: "s2", store_name: "Loja Viva" },
+      ]),
+    )
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock", "Loja Viva"]))
+    // Batch falha → cai no fallback frame-a-frame, mas o deadline já passou.
+    figmaExportImages.mockRejectedValue(new FigmaError("Render request too large", 400))
+
+    const r = await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      deadlineAt: Date.now() - 1,
+    })
+    // Nenhuma loja marcada failed à toa: não tentadas ficam sem resultado
+    // (a fila retoma no próximo tick).
+    expect(r.results).toHaveLength(0)
+    // O batch rodou 1x; nenhum export individual saiu.
+    expect(figmaExportImages).toHaveBeenCalledTimes(1)
+  })
+
+  it("deadlineAt estourado no pool de download deixa lojas fora do resultado", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([{ store_id: "s1", store_name: "Clube Rock" }]),
+    )
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock"]))
+    figmaExportImages.mockResolvedValue({ "1:0": "https://s3.example/a.png" })
+
+    const r = await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      deadlineAt: Date.now() - 1,
+    })
+    expect(r.results).toHaveLength(0)
+    expect(upserts).toHaveLength(0)
+  })
 })

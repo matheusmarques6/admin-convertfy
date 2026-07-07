@@ -46,6 +46,8 @@ import {
   newPortId,
   splitPortAt,
 } from "@/lib/campaign-cuts/geometry"
+import { pollFigmaImportJob } from "@/lib/services/figma-import-job-polling"
+import type { CutModelImportJobResult } from "@/types/campaign-store-emails"
 
 interface Props {
   taskId: string
@@ -279,9 +281,15 @@ export function CampaignCutMappingModal({
     [taskId, showFeedback],
   )
 
+  // Cancela o polling do import se o modal desmontar no meio (o job segue
+  // rodando server-side).
+  const figmaPollAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => figmaPollAbortRef.current?.abort(), [])
+
   // Importa a imagem de referência direto do Figma (link do frame do
-  // email modelo). O servidor exporta em 2x — mesmo scale da Tela 2 —
-  // e devolve url/path/dimensões; daqui em diante é igual ao upload.
+  // email modelo). O export roda na fila (rate limit 8 exports/min) e o
+  // modal acompanha por polling; o servidor exporta em 2x — mesmo scale da
+  // Tela 2 — e devolve url/path/dimensões; daqui em diante é igual ao upload.
   const handleImportModelFromFigma = useCallback(async () => {
     const url = figmaModelUrl.trim()
     if (!url) return
@@ -294,13 +302,20 @@ export function CampaignCutMappingModal({
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || `Erro ${res.status}`)
-      const up = (j.data ?? j) as {
-        url: string
-        path: string
-        filename: string
-        image_natural_w: number
-        image_natural_h: number
+      const { job_id } = (j.data ?? j) as { job_id: string }
+
+      figmaPollAbortRef.current?.abort()
+      figmaPollAbortRef.current = new AbortController()
+      const job = await pollFigmaImportJob<CutModelImportJobResult>(
+        taskId,
+        job_id,
+        { intervalMs: 2000, signal: figmaPollAbortRef.current.signal },
+      )
+      if (job.status === "failed" || !job.result) {
+        throw new Error(job.error || "Falha no import do Figma")
       }
+
+      const up = job.result
       setImageUrl(up.url)
       setImageMeta({
         path: up.path,
@@ -311,6 +326,7 @@ export function CampaignCutMappingModal({
       setPorts((prev) => (prev.length > 0 ? prev : initialPorts()))
       showFeedback("Email modelo importado do Figma — marque os cortes.")
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return
       showFeedback(e instanceof Error ? e.message : "Falha no import do Figma")
     } finally {
       setImportingFigma(false)

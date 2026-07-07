@@ -83,11 +83,26 @@ async function runPool<T>(
   await Promise.all(workers)
 }
 
+export interface FigmaImportRunOpts {
+  storeIds?: string[]
+  /**
+   * Chamado quando UMA loja settla (imported/no_frame/ambiguous/failed) —
+   * a fila usa pra persistir progresso parcial (heartbeat) ao vivo.
+   */
+  onStoreResult?: (r: FigmaImportStoreResult) => Promise<void>
+  /**
+   * Epoch ms: o fallback frame-a-frame e o pool de download PARAM antes de
+   * estourar o deadline — lojas não tentadas ficam FORA de `results` e o
+   * próximo tick da fila retoma só elas.
+   */
+  deadlineAt?: number
+}
+
 export async function importStoreEmailsFromFigma(
   suggestionId: string,
   orgId: string,
   userId: string,
-  opts: { storeIds?: string[] } = {},
+  opts: FigmaImportRunOpts = {},
 ): Promise<FigmaImportResult> {
   if (!isFigmaConfigured()) {
     throw new AppError(
@@ -148,6 +163,25 @@ export async function importStoreEmailsFromFigma(
   const results = new Map<string, FigmaImportStoreResult>()
   const toImport: Array<{ store: StoreRef; frame: FrameInfo }> = []
 
+  // Settla uma loja: grava no mapa e notifica a fila (progresso parcial).
+  // O callback é best-effort — falha nele não derruba o import.
+  const settle = async (r: FigmaImportStoreResult): Promise<void> => {
+    results.set(r.store_id, r)
+    if (opts.onStoreResult) {
+      try {
+        await opts.onStoreResult(r)
+      } catch (err) {
+        log.warn("on_store_result_failed", {
+          suggestionId,
+          storeId: r.store_id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+  const pastDeadline = (): boolean =>
+    opts.deadlineAt !== undefined && Date.now() >= opts.deadlineAt
+
   for (const store of targets) {
     const hit = match.matched.find((m) => m.store.store_id === store.store_id)
     if (hit) {
@@ -159,21 +193,21 @@ export async function importStoreEmailsFromFigma(
     }
     const storeKey = normalizeKey(store.store_name)
     if ((framesByKey.get(storeKey)?.length ?? 0) > 1) {
-      results.set(store.store_id, {
+      await settle({
         store_id: store.store_id,
         store_name: store.store_name,
         status: "ambiguous",
         error: `Mais de um frame chamado "${store.store_name}" no arquivo`,
       })
     } else if (ambiguousStoreIds.has(store.store_id)) {
-      results.set(store.store_id, {
+      await settle({
         store_id: store.store_id,
         store_name: store.store_name,
         status: "ambiguous",
         error: "Mais de um frame parecido com o nome da loja",
       })
     } else {
-      results.set(store.store_id, {
+      await settle({
         store_id: store.store_id,
         store_name: store.store_name,
         status: "no_frame",
@@ -201,6 +235,12 @@ export async function importStoreEmailsFromFigma(
       })
       const stillImporting: typeof toImport = []
       for (const item of toImport) {
+        // Deadline do tick: lojas não tentadas ficam sem resultado — o
+        // próximo tick da fila retoma só elas (nada é marcado failed à toa).
+        if (pastDeadline()) {
+          log.info("export.individual_deadline", { suggestionId })
+          break
+        }
         try {
           const single = await figmaExportImages(
             parsed.fileKey,
@@ -214,7 +254,7 @@ export async function importStoreEmailsFromFigma(
             singleErr instanceof FigmaError
               ? singleErr.message
               : "Erro no export do Figma"
-          results.set(item.store.store_id, {
+          await settle({
             store_id: item.store.store_id,
             store_name: item.store.store_name,
             status: "failed",
@@ -240,6 +280,9 @@ export async function importStoreEmailsFromFigma(
   )
 
   await runPool(toImport, DOWNLOAD_CONCURRENCY, async ({ store, frame }) => {
+    // Deadline do tick: loja não tentada fica sem resultado → retomada
+    // no próximo tick da fila (custo: re-export do frame).
+    if (pastDeadline()) return
     try {
       const url = images[frame.id]
       if (!url) {
@@ -292,7 +335,7 @@ export async function importStoreEmailsFromFigma(
       )
       if (rowErr) throw new Error(`Erro ao gravar registro: ${rowErr.message}`)
 
-      results.set(store.store_id, {
+      await settle({
         store_id: store.store_id,
         store_name: store.store_name,
         status: "imported",
@@ -305,7 +348,7 @@ export async function importStoreEmailsFromFigma(
         storeId: store.store_id,
         error: msg,
       })
-      results.set(store.store_id, {
+      await settle({
         store_id: store.store_id,
         store_name: store.store_name,
         status: "failed",

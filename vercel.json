@@ -78,6 +78,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/figma-import-queue",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/campaign-copy-watchdog",
       "schedule": "*/5 * * * *"
     },

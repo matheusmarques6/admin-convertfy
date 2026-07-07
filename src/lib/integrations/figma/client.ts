@@ -9,7 +9,14 @@
  * Rate limit: a Figma responde 429 com Retry-After — honramos até 45s com
  * UM retry; acima disso lançamos FigmaError(429) e o caller degrada para
  * falha parcial (o modal oferece retry individual por loja).
+ *
+ * Orçamento proativo: TODA chamada ao /v1/images (Tier 1 do Figma:
+ * 10 req/min) adquire antes um slot distribuído em export-budget.ts
+ * (8/min com espaçamento de ~7,5s). Sem slot dentro da janela de espera
+ * → FigmaError(429) e a fila de import re-tenta no próximo tick.
  */
+
+import { acquireExportSlot } from "./export-budget"
 
 const FIGMA_API = "https://api.figma.com/v1"
 
@@ -61,6 +68,18 @@ function figmaHeaders(): Record<string, string> {
 }
 
 async function figmaFetch(path: string, retried = false): Promise<unknown> {
+  // Só o export de imagem é Tier 1 (10/min) — /files/ fica fora do orçamento.
+  // O retry de 429 abaixo é recursão: a re-tentativa readquire slot sozinha.
+  if (path.startsWith("/images/")) {
+    const slot = await acquireExportSlot()
+    if (!slot.ok) {
+      throw new FigmaError(
+        "Rate limit interno de exports do Figma — tente novamente em instantes",
+        429,
+      )
+    }
+  }
+
   const res = await fetch(`${FIGMA_API}${path}`, { headers: figmaHeaders() })
 
   if (res.status === 429 && !retried) {

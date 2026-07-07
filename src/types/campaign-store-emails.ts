@@ -89,3 +89,40 @@ export interface FigmaImportResult {
   frame_names: string[]
   results: FigmaImportStoreResult[]
 }
+
+// ── Fila de imports do Figma (figma_import_jobs) ─────────────────────────
+// Os POSTs import-figma enfileiram (rate limit Tier 1 do Figma) e os modais
+// fazem polling em GET /api/tasks/[id]/figma-import-jobs/[jobId].
+
+export type FigmaImportJobKind = "store_emails" | "cut_model"
+
+export type FigmaImportJobStatus = "pending" | "processing" | "done" | "failed"
+
+/** Resultado do job cut_model (Tela 1) — mesmo shape do upload manual. */
+export interface CutModelImportJobResult {
+  url: string
+  path: string
+  filename: string
+  image_natural_w: number
+  image_natural_h: number
+}
+
+/** Resposta do POST de enqueue dos dois import-figma. */
+export interface FigmaImportEnqueueResponse {
+  job_id: string
+  status: FigmaImportJobStatus
+  already_queued: boolean
+}
+
+/** Resposta do GET de status do job (polling). */
+export interface FigmaImportJobResponse<
+  TResult = FigmaImportResult | CutModelImportJobResult,
+> {
+  id: string
+  kind: FigmaImportJobKind
+  status: FigmaImportJobStatus
+  progress_total: number
+  progress_done: number
+  result: TResult | null
+  error: string | null
+}

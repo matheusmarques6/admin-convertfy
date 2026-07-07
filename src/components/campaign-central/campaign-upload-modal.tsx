@@ -57,6 +57,7 @@ import {
   type TaskLangGroup,
 } from "@/lib/campaign-cuts/lang"
 import { matchNamesToStores } from "@/lib/campaign-cuts/store-match"
+import { pollFigmaImportJob } from "@/lib/services/figma-import-job-polling"
 import {
   movePortBoundary,
   portPixelRectsFromFractions,
@@ -317,11 +318,18 @@ export function CampaignUploadModal({
     [taskId],
   )
 
+  // Cancela o polling do import se o modal desmontar no meio (o job segue
+  // rodando server-side — reabrir o modal mostra o estado via load()).
+  const importPollAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => importPollAbortRef.current?.abort(), [])
+
   const handleImportFigma = useCallback(
     async (storeIds?: string[]) => {
       setImporting(true)
       setShowImportPanel(true)
       try {
+        // 1. Enfileira: o export do Figma roda na fila (rate limit 8/min) e
+        // o modal acompanha por polling — progresso por loja chega ao vivo.
         const res = await fetch(
           `/api/tasks/${taskId}/campaign-uploads/import-figma`,
           {
@@ -332,20 +340,40 @@ export function CampaignUploadModal({
         )
         const j = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(j.error || `Erro ${res.status}`)
-        const result = (j.data ?? j) as FigmaImportResult
-        setImportResult((prev) => {
-          if (!storeIds?.length || !prev) return result
-          // Retry parcial: substitui só as lojas re-tentadas.
-          const byId = new Map(result.results.map((r) => [r.store_id, r]))
-          return {
-            ...result,
-            results: prev.results.map((r) => byId.get(r.store_id) ?? r),
-          }
+        const { job_id } = (j.data ?? j) as { job_id: string }
+
+        const applyResult = (result: FigmaImportResult) => {
+          setImportResult((prev) => {
+            if (!storeIds?.length || !prev) return result
+            // Retry parcial: substitui só as lojas re-tentadas.
+            const byId = new Map(result.results.map((r) => [r.store_id, r]))
+            return {
+              ...result,
+              results: prev.results.map((r) => byId.get(r.store_id) ?? r),
+            }
+          })
+        }
+
+        // 2. Polling até done/failed (progresso parcial via onTick).
+        importPollAbortRef.current?.abort()
+        importPollAbortRef.current = new AbortController()
+        const job = await pollFigmaImportJob<FigmaImportResult>(taskId, job_id, {
+          signal: importPollAbortRef.current.signal,
+          onTick: (jb) => {
+            if (jb.result) applyResult(jb.result)
+          },
         })
+        if (job.status === "failed") {
+          throw new Error(job.error || "Erro no import")
+        }
+
+        const result = job.result
+        if (result) applyResult(result)
         await load()
-        const ok = result.results.filter((r) => r.status === "imported").length
+        const ok = result?.results.filter((r) => r.status === "imported").length ?? 0
         showFeedback(`Import concluído: ${ok} loja(s) importada(s)`)
       } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return
         showFeedback(e instanceof Error ? e.message : "Erro no import")
       } finally {
         setImporting(false)
