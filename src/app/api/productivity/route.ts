@@ -451,9 +451,14 @@ async function handleGet(request: NextRequest) {
           position: cg.position,
           items: cg.items as never,
           ...({
-            source_type: "campaign_suggestion",
+            // "campaign_design" — o board só renderiza o header rico de projeto
+            // (chip de etapa via stage_name/stage_color) para esse source_type.
+            source_type: cg.source_type,
             suggestion_id: cg.suggestion_id,
             stage_slug: cg.design_stage,
+            stage_name: cg.stage_name,
+            stage_color: cg.stage_color,
+            stage_role: cg.stage_role,
             can_work: cg.can_work,
             can_admin: cg.can_admin,
             responsible_role: cg.responsible_role,
