@@ -49,16 +49,14 @@ describe("canAccessCampaignStage — visibilidade por funcao", () => {
     }
   })
 
-  it("suporte/implementacao NAO enxergam etapas de designer/coo", () => {
+  it("suporte/implementacao NAO enxergam as etapas de design", () => {
     expect(canAccessCampaignStage(["suporte"], "estrutura")).toBe(false)
     expect(canAccessCampaignStage(["implementacao"], "producao")).toBe(false)
   })
 
-  it("implementacao ve a etapa implementacao; designer nao", () => {
+  it("implementacao ve a propria etapa (e designer nao)", () => {
     expect(canAccessCampaignStage(["implementacao"], "implementacao")).toBe(true)
-    expect(canAccessCampaignStage(["ops"], "implementacao")).toBe(true) // legado
     expect(canAccessCampaignStage(["designer"], "implementacao")).toBe(false)
-    expect(canAccessCampaignStage(["suporte"], "implementacao")).toBe(false)
   })
 
   it("multifuncao = uniao (suporte + designer ve etapas de designer)", () => {

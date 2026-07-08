@@ -125,6 +125,8 @@ const COMERCIAL_NAV: NavGroup[] = [
     label: "Atendimento",
     items: [
       { id: "comercial.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
+      { id: "comercial.canais", name: "Canais", href: ROUTES.ADMIN.COMERCIAL.CANAIS, icon: Phone },
+      { id: "comercial.automacoes", name: "Automacoes", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
       { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
     ],
   },
@@ -196,15 +198,6 @@ const OPERACIONAL_NAV: NavGroup[] = [
     ],
   },
   {
-    key: "atendimento",
-    label: "Atendimento",
-    items: [
-      { id: "ops.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
-      { id: "ops.canais", name: "Canais", href: ROUTES.ADMIN.OPERACIONAL.CANAIS, icon: Phone },
-      { id: "ops.automacoes", name: "Automacoes", href: ROUTES.ADMIN.OPERACIONAL.AUTOMACOES.LIST, icon: Workflow },
-    ],
-  },
-  {
     key: "analise",
     label: "Analise",
     items: [
@@ -219,7 +212,6 @@ const GERAL_NAV: NavGroup[] = [
     label: "",
     items: [
       { id: "geral.home", name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
-      { id: "geral.me", name: "Minhas tarefas", href: ROUTES.ADMIN.ME, icon: ListFilter },
       { id: "geral.board", name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
     ],
   },

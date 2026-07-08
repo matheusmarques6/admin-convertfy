@@ -281,8 +281,15 @@ export async function attemptCampaignDesignHandoff(
     version,
   )
 
-  // Etapas de trabalho avancam quando as tasks (e deliverables required, na
-  // estrutura) estao concluidas.
+  // implementacao: terminal. Todas as tasks (corte modelo + subir por idioma)
+  // concluidas -> completed.
+  if (stageSlug === "implementacao") {
+    if (!allCompleted(tasks)) return "not_ready"
+    return "completed"
+  }
+
+  // estrutura / producao / finalizacao: avancam quando as tasks (e
+  // deliverables required) da etapa estao concluidos.
   if (!allCompleted(tasks)) return "not_ready"
 
   if (stageSlug === "estrutura") {
@@ -293,10 +300,8 @@ export async function attemptCampaignDesignHandoff(
     if (!filled) return "not_ready"
   }
 
-  // Ultima etapa do STAGE_ORDER (implementacao): nada a instanciar -> pipeline
-  // de design concluido.
   const next = nextStage(stageSlug)
-  if (!next) return "completed"
+  if (!next) return "not_ready"
   const nextColumnId = ctx.columnIdBySlug[next]
   if (!nextColumnId) {
     log.warn("Coluna destino nao encontrada no pipeline", {

@@ -11,7 +11,9 @@ describe("CAMPAIGN_DESIGN_COLUMNS — seed das 5 etapas", () => {
       "finalizacao",
       "implementacao",
     ])
-    expect(CAMPAIGN_DESIGN_COLUMNS.map((c) => c.position)).toEqual([1, 2, 3, 4, 5])
+    expect(CAMPAIGN_DESIGN_COLUMNS.map((c) => c.position)).toEqual([
+      1, 2, 3, 4, 5,
+    ])
   })
 
   it("estrutura e inicial; implementacao e final", () => {
@@ -23,6 +25,17 @@ describe("CAMPAIGN_DESIGN_COLUMNS — seed das 5 etapas", () => {
     expect(estrutura.is_initial).toBe(true)
     expect(finalizacao.is_final ?? false).toBe(false)
     expect(implementacao.is_final).toBe(true)
+  })
+
+  it("implementacao: 4 tasks (corte modelo + subida por idioma)", () => {
+    const impl = CAMPAIGN_DESIGN_COLUMNS.find((c) => c.slug === "implementacao")!
+    expect(impl.default_assignee_role).toBe("implementacao")
+    expect(impl.checklist_template.map((i) => i.slug)).toEqual([
+      "impl_corte_modelo",
+      "impl_subir_ptbr",
+      "impl_subir_en",
+      "impl_subir_outras",
+    ])
   })
 
   it("roles do seed batem com a matriz CAMPAIGN_DESIGN_STAGE_ROLE", () => {
@@ -61,16 +74,5 @@ describe("CAMPAIGN_DESIGN_COLUMNS — seed das 5 etapas", () => {
     const fin = CAMPAIGN_DESIGN_COLUMNS.find((c) => c.slug === "finalizacao")!
     expect(fin.checklist_template).toHaveLength(0)
     expect(fin.deliverables_template).toHaveLength(0)
-  })
-
-  it("implementacao: corte modelo + subir e-mails, role implementacao", () => {
-    const impl = CAMPAIGN_DESIGN_COLUMNS.find((c) => c.slug === "implementacao")!
-    expect(impl.default_assignee_role).toBe("implementacao")
-    expect(impl.checklist_template.map((c) => c.slug)).toEqual([
-      "impl_corte_modelo",
-      "impl_subir_ptbr",
-      "impl_subir_en",
-      "impl_subir_outras",
-    ])
   })
 })

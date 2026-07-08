@@ -94,7 +94,7 @@ export async function POST(
 
     if (!channel?.config?.access_token || !channel.config.phone_number_id) {
       throw new AppError(
-        "Canal WhatsApp não configurado. Configure em /admin/crm/channels antes.",
+        "Canal WhatsApp não configurado. Configure em /admin/comercial/canais antes.",
         400,
       )
     }

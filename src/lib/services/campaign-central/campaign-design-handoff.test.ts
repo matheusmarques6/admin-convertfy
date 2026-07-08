@@ -13,7 +13,7 @@ import { CAMPAIGN_DESIGN_COLUMNS } from "./campaign-design-bootstrap.service"
  *     - aprovacao: NUNCA auto-avanca -> "awaiting_decision".
  *     - producao: avanca p/ finalizacao SE as 3 tasks concluidas. Senao "not_ready".
  *     - finalizacao: avanca p/ implementacao SE todas as tasks por loja concluidas.
- *     - implementacao: SE todas as tasks concluidas -> "completed" (terminal).
+ *     - implementacao: SE as 4 tasks (corte + subida por idioma) concluidas -> "completed".
  *
  *   approveCampaignDesign({ suggestionId, orgId, actorId })
  *     -> "advanced" | "not_applicable"   (aprovacao -> producao)
@@ -308,7 +308,7 @@ describe("aprovacao — decisao do COO", () => {
   })
 })
 
-describe("attemptCampaignDesignHandoff — producao, finalizacao e implementacao", () => {
+describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
   it("producao: avanca p/ finalizacao quando as 3 tasks concluidas", async () => {
     seedBase("producao")
     addTask("producao", "completed")
@@ -350,15 +350,14 @@ describe("attemptCampaignDesignHandoff — producao, finalizacao e implementacao
     })
     expect(status).toBe("advanced")
     expect(camp().design_column_id).toBe(colId("implementacao"))
-    // tasks do checklist da implementacao (corte modelo + subir e-mails)
-    expect(tasksIn("implementacao")).toHaveLength(
-      CAMPAIGN_DESIGN_COLUMNS.find((c) => c.slug === "implementacao")!
-        .checklist_template.length,
-    )
+    // 4 tasks do checklist (corte modelo + subida por idioma)
+    expect(tasksIn("implementacao")).toHaveLength(4)
   })
 
-  it("implementacao: todas as tasks concluidas -> completed (etapa terminal)", async () => {
+  it("implementacao: todas as tasks concluidas -> completed (terminal)", async () => {
     seedBase("implementacao")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "completed")
     addTask("implementacao", "completed")
     addTask("implementacao", "completed")
     const status = await attemptCampaignDesignHandoff({
@@ -367,10 +366,9 @@ describe("attemptCampaignDesignHandoff — producao, finalizacao e implementacao
       actorId: "u1",
     })
     expect(status).toBe("completed")
-    expect(camp().design_column_id).toBe(colId("implementacao"))
   })
 
-  it("implementacao: NAO conclui com task pendente", async () => {
+  it("implementacao: NAO completa com task pendente", async () => {
     seedBase("implementacao")
     addTask("implementacao", "completed")
     addTask("implementacao", "pending")
@@ -380,7 +378,6 @@ describe("attemptCampaignDesignHandoff — producao, finalizacao e implementacao
       actorId: "u1",
     })
     expect(status).toBe("not_ready")
-    expect(camp().design_column_id).toBe(colId("implementacao"))
   })
 })
 

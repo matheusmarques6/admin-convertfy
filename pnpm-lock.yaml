@@ -19,10 +19,10 @@ importers:
         version: 5.2.2(react-hook-form@7.71.2(react@19.2.4))
       '@langchain/anthropic':
         specifier: ^1.4.0
-        version: 1.4.0(@langchain/core@1.1.48(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
+        version: 1.4.0(@langchain/core@1.1.48(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))
       '@langchain/core':
         specifier: ^1.1.48
-        version: 1.1.48(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+        version: 1.1.48(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -86,6 +86,9 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.18
         version: 3.13.21(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@upstash/qstash':
+        specifier: ^2.11.1
+        version: 2.11.1
       '@upstash/ratelimit':
         specifier: ^2.0.8
         version: 2.0.8(@upstash/redis@1.37.0)
@@ -130,7 +133,7 @@ importers:
         version: 0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       openai:
         specifier: ^6.22.0
-        version: 6.27.0(ws@8.19.0)(zod@4.3.6)
+        version: 6.27.0(ws@8.21.0)(zod@4.3.6)
       react:
         specifier: ^19
         version: 19.2.4
@@ -1847,6 +1850,9 @@ packages:
     resolution: {integrity: sha512-7qJHGxpQgQr9/vmeS1PktEwvNAF7TI4iJDi8Pu2CFZ9YUGHZH4fOP5TfYlZ4aVxfopnELiE4BS4FBjyK7V1/xQ==}
     engines: {node: '>=16.0.0'}
 
+  '@upstash/qstash@2.11.1':
+    resolution: {integrity: sha512-rq8e/40lgWThlfMZUsOUtABW6gZ+dzrl+CjESmHE8oL6l7hUp2kK1bni1auNBjxz5cpHqPheFlVqufNXbK+cVg==}
+
   '@upstash/ratelimit@2.0.8':
     resolution: {integrity: sha512-YSTMBJ1YIxsoPkUMX/P4DDks/xV5YYCswWMamU8ZIfK9ly6ppjRnVOyBhMDXBmzjODm4UQKcxsJPvaeFAijp5w==}
     peerDependencies:
@@ -2165,6 +2171,9 @@ packages:
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
+
+  crypto-js@4.2.0:
+    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
 
   css-box-model@1.2.1:
     resolution: {integrity: sha512-a7Vr4Q/kd/aw96bnJG332W9V9LkJO69JRcaCYDUqjp6/z0w6VcZjgAcTbgFxEPfBgdnAwlh3iwu+hLopa+flJw==}
@@ -2943,6 +2952,9 @@ packages:
     resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
+
   js-tiktoken@1.0.21:
     resolution: {integrity: sha512-biOj/6M5qdgx5TKjDnFT1ymSpM5tbd3ylwDtrQvFQSu0Z7bBYko2dF+W/aUkXUPuk6IVpRxk/3Q2sHOzGlS36g==}
 
@@ -3231,6 +3243,10 @@ packages:
 
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
+
+  neverthrow@7.2.0:
+    resolution: {integrity: sha512-iGBUfFB7yPczHHtA8dksKTJ9E8TESNTAx1UQWW6TzMF280vo9jdPYpLUXrMN1BCkPdHFdNG3fxOt2CUad8KhAw==}
+    engines: {node: '>=18'}
 
   next-themes@0.4.6:
     resolution: {integrity: sha512-pZvgD5L0IEvX5/9GWyHMf3m8BKiVQwsCMHfoFosXtXBMnaS0ZnIJ9ST4b4NqLVKDEm8QBxoNNGNaBv2JNF6XNA==}
@@ -4181,6 +4197,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xlsx@0.18.5:
     resolution: {integrity: sha512-dmg3LCjBPHZnQp5/F/+nnTa+miPJxUXB6vtk42YjBBKayDNagxGEeIdWApkYPOf3Z3pm3k62Knjzp7lMeTEtFQ==}
     engines: {node: '>=0.8'}
@@ -4533,18 +4561,18 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@langchain/anthropic@1.4.0(@langchain/core@1.1.48(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))':
+  '@langchain/anthropic@1.4.0(@langchain/core@1.1.48(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))':
     dependencies:
       '@anthropic-ai/sdk': 0.95.1(zod@4.3.6)
-      '@langchain/core': 1.1.48(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+      '@langchain/core': 1.1.48(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
       zod: 4.3.6
 
-  '@langchain/core@1.1.48(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)':
+  '@langchain/core@1.1.48(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)':
     dependencies:
       '@cfworker/json-schema': 4.1.1
       '@standard-schema/spec': 1.1.0
       js-tiktoken: 1.0.21
-      langsmith: 0.7.2(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+      langsmith: 0.7.2(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
       mustache: 4.2.0
       p-queue: 6.6.2
       zod: 4.3.6
@@ -5729,6 +5757,12 @@ snapshots:
     dependencies:
       '@upstash/redis': 1.37.0
 
+  '@upstash/qstash@2.11.1':
+    dependencies:
+      crypto-js: 4.2.0
+      jose: 5.10.0
+      neverthrow: 7.2.0
+
   '@upstash/ratelimit@2.0.8(@upstash/redis@1.37.0)':
     dependencies:
       '@upstash/core-analytics': 0.0.10
@@ -6049,6 +6083,8 @@ snapshots:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  crypto-js@4.2.0: {}
 
   css-box-model@1.2.1:
     dependencies:
@@ -6991,6 +7027,8 @@ snapshots:
 
   jiti@1.21.7: {}
 
+  jose@5.10.0: {}
+
   js-tiktoken@1.0.21:
     dependencies:
       base64-js: 1.5.1
@@ -7045,12 +7083,12 @@ snapshots:
     dependencies:
       json-buffer: 3.0.1
 
-  langsmith@0.7.2(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0):
+  langsmith@0.7.2(openai@6.27.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0):
     dependencies:
       p-queue: 6.6.2
     optionalDependencies:
-      openai: 6.27.0(ws@8.19.0)(zod@4.3.6)
-      ws: 8.19.0
+      openai: 6.27.0(ws@8.21.0)(zod@4.3.6)
+      ws: 8.21.0
 
   language-subtag-registry@0.3.23: {}
 
@@ -7480,6 +7518,8 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
+  neverthrow@7.2.0: {}
+
   next-themes@0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       react: 19.2.4
@@ -7568,9 +7608,9 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
-  openai@6.27.0(ws@8.19.0)(zod@4.3.6):
+  openai@6.27.0(ws@8.21.0)(zod@4.3.6):
     optionalDependencies:
-      ws: 8.19.0
+      ws: 8.21.0
       zod: 4.3.6
 
   optionator@0.9.4:
@@ -8622,6 +8662,9 @@ snapshots:
   wrappy@1.0.2: {}
 
   ws@8.19.0: {}
+
+  ws@8.21.0:
+    optional: true
 
   xlsx@0.18.5:
     dependencies:

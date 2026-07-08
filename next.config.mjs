@@ -68,6 +68,21 @@ const nextConfig = {
       { source: "/settings/:path*", destination: "/admin/settings/:path*", permanent: true },
       { source: "/settings", destination: "/admin/settings", permanent: true },
 
+      // ── Rotas removidas (bookmarks antigos) ───────────────────────
+      // Print do relatório saiu de /admin (o layout do admin vazava chrome e
+      // cortava a impressão em 1 página) — links antigos seguem funcionando.
+      { source: "/admin/stores/relatorios/:reportId/print", destination: "/print/relatorios/:reportId", permanent: false },
+      { source: "/admin/me", destination: "/admin/productivity/board", permanent: true },
+      // Notificacoes/WhatsApp persistidos no banco contem a URL antiga de logs
+      { source: "/admin/tools/email-generation-logs", destination: "/admin/settings/email-generation-logs", permanent: true },
+      { source: "/admin/settings/users", destination: "/admin/settings/team", permanent: true },
+      // CRM legado — subURLs granulares ja 404avam; catch-all para bookmarks
+      { source: "/admin/crm/:path*", destination: "/admin/comercial/pipelines", permanent: false },
+      { source: "/admin/cs-crm/:path*", destination: "/admin/operacional/cs-crm/:path*", permanent: true },
+      // Atendimento migrou do workspace Operacional para o Comercial
+      { source: "/admin/operacional/automacoes/:path*", destination: "/admin/comercial/automacoes/:path*", permanent: true },
+      { source: "/admin/operacional/canais", destination: "/admin/comercial/canais", permanent: true },
+
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },
       { source: "/portal/dashboard", destination: "/client/dashboard", permanent: true },

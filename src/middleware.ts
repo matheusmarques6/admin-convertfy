@@ -39,6 +39,7 @@ export const config = {
      */
     "/",
     "/admin/:path*",
+    "/print/:path*",
     "/client/:path*",
     "/login",
     "/register",

@@ -172,7 +172,7 @@ const ROUTE_TO_NAV_ITEM: Record<string, NavItemId> = {
   "/admin/meetings": "comercial.meetings",
   "/admin/campaigns": "ops.campaigns.list",
   "/admin/reports": "geral.reports",
-  "/admin/automations": "ops.automacoes",
+  "/admin/automations": "comercial.automacoes",
 }
 
 export function useCanAccessRoute(routePath: string): boolean {

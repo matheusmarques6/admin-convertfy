@@ -50,8 +50,11 @@ export async function updateSession(request: NextRequest) {
     return response
   }
 
-  // Admin protected routes
-  const isAdminPath = request.nextUrl.pathname.startsWith("/admin")
+  // Admin protected routes. /print (páginas imprimíveis de relatório, fora
+  // do chrome do admin) exige a MESMA sessão — sem ela, redirect pro login.
+  const isAdminPath =
+    request.nextUrl.pathname.startsWith("/admin") ||
+    request.nextUrl.pathname.startsWith("/print")
 
   // Auth routes check (admin)
   const authPaths = ["/login", "/register"]

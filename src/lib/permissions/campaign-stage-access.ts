@@ -29,8 +29,6 @@ export const CAMPAIGN_DESIGN_STAGE_ROLE: Record<
   aprovacao: "coo",
   producao: "designer",
   finalizacao: "designer",
-  // Sem esta entrada a etapa ficava invisivel pra QUALQUER nao-bypass —
-  // inclusive pra propria equipe de implementacao dona das tasks.
   implementacao: "implementacao",
 }
 

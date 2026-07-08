@@ -87,6 +87,11 @@ export const ROUTES = {
       DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
       FORMS: "/admin/comercial/forms",
       FORM_DETAIL: (id: string) => `/admin/comercial/forms/${id}` as const,
+      AUTOMACOES: {
+        LIST: "/admin/comercial/automacoes",
+        DETAIL: (id: string) => `/admin/comercial/automacoes/${id}` as const,
+      },
+      CANAIS: "/admin/comercial/canais",
       REPORTS: "/admin/comercial/reports",
     },
 
@@ -102,11 +107,6 @@ export const ROUTES = {
         `/admin/operacional/deals/${id}/detail` as const,
       FORMS: "/admin/operacional/forms",
       FORM_DETAIL: (id: string) => `/admin/operacional/forms/${id}` as const,
-      AUTOMACOES: {
-        LIST: "/admin/operacional/automacoes",
-        DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,
-      },
-      CANAIS: "/admin/operacional/canais",
       REPORTS: "/admin/operacional/reports",
       // Workflows Monday-style (Onboarding Ops, Acompanhamento, Feedback,
       // Suporte) — kanbans com automacoes baseadas em triggers/actions.
@@ -147,47 +147,12 @@ export const ROUTES = {
       EDIT: "/admin/onboarding-help/edit",
       EDIT_PAGE: (id: string) => `/admin/onboarding-help/${id}/edit` as const,
     },
-    /** Apontamos pro board unificado. /admin/me ainda existe e redireciona. */
-    ME: "/admin/productivity/board?view=mine",
-
     // ── Settings adicionais ──────────────────────────────────────────────
     AI_TEMPLATES: "/admin/settings/ai-templates",
 
     // ── Weekly reports ───────────────────────────────────────────────────
     WEEKLY_REPORT: (storeId: string) =>
       `/admin/stores/${storeId}/weekly-report` as const,
-
-    // ── Deprecated (alias de compat — usar COMERCIAL/OPERACIONAL) ───────
-    /** @deprecated Use ROUTES.ADMIN.COMERCIAL e ROUTES.ADMIN.OPERACIONAL */
-    CRM: {
-      ROOT: "/admin/comercial",
-      SALES: {
-        ROOT: "/admin/comercial",
-        PIPELINES: "/admin/comercial/pipelines",
-        PIPELINE_DETAIL: (id: string) => `/admin/comercial/pipelines/${id}` as const,
-        LEADS: "/admin/comercial/leads",
-        LEAD_DETAIL: (id: string) => `/admin/comercial/leads/${id}` as const,
-        DEAL_DETAIL: (id: string) => `/admin/comercial/deals/${id}` as const,
-        DASHBOARD: "/admin/comercial/dashboard",
-      },
-      CS: {
-        ROOT: "/admin/operacional",
-        PIPELINES: "/admin/operacional/pipelines",
-        PIPELINE_DETAIL: (id: string) => `/admin/operacional/pipelines/${id}` as const,
-        DEAL_DETAIL: (id: string) => `/admin/operacional/deals/${id}` as const,
-        DASHBOARD: "/admin/operacional/dashboard",
-      },
-      INBOX: "/admin/inbox",
-      INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,
-      AUTOMATIONS: {
-        LIST: "/admin/operacional/automacoes",
-        NEW: "/admin/operacional/automacoes/new",
-        DETAIL: (id: string) => `/admin/operacional/automacoes/${id}` as const,
-      },
-      REPORTS: "/admin/operacional/reports",
-      PARTNERS: "/admin/operacional/partners",
-      CHANNELS: "/admin/operacional/canais",
-    },
 
     TEAM: "/admin/team",
     NOTIFICATIONS: "/admin/notifications",
@@ -210,7 +175,6 @@ export const ROUTES = {
       APPEARANCE: "/admin/settings/appearance",
       NOTIFICATIONS: "/admin/settings/notifications",
       INTEGRATIONS: "/admin/settings/integrations",
-      USERS: "/admin/settings/users",
       PERMISSIONS: "/admin/settings/permissions",
       CUSTOM_FIELDS: "/admin/settings/custom-fields",
       TAGS: "/admin/settings/tags",
@@ -268,75 +232,6 @@ export const ROUTES = {
     EMBED: "/tracking/embed",
   },
 } as const
-
-// ── Mapeamento de rotas antigas para novas (redirects) ──────────────────
-export const LEGACY_REDIRECTS: Array<{ source: string; destination: string; permanent: boolean }> = [
-  // Admin routes
-  { source: "/dashboard", destination: ROUTES.ADMIN.DASHBOARD, permanent: true },
-  { source: "/dashboard/operational", destination: ROUTES.ADMIN.DASHBOARD_OPERATIONAL, permanent: true },
-  { source: "/clients", destination: ROUTES.ADMIN.CLIENTS.LIST, permanent: true },
-  { source: "/clients/new", destination: ROUTES.ADMIN.CLIENTS.NEW, permanent: true },
-  { source: "/clients/:id", destination: "/admin/clients/:id", permanent: true },
-  { source: "/clients/:id/edit", destination: "/admin/clients/:id/edit", permanent: true },
-  { source: "/stores", destination: ROUTES.ADMIN.STORES.LIST, permanent: true },
-  { source: "/stores/:id", destination: "/admin/stores/:id", permanent: true },
-  { source: "/campaigns", destination: ROUTES.ADMIN.CAMPAIGNS.LIST, permanent: true },
-  { source: "/automations", destination: ROUTES.ADMIN.AUTOMATIONS.LIST, permanent: true },
-  { source: "/automations/new", destination: ROUTES.ADMIN.AUTOMATIONS.NEW, permanent: true },
-  { source: "/automations/:id", destination: "/admin/automations/:id", permanent: true },
-  { source: "/board", destination: ROUTES.ADMIN.BOARD, permanent: true },
-  { source: "/meetings", destination: ROUTES.ADMIN.MEETINGS.LIST, permanent: true },
-  { source: "/meetings/new", destination: ROUTES.ADMIN.MEETINGS.NEW, permanent: true },
-  { source: "/financial", destination: ROUTES.ADMIN.FINANCIAL, permanent: true },
-  { source: "/reports", destination: ROUTES.ADMIN.REPORTS.LIST, permanent: true },
-  { source: "/reports/new", destination: ROUTES.ADMIN.REPORTS.NEW, permanent: true },
-  { source: "/reports/:id", destination: "/admin/reports/:id", permanent: true },
-  { source: "/reports/:id/edit", destination: "/admin/reports/:id/edit", permanent: true },
-  { source: "/pipeline", destination: ROUTES.ADMIN.PIPELINE, permanent: true },
-  { source: "/team", destination: ROUTES.ADMIN.TEAM, permanent: true },
-  { source: "/notifications", destination: ROUTES.ADMIN.NOTIFICATIONS, permanent: true },
-  { source: "/onboarding", destination: ROUTES.ADMIN.ONBOARDING, permanent: true },
-  { source: "/tools", destination: ROUTES.ADMIN.TOOLS, permanent: true },
-  { source: "/settings", destination: ROUTES.ADMIN.SETTINGS.ROOT, permanent: true },
-  { source: "/settings/:path*", destination: "/admin/settings/:path*", permanent: true },
-
-  // CRM legado → Comercial / Operacional
-  { source: "/admin/crm", destination: "/admin/comercial/pipelines", permanent: true },
-  { source: "/admin/crm/sales/pipelines", destination: "/admin/comercial/pipelines", permanent: true },
-  { source: "/admin/crm/sales/pipelines/:id", destination: "/admin/comercial/pipelines/:id", permanent: true },
-  { source: "/admin/crm/sales/leads", destination: "/admin/comercial/leads", permanent: true },
-  { source: "/admin/crm/sales/leads/:id", destination: "/admin/comercial/leads/:id", permanent: true },
-  { source: "/admin/crm/sales/deals/:id", destination: "/admin/comercial/deals/:id", permanent: true },
-  { source: "/admin/crm/sales/dashboard", destination: "/admin/comercial/dashboard", permanent: true },
-  { source: "/admin/crm/cs/pipelines", destination: "/admin/operacional/pipelines", permanent: true },
-  { source: "/admin/crm/cs/pipelines/:id", destination: "/admin/operacional/pipelines/:id", permanent: true },
-  { source: "/admin/crm/cs/deals/:id", destination: "/admin/operacional/deals/:id", permanent: true },
-  { source: "/admin/crm/cs/dashboard", destination: "/admin/operacional/dashboard", permanent: true },
-  { source: "/admin/crm/inbox", destination: "/admin/inbox", permanent: true },
-  { source: "/admin/crm/inbox/:id", destination: "/admin/inbox/:id", permanent: true },
-  { source: "/admin/crm/automations", destination: "/admin/operacional/automacoes", permanent: true },
-  { source: "/admin/crm/automations/:id", destination: "/admin/operacional/automacoes/:id", permanent: true },
-  { source: "/admin/crm/channels", destination: "/admin/operacional/canais", permanent: true },
-  { source: "/admin/crm/reports", destination: "/admin/operacional/reports", permanent: true },
-
-  // Portal → Client routes
-  { source: "/portal/login", destination: ROUTES.CLIENT.LOGIN, permanent: true },
-  { source: "/portal/dashboard", destination: ROUTES.CLIENT.DASHBOARD, permanent: true },
-  { source: "/portal/onboarding", destination: ROUTES.CLIENT.ONBOARDING.ROOT, permanent: true },
-  { source: "/portal/onboarding/wizard", destination: ROUTES.CLIENT.ONBOARDING.WIZARD, permanent: true },
-  { source: "/portal/stores", destination: ROUTES.CLIENT.STORES.LIST, permanent: true },
-  { source: "/portal/stores/new", destination: ROUTES.CLIENT.STORES.NEW, permanent: true },
-  { source: "/portal/stores/:id", destination: "/client/stores/:id", permanent: true },
-  { source: "/portal/campaigns", destination: ROUTES.CLIENT.CAMPAIGNS, permanent: true },
-  { source: "/portal/flows", destination: ROUTES.CLIENT.FLOWS, permanent: true },
-  { source: "/portal/tracking", destination: ROUTES.CLIENT.TRACKING.ROOT, permanent: true },
-  { source: "/portal/tracking/:path*", destination: "/client/tracking/:path*", permanent: true },
-  { source: "/portal/analytics", destination: ROUTES.CLIENT.ANALYTICS, permanent: true },
-  { source: "/portal/integrations", destination: ROUTES.CLIENT.INTEGRATIONS, permanent: true },
-  { source: "/portal/invoices", destination: ROUTES.CLIENT.INVOICES, permanent: true },
-  { source: "/portal/settings", destination: ROUTES.CLIENT.SETTINGS, permanent: true },
-  { source: "/portal/change-password", destination: ROUTES.CLIENT.CHANGE_PASSWORD, permanent: true },
-]
 
 // ── Rotas protegidas (para middleware) ──────────────────────────────────
 export const ADMIN_PROTECTED_PATHS = [

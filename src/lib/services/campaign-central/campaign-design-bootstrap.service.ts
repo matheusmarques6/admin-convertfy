@@ -7,11 +7,11 @@
  * tasks + deliverables + gate de visibilidade por funcao.
  *
  * Etapas e responsaveis:
- *   1. estrutura     (designer)      -> 1 task; entregavel = link Figma (1 loja piloto)
- *   2. aprovacao     (coo)           -> COO aprova ou pede mudancas (nova versao)
- *   3. producao      (designer)      -> 3 tasks: imagens, textos, identidade visual
- *   4. finalizacao   (designer)      -> instanciada por loja (liga no prod_stage)
- *   5. implementacao (implementacao) -> corte modelo + subir e-mails na plataforma
+ *   1. estrutura     (designer)       -> 1 task; entregavel = link Figma (1 loja piloto)
+ *   2. aprovacao     (coo)            -> COO aprova ou pede mudancas (nova versao)
+ *   3. producao      (designer)       -> 3 tasks: imagens, textos, identidade visual
+ *   4. finalizacao   (designer)       -> instanciada por loja (liga no prod_stage)
+ *   5. implementacao (implementacao)  -> 4 tasks: corte modelo + subir por idioma
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -126,10 +126,6 @@ export const CAMPAIGN_DESIGN_COLUMNS: CampaignColumnSeed[] = [
     deliverables_template: [],
   },
   {
-    // Etapa criada originalmente A MAO no banco pelo time (jul/2026) e usada em
-    // producao antes de existir no codigo — o seed espelha exatamente os valores
-    // da coluna existente pra tornar o re-sync um no-op e trazer a etapa pro
-    // controle do codigo (matriz de visibilidade, handoff, labels).
     name: "Implementacao",
     slug: "implementacao",
     position: 5,

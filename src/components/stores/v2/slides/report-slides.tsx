@@ -18,9 +18,13 @@
  * Sem dado: cai em "—" elegante (não invent).
  */
 
+import { useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp, Bell, Zap, Mail, Target, Send, X as XIcon, Users,
 } from "lucide-react"
+import {
+  EditableNumber, EditableText,
+} from "@/components/stores/v2/slides/report-edit-context"
 
 // ─── Tokens (mirror de _primitives.tsx) ───────────────────────
 
@@ -57,81 +61,25 @@ const C = {
   gradient: "linear-gradient(90deg, #4E62D8, #2137B6, #041366)",
 } as const
 
+// tnum só tem efeito real em fontes com dígitos tabulares (Inter tem;
+// Playfair NÃO — sobre F_SERIF é inócuo, mantido por consistência nos
+// valores isolados). Colunas numéricas alinhadas exigem F_SANS + TNUM.
 const TNUM = {
   fontVariantNumeric: "tabular-nums lining-nums" as const,
   fontFeatureSettings: '"tnum" 1, "lnum" 1',
 }
 
-const F_SANS = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
-const F_SERIF = '"Playfair Display", Georgia, serif'
+// next/font registra as famílias com nome hasheado — o nome literal não
+// resolve. As variáveis vêm do <body> do layout root (admin e print).
+const F_SANS = "var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+const F_SERIF = 'var(--font-playfair), "Playfair Display", Georgia, serif'
 
 // ─── Types ────────────────────────────────────────────────────
+// ReportSnapshot mora em src/types/monthly-report.ts (compartilhado com o
+// serviço de overrides e as rotas server). Re-export preserva importadores.
 
-export interface ReportSnapshot {
-  store_name?: string
-  client_name?: string
-  cm_name?: string
-  plan?: string
-  month_label?: string
-  period?: { start: string; end: string }
-  account?: { currency?: string; platform?: string | null }
-
-  // KPIs cristalizados
-  kpis?: {
-    receita_total?: number
-    receita_atribuida?: number
-    atribuicao_pct?: number
-    receita_campanhas?: number
-    receita_flows?: number
-    pedidos?: number
-    ticket_medio?: number
-    novos_clientes?: number
-    envios?: number
-    total_leads?: number
-    open_rate?: number
-    click_rate?: number
-    recovery_rate?: number
-    total_campaigns?: number
-    total_flows?: number
-  }
-  email?: {
-    delivered?: number
-    open_rate?: number
-    click_rate?: number
-    ctor?: number
-    bounce_rate?: number
-    unsub_rate?: number
-  }
-  campaigns?: Array<{
-    id: string
-    name: string
-    delivered?: number
-    recipients?: number
-    openRate?: number
-    clickRate?: number
-    revenue?: number
-    revenue_estimated?: boolean
-  }>
-  flows?: Array<{
-    id: string
-    name: string
-    delivered?: number
-    recipients?: number
-    openRate?: number
-    clickRate?: number
-    revenue?: number
-    revenue_estimated?: boolean
-  }>
-  insights?: {
-    capa?: string
-    resumo?: string
-    atribuida?: string
-    email?: string
-    rankings?: string
-    trabalho?: string
-    proximos?: string
-  }
-}
+import type { ReportSnapshot } from "@/types/monthly-report"
+export type { ReportSnapshot }
 
 interface Props {
   snapshot: ReportSnapshot
@@ -141,11 +89,35 @@ interface Props {
 
 // ─── Helpers ──────────────────────────────────────────────────
 
+type SnapshotKpis = NonNullable<ReportSnapshot["kpis"]>
+
+/**
+ * Pedidos ATRIBUÍDOS aos canais Convertfy. Snapshots antigos não têm o
+ * campo (o antigo `pedidos` era da LOJA e estava sendo exibido com rótulo
+ * "atribuídos" — inflação de ~4,8x) → null, renderizado como "—".
+ */
+function attributedOrders(k: SnapshotKpis): number | null {
+  return k.pedidos_atribuidos ?? null
+}
+
+/** Pedidos da LOJA no período (snapshot antigo: `pedidos` já era loja). */
+function storeOrders(k: SnapshotKpis): number | null {
+  return k.pedidos_loja ?? k.pedidos ?? null
+}
+
+/** Formata contagem distinguindo dado ausente (null → "—") de zero real. */
+function fmtCount(n: number | null | undefined): string {
+  return n === null || n === undefined ? "—" : n.toLocaleString("pt-BR")
+}
+
 function fmtCurrency(value: number, currency = "BRL", opts?: { compact?: boolean }): string {
   const sym = currencySymbol(currency)
   if (!isFinite(value) || value === 0) return `${sym} 0`
   if (opts?.compact) {
-    if (value >= 1_000_000) return `${sym} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
+    // Thresholds ficam ANTES do ponto de rollover do arredondamento:
+    // 999.950 com toFixed(1) viraria "1000,0 mil" — promove a unidade.
+    if (value >= 999_995_000) return `${sym} ${(value / 1_000_000_000).toFixed(2).replace(".", ",")} bi`
+    if (value >= 999_950) return `${sym} ${(value / 1_000_000).toFixed(2).replace(".", ",")} mi`
     if (value >= 10_000) return `${sym} ${(value / 1_000).toFixed(1).replace(".", ",")} mil`
   }
   try {
@@ -165,6 +137,9 @@ function currencySymbol(currency: string): string {
   if (currency === "USD") return "US$"
   if (currency === "EUR") return "€"
   if (currency === "GBP") return "£"
+  if (currency === "MXN") return "MX$"
+  if (currency === "CAD") return "CA$"
+  if (currency === "AUD") return "AU$"
   return currency
 }
 
@@ -183,6 +158,17 @@ function fmtYMD(ymd: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`
 }
 
+/**
+ * Reduz o font-size quando a string não cabe no orçamento de largura do
+ * call-site. Como o palco é fixo em 1280px, os budgets são constantes por
+ * componente. Aproximação: dígito/char em Playfair bold ≈ 0.58em de largura.
+ */
+function fitFontSize(text: string, basePx: number, budgetPx: number): number {
+  const estimated = text.length * 0.58 * basePx
+  if (estimated <= budgetPx) return basePx
+  return Math.max(16, Math.floor(budgetPx / (text.length * 0.58)))
+}
+
 const BENCHMARKS = {
   openRate: 17.3,
   clickRate: 1.1,
@@ -198,7 +184,9 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
   const storeName = snapshot.store_name ?? "Loja"
 
   return (
-    <div className="flex flex-col items-center gap-9 py-8 px-4" style={{ fontFamily: F_SANS }}>
+    // data-slides-root: alvo do CSS de impressão (vira display:block no
+    // print — flex não fragmenta entre páginas no Chromium).
+    <div data-slides-root className="flex flex-col items-center gap-9 py-8 px-4" style={{ fontFamily: F_SANS }}>
       <SlideShell n={1} total={7} title="Capa" storeName={storeName} monthLabel={monthLabel}>
         <SlideCover snapshot={snapshot} monthLabel={monthLabel} />
       </SlideShell>
@@ -209,7 +197,7 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
         <SlideAtribuida snapshot={snapshot} currency={currency} />
       </SlideShell>
       <SlideShell n={4} total={7} title="Performance de e-mail" storeName={storeName} monthLabel={monthLabel}>
-        <SlideEmail snapshot={snapshot} />
+        <SlideEmail snapshot={snapshot} currency={currency} />
       </SlideShell>
       <SlideShell n={5} total={7} title="Campanhas & Flows" storeName={storeName} monthLabel={monthLabel}>
         <SlideRankings snapshot={snapshot} currency={currency} />
@@ -229,15 +217,46 @@ export function ReportSlides({ snapshot, proximosPassos, monthLabel }: Props) {
 const SLIDE_W = 1280
 const SLIDE_H = 720
 
+/**
+ * Escala pra caber o palco fixo 1280×720 no container fluido. Os slides são
+ * desenhados em px absolutos (fontes 64/72, paddings 56) — sem isso, container
+ * < 1280px encolhe o card mas não o texto, e os números estouram/sobrepõem.
+ * min(w/1280, h/720) também cobre o print, onde a altura é travada em 167mm.
+ * Clamp em 1: nunca amplia (≥1280px continua pixel-perfect).
+ */
+function useScaleToFit(ref: React.RefObject<HTMLDivElement | null>) {
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = (w: number, h: number) => {
+      // Sem altura travada (preview: aspect-ratio dita a altura) só a largura importa
+      const sH = h > 0 ? h / SLIDE_H : Infinity
+      setScale(Math.min(1, w / SLIDE_W, sH))
+    }
+    measure(el.clientWidth, el.clientHeight)
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) measure(e.contentRect.width, e.contentRect.height)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return scale
+}
+
 function SlideShell({
   n, total, title, storeName, monthLabel, children,
 }: {
   n: number; total: number; title: string; storeName: string; monthLabel: string; children: React.ReactNode
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const scale = useScaleToFit(viewportRef)
+
   return (
     <div data-slide style={{ width: SLIDE_W, maxWidth: "100%", position: "relative" }}>
       {/* Slide indicator */}
       <div
+        data-slide-indicator
         className="flex items-center justify-between"
         style={{
           padding: "0 6px 10px",
@@ -260,7 +279,12 @@ function SlideShell({
         <span style={TNUM}>{storeName} · {monthLabel}</span>
       </div>
 
+      {/* Viewport: fluido (mede a largura disponível); o conteúdo real vive no
+          stage fixo 1280×720 abaixo, escalado pra caber — geometria idêntica
+          em qualquer tela e no PDF. */}
       <div
+        ref={viewportRef}
+        data-slide-viewport
         style={{
           width: "100%",
           aspectRatio: `${SLIDE_W} / ${SLIDE_H}`,
@@ -271,7 +295,16 @@ function SlideShell({
           boxShadow: "0 1px 2px rgba(0,0,0,0.06), 0 30px 60px rgba(0,0,0,0.45)",
         }}
       >
-        {children}
+        <div
+          style={{
+            width: SLIDE_W,
+            height: SLIDE_H,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -321,12 +354,14 @@ function SlideHeader({
         )}
       </div>
       <div className="flex items-center gap-3">
-        <div
-          className="inline-flex items-center justify-center"
-          style={{ width: 30, height: 30, borderRadius: 6, background: C.gradient, color: "#fff", fontWeight: 700, fontSize: 13 }}
-        >
-          C
-        </div>
+        {/* Ícone real da Convertfy (colorido — funciona no fundo branco do
+            cabeçalho). eslint-disable p/ usar <img> puro (print-friendly). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/convertfy%20icon.png"
+          alt="Convertfy"
+          style={{ width: 28, height: 28, objectFit: "contain", display: "block" }}
+        />
         <div style={{ fontFamily: F_SERIF, fontSize: 14, fontWeight: 600, color: C.g500, ...TNUM }}>
           {String(n).padStart(2, "0")} / 07
         </div>
@@ -464,14 +499,16 @@ function SlideCover({ snapshot, monthLabel }: { snapshot: ReportSnapshot; monthL
           justifyContent: "space-between",
         }}
       >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="inline-flex items-center justify-center"
-            style={{ width: 32, height: 32, borderRadius: 6, background: C.gradient, color: "#fff", fontWeight: 700, fontSize: 14 }}
-          >
-            C
-          </div>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Convertfy</span>
+        <div className="flex items-center">
+          {/* Logo real da Convertfy (wordmark branca) em SVG — vetorial, fica
+              nítida em qualquer tamanho e no PDF (o PNG 788×405 borrava ao
+              ampliar). <img> puro carrega direto do /public (print-friendly). */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-da-convertfy-com-escrito-branco.svg"
+            alt="Convertfy"
+            style={{ height: 84, width: "auto", display: "block" }}
+          />
         </div>
 
         <div>
@@ -619,8 +656,11 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           pct={pctNum}
           totalRevenue={totalRevenue}
           attributed={attributed}
-          pedidos={k.pedidos ?? 0}
+          pedidos={attributedOrders(k)}
           currency={currency}
+          rawPct={k.atribuicao_pct ?? null}
+          rawTotalRevenue={k.receita_total ?? null}
+          rawAttributed={k.receita_atribuida ?? null}
         />
       </div>
 
@@ -632,12 +672,12 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
           gap: 10,
         }}
       >
-        <ResumoTile label="Faturamento total" value={fmtCurrency(totalRevenue, currency, { compact: true })} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
-        <ResumoTile label="Pedidos" value={(k.pedidos ?? 0).toLocaleString("pt-BR")} delta="atribuídos" tone={(k.pedidos ?? 0) > 0 ? "pos" : "default"} />
-        <ResumoTile label="Ticket médio" value={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} delta="período" />
-        <ResumoTile label="Novos clientes" value={(k.novos_clientes ?? 0).toLocaleString("pt-BR")} delta="período" />
-        <ResumoTile label="Total de leads" value={(k.total_leads ?? 0).toLocaleString("pt-BR")} delta="base atual" />
-        <ResumoTile label="Campanhas enviadas" value={String(k.total_campaigns ?? 0)} delta={`${k.total_flows ?? 0} flows ativos`} />
+        <ResumoTile label="Faturamento total" value={<EditableNumber path="kpis.receita_total" raw={k.receita_total} display={fmtCurrency(totalRevenue, currency, { compact: true })} kind="currency" />} delta="período" tone={totalRevenue > 0 ? "pos" : "default"} />
+        <ResumoTile label="Pedidos" value={<EditableNumber path="kpis.pedidos_loja" raw={storeOrders(k)} display={fmtCount(storeOrders(k))} kind="count" />} delta="loja no período" tone={(storeOrders(k) ?? 0) > 0 ? "pos" : "default"} />
+        <ResumoTile label="Ticket médio" value={<EditableNumber path="kpis.ticket_medio" raw={k.ticket_medio} display={k.ticket_medio ? fmtCurrency(k.ticket_medio, currency) : "—"} kind="currency" />} delta="período" />
+        <ResumoTile label="Novos clientes" value={<EditableNumber path="kpis.novos_clientes" raw={k.novos_clientes} display={fmtCount(k.novos_clientes)} kind="count" />} delta="período" />
+        <ResumoTile label="Total de leads" value={<EditableNumber path="kpis.total_leads" raw={k.total_leads} display={fmtCount(k.total_leads)} kind="count" />} delta="base atual" />
+        <ResumoTile label="Campanhas enviadas" value={<EditableNumber path="kpis.total_campaigns" raw={k.total_campaigns} display={k.total_campaigns == null ? "—" : String(k.total_campaigns)} kind="count" />} delta={<>{<EditableNumber path="kpis.total_flows" raw={k.total_flows} display={fmtCount(k.total_flows)} kind="count" />} flows ativos</>} />
       </div>
 
       <div style={{ flex: 1 }} />
@@ -655,7 +695,11 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
             <strong style={{ color: C.g900 }}>
               {pctNum.toFixed(2).replace(".", ",")}% do faturamento total veio da Convertfy
             </strong>{" "}
-            no período · {(k.pedidos ?? 0).toLocaleString("pt-BR")} pedidos com nossos canais.
+            no período
+            {attributedOrders(k) !== null && (
+              <> · {fmtCount(attributedOrders(k))} pedidos com nossos canais</>
+            )}
+            .
           </>
         )}
       </Insight>
@@ -665,14 +709,20 @@ function SlideResumo({ snapshot, currency }: { snapshot: ReportSnapshot; currenc
 
 function HeroParticipation({
   pct, totalRevenue, attributed, pedidos, currency,
+  rawPct, rawTotalRevenue, rawAttributed,
 }: {
-  pct: number; totalRevenue: number; attributed: number; pedidos: number; currency: string
+  pct: number; totalRevenue: number; attributed: number; pedidos: number | null; currency: string
+  rawPct?: number | null; rawTotalRevenue?: number | null; rawAttributed?: number | null
 }) {
   const r = 70
   const c = 2 * Math.PI * r
   const arc = (pct / 100) * c
   const others = Math.max(0, totalRevenue - attributed)
   const pctOthers = 100 - pct
+  // Miolo útil do donut ≈ 126px (2×(r − strokeWidth/2) − folga) — "100,0%"
+  // a 34px fixos estourava o anel.
+  const donutLabel = `${pct.toFixed(1).replace(".", ",")}%`
+  const donutFont = fitFontSize(donutLabel, 34, 112)
 
   return (
     <div
@@ -724,8 +774,8 @@ function HeroParticipation({
             strokeLinecap="round"
             transform="rotate(-90 80 80)"
           />
-          <text x="80" y="82" textAnchor="middle" fontFamily={F_SERIF} fontSize="34" fontWeight="700" fill="#fff" style={TNUM}>
-            {pct.toFixed(1).replace(".", ",")}%
+          <text x="80" y="82" textAnchor="middle" fontFamily={F_SERIF} fontSize={donutFont} fontWeight="700" fill="#fff" style={TNUM}>
+            {donutLabel}
           </text>
           <text
             x="80"
@@ -755,7 +805,8 @@ function HeroParticipation({
           <div
             style={{
               fontFamily: F_SERIF,
-              fontSize: 64,
+              // Coluna do número ≈ 250px (grid 1.05fr menos donut 160 + gap)
+              fontSize: fitFontSize(pct.toFixed(2).replace(".", ","), 64, 250),
               fontWeight: 700,
               color: "#fff",
               letterSpacing: "-0.03em",
@@ -764,8 +815,12 @@ function HeroParticipation({
               ...TNUM,
             }}
           >
-            {pct.toFixed(2).replace(".", ",")}
-            <span style={{ fontSize: 36 }}>%</span>
+            <EditableNumber
+              path="kpis.atribuicao_pct"
+              raw={rawPct}
+              kind="fraction100"
+              display={<>{pct.toFixed(2).replace(".", ",")}<span style={{ fontSize: 36 }}>%</span></>}
+            />
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginTop: 6 }}>
             do faturamento total da loja
@@ -797,34 +852,64 @@ function HeroParticipation({
               ...TNUM,
             }}
           >
-            {fmtCurrency(totalRevenue, currency, { compact: true })}
+            <EditableNumber
+              path="kpis.receita_total"
+              raw={rawTotalRevenue}
+              kind="currency"
+              display={fmtCurrency(totalRevenue, currency, { compact: true })}
+            />
           </span>
         </div>
-        <div
-          className="flex overflow-hidden"
-          style={{ height: 38, borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)" }}
-        >
-          <div
-            className="flex items-center"
-            style={{
-              width: `${Math.max(0, Math.min(100, pct))}%`,
-              background: "linear-gradient(90deg, #7B8CEA 0%, #4E62D8 100%)",
-              paddingLeft: 12,
-            }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.04em" }}>
-              {pct.toFixed(2).replace(".", ",")}%
-            </span>
-          </div>
-          <div
-            className="flex items-center flex-1"
-            style={{ background: "rgba(255,255,255,0.06)", paddingLeft: 14 }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.55)", letterSpacing: "0.04em" }}>
-              {pctOthers.toFixed(2).replace(".", ",")}% outras fontes
-            </span>
-          </div>
-        </div>
+        {(() => {
+          const pctLabel = `${pct.toFixed(2).replace(".", ",")}%`
+          const othersLabel = `${pctOthers.toFixed(2).replace(".", ",")}% outras fontes`
+          // Segmento com largura proporcional ao dado não comporta o próprio
+          // label quando estreito — o texto migra pro segmento vizinho em vez
+          // de vazar por cima do label dele.
+          const convertfyTooNarrow = pct < 9
+          const othersTooNarrow = pct > 85
+          return (
+            <div
+              className="flex overflow-hidden"
+              style={{ height: 38, borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)" }}
+            >
+              <div
+                className="flex items-center justify-between"
+                style={{
+                  width: `${Math.max(0, Math.min(100, pct))}%`,
+                  background: "linear-gradient(90deg, #7B8CEA 0%, #4E62D8 100%)",
+                  padding: "0 12px",
+                }}
+              >
+                {!convertfyTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {pctLabel}
+                  </span>
+                )}
+                {othersTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.8)", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {othersLabel}
+                  </span>
+                )}
+              </div>
+              <div
+                className="flex items-center flex-1"
+                style={{ background: "rgba(255,255,255,0.06)", paddingLeft: 14, gap: 12 }}
+              >
+                {convertfyTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#A8B2EE", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {pctLabel} Convertfy
+                  </span>
+                )}
+                {!othersTooNarrow && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.55)", letterSpacing: "0.04em", whiteSpace: "nowrap", ...TNUM }}>
+                    {othersLabel}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })()}
         <div className="grid grid-cols-2 gap-4" style={{ marginTop: 14 }}>
           <div
             style={{
@@ -859,10 +944,15 @@ function HeroParticipation({
                 ...TNUM,
               }}
             >
-              {fmtCurrency(attributed, currency, { compact: true })}
+              <EditableNumber
+                path="kpis.receita_atribuida"
+                raw={rawAttributed}
+                kind="currency"
+                display={fmtCurrency(attributed, currency, { compact: true })}
+              />
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2, ...TNUM }}>
-              {pedidos.toLocaleString("pt-BR")} pedidos · e-mail + SMS
+              {pedidos !== null ? `${fmtCount(pedidos)} pedidos · ` : ""}e-mail + SMS
             </div>
           </div>
           <div
@@ -914,7 +1004,7 @@ function snapshotMonthShort(): string {
   return "" // placeholder — month info ja aparece no header e indicator
 }
 
-function ResumoTile({ label, value, delta, tone = "default" }: { label: string; value: string; delta: string; tone?: "default" | "pos" }) {
+function ResumoTile({ label, value, delta, tone = "default" }: { label: string; value: React.ReactNode; delta: React.ReactNode; tone?: "default" | "pos" }) {
   return (
     <div
       style={{
@@ -954,7 +1044,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
   const k = snapshot.kpis ?? {}
   const attributed = k.receita_atribuida ?? 0
   const pct = (k.atribuicao_pct ?? 0) * 100
-  const pedidos = k.pedidos ?? 0
+  const pedidos = attributedOrders(k)
   const campRev = k.receita_campanhas ?? 0
   const flowRev = k.receita_flows ?? 0
   const total = campRev + flowRev
@@ -969,7 +1059,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
         n={3}
         eyebrow="Resultados financeiros"
         title="Receita atribuída Convertfy"
-        intro={`${fmtCurrency(attributed, currency, { compact: true })} em receita gerada por canais que gerenciamos (e-mail e SMS), de um faturamento total de ${fmtCurrency(k.receita_total ?? 0, currency, { compact: true })} — ${pct.toFixed(2).replace(".", ",")}% de participação · ${pedidos.toLocaleString("pt-BR")} pedidos com origem nos nossos canais.`}
+        intro={`${fmtCurrency(attributed, currency, { compact: true })} em receita gerada por canais que gerenciamos (e-mail e SMS), de um faturamento total de ${fmtCurrency(k.receita_total ?? 0, currency, { compact: true })} — ${pct.toFixed(2).replace(".", ",")}% de participação${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos com origem nos nossos canais` : ""}.`}
       />
 
       <div
@@ -1015,7 +1105,8 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             <div
               style={{
                 fontFamily: F_SERIF,
-                fontSize: 72,
+                // Interior do hero ≈ 520px (coluna 1.05fr menos padding 36×2)
+                fontSize: fitFontSize(fmtCurrency(attributed, currency, { compact: true }), 72, 520),
                 fontWeight: 700,
                 color: "#fff",
                 letterSpacing: "-0.03em",
@@ -1024,11 +1115,27 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
                 ...TNUM,
               }}
             >
-              {fmtCurrency(attributed, currency, { compact: true })}
+              <EditableNumber
+                path="kpis.receita_atribuida"
+                raw={k.receita_atribuida}
+                kind="currency"
+                display={fmtCurrency(attributed, currency, { compact: true })}
+              />
             </div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginTop: 10, lineHeight: 1.5 }}>
-              <strong style={{ color: "#fff" }}>{pct.toFixed(2).replace(".", ",")}%</strong> do faturamento da loja ·{" "}
-              <strong style={{ color: "#fff" }}>{pedidos.toLocaleString("pt-BR")} pedidos</strong> atribuídos
+              <strong style={{ color: "#fff" }}>
+                <EditableNumber
+                  path="kpis.atribuicao_pct"
+                  raw={k.atribuicao_pct}
+                  kind="fraction100"
+                  display={<>{pct.toFixed(2).replace(".", ",")}%</>}
+                />
+              </strong> do faturamento da loja
+              {pedidos !== null && (
+                <>
+                  {" "}· <strong style={{ color: "#fff" }}>{fmtCount(pedidos)} pedidos</strong> atribuídos
+                </>
+              )}
             </div>
           </div>
           <div
@@ -1041,7 +1148,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               borderTop: "1px solid rgba(255,255,255,0.15)",
             }}
           >
-            <DarkMetric label="Faturamento E-mail" value={fmtCurrency(attributed, currency, { compact: true })} sub={`${pct.toFixed(2).replace(".", ",")}% · ${pedidos.toLocaleString("pt-BR")} pedidos`} />
+            <DarkMetric label="Faturamento E-mail" value={<EditableNumber path="kpis.receita_atribuida" raw={k.receita_atribuida} display={fmtCurrency(attributed, currency, { compact: true })} kind="currency" />} sub={`${pct.toFixed(2).replace(".", ",")}%${pedidos !== null ? ` · ${fmtCount(pedidos)} pedidos` : ""}`} />
             <DarkMetric label="Faturamento SMS" value={`${currencySymbol(currency)} 0`} sub="canal a ativar" mute />
           </div>
         </div>
@@ -1070,7 +1177,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             </div>
             <SplitBar
               label="Automações (Flows)"
-              value={fmtCurrency(flowRev, currency, { compact: true })}
+              value={<EditableNumber path="kpis.receita_flows" raw={k.receita_flows} display={fmtCurrency(flowRev, currency, { compact: true })} kind="currency" />}
               share={flowShare}
               sub={`${liveFlows} flows ativos · maior contribuição`}
               tone="brand"
@@ -1078,7 +1185,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
             <div style={{ height: 14 }} />
             <SplitBar
               label="Campanhas pontuais"
-              value={fmtCurrency(campRev, currency, { compact: true })}
+              value={<EditableNumber path="kpis.receita_campanhas" raw={k.receita_campanhas} display={fmtCurrency(campRev, currency, { compact: true })} kind="currency" />}
               share={campShare}
               sub={`${sentCampaigns} campanhas no período`}
               tone="purple"
@@ -1096,10 +1203,10 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
               gap: 14,
             }}
           >
-            <MicroStat label="Pedidos atribuídos" value={pedidos.toLocaleString("pt-BR")} />
+            <MicroStat label="Pedidos atribuídos" value={<EditableNumber path="kpis.pedidos_atribuidos" raw={pedidos} display={fmtCount(pedidos)} kind="count" />} />
             <MicroStat
               label="Receita/pedido"
-              value={pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
+              value={pedidos !== null && pedidos > 0 ? fmtCurrency(attributed / pedidos, currency) : "—"}
             />
             <MicroStat
               label="Receita/contato"
@@ -1123,7 +1230,7 @@ function SlideAtribuida({ snapshot, currency }: { snapshot: ReportSnapshot; curr
   )
 }
 
-function SplitBar({ label, value, share, sub, tone }: { label: string; value: string; share: number; sub: string; tone: "brand" | "purple" }) {
+function SplitBar({ label, value, share, sub, tone }: { label: string; value: React.ReactNode; share: number; sub: React.ReactNode; tone: "brand" | "purple" }) {
   const color = tone === "brand" ? C.brand : C.purple
   return (
     <div>
@@ -1142,7 +1249,7 @@ function SplitBar({ label, value, share, sub, tone }: { label: string; value: st
   )
 }
 
-function DarkMetric({ label, value, sub, mute }: { label: string; value: string; sub?: string; mute?: boolean }) {
+function DarkMetric({ label, value, sub, mute }: { label: string; value: React.ReactNode; sub?: React.ReactNode; mute?: boolean }) {
   return (
     <div>
       <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -1166,7 +1273,7 @@ function DarkMetric({ label, value, sub, mute }: { label: string; value: string;
   )
 }
 
-function MicroStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function MicroStat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div>
       <div style={{ fontSize: 10, color: C.g500, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -1192,7 +1299,7 @@ function MicroStat({ label, value, sub }: { label: string; value: string; sub?: 
 
 // ─── Slide 4 · Performance de e-mail ──────────────────────────
 
-function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
+function SlideEmail({ snapshot, currency }: { snapshot: ReportSnapshot; currency: string }) {
   const e = snapshot.email ?? {}
   const k = snapshot.kpis ?? {}
   const delivered = e.delivered ?? k.envios ?? 0
@@ -1204,8 +1311,12 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
 
   const opened = delivered * (openRate / 100)
   const clicked = delivered * (clickRate / 100)
-  const orders = k.pedidos ?? 0
+  // Funil de e-mail: pedidos ATRIBUÍDOS (não da loja — snapshot antigo → null)
+  const orders = attributedOrders(k)
   const revenue = k.receita_atribuida ?? 0
+  // Taxa de entrega derivada do bounce/fail — nunca 100% fixo (o card
+  // antigo afirmava "100% taxa entrega" ao lado de bounces > 0)
+  const deliveryRate = Math.max(0, 100 - bounce)
 
   const openDelta = openRate - BENCHMARKS.openRate
   const clickDelta = clickRate - BENCHMARKS.clickRate
@@ -1238,7 +1349,7 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
           <Funnel
             steps={[
               { label: "Enviados", pct: 1, color: C.brandHover, abs: delivered.toLocaleString("pt-BR") },
-              { label: "Entregues", pct: 1, color: C.brand, abs: `${delivered.toLocaleString("pt-BR")} · 100,00%` },
+              { label: "Entregues", pct: deliveryRate / 100, color: C.brand, abs: `${delivered.toLocaleString("pt-BR")} · ${deliveryRate.toFixed(2).replace(".", ",")}%` },
               {
                 label: "Abertos",
                 pct: openRate / 100,
@@ -1253,15 +1364,15 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
               },
               {
                 label: "Pedidos",
-                pct: delivered > 0 ? orders / delivered : 0,
+                pct: delivered > 0 && orders !== null ? orders / delivered : 0,
                 color: C.pos,
-                abs: `${orders.toLocaleString("pt-BR")}`,
+                abs: fmtCount(orders),
               },
               {
                 label: "Receita",
                 pct: 0.001,
                 color: C.pos,
-                abs: fmtCurrency(revenue, "BRL", { compact: true }),
+                abs: fmtCurrency(revenue, currency, { compact: true }),
               },
             ]}
           />
@@ -1269,39 +1380,45 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
 
         {/* RIGHT — bench cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignContent: "start" }}>
-          <BenchCard Icon={Send} label="Entregues" value={delivered.toLocaleString("pt-BR")} bench="100% taxa entrega" tone="pos" />
+          <BenchCard
+            Icon={Send}
+            label="Entregues"
+            value={<EditableNumber path="email.delivered" raw={delivered} display={delivered.toLocaleString("pt-BR")} kind="count" />}
+            bench={`${deliveryRate.toFixed(2).replace(".", ",")}% taxa entrega`}
+            tone={deliveryRate >= 99 ? "pos" : "warn"}
+          />
           <BenchCard
             Icon={XIcon}
             label="Bounces"
             value={Math.round(delivered * (bounce / 100)).toLocaleString("pt-BR")}
-            bench={`${bounce.toFixed(2).replace(".", ",")}% taxa`}
+            bench={<><EditableNumber path="email.bounce_rate" raw={bounce} display={bounce.toFixed(2).replace(".", ",")} kind="rate100" />% taxa</>}
             tone={bounce < BENCHMARKS.bounceRate ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Mail}
             label="Abertura"
-            value={`${openRate.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.open_rate" raw={openRate} display={openRate.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.openRate.toFixed(1).replace(".", ",")}% benchmark · ${openDelta >= 0 ? "+" : ""}${openDelta.toFixed(1).replace(".", ",")} p.p.`}
             tone={openDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Target}
             label="Clique"
-            value={`${clickRate.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.click_rate" raw={clickRate} display={clickRate.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.clickRate.toFixed(1).replace(".", ",")}% benchmark · ${clickDelta >= 0 ? "+" : ""}${clickDelta.toFixed(2).replace(".", ",")} p.p.`}
             tone={clickDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Zap}
             label="CTOR"
-            value={`${ctor.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.ctor" raw={ctor} display={ctor.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.ctor.toFixed(1).replace(".", ",")}% benchmark · ${ctorDelta >= 0 ? "+" : ""}${ctorDelta.toFixed(2).replace(".", ",")} p.p.`}
             tone={ctorDelta >= 0 ? "pos" : "warn"}
           />
           <BenchCard
             Icon={Users}
             label="Unsub"
-            value={`${unsub.toFixed(2).replace(".", ",")}%`}
+            value={<><EditableNumber path="email.unsub_rate" raw={unsub} display={unsub.toFixed(2).replace(".", ",")} kind="rate100" />%</>}
             bench={`vs ${BENCHMARKS.unsubRate.toFixed(2).replace(".", ",")}% benchmark · ${unsub < BENCHMARKS.unsubRate ? "saudável" : "atenção"}`}
             tone={unsub < BENCHMARKS.unsubRate ? "pos" : "warn"}
           />
@@ -1331,34 +1448,64 @@ function SlideEmail({ snapshot }: { snapshot: ReportSnapshot }) {
   )
 }
 
+// Largura útil do track no stage fixo 1280px: coluna esquerda do grid do
+// slide 4 = (1168 − 28) × 1.3/2.3 ≈ 644px, menos label (90px) e gap (12px).
+const FUNNEL_TRACK_W = 542
+// Largura média por caractere do label 12px semibold + tabular-nums.
+const FUNNEL_CHAR_W = 6.8
+
 function Funnel({ steps }: { steps: Array<{ label: string; pct: number; color: string; abs: string }> }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      {steps.map((s) => (
-        <div key={s.label} className="flex items-center gap-3">
-          <span style={{ width: 90, fontSize: 12.5, fontWeight: 600, color: C.g700 }}>{s.label}</span>
-          <div className="flex-1 relative overflow-hidden" style={{ height: 32, background: C.g50, borderRadius: 4 }}>
-            <div
-              className="flex items-center h-full"
-              style={{
-                width: `${Math.max(s.pct * 100, 1.5)}%`,
-                background: s.color,
-                paddingLeft: 12,
-                minWidth: 110,
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", ...TNUM }}>
-                {s.abs}
-              </span>
+      {steps.map((s) => {
+        const barPct = Math.max(s.pct * 100, 1.5)
+        // Label branco só dentro da barra quando cabe; senão vai pra fora
+        // (à direita, escuro) — antes vazava branco sobre o fundo claro.
+        const fitsInside = (barPct / 100) * FUNNEL_TRACK_W >= s.abs.length * FUNNEL_CHAR_W + 20
+        return (
+          <div key={s.label} className="flex items-center gap-3">
+            <span style={{ width: 90, fontSize: 12.5, fontWeight: 600, color: C.g700 }}>{s.label}</span>
+            <div className="flex-1 relative overflow-hidden" style={{ height: 32, background: C.g50, borderRadius: 4 }}>
+              <div
+                className="flex items-center h-full"
+                style={{
+                  width: `${barPct}%`,
+                  background: s.color,
+                  paddingLeft: 12,
+                }}
+              >
+                {fitsInside && (
+                  <span style={{ fontSize: 12, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", ...TNUM }}>
+                    {s.abs}
+                  </span>
+                )}
+              </div>
+              {!fitsInside && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    left: `calc(${barPct}% + 8px)`,
+                    fontSize: 12,
+                    color: C.g700,
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    ...TNUM,
+                  }}
+                >
+                  {s.abs}
+                </span>
+              )}
             </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
-function BenchCard({ Icon, label, value, bench, tone }: { Icon: typeof Send; label: string; value: string; bench: string; tone: "pos" | "warn" }) {
+function BenchCard({ Icon, label, value, bench, tone }: { Icon: typeof Send; label: string; value: React.ReactNode; bench: React.ReactNode; tone: "pos" | "warn" }) {
   return (
     <div style={{ padding: "14px 16px", border: `1px solid ${C.border}`, borderRadius: 10, background: C.white }}>
       <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
@@ -1445,7 +1592,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {campPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={campaigns} currency={currency} />
+          <CompactTable rows={campaigns} pathPrefix="campaigns" currency={currency} />
         </div>
 
         <div>
@@ -1479,7 +1626,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
               {flowPct.toFixed(2).replace(".", ",")}% da Convertfy
             </span>
           </div>
-          <CompactTable rows={flows} flows currency={currency} />
+          <CompactTable rows={flows} flows pathPrefix="flows" currency={currency} />
         </div>
       </div>
 
@@ -1508,7 +1655,7 @@ function SlideRankings({ snapshot, currency }: { snapshot: ReportSnapshot; curre
   )
 }
 
-function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string }) {
+function CompactTable({ rows, flows, currency = "BRL", pathPrefix }: { rows: ReportSnapshot["campaigns"] | ReportSnapshot["flows"]; flows?: boolean; currency?: string; pathPrefix?: "campaigns" | "flows" }) {
   const items = rows ?? []
   const hasEstimated = items.some((r) => r.revenue_estimated)
   return (
@@ -1557,7 +1704,7 @@ function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot[
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {r.name}
+                  {pathPrefix ? <EditableText path={`${pathPrefix}.${r.id}.name`} value={r.name} /> : r.name}
                 </td>
                 <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11.5, color: C.g600, ...TNUM }}>
                   {(r.delivered ?? r.recipients ?? 0).toLocaleString("pt-BR")}
@@ -1575,12 +1722,18 @@ function CompactTable({ rows, flows, currency = "BRL" }: { rows: ReportSnapshot[
                     fontSize: 12.5,
                     fontWeight: 700,
                     color: C.g900,
-                    fontFamily: F_SERIF,
+                    // F_SANS (não serif): Playfair não tem tnum e desalinhava
+                    // a coluna de valores entre as linhas.
+                    fontFamily: F_SANS,
                     ...TNUM,
                   }}
                 >
                   {r.revenue_estimated && <span style={{ color: C.g400, marginRight: 2, fontWeight: 500 }}>~</span>}
-                  {fmtMoney(r.revenue ?? 0, currency)}
+                  {pathPrefix ? (
+                    <EditableNumber path={`${pathPrefix}.${r.id}.revenue`} raw={r.revenue ?? null} display={fmtMoney(r.revenue ?? 0, currency)} kind="currency" />
+                  ) : (
+                    fmtMoney(r.revenue ?? 0, currency)
+                  )}
                 </td>
               </tr>
             ))
