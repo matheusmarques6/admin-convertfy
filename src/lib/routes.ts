@@ -165,6 +165,7 @@ export const ROUTES = {
 
     AGENTS: {
       PROMPTS: "/admin/agents/prompts",
+      RUNS: "/admin/agents/runs",
     },
 
     SETTINGS: {

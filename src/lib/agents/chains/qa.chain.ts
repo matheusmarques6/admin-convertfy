@@ -37,7 +37,9 @@ import type {
 import type { StoreBrandIdentity, StoreBriefing } from "@/types/email-workspace"
 import {
   computeCostCents,
+  finishGenerationRun,
   logGenerationRun,
+  startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
 import { runQaVisionCheck } from "./qa-vision.chain"
@@ -406,6 +408,18 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   const userPrompt =
     renderTemplate(userTemplate, renderVars) + MERGE_TAGS_INSTRUCTION
 
+  // Run 'running' aberto antes da chamada LLM (live view).
+  const qaRunId = await startGenerationRun({
+    storeId,
+    flowId,
+    emailId,
+    triggeredBy,
+    batchId: batchId ?? "",
+    agent: "qa",
+    agentConfigId: config.id,
+    model,
+  }).catch(() => "")
+
   // ── 4. Chama Claude com timeout 15s ─────────────────────────────────
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), getQaTimeoutMs())
@@ -444,7 +458,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
         duration_ms: Date.now() - t0,
       },
     }
-    await logGenerationRun({
+    await finishGenerationRun(qaRunId, {
       storeId,
       flowId,
       emailId,
@@ -525,7 +539,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
         duration_ms: Date.now() - t0,
       },
     }
-    await logGenerationRun({
+    await finishGenerationRun(qaRunId, {
       storeId,
       flowId,
       emailId,
@@ -634,7 +648,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     },
   }
 
-  await logGenerationRun({
+  await finishGenerationRun(qaRunId, {
     storeId,
     flowId,
     emailId,

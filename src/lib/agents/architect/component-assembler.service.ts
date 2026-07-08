@@ -18,7 +18,11 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { EmailComponentVariant } from "@/types/email-generation"
 
-import { computeCostCents, logGenerationRun } from "../callbacks/telemetry.callback"
+import {
+  computeCostCents,
+  finishGenerationRun,
+  startGenerationRun,
+} from "../callbacks/telemetry.callback"
 import {
   buildMatchContext,
   prefilterCandidates,
@@ -405,6 +409,17 @@ export async function assembleStoreReference(
     candidates_json: chooserCandidatesJson,
   }
 
+  // Run 'running' visível na live view enquanto o LLM roda.
+  const chooserRunId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler_chooser",
+    agentConfigId: chooserRow?.id,
+    model: chooserConfig.model,
+    inputVars: { sections: input.structure.length },
+  })
+
   let chooserRaw = ""
   let chooserTokensIn = 0
   let chooserTokensOut = 0
@@ -442,7 +457,7 @@ export async function assembleStoreReference(
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
   const missingCount = slots.filter((s) => s.kind === "missing").length
 
-  await logGenerationRun({
+  await finishGenerationRun(chooserRunId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     batchId: input.batchId,
@@ -535,6 +550,19 @@ export async function assembleStoreReference(
   }
 
   const t1 = Date.now()
+  const harmRunId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: harmRow?.id,
+    model: harmConfig.model,
+    inputVars: {
+      sections: input.structure.length,
+      chosen: chosen.length,
+      missing: missingCount,
+    },
+  })
   let harmRaw = ""
   let harmTokensIn = 0
   let harmTokensOut = 0
@@ -596,7 +624,7 @@ export async function assembleStoreReference(
     }
   }
 
-  await logGenerationRun({
+  await finishGenerationRun(harmRunId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     batchId: input.batchId,

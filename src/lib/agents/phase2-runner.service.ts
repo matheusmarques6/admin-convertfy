@@ -61,6 +61,8 @@ import { buildHtmlPromptVars } from "./html/build-vars"
 import { runQaAgent } from "./chains/qa.chain"
 import {
   logGenerationRun,
+  startGenerationRun,
+  finishGenerationRun,
   computeCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
@@ -730,6 +732,8 @@ export async function runPhase2Image(
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined
       let promptWithAspect = ""
+      // Run 'running' aberto antes da chamada de imagem (live view).
+      let imgRunId = ""
       try {
         // CONTRATO COM AE-16: o campo opcional em `email_blocks.content` se
         // chama EXATAMENTE `image_instruction` (string). Se AE-16 nomear
@@ -887,6 +891,18 @@ export async function runPhase2Image(
           })}`
         }
 
+        imgRunId = await startGenerationRun({
+          storeId,
+          flowId,
+          emailId,
+          triggeredBy,
+          batchId,
+          agent: "image",
+          model: "openai/gpt-5.4-image-2",
+          inputVars: promptVars,
+          renderedPrompt: promptWithAspect || undefined,
+        })
+
         const imageUrl = await generateEmailImage(
           promptWithAspect,
           storeId,
@@ -923,7 +939,7 @@ export async function runPhase2Image(
         }
         await admin.from("email_blocks").update({ content: merged }).eq("id", blk.id)
 
-        await logGenerationRun({
+        await finishGenerationRun(imgRunId, {
           storeId,
           flowId,
           emailId,
@@ -941,7 +957,7 @@ export async function runPhase2Image(
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro na imagem"
         log.error("phase2.image.error", { emailId, blockId: blk.id, error: msg })
-        await logGenerationRun({
+        await finishGenerationRun(imgRunId, {
           storeId,
           flowId,
           emailId,
@@ -1108,6 +1124,8 @@ export async function runPhase2HtmlQa(
   // ── Step 2: HTML generation (Master Prompt v2) ──────────────────────
   const htmlT0 = Date.now()
   let finalHtml = ""
+  // Run 'running' aberto antes do invokeHtmlChain (live view).
+  let htmlRunId = ""
   try {
     const htmlConfig = ctx.htmlConfig
     const model = htmlConfig?.model ?? "claude-opus-4-7"
@@ -1127,6 +1145,17 @@ export async function runPhase2HtmlQa(
       emailNumber: ctx.emailNumber,
       admin,
       relaxedBrandCheck,
+    })
+
+    htmlRunId = await startGenerationRun({
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId,
+      agent: "html",
+      agentConfigId: htmlConfig?.id,
+      model,
     })
 
     const {
@@ -1150,7 +1179,7 @@ export async function runPhase2HtmlQa(
       .update({ html: rawHtml, updated_at: new Date().toISOString() })
       .eq("id", emailId)
 
-    await logGenerationRun({
+    await finishGenerationRun(htmlRunId, {
       storeId,
       flowId,
       emailId,
@@ -1182,7 +1211,7 @@ export async function runPhase2HtmlQa(
       err instanceof Error && err.name === "BrandIncompleteError"
     const failureReason = isBrandIncomplete ? "brand_incomplete" : "html_failed"
     log.error("phase2.html.error", { emailId, error: msg, failureReason })
-    await logGenerationRun({
+    await finishGenerationRun(htmlRunId, {
       storeId,
       flowId,
       emailId,

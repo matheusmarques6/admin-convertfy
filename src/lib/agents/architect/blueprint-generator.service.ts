@@ -12,7 +12,11 @@ import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 import { DEFAULT_BLUEPRINTS } from "../email-blueprint"
-import { computeCostCents, logGenerationRun } from "../callbacks/telemetry.callback"
+import {
+  computeCostCents,
+  finishGenerationRun,
+  startGenerationRun,
+} from "../callbacks/telemetry.callback"
 import {
   invokeAgent,
   loadActiveAgentConfig,
@@ -257,6 +261,15 @@ export async function generateStoreBlueprint(
   }
 
   const t0 = Date.now()
+  // Run 'running' visível na live view enquanto o LLM roda.
+  const runId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "blueprint",
+    agentConfigId: cfgRow?.id,
+    model: config.model,
+  })
   let blueprint: GeneratedBlueprint | null = null
   let source: "ai" | "manual" = "ai"
   let model: string | null = config.model
@@ -330,7 +343,7 @@ export async function generateStoreBlueprint(
     await upsertStoreBlueprint(input, blueprint, source, model)
   }
 
-  await logGenerationRun({
+  await finishGenerationRun(runId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     batchId: input.batchId,
