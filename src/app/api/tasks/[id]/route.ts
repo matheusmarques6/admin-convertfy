@@ -345,9 +345,12 @@ export async function PUT(
       existingTask.status !== "completed"
         ? ((task as { onboarding_id?: string | null }).onboarding_id ?? null)
         : null
+    // O resultado vai no response (onboarding_handoff/campaign_handoff) pra UI
+    // poder sinalizar "etapa nao avancou" (ex.: not_ready) em vez de silencio.
+    let onboardingHandoff: string | null = null
     if (completedOnboardingId) {
       try {
-        await attemptOnboardingHandoff({
+        onboardingHandoff = await attemptOnboardingHandoff({
           onboardingId: completedOnboardingId,
           actorId: user.id,
         })
@@ -359,19 +362,28 @@ export async function PUT(
     // --- Auto-handoff de etapa do design de campanha ao concluir (non-blocking) ---
     // Dispara o avanco do pipeline de design quando a task concluida pertence a
     // uma campanha. No-op para tasks que nao sejam de campanha.
+    let campaignHandoff: string | null = null
     if (
       task &&
       body.status === "completed" &&
       existingTask.status !== "completed"
     ) {
       try {
-        await attemptCampaignDesignHandoffForTask({ taskId: id, actorId: user.id })
+        campaignHandoff = await attemptCampaignDesignHandoffForTask({
+          taskId: id,
+          actorId: user.id,
+        })
       } catch (campaignErr) {
         log.error("Campaign design handoff failed (non-blocking):", campaignErr)
       }
     }
 
-    return successResponse(request, { task, message: "Tarefa atualizada com sucesso" })
+    return successResponse(request, {
+      task,
+      message: "Tarefa atualizada com sucesso",
+      onboarding_handoff: onboardingHandoff,
+      campaign_handoff: campaignHandoff,
+    })
   } catch (error) {
     return errorResponse(request, error, "Tasks")
   }

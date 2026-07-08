@@ -30,8 +30,12 @@ export async function POST(
     // Dispatcher de design de campanha (non-blocking): avanca o pipeline de
     // design quando a task concluida pertence a uma campanha. No-op caso
     // contrario.
+    let campaignHandoff: string | null = null
     try {
-      await attemptCampaignDesignHandoffForTask({ taskId: id, actorId: user.id })
+      campaignHandoff = await attemptCampaignDesignHandoffForTask({
+        taskId: id,
+        actorId: user.id,
+      })
     } catch (campaignErr) {
       console.error("Campaign design handoff failed (non-blocking):", campaignErr)
     }
@@ -40,6 +44,7 @@ export async function POST(
       task: result.task,
       already_done: result.alreadyDone,
       handoff: result.handoff,
+      campaign_handoff: campaignHandoff,
     })
   } catch (error) {
     return errorResponse(request, error, "task-complete")
