@@ -58,6 +58,7 @@ import {
   invokeHtmlChain,
 } from "./chains/html.chain"
 import { buildHtmlPromptVars } from "./html/build-vars"
+import { computeRenderChecks } from "./html/render-checks"
 import { runQaAgent } from "./chains/qa.chain"
 import {
   logGenerationRun,
@@ -1232,16 +1233,26 @@ export async function runPhase2HtmlQa(
   }
 
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
-  // Bypass: HTML pronto -> status `ready` direto, sem rodar o agente QA
-  // (nem pre-checks deterministicos nem LLM). Sem custo, sem qa_failed.
+  // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
+  // sem qa_failed. As checagens DETERMINISTICAS (computeRenderChecks — sem
+  // LLM) continuam rodando: NAO bloqueiam, so persistem issues informativos
+  // em qa_issues pra dar visibilidade de formatacao ao designer.
   // Claim atomico `rendering -> ready` mantem idempotencia.
   if (!isQaEnabled()) {
+    const renderIssues = computeRenderChecks(finalHtml)
+    if (renderIssues.length > 0) {
+      log.warn("phase2.qa.render_checks_issues", {
+        emailId,
+        count: renderIssues.length,
+        types: renderIssues.map((i) => i.type),
+      })
+    }
     const { data: readyClaimed } = await admin
       .from("email_flow_emails")
       .update({
         status: "ready",
         ready_at: new Date().toISOString(),
-        qa_issues: [],
+        qa_issues: renderIssues,
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -1261,7 +1272,11 @@ export async function runPhase2HtmlQa(
       agent: "qa",
       status: "skipped",
       model: "disabled",
-      parsedOutput: { reason: "qa_disabled_flag", passed: true, issues_count: 0 },
+      parsedOutput: {
+        reason: "qa_disabled_flag",
+        passed: true,
+        issues_count: renderIssues.length,
+      },
     }).catch(() => {})
     if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})

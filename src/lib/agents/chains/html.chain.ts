@@ -219,7 +219,7 @@ export async function invokeHtmlChain(
       timeoutMs: 200_000,
       title: "Convertfy Admin HTML",
     })
-    const html = postProcessHtml(or.text)
+    const html = postProcessHtml(or.text, vars.locale)
     log.info("html.invoke.success", {
       model,
       via: "openrouter",
@@ -294,7 +294,7 @@ export async function invokeHtmlChain(
   const textBlocks = res.content.filter(
     (b): b is Anthropic.TextBlock => b.type === "text",
   )
-  const html = postProcessHtml(textBlocks.map((b) => b.text).join(""))
+  const html = postProcessHtml(textBlocks.map((b) => b.text).join(""), vars.locale)
 
   log.info("html.invoke.success", {
     model,
@@ -359,8 +359,27 @@ function stripUnresolvedPlaceholders(html: string): string {
   return html
 }
 
+/**
+ * Forca o atributo `lang` do <html> pro locale da loja. O modelo escolhia
+ * o lang arbitrariamente (lang="en" em loja pt-BR e vice-versa — batch de
+ * jul/2026 saiu misturado). O locale ja e' resolvido/normalizado por
+ * buildHtmlPromptVars, entao a correcao aqui e' deterministica: substitui
+ * o atributo se existir, injeta se faltar. No-op com locale vazio.
+ */
+export function enforceLangAttribute(html: string, locale: string): string {
+  const trimmed = locale?.trim()
+  if (!trimmed || !/^[a-z]{2}(-[A-Z]{2})?$/.test(trimmed)) return html
+  if (/<html[^>]*\slang\s*=\s*["'][^"']*["']/i.test(html)) {
+    return html.replace(
+      /(<html[^>]*\slang\s*=\s*["'])[^"']*(["'])/i,
+      `$1${trimmed}$2`,
+    )
+  }
+  return html.replace(/<html(\s|>)/i, `<html lang="${trimmed}"$1`)
+}
+
 /** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver. */
-function postProcessHtml(rawText: string): string {
+function postProcessHtml(rawText: string, locale?: string): string {
   let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
   raw = collapseRunawaySpacers(raw)
   const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
@@ -373,5 +392,6 @@ function postProcessHtml(rawText: string): string {
     throw new HtmlTruncatedError(raw.length)
   }
   raw = stripUnresolvedPlaceholders(raw)
+  if (locale) raw = enforceLangAttribute(raw, locale)
   return raw
 }

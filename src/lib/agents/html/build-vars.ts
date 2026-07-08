@@ -38,6 +38,7 @@ import type {
 
 import { loadGlobalReferenceTemplate } from "../reference-template"
 import { precheckBrandReady, resolveBrandTokens } from "./brand-guards"
+import { DEFAULT_REFERENCE_SKELETON } from "./default-reference"
 import { deriveColorRoles } from "./color-roles"
 import { HtmlPromptVarsSchema } from "./contract"
 import { pickBrandLogo, type LogoVariant } from "@/lib/brand/pick-logo"
@@ -359,11 +360,16 @@ export async function buildHtmlPromptVars(
     | { name: string; subject: string; preheader: string }
     | null
   const blocks = (blocksRes.data as EmailBlockRow[] | null) ?? []
-  // Reference por loja (assembler) vence; fallback no template global.
+  // Reference por loja (assembler) vence; fallback no template global;
+  // último recurso é o esqueleto default embutido. Reference VAZIA nunca
+  // chega ao agente: o system prompt é um "Repainter" e, sem estrutura
+  // pra repintar, o modelo improvisa o layout inteiro — emails
+  // inconsistentes/mal formatados (batch Radiantlyhers, jul/2026).
   const storeRefHtml =
     ((storeRefRes as { data: { html?: string | null } | null }).data
       ?.html as string | null) ?? null
-  const referenceHtml = storeRefHtml || globalRefHtml || ""
+  const referenceHtml =
+    storeRefHtml || globalRefHtml || DEFAULT_REFERENCE_SKELETON
 
   // T3.1: sinaliza a FONTE do reference. Sem o reference do Montador
   // (store_email_references), o HTML agent nao tem estrutura por-loja pra
@@ -373,7 +379,7 @@ export async function buildHtmlPromptVars(
     ? "assembler"
     : globalRefHtml
       ? "global"
-      : "none"
+      : "default_skeleton"
   if (referenceSource !== "assembler") {
     log.warn("html.reference_not_from_assembler", {
       emailId,
