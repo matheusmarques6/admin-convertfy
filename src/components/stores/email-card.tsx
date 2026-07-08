@@ -32,6 +32,7 @@ import {
   type LiveEmail,
 } from "@/hooks/use-emails-live"
 import { useToast } from "@/lib/hooks/use-toast"
+import { ScaledEmailFrame } from "@/components/emails/scaled-email-frame"
 import { EmailDebugPanel } from "./email-debug-panel"
 
 interface EmailCardProps {
@@ -275,12 +276,10 @@ export function EmailCard({ email, storeId, isDev }: EmailCardProps) {
               </Button>
             </div>
             {email.html ? (
-              <iframe
-                srcDoc={email.html}
-                sandbox="allow-same-origin"
-                title={`Preview do email ${email.name}`}
-                className="w-full h-[60vh] max-h-[600px] min-h-[300px] lg:h-[420px] border border-gray-200 rounded bg-white"
-              />
+              // ScaledEmailFrame simula viewport desktop (680px) escalado pra
+              // coluna — o iframe w-full estreito disparava o media query
+              // mobile do email e o preview saía empilhado "modo celular".
+              <ScaledEmailFrame html={email.html} baseWidth={600} maxHeight={420} />
             ) : (
               <div className="w-full h-[60vh] max-h-[600px] min-h-[300px] lg:h-[420px] border border-dashed border-gray-300 rounded bg-gray-50 flex items-center justify-center text-xs text-gray-500">
                 HTML ainda nao gerado
