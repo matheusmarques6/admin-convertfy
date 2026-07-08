@@ -89,7 +89,9 @@ vi.mock("./chains/html.chain", () => ({
 vi.mock("./html/build-vars", () => ({ buildHtmlPromptVars: vi.fn(async () => ({})) }))
 vi.mock("./chains/qa.chain", () => ({ runQaAgent: vi.fn() }))
 vi.mock("./callbacks/telemetry.callback", () => ({
-  logGenerationRun: vi.fn(async () => undefined),
+  logGenerationRun: vi.fn(async () => ""),
+  startGenerationRun: vi.fn(async () => "run-1"),
+  finishGenerationRun: vi.fn(async () => "run-1"),
   computeCostCents: vi.fn(() => 0),
 }))
 vi.mock("./email-generation.service", () => ({ buildImagePromptVars: vi.fn(async () => ({})) }))

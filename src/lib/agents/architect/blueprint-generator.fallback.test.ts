@@ -48,7 +48,9 @@ vi.mock("./llm-invoke", async (importActual) => {
 })
 
 vi.mock("../callbacks/telemetry.callback", () => ({
-  logGenerationRun: vi.fn().mockResolvedValue(undefined),
+  logGenerationRun: vi.fn().mockResolvedValue(""),
+  startGenerationRun: vi.fn().mockResolvedValue("run-1"),
+  finishGenerationRun: vi.fn().mockResolvedValue("run-1"),
   computeCostCents: () => 0,
 }))
 

@@ -113,6 +113,62 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
 }
 
 /**
+ * Insere um run em `status='running'` ANTES da chamada ao LLM, pra que a
+ * live view (/admin/agents/runs) mostre o agente em execução em tempo real.
+ * Retorna o run_id pra ser finalizado com `finishGenerationRun`. Nunca
+ * lança — se o insert falhar retorna "" e o finish cai no insert normal.
+ */
+export async function startGenerationRun(
+  params: Omit<LogGenerationRunParams, "status">,
+): Promise<string> {
+  return logGenerationRun({ ...params, status: "running" })
+}
+
+/**
+ * Finaliza um run aberto por `startGenerationRun` com o estado terminal
+ * (success/error/skipped) e a telemetria completa. Se `runId` for vazio
+ * (start falhou ou não rodou), degrada pro INSERT único de sempre — o
+ * comportamento antigo permanece o fallback.
+ */
+export async function finishGenerationRun(
+  runId: string,
+  params: LogGenerationRunParams,
+): Promise<string> {
+  if (!runId) return logGenerationRun(params)
+
+  const admin = createAdminClient()
+  // Campos undefined são omitidos pelo supabase-js — não sobrescrevem o que
+  // o startGenerationRun já gravou (ex.: model no start, erro sem model).
+  const { error } = await admin
+    .from("email_generation_runs")
+    .update({
+      status: params.status,
+      model: params.model ?? undefined,
+      agent_config_id: params.agentConfigId ?? undefined,
+      input_vars: params.inputVars ?? undefined,
+      rendered_prompt: params.renderedPrompt ?? undefined,
+      raw_output: params.rawOutput ?? undefined,
+      parsed_output: params.parsedOutput ?? undefined,
+      tokens_input: params.tokensInput ?? 0,
+      tokens_output: params.tokensOutput ?? 0,
+      cost_cents: params.costCents ?? 0,
+      duration_ms: params.durationMs ?? 0,
+      error_message: params.errorMessage ?? undefined,
+      error_stack: params.errorStack ?? undefined,
+    })
+    .eq("id", runId)
+
+  if (error) {
+    log.error("telemetry.finish_failed", {
+      runId,
+      agent: params.agent,
+      error: error.message,
+    })
+  }
+  return runId
+}
+
+/**
  * Atualiza um run existente (ex: muda status de running pra success/error).
  */
 export async function updateGenerationRun(
