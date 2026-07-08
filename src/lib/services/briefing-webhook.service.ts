@@ -49,6 +49,13 @@ interface WebhookPayload {
   // /api/webhooks/n8n/pesquisa-completa para que a geração de copy não
   // seja re-disparada.
   regeneration: boolean
+  // Quando true, regeneração DO ZERO: `briefing`/`briefing_ai_original`
+  // vão null de propósito — o n8n NÃO deve reaproveitar o briefing antigo
+  // como base; deve gerar a partir do link (store.store_url) e dos dados
+  // atuais da loja. É o modo do botão "Regerar briefing": quem regenera o
+  // faz porque o briefing atual está ERRADO — realimentá-lo só reproduz o
+  // erro (ex.: pesquisa contaminada com outra loja).
+  fresh_start: boolean
   onboarding: Record<string, unknown>
   briefing: BriefingContent | null
   briefing_ai_original: BriefingContent | null
@@ -60,9 +67,10 @@ interface WebhookPayload {
 
 export async function dispatchBriefingWebhook(
   onboardingId: string,
-  opts?: { regeneration?: boolean },
+  opts?: { regeneration?: boolean; freshStart?: boolean },
 ): Promise<void> {
   const regeneration = opts?.regeneration ?? false
+  const freshStart = opts?.freshStart ?? false
   const url = process.env.N8N_BRIEFING_WEBHOOK_URL
   if (!url) {
     log.warn("briefing.webhook.skip", {
@@ -74,7 +82,7 @@ export async function dispatchBriefingWebhook(
 
   let payload: WebhookPayload | null = null
   try {
-    payload = await buildPayload(onboardingId, regeneration)
+    payload = await buildPayload(onboardingId, regeneration, freshStart)
   } catch (e) {
     log.error("briefing.webhook.fatal", {
       onboardingId,
@@ -147,6 +155,7 @@ export async function dispatchBriefingWebhook(
 async function buildPayload(
   onboardingId: string,
   regeneration: boolean,
+  freshStart: boolean,
 ): Promise<WebhookPayload | null> {
   const admin = createAdminClient()
 
@@ -210,6 +219,7 @@ async function buildPayload(
     event: "onboarding.briefing_confirmed",
     timestamp: new Date().toISOString(),
     regeneration,
+    fresh_start: freshStart,
 
     onboarding: {
       id: onb.id,
@@ -234,9 +244,12 @@ async function buildPayload(
       briefing_confirmed_at: onb.briefing_confirmed_at,
     },
 
-    briefing: (onb.briefing as BriefingContent | null) ?? null,
-    briefing_ai_original:
-      (onb.briefing_ai_original as BriefingContent | null) ?? null,
+    // fresh_start: briefing antigo NÃO vai como base — regeneração parte do
+    // link/loja. Ver comentário no tipo WebhookPayload.
+    briefing: freshStart ? null : ((onb.briefing as BriefingContent | null) ?? null),
+    briefing_ai_original: freshStart
+      ? null
+      : ((onb.briefing_ai_original as BriefingContent | null) ?? null),
     form_responses:
       (onb.form_responses as Record<string, unknown> | null) ?? null,
 
