@@ -19,6 +19,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -165,6 +166,7 @@ async function buildPayload(
       ),
       store:client_stores(
         id, store_name, store_url, platform,
+        language, country, currency, niche,
         brand_thesis, brand_about, brand_pillars, brand_presence,
         store_story, store_milestones,
         icp_persona, icp_demographics, icp_day_in_life,
@@ -184,6 +186,14 @@ async function buildPayload(
   const storeRow = Array.isArray(onb.store) ? onb.store[0] : onb.store
   const clientRow = Array.isArray(onb.client) ? onb.client[0] : onb.client
   const storeId = onb.store_id ?? storeRow?.id ?? null
+
+  // Idioma efetivo da loja — mesma resolução do dispatch de copy: coluna
+  // editada no admin vence, formulário cobre lojas sem coluna, default
+  // pt-BR por último (com source explícito no payload).
+  const resolvedStoreLang = resolveStoreLanguage(
+    (onb.form_responses as Record<string, unknown> | null) ?? null,
+    (storeRow?.language as string | null) ?? null,
+  )
 
   const topProductsRes = storeId
     ? await admin
@@ -247,6 +257,15 @@ async function buildPayload(
           store_name: storeRow.store_name,
           store_url: storeRow.store_url,
           platform: storeRow.platform,
+          // Idioma REAL da loja (coluna editada no admin vence o formulário) —
+          // NÃO confundir com onboarding.language, que é herdado do deal do
+          // CRM na criação e fica desatualizado. O n8n deve usar ESTE campo.
+          language: resolvedStoreLang.code,
+          language_label: resolvedStoreLang.label,
+          language_source: resolvedStoreLang.source,
+          country: storeRow.country ?? null,
+          currency: storeRow.currency ?? null,
+          niche: storeRow.niche ?? null,
           brand: {
             thesis: storeRow.brand_thesis,
             about: storeRow.brand_about,

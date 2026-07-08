@@ -13,6 +13,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
+import { assertStoreUrlMatches } from "@/lib/api/n8n-store-guard"
 import {
   errorResponse,
   successResponse,
@@ -35,6 +36,8 @@ const competitorSchema = z.object({
 
 const schema = z.object({
   store_id: z.string().uuid(),
+  // Echo opcional do n8n — liga o guard anti-contaminação de loja.
+  store_url: z.string().optional().nullable(),
   competitors: z.array(competitorSchema).min(0).max(20),
 })
 
@@ -42,6 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     requireWebhookSecret(request)
     const body = await parseAndValidate(request, schema)
+    await assertStoreUrlMatches(body.store_id, body.store_url, "n8n:competitors")
     const admin = createAdminClient()
 
     const { data: store, error: storeErr } = await admin
