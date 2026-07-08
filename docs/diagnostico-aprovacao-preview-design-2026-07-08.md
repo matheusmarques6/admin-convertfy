@@ -77,12 +77,18 @@ header rico — fácil de passar despercebido ("foi acionado mas não está most
 
 ---
 
-## Cenário B — Campanha "SOCIAL PROOF 26/06" na etapa fantasma `implementacao`
+## Cenário B — Campanha "SOCIAL PROOF 26/06" na etapa `implementacao`
 
-A coluna **"Implementacao" (position 5)** do pipeline "Design de Campanhas" foi
-criada **manualmente no banco** — há **zero referências** a `implementacao` em
-`src/lib/services/campaign-central/`. O código conhece só 4 etapas
-(estrutura/aprovacao/producao/finalizacao). Efeitos:
+> **ERRATA (pós-diagnóstico):** a coluna NÃO foi criada manualmente — veio do
+> commit `bcde954f` (03/07, "feat: etapa Implementacao no pipeline de design"),
+> que existia só no origin; o checkout local usado no diagnóstico estava ~60
+> commits defasado. O bug de visibilidade descrito abaixo, porém, era REAL no
+> checkout local e foi resolvido no merge ficando com a versão do origin
+> (matriz, bootstrap, handoff e labels completos).
+
+A coluna **"Implementacao" (position 5)** do pipeline "Design de Campanhas"
+não existia no código do checkout local (4 etapas conhecidas:
+estrutura/aprovacao/producao/finalizacao). Efeitos observados nesse estado:
 
 1. **Invisível no board de Projetos para a equipe de implementação**:
    `campaign-stage-access.ts:23-31` não tem `implementacao` na matriz →
@@ -124,6 +130,17 @@ atribuir; o padrão sugere toggles humanos, não automação.
     recebe 200 e nada visível acontece.
 
 ---
+
+## Status das correções (aplicadas em 08/07/2026)
+
+| # | Correção | Status |
+|---|---|---|
+| 1 | Duplicatas TEASER canceladas + `design_task_id` religado à task real | ✅ aplicado no banco |
+| 2 | Índice único parcial + slugs determinísticos + tratamento 23505 | ✅ código commitado; **migration `20260816_campaign_design_task_idempotency.sql` pendente de aplicação no banco** |
+| 3 | Rota `/api/productivity` repassa `source_type: "campaign_design"` + stage_name/color/role | ✅ commitado |
+| 4 | Etapa `implementacao` | ✅ já existia no origin (`bcde954f`); merge integrado |
+| 5 | `approveSuggestion` sempre instancia o design | ✅ commitado |
+| 6 | `email-task-sync` chama handoff + rotas expõem resultado | ✅ commitado |
 
 ## Correções recomendadas (por prioridade)
 
