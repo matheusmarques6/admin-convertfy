@@ -86,7 +86,8 @@ export interface OnboardingKanbanProps {
   } | null
   initialMembers?: { members: OrgMember[] } | null
   initialMe?: {
-    member: { id: string; role: string; profile_id: string }
+    profile: { id: string }
+    orgMember: { role: string } | null
   } | null
 }
 

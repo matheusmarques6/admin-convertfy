@@ -7,7 +7,7 @@ import {
 import { invokeRouteJson } from "@/lib/api/invoke-route"
 import { GET as getOnboardings } from "@/app/api/onboardings/route"
 import { GET as getOrgMembers } from "@/app/api/admin/org-members/route"
-import { GET as getMeTasks } from "@/app/api/me/tasks/route"
+import { GET as getMePermissions } from "@/app/api/me/permissions/route"
 
 export const metadata: Metadata = {
   title: "Onboarding | Convertfy Admin",
@@ -26,7 +26,7 @@ export default async function OnboardingPage() {
   const [initialOnboardings, initialMembers, initialMe] = await Promise.all([
     invokeRouteJson(getOnboardings, "/api/onboardings"),
     invokeRouteJson(getOrgMembers, "/api/admin/org-members"),
-    invokeRouteJson(getMeTasks, "/api/me/tasks?status=pending"),
+    invokeRouteJson(getMePermissions, "/api/me/permissions"),
   ])
 
   return (
