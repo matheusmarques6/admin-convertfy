@@ -587,6 +587,18 @@ export async function dispatchEmailCopyWebhook(
     effectiveStoreLang || null,
   )
 
+  // source 'default' = NINGUÉM escolheu idioma (nem coluna, nem formulário) e
+  // o pipeline vai assumir pt-BR. Isso já gerou copy no idioma errado em loja
+  // gringa cujo idioma só foi configurado DEPOIS do dispatch — warn explícito
+  // pra parar de ser silencioso (o payload também carrega language_source).
+  if (resolvedLang.source === "default") {
+    log.warn("email_copy.webhook.language_defaulted", {
+      storeId,
+      language: resolvedLang.code,
+      hint: "idioma não configurado na loja nem no formulário — assumindo pt-BR",
+    })
+  }
+
   const payload = {
     event: "email_copy.requested" as const,
     timestamp: new Date().toISOString(),
@@ -602,6 +614,10 @@ export async function dispatchEmailCopyWebhook(
       platform: store.platform,
       language: resolvedLang.code,
       language_label: resolvedLang.label,
+      // De onde o idioma veio: 'store' (coluna editada no admin), 'form_main'/
+      // 'form_other' (formulário de onboarding) ou 'default' (ninguém escolheu
+      // — pt-BR assumido). Permite o n8n/debug detectar fallback silencioso.
+      language_source: resolvedLang.source,
       language_form_raw:
         (onboardingRow?.form_responses?.store_language as string | undefined) ?? null,
       language_form_other_raw:

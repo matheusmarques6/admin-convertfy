@@ -32,6 +32,17 @@ describe("languageCodeToLabel", () => {
     }
   })
 
+  it("código legado 'en-US' (wizard antigo do portal) resolve via alias", () => {
+    // O select do wizard gravava "en-US" em client_stores.language. Sem o
+    // alias, a badge mostrava "Sem idioma" e o dispatch mandava "en-us" cru.
+    expect(languageCodeToLabel("en-US")).toBe("Inglês")
+    expect(languageLabelToCode("en-US")).toBe("en")
+    const r = resolveStoreLanguage(null, "en-US")
+    expect(r.code).toBe("en")
+    expect(r.label).toBe("Inglês")
+    expect(r.source).toBe("store")
+  })
+
   it("labels nativos antigos (pré-tradução PT) ainda resolvem via alias", () => {
     // Lojas cadastradas antes de traduzir o dropdown guardaram o nome nativo.
     expect(languageLabelToCode("Polski")).toBe("pl")

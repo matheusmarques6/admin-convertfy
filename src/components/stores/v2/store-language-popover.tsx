@@ -13,6 +13,7 @@ import { useToast } from "@/lib/hooks/use-toast"
 import {
   STORE_LANGUAGE_OPTIONS,
   languageCodeToLabel,
+  languageLabelToCode,
   type StoreLanguageCode,
 } from "@/lib/i18n/store-language"
 
@@ -33,10 +34,11 @@ export function StoreLanguagePopover({ storeId, language }: Props) {
   const router = useRouter()
   const { toast } = useToast()
 
-  const initialCode =
-    language && STORE_LANGUAGE_OPTIONS.some((o) => o.value === language)
-      ? (language as StoreLanguageCode)
-      : ""
+  // languageLabelToCode resolve aliases (ex.: "en-US" do wizard antigo → "en"),
+  // então o select pré-seleciona o canônico mesmo pra valores legados.
+  const initialCode = (languageLabelToCode(language) ?? "") as
+    | StoreLanguageCode
+    | ""
 
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState<StoreLanguageCode | "">(initialCode)
@@ -58,7 +60,11 @@ export function StoreLanguagePopover({ storeId, language }: Props) {
         const msg = await res.text().catch(() => res.statusText)
         throw new Error(msg)
       }
-      toast({ title: "Idioma atualizado" })
+      toast({
+        title: "Idioma atualizado",
+        description:
+          "Copies já geradas permanecem no idioma anterior — regenere com “Gerar copies”.",
+      })
       setOpen(false)
       router.refresh()
     } catch (err) {
@@ -100,6 +106,11 @@ export function StoreLanguagePopover({ storeId, language }: Props) {
             </option>
           ))}
         </select>
+        <p className="text-[11px] text-slate-500 mt-2 leading-snug">
+          Alterar o idioma NÃO regenera copies já criadas — elas permanecem no
+          idioma em que foram geradas. Use &ldquo;Gerar copies&rdquo; na loja
+          para regerar no novo idioma.
+        </p>
         <div className="flex gap-2 mt-3">
           <button
             type="button"
