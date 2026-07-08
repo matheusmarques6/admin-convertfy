@@ -12,7 +12,8 @@ import { CAMPAIGN_DESIGN_COLUMNS } from "./campaign-design-bootstrap.service"
  *       deliverable Figma (required) preenchido. Senao "not_ready".
  *     - aprovacao: NUNCA auto-avanca -> "awaiting_decision".
  *     - producao: avanca p/ finalizacao SE as 3 tasks concluidas. Senao "not_ready".
- *     - finalizacao: SE todas as tasks por loja concluidas -> "completed".
+ *     - finalizacao: avanca p/ implementacao SE todas as tasks por loja concluidas.
+ *     - implementacao: SE todas as tasks concluidas -> "completed" (terminal).
  *
  *   approveCampaignDesign({ suggestionId, orgId, actorId })
  *     -> "advanced" | "not_applicable"   (aprovacao -> producao)
@@ -307,7 +308,7 @@ describe("aprovacao — decisao do COO", () => {
   })
 })
 
-describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
+describe("attemptCampaignDesignHandoff — producao, finalizacao e implementacao", () => {
   it("producao: avanca p/ finalizacao quando as 3 tasks concluidas", async () => {
     seedBase("producao")
     addTask("producao", "completed")
@@ -338,7 +339,7 @@ describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
     expect(camp().design_column_id).toBe(colId("producao"))
   })
 
-  it("finalizacao: todas as tasks por loja concluidas -> completed", async () => {
+  it("finalizacao: todas as tasks por loja concluidas -> avanca p/ implementacao", async () => {
     seedBase("finalizacao")
     addTask("finalizacao", "completed")
     addTask("finalizacao", "completed")
@@ -347,7 +348,39 @@ describe("attemptCampaignDesignHandoff — producao e finalizacao", () => {
       orgId: ORG,
       actorId: "u1",
     })
+    expect(status).toBe("advanced")
+    expect(camp().design_column_id).toBe(colId("implementacao"))
+    // tasks do checklist da implementacao (corte modelo + subir e-mails)
+    expect(tasksIn("implementacao")).toHaveLength(
+      CAMPAIGN_DESIGN_COLUMNS.find((c) => c.slug === "implementacao")!
+        .checklist_template.length,
+    )
+  })
+
+  it("implementacao: todas as tasks concluidas -> completed (etapa terminal)", async () => {
+    seedBase("implementacao")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "completed")
+    const status = await attemptCampaignDesignHandoff({
+      suggestionId: SUG,
+      orgId: ORG,
+      actorId: "u1",
+    })
     expect(status).toBe("completed")
+    expect(camp().design_column_id).toBe(colId("implementacao"))
+  })
+
+  it("implementacao: NAO conclui com task pendente", async () => {
+    seedBase("implementacao")
+    addTask("implementacao", "completed")
+    addTask("implementacao", "pending")
+    const status = await attemptCampaignDesignHandoff({
+      suggestionId: SUG,
+      orgId: ORG,
+      actorId: "u1",
+    })
+    expect(status).toBe("not_ready")
+    expect(camp().design_column_id).toBe(colId("implementacao"))
   })
 })
 

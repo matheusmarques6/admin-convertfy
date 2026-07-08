@@ -1,9 +1,9 @@
 /**
  * Fase 3 do pipeline de DESIGN de campanha — orquestrador de handoff.
  *
- * Avanca uma `campaign_suggestion` pelas 4 etapas do pipeline `campaign_design`
- * (estrutura -> aprovacao -> producao -> finalizacao), espelhando o padrao do
- * onboarding (`attemptOnboardingHandoff` + `advanceColumn`):
+ * Avanca uma `campaign_suggestion` pelas 5 etapas do pipeline `campaign_design`
+ * (estrutura -> aprovacao -> producao -> finalizacao -> implementacao),
+ * espelhando o padrao do onboarding (`attemptOnboardingHandoff` + `advanceColumn`):
  *   - "todas as tasks da etapa concluidas (+ deliverables required) -> avanca";
  *   - avanco com Compare-And-Swap (CAS) anti-concorrencia: o UPDATE so casa
  *     quando `design_column_id` ainda aponta pra etapa esperada;
@@ -281,14 +281,8 @@ export async function attemptCampaignDesignHandoff(
     version,
   )
 
-  // finalizacao: terminal. Todas as tasks por loja concluidas -> completed.
-  if (stageSlug === "finalizacao") {
-    if (!allCompleted(tasks)) return "not_ready"
-    return "completed"
-  }
-
-  // estrutura / producao: avancam quando as tasks (e deliverables required)
-  // da etapa estao concluidos.
+  // Etapas de trabalho avancam quando as tasks (e deliverables required, na
+  // estrutura) estao concluidas.
   if (!allCompleted(tasks)) return "not_ready"
 
   if (stageSlug === "estrutura") {
@@ -299,8 +293,10 @@ export async function attemptCampaignDesignHandoff(
     if (!filled) return "not_ready"
   }
 
+  // Ultima etapa do STAGE_ORDER (implementacao): nada a instanciar -> pipeline
+  // de design concluido.
   const next = nextStage(stageSlug)
-  if (!next) return "not_ready"
+  if (!next) return "completed"
   const nextColumnId = ctx.columnIdBySlug[next]
   if (!nextColumnId) {
     log.warn("Coluna destino nao encontrada no pipeline", {

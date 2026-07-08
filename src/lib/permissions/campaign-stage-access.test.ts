@@ -7,12 +7,13 @@ import {
 } from "./campaign-stage-access"
 
 describe("CAMPAIGN_DESIGN_STAGE_ROLE — matriz de responsabilidade", () => {
-  it("estrutura/producao/finalizacao = designer; aprovacao = coo", () => {
+  it("estrutura/producao/finalizacao = designer; aprovacao = coo; implementacao = implementacao", () => {
     expect(CAMPAIGN_DESIGN_STAGE_ROLE).toEqual({
       estrutura: "designer",
       aprovacao: "coo",
       producao: "designer",
       finalizacao: "designer",
+      implementacao: "implementacao",
     })
   })
 
@@ -48,9 +49,16 @@ describe("canAccessCampaignStage — visibilidade por funcao", () => {
     }
   })
 
-  it("suporte/implementacao NAO enxergam o pipeline de design de campanha", () => {
+  it("suporte/implementacao NAO enxergam etapas de designer/coo", () => {
     expect(canAccessCampaignStage(["suporte"], "estrutura")).toBe(false)
     expect(canAccessCampaignStage(["implementacao"], "producao")).toBe(false)
+  })
+
+  it("implementacao ve a etapa implementacao; designer nao", () => {
+    expect(canAccessCampaignStage(["implementacao"], "implementacao")).toBe(true)
+    expect(canAccessCampaignStage(["ops"], "implementacao")).toBe(true) // legado
+    expect(canAccessCampaignStage(["designer"], "implementacao")).toBe(false)
+    expect(canAccessCampaignStage(["suporte"], "implementacao")).toBe(false)
   })
 
   it("multifuncao = uniao (suporte + designer ve etapas de designer)", () => {
