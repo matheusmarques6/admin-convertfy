@@ -9,7 +9,8 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import type { EmailOutlineTemplate } from "@/types/email-generation"
+import type { CopySpecField, EmailOutlineTemplate } from "@/types/email-generation"
+import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
 
 import { DEFAULT_BLUEPRINTS } from "../email-blueprint"
 import {
@@ -62,6 +63,10 @@ export interface GeneratedBlock {
   // derivada da intenção do email + nicho. Persistida em blocks[].image_brief
   // e lida por buildImagePromptVars → var IMAGE_BRIEF (casando por posição).
   image_brief?: string | null
+  // Orçamento min/max de caracteres por campo de copy, derivado da geometria
+  // do HTML lido (fórmula em copy-spec.ts). Clampado aos guarda-corpos
+  // absolutos no parse; ausente/inválido → default canônico por tipo.
+  copy_spec: CopySpecField[]
 }
 
 export interface GeneratedBlueprint {
@@ -80,7 +85,8 @@ const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. R
 - purpose: 2-3 frases CONCRETAS — o que a seção mostra, o ângulo/argumento e o que a COPY precisa entregar ali (NÃO escreva a copy final, escreva a diretiva específica daquele bloco). Nada de "papel do bloco" raso.
 - needs_image: true só onde há imagem renderizada (hero/image quase sempre; products quando tem foto; demais quase nunca).
 - image_brief: quando needs_image=true, 1-2 frases de COMO gerar a imagem (cena, assunto, enquadramento, mood) derivadas da INTENÇÃO do email + NICHO, sem texto na imagem; quando needs_image=false, null.
-Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief"}]}.`
+- copy_spec: para cada bloco com texto, a lista dos campos de copy com orçamento de caracteres derivado da GEOMETRIA REAL do HTML que você leu. Fórmula: chars_por_linha ≈ largura_útil_px ÷ (font_size_px × 0.55); em colunas ESTREITAS (< 300px, ex.: texto ao lado de imagem) use × 0.75 — a quebra de palavra desperdiça ~30% da linha. max_chars = chars_por_linha × nº de linhas que a seção comporta com elegância (headline 1-2 linhas; body 3-4; CTA SEMPRE 1). min_chars ≈ 40-60% do max. Use as chaves reais de copy (headline, body, text, cta, code, hint, title, eyebrow, greeting, signoff, author). Guarda-corpos que nunca podem ser violados: headline 12-60, body/text 30-400, cta 6-24, code 4-16, title 8-50. Blocos sem texto (image, divider, spacer, footer) → copy_spec: [].
+Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief","copy_spec":[{"key","min_chars","max_chars"}]}]}.`
 
 const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
 PERSONA: {{persona}} — TOM DE VOZ: {{tom_voz}}
@@ -118,6 +124,7 @@ function normalizeBlock(raw: unknown): GeneratedBlock | null {
     needs_image,
     // image_brief só faz sentido em bloco de imagem; nos demais fica null.
     image_brief: needs_image && brief ? brief : null,
+    copy_spec: normalizeCopySpec(b.copy_spec, type),
   }
 }
 
@@ -160,6 +167,7 @@ export function blueprintFromDefault(
       purpose: b.purpose,
       needs_image: b.needs_image === true || IMAGE_BLOCKS.has(b.type),
       image_brief: b.image_brief ?? null,
+      copy_spec: normalizeCopySpec(null, b.type),
     })),
   }
 }
@@ -187,6 +195,7 @@ async function blueprintFromGlobal(
       purpose: b.purpose,
       needs_image: b.needs_image === true || IMAGE_BLOCKS.has(b.type),
       image_brief: b.image_brief ?? null,
+      copy_spec: normalizeCopySpec(b.copy_spec, b.type),
     })),
   }
 }
@@ -324,9 +333,9 @@ export async function generateStoreBlueprint(
       messaging: "",
       subject_hint: null,
       blocks: [
-        { type: "hero", label: "Hero", purpose: "", needs_image: true },
-        { type: "text", label: "Texto", purpose: "", needs_image: false },
-        { type: "footer", label: "Rodapé", purpose: "", needs_image: false },
+        { type: "hero", label: "Hero", purpose: "", needs_image: true, copy_spec: normalizeCopySpec(null, "hero") },
+        { type: "text", label: "Texto", purpose: "", needs_image: false, copy_spec: normalizeCopySpec(null, "text") },
+        { type: "footer", label: "Rodapé", purpose: "", needs_image: false, copy_spec: normalizeCopySpec(null, "footer") },
       ],
     }
     fallbackSource = "minimal"

@@ -1,3 +1,14 @@
+// Orçamento de caracteres de UM campo de copy de um bloco (JSONB
+// blocks[].copy_spec). Derivado da geometria do template pelo Blueprint
+// agent (fórmula em src/lib/email-workspace/copy-spec.ts) ou do default
+// canônico por block_type. Enviado ao n8n no payload de copy para o
+// gerador respeitar o layout (headline nunca vira parágrafo).
+export interface CopySpecField {
+  key: string
+  min_chars: number
+  max_chars: number
+}
+
 export interface BlueprintBlock {
   type: string
   label: string
@@ -9,6 +20,10 @@ export interface BlueprintBlock {
   // Prompt da imagem deste bloco (JSONB blocks[].image_brief). Lido por
   // buildImagePromptVars → var IMAGE_BRIEF, casando pela posição do bloco.
   image_brief?: string | null
+  // Orçamento min/max de caracteres por campo de copy. Opcional para
+  // retrocompat — blueprints gravados antes do copy_spec caem no default
+  // canônico por tipo (normalizeCopySpec).
+  copy_spec?: CopySpecField[] | null
 }
 
 export interface EmailBlueprint {

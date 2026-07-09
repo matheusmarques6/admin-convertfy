@@ -29,6 +29,10 @@ import {
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import {
+  findCopyDeviations,
+  normalizeCopySpec,
+} from "@/lib/email-workspace/copy-spec"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 import { checkBatchTerminal } from "@/lib/agents/phase2-runner.service"
@@ -211,12 +215,15 @@ export async function POST(request: NextRequest) {
     // leitura.
     const { data: emailBlocksOrdered } = await admin
       .from("email_blocks")
-      .select("id, content")
+      .select("id, content, block_type")
       .eq("email_id", body.email_id)
       .order("position", { ascending: true })
     const orderedIds = (
       (emailBlocksOrdered ?? []) as Array<{ id: string; content: unknown }>
     ).map((r) => r.id)
+    const orderedTypes = (
+      (emailBlocksOrdered ?? []) as Array<{ block_type: string | null }>
+    ).map((r) => r.block_type ?? "")
 
     // 2.5) Limpa artefatos pre-GATE 2: chaves de imagem persistidas em
     // email_blocks.content por uma renderizacao ANTERIOR a confirmacao da
@@ -316,6 +323,30 @@ export async function POST(request: NextRequest) {
       })
     }
     blocksWritten += blocksByPosition
+
+    // 3.5) Auditoria do copy_spec: mede a copy gravada contra o budget
+    // canônico do tipo de cada bloco (o payload de dispatch enviou o spec
+    // ao n8n — aqui verificamos o quanto ele obedeceu). Observabilidade
+    // apenas: NÃO rejeita nem trunca; endurecer só depois de medir a taxa
+    // de desvio em produção.
+    const copyDeviations: Array<Record<string, unknown>> = []
+    for (let i = 0; i < body.blocks.length; i++) {
+      const blockType = orderedTypes[i]
+      if (!blockType) continue
+      const deviations = findCopyDeviations(
+        body.blocks[i].content as Record<string, unknown>,
+        normalizeCopySpec(null, blockType),
+      )
+      for (const d of deviations) {
+        copyDeviations.push({ position: i, type: blockType, ...d })
+      }
+    }
+    if (copyDeviations.length > 0) {
+      log.warn("email_copy.copy_out_of_spec", {
+        email_id: body.email_id,
+        deviations: copyDeviations,
+      })
+    }
 
     // 4) Telemetria
     await admin.from("email_generation_runs").insert({

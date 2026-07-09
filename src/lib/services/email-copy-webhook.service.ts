@@ -29,6 +29,8 @@ import type {
   StoreBrandIdentity,
   StoreBriefing,
 } from "@/types/email-workspace"
+import type { BlueprintBlock } from "@/types/email-generation"
+import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
 
 const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
@@ -517,6 +519,18 @@ export async function dispatchEmailCopyWebhook(
     })
   }
 
+  // Blocos do blueprint efetivo por chave — fonte do purpose/copy_spec
+  // enviados por bloco ao n8n. Os email_blocks são SEMEADOS do blueprint
+  // na mesma ordem, então blocks[position] do blueprint corresponde ao
+  // email_block de mesma position (validado por type antes de usar).
+  const blueprintBlocksByKey = new Map<string, BlueprintBlock[]>()
+  for (const bp of effectiveBlueprints.values()) {
+    blueprintBlocksByKey.set(
+      `${bp.flow_type}:${bp.email_number}`,
+      Array.isArray(bp.blocks) ? bp.blocks : [],
+    )
+  }
+
   // "Estrutura geral" por chave — vai no payload dos emails somente-texto.
   const outlineByKey = new Map<string, OutlineRow>()
   for (const o of (outlinesRes.data ?? []) as OutlineRow[]) {
@@ -751,12 +765,26 @@ export async function dispatchEmailCopyWebhook(
               }
             : null,
           blocks: selectBlocksForCopy(blocksByEmail.get(e.id) ?? []).map(
-            (b) => ({
-              block_id: b.id,
-              position: b.position,
-              type: b.block_type,
-              label: b.label,
-            }),
+            (b) => {
+              // Bloco correspondente no blueprint (mesma position, semeado
+              // na mesma ordem). Se a estrutura divergiu (reseed antigo,
+              // edicao manual), o type não casa → default canônico do tipo.
+              const bpBlock = blueprintBlocksByKey.get(key)?.[b.position]
+              const matched =
+                bpBlock && bpBlock.type === b.block_type ? bpBlock : null
+              return {
+                block_id: b.id,
+                position: b.position,
+                type: b.block_type,
+                label: b.label,
+                // Diretiva de conteúdo da seção (do Blueprint agent) — o que
+                // a copy precisa entregar neste bloco específico.
+                purpose: matched?.purpose?.trim() || null,
+                // Orçamento min/max de caracteres por campo — o gerador DEVE
+                // respeitar para a copy caber no layout (ver copy-spec.ts).
+                copy_spec: normalizeCopySpec(matched?.copy_spec, b.block_type),
+              }
+            },
           ),
         }
       })
