@@ -59,6 +59,18 @@ export function computeCostCents(model: string, inputTokens: number, outputToken
   return Math.round(usd * 100)
 }
 
+// triggered_by e UUID (FK profiles), mas callers de pipeline passam labels
+// como "signal_consumer:rerender". String nao-UUID quebrava o INSERT INTEIRO
+// e o run era DESCARTADO em silencio — fase 2 disparada por sinal (brand
+// confirm / rerender / render manual) ficou invisivel na telemetria: sem
+// runs, sem custo e SEM error_message quando falhava. Nao-UUID → null.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function asUuidOrNull(value: string | null | undefined): string | null {
+  return value && UUID_RE.test(value) ? value : null
+}
+
 /**
  * Persiste um run de geração no banco. Retorna o run_id.
  */
@@ -69,7 +81,7 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     store_id: params.storeId,
     flow_id: params.flowId ?? null,
     email_id: params.emailId ?? null,
-    triggered_by: params.triggeredBy ?? null,
+    triggered_by: asUuidOrNull(params.triggeredBy),
     // batch_id e UUID nullable. String vazia ("" quando generation_batch_id
     // do email e null) quebra o INSERT (sintaxe UUID invalida) e o run era
     // DESCARTADO silenciosamente (telemetry.insert_failed) -> agente sumia da
