@@ -7,14 +7,17 @@ const nextConfig = {
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   // O file-tracing nao detecta os .br de bin/ (carregados via fs em runtime)
   // e a lambda subia sem eles ("input directory ... does not exist").
-  // Chaves usam * nos segmentos dinamicos: picomatch trataria [id] como
-  // classe de caracteres. Globs cobrem o layout do pnpm (.pnpm/...).
+  // As chaves sao comparadas com a rota ja normalizada por normalizeAppPath
+  // (sem o sufixo /route) — com /route no fim o match NUNCA ocorre e os
+  // binarios ficam fora da lambda. Chaves usam * nos segmentos dinamicos:
+  // picomatch trataria [id] como classe de caracteres. Globs cobrem o
+  // layout do pnpm (.pnpm/...).
   outputFileTracingIncludes: {
-    "/api/admin/stores/*/export-emails-zip/route": [
+    "/api/admin/stores/*/export-emails-zip": [
       "node_modules/@sparticuz/chromium/bin/**",
       "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
-    "/api/admin/email-flows/*/emails/*/export-png/route": [
+    "/api/admin/email-flows/*/emails/*/export-png": [
       "node_modules/@sparticuz/chromium/bin/**",
       "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
