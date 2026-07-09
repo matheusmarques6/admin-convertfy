@@ -36,6 +36,7 @@ import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
 import { ScaledEmailFrame } from "@/components/emails/scaled-email-frame"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
+import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import type {
   BlockType,
@@ -779,6 +780,8 @@ export function EmailDetailView({
           {viewMode === "html" && (
             <EmailHtmlView
               email={email}
+              flowId={flow.id}
+              exportBasename={emailExportBasename(flow, email)}
               html={email.html || renderEmailHtml(email, blocks)}
               onCopyAll={(html) => copyToClipboard(html, "HTML completo")}
             />
@@ -2194,14 +2197,49 @@ function CopyCard({ label, value, onCopy }: { label: string; value: string; onCo
 
 export function EmailHtmlView({
   email,
+  flowId,
+  exportBasename,
   html,
   onCopyAll,
 }: {
   email: EmailFlowEmail
+  flowId: string
+  exportBasename: string
   html: string
   onCopyAll: (html: string) => void
 }) {
+  const toast = useToast()
+  const [downloadingPng, setDownloadingPng] = useState(false)
   const lines = html.split("\n")
+
+  async function downloadPng() {
+    if (downloadingPng) return
+    setDownloadingPng(true)
+    try {
+      const res = await fetch(
+        `/api/admin/email-flows/${flowId}/emails/${email.id}/export-png`,
+      )
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${exportBasename}.png`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.toast({
+        title: "Erro ao gerar PNG",
+        description: err instanceof Error ? err.message : "Tente novamente",
+        variant: "destructive",
+      })
+    } finally {
+      setDownloadingPng(false)
+    }
+  }
   return (
     <div style={{ padding: "24px 32px 48px", maxWidth: 1200, margin: "0 auto" }}>
       <div
@@ -2225,10 +2263,34 @@ export function EmailHtmlView({
             style={{ color: "rgba(255,255,255,0.7)" }}
           >
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E" }} />
-            welcome-email-{String(email.number).padStart(2, "0")}.html
+            {exportBasename}.html
             <span style={{ marginLeft: 8 }}>· {lines.length} linhas</span>
           </div>
           <div className="flex gap-2">
+            <button
+              className="cf-focusable inline-flex items-center gap-1.5"
+              style={{
+                height: 28,
+                padding: "0 10px",
+                background: "rgba(255,255,255,0.10)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: downloadingPng ? "default" : "pointer",
+                opacity: downloadingPng ? 0.6 : 1,
+              }}
+              disabled={downloadingPng}
+              onClick={downloadPng}
+            >
+              {downloadingPng ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FileImage className="h-3 w-3" />
+              )}
+              {downloadingPng ? "Gerando..." : "Baixar .png"}
+            </button>
             <button
               className="cf-focusable inline-flex items-center gap-1.5"
               style={{
@@ -2247,7 +2309,7 @@ export function EmailHtmlView({
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement("a")
                 a.href = url
-                a.download = `welcome-email-${String(email.number).padStart(2, "0")}.html`
+                a.download = `${exportBasename}.html`
                 a.click()
                 URL.revokeObjectURL(url)
               }}

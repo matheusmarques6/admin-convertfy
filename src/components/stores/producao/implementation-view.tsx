@@ -33,6 +33,7 @@ import type {
   EmailQAItem,
 } from "@/types/email-workspace"
 import { EmailCopyView, EmailHtmlView, RenderedBlock } from "./email-detail-view"
+import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -312,7 +313,13 @@ export function ImplementationView({
       {/* Body */}
       <div className="flex-1 overflow-y-auto" style={{ background: "var(--crm-gray-50)" }}>
         {viewMode === "html" ? (
-          <EmailHtmlView email={email} html={html} onCopyAll={(h) => copy(h, "HTML completo")} />
+          <EmailHtmlView
+            email={email}
+            flowId={flow.id}
+            exportBasename={emailExportBasename(flow, email)}
+            html={html}
+            onCopyAll={(h) => copy(h, "HTML completo")}
+          />
         ) : (
           <div style={{ padding: "24px 32px 48px", maxWidth: 1080, margin: "0 auto" }}>
             {/* Setup cards */}

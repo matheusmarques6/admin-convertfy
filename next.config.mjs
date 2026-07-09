@@ -2,6 +2,9 @@
 const nextConfig = {
   compress: true,
   cleanDistDir: true,
+  // Chromium headless para export de emails em PNG: o binario brotli do
+  // @sparticuz/chromium nao pode ser bundlado pelo webpack (quebra o build).
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   experimental: {
     // recharts, date-fns e lucide-react já estão na lista default do Next 15.5
     // (node_modules/next/dist/server/config.js) — não repetir aqui.
