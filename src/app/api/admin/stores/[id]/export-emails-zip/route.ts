@@ -30,7 +30,10 @@ import {
   slugify,
 } from "@/lib/email-workspace/export-naming"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
-import { withRenderPage } from "@/lib/services/email-png-render.service"
+import {
+  pngDimensions,
+  withRenderPage,
+} from "@/lib/services/email-png-render.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoreExportEmailsZip")
@@ -41,6 +44,9 @@ export const maxDuration = 300
 
 const MAX_EMAILS = 40
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024 // 200 MB
+// Largura CSS do render (default do email-png-render.service) — usada para
+// derivar a escala efetiva a partir da largura fisica do PNG.
+const EXPORT_WIDTH = 600
 
 const querySchema = z
   .object({
@@ -219,7 +225,14 @@ export async function GET(
               compression: "STORE",
             })
             okCount++
-            manifest.push(`OK      ${folder}/${basename}.png`)
+            // Dimensoes reais do PNG: emails altos saem com escala efetiva
+            // menor que a pedida (limite de textura do Chromium) — o
+            // manifesto e a fonte de verificacao do que foi gerado.
+            const { width: pngW, height: pngH } = pngDimensions(png)
+            const effScale = Math.round((pngW / EXPORT_WIDTH) * 100) / 100
+            manifest.push(
+              `OK      ${folder}/${basename}.png — ${pngW}x${pngH}px (escala ${effScale}x)`,
+            )
           } catch (err) {
             if (err instanceof AppError && err.statusCode === 413) throw err
             failCount++

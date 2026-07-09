@@ -263,6 +263,15 @@ async function renderOnPage(
   return Buffer.from(shot)
 }
 
+/**
+ * Dimensoes de um PNG lidas do IHDR (width bytes 16-19, height 20-23,
+ * big-endian). Nao valida assinatura — uso interno em buffers que acabamos
+ * de gerar via screenshot.
+ */
+export function pngDimensions(png: Buffer): { width: number; height: number } {
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
 /** Renderiza 1 HTML em PNG. Abre/reusa o browser e fecha so a page. */
 export async function renderEmailHtmlToPng(
   html: string,

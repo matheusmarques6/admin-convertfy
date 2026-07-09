@@ -185,6 +185,15 @@ describe("email-png-render.service", () => {
     )
   })
 
+  it("pngDimensions le width/height do IHDR", async () => {
+    const svc = await loadService()
+    // PNG minimo: assinatura (8) + length/type do IHDR (8) + width/height BE
+    const buf = Buffer.alloc(24)
+    buf.writeUInt32BE(1200, 16)
+    buf.writeUInt32BE(16_383, 20)
+    expect(svc.pngDimensions(buf)).toEqual({ width: 1200, height: 16_383 })
+  })
+
   it("closeSharedBrowser fecha e zera o singleton", async () => {
     const page = makeFakePage()
     const browser = makeFakeBrowser(page)
