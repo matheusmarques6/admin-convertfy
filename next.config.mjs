@@ -5,6 +5,20 @@ const nextConfig = {
   // Chromium headless para export de emails em PNG: o binario brotli do
   // @sparticuz/chromium nao pode ser bundlado pelo webpack (quebra o build).
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // O file-tracing nao detecta os .br de bin/ (carregados via fs em runtime)
+  // e a lambda subia sem eles ("input directory ... does not exist").
+  // Chaves usam * nos segmentos dinamicos: picomatch trataria [id] como
+  // classe de caracteres. Globs cobrem o layout do pnpm (.pnpm/...).
+  outputFileTracingIncludes: {
+    "/api/admin/stores/*/export-emails-zip/route": [
+      "node_modules/@sparticuz/chromium/bin/**",
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/admin/email-flows/*/emails/*/export-png/route": [
+      "node_modules/@sparticuz/chromium/bin/**",
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+  },
   experimental: {
     // recharts, date-fns e lucide-react já estão na lista default do Next 15.5
     // (node_modules/next/dist/server/config.js) — não repetir aqui.
