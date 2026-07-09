@@ -68,6 +68,12 @@ export interface EnqueueOptions {
   onlyDrafts?: boolean
   triggerSource?: string
   triggeredBy?: string
+  /**
+   * Regeneração completa: ignora o skip-existing e re-roda o Montador +
+   * Blueprint mesmo para emails com reference já persistida (o upsert do
+   * Architect sobrescreve). Usado pelo endpoint regenerate-pipeline.
+   */
+  forceArchitect?: boolean
 }
 
 export interface EnqueueResult {
@@ -186,8 +192,11 @@ export async function enqueueDispatchJob(
 
   // Skip-existing: emails cuja reference sob medida JÁ foi persistida entram
   // 'done' (o Montador só persiste quando gera de verdade) — não re-paga LLM.
+  // forceArchitect pula este bloco: todos entram 'pending' e o Architect
+  // re-gera (upsert sobrescreve a reference/blueprint antigos).
+  const forceArchitect = options.forceArchitect === true
   const existingRefs = new Set<string>()
-  if (architectConfigured) {
+  if (architectConfigured && !forceArchitect) {
     const { data: refs } = await admin
       .from("store_email_references")
       .select("flow_type, email_number")

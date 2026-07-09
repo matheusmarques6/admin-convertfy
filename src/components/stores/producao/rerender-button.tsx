@@ -20,6 +20,9 @@ import { ChevronDown, Loader2, RefreshCw, X } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 
 type Scope = "store" | "flow"
+// rerender = só fase 2 (imagem+HTML+QA, preserva copy) · full = regeneração
+// completa via /regenerate-pipeline (Montador+Blueprint → copy n8n → render)
+type Mode = "rerender" | "full"
 
 interface PreviewResponse {
   scope: Scope
@@ -55,6 +58,7 @@ export function RerenderButton({
   const { toast } = useToast()
   const [menuOpen, setMenuOpen] = useState(false)
   const [scope, setScope] = useState<Scope | null>(null) // scope confirmado para o modal
+  const [mode, setMode] = useState<Mode>("rerender")
   const [previewLoading, setPreviewLoading] = useState(false)
   const [preview, setPreview] = useState<PreviewResponse | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -101,10 +105,13 @@ export function RerenderButton({
     [storeId, flowId],
   )
 
-  const openModalWithScope = (s: Scope) => {
+  const openModalWithScope = (s: Scope, m: Mode = "rerender") => {
     setMenuOpen(false)
+    setMode(m)
     setScope(s)
-    void fetchPreview(s)
+    // Preview de contagem só existe pro rerender (fase 2). Na regeneração
+    // completa o alvo é "tudo que não é legacy" — modal mostra aviso fixo.
+    if (m === "rerender") void fetchPreview(s)
   }
 
   const closeModal = () => {
@@ -118,6 +125,37 @@ export function RerenderButton({
     if (!scope) return
     setSubmitting(true)
     try {
+      if (mode === "full") {
+        const body: Record<string, unknown> = {}
+        if (scope === "flow" && flowId) body.flow_ids = [flowId]
+        const res = await fetch(
+          `/api/admin/stores/${storeId}/regenerate-pipeline`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        )
+        const json = (await res.json()) as ApiEnvelope<{
+          emails_reset: number
+          email_count: number | null
+        }>
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.error || `HTTP ${res.status}`)
+        }
+        const data = (json?.data ?? json) as {
+          emails_reset: number
+          email_count: number | null
+        }
+        toast({
+          title: "Regeneracao completa enfileirada",
+          description: `${data.email_count ?? data.emails_reset} email(s): Montador + Blueprint, depois copy (n8n) e render. Acompanhe em Agentes > Runs.`,
+        })
+        setScope(null)
+        setPreview(null)
+        return
+      }
+
       const body: Record<string, unknown> = { scope }
       if (scope === "flow" && flowId) body.flow_id = flowId
       const res = await fetch(`/api/admin/stores/${storeId}/rerender`, {
@@ -259,6 +297,83 @@ export function RerenderButton({
               Todos os flows
             </div>
           </button>
+
+          <div
+            style={{
+              borderTop: "1px solid var(--crm-border)",
+              margin: "4px 0",
+            }}
+          />
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => openModalWithScope(flowId ? "flow" : "store", "full")}
+            className="w-full text-left cf-focusable"
+            style={{
+              padding: "8px 10px",
+              fontSize: 12,
+              color: "var(--crm-red-700, #B91C1C)",
+              background: "transparent",
+              border: 0,
+              borderRadius: 4,
+              cursor: "pointer",
+              display: "block",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = "var(--crm-red-50, #FEF2F2)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
+          >
+            Regenerar do zero{flowId && flowName ? " — este flow" : ""}
+            <div
+              style={{
+                fontSize: 10.5,
+                color: "var(--crm-gray-500)",
+                marginTop: 1,
+              }}
+            >
+              Montador + Blueprint → copy (n8n) → render
+            </div>
+          </button>
+          {flowId && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openModalWithScope("store", "full")}
+              className="w-full text-left cf-focusable"
+              style={{
+                padding: "8px 10px",
+                fontSize: 12,
+                color: "var(--crm-red-700, #B91C1C)",
+                background: "transparent",
+                border: 0,
+                borderRadius: 4,
+                cursor: "pointer",
+                display: "block",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background =
+                  "var(--crm-red-50, #FEF2F2)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              Regenerar do zero — loja inteira
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--crm-gray-500)",
+                  marginTop: 1,
+                }}
+              >
+                Todos os flows, como no fluxo do briefing
+              </div>
+            </button>
+          )}
         </div>
       )}
 
@@ -273,7 +388,9 @@ export function RerenderButton({
           >
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/[0.06]">
               <h2 className="text-[15px] font-semibold text-slate-900">
-                Re-renderizar emails?
+                {mode === "full"
+                  ? "Regenerar do zero?"
+                  : "Re-renderizar emails?"}
               </h2>
               <button
                 type="button"
@@ -294,7 +411,33 @@ export function RerenderButton({
                 </strong>
               </p>
 
-              {previewLoading && (
+              {mode === "full" && (
+                <>
+                  <p>
+                    Replay do fluxo completo do briefing:{" "}
+                    <strong>
+                      Montador + Blueprint por email → copy nova (n8n) →
+                      imagem + HTML + QA
+                    </strong>
+                    .
+                  </p>
+                  <div
+                    className="rounded-[6px] px-3 py-2 text-[12px]"
+                    style={{
+                      background: "var(--crm-red-50, #FEF2F2)",
+                      color: "var(--crm-red-700, #B91C1C)",
+                      border: "1px solid var(--crm-red-100, #FECACA)",
+                    }}
+                  >
+                    A copy e o HTML atuais serão SOBRESCRITOS quando a nova
+                    geração completar. Emails legacy (approved/live) não são
+                    tocados. A geração roda em fila — pode levar 30-60 min
+                    para a loja inteira.
+                  </div>
+                </>
+              )}
+
+              {mode === "rerender" && previewLoading && (
                 <div className="flex items-center gap-2 text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Calculando emails alvo...
@@ -369,7 +512,9 @@ export function RerenderButton({
                 type="button"
                 onClick={submit}
                 disabled={
-                  submitting || previewLoading || !preview || count === 0
+                  submitting ||
+                  (mode === "rerender" &&
+                    (previewLoading || !preview || count === 0))
                 }
                 className="cf-focusable inline-flex items-center justify-center gap-1.5"
                 style={{
@@ -379,25 +524,27 @@ export function RerenderButton({
                   fontWeight: 600,
                   background:
                     submitting ||
-                    previewLoading ||
-                    !preview ||
-                    count === 0
+                    (mode === "rerender" &&
+                      (previewLoading || !preview || count === 0))
                       ? "var(--crm-gray-200)"
-                      : "var(--crm-brand)",
+                      : mode === "full"
+                        ? "var(--crm-red-700, #B91C1C)"
+                        : "var(--crm-brand)",
                   color: "var(--crm-brand-fg)",
                   border: 0,
                   borderRadius: 6,
                   cursor:
                     submitting ||
-                    previewLoading ||
-                    !preview ||
-                    count === 0
+                    (mode === "rerender" &&
+                      (previewLoading || !preview || count === 0))
                       ? "not-allowed"
                       : "pointer",
                 }}
               >
                 {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Confirmar re-renderizacao
+                {mode === "full"
+                  ? "Regenerar do zero"
+                  : "Confirmar re-renderizacao"}
               </button>
             </div>
           </div>

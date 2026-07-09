@@ -158,6 +158,21 @@ describe("enqueueDispatchJob", () => {
     expect(job.architect_done).toBe(1)
   })
 
+  it("forceArchitect ignora reference existente — todos entram 'pending' (regeneração completa)", async () => {
+    h.tables.store_email_references.push({
+      store_id: "store1", flow_type: "welcome", email_number: 1,
+    })
+    const res = await enqueueDispatchJob("store1", {
+      flowIds: ["flow1"], onlyDrafts: true, forceArchitect: true,
+    })
+    expect(res.ok).toBe(true)
+    const job = h.tables.email_dispatch_jobs[0]
+    const emails = job.emails as Array<{ email_number: number; architect: string }>
+    expect(emails.find((e) => e.email_number === 1)?.architect).toBe("pending")
+    expect(emails.find((e) => e.email_number === 2)?.architect).toBe("pending")
+    expect(job.architect_done).toBe(0)
+  })
+
   it("Architect não configurado → job nasce todo settled ('failed')", async () => {
     isArchitectConfigured.mockResolvedValue(false)
     const res = await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
