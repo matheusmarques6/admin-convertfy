@@ -10,15 +10,16 @@ const nextConfig = {
   // As chaves sao comparadas com a rota ja normalizada por normalizeAppPath
   // (sem o sufixo /route) — com /route no fim o match NUNCA ocorre e os
   // binarios ficam fora da lambda. Chaves usam * nos segmentos dinamicos:
-  // picomatch trataria [id] como classe de caracteres. Globs cobrem o
-  // layout do pnpm (.pnpm/...).
+  // picomatch trataria [id] como classe de caracteres.
+  // Apenas o caminho REAL do pnpm (.pnpm/...): node_modules/@sparticuz/chromium
+  // e symlink, e arquivos incluidos atraves dele fazem o Vercel rejeitar o
+  // pacote ("invalid deployment package ... symlinked directories"). O runtime
+  // resolve pelo caminho real, entao so ele precisa estar na lambda.
   outputFileTracingIncludes: {
     "/api/admin/stores/*/export-emails-zip": [
-      "node_modules/@sparticuz/chromium/bin/**",
       "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
     "/api/admin/email-flows/*/emails/*/export-png": [
-      "node_modules/@sparticuz/chromium/bin/**",
       "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
   },
