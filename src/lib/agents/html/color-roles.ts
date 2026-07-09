@@ -61,7 +61,7 @@ function normalizeHex(hex: string): string {
   return ""
 }
 
-function relativeLuminance(hex: string): number {
+export function relativeLuminance(hex: string): number {
   const norm = normalizeHex(hex)
   if (!norm) return 0
   const r = parseInt(norm.slice(1, 3), 16) / 255
