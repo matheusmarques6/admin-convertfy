@@ -26,6 +26,12 @@ export interface TestGenerationInput {
   emailNumber: number
   batchId: string
   triggeredBy: string
+  /**
+   * Roda SÓ da fase 2 em diante (imagem → HTML → QA), reusando o
+   * blueprint/reference persistidos e a copy existente — sem repagar
+   * Montador/Blueprint. Requer copy no email (erro se não houver).
+   */
+  phase2Only?: boolean
 }
 
 export interface TestGenerationResult {
@@ -77,20 +83,42 @@ export async function runTestGeneration(
     input
 
   const hasCopy = await emailHasCopy(emailId)
-  log.info("test.start", { storeId, emailId, batchId, hasCopy })
+  const phase2Only = input.phase2Only === true
+  log.info("test.start", { storeId, emailId, batchId, hasCopy, phase2Only })
+
+  // Fase 2 exige copy — sem ela não há o que renderizar.
+  if (phase2Only && !hasCopy) {
+    return {
+      status: "error",
+      path: "without_copy",
+      hasCopy: false,
+      error:
+        "Email sem copy — 'só fase 2' precisa de copy existente. Use a geração completa.",
+      batchId,
+      emailId,
+    }
+  }
 
   if (hasCopy) {
     // COM copy: Montador + Blueprint síncronos (~10-20s, cabem em 300s).
     // O render (image + html + qa) é disparado em background pelo route
     // handler via `after(runPhase2InBackground)` — sem isso, image (~166s)
     // + html (~90s) estouram o maxDuration da Vercel.
-    await generateBlueprintAndReference({
-      storeId,
-      flowType,
-      emailNumber,
-      batchId,
-      triggeredBy,
-    })
+    //
+    // phase2Only: NÃO re-roda o Architect — reusa store_email_references/
+    // store_email_blueprints (ou fallback global) exatamente como estão,
+    // sem repagar Montador/Blueprint.
+    if (phase2Only) {
+      log.info("test.phase2_only.skip_architect", { storeId, emailId, batchId })
+    } else {
+      await generateBlueprintAndReference({
+        storeId,
+        flowType,
+        emailNumber,
+        batchId,
+        triggeredBy,
+      })
+    }
 
     // Reset de status pra `copy_ready` pra que phase2 possa fazer claim
     // atômico. Cobre re-execução de email que ficou `failed` ou já

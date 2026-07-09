@@ -1110,26 +1110,34 @@ function TestTab() {
     return () => clearInterval(interval)
   }, [statusInfo, pollInterval])
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (phase2Only = false) => {
     if (!selectedStoreId || !selectedFlowId || !selectedEmailId || !selectedFlow || !selectedEmail) return
 
     setGenerating(true)
     setResult(null)
     setBatchId(null)
-    setSteps([
-      { agent: "assembler", status: "pending" },
-      { agent: "blueprint", status: "pending" },
-      { agent: "seed", status: "pending" },
-      { agent: "copy", status: "pending" },
-      { agent: "image", status: "pending" },
-      { agent: "html", status: "pending" },
-    ])
+    setSteps(
+      phase2Only
+        ? [
+            { agent: "image", status: "pending" },
+            { agent: "html", status: "pending" },
+          ]
+        : [
+            { agent: "assembler", status: "pending" },
+            { agent: "blueprint", status: "pending" },
+            { agent: "seed", status: "pending" },
+            { agent: "copy", status: "pending" },
+            { agent: "image", status: "pending" },
+            { agent: "html", status: "pending" },
+          ],
+    )
 
     try {
       const res = await fetch(`/api/admin/stores/${selectedStoreId}/generate-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          phase2_only: phase2Only,
           flowId: selectedFlowId,
           emailId: selectedEmailId,
           flowType: selectedFlow.flow_type,
@@ -1363,7 +1371,7 @@ function TestTab() {
         <div className="pt-2 flex items-center gap-2">
           <button
             type="button"
-            onClick={handleGenerate}
+            onClick={() => handleGenerate()}
             disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
             className="inline-flex items-center gap-2 h-9 px-5 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[13px] font-semibold disabled:opacity-40 transition-opacity"
           >
@@ -1373,6 +1381,20 @@ function TestTab() {
               <Play className="h-4 w-4" />
             )}
             {generating ? "Gerando..." : "Executar geração"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGenerate(true)}
+            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
+            title="Reusa Montador/Blueprint/copy existentes e roda só imagem → HTML → QA (requer copy no email)"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[13px] font-medium disabled:opacity-40 transition-opacity"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            Só fase 2 (render)
           </button>
           <button
             type="button"
@@ -1684,7 +1706,7 @@ function TestTab() {
             <div className="pt-1">
               <button
                 type="button"
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
                 className="inline-flex items-center gap-2 h-8 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[12px] font-medium disabled:opacity-40 transition-opacity"
               >

@@ -25,6 +25,9 @@ const bodySchema = z.object({
   emailId: z.string().uuid(),
   flowType: z.string().min(1),
   emailNumber: z.number().int().min(1),
+  // Só fase 2 (imagem → HTML → QA): reusa blueprint/reference/copy
+  // existentes sem repagar Montador/Blueprint. Requer copy no email.
+  phase2_only: z.boolean().optional().default(false),
 })
 
 export async function POST(
@@ -56,6 +59,7 @@ export async function POST(
       emailNumber: parsed.emailNumber,
       triggeredBy: user.id,
       batchId,
+      phase2Only: parsed.phase2_only,
     })
 
     // Path with_copy: dispara phase2 em background.
