@@ -1120,7 +1120,12 @@ export function EmailDetailView({
           <input
             type="range"
             min={320}
-            max={800}
+            // 600px é o teto: largura padrão de e-mail. Acima disso o preview
+            // só mostrava o canvas em volta do container (não é como o email
+            // renderiza no cliente de verdade) e confundia a revisão. Se um
+            // design usar formato mais largo, o teto deve vir da formatação —
+            // não do slider.
+            max={600}
             step={20}
             value={width}
             onChange={(e) => setWidth(parseInt(e.target.value, 10))}
