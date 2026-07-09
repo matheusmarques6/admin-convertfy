@@ -110,6 +110,9 @@ interface ProductivityState {
 
   // Actions — Data
   fetchData: () => Promise<void>
+  /** Hidrata o store com o payload de GET /api/productivity vindo do RSC
+   * (mesmo mapeamento do fetchData) — o mount não refaz o fetch. */
+  hydrate: (json: unknown) => void
   apiAction: (action: string, data?: Record<string, unknown>) => Promise<boolean>
   apiCall: (
     action: string,
@@ -164,6 +167,63 @@ function mapGoals(goals: Array<Record<string, unknown>>): GoalSummary[] {
   }))
 }
 
+/**
+ * Mapeamento puro do payload de GET /api/productivity para o shape do store.
+ * Compartilhado entre fetchData (fetch client) e hydrate (initialData do
+ * RSC) — mesma lógica, zero divergência.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildStateFromApi(json: any) {
+  const data = json?.data || json
+
+  // Map API groups to store format. Spread primeiro pra preservar
+  // campos extras (source_type, stage_name, stage_color, plan,
+  // mrr_value, client_name) que o GET injeta pra grupos de onboarding.
+  const groups: TaskGroup[] = (data.groups || []).map((g: Record<string, unknown>) => ({
+    ...(g as object),
+    id: String(g.id),
+    name: String(g.name),
+    color: String(g.color || "#4E62D8"),
+    items: ((g.items || []) as Array<Record<string, unknown>>).map(mapApiTask),
+  }) as TaskGroup)
+
+  const allTasks = groups.flatMap((g) => g.items)
+
+  // Map habits — check which are completed today
+  const habits: HabitAPI[] = (data.habits || []).map((h: Record<string, unknown>) => ({
+    id: String(h.id),
+    name: String(h.name),
+    color: String(h.color || "#4E62D8"),
+    streak: Number(h.streak || 0),
+    days: (h.days as number[]) || [0, 0, 0, 0, 0, 0, 2],
+  }))
+
+  const checkedHabits = new Set(
+    habits.filter((h) => h.days[h.days.length - 1] === 1).map((h) => h.id)
+  )
+
+  // Check if daily planning is done
+  const dailyPlan = data.dailyPlan || null
+  const planningDone = !!(dailyPlan?.objectives?.length)
+
+  return {
+    tasks: allTasks,
+    groups,
+    calendarEvents: data.calendarEvents || [],
+    goals: mapGoals(data.goals),
+    habits,
+    kanbanColumns: mapTasksToKanban(allTasks),
+    weeklyBars: data.weeklyBars || [],
+    dailyPlan,
+    focusSessions: data.focusSessions || { count: 0, totalMinutes: 0 },
+    profile: data.profile || { name: "Usuario", avatar_url: null },
+    members: data.members || [],
+    comments: data.comments || [],
+    planningDone,
+    checkedHabits,
+  }
+}
+
 // ============================================================================
 // Store implementation
 // ============================================================================
@@ -212,53 +272,9 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
       if (!res.ok) throw new Error(`API error: ${res.status}`)
 
       const json = await res.json()
-      const data = json.data || json
-
-      // Map API groups to store format. Spread primeiro pra preservar
-      // campos extras (source_type, stage_name, stage_color, plan,
-      // mrr_value, client_name) que o GET injeta pra grupos de onboarding.
-      const groups: TaskGroup[] = (data.groups || []).map((g: Record<string, unknown>) => ({
-        ...(g as object),
-        id: String(g.id),
-        name: String(g.name),
-        color: String(g.color || "#4E62D8"),
-        items: ((g.items || []) as Array<Record<string, unknown>>).map(mapApiTask),
-      }) as TaskGroup)
-
-      const allTasks = groups.flatMap((g) => g.items)
-
-      // Map habits — check which are completed today
-      const habits: HabitAPI[] = (data.habits || []).map((h: Record<string, unknown>) => ({
-        id: String(h.id),
-        name: String(h.name),
-        color: String(h.color || "#4E62D8"),
-        streak: Number(h.streak || 0),
-        days: (h.days as number[]) || [0, 0, 0, 0, 0, 0, 2],
-      }))
-
-      const checkedHabits = new Set(
-        habits.filter((h) => h.days[h.days.length - 1] === 1).map((h) => h.id)
-      )
-
-      // Check if daily planning is done
-      const dailyPlan = data.dailyPlan || null
-      const planningDone = !!(dailyPlan?.objectives?.length)
 
       set({
-        tasks: allTasks,
-        groups,
-        calendarEvents: data.calendarEvents || [],
-        goals: mapGoals(data.goals),
-        habits,
-        kanbanColumns: mapTasksToKanban(allTasks),
-        weeklyBars: data.weeklyBars || [],
-        dailyPlan,
-        focusSessions: data.focusSessions || { count: 0, totalMinutes: 0 },
-        profile: data.profile || { name: "Usuario", avatar_url: null },
-        members: data.members || [],
-        comments: data.comments || [],
-        planningDone,
-        checkedHabits,
+        ...buildStateFromApi(json),
         isLoading: false,
         isLoaded: true,
       })
@@ -266,6 +282,21 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
       const msg = err instanceof Error ? err.message : "Erro ao carregar dados"
       console.error("[ProductivityStore] fetchData error:", msg)
       set({ isLoading: false, error: msg })
+    }
+  },
+
+  // ── Hydrate from RSC-prefetched payload ──
+  hydrate: (json: unknown) => {
+    try {
+      set({
+        ...buildStateFromApi(json as Record<string, unknown>),
+        isLoading: false,
+        isLoaded: true,
+        error: null,
+      })
+    } catch (err) {
+      // Payload inesperado: não marca isLoaded — o mount fará o fetch normal.
+      console.error("[ProductivityStore] hydrate error:", err)
     }
   },
 

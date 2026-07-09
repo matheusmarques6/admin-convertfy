@@ -75,7 +75,7 @@ import {
 beforeEach(() => h.reset())
 
 describe("ensureCampaignDesignPipeline — funcao real", () => {
-  it("cria 1 pipeline + 4 colunas e retorna columnsBySlug", async () => {
+  it("cria 1 pipeline + 5 colunas e retorna columnsBySlug", async () => {
     const result = await ensureCampaignDesignPipeline("org1", "user1")
 
     expect(h.db.operational_pipelines).toHaveLength(1)
@@ -84,11 +84,12 @@ describe("ensureCampaignDesignPipeline — funcao real", () => {
       type: "campaign_design",
       slug: "campaign_design",
     })
-    expect(h.db.operational_pipeline_columns).toHaveLength(4)
+    expect(h.db.operational_pipeline_columns).toHaveLength(5)
     expect(Object.keys(result.columnsBySlug).sort()).toEqual([
       "aprovacao",
       "estrutura",
       "finalizacao",
+      "implementacao",
       "producao",
     ])
   })
@@ -108,7 +109,7 @@ describe("ensureCampaignDesignPipeline — funcao real", () => {
     const second = await ensureCampaignDesignPipeline("org1", "user1")
 
     expect(h.db.operational_pipelines).toHaveLength(1)
-    expect(h.db.operational_pipeline_columns).toHaveLength(4)
+    expect(h.db.operational_pipeline_columns).toHaveLength(5)
     expect(second.pipelineId).toBe(first.pipelineId)
     expect(second.columnsBySlug).toEqual(first.columnsBySlug)
   })
@@ -117,6 +118,6 @@ describe("ensureCampaignDesignPipeline — funcao real", () => {
     await ensureCampaignDesignPipeline("org1", "user1")
     await ensureCampaignDesignPipeline("org2", "user1")
     expect(h.db.operational_pipelines).toHaveLength(2)
-    expect(h.db.operational_pipeline_columns).toHaveLength(8)
+    expect(h.db.operational_pipeline_columns).toHaveLength(10)
   })
 })

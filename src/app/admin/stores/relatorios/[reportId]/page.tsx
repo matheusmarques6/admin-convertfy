@@ -7,6 +7,8 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ReportPreviewClient } from "@/components/stores/v2/report-preview-client"
+import { ReportSlidesEditor } from "@/components/stores/v2/report-slides-editor"
+import type { ReportSnapshot, ReportKpisOverrides } from "@/types/monthly-report"
 
 export const dynamic = "force-dynamic"
 
@@ -17,7 +19,7 @@ async function getReport(reportId: string) {
     .select(
       `id, store_id, month_label, period_start, period_end, status,
        generated_at, presented_at, sent_to, tone, ai_filled, pdf_url,
-       sections, snapshot, proximos_passos, generated_by,
+       sections, snapshot, kpis_overrides, edited_at, proximos_passos, generated_by,
        store:client_stores(id, store_name, store_url,
          contract_start_date, contract_end_date,
          clients(name)),
@@ -121,7 +123,7 @@ export default async function ReportPreviewPage({
             {report.status === "presented" ? "Apresentado" : report.status === "sent" ? "Enviado" : "Rascunho"}
           </span>
         </div>
-        <ReportPreviewClient reportId={report.id} pdfUrl={report.pdf_url} status={report.status} />
+        <ReportPreviewClient reportId={report.id} status={report.status} />
       </div>
 
       {/* Deck container — dark gradient matching prototype */}
@@ -133,52 +135,50 @@ export default async function ReportPreviewPage({
           className="absolute top-0 left-0 right-0"
           style={{ height: 3, background: "linear-gradient(90deg, #4E62D8, #2137B6, #041366)" }}
         />
-        <ReportSlidesWrapper
-          snapshot={report.snapshot}
+        <ReportSlidesEditor
+          reportId={report.id}
+          snapshot={buildSnapshotWithExtras({
+            snapshot: report.snapshot,
+            storeName: store?.store_name,
+            clientName: clientName ?? null,
+            cmName: generator?.name ?? null,
+            plan,
+            monthLabel: report.month_label,
+            totalLeads: report.total_leads,
+          })}
+          overrides={(report.kpis_overrides ?? {}) as ReportKpisOverrides}
           proximosPassos={report.proximos_passos}
           monthLabel={report.month_label}
-          storeName={store?.store_name}
-          clientName={clientName ?? null}
-          cmName={generator?.name ?? null}
-          plan={plan}
-          totalLeads={report.total_leads}
+          editedAt={report.edited_at as string | null}
         />
       </div>
     </div>
   )
 }
 
-// Wrapper que injeta dados extras no snapshot pra slides
-async function ReportSlidesWrapper(props: {
+// Injeta dados extras (loja/cliente/plano/total_leads) no snapshot cru pra
+// os slides. total_leads vem do cache quando o snapshot não tem.
+function buildSnapshotWithExtras(props: {
   snapshot: unknown
-  proximosPassos: string | null
-  monthLabel: string
   storeName?: string | null
   clientName?: string | null
   cmName?: string | null
   plan?: string | null
+  monthLabel: string
   totalLeads?: number | null
-}) {
-  const { ReportSlides } = await import("@/components/stores/v2/slides/report-slides")
+}): ReportSnapshot {
   const snap = (props.snapshot ?? {}) as Record<string, unknown>
-  const kpis = (snap.kpis ?? {}) as Record<string, number>
-  // Injeta total_leads do client_stores quando o snapshot nao tem
-  if (props.totalLeads != null && !kpis.total_leads) {
+  const kpis = { ...((snap.kpis ?? {}) as Record<string, number | null>) }
+  if (props.totalLeads != null && kpis.total_leads == null) {
     kpis.total_leads = props.totalLeads
   }
-  return (
-    <ReportSlides
-      snapshot={{
-        ...snap,
-        kpis,
-        store_name: props.storeName ?? undefined,
-        client_name: props.clientName ?? undefined,
-        cm_name: props.cmName ?? undefined,
-        plan: props.plan ?? undefined,
-        month_label: props.monthLabel,
-      }}
-      proximosPassos={props.proximosPassos}
-      monthLabel={props.monthLabel}
-    />
-  )
+  return {
+    ...snap,
+    kpis,
+    store_name: props.storeName ?? undefined,
+    client_name: props.clientName ?? undefined,
+    cm_name: props.cmName ?? undefined,
+    plan: props.plan ?? undefined,
+    month_label: props.monthLabel,
+  } as ReportSnapshot
 }

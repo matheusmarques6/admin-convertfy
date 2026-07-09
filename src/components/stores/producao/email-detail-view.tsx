@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import {
   DragDropContext,
@@ -34,7 +34,9 @@ import {
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
+import { ScaledEmailFrame } from "@/components/emails/scaled-email-frame"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
+import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import type {
   BlockType,
@@ -778,6 +780,8 @@ export function EmailDetailView({
           {viewMode === "html" && (
             <EmailHtmlView
               email={email}
+              flowId={flow.id}
+              exportBasename={emailExportBasename(flow, email)}
               html={email.html || renderEmailHtml(email, blocks)}
               onCopyAll={(html) => copyToClipboard(html, "HTML completo")}
             />
@@ -1116,7 +1120,12 @@ export function EmailDetailView({
           <input
             type="range"
             min={320}
-            max={800}
+            // 600px é o teto: largura padrão de e-mail. Acima disso o preview
+            // só mostrava o canvas em volta do container (não é como o email
+            // renderiza no cliente de verdade) e confundia a revisão. Se um
+            // design usar formato mais largo, o teto deve vir da formatação —
+            // não do slider.
+            max={600}
             step={20}
             value={width}
             onChange={(e) => setWidth(parseInt(e.target.value, 10))}
@@ -2000,104 +2009,6 @@ function EmailRenderPreview({
   )
 }
 
-/**
- * Preview do email que SEMPRE cabe na largura disponível, sem scroll lateral.
- *
- * O email tem largura fixa (`baseWidth`, default 600px). Em telas onde a coluna
- * central é mais estreita que isso (lista de flows + painel direito comem
- * espaço), o iframe de 600px gerava scroll horizontal. Aqui medimos a largura
- * disponível e aplicamos `transform: scale` pra encaixar o email inteiro:
- *  - coluna >= baseWidth → escala 1 (mostra no tamanho natural, centralizado)
- *  - coluna <  baseWidth → escala < 1 (encaixa tudo, sem scroll lateral)
- *
- * A altura é automática: lemos o `scrollHeight` do conteúdo (precisa de
- * `sandbox="allow-same-origin"`; scripts seguem bloqueados — emails não rodam
- * JS) e dimensionamos o wrapper, eliminando também o scroll vertical interno.
- */
-export function ScaledEmailFrame({
-  html,
-  baseWidth,
-}: {
-  html: string
-  baseWidth: number
-}) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [avail, setAvail] = useState(baseWidth)
-  const [contentHeight, setContentHeight] = useState(baseWidth)
-
-  // Largura disponível da coluna (reativo a resize da janela/painéis).
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    setAvail(el.clientWidth)
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) setAvail(e.contentRect.width)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  // Altura real do conteúdo do email (auto-size, sem scroll vertical interno).
-  const measureHeight = useCallback(() => {
-    const doc = iframeRef.current?.contentDocument
-    if (!doc?.body) return
-    const h = Math.max(
-      doc.body.scrollHeight,
-      doc.documentElement?.scrollHeight ?? 0,
-    )
-    if (h > 0) setContentHeight(h)
-  }, [])
-
-  // Re-mede ao trocar o html e algumas vezes depois (imagens carregam tarde).
-  useEffect(() => {
-    measureHeight()
-    const timers = [80, 300, 900].map((ms) => setTimeout(measureHeight, ms))
-    return () => timers.forEach(clearTimeout)
-  }, [html, avail, measureHeight])
-
-  const scale = Math.min(1, avail / baseWidth)
-
-  return (
-    // Div externa: mede a largura disponível (transparente, ocupa a coluna).
-    <div ref={containerRef} style={{ width: "100%" }}>
-      {/* Caixa visível: largura EXATA do email (600px, ou escalada quando a
-          coluna é menor) — sem margem branca interna; o fundo da coluna
-          aparece em volta. */}
-      <div
-        style={{
-          width: baseWidth * scale,
-          height: contentHeight * scale,
-          margin: "0 auto",
-          overflow: "hidden",
-          background: "#fff",
-          border: "1px solid var(--crm-border)",
-          borderRadius: 10,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-        }}
-      >
-        <iframe
-          ref={iframeRef}
-          title="email-render-preview"
-          srcDoc={html}
-          sandbox="allow-same-origin"
-          onLoad={measureHeight}
-          scrolling="no"
-          style={{
-            width: baseWidth,
-            height: contentHeight,
-            border: 0,
-            display: "block",
-            background: "#fff",
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-        />
-      </div>
-    </div>
-  )
-}
-
 // ─── Copy View ─────────────────────────────────────────────
 
 export function EmailCopyView({
@@ -2291,14 +2202,49 @@ function CopyCard({ label, value, onCopy }: { label: string; value: string; onCo
 
 export function EmailHtmlView({
   email,
+  flowId,
+  exportBasename,
   html,
   onCopyAll,
 }: {
   email: EmailFlowEmail
+  flowId: string
+  exportBasename: string
   html: string
   onCopyAll: (html: string) => void
 }) {
+  const toast = useToast()
+  const [downloadingPng, setDownloadingPng] = useState(false)
   const lines = html.split("\n")
+
+  async function downloadPng() {
+    if (downloadingPng) return
+    setDownloadingPng(true)
+    try {
+      const res = await fetch(
+        `/api/admin/email-flows/${flowId}/emails/${email.id}/export-png`,
+      )
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${exportBasename}.png`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.toast({
+        title: "Erro ao gerar PNG",
+        description: err instanceof Error ? err.message : "Tente novamente",
+        variant: "destructive",
+      })
+    } finally {
+      setDownloadingPng(false)
+    }
+  }
   return (
     <div style={{ padding: "24px 32px 48px", maxWidth: 1200, margin: "0 auto" }}>
       <div
@@ -2322,10 +2268,34 @@ export function EmailHtmlView({
             style={{ color: "rgba(255,255,255,0.7)" }}
           >
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E" }} />
-            welcome-email-{String(email.number).padStart(2, "0")}.html
+            {exportBasename}.html
             <span style={{ marginLeft: 8 }}>· {lines.length} linhas</span>
           </div>
           <div className="flex gap-2">
+            <button
+              className="cf-focusable inline-flex items-center gap-1.5"
+              style={{
+                height: 28,
+                padding: "0 10px",
+                background: "rgba(255,255,255,0.10)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: downloadingPng ? "default" : "pointer",
+                opacity: downloadingPng ? 0.6 : 1,
+              }}
+              disabled={downloadingPng}
+              onClick={downloadPng}
+            >
+              {downloadingPng ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FileImage className="h-3 w-3" />
+              )}
+              {downloadingPng ? "Gerando..." : "Baixar .png"}
+            </button>
             <button
               className="cf-focusable inline-flex items-center gap-1.5"
               style={{
@@ -2344,7 +2314,7 @@ export function EmailHtmlView({
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement("a")
                 a.href = url
-                a.download = `welcome-email-${String(email.number).padStart(2, "0")}.html`
+                a.download = `${exportBasename}.html`
                 a.click()
                 URL.revokeObjectURL(url)
               }}

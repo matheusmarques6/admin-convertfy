@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
@@ -19,7 +20,7 @@ export async function OPTIONS(request: NextRequest) {
 
 
 // GET - List org members
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
@@ -211,3 +212,5 @@ export async function POST(request: NextRequest) {
     return errorResponse(request, error, "AdminOrgMembers")
   }
 }
+
+export const GET = withTiming("admin/org-members", handleGet)

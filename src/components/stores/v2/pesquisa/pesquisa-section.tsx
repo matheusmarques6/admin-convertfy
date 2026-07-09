@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react"
-import { Sparkles, Edit2, Loader2, RefreshCw } from "lucide-react"
+import { Sparkles, Edit2, Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { PesquisaCard } from "./pesquisa-card"
@@ -173,6 +173,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [reanalyzing, setReanalyzing] = useState(false)
   const [regeneratingAll, setRegeneratingAll] = useState(false)
   const [regeneratingObjections, setRegeneratingObjections] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -228,6 +229,38 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
     } finally {
       setRegeneratingAll(false)
+    }
+  }
+
+  // Exclui a Pesquisa & Diagnóstico DE VERDADE (zera os 5 pilares em
+  // client_stores). Sem isso, uma pesquisa contaminada (ex.: dados de outra
+  // loja gravados pelo n8n) continuava sendo enviada em todo webhook.
+  const clearPesquisa = async () => {
+    const ok = window.confirm(
+      "Excluir a Pesquisa & Diagnóstico desta loja?\n\nTodos os 5 pilares (marca, loja, ICP, tom e ads) serão apagados de forma permanente. Depois, use “Regerar briefing” para gerar tudo do zero a partir do link da loja.",
+    )
+    if (!ok) return
+    setClearing(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/pesquisa`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        toast({
+          title: "Pesquisa excluída",
+          description:
+            "Os 5 pilares foram apagados. Regenere o briefing para gerar do zero.",
+        })
+        await reload()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        const msg = (err as Record<string, unknown>).error ?? (err as Record<string, unknown>).message ?? `HTTP ${res.status}`
+        toast({ variant: "destructive", title: "Erro ao excluir pesquisa", description: String(msg) })
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -328,6 +361,23 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
           </p>
         </div>
         <div className="shrink-0 flex items-center gap-3">
+          <button
+            onClick={clearPesquisa}
+            disabled={clearing}
+            title="Apaga os 5 pilares da pesquisa desta loja (permanente)"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-[11.5px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+            style={{ borderColor: "rgba(220,38,38,0.25)" }}
+          >
+            {clearing ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" /> Excluindo…
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-3 w-3" /> Excluir pesquisa
+              </>
+            )}
+          </button>
           <button
             onClick={regenerateAll}
             disabled={regeneratingAll}

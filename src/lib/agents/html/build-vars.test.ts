@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { buildHtmlPromptVars } from "./build-vars"
 import { HtmlPromptVarsSchema } from "./contract"
+import { DEFAULT_REFERENCE_SKELETON } from "./default-reference"
 import type { EmailBlueprint } from "@/types/email-generation"
 import type { StoreBrandIdentity } from "@/types/email-workspace"
 
@@ -132,7 +133,11 @@ function setup(overrides: {
     },
     email_blocks: { data: overrides.blocks ?? [] },
     email_reference_templates: {
-      data: { html: overrides.refHtml ?? "<div>ref</div>" },
+      // refHtml: null simula ausência de template global (linha com html
+      // NULL); undefined mantém o default dos demais testes.
+      data: {
+        html: overrides.refHtml === undefined ? "<div>ref</div>" : overrides.refHtml,
+      },
     },
   })
   return buildHtmlPromptVars({
@@ -425,6 +430,21 @@ describe("buildHtmlPromptVars", () => {
     })
     const map = JSON.parse(vars.image_map_json)
     expect(map[0].overlay).toBe("needs_html_overlay")
+  })
+
+  it("sem store reference E sem template global → reference_html cai no esqueleto default (nunca vazio)", async () => {
+    // Reference vazia fazia o agente (Repainter) improvisar o layout inteiro
+    // do zero — emails inconsistentes. O piso agora é o skeleton embutido.
+    const vars = await setup({ refHtml: null })
+    expect(vars.reference_html).toBe(DEFAULT_REFERENCE_SKELETON)
+    expect(vars.reference_html).toContain('role="presentation"')
+    expect(vars.reference_html).toContain("[unsubscribe_link]")
+    expect(vars.reference_html).toContain(":root")
+  })
+
+  it("template global presente → tem precedência sobre o esqueleto default", async () => {
+    const vars = await setup({ refHtml: "<div>ref global</div>" })
+    expect(vars.reference_html).toBe("<div>ref global</div>")
   })
 
   it("blueprint com image_overlay_reserve_bottom=false → overlay='burned'", async () => {

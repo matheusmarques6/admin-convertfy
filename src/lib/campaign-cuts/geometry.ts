@@ -1,0 +1,264 @@
+/**
+ * Geometria pura do mapa de cortes — operações sobre a lista de portas
+ * (fatias horizontais contíguas cobrindo 0..1 da altura da imagem).
+ *
+ * Invariante mantido por TODAS as funções: portas ordenadas por y0,
+ * portas[0].y0 === 0, última.y1 === 1, contíguas (y1[i] === y0[i+1]).
+ *
+ * Sem dependências de DOM/React — testável em node.
+ */
+
+import type { CutPort } from "@/types/campaign-cuts"
+
+/** Altura mínima absoluta de uma porta em fração (guard do servidor). */
+export const MIN_PORT_FRACTION = 0.002
+
+export function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+export function newPortId(): string {
+  // crypto.randomUUID existe em browser moderno e node 19+; fallback simples.
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return "p" + Math.random().toString(36).slice(2, 10)
+  }
+}
+
+/**
+ * Divide a porta que contém yFrac em duas. A porta original mantém o topo
+ * (y0..yFrac); a nova (type "texto", label numérica) fica com yFrac..y1.
+ * Retorna null se yFrac não respeitar o gap mínimo dos dois lados.
+ */
+export function splitPortAt(
+  ports: CutPort[],
+  yFrac: number,
+  minGap: number,
+): CutPort[] | null {
+  const y = clamp01(yFrac)
+  const k = ports.findIndex((p) => y > p.y0 + minGap && y < p.y1 - minGap)
+  if (k === -1) return null
+  const next = ports.map((p) => ({ ...p }))
+  const nova: CutPort = {
+    id: newPortId(),
+    label: `Porta ${next.length + 1}`,
+    type: "texto",
+    y0: y,
+    y1: next[k].y1,
+  }
+  next[k].y1 = y
+  next.splice(k + 1, 0, nova)
+  return next
+}
+
+/**
+ * Move a fronteira entre ports[idx] e ports[idx+1] para yFrac, clampada
+ * para preservar o gap mínimo dos dois lados. No-op se idx inválido.
+ */
+export function movePortBoundary(
+  ports: CutPort[],
+  idx: number,
+  yFrac: number,
+  minGap: number,
+): CutPort[] {
+  if (idx < 0 || idx >= ports.length - 1) return ports
+  const next = ports.map((p) => ({ ...p }))
+  const lo = next[idx].y0 + minGap
+  const hi = next[idx + 1].y1 - minGap
+  if (lo >= hi) return ports
+  const y = Math.max(lo, Math.min(hi, clamp01(yFrac)))
+  next[idx].y1 = y
+  next[idx + 1].y0 = y
+  return next
+}
+
+/**
+ * Remove a porta mesclando com a ANTERIOR (que absorve o y1). A primeira
+ * porta mescla com a seguinte (a seguinte absorve o y0). Com 1 porta só,
+ * no-op.
+ */
+export function mergePortWithPrevious(
+  ports: CutPort[],
+  portId: string,
+): CutPort[] {
+  if (ports.length <= 1) return ports
+  const k = ports.findIndex((p) => p.id === portId)
+  if (k === -1) return ports
+  const next = ports.map((p) => ({ ...p }))
+  if (k === 0) {
+    next[1].y0 = next[0].y0
+    next.splice(0, 1)
+  } else {
+    next[k - 1].y1 = next[k].y1
+    next.splice(k, 1)
+  }
+  return next
+}
+
+/** Porta única inicial cobrindo a imagem inteira (estado pós-upload). */
+export function initialPorts(): CutPort[] {
+  return [{ id: newPortId(), label: "Porta 1", type: "hero", y0: 0, y1: 1 }]
+}
+
+/**
+ * True se as portas mantêm o invariante (ordenadas, contíguas, 0..1).
+ * Usado como cinto de segurança no client; a validação com erros
+ * detalhados vive no service (validateCutMap).
+ */
+export function portsAreContiguous(ports: CutPort[], eps = 1e-4): boolean {
+  if (ports.length === 0) return false
+  if (Math.abs(ports[0].y0) > eps) return false
+  if (Math.abs(ports[ports.length - 1].y1 - 1) > eps) return false
+  for (let i = 0; i < ports.length; i++) {
+    if (ports[i].y1 - ports[i].y0 <= 0) return false
+    if (i > 0 && Math.abs(ports[i - 1].y1 - ports[i].y0) > eps) return false
+  }
+  return true
+}
+
+/**
+ * Converte a fração de uma porta em retângulo de recorte em pixels para
+ * uma imagem de altura `imageH` (a altura da imagem de CADA loja — não a
+ * do modelo). Garante height >= 1 e top dentro da imagem, mesmo com
+ * arredondamento em portas muito finas.
+ */
+export function portPixelRect(
+  port: Pick<CutPort, "y0" | "y1">,
+  imageH: number,
+): { top: number; height: number } {
+  const top = Math.min(Math.max(0, Math.round(clamp01(port.y0) * imageH)), imageH - 1)
+  const bottom = Math.min(Math.max(top + 1, Math.round(clamp01(port.y1) * imageH)), imageH)
+  return { top, height: bottom - top }
+}
+
+/**
+ * Recorte com ESCALA POR LARGURA: converte a fração da porta em pixels
+ * DO MODELO (y × altura_modelo) e escala por (largura_loja ÷
+ * largura_modelo). Exato quando o email da loja é o mesmo layout do
+ * modelo em outra resolução (ex.: export 2x do Figma) — a fração da
+ * altura total falha nesse caso quando as alturas totais divergem.
+ *
+ * A última porta (y1 ≈ 1) absorve o resto da imagem da loja (rodapé mais
+ * alto/baixo não desloca os cortes anteriores). Sem dimensões do modelo
+ * (mapas antigos), cai no portPixelRect por fração da altura.
+ */
+export function portPixelRectWidthScaled(
+  port: Pick<CutPort, "y0" | "y1">,
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): { top: number; height: number } {
+  if (!model.w || !model.h || !store.w || model.w <= 0) {
+    return portPixelRect(port, store.h)
+  }
+  const scale = store.w / model.w
+  const isLast = port.y1 >= 1 - 1e-4
+  let top = Math.round(clamp01(port.y0) * model.h * scale)
+  let bottom = isLast ? store.h : Math.round(clamp01(port.y1) * model.h * scale)
+  top = Math.min(Math.max(0, top), store.h - 1)
+  bottom = Math.min(Math.max(top + 1, bottom), store.h)
+  return { top, height: bottom - top }
+}
+
+/**
+ * True se as duas listas têm EXATAMENTE os mesmos ids na mesma ordem.
+ * Um cut_ports_override só vale contra o mapa que o originou — depois de
+ * remarcar/reaprovar o mapa (ids novos), o override antigo é órfão e
+ * deve ser ignorado POR INTEIRO (nunca misturar porta velha com nova).
+ */
+export function sameCutPortIds(
+  a: Array<Pick<CutPort, "id">>,
+  b: Array<Pick<CutPort, "id">> | null | undefined,
+): boolean {
+  if (!b || a.length !== b.length) return false
+  return a.every((p, i) => p.id === b[i].id)
+}
+
+function rectsFromBounds(
+  bounds: number[],
+): Array<{ top: number; height: number }> {
+  const out: Array<{ top: number; height: number }> = []
+  for (let i = 0; i < bounds.length - 1; i++) {
+    out.push({ top: bounds[i], height: bounds[i + 1] - bounds[i] })
+  }
+  return out
+}
+
+/**
+ * Fronteiras internas em px da LOJA a partir de uma conversão fração→px,
+ * clampadas de forma MONÓTONA (cada fronteira ≥ anterior+1 e deixa ao
+ * menos 1px pra cada porta restante). bounds[0]=0 e bounds[n]=altura —
+ * contiguidade perfeita por construção: fim da porta i É o início da
+ * porta i+1, sempre.
+ */
+function contiguousBounds(
+  ports: Array<Pick<CutPort, "y1">>,
+  storeH: number,
+  toPx: (y1: number) => number,
+): number[] {
+  const n = ports.length
+  const bounds: number[] = [0]
+  for (let i = 0; i < n - 1; i++) {
+    const raw = Math.round(toPx(clamp01(ports[i].y1)))
+    const lo = bounds[i] + 1
+    const hi = storeH - (n - 1 - i)
+    bounds.push(Math.min(Math.max(raw, lo), Math.max(hi, lo)))
+  }
+  bounds.push(storeH)
+  return bounds
+}
+
+/**
+ * Retângulos de TODAS as portas com escala por largura, CONTÍGUOS por
+ * construção (rects[i].top + rects[i].height === rects[i+1].top). É a
+ * função canônica do recorte e do preview — nunca calcular porta isolada
+ * para exibir/cortar, senão clamp/arredondamento podem descolar bordas.
+ * Sem dimensões do modelo, cai nas frações da altura da loja.
+ */
+export function portPixelRectsWidthScaled(
+  ports: CutPort[],
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): Array<{ top: number; height: number }> {
+  if (ports.length === 0) return []
+  if (!model.w || !model.h || !store.w || model.w <= 0) {
+    return portPixelRectsFromFractions(ports, store.h)
+  }
+  const scale = store.w / model.w
+  const mh = model.h
+  return rectsFromBounds(
+    contiguousBounds(ports, store.h, (y1) => y1 * mh * scale),
+  )
+}
+
+/**
+ * Retângulos de todas as portas a partir de frações da PRÓPRIA imagem da
+ * loja (cut_ports_override), contíguos por construção.
+ */
+export function portPixelRectsFromFractions(
+  ports: CutPort[],
+  storeH: number,
+): Array<{ top: number; height: number }> {
+  if (ports.length === 0) return []
+  return rectsFromBounds(contiguousBounds(ports, storeH, (y1) => y1 * storeH))
+}
+
+/**
+ * Converte as portas do MAPA (frações do modelo) para frações da imagem
+ * DA LOJA usando a escala por largura — é o estado inicial do editor de
+ * ajuste fino por loja. Normaliza para manter o invariante (contíguas,
+ * 0..1) mesmo com arredondamento/clamp nas extremidades.
+ */
+export function widthScaledPortsToStoreFractions(
+  ports: CutPort[],
+  model: { w: number | null; h: number | null },
+  store: { w: number; h: number },
+): CutPort[] {
+  // Mesmas fronteiras contíguas do recorte/preview, convertidas em frações.
+  const rects = portPixelRectsWidthScaled(ports, model, store)
+  return ports.map((p, i) => ({
+    ...p,
+    y0: rects[i].top / store.h,
+    y1: (rects[i].top + rects[i].height) / store.h,
+  }))
+}

@@ -2,6 +2,28 @@
 const nextConfig = {
   compress: true,
   cleanDistDir: true,
+  // Chromium headless para export de emails em PNG: o binario brotli do
+  // @sparticuz/chromium nao pode ser bundlado pelo webpack (quebra o build).
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // O file-tracing nao detecta os .br de bin/ (carregados via fs em runtime)
+  // e a lambda subia sem eles ("input directory ... does not exist").
+  // Chaves usam * nos segmentos dinamicos: picomatch trataria [id] como
+  // classe de caracteres. Globs cobrem o layout do pnpm (.pnpm/...).
+  outputFileTracingIncludes: {
+    "/api/admin/stores/*/export-emails-zip/route": [
+      "node_modules/@sparticuz/chromium/bin/**",
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/admin/email-flows/*/emails/*/export-png/route": [
+      "node_modules/@sparticuz/chromium/bin/**",
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+  },
+  experimental: {
+    // recharts, date-fns e lucide-react já estão na lista default do Next 15.5
+    // (node_modules/next/dist/server/config.js) — não repetir aqui.
+    optimizePackageImports: ["@hello-pangea/dnd"],
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -64,6 +86,9 @@ const nextConfig = {
       { source: "/settings", destination: "/admin/settings", permanent: true },
 
       // ── Rotas removidas (bookmarks antigos) ───────────────────────
+      // Print do relatório saiu de /admin (o layout do admin vazava chrome e
+      // cortava a impressão em 1 página) — links antigos seguem funcionando.
+      { source: "/admin/stores/relatorios/:reportId/print", destination: "/print/relatorios/:reportId", permanent: false },
       { source: "/admin/me", destination: "/admin/productivity/board", permanent: true },
       // Notificacoes/WhatsApp persistidos no banco contem a URL antiga de logs
       { source: "/admin/tools/email-generation-logs", destination: "/admin/settings/email-generation-logs", permanent: true },
@@ -71,6 +96,9 @@ const nextConfig = {
       // CRM legado — subURLs granulares ja 404avam; catch-all para bookmarks
       { source: "/admin/crm/:path*", destination: "/admin/comercial/pipelines", permanent: false },
       { source: "/admin/cs-crm/:path*", destination: "/admin/operacional/cs-crm/:path*", permanent: true },
+      // Atendimento migrou do workspace Operacional para o Comercial
+      { source: "/admin/operacional/automacoes/:path*", destination: "/admin/comercial/automacoes/:path*", permanent: true },
+      { source: "/admin/operacional/canais", destination: "/admin/comercial/canais", permanent: true },
 
       // ── Portal → Client routes ────────────────────────────────────
       { source: "/portal/login", destination: "/client/login", permanent: true },

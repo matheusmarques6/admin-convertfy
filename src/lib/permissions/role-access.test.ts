@@ -24,7 +24,9 @@ const MATRIX: Matrix = {
   "comercial.pipelines":    { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.leads":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.forms":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
-  "comercial.inbox":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
+  "comercial.inbox":        { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
+  "comercial.canais":       { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
+  "comercial.automacoes":   { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.meetings":     { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.reports":      { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   // Operacional
@@ -43,9 +45,6 @@ const MATRIX: Matrix = {
   "ops.campaigns.list":     { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   "ops.insights":           { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   "ops.list_hygiene":       { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
-  "ops.inbox":              { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
-  "ops.canais":             { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
-  "ops.automacoes":         { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.reports":            { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   // Geral
   "geral.home":             { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
@@ -60,6 +59,7 @@ const MATRIX: Matrix = {
   "tools.email_generation": { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
   "tools.ai_usage":         { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
   "tools.email_logs":       { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
+  "tools.agent_runs":       { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
 }
 
 describe("canAccess — matriz item × função", () => {

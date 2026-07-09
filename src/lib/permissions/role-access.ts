@@ -17,6 +17,8 @@ export type NavItemId =
   | "comercial.leads"
   | "comercial.forms"
   | "comercial.inbox"
+  | "comercial.canais"
+  | "comercial.automacoes"
   | "comercial.meetings"
   | "comercial.reports"
   // Operacional
@@ -35,9 +37,6 @@ export type NavItemId =
   | "ops.campaigns.list"
   | "ops.insights"
   | "ops.list_hygiene"
-  | "ops.inbox"
-  | "ops.canais"
-  | "ops.automacoes"
   | "ops.reports"
   // Geral
   | "geral.home"
@@ -51,6 +50,7 @@ export type NavItemId =
   | "tools.email_generation"
   | "tools.ai_usage"
   | "tools.email_logs"
+  | "tools.agent_runs"
 
 const ALL_ITEMS: NavItemId[] = [
   "comercial.dashboard",
@@ -58,6 +58,8 @@ const ALL_ITEMS: NavItemId[] = [
   "comercial.leads",
   "comercial.forms",
   "comercial.inbox",
+  "comercial.canais",
+  "comercial.automacoes",
   "comercial.meetings",
   "comercial.reports",
   "ops.dashboard",
@@ -75,9 +77,6 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.campaigns.list",
   "ops.insights",
   "ops.list_hygiene",
-  "ops.inbox",
-  "ops.canais",
-  "ops.automacoes",
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -90,12 +89,16 @@ const ALL_ITEMS: NavItemId[] = [
   "tools.email_generation",
   "tools.ai_usage",
   "tools.email_logs",
+  "tools.agent_runs",
 ]
 
 // Funções bypass (veem tudo).
 const BYPASS_ROLES: OrgRole[] = ["admin", "dev"]
 
 const COO_ITEMS = new Set<NavItemId>([
+  "comercial.inbox",
+  "comercial.canais",
+  "comercial.automacoes",
   "ops.dashboard",
   "ops.clients",
   "ops.stores",
@@ -111,9 +114,6 @@ const COO_ITEMS = new Set<NavItemId>([
   "ops.campaigns.list",
   "ops.insights",
   "ops.list_hygiene",
-  "ops.inbox",
-  "ops.canais",
-  "ops.automacoes",
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -129,6 +129,8 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "comercial.leads",
   "comercial.forms",
   "comercial.inbox",
+  "comercial.canais",
+  "comercial.automacoes",
   "comercial.meetings",
   "comercial.reports",
   "ops.dashboard",
@@ -141,9 +143,6 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "ops.onboarding",
   "ops.cs.cadences",
   "ops.onboarding.tutorial",
-  "ops.inbox",
-  "ops.canais",
-  "ops.automacoes",
   "geral.home",
   "geral.board",
   "geral.meetings",

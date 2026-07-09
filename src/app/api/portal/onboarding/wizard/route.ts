@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
+import { languageLabelToCode } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
 import { KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
@@ -197,7 +198,9 @@ export async function POST(request: NextRequest) {
           platform: platform || "shopify",
           niche,
           country: country || "BR",
-          language: language || "pt-BR",
+          // Normaliza pro código canônico ("en-US" legado → "en") — o pipeline
+          // de copy e a badge do admin leem esta coluna direto.
+          language: languageLabelToCode(language) ?? (language || "pt-BR"),
           target_audience,
           free_shipping_type,
           updated_at: new Date().toISOString(),

@@ -293,7 +293,13 @@ export async function POST(request: NextRequest) {
       throw new AppError("N8N_BRIEFING_WEBHOOK_URL não configurada", 502)
     }
 
-    await dispatchBriefingWebhook(onboarding.id, { regeneration: true })
+    // freshStart: regenerar = partir do ZERO (link + dados atuais da loja).
+    // O briefing antigo NÃO vai no payload — quem regenera o faz porque o
+    // atual está errado; realimentá-lo só reproduzia o conteúdo ruim.
+    await dispatchBriefingWebhook(onboarding.id, {
+      regeneration: true,
+      freshStart: true,
+    })
 
     log.info(`Briefing webhook dispatched for store ${body.store_id}, onboarding ${onboarding.id}`)
 

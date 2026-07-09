@@ -31,7 +31,7 @@ import { StoreOverviewGrid } from "./store-overview-grid"
 
 // ─── Types ──────────────────────────────────────────────────
 
-interface StoreRow {
+export interface StoreRow {
   id: string
   store_name: string
   client_name: string | null
@@ -100,18 +100,59 @@ function PlatformIcon({ platform }: { platform: string }) {
 
 // ─── Main Component ─────────────────────────────────────────
 
-export function StoresPageTabs() {
+export interface StoresPageTabsProps {
+  /** Payload de /api/stores/control?page=1&per_page=15, pré-carregado pelo RSC. */
+  initialStores?: {
+    success: boolean
+    stores: StoreRow[]
+    summary?: { never: number; overdue: number }
+    pagination?: { total: number }
+  } | null
+  /** Payload de /api/stores/alerts/summary, pré-carregado pelo RSC. */
+  initialAlertsSummary?: {
+    success: boolean
+    summary: { total_active: number }
+  } | null
+}
+
+export function StoresPageTabs({
+  initialStores,
+  initialAlertsSummary,
+}: StoresPageTabsProps = {}) {
   const router = useRouter()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<"overview" | "stores" | "alerts">("overview")
-  const [activeAlertsCount, setActiveAlertsCount] = useState(0)
-  const [noFeedbackCount, setNoFeedbackCount] = useState(0)
+  const [activeAlertsCount, setActiveAlertsCount] = useState(
+    initialAlertsSummary?.success ? initialAlertsSummary.summary.total_active : 0,
+  )
+  const [noFeedbackCount, setNoFeedbackCount] = useState(
+    initialStores?.success && initialStores.summary
+      ? initialStores.summary.never + initialStores.summary.overdue
+      : 0,
+  )
 
-  // Stores state
-  const [stores, setStores] = useState<StoreRow[]>([])
-  const [storesLoading, setStoresLoading] = useState(true)
+  // Stores state (inicializado do RSC quando disponível; primeiro fetch é
+  // pulado nesse caso — paginação/busca subsequentes continuam fetchando)
+  const [stores, setStores] = useState<StoreRow[]>(
+    initialStores?.success ? initialStores.stores || [] : [],
+  )
+  const [storesLoading, setStoresLoading] = useState(!initialStores?.success)
   const [storesPage, setStoresPage] = useState(1)
-  const [storesTotalItems, setStoresTotalItems] = useState(0)
+  const [storesTotalItems, setStoresTotalItems] = useState(
+    initialStores?.success
+      ? initialStores.pagination?.total || initialStores.stores?.length || 0
+      : 0,
+  )
+  const skipInitialStoresFetch = useRef(!!initialStores?.success)
+  // Counts só são pulados se AMBOS os payloads trouxeram os campos que os
+  // seeds usam (summary presente) — senão o fetch de recuperação roda como
+  // antes. Constante derivada de props estáveis (RSC): safe como guard
+  // inline do efeito (ao contrário de um ref consumido, sobrevive ao
+  // double-invoke do Strict Mode).
+  const countsSeeded =
+    !!initialStores?.success &&
+    !!initialStores.summary &&
+    !!initialAlertsSummary?.success
   const [searchInput, setSearchInput] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -163,6 +204,8 @@ export function StoresPageTabs() {
 
   // ─── Fetch counts ──────────────────────────────────────
   useEffect(() => {
+    // Counts já vieram do RSC (mesmas fontes) — pula o fetch do mount.
+    if (countsSeeded) return
     async function fetchCounts() {
       try {
         const [alertRes, feedbackRes] = await Promise.all([
@@ -180,9 +223,18 @@ export function StoresPageTabs() {
       }
     }
     fetchCounts()
-  }, [])
+  }, [countsSeeded])
 
-  useEffect(() => { fetchStores() }, [fetchStores])
+  useEffect(() => {
+    // Primeira render com initialStores (page=1, sem busca): dados já na
+    // tela — pula o fetch. Qualquer mudança de página/busca fetcha normal.
+    if (skipInitialStoresFetch.current && storesPage === 1 && !debouncedSearch) {
+      skipInitialStoresFetch.current = false
+      return
+    }
+    skipInitialStoresFetch.current = false
+    fetchStores()
+  }, [fetchStores, storesPage, debouncedSearch])
   useEffect(() => { if (activeTab === "alerts") fetchAlerts() }, [activeTab, fetchAlerts])
 
   // ─── Debounced search ──────────────────────────────────

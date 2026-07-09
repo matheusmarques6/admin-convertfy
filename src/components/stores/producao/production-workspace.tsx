@@ -7,6 +7,7 @@ import useSWR from "swr"
 import {
   ChevronDown,
   ChevronRight,
+  FileImage,
   FileText,
   Heart,
   Loader2,
@@ -601,6 +602,12 @@ export function ProductionWorkspace({
             </>
           )}
 
+          {/* Export em lote de PNGs — visível também no handoff de
+              implementação (ops consome os assets prontos). */}
+          <div style={{ padding: mode === "implementation" ? "12px 12px 4px" : "0 12px 4px" }}>
+            <ExportEmailsPngButton storeId={store.id} flows={flows} />
+          </div>
+
           {/* Recursos do projeto */}
           <div style={{ padding: "12px 12px 8px" }}>
             <SidebarSectionLabel>Recursos do projeto</SidebarSectionLabel>
@@ -839,6 +846,145 @@ export function ProductionWorkspace({
         </main>
       </div>
     </div>
+  )
+}
+
+// ─── Export de PNGs em lote (ZIP) ───────────────────────────
+
+function ExportEmailsPngButton({
+  storeId,
+  flows,
+}: {
+  storeId: string
+  flows: EmailFlow[]
+}) {
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null) // "store" | flowId
+
+  const eligibleCount = (f: EmailFlow) =>
+    (f.emails ?? []).filter((e) => e.status === "ready" || !!e.html).length
+  const totalEligible = flows.reduce((acc, f) => acc + eligibleCount(f), 0)
+
+  const runExport = async (scope: "store" | "flow", flowId?: string) => {
+    if (exporting) return
+    setExporting(scope === "store" ? "store" : flowId!)
+    try {
+      const params = new URLSearchParams({ scope })
+      if (scope === "flow" && flowId) params.set("flow_id", flowId)
+      const res = await fetch(
+        `/api/admin/stores/${storeId}/export-emails-zip?${params}`,
+      )
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const disposition = res.headers.get("Content-Disposition") || ""
+      const match = disposition.match(/filename="([^"]+)"/)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = match?.[1] || "emails.zip"
+      a.click()
+      URL.revokeObjectURL(url)
+      toast({ title: "Export concluído", description: a.download })
+      setOpen(false)
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Falha no export",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={flows.length === 0}
+        className="w-full inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-[6px] border border-black/[0.12] bg-white text-[#1F1F1F] text-[12px] font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <FileImage className="h-3.5 w-3.5" />
+        Exportar PNGs (.zip)
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={() => !exporting && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-[440px] bg-white rounded-[10px] shadow-2xl border border-black/[0.08] flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/[0.06]">
+              <h2 className="text-[15px] font-semibold text-slate-900">
+                Exportar emails como PNG
+              </h2>
+              <button
+                type="button"
+                onClick={() => !exporting && setOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+              <p className="text-[12px] text-slate-500 mb-2">
+                Gera um ZIP com o screenshot de cada email pronto. Pode levar
+                ~1 min para a loja inteira.
+              </p>
+              <button
+                type="button"
+                disabled={!!exporting || totalEligible === 0}
+                onClick={() => runExport("store")}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-[6px] border border-black/[0.08] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+              >
+                <span className="text-[13px] font-semibold text-slate-900">
+                  Loja inteira
+                </span>
+                <span className="text-[12px] text-slate-500 inline-flex items-center gap-1.5">
+                  {exporting === "store" && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  {totalEligible} email{totalEligible === 1 ? "" : "s"}
+                </span>
+              </button>
+              {flows.map((f) => {
+                const n = eligibleCount(f)
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    disabled={!!exporting || n === 0}
+                    onClick={() => runExport("flow", f.id)}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[6px] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                  >
+                    <span className="text-[12px] text-slate-700">{f.name}</span>
+                    <span className="text-[11px] text-slate-400 inline-flex items-center gap-1.5">
+                      {exporting === f.id && (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      )}
+                      {n} pronto{n === 1 ? "" : "s"}
+                    </span>
+                  </button>
+                )
+              })}
+              {exporting && (
+                <p className="text-[11px] text-slate-400 pt-2">
+                  Gerando PNGs… não feche esta janela.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

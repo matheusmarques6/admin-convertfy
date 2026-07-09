@@ -166,30 +166,33 @@ export async function approveSuggestion(params: {
   const pipelineId = await ensurePipelineItem(s, userId)
 
   // Inicia o pipeline de DESIGN: instancia a etapa `estrutura` pra loja piloto.
-  // instantiateCampaignStage e idempotente e ja seta design_pipeline_id/
-  // design_column_id/design_pilot_store_id na campanha.
-  // Inicia o design como side-effect NAO-BLOQUEANTE: a aprovacao nao deve
-  // falhar (nem deixar pipeline_item orfao sem status) se o pipeline de design
-  // nao conseguir iniciar. Em producao o bootstrap e idempotente e cria o
-  // board, entao isso quase nunca falha; quando falhar, fica logado e o design
-  // pode ser re-disparado pelo proximo gatilho.
+  // SEMPRE chama (instantiateCampaignStage e idempotente e ja seta
+  // design_pipeline_id/design_column_id/design_pilot_store_id na campanha).
+  // NAO pular por causa de design_task_id pre-existente: sugestoes antigas
+  // carregam um design_task_id LEGADO (task de fluxo anterior, sem
+  // operational_column_id) e o skip deixava a aprovacao sem pipeline de design
+  // — o design so nascia se/quando o webhook campaign-copy-complete rodasse
+  // (bug TEASER 6.6, jul/2026).
+  // Side-effect NAO-BLOQUEANTE: a aprovacao nao deve falhar (nem deixar
+  // pipeline_item orfao sem status) se o pipeline de design nao conseguir
+  // iniciar; fica logado e o webhook campaign-copy-complete re-tenta.
   let designTaskId: string | null = s.design_task_id ?? null
-  if (!designTaskId) {
-    try {
-      const { taskIds } = await instantiateCampaignStage({
-        suggestionId,
-        orgId,
-        stageSlug: "estrutura",
-        pilotStoreId,
-        createdBy: userId,
-      })
-      designTaskId = taskIds[0] ?? null
-    } catch (err) {
-      log.error("approve.design_start_failed", {
-        suggestionId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+  let designTasksCreatedNow: string[] = []
+  try {
+    const { taskIds, created } = await instantiateCampaignStage({
+      suggestionId,
+      orgId,
+      stageSlug: "estrutura",
+      pilotStoreId,
+      createdBy: userId,
+    })
+    if (taskIds[0]) designTaskId = taskIds[0]
+    if (created) designTasksCreatedNow = taskIds
+  } catch (err) {
+    log.error("approve.design_start_failed", {
+      suggestionId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
   const { error: updateErr } = await admin
@@ -204,8 +207,10 @@ export async function approveSuggestion(params: {
     .eq("id", suggestionId)
 
   if (updateErr) {
-    if (designTaskId && designTaskId !== s.design_task_id) {
-      await admin.from("tasks").delete().eq("id", designTaskId)
+    // Rollback so do que ESTA chamada criou — tasks pre-existentes (retornadas
+    // pela idempotencia do instanciador) nunca sao deletadas aqui.
+    if (designTasksCreatedNow.length > 0) {
+      await admin.from("tasks").delete().in("id", designTasksCreatedNow)
     }
     throw updateErr
   }

@@ -1,8 +1,9 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Mail } from "lucide-react"
-import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { getSessionUser } from "@/lib/services/admin-auth.service"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { PageHeader } from "@/components/ui/page-header"
@@ -13,7 +14,7 @@ import { StoreForceResyncAction } from "@/components/stores/store-force-resync-a
 
 export const dynamic = "force-dynamic"
 
-async function getStore(id: string) {
+async function getStore(id: string, userId: string) {
   let adminClient: ReturnType<typeof createAdminClient>
   try {
     adminClient = createAdminClient()
@@ -21,6 +22,14 @@ async function getStore(id: string) {
     console.error("[StoreDetail] CRITICAL: createAdminClient() failed. Check SUPABASE_SERVICE_ROLE_KEY env var.", err)
     throw new Error("Erro de configuração do servidor. Verifique as variáveis de ambiente.")
   }
+
+  // resolveOrgId depende só do userId — dispara em paralelo com a query da
+  // loja. O throw (AppError 403) é capturado aqui e re-lançado apenas no
+  // ponto do fluxo em que hoje é awaited (page, quando store.org_id existe),
+  // evitando unhandled rejection quando a loja não tem org_id.
+  const orgIdSettled = resolveOrgId(userId)
+    .then((v) => ({ ok: true as const, v }))
+    .catch((e) => ({ ok: false as const, e }))
 
   const { data: store, error } = await adminClient
     .from("client_stores")
@@ -60,51 +69,25 @@ async function getStore(id: string) {
     return null
   }
 
-  // Get integration status from centralized service (uses real validation fields)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let integrationStatus: Record<string, any> = {}
-  try {
-    const status = await getStoreIntegrationStatus(id)
-    integrationStatus = Object.fromEntries(
-      Object.entries(status).filter(([, v]) => v !== undefined)
-    )
-  } catch (err) {
-    console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
+  // As 5 buscas abaixo dependem apenas de `id` — uma única onda de
+  // Promise.all no lugar da fila serial (mesmas queries, mesmos filtros).
+  async function fetchIntegrationStatus() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let result: Record<string, any> = {}
+    try {
+      const status = await getStoreIntegrationStatus(id)
+      result = Object.fromEntries(
+        Object.entries(status).filter(([, v]) => v !== undefined)
+      )
+    } catch (err) {
+      console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
+    }
+    return result
   }
-
-  // Fetch extra onboarding data
-  const { data: onboardingData } = await adminClient
-    .from("store_onboarding_data")
-    .select("is_complete, filled_at")
-    .eq("store_id", id)
-    .single()
-
-  const { data: onboarding } = await adminClient
-    .from("onboardings")
-    .select(
-      "status, current_column:operational_pipeline_columns(position, slug, name)",
-    )
-    .eq("store_id", id)
-    .eq("status", "in_progress")
-    .order("last_column_change_at", { ascending: false })
-    .limit(1)
-    .single()
-
-  const { data: briefing } = await adminClient
-    .from("store_briefings")
-    .select("id")
-    .eq("store_id", id)
-    .eq("status", "current")
-    .limit(1)
-    .single()
-
-  // drive_folder_url legado: pipeline v2 nao tem esse campo direto.
-  // Mantemos null pra nao quebrar header da loja.
-  const driveData = null as { drive_folder_url: string | null } | null
 
   // Fetch revenue summary for KPIs (header da loja).
   // Inclui colunas omnisend_* com SELECT resiliente: se a migration 20260417
-  // nao foi aplicada, faz retry sem essas colunas.
+  // nao foi aplicada, faz retry sem essas colunas (sequência interna intacta).
   async function fetchRevenueSummary(withOmnisend: boolean) {
     const cols = withOmnisend
       ? "klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, omnisend_total_revenue, store_total_revenue, store_orders, total_leads, engaged_leads, engagement_rate, currency, sync_status"
@@ -116,11 +99,49 @@ async function getStore(id: string) {
       .eq("period_label", "30d")
       .maybeSingle()
   }
-  let revSumRes = await fetchRevenueSummary(true)
-  if (revSumRes.error && /omnisend_/.test(revSumRes.error.message || "")) {
-    revSumRes = await fetchRevenueSummary(false)
+  async function fetchRevenueWithRetry() {
+    let res = await fetchRevenueSummary(true)
+    if (res.error && /omnisend_/.test(res.error.message || "")) {
+      res = await fetchRevenueSummary(false)
+    }
+    return res.data
   }
-  const revenueSummary = revSumRes.data
+
+  const [integrationStatus, onboardingDataRes, onboardingRes, briefingRes, revenueSummary] =
+    await Promise.all([
+      fetchIntegrationStatus(),
+      adminClient
+        .from("store_onboarding_data")
+        .select("is_complete, filled_at")
+        .eq("store_id", id)
+        .single(),
+      adminClient
+        .from("onboardings")
+        .select(
+          "status, current_column:operational_pipeline_columns(position, slug, name)",
+        )
+        .eq("store_id", id)
+        .eq("status", "in_progress")
+        .order("last_column_change_at", { ascending: false })
+        .limit(1)
+        .single(),
+      adminClient
+        .from("store_briefings")
+        .select("id")
+        .eq("store_id", id)
+        .eq("status", "current")
+        .limit(1)
+        .single(),
+      fetchRevenueWithRetry(),
+    ])
+
+  const onboardingData = onboardingDataRes.data
+  const onboarding = onboardingRes.data
+  const briefing = briefingRes.data
+
+  // drive_folder_url legado: pipeline v2 nao tem esse campo direto.
+  // Mantemos null pra nao quebrar header da loja.
+  const driveData = null as { drive_folder_url: string | null } | null
 
   return {
     ...store,
@@ -139,6 +160,7 @@ async function getStore(id: string) {
     has_briefing: !!briefing,
     drive_folder_url: driveData?.drive_folder_url || null,
     revenueSummary,
+    _orgIdSettled: orgIdSettled,
   }
 }
 
@@ -154,17 +176,18 @@ export default async function StoreDetailPage({
 }) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
   if (!user) notFound()
 
-  const store = await getStore(id)
+  const store = await getStore(id, user.id)
   if (!store) notFound()
 
-  // Multi-tenant isolation
+  // Multi-tenant isolation (resolveOrgId já rodou em paralelo com a loja;
+  // o AppError propaga aqui — mesmo ponto do fluxo de antes)
   if (store.org_id) {
-    const userOrgId = await resolveOrgId(user.id)
-    if (store.org_id !== userOrgId) {
+    const settled = await store._orgIdSettled
+    if (!settled.ok) throw settled.e
+    if (store.org_id !== settled.v) {
       notFound()
     }
   }

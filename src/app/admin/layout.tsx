@@ -10,13 +10,34 @@ import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
 import { WelcomeTour } from "@/components/ui/welcome-tour"
 import { CrmKeyboardShortcuts } from "@/components/crm/keyboard-shortcuts"
-import { AiChatDrawer } from "@/components/ai/ai-chat-drawer"
+import { AiChatLazy } from "@/components/ai/ai-chat-lazy"
 import { AiChatTrigger } from "@/components/ai/ai-chat-trigger"
 import { AiContextWatcher } from "@/components/ai/ai-context-watcher"
+import { getSessionUser, getProfileByUserId } from "@/lib/services/admin-auth.service"
+
+// Query própria do layout (join de organizations + order by role) — não usa
+// o helper getActiveOrgMember de propósito: o ordering diferente poderia
+// escolher outra linha em multi-membership.
+async function fetchLayoutOrgMember(userId: string) {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("org_members")
+    .select(`
+      *,
+      organization:organizations(id, name, slug, type)
+    `)
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .order("role", { ascending: true })
+    .limit(1)
+    .single()
+  return data
+}
 
 async function getPermissions(
   userId: string,
-  profile: { role: string | null } | null
+  profile: { role: string | null } | null,
+  orgMember: Awaited<ReturnType<typeof fetchLayoutOrgMember>>
 ): Promise<Permissions | null> {
   try {
     const supabase = await createClient()
@@ -37,26 +58,13 @@ async function getPermissions(
         .eq("is_active", true)
 
     // Admin global sempre cai no bypass de lojas — dispara em paralelo
-    // com a busca de org membership.
+    // com a busca de roles logo abaixo.
     const adminStoresPromise = isAdmin
       ? Promise.resolve(fetchAllStores()).catch((err) => {
           console.error("[Layout] Error fetching store access:", err)
           return { data: null }
         })
       : null
-
-    // Get org membership
-    const { data: orgMember } = await supabase
-      .from("org_members")
-      .select(`
-        *,
-        organization:organizations(id, name, slug, type)
-      `)
-      .eq("profile_id", userId)
-      .eq("is_active", true)
-      .order("role", { ascending: true })
-      .limit(1)
-      .single()
 
     // Carrega TODAS as funções da conta a partir da junction org_member_roles.
     // Acesso = união. Admin/Dev são bypass.
@@ -168,21 +176,27 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   if (!user) {
     redirect(ROUTES.LOGIN)
   }
 
-  // Fetch user profile and permissions
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single()
+  // Profile e org membership dependem só de user.id — em paralelo.
+  // (getSessionUser/getProfileByUserId são React.cache: as páginas que
+  // precisarem dos mesmos dados na mesma request não pagam de novo.)
+  const [profile, orgMember] = await Promise.all([
+    getProfileByUserId(user.id),
+    // catch preserva a degradação antiga (a query vivia dentro do try/catch
+    // do getPermissions): falha transitória → shell renderiza sem membership
+    // em vez de derrubar o layout inteiro no error boundary.
+    fetchLayoutOrgMember(user.id).catch((err) => {
+      console.error("[Layout] Error fetching org membership:", err)
+      return null
+    }),
+  ])
 
-  const permissions = await getPermissions(user.id, profile)
+  const permissions = await getPermissions(user.id, profile, orgMember)
 
   const userData = profile ? {
     name: profile.name,
@@ -229,7 +243,7 @@ export default async function DashboardLayout({
       </CommandPalette>
       <WelcomeTour />
       <CrmKeyboardShortcuts />
-      <AiChatDrawer />
+      <AiChatLazy />
       <AiChatTrigger />
       <AiContextWatcher />
     </DashboardClientWrapper>

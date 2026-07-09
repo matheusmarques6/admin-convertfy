@@ -1,21 +1,23 @@
 /**
- * WhatsApp Cloud API client (oficial Meta) — apenas a API oficial.
+ * WhatsApp Cloud API — adapter de compatibilidade.
  *
- * Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/
- *
- * Versao da API: v20.0 (LTS estavel ate ~2027).
- *
- * Provider pattern: cada channel armazena access_token + phone_number_id
- * em config (criptografado via supabase secrets em prod). Funcao
- * sendText monta a request /messages e retorna {message_id, error}.
+ * A implementação real vive em @/lib/whatsapp/cloud-api (client completo
+ * com retry/backoff, taxonomia de erros Meta e Graph v22). Este módulo
+ * mantém as assinaturas antigas (sendWhatsAppMessage/markAsRead sobre o
+ * config do canal) pros callers existentes — acompanhamento, automação
+ * do CRM e onboarding — sem churn. Código novo deve usar o client via
+ * loadWhatsAppChannel (@/lib/whatsapp/channel-config).
  */
 
 import { logger } from "@/lib/logger"
+import { decrypt } from "@/lib/crypto"
+import {
+  createWhatsAppCloudClient,
+  WhatsAppCloudError,
+  type SendMessageResult,
+} from "@/lib/whatsapp/cloud-api"
 
 const log = logger.child("WhatsAppCloud")
-
-const API_VERSION = "v20.0"
-const BASE_URL = `https://graph.facebook.com/${API_VERSION}`
 
 interface WhatsAppChannelConfig {
   phone_number_id: string
@@ -45,6 +47,36 @@ export interface SendResult {
   error?: { code: string; message: string }
 }
 
+function buildClient(config: WhatsAppChannelConfig) {
+  // access_token pode estar cifrado (enc:v1:) ou em plaintext legado —
+  // decrypt tem passthrough.
+  return createWhatsAppCloudClient({
+    phoneNumberId: config.phone_number_id,
+    accessToken: decrypt(config.access_token),
+    wabaId: config.business_account_id,
+  })
+}
+
+function toSendResult(result: SendMessageResult): SendResult {
+  return { success: true, message_id: result.messages?.[0]?.id }
+}
+
+function toErrorResult(err: unknown): SendResult {
+  if (err instanceof WhatsAppCloudError) {
+    return {
+      success: false,
+      error: { code: String(err.code || err.status || "unknown"), message: err.message },
+    }
+  }
+  return {
+    success: false,
+    error: {
+      code: "network_error",
+      message: err instanceof Error ? err.message : "Network error",
+    },
+  }
+}
+
 export async function sendWhatsAppMessage(
   config: WhatsAppChannelConfig,
   msg: WhatsAppMessage,
@@ -56,64 +88,46 @@ export async function sendWhatsAppMessage(
     }
   }
 
-  const url = `${BASE_URL}/${config.phone_number_id}/messages`
-  const body: Record<string, unknown> = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: msg.to.replace(/^\+/, ""),
-    type: msg.type,
-  }
-
-  if (msg.type === "text" && msg.text) body.text = msg.text
-  if (msg.type === "template" && msg.template) body.template = msg.template
-  if (msg.type === "image" && msg.image) body.image = msg.image
-  if (msg.type === "document" && msg.document) body.document = msg.document
+  const client = buildClient(config)
 
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
-
-    const data = await res.json().catch(() => ({}))
-
-    if (!res.ok || data.error) {
-      log.error("[WhatsApp] send failed", {
-        status: res.status,
-        error: data.error,
-      })
-      return {
-        success: false,
-        error: {
-          code: data.error?.code?.toString() || res.status.toString(),
-          message: data.error?.message || "Unknown error",
-        },
-      }
-    }
-
-    const messageId = data.messages?.[0]?.id
-    return {
-      success: true,
-      message_id: messageId,
+    switch (msg.type) {
+      case "text":
+        return toSendResult(
+          await client.sendText(msg.to, msg.text?.body ?? "", msg.text?.preview_url ?? false),
+        )
+      case "template":
+        return toSendResult(
+          await client.sendTemplate(
+            msg.to,
+            msg.template?.name ?? "",
+            msg.template?.language?.code ?? "pt_BR",
+            msg.template?.components,
+          ),
+        )
+      case "image":
+        return toSendResult(
+          await client.sendImage(msg.to, { link: msg.image?.link }, msg.image?.caption),
+        )
+      case "document":
+        return toSendResult(
+          await client.sendDocument(
+            msg.to,
+            { link: msg.document?.link, filename: msg.document?.filename },
+            msg.document?.caption,
+          ),
+        )
+      default:
+        return { success: false, error: { code: "unsupported_type", message: `Unsupported type: ${msg.type}` } }
     }
   } catch (err) {
-    log.error("[WhatsApp] network error", err)
-    return {
-      success: false,
-      error: {
-        code: "network_error",
-        message: err instanceof Error ? err.message : "Network error",
-      },
-    }
+    log.error("send failed", { code: (err as WhatsAppCloudError)?.code, message: (err as Error)?.message })
+    return toErrorResult(err)
   }
 }
 
 /**
- * Marca mensagem como lida (read receipts).
+ * Marca mensagem como lida (read receipt de volta pro cliente).
  */
 export async function markAsRead(
   config: WhatsAppChannelConfig,
@@ -127,24 +141,9 @@ export async function markAsRead(
   }
 
   try {
-    const res = await fetch(`${BASE_URL}/${config.phone_number_id}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: externalMessageId,
-      }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      return { success: false, error: { code: res.status.toString(), message: data.error?.message || "Failed" } }
-    }
+    await buildClient(config).markAsRead(externalMessageId)
     return { success: true }
   } catch (err) {
-    return { success: false, error: { code: "network_error", message: err instanceof Error ? err.message : "Error" } }
+    return toErrorResult(err)
   }
 }

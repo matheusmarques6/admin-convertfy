@@ -73,14 +73,14 @@ const navigationItems: CommandItem[] = [
   { name: "Comercial — Dashboard", href: "/admin/comercial/dashboard", icon: LayoutDashboard, group: "Comercial" },
   { name: "Comercial — Pipelines", href: "/admin/comercial/pipelines", icon: Briefcase, group: "Comercial" },
   { name: "Comercial — Leads", href: "/admin/comercial/leads", icon: UserPlus, group: "Comercial" },
+  { name: "Comercial — Automacoes", href: "/admin/comercial/automacoes", icon: Workflow, group: "Comercial" },
+  { name: "Comercial — Canais (WhatsApp)", href: "/admin/comercial/canais", icon: Phone, group: "Comercial" },
   { name: "Comercial — Reports", href: "/admin/comercial/reports", icon: BarChart3, group: "Comercial" },
 
   // Operacional
   { name: "Operacional — Dashboard", href: "/admin/operacional/dashboard", icon: LayoutDashboard, group: "Operacional" },
   { name: "Operacional — Pipelines CS", href: "/admin/operacional/pipelines", icon: HeartHandshake, group: "Operacional" },
   { name: "Operacional — Saude", href: "/admin/health", icon: HeartHandshake, group: "Operacional" },
-  { name: "Operacional — Automacoes", href: "/admin/operacional/automacoes", icon: Workflow, group: "Operacional" },
-  { name: "Operacional — Canais (WhatsApp)", href: "/admin/operacional/canais", icon: Phone, group: "Operacional" },
   { name: "Operacional — Reports", href: "/admin/operacional/reports", icon: BarChart3, group: "Operacional" },
 
   // Compartilhado

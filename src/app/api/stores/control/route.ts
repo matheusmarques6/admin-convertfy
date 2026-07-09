@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -118,7 +119,7 @@ function computeFeedbackStatus(
 }
 
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   const startTime = Date.now()
   try {
     const supabase = await createClient()
@@ -725,3 +726,5 @@ export async function GET(request: Request) {
     )
   }
 }
+
+export const GET = withTiming("stores/control", handleGet)

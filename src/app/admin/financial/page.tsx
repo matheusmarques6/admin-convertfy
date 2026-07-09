@@ -1,15 +1,27 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { Landmark } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
-import { FinancialCharts } from "@/components/dashboard/financial-charts"
 import { PermissionGate } from "@/components/permission-gate"
+
+const FinancialCharts = dynamic(
+  () =>
+    import("@/components/dashboard/financial-charts").then((mod) => ({
+      default: mod.FinancialCharts,
+    })),
+  {
+    loading: () => <PageSkeleton variant="chart" showHeader={false} className="px-0 py-0" />,
+    ssr: false,
+  }
+)
 
 const _VALID_TABS = ["analysis", "charges", "subscriptions", "wise"] as const
 type TabValue = typeof _VALID_TABS[number]

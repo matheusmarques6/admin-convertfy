@@ -45,7 +45,7 @@ export async function instantiateCampaignStage(params: {
   stageSlug: CampaignDesignStageSlug
   pilotStoreId?: string | null
   createdBy?: string | null
-}): Promise<{ taskIds: string[]; columnId: string }> {
+}): Promise<{ taskIds: string[]; columnId: string; created: boolean }> {
   const { suggestionId, orgId, stageSlug, pilotStoreId = null, createdBy = null } =
     params
   const admin = createAdminClient()
@@ -72,13 +72,16 @@ export async function instantiateCampaignStage(params: {
   }
   const version = (campaign.design_version as number) ?? 1
 
-  // 3. Idempotencia: ja existem tasks pra essa campanha+coluna+versao?
+  // 3. Idempotencia: ja existem tasks (vivas) pra essa campanha+coluna+versao?
+  //    Tasks cancelled ficam de fora — cancelar duplicatas/lixo nao pode
+  //    "ocupar a vaga" da etapa nem voltar como design_task_id.
   const { data: existingTasks } = await admin
     .from("tasks")
     .select("id")
     .eq("source_id", suggestionId)
     .eq("operational_column_id", columnId)
     .eq("version", version)
+    .neq("status", "cancelled")
   const existing = (existingTasks ?? []) as Array<{ id: string }>
   if (existing.length > 0) {
     await syncCampaignDesignState({
@@ -90,7 +93,7 @@ export async function instantiateCampaignStage(params: {
       pilotStoreId,
       designStartedAt: campaign.design_started_at as string | null,
     })
-    return { taskIds: existing.map((t) => t.id), columnId }
+    return { taskIds: existing.map((t) => t.id), columnId, created: false }
   }
 
   // 4. Resolve a coluna (template + role default).
@@ -125,6 +128,7 @@ export async function instantiateCampaignStage(params: {
       version,
       assignee_role: defaultRole,
       created_by: createdBy,
+      slug: `finalizacao_${store.store_id}`,
       metadata: {
         column_slug: stageSlug,
         column_name: columnName,
@@ -153,7 +157,9 @@ export async function instantiateCampaignStage(params: {
       version,
       assignee_role: item.assignee_role ?? defaultRole,
       created_by: createdBy,
-      slug: item.slug ?? null,
+      // Slug SEMPRE preenchido: e a chave do indice unico parcial que garante
+      // idempotencia contra instanciacoes concorrentes (webhooks n8n em paralelo).
+      slug: item.slug ?? item.id ?? `${stageSlug}_${idx}`,
       metadata: {
         column_slug: stageSlug,
         column_name: columnName,
@@ -169,6 +175,31 @@ export async function instantiateCampaignStage(params: {
     .insert(taskRows)
     .select("id")
   if (insertErr) {
+    // 23505 = corrida com outra instanciacao concorrente (o indice unico
+    // parcial uniq_campaign_design_task_per_stage derruba o perdedor). Foi a
+    // causa das tasks triplicadas da TEASER 6.6 (3 webhooks n8n em paralelo
+    // passaram juntos pela checagem read-then-insert do passo 3). Idempotencia:
+    // re-le as tasks do vencedor e retorna.
+    if (insertErr.code === "23505") {
+      const { data: raced } = await admin
+        .from("tasks")
+        .select("id")
+        .eq("source_id", suggestionId)
+        .eq("operational_column_id", columnId)
+        .eq("version", version)
+        .neq("status", "cancelled")
+      const winners = (raced ?? []) as Array<{ id: string }>
+      await syncCampaignDesignState({
+        admin,
+        suggestionId,
+        pipelineId,
+        columnId,
+        stageSlug,
+        pilotStoreId,
+        designStartedAt: campaign.design_started_at as string | null,
+      })
+      return { taskIds: winners.map((t) => t.id), columnId, created: false }
+    }
     // Falha de schema/permissão NÃO pode passar silenciosa: era a razão do bug
     // "card em Design sem tasks". Lançar faz o chamador logar (approve /
     // webhook campaign-copy-complete) em vez de retornar taskIds vazio.
@@ -203,7 +234,7 @@ export async function instantiateCampaignStage(params: {
     designStartedAt: campaign.design_started_at as string | null,
   })
 
-  return { taskIds: inserted.map((t) => t.id), columnId }
+  return { taskIds: inserted.map((t) => t.id), columnId, created: true }
 }
 
 async function syncCampaignDesignState(args: {

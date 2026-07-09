@@ -1,76 +1,50 @@
-"use client"
-
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import useSWR from "swr"
+import { redirect } from "next/navigation"
 import { GitBranch, Plus, ArrowRight } from "lucide-react"
+import { createAdminClient } from "@/lib/supabase/server"
+import { getSessionUser } from "@/lib/services/admin-auth.service"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
-
-interface PipelineSummary {
-  id: string
-  name: string
-  description: string | null
-  scope: string
-  color: string | null
-  deals_count: number
-  is_default?: boolean
-}
+export const dynamic = "force-dynamic"
 
 /**
  * Pagina raiz de /admin/comercial/pipelines.
  *
- * Quando há pipelines: redireciona para o primeiro (default ou
- * primeiro listado). UX: usuário sempre cai num board ao invés de
- * tela "lista".
+ * Quando há pipelines: redireciona server-side para o primeiro (default ou
+ * primeiro listado) — elimina o waterfall client (fetch → router.replace →
+ * novo fetch na página destino). Critério de escolha idêntico ao antigo
+ * client: mesmo filtro da rota /api/crm/pipelines (scope=sales,
+ * is_archived=false, created_at asc) + is_default primeiro.
  *
  * Quando não há pipelines: mostra empty state com CTA pra criar.
  *
  * A sidebar de navegação (PipelinesNavSidebar) fica visível em ambos
  * os casos por causa do layout 2-paineis.
  */
-export default function ComercialPipelinesIndexPage() {
-  const router = useRouter()
-  const { data, isLoading } = useSWR<{ pipelines: PipelineSummary[] }>(
-    "/api/crm/pipelines?scope=sales",
-    fetcher,
-  )
+export default async function ComercialPipelinesIndexPage() {
+  const user = await getSessionUser()
+  if (!user) redirect("/login")
 
-  const pipelines = data?.pipelines ?? []
+  const admin = createAdminClient()
+  const { data: pipelines } = await admin
+    .from("pipelines")
+    .select("id, name, is_default")
+    .eq("scope", "sales")
+    .eq("is_archived", false)
+    .order("created_at", { ascending: true })
+
   const firstId =
-    pipelines.find((p) => p.is_default)?.id ?? pipelines[0]?.id ?? null
+    pipelines?.find((p) => p.is_default)?.id ?? pipelines?.[0]?.id ?? null
 
-  // Auto-redirect pro primeiro pipeline disponível.
-  useEffect(() => {
-    if (!isLoading && firstId) {
-      router.replace(`/admin/comercial/pipelines/${firstId}`)
-    }
-  }, [isLoading, firstId, router])
+  if (firstId) {
+    redirect(`/admin/comercial/pipelines/${firstId}`)
+  }
 
   return (
     <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-[#0B0E15] p-6">
-      {isLoading ? (
-        <div className="text-[13px] text-slate-500 dark:text-white/55">
-          Carregando pipelines...
-        </div>
-      ) : pipelines.length === 0 ? (
-        <PipelinesEmptyHero
-          title="Crie seu primeiro pipeline comercial"
-          description="Pipelines organizam prospecção, qualificação e fechamento por estagios. Comece com um padrão (Inbound, Outbound) ou monte do zero."
-          ctaLabel="Novo pipeline comercial"
-        />
-      ) : firstId ? (
-        // Estado fugaz enquanto o useEffect dispara o replace
-        <div className="text-[13px] text-slate-500 dark:text-white/55">
-          Abrindo {pipelines[0].name}...
-        </div>
-      ) : (
-        <PipelinesEmptyHero
-          title="Selecione um pipeline"
-          description="Use a barra lateral para abrir um pipeline existente."
-          ctaLabel="Novo pipeline"
-        />
-      )}
+      <PipelinesEmptyHero
+        title="Crie seu primeiro pipeline comercial"
+        description="Pipelines organizam prospecção, qualificação e fechamento por estagios. Comece com um padrão (Inbound, Outbound) ou monte do zero."
+        ctaLabel="Novo pipeline comercial"
+      />
     </div>
   )
 }

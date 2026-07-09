@@ -112,7 +112,10 @@ describe("deriveColorRoles", () => {
     expect(r.accent).not.toBe(r.button_bg)
   })
 
-  it("fundo escuro → text e button_text invertem pra branco", () => {
+  it("role Fundo ESCURO → guard força canvas branco (evita faixas pretas)", () => {
+    // Captura de marca em site dark gravava Fundo=preto; o canvas do email
+    // saía escuro em volta do container branco fixo = faixas pretas nas
+    // laterais. O guard de luminance força branco e o text volta a preto.
     const r = deriveColorRoles(
       [
         { hex: "#0A0A0A", name: "Preto", role: "Fundo" },
@@ -120,7 +123,33 @@ describe("deriveColorRoles", () => {
       ],
       [],
     )
-    expect(r.bg).toBe("#0A0A0A")
-    expect(r.text).toBe("#FFFFFF")
+    expect(r.bg).toBe("#FFFFFF")
+    expect(r.text).toBe("#1F1F1F")
+  })
+
+  it("paleta toda escura sem role → fallback lightest é escuro → guard força branco", () => {
+    // Caso real (lojas de moda com paleta preto/grafite): lightest() de
+    // cores escuras ainda é escuro — sem o guard, o email saía com faixas
+    // escuras nas laterais.
+    const r = deriveColorRoles(
+      [
+        { hex: "#000000", name: "Preto", role: "" },
+        { hex: "#3A3A3A", name: "Grafite", role: "" },
+      ],
+      [],
+    )
+    expect(r.bg).toBe("#FFFFFF")
+    expect(r.text).toBe("#1F1F1F")
+  })
+
+  it("role Fundo CLARO segue respeitado (guard não interfere)", () => {
+    const r = deriveColorRoles(
+      [
+        { hex: "#FAF7F2", name: "Areia", role: "Fundo" },
+        { hex: "#1F1F1F", name: "Preto", role: "Principal" },
+      ],
+      [],
+    )
+    expect(r.bg).toBe("#FAF7F2")
   })
 })

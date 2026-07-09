@@ -23,6 +23,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
+import { assertStoreUrlMatches } from "@/lib/api/n8n-store-guard"
 import {
   errorResponse,
   successResponse,
@@ -91,6 +92,8 @@ const vocabularySchema = z.object({
 
 const schema = z.object({
   store_id: z.string().uuid(),
+  // Echo opcional do n8n — liga o guard anti-contaminação de loja.
+  store_url: z.string().optional().nullable(),
   persona: personaSchema,
   demographics: demographicsSchema,
   day_in_life: z.string().min(80),
@@ -108,6 +111,7 @@ export async function POST(request: NextRequest) {
   try {
     requireWebhookSecret(request)
     const body = await parseAndValidate(request, schema)
+    await assertStoreUrlMatches(body.store_id, body.store_url, "n8n:icp")
 
     // Base sempre persistida; blocos avançados só quando vierem no payload
     // (evita zerar dados existentes em callbacks que não os incluem).

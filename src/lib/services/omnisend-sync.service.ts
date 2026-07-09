@@ -220,6 +220,10 @@ export interface OmnisendSyncData {
   engagedContacts: number
   engagedSource: "segment" | "fallback" | "statistics-openedUnique"
   currency: string
+  // Totais agregados da Reports API (send-date, 1 row — sem o overcount
+  // de "unicos" recontados por bucket diario da Statistics API). null =
+  // fetch falhou/rate-limited (distinto de "API respondeu zeros").
+  reportsTotals: OmnisendReportsResult | null
 }
 
 export type SyncErrorType = "rate_limit" | "invalid_key" | "permission" | "unknown"
@@ -1485,11 +1489,15 @@ async function doSyncOmnisendForStore(params: {
     //
     // Cache L1+L2 de 1h ja embutido em fetchOmnisendReports — no pior
     // caso 24 chamadas/dia/loja, dentro do limite 55/dia/brand.
-    const reportsTotals = await safely(
+    // Fallback null (nao EMPTY) pra distinguir "fetch falhou" de "API
+    // respondeu zeros" — o consumidor (report-builder/deliverability)
+    // so publica os agregados quando a Reports API respondeu de fato.
+    const reportsTotalsRaw = await safely<OmnisendReportsResult | null>(
       "reportsTotals",
       () => fetchOmnisendReports(apiKey, startDate, endDate),
-      EMPTY_REPORTS_RESULT,
+      null,
     )
+    const reportsTotals = reportsTotalsRaw ?? EMPTY_REPORTS_RESULT
 
     // Agrega revenue total das campanhas e automations (somando byChannel)
     let totalCampaignsRevenue = 0
@@ -1848,6 +1856,7 @@ async function doSyncOmnisendForStore(params: {
         engagedContacts,
         engagedSource: "statistics-openedUnique" as const,
         currency,
+        reportsTotals: reportsTotalsRaw,
       },
     }
   } catch (error) {

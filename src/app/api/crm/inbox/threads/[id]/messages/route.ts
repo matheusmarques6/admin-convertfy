@@ -5,8 +5,13 @@
  * com status=queued e atualiza pra sent/failed apos resposta da API
  * do provedor.
  *
+ * WhatsApp: enforcement da janela de 24h (fora da janela só template),
+ * template validado contra crm_whatsapp_templates (status APPROVED +
+ * contagem de variáveis), erros da Meta classificados (janela/template
+ * pausado/auth) e rate limit por org.
+ *
  * Body:
- *   { type: "text" | "image" | "document" | "template", body?: string, ... }
+ *   { type: "text" | "image" | "document" | "audio" | "video" | "sticker" | "template", body?, ... }
  */
 
 import { NextRequest } from "next/server"
@@ -14,7 +19,10 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { sendWhatsAppMessage } from "@/lib/services/whatsapp-cloud.service"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { loadWhatsAppChannel, markChannelAuthError } from "@/lib/whatsapp/channel-config"
+import { WhatsAppCloudError, type SendMessageResult } from "@/lib/whatsapp/cloud-api"
+import { validateTemplateVariables, buildTemplateBodyComponents, type TemplateForSend } from "@/lib/whatsapp/templates"
 import {
   sendInstagramMessage,
   replyToInstagramComment,
@@ -25,14 +33,20 @@ const log = logger.child("CrmInboxSend")
 export const dynamic = "force-dynamic"
 
 const sendSchema = z.object({
-  type: z.enum(["text", "image", "document", "template"]).default("text"),
+  type: z.enum(["text", "image", "document", "audio", "video", "sticker", "template"]).default("text"),
   body: z.string().min(1).max(4000).optional(),
   image_url: z.string().url().optional(),
   document_url: z.string().url().optional(),
   document_filename: z.string().optional(),
+  audio_url: z.string().url().optional(),
+  video_url: z.string().url().optional(),
+  sticker_url: z.string().url().optional(),
   template_name: z.string().optional(),
   template_language: z.string().optional(),
+  template_params: z.array(z.string()).max(20).optional(),
 })
+
+type Parsed = z.infer<typeof sendSchema>
 
 export async function POST(
   request: NextRequest,
@@ -50,6 +64,9 @@ export async function POST(
     if (parsed.type === "text" && !parsed.body) {
       throw new AppError("body obrigatorio para mensagens text", 400, "validation")
     }
+    if (parsed.type === "template" && !parsed.template_name) {
+      throw new AppError("template_name obrigatorio para mensagens template", 400, "validation")
+    }
 
     // Le thread + channel
     type ChannelRow = {
@@ -62,12 +79,16 @@ export async function POST(
       id: string
       org_id: string
       contact_external_id: string
+      is_window_open: boolean | null
+      window_expires_at: string | null
       channel: ChannelRow | ChannelRow[] | null
     }
 
     const { data: thread } = await admin
       .from("crm_threads")
-      .select("id, org_id, contact_external_id, channel:crm_channels (id, type, config, external_id)")
+      .select(
+        "id, org_id, contact_external_id, is_window_open, window_expires_at, channel:crm_channels (id, type, config, external_id)",
+      )
       .eq("id", threadId)
       .single<ThreadRow>()
 
@@ -89,55 +110,91 @@ export async function POST(
       )
     }
 
-    // Cria mensagem local primeiro (status=queued)
-    const { data: localMsg, error: createErr } = await admin
-      .from("crm_messages")
-      .insert({
-        thread_id: threadId,
-        org_id: thread.org_id,
-        direction: "outbound",
-        content_type: parsed.type === "text" ? "text" : parsed.type,
-        body: parsed.body || null,
-        media_url: parsed.image_url || parsed.document_url || null,
-        sent_by: user.id,
-        sent_by_kind: "agent",
-        status: "queued",
-      })
-      .select("id")
-      .single()
-
-    if (createErr || !localMsg) throw createErr || new Error("Falha ao criar mensagem")
-
-    const config = (channel.config as Record<string, string | undefined>) || {}
-
     type SendResult = { success: boolean; message_id?: string; error?: { code: string; message: string } }
     let result: SendResult
+    let localMsgId: string
 
     if (channel.type === "whatsapp") {
-      result = await sendWhatsAppMessage(
-        {
-          phone_number_id: channel.external_id || config.phone_number_id || "",
-          access_token: config.access_token || "",
-          business_account_id: config.business_account_id,
-        },
-        parsed.type === "text"
-          ? { to: thread.contact_external_id, type: "text", text: { body: parsed.body! } }
-          : parsed.type === "image"
-            ? { to: thread.contact_external_id, type: "image", image: { link: parsed.image_url!, caption: parsed.body } }
-            : parsed.type === "document"
-              ? { to: thread.contact_external_id, type: "document", document: { link: parsed.document_url!, filename: parsed.document_filename, caption: parsed.body } }
-              : {
-                  to: thread.contact_external_id,
-                  type: "template",
-                  template: {
-                    name: parsed.template_name!,
-                    language: { code: parsed.template_language || "pt_BR" },
-                  },
-                },
-      )
+      // Rate limit por org (80/s = limite de throughput da Cloud API).
+      // Fail-open sem Redis configurado.
+      const limited = await checkRateLimit(request, `wa-send:${thread.org_id}`, {
+        limit: 80,
+        windowSeconds: 1,
+      })
+      if (limited) return limited
+
+      // Gate da janela de 24h ANTES de criar a mensagem local: fora da
+      // janela a Meta rejeita free-form (131047) — só template inicia.
+      if (parsed.type !== "template" && !isWindowOpen(thread)) {
+        throw new AppError(
+          "Janela de 24h expirada — envie um template aprovado pra reabrir a conversa.",
+          422,
+          "WINDOW_EXPIRED",
+        )
+      }
+
+      const loaded = await loadWhatsAppChannel(admin, { channelId: channel.id })
+      if (!loaded) {
+        throw new AppError("Canal WhatsApp sem credenciais configuradas", 422, "channel-config")
+      }
+
+      // Template: valida contra a tabela sincronizada (aprovação + variáveis)
+      let templateComponents: unknown[] = []
+      let templateRow: TemplateForSend | null = null
+      if (parsed.type === "template") {
+        const { data: tpl } = await admin
+          .from("crm_whatsapp_templates")
+          .select("id, name, language, status, category, body_text, body_variables")
+          .eq("channel_id", channel.id)
+          .eq("name", parsed.template_name!)
+          .eq("language", parsed.template_language || "pt_BR")
+          .maybeSingle<TemplateForSend>()
+
+        if (!tpl) {
+          throw new AppError(
+            `Template "${parsed.template_name}" não encontrado — sincronize os templates do canal.`,
+            422,
+            "template-not-found",
+          )
+        }
+        if (tpl.status !== "APPROVED") {
+          throw new AppError(
+            `Template "${tpl.name}" não está aprovado na Meta (status: ${tpl.status})`,
+            422,
+            "template-not-approved",
+          )
+        }
+        const validation = validateTemplateVariables(tpl, parsed.template_params ?? [])
+        if (!validation.valid) {
+          throw new AppError(validation.error, 422, "template-params")
+        }
+        templateComponents = buildTemplateBodyComponents(parsed.template_params ?? [])
+        templateRow = tpl
+      }
+
+      // Cria mensagem local primeiro (status=queued)
+      localMsgId = await createLocalMessage(admin, { threadId, thread, parsed, userId: user.id })
+
+      result = await sendWhatsApp(admin, {
+        loaded,
+        channel,
+        to: thread.contact_external_id,
+        parsed,
+        templateComponents,
+      })
+
+      // Uso do template (contador informal pra UI ordenar por mais usados)
+      if (result.success && templateRow) {
+        await admin
+          .from("crm_whatsapp_templates")
+          .update({ use_count: (await currentUseCount(admin, templateRow.id)) + 1, last_used_at: new Date().toISOString() })
+          .eq("id", templateRow.id)
+      }
     } else {
-      // Instagram. Diferenciamos DM vs Comment via prefixo do contact_external_id:
-      // "comment:{media_id}" para threads de comentarios; user_id puro pra DMs.
+      // ── Instagram: ramo INTOCADO ─────────────────────────────────
+      localMsgId = await createLocalMessage(admin, { threadId, thread, parsed, userId: user.id })
+
+      const config = (channel.config as Record<string, string | undefined>) || {}
       const igConfig = {
         instagram_business_account_id:
           channel.external_id || config.instagram_business_account_id || "",
@@ -207,7 +264,7 @@ export async function POST(
           status: "sent",
           status_updated_at: new Date().toISOString(),
         })
-        .eq("id", localMsg.id)
+        .eq("id", localMsgId)
     } else {
       await admin
         .from("crm_messages")
@@ -216,7 +273,7 @@ export async function POST(
           error_code: result.error?.code,
           error_message: result.error?.message,
         })
-        .eq("id", localMsg.id)
+        .eq("id", localMsgId)
       log.error(`[Inbox] ${channel.type} send failed`, result.error)
     }
 
@@ -224,7 +281,7 @@ export async function POST(
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
 
     return successResponse(request, {
-      message_id: localMsg.id,
+      message_id: localMsgId,
       sent: result.success,
       error: result.error,
     })
@@ -232,4 +289,128 @@ export async function POST(
     log.error("Inbox send error:", error)
     return errorResponse(request, error, "crm-inbox-send")
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────
+
+function isWindowOpen(thread: { is_window_open: boolean | null; window_expires_at: string | null }): boolean {
+  if (!thread.is_window_open) return false
+  if (!thread.window_expires_at) return false
+  return new Date(thread.window_expires_at).getTime() > Date.now()
+}
+
+async function createLocalMessage(
+  admin: ReturnType<typeof createAdminClient>,
+  args: {
+    threadId: string
+    thread: { org_id: string }
+    parsed: Parsed
+    userId: string
+  },
+): Promise<string> {
+  const { parsed } = args
+  const mediaUrl =
+    parsed.image_url || parsed.document_url || parsed.audio_url || parsed.video_url || parsed.sticker_url || null
+
+  const { data: localMsg, error: createErr } = await admin
+    .from("crm_messages")
+    .insert({
+      thread_id: args.threadId,
+      org_id: args.thread.org_id,
+      direction: "outbound",
+      content_type: parsed.type,
+      body: parsed.body || (parsed.type === "template" ? `[template: ${parsed.template_name}]` : null),
+      media_url: mediaUrl,
+      sent_by: args.userId,
+      sent_by_kind: "agent",
+      status: "queued",
+    })
+    .select("id")
+    .single()
+
+  if (createErr || !localMsg) throw createErr || new Error("Falha ao criar mensagem")
+  return localMsg.id
+}
+
+async function sendWhatsApp(
+  admin: ReturnType<typeof createAdminClient>,
+  args: {
+    loaded: NonNullable<Awaited<ReturnType<typeof loadWhatsAppChannel>>>
+    channel: { id: string }
+    to: string
+    parsed: Parsed
+    templateComponents: unknown[]
+  },
+): Promise<{ success: boolean; message_id?: string; error?: { code: string; message: string } }> {
+  const { loaded, to, parsed } = args
+  const client = loaded.client
+
+  try {
+    let sent: SendMessageResult
+    switch (parsed.type) {
+      case "text":
+        sent = await client.sendText(to, parsed.body!)
+        break
+      case "image":
+        sent = await client.sendImage(to, { link: parsed.image_url! }, parsed.body)
+        break
+      case "document":
+        sent = await client.sendDocument(to, { link: parsed.document_url!, filename: parsed.document_filename }, parsed.body)
+        break
+      case "audio":
+        sent = await client.sendAudio(to, { link: parsed.audio_url! })
+        break
+      case "video":
+        sent = await client.sendVideo(to, { link: parsed.video_url! }, parsed.body)
+        break
+      case "sticker":
+        sent = await client.sendSticker(to, { link: parsed.sticker_url! })
+        break
+      case "template":
+        sent = await client.sendTemplate(
+          to,
+          parsed.template_name!,
+          parsed.template_language || "pt_BR",
+          args.templateComponents,
+        )
+        break
+      default:
+        return { success: false, error: { code: "unsupported_type", message: `Tipo ${parsed.type} não suportado` } }
+    }
+    return { success: true, message_id: sent.messages?.[0]?.id }
+  } catch (err) {
+    if (err instanceof WhatsAppCloudError) {
+      // Efeitos colaterais por classe de erro
+      if (err.isTemplatePaused() || err.isTemplateDisabled()) {
+        await admin
+          .from("crm_whatsapp_templates")
+          .update({ status: err.isTemplatePaused() ? "PAUSED" : "DISABLED", synced_at: new Date().toISOString() })
+          .eq("channel_id", args.channel.id)
+          .eq("name", parsed.template_name ?? "")
+      }
+      if (err.isAuthError()) {
+        await markChannelAuthError(admin, loaded.channel, err)
+      }
+      const friendly = err.isWindowExpired()
+        ? "Janela de 24h expirada — envie um template aprovado."
+        : err.message
+      return { success: false, error: { code: String(err.code), message: friendly } }
+    }
+    return {
+      success: false,
+      error: { code: "network_error", message: err instanceof Error ? err.message : "Network error" },
+    }
+  }
+}
+
+async function currentUseCount(
+  admin: ReturnType<typeof createAdminClient>,
+  templateId: string,
+): Promise<number> {
+  const { data } = await admin
+    .from("crm_whatsapp_templates")
+    .select("use_count")
+    .eq("id", templateId)
+    .maybeSingle()
+  return (data?.use_count as number | null) ?? 0
 }

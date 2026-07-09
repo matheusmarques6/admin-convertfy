@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 /**
  * GET /api/crm/dashboard/sales
  *
@@ -43,7 +44,7 @@ interface DealRow {
   pipeline?: { id: string; name: string; scope: string } | null
 }
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const sb = await createClient()
     await requireAuth(sb)
@@ -199,3 +200,5 @@ function emptyPayload(days: number) {
     recent_wins: [],
   }
 }
+
+export const GET = withTiming("crm/dashboard/sales", handleGet)

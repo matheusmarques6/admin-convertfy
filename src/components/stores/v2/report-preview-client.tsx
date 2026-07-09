@@ -6,16 +6,15 @@
  */
 
 import { useState } from "react"
-import { Download, Send, Sparkles, CheckCircle2, Loader2, ExternalLink, Maximize2, RefreshCw } from "lucide-react"
+import { Download, Send, Sparkles, CheckCircle2, Loader2, Maximize2, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface Props {
   reportId: string
-  pdfUrl: string | null
   status: "draft" | "sent" | "presented"
 }
 
-export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
+export function ReportPreviewClient({ reportId, status }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -49,24 +48,15 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
     }
   }
 
-  const handlePDF = async () => {
-    setBusy("pdf")
-    try {
-      if (pdfUrl) {
-        window.open(pdfUrl, "_blank")
-      } else {
-        const res = await fetch(`/api/admin/stores/reports/${reportId}/pdf`, { method: "POST" })
-        if (res.ok) {
-          const j = await res.json()
-          if (j.data?.pdf_url) window.open(j.data.pdf_url, "_blank")
-          else router.refresh()
-        } else {
-          alert("Falha ao gerar PDF.")
-        }
-      }
-    } finally {
-      setBusy(null)
-    }
+  const handlePDF = () => {
+    // Abre a página de print já disparando o diálogo de impressão do
+    // navegador — "Salvar como PDF" gera o deck (o CSS de @page da página
+    // formata 297×167mm, 1 slide por página). Sem servidor, sem espera.
+    window.open(
+      `/print/relatorios/${reportId}?autoprint=1`,
+      "_blank",
+      "noopener",
+    )
   }
 
   const handleStatus = async (next: "presented" | "sent") => {
@@ -84,8 +74,9 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
   }
 
   const handlePresentMode = () => {
-    // Abre a view print em outra janela em fullscreen pseudo (Cmd+P friendly)
-    window.open(`/admin/stores/relatorios/${reportId}/print`, "_blank", "noopener")
+    // Deck fullscreen: 1 slide por vez, fundo preto (letterbox), navegação
+    // por teclado/clique + tela cheia (F). Só os slides, como o PDF.
+    window.open(`/print/relatorios/${reportId}?present=1`, "_blank", "noopener")
   }
 
   return (
@@ -119,12 +110,12 @@ export function ReportPreviewClient({ reportId, pdfUrl, status }: Props) {
       </button>
       <button
         onClick={handlePDF}
-        disabled={busy === "pdf"}
-        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border bg-white text-slate-700 hover:bg-slate-50 text-[11.5px] font-semibold"
         style={{ borderColor: "rgba(0,0,0,0.10)" }}
+        title='Abre o deck com o diálogo de impressão — escolha "Salvar como PDF"'
       >
-        {busy === "pdf" ? <Loader2 className="h-3 w-3 animate-spin" /> : pdfUrl ? <ExternalLink className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-        {pdfUrl ? "Abrir PDF" : "Baixar PDF"}
+        <Download className="h-3 w-3" />
+        Baixar PDF
       </button>
       {status !== "sent" && status !== "presented" && (
         <button

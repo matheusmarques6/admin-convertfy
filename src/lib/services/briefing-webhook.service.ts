@@ -19,6 +19,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
 import type { BriefingContent } from "@/types/onboarding-pipeline"
 
@@ -48,6 +49,13 @@ interface WebhookPayload {
   // /api/webhooks/n8n/pesquisa-completa para que a geração de copy não
   // seja re-disparada.
   regeneration: boolean
+  // Quando true, regeneração DO ZERO: `briefing`/`briefing_ai_original`
+  // vão null de propósito — o n8n NÃO deve reaproveitar o briefing antigo
+  // como base; deve gerar a partir do link (store.store_url) e dos dados
+  // atuais da loja. É o modo do botão "Regerar briefing": quem regenera o
+  // faz porque o briefing atual está ERRADO — realimentá-lo só reproduz o
+  // erro (ex.: pesquisa contaminada com outra loja).
+  fresh_start: boolean
   onboarding: Record<string, unknown>
   briefing: BriefingContent | null
   briefing_ai_original: BriefingContent | null
@@ -59,9 +67,10 @@ interface WebhookPayload {
 
 export async function dispatchBriefingWebhook(
   onboardingId: string,
-  opts?: { regeneration?: boolean },
+  opts?: { regeneration?: boolean; freshStart?: boolean },
 ): Promise<void> {
   const regeneration = opts?.regeneration ?? false
+  const freshStart = opts?.freshStart ?? false
   const url = process.env.N8N_BRIEFING_WEBHOOK_URL
   if (!url) {
     log.warn("briefing.webhook.skip", {
@@ -73,7 +82,7 @@ export async function dispatchBriefingWebhook(
 
   let payload: WebhookPayload | null = null
   try {
-    payload = await buildPayload(onboardingId, regeneration)
+    payload = await buildPayload(onboardingId, regeneration, freshStart)
   } catch (e) {
     log.error("briefing.webhook.fatal", {
       onboardingId,
@@ -146,6 +155,7 @@ export async function dispatchBriefingWebhook(
 async function buildPayload(
   onboardingId: string,
   regeneration: boolean,
+  freshStart: boolean,
 ): Promise<WebhookPayload | null> {
   const admin = createAdminClient()
 
@@ -165,6 +175,7 @@ async function buildPayload(
       ),
       store:client_stores(
         id, store_name, store_url, platform,
+        language, country, currency, niche,
         brand_thesis, brand_about, brand_pillars, brand_presence,
         store_story, store_milestones,
         icp_persona, icp_demographics, icp_day_in_life,
@@ -185,6 +196,14 @@ async function buildPayload(
   const clientRow = Array.isArray(onb.client) ? onb.client[0] : onb.client
   const storeId = onb.store_id ?? storeRow?.id ?? null
 
+  // Idioma efetivo da loja — mesma resolução do dispatch de copy: coluna
+  // editada no admin vence, formulário cobre lojas sem coluna, default
+  // pt-BR por último (com source explícito no payload).
+  const resolvedStoreLang = resolveStoreLanguage(
+    (onb.form_responses as Record<string, unknown> | null) ?? null,
+    (storeRow?.language as string | null) ?? null,
+  )
+
   const topProductsRes = storeId
     ? await admin
         .from("store_top_products")
@@ -200,6 +219,7 @@ async function buildPayload(
     event: "onboarding.briefing_confirmed",
     timestamp: new Date().toISOString(),
     regeneration,
+    fresh_start: freshStart,
 
     onboarding: {
       id: onb.id,
@@ -224,9 +244,12 @@ async function buildPayload(
       briefing_confirmed_at: onb.briefing_confirmed_at,
     },
 
-    briefing: (onb.briefing as BriefingContent | null) ?? null,
-    briefing_ai_original:
-      (onb.briefing_ai_original as BriefingContent | null) ?? null,
+    // fresh_start: briefing antigo NÃO vai como base — regeneração parte do
+    // link/loja. Ver comentário no tipo WebhookPayload.
+    briefing: freshStart ? null : ((onb.briefing as BriefingContent | null) ?? null),
+    briefing_ai_original: freshStart
+      ? null
+      : ((onb.briefing_ai_original as BriefingContent | null) ?? null),
     form_responses:
       (onb.form_responses as Record<string, unknown> | null) ?? null,
 
@@ -247,6 +270,15 @@ async function buildPayload(
           store_name: storeRow.store_name,
           store_url: storeRow.store_url,
           platform: storeRow.platform,
+          // Idioma REAL da loja (coluna editada no admin vence o formulário) —
+          // NÃO confundir com onboarding.language, que é herdado do deal do
+          // CRM na criação e fica desatualizado. O n8n deve usar ESTE campo.
+          language: resolvedStoreLang.code,
+          language_label: resolvedStoreLang.label,
+          language_source: resolvedStoreLang.source,
+          country: storeRow.country ?? null,
+          currency: storeRow.currency ?? null,
+          niche: storeRow.niche ?? null,
           brand: {
             thesis: storeRow.brand_thesis,
             about: storeRow.brand_about,

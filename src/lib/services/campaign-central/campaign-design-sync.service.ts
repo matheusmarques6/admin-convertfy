@@ -26,6 +26,7 @@ const SLUG_TO_STAGE: Record<string, string> = {
   producao: "design",
   aprovacao: "review",
   finalizacao: "ready_to_deploy",
+  implementacao: "deploying",
 }
 
 export async function syncCampaignDesignToPipelineItem(params: {

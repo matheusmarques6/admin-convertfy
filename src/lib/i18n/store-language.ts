@@ -72,10 +72,13 @@ const LANGUAGE_ALIASES: Record<string, StoreLanguageCode> = {
   "portuguese": "pt-BR",
   "brasileiro": "pt-BR",
   "br": "pt-BR",
-  // inglês (label nativo antigo: "English")
+  // inglês (label nativo antigo: "English"; "en-US" gravado pelo wizard do
+  // portal antes da normalização — lojas antigas ainda carregam esse valor)
   "inglês": "en",
   "ingles": "en",
   "english": "en",
+  "en-us": "en",
+  "en-gb": "en",
   // espanhol (label nativo antigo: "Español")
   "espanhol": "es",
   "spanish": "es",
@@ -167,8 +170,10 @@ export function languageLabelToCode(label: unknown): StoreLanguageCode | null {
 
 /**
  * Converte o código canônico (`client_stores.language`) para o label amigável.
- * Retorna `null` quando não casa com nenhuma língua suportada — o caller decide
- * o fallback (ex.: exibir o próprio código cru).
+ * Tolerante a alias: valores não-canônicos já gravados no banco (ex.: "en-US"
+ * do wizard antigo do portal) resolvem pro label do código canônico em vez de
+ * cair no "Sem idioma". Retorna `null` quando não casa com nenhuma língua
+ * suportada — o caller decide o fallback (ex.: exibir o próprio código cru).
  */
 export function languageCodeToLabel(code: unknown): string | null {
   if (typeof code !== "string") return null
@@ -177,7 +182,12 @@ export function languageCodeToLabel(code: unknown): string | null {
   const match = STORE_LANGUAGE_OPTIONS.find(
     (o) => o.value.toLowerCase() === normalized,
   )
-  return match ? match.label : null
+  if (match) return match.label
+  const alias = LANGUAGE_ALIASES[normalized]
+  if (alias) {
+    return STORE_LANGUAGE_OPTIONS.find((o) => o.value === alias)?.label ?? null
+  }
+  return null
 }
 
 /**

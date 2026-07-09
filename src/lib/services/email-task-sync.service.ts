@@ -12,6 +12,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { attemptOnboardingHandoff } from "@/lib/services/onboarding-task-completion.service"
 import {
   resolveTaskWorkspaceTarget,
   resolveTaskWorkspaceTargetByTitle,
@@ -21,6 +22,32 @@ import {
 import type { FlowType } from "@/types/email-workspace"
 
 const log = logger.child("EmailTaskSync")
+
+/**
+ * Depois que um email aprovado conclui a task de onboarding, tenta o avanço
+ * automático da etapa. Sem isto, o onboarding ficava "concluído porém parado"
+ * até o cron diário de SLA (reconcileStuckHandoffs) — até ~24h de atraso.
+ * Non-blocking e idempotente (o handoff re-valida tudo e usa CAS).
+ */
+async function tryHandoffAfterCompletion(
+  onboardingId: string | null | undefined,
+  taskId: string,
+): Promise<void> {
+  if (!onboardingId) return
+  try {
+    const result = await attemptOnboardingHandoff({
+      onboardingId,
+      actorId: null,
+    })
+    log.info("handoff pós-aprovação de email", { taskId, onboardingId, result })
+  } catch (err) {
+    log.error("handoff pós-aprovação de email falhou", {
+      taskId,
+      onboardingId,
+      err,
+    })
+  }
+}
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -487,6 +514,7 @@ export async function approveTaskOnEmailApproved(
         .eq("id", task.id)
         .eq("status", "review")
       log.info("task→completed (1:1)", { taskId: task.id })
+      await tryHandoffAfterCompletion(task.onboarding_id, task.id)
       return
     }
 
@@ -508,6 +536,7 @@ export async function approveTaskOnEmailApproved(
       .eq("id", task.id)
       .eq("status", "review")
     log.info("task→completed (1:N)", { taskId: task.id })
+    await tryHandoffAfterCompletion(task.onboarding_id, task.id)
   } catch (err) {
     log.error("approveTaskOnEmailApproved: unexpected", { args, err })
   }

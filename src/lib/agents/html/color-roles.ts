@@ -12,7 +12,10 @@
  *
  * Regra de derivacao (em ordem):
  *   bg          ← role="Fundo" da paleta primaria; senao cor mais clara
- *                  de qualquer paleta; senao "#FFFFFF".
+ *                  de qualquer paleta; senao "#FFFFFF". GUARD: se a cor
+ *                  resolvida for escura (luminance < 0.55), cai em branco —
+ *                  canvas de email escuro em container branco = faixas
+ *                  pretas nas laterais, nunca e' intencional aqui.
  *   text        ← contraste WCAG vs bg: "#1F1F1F" ou "#FFFFFF" pelo brilho.
  *   heading     ← role="Principal" se contrastar com bg (>= 4.5:1); senao
  *                  igual a text.
@@ -58,7 +61,7 @@ function normalizeHex(hex: string): string {
   return ""
 }
 
-function relativeLuminance(hex: string): number {
+export function relativeLuminance(hex: string): number {
   const norm = normalizeHex(hex)
   if (!norm) return 0
   const r = parseInt(norm.slice(1, 3), 16) / 255
@@ -155,13 +158,20 @@ export function deriveColorRoles(
     .map((c) => ({ ...c, hex: normalizeHex(c.hex) }))
   const all = [...validPrimary, ...validSecondary]
 
-  // bg
+  // bg — canvas do email. PRECISA ser claro: o container 600px é branco
+  // fixo no reference, então um --bg escuro nunca vira "email dark" — vira
+  // faixas pretas nas laterais do email (paleta toda preta/grafite de loja
+  // de moda caía exatamente nisso: `lightest()` de cores escuras ainda é
+  // escuro, e role "Fundo" capturado do site dark também). Cor resolvida
+  // escura → força branco.
   const bgRole =
     findByRole(validPrimary, "Fundo") ?? findByRole(validSecondary, "Fundo")
+  const bgCandidate = bgRole?.hex ?? lightest(all)?.hex ?? DEFAULT_BG
+  const LIGHT_BG_MIN_LUMINANCE = 0.55
   const bg =
-    bgRole?.hex ??
-    lightest(all)?.hex ??
-    DEFAULT_BG
+    relativeLuminance(bgCandidate) >= LIGHT_BG_MIN_LUMINANCE
+      ? bgCandidate
+      : DEFAULT_BG
 
   // text
   const text = contrastingText(bg)

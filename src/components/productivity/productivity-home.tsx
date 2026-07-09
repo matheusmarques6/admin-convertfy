@@ -45,7 +45,7 @@ export function ProductivityHome() {
     showShutdown, setShowShutdown, goals, habits,
     weeklyBars, groups,
     focusRunning, focusTime, toggleFocus, resetFocus, tickFocus,
-    isLoaded, fetchData, profile, apiAction,
+    fetchData, profile, apiAction,
     dailyPlan, selectedTaskId, selectTask,
   } = useProductivityStore()
 
@@ -63,10 +63,13 @@ export function ProductivityHome() {
   // Day filter (Ontem/Hoje/Amanha) — UI-only por enquanto, filtra tasks locais
   const [day, setDay] = useState<"Ontem" | "Hoje" | "Amanhã">("Hoje")
 
-  // Load data on mount
+  // Load data on mount. Lê getState() (não a closure) para enxergar a
+  // hidratação feita pelo layout-effect do ProductivityPageClient, que roda
+  // antes dos efeitos passivos — mesmo valor da closure em todos os outros
+  // cenários.
   useEffect(() => {
-    if (!isLoaded) fetchData()
-  }, [isLoaded, fetchData])
+    if (!useProductivityStore.getState().isLoaded) fetchData()
+  }, [fetchData])
 
   // Focus timer tick
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)

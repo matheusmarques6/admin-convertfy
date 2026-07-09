@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { languageLabelToCode } from "@/lib/i18n/store-language"
 
 const STEPS = [
   { key: "personal_info", label: "Seus Dados", icon: User },
@@ -100,7 +101,11 @@ export default function OnboardingWizardPage() {
           setPlatform(d.store.platform)
           setNiche(d.store.niche)
           setCountry(d.store.country)
-          setLanguage(d.store.language)
+          // Normaliza legado "en-US" (valor antigo do select) → "en" canônico,
+          // senão o select não pré-seleciona e o save regrava o valor errado.
+          setLanguage(
+            languageLabelToCode(d.store.language) ?? d.store.language ?? "pt-BR",
+          )
           setTargetAudience(d.store.target_audience)
           setFreeShippingType(d.store.free_shipping_type)
           setCollaboratorCode(d.store.shopify_collaborator_code)
@@ -345,7 +350,7 @@ export default function OnboardingWizardPage() {
                       <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
-                        <SelectItem value="en-US">Inglês (EUA)</SelectItem>
+                        <SelectItem value="en">Inglês</SelectItem>
                         <SelectItem value="es">Espanhol</SelectItem>
                       </SelectContent>
                     </Select>

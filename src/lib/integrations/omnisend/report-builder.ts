@@ -242,6 +242,28 @@ export interface OmnisendReportResponse {
   integrations: {
     hasEcommerce: boolean
   }
+  // Agregados consolidados da Reports API (send-date, 1 row para o periodo
+  // inteiro — sem o overcount de "unicos" recontados por bucket diario da
+  // Statistics API). null quando: caminho Klaviyo, cache (dado nao
+  // persistido) ou Reports API indisponivel no sync. Campo ADITIVO —
+  // consumidores existentes (portal, dashboards) nao dependem dele.
+  deliverability?: {
+    sent: number
+    delivered: number // = max(0, sent - failed); Omnisend nao expoe delivered
+    failed: number
+    failRate: number
+    opened: number
+    openedUnique: number
+    clicked: number
+    clickedUnique: number
+    openRate: number
+    clickRate: number
+    unsubscribedUnique: number
+    unsubscribeRate: number
+    markedAsSpamUnique: number
+    markedAsSpamRate: number
+    source: "omnisend-reports-api"
+  } | null
   rateLimited?: boolean
   fromCache?: boolean
   fetchedAt?: string
@@ -667,6 +689,9 @@ async function buildFromCache(
       })),
     },
     integrations: { hasEcommerce: true },
+    // Agregados da Reports API nao sao persistidos no cache — o snapshot
+    // mensal usa force_refresh=true e sempre cai no caminho live.
+    deliverability: null,
     fromCache: true,
     fetchedAt: cache.fetchedAt,
   }
@@ -980,6 +1005,25 @@ async function buildFromLiveFetch(
       })),
     },
     integrations: { hasEcommerce: true },
+    deliverability: d.reportsTotals
+      ? {
+          sent: d.reportsTotals.sent,
+          delivered: Math.max(0, d.reportsTotals.sent - d.reportsTotals.failed),
+          failed: d.reportsTotals.failed,
+          failRate: d.reportsTotals.failRate,
+          opened: d.reportsTotals.opened,
+          openedUnique: d.reportsTotals.openedUnique,
+          clicked: d.reportsTotals.clicked,
+          clickedUnique: d.reportsTotals.clickedUnique,
+          openRate: d.reportsTotals.openRate,
+          clickRate: d.reportsTotals.clickRate,
+          unsubscribedUnique: d.reportsTotals.unsubscribedUnique,
+          unsubscribeRate: d.reportsTotals.unsubscribeRate,
+          markedAsSpamUnique: d.reportsTotals.markedAsSpamUnique,
+          markedAsSpamRate: d.reportsTotals.markedAsSpamRate,
+          source: "omnisend-reports-api" as const,
+        }
+      : null,
     fromCache: false,
     fetchedAt: new Date().toISOString(),
   }
@@ -1086,6 +1130,7 @@ export async function buildOmnisendReport(
         lists: [], segments: [], flows: [],
         campaigns: { total: 0, sent: 0, scheduled: 0, drafts: 0, recentCampaigns: [], allInPeriod: [] },
         integrations: { hasEcommerce: true },
+        deliverability: null,
         fromCache: false,
         fetchedAt: new Date().toISOString(),
       } as OmnisendReportResponse

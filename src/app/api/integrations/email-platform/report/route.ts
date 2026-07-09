@@ -1333,6 +1333,11 @@ export async function GET(request: NextRequest) {
         clickToOpenRate: totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0,
       },
 
+      // Paridade de shape com o caminho Omnisend (deliverability vem da
+      // Reports API da Omnisend). O Klaviyo nao expoe openedUnique
+      // consolidado por periodo — sempre null aqui.
+      deliverability: null,
+
       overview: {
         totalSubscribers: totalSubscribers, // Uses calculated value with fallback
         totalLists: listMetrics.totalLists,

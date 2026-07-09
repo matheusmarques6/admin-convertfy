@@ -8,6 +8,7 @@
  * Todos os textos vieram do PRD v2 (PRD-onboarding-convertfy.md secao 5).
  */
 
+import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
@@ -516,22 +517,40 @@ export async function isOnboardingBootstrapped(
 }
 
 /**
- * Variante pra caminhos de leitura (GET): quando o bootstrap completo ja
- * rodou recentemente neste processo, valida com uma checagem barata e evita
- * os UPDATEs de re-sync do seed. O re-sync completo continua garantido a
- * cada deploy/cold start e a cada SEED_SYNC_TTL_MS por org. Servicos que
- * precisam forcar o re-sync (resync de templates/tasks) devem continuar
- * chamando ensureOnboardingBootstrap direto.
+ * Variante pra caminhos de leitura (GET): valida com uma checagem barata e,
+ * quando o TTL do re-sync expirou, dispara o bootstrap completo (UPDATEs de
+ * seed) em BACKGROUND via after() — o GET nao paga mais os ~13 round-trips
+ * bloqueantes. O re-sync completo continua garantido a cada deploy/cold
+ * start (fast check falha → caminho sincrono) e a cada SEED_SYNC_TTL_MS por
+ * org (em background). Janela aceita: o primeiro GET apos um deploy que
+ * mudou SEED_COLUMNS pode servir os valores antigos das colunas uma vez;
+ * auto-corrige no request seguinte. Servicos que precisam forcar o re-sync
+ * (resync de templates/tasks) devem continuar chamando
+ * ensureOnboardingBootstrap direto.
  */
 export async function ensureOnboardingBootstrapForRead(
   orgId: string,
   userId: string | null = null,
 ): Promise<BootstrapResult> {
-  const syncedAt = seedSyncAtByOrg.get(orgId) ?? 0
-  if (Date.now() - syncedAt < SEED_SYNC_TTL_MS) {
-    const fast = await isOnboardingBootstrapped(orgId)
-    if (fast) return fast
+  const fast = await isOnboardingBootstrapped(orgId)
+  if (fast) {
+    const syncedAt = seedSyncAtByOrg.get(orgId) ?? 0
+    if (Date.now() - syncedAt >= SEED_SYNC_TTL_MS) {
+      // set ANTES do dispatch: evita stampede de re-syncs no mesmo processo.
+      // Em falha, desfaz o timestamp para o proximo request re-tentar (o
+      // caminho sincrono antigo so avancava o TTL apos sucesso).
+      seedSyncAtByOrg.set(orgId, Date.now())
+      after(() =>
+        ensureOnboardingBootstrap(orgId, userId).catch((err) => {
+          seedSyncAtByOrg.delete(orgId)
+          log.warn("background seed re-sync failed", { orgId, err })
+        }),
+      )
+    }
+    return fast
   }
+  // Cold start (org sem pipeline/colunas/tutorial): o GET precisa das
+  // colunas existirem — bootstrap completo continua sincrono.
   const result = await ensureOnboardingBootstrap(orgId, userId)
   seedSyncAtByOrg.set(orgId, Date.now())
   return result

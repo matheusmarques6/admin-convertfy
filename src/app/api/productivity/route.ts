@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 /**
  * GET /api/productivity — Unified data endpoint for productivity module.
  * Returns all data needed for Início + Board pages in a single request.
@@ -8,19 +9,15 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
-import { ensureOnboardingBootstrap } from "@/lib/services/onboarding-bootstrap.service"
+import { ensureOnboardingBootstrapForRead } from "@/lib/services/onboarding-bootstrap.service"
 import {
   canAccessOnboardingStage,
   getOnboardingStageAccess,
 } from "@/lib/permissions/onboarding-stage-access"
 import { listCampaignDesignProjectGroups } from "@/lib/services/campaign-central/campaign-design-board.service"
 
-// Cache em memoria de quando rodou ensureOnboardingBootstrap por org.
-// Garante que checklist_template/deliverables_template das colunas estao
-// sincronizados com o SEED atual sem precisar do operador rodar manutencao
-// manualmente. TTL curto pra cobrir deploys.
-const TEMPLATE_SYNC_TTL_MS = 5 * 60 * 1000
-const lastTemplateSyncByOrg = new Map<string, number>()
+// Re-sync dos templates de coluna: delegado a ensureOnboardingBootstrapForRead
+// (checagem barata + re-sync em background com TTL próprio no service).
 
 // Sem cache: tasks/goals/habits mudam constantemente e o fetchData precisa
 // ler estado fresco apos cada mutation. Sem isso, o Next cacheia e o
@@ -30,7 +27,7 @@ export const revalidate = 0
 
 // ── GET: Fetch all productivity data for the current user ──
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
@@ -60,17 +57,14 @@ export async function GET(request: NextRequest) {
 
     // Lazy re-sync dos templates de coluna do pipeline de onboarding.
     // Garante que mudancas no SEED_COLUMNS (ex: allow_other no language)
-    // se propagam pro banco sem precisar de ensureOnboardingBootstrap
-    // explicito. Cacheado por org com TTL de 5 min pra nao pesar.
+    // se propagam pro banco. A variante ForRead faz checagem barata e roda o
+    // re-sync completo em background (after) quando o TTL expira — o GET nao
+    // bloqueia mais nos UPDATEs de seed; cold start continua sincrono.
     if (orgId) {
-      const last = lastTemplateSyncByOrg.get(orgId) ?? 0
-      if (Date.now() - last > TEMPLATE_SYNC_TTL_MS) {
-        try {
-          await ensureOnboardingBootstrap(orgId, user.id)
-          lastTemplateSyncByOrg.set(orgId, Date.now())
-        } catch (e) {
-          console.warn("[productivity GET] ensureOnboardingBootstrap failed", e)
-        }
+      try {
+        await ensureOnboardingBootstrapForRead(orgId, user.id)
+      } catch (e) {
+        console.warn("[productivity GET] ensureOnboardingBootstrap failed", e)
       }
     }
 
@@ -457,9 +451,14 @@ export async function GET(request: NextRequest) {
           position: cg.position,
           items: cg.items as never,
           ...({
-            source_type: "campaign_suggestion",
+            // "campaign_design" — o board só renderiza o header rico de projeto
+            // (chip de etapa via stage_name/stage_color) para esse source_type.
+            source_type: cg.source_type,
             suggestion_id: cg.suggestion_id,
             stage_slug: cg.design_stage,
+            stage_name: cg.stage_name,
+            stage_color: cg.stage_color,
+            stage_role: cg.stage_role,
             can_work: cg.can_work,
             can_admin: cg.can_admin,
             responsible_role: cg.responsible_role,
@@ -1084,3 +1083,5 @@ export async function POST(request: NextRequest) {
     return errorResponse(request, error, "ProductivityAPI")
   }
 }
+
+export const GET = withTiming("productivity", handleGet)

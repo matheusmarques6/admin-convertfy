@@ -14,9 +14,8 @@ import {
  * via WorkspaceSwitcher (topo da sidebar) ou navegando direto pra uma
  * URL pertencente ao workspace.
  *
- * Detecao do workspace ativo e por pathname (regras abaixo). Inbox e
- * compartilhado — aparece nos sidebars de comercial e operacional.
- * Quando aberto direto, default operacional.
+ * Detecao do workspace ativo e por pathname (regras abaixo). Inbox
+ * pertence ao workspace comercial (secao Atendimento).
  */
 
 export type WorkspaceKey = "comercial" | "operacional" | "geral"
@@ -104,8 +103,8 @@ const OPERACIONAL_PREFIXES = [
 export function detectWorkspace(pathname: string): WorkspaceKey {
   if (COMERCIAL_PREFIXES.some((p) => pathname.startsWith(p))) return "comercial"
   if (OPERACIONAL_PREFIXES.some((p) => pathname.startsWith(p))) return "operacional"
-  // Inbox e compartilhado — default operacional quando aberto direto
-  if (pathname.startsWith("/admin/inbox")) return "operacional"
+  // Inbox faz parte do Atendimento, que vive no workspace comercial
+  if (pathname.startsWith("/admin/inbox")) return "comercial"
   return "geral"
 }
 

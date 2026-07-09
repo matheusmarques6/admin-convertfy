@@ -1,3 +1,4 @@
+import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
@@ -195,7 +196,7 @@ function emptyResponse(
 
 // ── GET Handler (cache-only read — no live API calls) ─────────────────────
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   const startTime = Date.now()
   try {
     const supabase = await createClient()
@@ -371,3 +372,5 @@ export async function GET(request: NextRequest) {
     return errorResponse(request, error, "TotalRevenue GET")
   }
 }
+
+export const GET = withTiming("dashboard/total-revenue", handleGet)

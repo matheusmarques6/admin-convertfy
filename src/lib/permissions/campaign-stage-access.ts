@@ -17,8 +17,9 @@ export type CampaignDesignStageSlug =
   | "aprovacao"
   | "producao"
   | "finalizacao"
+  | "implementacao"
 
-export type CampaignStageResponsibleRole = "designer" | "coo"
+export type CampaignStageResponsibleRole = "designer" | "coo" | "implementacao"
 
 export const CAMPAIGN_DESIGN_STAGE_ROLE: Record<
   CampaignDesignStageSlug,
@@ -28,6 +29,7 @@ export const CAMPAIGN_DESIGN_STAGE_ROLE: Record<
   aprovacao: "coo",
   producao: "designer",
   finalizacao: "designer",
+  implementacao: "implementacao",
 }
 
 export function getCampaignStageResponsibleRole(
