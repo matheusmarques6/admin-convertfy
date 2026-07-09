@@ -103,16 +103,39 @@ describe("email-png-render.service", () => {
     expect(launchMock).toHaveBeenCalledTimes(2)
   })
 
-  it("clipa o screenshot quando scrollHeight excede maxHeightPx", async () => {
+  it("reduz o dsf (sem clip) quando a altura fisica excede o limite de textura", async () => {
+    // Caso real de producao: 9614px css × dsf 2 = 19228px fisicos > 16384.
+    // O render deve sair INTEIRO com dsf reduzido, nao cortado.
+    const page = makeFakePage({ evaluate: vi.fn().mockResolvedValue(9_614) })
+    launchMock.mockResolvedValue(makeFakeBrowser(page))
+    const svc = await loadService()
+
+    await svc.renderEmailHtmlToPng("<html>longo</html>")
+
+    expect(page.setViewport).toHaveBeenLastCalledWith({
+      width: 600,
+      height: 9_614,
+      // floor(16384/9614*1000)/1000
+      deviceScaleFactor: 1.704,
+    })
+    expect(page.screenshot).toHaveBeenCalledWith({ type: "png", fullPage: true })
+  })
+
+  it("clipa o screenshot quando scrollHeight excede maxHeightPx (16384)", async () => {
     const page = makeFakePage({ evaluate: vi.fn().mockResolvedValue(20_000) })
     launchMock.mockResolvedValue(makeFakeBrowser(page))
     const svc = await loadService()
 
     await svc.renderEmailHtmlToPng("<html>longo</html>")
 
+    expect(page.setViewport).toHaveBeenLastCalledWith({
+      width: 600,
+      height: 16_384,
+      deviceScaleFactor: 1,
+    })
     expect(page.screenshot).toHaveBeenCalledWith({
       type: "png",
-      clip: { x: 0, y: 0, width: 600, height: 8_000 },
+      clip: { x: 0, y: 0, width: 600, height: 16_384 },
     })
   })
 

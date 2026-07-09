@@ -28,17 +28,25 @@ export interface RenderPngOptions {
   timeoutMs?: number
   /**
    * Altura maxima em px CSS. Acima disso o screenshot usa clip em vez de
-   * fullPage (dsf 2 → 16000px fisicos, abaixo do limite de textura 16384
-   * do Chromium). Default 8000.
+   * fullPage. Default 16384 (limite de textura do Chromium em dsf 1 —
+   * emails mais altos que o teto em px FISICOS reduzem o dsf antes de
+   * cortar, ver MAX_TEXTURE_PX).
    */
   maxHeightPx?: number
 }
+
+/**
+ * Limite de textura do Chromium: screenshots acima disso em px fisicos
+ * (css px × deviceScaleFactor) saem truncados silenciosamente. Emails altos
+ * reduzem o dsf ate caber — perder nitidez e melhor que perder o rodape.
+ */
+const MAX_TEXTURE_PX = 16_384
 
 const DEFAULTS: Required<RenderPngOptions> = {
   width: 600,
   deviceScaleFactor: 2,
   timeoutMs: 30_000,
-  maxHeightPx: 8_000,
+  maxHeightPx: MAX_TEXTURE_PX,
 }
 
 // Caminhos comuns de Chrome/Edge no Windows (dev local). Edge e Chromium e
@@ -222,10 +230,24 @@ async function renderOnPage(
   // curtos que o viewport saem com faixa transparente/preta no fullPage.
   const clipped = scrollHeight > opts.maxHeightPx
   const targetHeight = Math.max(1, Math.min(scrollHeight, opts.maxHeightPx))
+
+  // Emails altos: reduzir o dsf ate a altura FISICA caber no limite de
+  // textura, em vez de cortar o conteudo (floor em 3 casas garante
+  // targetHeight * dsf <= MAX_TEXTURE_PX; nunca abaixo de 1).
+  let dsf = opts.deviceScaleFactor
+  if (targetHeight * dsf > MAX_TEXTURE_PX) {
+    dsf = Math.max(1, Math.floor((MAX_TEXTURE_PX / targetHeight) * 1000) / 1000)
+    log.warn("scale_reduced", {
+      scrollHeight,
+      requestedDsf: opts.deviceScaleFactor,
+      effectiveDsf: dsf,
+    })
+  }
+
   await page.setViewport({
     width: opts.width,
     height: targetHeight,
-    deviceScaleFactor: opts.deviceScaleFactor,
+    deviceScaleFactor: dsf,
   })
 
   let shot: Uint8Array
