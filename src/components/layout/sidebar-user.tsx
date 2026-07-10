@@ -33,6 +33,7 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
 import { useReportNotifications } from "@/hooks/use-report-notifications"
+import { useSettingsModalSafe } from "@/components/settings/settings-modal"
 
 interface SidebarUserProps {
   user?: {
@@ -57,6 +58,7 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
   const { theme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { unreadCount: notificationsUnread } = useReportNotifications()
+  const settingsModal = useSettingsModalSafe()
 
   async function handleLogout() {
     setIsLoggingOut(true)
@@ -124,18 +126,42 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
         <p className="text-xs text-muted-foreground mt-0.5">{user?.email}</p>
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
-      <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
-        <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>
-          <Icon icon={UserCircle} size={16} className="mr-2 text-muted-foreground" />
-          Perfil
-        </Link>
-      </DropdownMenuItem>
-      <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
-        <Link href={ROUTES.ADMIN.SETTINGS.ROOT}>
-          <Icon icon={Settings} size={16} className="mr-2 text-muted-foreground" />
-          Configurações
-        </Link>
-      </DropdownMenuItem>
+      {/* Perfil/Configurações abrem o SettingsModal (query param — não
+          navega, workspace intacto); fallback pro Link se o provider não
+          estiver montado. */}
+      {settingsModal ? (
+        <>
+          <DropdownMenuItem
+            className="rounded-md mx-1 px-2"
+            onClick={() => settingsModal.open("account")}
+          >
+            <Icon icon={UserCircle} size={16} className="mr-2 text-muted-foreground" />
+            Perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="rounded-md mx-1 px-2"
+            onClick={() => settingsModal.open()}
+          >
+            <Icon icon={Settings} size={16} className="mr-2 text-muted-foreground" />
+            Configurações
+          </DropdownMenuItem>
+        </>
+      ) : (
+        <>
+          <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
+            <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>
+              <Icon icon={UserCircle} size={16} className="mr-2 text-muted-foreground" />
+              Perfil
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
+            <Link href={ROUTES.ADMIN.SETTINGS.ROOT}>
+              <Icon icon={Settings} size={16} className="mr-2 text-muted-foreground" />
+              Configurações
+            </Link>
+          </DropdownMenuItem>
+        </>
+      )}
       <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
         <Link href={ROUTES.ADMIN.NOTIFICATIONS} className="flex items-center w-full">
           <Icon icon={Bell} size={16} className="mr-2 text-muted-foreground" />

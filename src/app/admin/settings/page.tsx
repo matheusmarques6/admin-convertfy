@@ -1,109 +1,22 @@
 import Link from "next/link"
-import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2, FileText, Send, LifeBuoy } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
 import { cn } from "@/lib/utils"
-import { type LucideIcon } from "lucide-react"
+import { SETTINGS_SECTIONS } from "@/components/settings/settings-sections"
 
-interface SettingSection {
-  title: string
-  description: string
-  href: string
-  icon: LucideIcon
-  adminOnly?: boolean
-}
-
-const SETTINGS_SECTIONS: SettingSection[] = [
-  {
-    title: "Conta",
-    description: "Dados pessoais, empresa e senha",
-    icon: User,
-    href: "/admin/settings/account",
-  },
-  {
-    title: "Preferências",
-    description: "Notificações, aparência e tema",
-    icon: Settings2,
-    href: "/admin/settings/preferences",
-  },
-  {
-    title: "Equipe",
-    description: "Usuários, roles e permissões",
-    icon: Users,
-    href: "/admin/settings/team",
-    adminOnly: true,
-  },
-  {
-    title: "Personalização",
-    description: "Campos custom, tags e templates de email",
-    icon: Palette,
-    href: "/admin/settings/customize",
-    adminOnly: true,
-  },
-  {
-    title: "Integrações",
-    description: "Shopify, Klaviyo, Asaas, Wise e outras conexões",
-    icon: Plug,
-    href: "/admin/settings/integrations",
-  },
-  {
-    title: "Briefings",
-    description: "Veja o briefing completo de cada loja",
-    icon: FileText,
-    href: "/admin/settings/briefings",
-  },
-  {
-    // Saiu da sidebar do Operacional (jul/2026); a página continua em
-    // /admin/onboarding-help (o link público /onboarding-help/[token]
-    // enviado aos clientes não muda). Sem adminOnly: coo/suporte usam;
-    // a página em si é protegida pela feature-flag onboarding_control.
-    title: "Tutorial do cliente",
-    description: "Páginas de ajuda enviadas ao cliente no onboarding (link público)",
-    icon: LifeBuoy,
-    href: "/admin/onboarding-help",
-  },
-  {
-    title: "Templates IA",
-    description: "Prompts reutilizáveis com variáveis pra o assistente Claude",
-    icon: Sparkles,
-    href: "/admin/settings/ai-templates",
-    adminOnly: true,
-  },
-  {
-    title: "Geração de Emails",
-    description: "Blueprints, prompts dos agentes e configurações de geração",
-    icon: Wand2,
-    href: "/admin/settings/email-generation",
-    adminOnly: true,
-  },
-  {
-    title: "Central de Campanhas",
-    description: "Janela, thresholds e modelos dos agentes de sugestão e trends",
-    icon: Sparkles,
-    href: "/admin/settings/campaign-central",
-    adminOnly: true,
-  },
-  {
-    title: "Setup de Implementação",
-    description: "Gatilho, público, evento e UTM por flow (Modo Implementação)",
-    icon: Send,
-    href: "/admin/settings/implementation",
-    adminOnly: true,
-  },
-  {
-    title: "Manutenção",
-    description: "Reconciliar tasks legadas e outras ações administrativas",
-    icon: Wrench,
-    href: "/admin/settings/manutencao",
-    adminOnly: true,
-  },
-]
-
+/**
+ * Hub de Configurações (página cheia) — PRESERVADO como fallback/deep
+ * link. A experiência principal é o SettingsModal global (estilo ⌘K),
+ * aberto pelo menu da conta; ambos derivam as seções do MESMO registry
+ * (settings-sections.ts — fonte única, sem drift).
+ */
 export default async function SettingsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Critério canônico de adminOnly (espelhado client-side em
+  // canSeeSection): admin/super_admin de profile OU owner/admin da org.
   let isAdmin = false
   if (user) {
     const { data: profile } = await supabase

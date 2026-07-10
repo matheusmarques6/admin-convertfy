@@ -25,7 +25,10 @@ export async function GET(request: NextRequest) {
       throw new AppError("Perfil não encontrado", 404)
     }
 
-    const isAdmin = profile.role === "admin"
+    // super_admin conta como admin (alinha com o critério server-side do
+    // hub de Configurações e evita esconder áreas adminOnly do super_admin
+    // em gates client-side que leem permissions.isAdmin).
+    const isAdmin = profile.role === "admin" || profile.role === "super_admin"
 
     // Get org membership
     const { data: orgMember } = await supabase

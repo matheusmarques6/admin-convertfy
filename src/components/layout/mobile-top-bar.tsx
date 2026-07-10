@@ -17,6 +17,7 @@ import { useSidebarStore } from "@/hooks/use-sidebar"
 import { useAuthStore } from "@/lib/store"
 import { notificationService } from "@/lib/services"
 import { ROUTES } from "@/lib/routes"
+import { useSettingsModalSafe } from "@/components/settings/settings-modal"
 
 interface MobileTopBarProps {
   user?: {
@@ -39,6 +40,7 @@ export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
   const { openMobile } = useSidebarStore()
   const { user } = useAuthStore()
   const [unreadCount, setUnreadCount] = useState(0)
+  const settingsModal = useSettingsModalSafe()
 
   const fetchCount = useCallback(async () => {
     if (!user?.id) return
@@ -109,12 +111,26 @@ export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 rounded-[8px]">
-            <DropdownMenuItem asChild>
-              <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>Perfil</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={ROUTES.ADMIN.SETTINGS.ROOT}>Configuracoes</Link>
-            </DropdownMenuItem>
+            {/* Abre o SettingsModal (não navega); fallback Link sem provider. */}
+            {settingsModal ? (
+              <>
+                <DropdownMenuItem onClick={() => settingsModal.open("account")}>
+                  Perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => settingsModal.open()}>
+                  Configuracoes
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>Perfil</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={ROUTES.ADMIN.SETTINGS.ROOT}>Configuracoes</Link>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

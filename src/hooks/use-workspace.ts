@@ -1,6 +1,9 @@
 "use client"
 
+import { useEffect } from "react"
 import { usePathname } from "next/navigation"
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
 import {
   Briefcase,
   HeartHandshake,
@@ -93,14 +96,29 @@ const OPERACIONAL_PREFIXES = [
   "/admin/clients",
   "/admin/stores",
   "/admin/onboarding",
-  "/admin/onboarding-help",
   "/admin/health",
   "/admin/campaigns",
   "/admin/insights",
   "/admin/list-hygiene",
 ]
 
-export function detectWorkspace(pathname: string): WorkspaceKey {
+// Rotas que NAO pertencem a workspace nenhum (configuracoes, notificacoes,
+// tutorial do cliente): visitar uma delas nao deve trocar a sidebar de
+// workspace — o usuario continua "onde estava". `detectWorkspace` devolve
+// null para elas e o hook resolve pro ultimo workspace ativo (persistido).
+const NEUTRAL_PREFIXES = [
+  "/admin/settings",
+  "/admin/notifications",
+  "/admin/onboarding-help",
+]
+
+/**
+ * Classifica o pathname em workspace, ou null para rotas neutras.
+ * ATENCAO a ordem: onboarding-help e neutro e precisa ser testado ANTES
+ * de /admin/onboarding (prefixo operacional que o contem).
+ */
+export function detectWorkspaceOrNull(pathname: string): WorkspaceKey | null {
+  if (NEUTRAL_PREFIXES.some((p) => pathname.startsWith(p))) return null
   if (COMERCIAL_PREFIXES.some((p) => pathname.startsWith(p))) return "comercial"
   if (OPERACIONAL_PREFIXES.some((p) => pathname.startsWith(p))) return "operacional"
   // Inbox faz parte do Atendimento, que vive no workspace comercial
@@ -108,7 +126,41 @@ export function detectWorkspace(pathname: string): WorkspaceKey {
   return "geral"
 }
 
+/** Compat: classificacao sem memoria — rota neutra cai em "geral". */
+export function detectWorkspace(pathname: string): WorkspaceKey {
+  return detectWorkspaceOrNull(pathname) ?? "geral"
+}
+
+// Ultimo workspace NAO-neutro visitado, persistido (molde do
+// use-sidebar.ts). E o fallback das rotas neutras.
+interface WorkspaceMemoryState {
+  lastWorkspace: WorkspaceKey
+  setLastWorkspace: (w: WorkspaceKey) => void
+}
+
+export const useWorkspaceMemory = create<WorkspaceMemoryState>()(
+  persist(
+    (set) => ({
+      lastWorkspace: "geral",
+      setLastWorkspace: (w) =>
+        set((s) => (s.lastWorkspace === w ? s : { lastWorkspace: w })),
+    }),
+    {
+      name: "convertfy-workspace",
+      partialize: (s) => ({ lastWorkspace: s.lastWorkspace }),
+    },
+  ),
+)
+
 export function useWorkspace(): WorkspaceKey {
   const pathname = usePathname() || ""
-  return detectWorkspace(pathname)
+  const detected = detectWorkspaceOrNull(pathname)
+  const lastWorkspace = useWorkspaceMemory((s) => s.lastWorkspace)
+
+  // Grava o ultimo workspace real fora do render (evita setState-in-render).
+  useEffect(() => {
+    if (detected) useWorkspaceMemory.getState().setLastWorkspace(detected)
+  }, [detected])
+
+  return detected ?? lastWorkspace
 }

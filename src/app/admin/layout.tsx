@@ -8,6 +8,7 @@ import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
 import type { OrgRole } from "@/types/organization"
 import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
+import { SettingsModalProvider } from "@/components/settings/settings-modal"
 import { WelcomeTour } from "@/components/ui/welcome-tour"
 import { CrmKeyboardShortcuts } from "@/components/crm/keyboard-shortcuts"
 import { AiChatLazy } from "@/components/ai/ai-chat-lazy"
@@ -210,6 +211,9 @@ export default async function DashboardLayout({
 
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
+      {/* SettingsModalProvider ANTES do CommandPalette: a paleta abre o
+          modal de Configurações via contexto. */}
+      <SettingsModalProvider>
       <CommandPalette>
         {/* Layout 100dvh + flex row. Cada filho gerencia sua propria altura
             sem depender de flex-col + min-h-0 (essa cadeia quebra o scroll
@@ -241,6 +245,7 @@ export default async function DashboardLayout({
           </main>
         </div>
       </CommandPalette>
+      </SettingsModalProvider>
       <WelcomeTour />
       <CrmKeyboardShortcuts />
       <AiChatLazy />

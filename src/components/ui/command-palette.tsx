@@ -26,6 +26,8 @@ import { DialogTitle } from "@/components/ui/dialog"
 import { NAV_BY_WORKSPACE } from "@/components/layout/nav-config"
 import { WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
 import { ROUTES } from "@/lib/routes"
+import { SETTINGS_SECTIONS } from "@/components/settings/settings-sections"
+import { useSettingsModalSafe } from "@/components/settings/settings-modal"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +38,8 @@ interface CommandItem {
   href: string
   icon: LucideIcon
   group: string
+  /** Presente = o item abre o SettingsModal nesta seção (sem navegar). */
+  settingsSection?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -65,10 +69,20 @@ const extraItems: CommandItem[] = [
   { name: "Formulários CS", href: `${ROUTES.ADMIN.OPERACIONAL.PIPELINES}?tab=formularios`, icon: FileText, group: "Operacional" },
   { name: "Cadências CS", href: `${ROUTES.ADMIN.OPERACIONAL.PIPELINES}?tab=cadencias`, icon: CalendarClock, group: "Operacional" },
   { name: "Tendências da carteira (Reports CS)", href: `${ROUTES.ADMIN.HEALTH}?tab=tendencias`, icon: BarChart3, group: "Operacional" },
-  { name: "Tutorial do cliente", href: ROUTES.ADMIN.ONBOARDING_HELP.LIST, icon: LifeBuoy, group: "Conta" },
-  { name: "Configurações", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "Conta" },
+  { name: "Configurações", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "Conta", settingsSection: "account" },
   { name: "Notificações", href: ROUTES.ADMIN.NOTIFICATIONS, icon: Bell, group: "Conta" },
 ]
+
+// Cada seção de Configurações vira item buscável — derivado do MESMO
+// registry do SettingsModal/hub. Seções "component" abrem o modal;
+// "page-link" navegam (o href já é a página cheia).
+const settingsSectionItems: CommandItem[] = SETTINGS_SECTIONS.map((s) => ({
+  name: `${s.title} · Configurações`,
+  href: s.href,
+  icon: s.icon,
+  group: "Configurações",
+  ...(s.kind === "component" ? { settingsSection: s.key } : {}),
+}))
 
 const actionItems: CommandItem[] = [
   { name: "Novo Cliente", href: "/admin/clients/new", icon: UserPlus, group: "Ações Rápidas" },
@@ -79,7 +93,12 @@ const actionItems: CommandItem[] = [
   { name: "Novo lead (Comercial)", href: "/admin/comercial/leads", icon: UserPlus, group: "Ações Rápidas" },
 ]
 
-const allItems: CommandItem[] = [...navigationItems, ...extraItems, ...actionItems]
+const allItems: CommandItem[] = [
+  ...navigationItems,
+  ...extraItems,
+  ...settingsSectionItems,
+  ...actionItems,
+]
 
 // ---------------------------------------------------------------------------
 // Context for useCommandPalette hook
@@ -111,6 +130,7 @@ export function useCommandPaletteSafe(): CommandPaletteContextValue | null {
 
 export function CommandPalette({ children }: { children?: React.ReactNode }) {
   const router = useRouter()
+  const settingsModal = useSettingsModalSafe()
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
@@ -177,9 +197,15 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
   const selectItem = useCallback(
     (item: CommandItem) => {
       setIsOpen(false)
+      // Seções de Configurações abrem o SettingsModal (query param, sem
+      // navegar — workspace intacto); sem provider, cai no href (página).
+      if (item.settingsSection && settingsModal) {
+        settingsModal.open(item.settingsSection)
+        return
+      }
       router.push(item.href)
     },
-    [router]
+    [router, settingsModal]
   )
 
   // ---- Keyboard navigation inside the palette ----
