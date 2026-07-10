@@ -8,36 +8,21 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import {
   Search,
-  LayoutDashboard,
-  Users,
-  Store,
-  Rocket,
-  Kanban,
-  CalendarDays,
-  Zap,
-  ClipboardList,
-  Calendar,
-  DollarSign,
-  BarChart3,
-  Wrench,
   Settings,
   UserPlus,
   Plus,
+  Zap,
   FileText,
-  Briefcase,
-  HeartHandshake,
-  Inbox,
-  Workflow,
-  Phone,
-  Sparkles,
-  MessageSquare,
-  LifeBuoy,
-  Layers,
+  Calendar,
+  Bell,
   type LucideIcon,
 } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 import { DialogTitle } from "@/components/ui/dialog"
+import { NAV_BY_WORKSPACE } from "@/components/layout/nav-config"
+import { WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
+import { ROUTES } from "@/lib/routes"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,52 +36,30 @@ interface CommandItem {
 }
 
 // ---------------------------------------------------------------------------
-// Data
+// Data — navegação DERIVADA de nav-config (fonte única com a sidebar).
+// Antes era uma lista própria hardcoded que dessincronizou: o workspace
+// Geral inteiro (Início, Projetos, Equipe…) não aparecia na busca.
 // ---------------------------------------------------------------------------
 
-const navigationItems: CommandItem[] = [
-  { name: "Dashboard", href: "/admin/operacional/dashboard", icon: LayoutDashboard, group: "Navegação" },
-  { name: "Clientes", href: "/admin/clients", icon: Users, group: "Navegação" },
-  { name: "Lojas", href: "/admin/stores", icon: Store, group: "Navegação" },
-  { name: "Onboarding", href: "/admin/onboarding", icon: Rocket, group: "Navegação" },
-  { name: "Pipeline", href: "/admin/pipeline", icon: Kanban, group: "Navegação" },
-  { name: "Campanhas", href: "/admin/campaigns", icon: CalendarDays, group: "Navegação" },
-  { name: "Automações", href: "/admin/automations", icon: Zap, group: "Navegação" },
-  { name: "Board", href: "/admin/board", icon: ClipboardList, group: "Navegação" },
-  { name: "Reuniões", href: "/admin/meetings", icon: Calendar, group: "Navegação" },
-  { name: "Financeiro", href: "/admin/financial", icon: DollarSign, group: "Navegação" },
-  { name: "Relatórios", href: "/admin/reports", icon: BarChart3, group: "Navegação" },
-  { name: "Ferramentas", href: "/admin/tools", icon: Wrench, group: "Navegação" },
-  { name: "Configurações", href: "/admin/settings", icon: Settings, group: "Navegação" },
+const WORKSPACE_ORDER: WorkspaceKey[] = ["geral", "comercial", "operacional"]
 
-  // Comercial
-  { name: "Comercial — Dashboard", href: "/admin/comercial/dashboard", icon: LayoutDashboard, group: "Comercial" },
-  { name: "Comercial — Pipelines", href: "/admin/comercial/pipelines", icon: Briefcase, group: "Comercial" },
-  { name: "Comercial — Leads", href: "/admin/comercial/leads", icon: UserPlus, group: "Comercial" },
-  { name: "Comercial — Automacoes", href: "/admin/comercial/automacoes", icon: Workflow, group: "Comercial" },
-  { name: "Comercial — Canais (WhatsApp)", href: "/admin/comercial/canais", icon: Phone, group: "Comercial" },
-  { name: "Comercial — Reports", href: "/admin/comercial/reports", icon: BarChart3, group: "Comercial" },
+const navigationItems: CommandItem[] = WORKSPACE_ORDER.flatMap((ws) =>
+  NAV_BY_WORKSPACE[ws].flatMap((group) =>
+    group.items.map((item) => ({
+      // Sub-label do grupo ajuda a distinguir homônimos (ex.: Reuniões
+      // existe no Geral e no Comercial) e melhora o match da busca.
+      name: group.label ? `${item.name} · ${group.label}` : item.name,
+      href: item.href,
+      icon: item.icon,
+      group: WORKSPACES[ws].label,
+    })),
+  ),
+)
 
-  // Operacional
-  { name: "Operacional — Dashboard", href: "/admin/operacional/dashboard", icon: LayoutDashboard, group: "Operacional" },
-  { name: "Operacional — Pipelines CS", href: "/admin/operacional/pipelines", icon: HeartHandshake, group: "Operacional" },
-  { name: "Operacional — Saude", href: "/admin/health", icon: HeartHandshake, group: "Operacional" },
-  { name: "Operacional — Reports", href: "/admin/operacional/reports", icon: BarChart3, group: "Operacional" },
-
-  // Compartilhado
-  { name: "Inbox (mensagens)", href: "/admin/inbox", icon: Inbox, group: "Atendimento" },
-
-  // Operational Pipelines (Monday-style)
-  { name: "Onboarding Ops", href: "/admin/operacional/workflows/onboarding", icon: Rocket, group: "Operacional Workflows" },
-  { name: "Acompanhamento", href: "/admin/operacional/workflows/acompanhamento", icon: Users, group: "Operacional Workflows" },
-  { name: "Feedback (Tasks)", href: "/admin/operacional/workflows/feedback", icon: MessageSquare, group: "Operacional Workflows" },
-  { name: "Suporte", href: "/admin/operacional/workflows/suporte", icon: LifeBuoy, group: "Operacional Workflows" },
-
-  // Marketing extras
-  { name: "Pipeline de Campanhas", href: "/admin/campaigns/pipeline", icon: Layers, group: "Marketing" },
-
-  // Settings
-  { name: "Templates IA", href: "/admin/settings/ai-templates", icon: Sparkles, group: "Configurações" },
+// Itens fora da nav por workspace (moram no menu da conta / extras).
+const extraItems: CommandItem[] = [
+  { name: "Configurações", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "Conta" },
+  { name: "Notificações", href: ROUTES.ADMIN.NOTIFICATIONS, icon: Bell, group: "Conta" },
 ]
 
 const actionItems: CommandItem[] = [
@@ -108,7 +71,7 @@ const actionItems: CommandItem[] = [
   { name: "Novo lead (Comercial)", href: "/admin/comercial/leads", icon: UserPlus, group: "Ações Rápidas" },
 ]
 
-const allItems: CommandItem[] = [...navigationItems, ...actionItems]
+const allItems: CommandItem[] = [...navigationItems, ...extraItems, ...actionItems]
 
 // ---------------------------------------------------------------------------
 // Context for useCommandPalette hook
@@ -310,7 +273,7 @@ export function CommandPalette({ children }: { children?: React.ReactNode }) {
                       const isActive = idx === activeIndex
                       return (
                         <button
-                          key={item.href}
+                          key={`${item.group}-${item.href}`}
                           data-index={idx}
                           onClick={() => selectItem(item)}
                           onMouseEnter={() => setActiveIndex(idx)}
