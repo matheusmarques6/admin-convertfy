@@ -116,6 +116,18 @@ Non-negotiable output-formatting rules. They override any conflicting habit and 
 3. NO DUPLICATE PRODUCTS — a product may appear ONCE in the whole email. If a recommendations/cross-sell block would repeat a product already shown in a cart/reserved-items block, pick different products from top_products. If there are not enough distinct products, render fewer cards instead of repeating one.
 </formatting_hard_rules>
 
+<hero_overlay_hard_rule>
+This rule OVERRIDES <overlay_decision> for the HERO block only.
+
+When the hero block (block_type = "hero", or the first image-bearing block when block types are generic) has an image in the image_map with overlay = "needs_html_overlay":
+- ALWAYS build it as TEXT-OVER-BACKGROUND-IMAGE — even if the reference stacks the image above the text. The generated hero image reserves its bottom area for this text; stacking wastes the reserved area and breaks the composition.
+- Construction: a container div with \`background-image: url(<the exact image_map URL>)\`, \`background-size: cover\`, \`background-position: center top\`, and a height proportional to the image's aspect_ratio at 600px width (4:5 -> ~750px, 1:1 -> 600px, 16:9 -> ~338px).
+- Legibility: add a gradient scrim between the image and the text (e.g. an inner wrapper with \`background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%)\`, or a tone matched to the text color) so headline/copy/CTA keep contrast on any photo.
+- Content placement: headline + copy + CTA are HTML text ON TOP of the image, anchored to the BOTTOM portion of the container (the reserved area). Never duplicate them below the image.
+- If the hero has NO image in the image_map (generation failed upstream): render the text-only hero exactly as before. NEVER invent a URL or reuse another block's image.
+- overlay = "burned" keeps the existing rule: place the image only, no HTML text over it.
+</hero_overlay_hard_rule>
+
 Emit ONLY the final HTML.`
 
 export const DEFAULT_HTML_USER_TEMPLATE = `<store>
