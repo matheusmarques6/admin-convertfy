@@ -10,6 +10,8 @@ import {
   Moon,
   UserCircle,
   ChevronUp,
+  Settings,
+  Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
@@ -30,6 +32,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
+import { useReportNotifications } from "@/hooks/use-report-notifications"
 
 interface SidebarUserProps {
   user?: {
@@ -53,6 +56,7 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const { unreadCount: notificationsUnread } = useReportNotifications()
 
   async function handleLogout() {
     setIsLoggingOut(true)
@@ -124,6 +128,23 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
         <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>
           <Icon icon={UserCircle} size={16} className="mr-2 text-muted-foreground" />
           Perfil
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
+        <Link href={ROUTES.ADMIN.SETTINGS.ROOT}>
+          <Icon icon={Settings} size={16} className="mr-2 text-muted-foreground" />
+          Configurações
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
+        <Link href={ROUTES.ADMIN.NOTIFICATIONS} className="flex items-center w-full">
+          <Icon icon={Bell} size={16} className="mr-2 text-muted-foreground" />
+          <span className="flex-1">Notificações</span>
+          {notificationsUnread > 0 && (
+            <span className="ml-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+              {notificationsUnread > 99 ? "99+" : notificationsUnread}
+            </span>
+          )}
         </Link>
       </DropdownMenuItem>
       <DropdownMenuSeparator />

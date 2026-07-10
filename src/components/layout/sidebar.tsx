@@ -13,7 +13,6 @@ import {
   FileBarChart,
   Rocket,
   Settings,
-  Bell,
   ChevronLeft,
   ChevronRight,
   X,
@@ -34,8 +33,6 @@ import {
   Coins,
   FileText,
   Search,
-  Sun,
-  Moon,
   LifeBuoy,
   Megaphone,
   Cpu,
@@ -43,7 +40,6 @@ import {
   Activity,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { Logo, LogoIcon } from "@/components/ui/logo"
 import { Icon } from "@/components/ui/icon"
@@ -60,7 +56,6 @@ import type { NavItemId } from "@/lib/permissions/role-access"
 import { ROUTES } from "@/lib/routes"
 import { useSidebar, useSidebarStore } from "@/hooks/use-sidebar"
 import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
-import { useReportNotifications } from "@/hooks/use-report-notifications"
 import { SidebarItem } from "./sidebar-item"
 import { SidebarUser } from "./sidebar-user"
 import { WorkspaceSwitcher } from "./workspace-switcher"
@@ -280,8 +275,6 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
   const { permissions, canAccess, isLoading } = usePermissions()
   const workspace = useWorkspace()
   const wsMeta = WORKSPACES[workspace]
-  const { unreadCount: notificationsUnread } = useReportNotifications()
-  const { theme, setTheme } = useTheme()
   const commandPalette = useCommandPaletteSafe()
 
   // Close mobile drawer on navigation
@@ -412,11 +405,11 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
           </nav>
         </ScrollArea>
 
-        {/* Footer */}
+        {/* Footer — tema/configurações/notificações moraram aqui até jul/2026;
+            hoje vivem no menu da conta (SidebarUser). Só a busca fica global. */}
         <div className="mt-auto shrink-0 border-t border-white/[0.06]">
-          {/* Acoes globais — busca + tema */}
-          <div className="py-2 space-y-[2px]">
-            {commandPalette && (
+          {commandPalette && (
+            <div className="py-2 space-y-[2px]">
               <SidebarActionButton
                 icon={Search}
                 label="Buscar"
@@ -424,32 +417,8 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
                 collapsed={collapsed}
                 onClick={commandPalette.open}
               />
-            )}
-            <SidebarActionButton
-              icon={theme === "dark" ? Sun : Moon}
-              label={theme === "dark" ? "Tema claro" : "Tema escuro"}
-              collapsed={collapsed}
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            />
-          </div>
-
-          <div className="border-t border-white/[0.06] py-2 space-y-[2px]">
-            <SidebarItem
-              icon={Settings}
-              label="Configuracoes"
-              href={ROUTES.ADMIN.SETTINGS.ROOT}
-              collapsed={collapsed}
-              accentColor={wsMeta.color}
-            />
-            <SidebarItem
-              icon={Bell}
-              label="Notificacoes"
-              href={ROUTES.ADMIN.NOTIFICATIONS}
-              collapsed={collapsed}
-              accentColor={wsMeta.color}
-              badge={notificationsUnread}
-            />
-          </div>
+            </div>
+          )}
 
           <div className="border-t border-white/[0.06]">
             <SidebarUser user={user} collapsed={collapsed} />
