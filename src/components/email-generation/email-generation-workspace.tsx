@@ -1121,6 +1121,7 @@ function TestTab() {
         ? [
             { agent: "image", status: "pending" },
             { agent: "html", status: "pending" },
+            { agent: "refiner", status: "pending" },
           ]
         : [
             { agent: "assembler", status: "pending" },
@@ -1129,6 +1130,7 @@ function TestTab() {
             { agent: "copy", status: "pending" },
             { agent: "image", status: "pending" },
             { agent: "html", status: "pending" },
+            { agent: "refiner", status: "pending" },
           ],
     )
 
@@ -1606,7 +1608,15 @@ function TestTab() {
               )
             }
 
-            const agentKeys = ["assembler", "blueprint", "seed", "copy", "image", "html"] as const
+            const agentKeys = [
+              "assembler",
+              "blueprint",
+              "seed",
+              "copy",
+              "image",
+              "html",
+              "refiner",
+            ] as const
 
             return (
               <>
@@ -1651,7 +1661,11 @@ function TestTab() {
                               {bid.slice(0, 8)}
                             </span>
                           </div>
-                          {agentKeys.map((agent) => renderAgentRow(batchRuns, agent))}
+                          {/* Histórico: só agentes que de fato rodaram no batch
+                              (batches antigos não têm refiner — sem linha fantasma). */}
+                          {agentKeys
+                            .filter((agent) => batchRuns.some((r) => r.agent === agent))
+                            .map((agent) => renderAgentRow(batchRuns, agent))}
                         </div>
                       )
                     })}
