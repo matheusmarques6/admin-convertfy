@@ -102,9 +102,9 @@ BEGIN
   ALTER TABLE email_agent_configs
     ADD CONSTRAINT email_agent_configs_agent_type_check
     CHECK (agent_type IN (
-      'copy','image','html','qa','blueprint','assembler',
+      'copy','image','html','qa','blueprint','assembler','assembler_chooser',
       'campaign_suggestion','campaign_trends','campaign_copy_master',
-      'campaign_architect'
+      'campaign_architect','refiner'
     ));
 END $$;
 
@@ -278,9 +278,9 @@ BEGIN
   ALTER TABLE email_agent_configs
     ADD CONSTRAINT email_agent_configs_agent_type_check
     CHECK (agent_type IN (
-      'copy','image','html','qa','blueprint','assembler',
+      'copy','image','html','qa','blueprint','assembler','assembler_chooser',
       'campaign_suggestion','campaign_trends','campaign_copy_master',
-      'campaign_architect'
+      'campaign_architect','refiner'
     ));
 END $$;
 

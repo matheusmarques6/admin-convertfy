@@ -91,6 +91,12 @@ export type AgentType =
   // de cada loja-alvo (etapa de produção). Reusa o agente de imagem do pipeline
   // de email via generateEmailImage (config-driven).
   | "campaign_image"
+  // refiner: Refinador Tipográfico — roda entre o HTML agent e o QA na
+  // fase 2. Aplica a "voz da marca" na fonte de DISPLAY (nome da marca,
+  // headline do herói) via delta JSON aplicado mecanicamente (nunca
+  // reescreve HTML). 3 estratégias: serifada (luxo), sans com
+  // personalidade (moda) ou mono-fonte com contraste de peso.
+  | "refiner"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -184,6 +190,8 @@ export type GenerationRunAgent =
   // campaign_image: arte por loja (Central de Campanhas) loga um run por
   // imagem em email_generation_runs pra aparecer na página de logs.
   | "campaign_image"
+  // refiner: Refinador Tipográfico (fase 2, entre html e qa).
+  | "refiner"
 
 export interface EmailGenerationRun {
   id: string

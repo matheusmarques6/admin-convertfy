@@ -1245,6 +1245,7 @@ function TestTab() {
     copy: "Copy (IA)",
     image: "Imagem (IA)",
     html: "HTML (IA)",
+    refiner: "Refinador (IA)",
   }
 
   const statusIcon = (s: string) => {

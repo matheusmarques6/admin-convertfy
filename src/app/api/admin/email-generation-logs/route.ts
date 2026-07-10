@@ -108,6 +108,7 @@ function bucketOf(row: LogRow): PipelineAgentKey {
     row.agent === "assembler" ||
     row.agent === "image" ||
     row.agent === "html" ||
+    row.agent === "refiner" ||
     row.agent === "qa" ||
     row.agent === "seed" ||
     row.agent === "copy_dispatch" ||

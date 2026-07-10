@@ -54,6 +54,7 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "campaign_trends",
   "campaign_architect",
   "campaign_image",
+  "refiner",
 ]
 
 // ── Validação de output_schema ─────────────────────────────
@@ -151,6 +152,7 @@ export async function listPrompts(opts: {
     campaign_trends: { active: null, history: [] },
     campaign_architect: { active: null, history: [] },
     campaign_image: { active: null, history: [] },
+    refiner: { active: null, history: [] },
   }
 
   for (const row of rows) {

@@ -13,6 +13,7 @@ export type PipelineAgentKey =
   | "assembler"
   | "image"
   | "html"
+  | "refiner"
   | "qa"
   | "qavision"
   | "seed"
@@ -81,6 +82,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#FDE68A",
     kind: "texto",
   },
+  refiner: {
+    name: "Refinador",
+    desc: "Voz da marca tipográfica — fonte de display por posicionamento",
+    color: "#BE185D",
+    bg: "#FDF2F8",
+    border: "#FBCFE8",
+    kind: "texto",
+  },
   qa: {
     name: "QA",
     desc: "Spam score, links, blocos vazios, tom, compliance",
@@ -131,6 +140,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "assembler",
   "image",
   "html",
+  "refiner",
   "qa",
   "qavision",
   "campaign_image",

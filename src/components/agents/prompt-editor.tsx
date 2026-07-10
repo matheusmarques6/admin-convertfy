@@ -157,6 +157,18 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "MOEDA", desc: "Moeda da loja" },
     { key: "INSTRUCAO_ADICIONAL", desc: "Instrução do lote + flags de adaptação + headline + notas de ajuste" },
   ],
+  refiner: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "niche", desc: "Nicho do negócio" },
+    { key: "locale", desc: "Idioma da loja" },
+    { key: "current_font_heading", desc: "Fonte de heading da identidade visual" },
+    { key: "current_font_body", desc: "Fonte de corpo da identidade visual" },
+    { key: "email_name", desc: "Nome do email" },
+    { key: "subject", desc: "Subject do email" },
+    { key: "pesquisa_full_text", desc: "Pesquisa & Diagnóstico (5 pilares serializados)" },
+    { key: "font_occurrences_json", desc: "Inventário numerado das ocorrências de font-family do HTML" },
+    { key: "font_whitelist", desc: "Whitelist de fontes por tom (injetada pelo código — fonte única em font-whitelist.ts)" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

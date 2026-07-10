@@ -38,9 +38,10 @@ const AGENT_LABELS: Record<string, string> = {
   copy: "Copy",
   image: "Imagens",
   html: "HTML",
+  refiner: "Refinador",
 }
 
-const AGENT_ORDER = ["seed", "copy", "image", "html"]
+const AGENT_ORDER = ["seed", "copy", "image", "html", "refiner"]
 
 export function GenerationProgressDrawer({
   batchId,

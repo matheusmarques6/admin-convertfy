@@ -60,6 +60,18 @@ import {
 import { buildHtmlPromptVars } from "./html/build-vars"
 import { computeRenderChecks } from "./html/render-checks"
 import { runQaAgent } from "./chains/qa.chain"
+import { invokeRefinerChain } from "./chains/refiner.chain"
+import {
+  applyRefinerDelta,
+  extractFontOccurrences,
+} from "./refiner/apply-delta"
+import {
+  buildGoogleFontsImport,
+  findWhitelistFont,
+} from "./refiner/font-whitelist"
+import { injectFontImport } from "./refiner/apply-delta"
+import { runRefinerGuards } from "./refiner/guards"
+import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
   logGenerationRun,
   startGenerationRun,
@@ -276,6 +288,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     settingsRes,
     imageConfigRes,
     storeOverridesRes,
+    refinerConfigRes,
   ] = await Promise.all([
     admin
       .from("store_brand_identity")
@@ -320,6 +333,16 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       .select("*")
       .eq("store_id", storeId)
       .maybeSingle(),
+    // Refinador Tipográfico (voz da marca na fonte de display). Sem row
+    // ativa → passo inteiro pulado no runner (rollout/kill switch por DB).
+    admin
+      .from("email_agent_configs")
+      .select("*")
+      .eq("agent_type", "refiner")
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const generateImages = (settingsRes.data?.generate_images as boolean | undefined) ?? true
@@ -363,6 +386,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
         user_template: string
         model: string
       } | null) ?? null,
+    refinerConfig: (refinerConfigRes.data as EmailAgentConfig | null) ?? null,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -1044,11 +1068,236 @@ function isQaEnabled(): boolean {
  *   - `ready`: pipeline concluido com sucesso
  *   - `failed`: erro fatal ou QA bloqueou
  */
+// Orçamento restante mínimo pra rodar o Refinador: com mais de 210s já
+// consumidos na invocação (HTML lento), pula — o refinamento é upgrade,
+// não vale arriscar o timeout da rota (maxDuration=300s).
+const REFINER_BUDGET_GUARD_MS = 210_000
+
+/**
+ * Step 2.5 — Refinador Tipográfico (fail-open).
+ *
+ * Retorna o HTML refinado quando tudo passa; em QUALQUER falha (sem config,
+ * sem orçamento, chain lançou, guard reprovou) retorna o HTML original.
+ * Nunca lança, nunca marca o email como failed. Telemetria completa em
+ * email_generation_runs (agent='refiner') com input_vars/rendered_prompt/
+ * raw_output/parsed_output para o painel de logs de geração.
+ */
+async function runRefinerStep(input: {
+  ctx: Awaited<ReturnType<typeof loadMinimalContext>>
+  finalHtml: string
+  storeId: string
+  flowId: string
+  emailId: string
+  triggeredBy?: string
+  batchId: string
+  routeT0: number
+}): Promise<string> {
+  const { ctx, finalHtml, storeId, flowId, emailId, triggeredBy, batchId, routeT0 } = input
+
+  // Sem row ativa → no-op absoluto (nem run é criado). Kill switch por DB.
+  const config = ctx.refinerConfig
+  if (!config) return finalHtml
+
+  if (Date.now() - routeT0 > REFINER_BUDGET_GUARD_MS) {
+    log.warn("phase2.refiner.skipped_budget", {
+      emailId,
+      elapsedMs: Date.now() - routeT0,
+    })
+    return finalHtml
+  }
+
+  const admin = createAdminClient()
+  const refT0 = Date.now()
+  let refRunId = ""
+  try {
+    const occurrences = extractFontOccurrences(finalHtml)
+    if (occurrences.length === 0) {
+      log.info("phase2.refiner.no_occurrences", { emailId })
+      return finalHtml
+    }
+
+    const storeRaw = ctx.storeRaw as Record<string, unknown>
+    const vars: Record<string, string> = {
+      brand_name: (storeRaw.store_name as string) || "Loja",
+      niche: (storeRaw.niche as string) || "",
+      locale: (storeRaw.language as string) || "pt-BR",
+      pesquisa_full_text: pesquisaToFullText(storeRaw as PesquisaFields),
+      current_font_heading: ctx.brand?.font_heading || "",
+      current_font_body: ctx.brand?.font_body || "",
+      email_name: "",
+      subject: "",
+      font_occurrences_json: JSON.stringify(occurrences, null, 1),
+    }
+    // Nome/subject do email dão contexto ao agente (best-effort).
+    const { data: emailRow } = await admin
+      .from("email_flow_emails")
+      .select("name, subject")
+      .eq("id", emailId)
+      .maybeSingle<{ name: string | null; subject: string | null }>()
+    vars.email_name = emailRow?.name ?? ""
+    vars.subject = emailRow?.subject ?? ""
+
+    const model = config.model || "anthropic/claude-sonnet-4.6"
+    refRunId = await startGenerationRun({
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId,
+      agent: "refiner",
+      agentConfigId: config.id,
+      model,
+      inputVars: vars,
+    })
+
+    const { delta, tokensInput, tokensOutput, renderedPrompt, rawOutput } =
+      await invokeRefinerChain({
+        config: {
+          model,
+          temperature: config.temperature ?? 0.4,
+          max_tokens: config.max_tokens ?? 2048,
+          system_prompt: config.system_prompt ?? "",
+          user_template: config.user_template ?? "",
+        },
+        vars,
+      })
+
+    const finishBase = {
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId,
+      agent: "refiner" as const,
+      agentConfigId: config.id,
+      model,
+      renderedPrompt,
+      rawOutput,
+      tokensInput,
+      tokensOutput,
+      costCents: computeCostCents(model, tokensInput, tokensOutput),
+      durationMs: Date.now() - refT0,
+    }
+
+    if (delta.strategy === "none" || delta.targets.length === 0) {
+      await finishGenerationRun(refRunId, {
+        ...finishBase,
+        status: "success",
+        parsedOutput: {
+          strategy: delta.strategy,
+          rationale: delta.rationale,
+          targets_count: 0,
+          applied: false,
+        },
+      })
+      log.info("phase2.refiner.strategy_none", { emailId, rationale: delta.rationale })
+      return finalHtml
+    }
+
+    const fontEntry = delta.display_font
+      ? findWhitelistFont(delta.display_font.family)
+      : null
+    let candidate = applyRefinerDelta(finalHtml, delta, fontEntry)
+    if (fontEntry) {
+      candidate = injectFontImport(
+        candidate,
+        buildGoogleFontsImport(fontEntry, delta.display_font?.weights ?? []),
+      )
+    } else if (delta.strategy === "mono_weight_contrast") {
+      // Mono: garante que os pesos extras da família ATUAL estejam no
+      // @import (200/800 podem não estar no import do reference).
+      const currentEntry = findWhitelistFont(
+        occurrences[0]?.currentFamily.split(",")[0] ?? "",
+      )
+      if (currentEntry) {
+        const weights = delta.targets
+          .map((t) => t.font_weight)
+          .filter((w): w is number => typeof w === "number")
+        candidate = injectFontImport(
+          candidate,
+          buildGoogleFontsImport(currentEntry, weights),
+        )
+      }
+    }
+
+    const guards = runRefinerGuards(finalHtml, candidate, delta, {
+      currentFontHeading: ctx.brand?.font_heading ?? null,
+      occurrenceCount: occurrences.length,
+    })
+    if (!guards.ok) {
+      await finishGenerationRun(refRunId, {
+        ...finishBase,
+        status: "error",
+        errorMessage: `guards: ${guards.violations.join(", ")}`,
+        parsedOutput: {
+          strategy: delta.strategy,
+          display_font: delta.display_font,
+          targets_count: delta.targets.length,
+          guards_ok: false,
+          violations: guards.violations,
+          applied: false,
+        },
+      })
+      log.warn("phase2.refiner.fail_open", {
+        emailId,
+        reason: "guards",
+        violations: guards.violations,
+      })
+      return finalHtml
+    }
+
+    await admin
+      .from("email_flow_emails")
+      .update({ html: candidate, updated_at: new Date().toISOString() })
+      .eq("id", emailId)
+
+    await finishGenerationRun(refRunId, {
+      ...finishBase,
+      status: "success",
+      parsedOutput: {
+        strategy: delta.strategy,
+        rationale: delta.rationale,
+        display_font: delta.display_font,
+        targets_count: delta.targets.length,
+        guards_ok: true,
+        applied: true,
+      },
+    })
+    log.info("phase2.refiner.applied", {
+      emailId,
+      strategy: delta.strategy,
+      displayFont: delta.display_font?.family ?? null,
+      targets: delta.targets.length,
+      durationMs: Date.now() - refT0,
+    })
+    return candidate
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro no Refinador"
+    log.warn("phase2.refiner.fail_open", { emailId, reason: "exception", error: msg })
+    await finishGenerationRun(refRunId, {
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId,
+      agent: "refiner",
+      agentConfigId: config.id,
+      status: "error",
+      errorMessage: msg,
+      durationMs: Date.now() - refT0,
+    }).catch(() => {})
+    return finalHtml
+  }
+}
+
 export async function runPhase2HtmlQa(
   params: RunPhase2Params,
 ): Promise<{ status: "ready" | "failed" | "skipped" }> {
   const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
   const admin = createAdminClient()
+  // Relógio da invocação — o Refinador (Step 2.5) pula quando o orçamento
+  // de tempo da rota (maxDuration=300s) está quase esgotado.
+  const routeT0 = Date.now()
   log.info("phase2.html_qa.start", { storeId, emailId })
 
   // ── Guard -1: email "somente texto" NÃO gera HTML/QA ─────────────────
@@ -1231,6 +1480,25 @@ export async function runPhase2HtmlQa(
     }
     return { status: "failed" }
   }
+
+  // ── Step 2.5: Refinador Tipográfico (fail-open) ──────────────────────
+  // Voz da marca na fonte de DISPLAY (nome da marca, headline do herói):
+  // o LLM devolve um DELTA JSON pequeno (estratégia + fonte da whitelist +
+  // índices dos alvos) e o código aplica mecanicamente — nunca reescreve
+  // HTML/copy/links. Sem config ativa → no-op total. Qualquer falha ou
+  // guard reprovado → mantém o HTML original e segue pro QA (fail-open;
+  // NUNCA markEmailFailed aqui). Status permanece `rendering` — o claim
+  // `rendering -> ready` abaixo fica intocado.
+  finalHtml = await runRefinerStep({
+    ctx,
+    finalHtml,
+    storeId,
+    flowId,
+    emailId,
+    triggeredBy,
+    batchId,
+    routeT0,
+  })
 
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
