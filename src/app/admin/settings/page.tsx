@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2, FileText, Send } from "lucide-react"
+import { User, Settings2, Users, Palette, Plug, Sparkles, Wrench, Wand2, FileText, Send, LifeBuoy } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
@@ -52,6 +52,16 @@ const SETTINGS_SECTIONS: SettingSection[] = [
     description: "Veja o briefing completo de cada loja",
     icon: FileText,
     href: "/admin/settings/briefings",
+  },
+  {
+    // Saiu da sidebar do Operacional (jul/2026); a página continua em
+    // /admin/onboarding-help (o link público /onboarding-help/[token]
+    // enviado aos clientes não muda). Sem adminOnly: coo/suporte usam;
+    // a página em si é protegida pela feature-flag onboarding_control.
+    title: "Tutorial do cliente",
+    description: "Páginas de ajuda enviadas ao cliente no onboarding (link público)",
+    icon: LifeBuoy,
+    href: "/admin/onboarding-help",
   },
   {
     title: "Templates IA",

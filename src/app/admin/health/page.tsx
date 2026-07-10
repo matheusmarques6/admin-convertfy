@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import {
@@ -11,6 +12,9 @@ import {
 import { Icon } from "@/components/ui/icon"
 import { PeriodPicker, type PeriodValue } from "@/components/ui/period-picker"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { CsReportsView } from "@/components/crm/cs-reports-view"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -77,7 +81,83 @@ function MetricCell({ label, value, threshold, invert }: { label: string; value:
   )
 }
 
+const HEALTH_TABS = ["lojas", "tendencias"] as const
+type HealthTab = (typeof HEALTH_TABS)[number]
+
+function parseHealthTab(raw: string | null): HealthTab {
+  return (HEALTH_TABS as readonly string[]).includes(raw ?? "")
+    ? (raw as HealthTab)
+    : "lojas"
+}
+
 export default function HealthMonitorPage() {
+  // useSearchParams exige boundary de Suspense no App Router.
+  return (
+    <Suspense fallback={null}>
+      <HealthMonitor />
+    </Suspense>
+  )
+}
+
+/**
+ * Monitor de Saúde com 2 abas (?tab=):
+ *   - lojas:      drill-down operacional por loja (deliverability etc.)
+ *   - tendencias: série temporal agregada da carteira (era a página
+ *                 /admin/operacional/reports — a rota redireciona pra cá).
+ *                 Visível só pra quem tem a permissão `ops.reports`
+ *                 (suporte, por ex., continua vendo apenas Lojas).
+ */
+function HealthMonitor() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const { canAccess } = usePermissions()
+  const canSeeTrends = canAccess("ops.reports")
+
+  const requested = parseHealthTab(searchParams.get("tab"))
+  const tab: HealthTab = requested === "tendencias" && !canSeeTrends ? "lojas" : requested
+  const setTab = (t: string) => {
+    const next = parseHealthTab(t)
+    router.replace(next === "lojas" ? pathname : `${pathname}?tab=${next}`, {
+      scroll: false,
+    })
+  }
+
+  return (
+    <div className="max-w-[1400px]">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
+            <Icon icon={Heart} size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white tracking-tight">Monitor de Saude</h1>
+            <p className="text-[13px] text-gray-500 dark:text-white/50">
+              {tab === "tendencias"
+                ? "Evolução da carteira: MRR, health médio, NPS e composição (snapshots diários)"
+                : "Deliverability, bounce rate, engajamento e reputacao"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {canSeeTrends && (
+        <div className="mb-6">
+          <SegmentedTabs value={tab} onValueChange={setTab}>
+            <SegmentedTabItem value="lojas">Lojas</SegmentedTabItem>
+            <SegmentedTabItem value="tendencias">Tendências</SegmentedTabItem>
+          </SegmentedTabs>
+        </div>
+      )}
+
+      {tab === "tendencias" ? <CsReportsView /> : <HealthStoresTab />}
+    </div>
+  )
+}
+
+/** Aba Lojas — o monitor por loja original (período próprio da aba). */
+function HealthStoresTab() {
   const [period, setPeriod] = useState<PeriodValue>({ period: "30d" })
   const periodParam = period.period === "custom" ? "30d" : period.period
 
@@ -91,18 +171,8 @@ export default function HealthMonitorPage() {
   const summary: Summary | null = data?.summary ?? null
 
   return (
-    <div className="max-w-[1400px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
-            <Icon icon={Heart} size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white tracking-tight">Monitor de Saude</h1>
-            <p className="text-[13px] text-gray-500 dark:text-white/50">Deliverability, bounce rate, engajamento e reputacao</p>
-          </div>
-        </div>
+    <div>
+      <div className="flex items-center justify-end mb-4">
         <PeriodPicker value={period} onChange={setPeriod} />
       </div>
 

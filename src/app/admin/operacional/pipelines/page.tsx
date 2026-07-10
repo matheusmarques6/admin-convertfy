@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import {
   AlertTriangle,
@@ -16,21 +17,40 @@ import {
   Zap,
 } from "lucide-react"
 import { NewPipelineDialog } from "@/components/crm/new-pipeline-dialog"
+import { PipelineBoardView } from "@/components/crm/pipeline-board-view"
+import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { CsFormsList } from "@/components/crm/cs-forms-list"
+import { PageSkeleton } from "@/components/ui/page-skeleton"
+import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import { ROUTES } from "@/lib/routes"
 
 /**
- * Hub Pipelines CS — substitui o antigo "CRM CS" (kanban 6 colunas).
+ * Hub Customer Success — página única do CS com sub-abas (?tab=):
+ *   - painel:      cards de pipelines + agenda do dia (o hub original)
+ *   - formularios: listagem de Formulários CS (era /operacional/forms)
+ *   - cadencias:   board do pipeline "Cadencias CS" embutido (era o
+ *                  redirect de /operacional/cs-crm/cadences)
  *
- * Concentra na MESMA tela:
- *   - Cards de cada pipeline CS (Onboarding, Renovacao, Win-back, etc.)
- *   - Agenda do dia (cross-pipeline): calls hoje, lojas a agendar call,
- *     pos-call pendente (sub-listas compactas, ja vinham de
- *     /api/cs-crm/home)
- *   - Empty state pra criar primeiro pipeline
+ * As rotas antigas de forms (lista) e cadences redirecionam pras abas.
+ * O editor de formulário continua em /admin/operacional/forms/[id].
  *
- * Antes existiam 2 telas com objetivo parecido (CRM CS = painel diario;
- * Pipelines CS = lista). Foram unificadas aqui.
+ * Histórico: antes existiam 2 telas com objetivo parecido (CRM CS =
+ * painel diario; Pipelines CS = lista) — unificadas aqui; depois
+ * (jul/2026) Formulários e Cadências viraram abas desta mesma página.
  */
+
+const CS_TABS = ["painel", "formularios", "cadencias"] as const
+type CsTab = (typeof CS_TABS)[number]
+
+const TAB_SUBTITLES: Record<CsTab, string> = {
+  painel: "Pipelines ativos + agenda do dia (auto-refresh 60s)",
+  formularios: "NPS, health check e feedback — respostas viram leads CS",
+  cadencias: "Frequência de acompanhamento por loja — arraste entre colunas para mudar",
+}
+
+function parseTab(raw: string | null): CsTab {
+  return (CS_TABS as readonly string[]).includes(raw ?? "") ? (raw as CsTab) : "painel"
+}
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -79,6 +99,26 @@ const fmtBRL = (cents: number) =>
   }).format(cents / 100)
 
 export default function CsPipelinesHubPage() {
+  // useSearchParams exige boundary de Suspense no App Router.
+  return (
+    <Suspense fallback={null}>
+      <CsPipelinesHub />
+    </Suspense>
+  )
+}
+
+function CsPipelinesHub() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const tab = parseTab(searchParams.get("tab"))
+  const setTab = (t: string) => {
+    const next = parseTab(t)
+    router.replace(next === "painel" ? pathname : `${pathname}?tab=${next}`, {
+      scroll: false,
+    })
+  }
+
   const { data: pipelinesData, mutate: mutatePipelines } = useSWR<{
     pipelines: PipelineSummary[]
     data?: { pipelines: PipelineSummary[] }
@@ -201,7 +241,7 @@ export default function CsPipelinesHubPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            Painel de Customer Success
+            Customer Success
           </h1>
           <p
             style={{
@@ -210,12 +250,14 @@ export default function CsPipelinesHubPage() {
               color: "var(--crm-gray-500)",
             }}
           >
-            Pipelines ativos + agenda do dia (auto-refresh 60s)
+            {TAB_SUBTITLES[tab]}
           </p>
         </div>
+        {/* Ações de sync/criação pertencem ao Painel; as outras abas
+            carregam as próprias ações (ex.: "Novo formulário"). */}
         <div
           style={{
-            display: "inline-flex",
+            display: tab === "painel" ? "inline-flex" : "none",
             alignItems: "center",
             gap: 8,
           }}
@@ -307,6 +349,36 @@ export default function CsPipelinesHubPage() {
         </div>
       </div>
 
+      {/* Sub-abas do hub CS (URL-driven via ?tab=) */}
+      <div
+        style={{
+          padding: "10px 32px",
+          background: "var(--crm-gray-0)",
+          borderBottom: "1px solid var(--crm-border)",
+        }}
+      >
+        <SegmentedTabs value={tab} onValueChange={setTab}>
+          <SegmentedTabItem value="painel">Painel</SegmentedTabItem>
+          <SegmentedTabItem value="formularios">Formulários</SegmentedTabItem>
+          <SegmentedTabItem value="cadencias">Cadências</SegmentedTabItem>
+        </SegmentedTabs>
+      </div>
+
+      {tab === "cadencias" ? (
+        // Board embutido gerencia o próprio scroll/altura.
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <CadenciasEmbeddedBoard
+            pipelines={pipelines}
+            loading={!pipelinesData}
+          />
+        </div>
+      ) : tab === "formularios" ? (
+        <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
+          <div className="max-w-[1280px] mx-auto">
+            <CsFormsList />
+          </div>
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
         {syncMessage && (
           <div
@@ -439,6 +511,7 @@ export default function CsPipelinesHubPage() {
           </div>
         )}
       </div>
+      )}
 
       <NewPipelineDialog
         open={newDialogOpen}
@@ -454,6 +527,49 @@ export default function CsPipelinesHubPage() {
 }
 
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Aba Cadências: embute o board do pipeline CS "Cadencias CS" (mesmo
+ * nome canônico de WELL_KNOWN_NAMES em src/lib/cs-pipelines.ts — o
+ * seed 20260615 cria a row). Resolve o id pela lista de pipelines já
+ * carregada pelo hub; sem o pipeline, empty state com orientação.
+ */
+function CadenciasEmbeddedBoard({
+  pipelines,
+  loading,
+}: {
+  pipelines: PipelineSummary[]
+  loading: boolean
+}) {
+  const cadencias = pipelines.find(
+    (p) => p.name === "Cadencias CS" && p.scope === "cs",
+  )
+
+  if (!cadencias && loading) {
+    return (
+      <div style={{ padding: "24px 32px" }}>
+        <PageSkeleton variant="list" showHeader={false} className="px-0 py-0" />
+      </div>
+    )
+  }
+
+  if (!cadencias) {
+    return (
+      <div style={{ padding: "24px 32px" }}>
+        <CrmEmptyState
+          icon={<CalendarClock className="h-5 w-5" />}
+          title="Pipeline de Cadências não encontrado"
+          description={
+            'O pipeline CS "Cadencias CS" ainda não foi criado nesta organização. ' +
+            "Rode o seed de consolidação de pipelines CS ou crie-o na aba Painel."
+          }
+        />
+      </div>
+    )
+  }
+
+  return <PipelineBoardView pipelineId={cadencias.id} scope="cs" />
+}
 
 function Kpi({
   icon,

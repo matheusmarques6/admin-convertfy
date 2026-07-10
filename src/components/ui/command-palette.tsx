@@ -15,6 +15,9 @@ import {
   FileText,
   Calendar,
   Bell,
+  CalendarClock,
+  BarChart3,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
@@ -56,8 +59,13 @@ const navigationItems: CommandItem[] = WORKSPACE_ORDER.flatMap((ws) =>
   ),
 )
 
-// Itens fora da nav por workspace (moram no menu da conta / extras).
+// Itens fora da nav por workspace: sub-abas consolidadas (que perderam
+// o item próprio na sidebar) + itens do menu da conta.
 const extraItems: CommandItem[] = [
+  { name: "Formulários CS", href: `${ROUTES.ADMIN.OPERACIONAL.PIPELINES}?tab=formularios`, icon: FileText, group: "Operacional" },
+  { name: "Cadências CS", href: `${ROUTES.ADMIN.OPERACIONAL.PIPELINES}?tab=cadencias`, icon: CalendarClock, group: "Operacional" },
+  { name: "Tendências da carteira (Reports CS)", href: `${ROUTES.ADMIN.HEALTH}?tab=tendencias`, icon: BarChart3, group: "Operacional" },
+  { name: "Tutorial do cliente", href: ROUTES.ADMIN.ONBOARDING_HELP.LIST, icon: LifeBuoy, group: "Conta" },
   { name: "Configurações", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "Conta" },
   { name: "Notificações", href: ROUTES.ADMIN.NOTIFICATIONS, icon: Bell, group: "Conta" },
 ]

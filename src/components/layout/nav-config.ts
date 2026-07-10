@@ -17,7 +17,6 @@ import {
   DollarSign,
   FileBarChart,
   Rocket,
-  Settings,
   Columns3,
   LayoutDashboard,
   Heart,
@@ -34,7 +33,6 @@ import {
   Wrench,
   Coins,
   FileText,
-  LifeBuoy,
   Megaphone,
   Cpu,
   ListChecks,
@@ -130,14 +128,11 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     key: "customer-success",
     label: "Customer Success",
     items: [
-      { id: "ops.cs.forms", name: "Formulários CS", href: ROUTES.ADMIN.OPERACIONAL.FORMS, icon: FileText },
-    ],
-  },
-  {
-    key: "workflows",
-    label: "Workflows",
-    items: [
-      { id: "ops.cs.pipelines", name: "Pipelines CS", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      // Página única com sub-abas: Painel + Formulários + Cadências
+      // (jul/2026 — antes eram 3 itens; as rotas antigas redirecionam
+      // pras abas). "Configurar pipelines" saiu da nav: a página segue
+      // existindo, acessível pelos botões "Configurar" do próprio hub.
+      { id: "ops.cs.pipelines", name: "Customer Success", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
       { id: "ops.cs.ritual", name: "Ritual de Sexta", href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL, icon: Sparkles },
     ],
   },
@@ -146,15 +141,8 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     label: "Onboarding",
     items: [
       { id: "ops.onboarding", name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING_V2.LIST, icon: Rocket },
-      { id: "ops.cs.cadences", name: "Cadências", href: ROUTES.ADMIN.OPERACIONAL.CS.CADENCES, icon: Settings },
-      { id: "ops.onboarding.tutorial", name: "Tutorial cliente", href: ROUTES.ADMIN.ONBOARDING_HELP.LIST, icon: LifeBuoy },
-    ],
-  },
-  {
-    key: "pipelines",
-    label: "Pipelines",
-    items: [
-      { id: "ops.pipelines.admin", name: "Configurar pipelines", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES_ADMIN, icon: Settings },
+      // "Tutorial cliente" saiu da nav (jul/2026): vive como card em
+      // /admin/settings (a página /admin/onboarding-help não mudou).
     ],
   },
   {
@@ -167,13 +155,8 @@ export const OPERACIONAL_NAV: NavGroup[] = [
       { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
     ],
   },
-  {
-    key: "analise",
-    label: "Analise",
-    items: [
-      { id: "ops.reports", name: "Reports", href: ROUTES.ADMIN.OPERACIONAL.REPORTS, icon: BarChart3 },
-    ],
-  },
+  // Grupo "Analise" saiu (jul/2026): Reports de CS virou a aba
+  // "Tendências" do Monitor de Saúde (/admin/health?tab=tendencias).
 ]
 
 export const GERAL_NAV: NavGroup[] = [
