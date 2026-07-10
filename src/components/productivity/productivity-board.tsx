@@ -116,7 +116,7 @@ async function setTaskDone(
 export function ProductivityBoard() {
   const {
     groups, boardView, setBoardView, selectedTaskId, selectTask,
-    expandedTasks, toggleTaskExpand, collapsedGroups, toggleGroupCollapse,
+    expandedTasks, toggleTaskExpand, expandedGroups, toggleGroupCollapse,
     hoveredTaskId, setHoveredTask, toggleSubtask,
     isLoaded, fetchData, apiAction,
   } = useProductivityStore()
@@ -363,7 +363,7 @@ export function ProductivityBoard() {
           {boardView === "table" && (
             <TableView
               groups={filteredGroups}
-              collapsedGroups={collapsedGroups}
+              expandedGroups={expandedGroups}
               toggleGroupCollapse={toggleGroupCollapse}
               expandedTasks={expandedTasks}
               toggleTaskExpand={toggleTaskExpand}
@@ -1219,14 +1219,14 @@ function InlineNewTask({ groupId, groupName, groupColor, onboardingId, operation
 // ============================================================================
 
 function TableView({
-  groups, collapsedGroups, toggleGroupCollapse,
+  groups, expandedGroups, toggleGroupCollapse,
   expandedTasks, toggleTaskExpand,
   selectedTaskId, selectTask,
   hoveredTaskId, setHoveredTask, toggleSubtask,
   selectedTaskIds, setSelectedTaskIds, filteredTaskIds, notify,
 }: {
   groups: TaskGroup[]
-  collapsedGroups: Set<string>
+  expandedGroups: Set<string>
   toggleGroupCollapse: (id: string) => void
   expandedTasks: Set<string>
   toggleTaskExpand: (id: string) => void
@@ -1292,7 +1292,8 @@ function TableView({
           {(prov) => (
             <div ref={prov.innerRef} {...prov.droppableProps}>
       {groups.map((g, gIdx) => {
-        const isCollapsed = collapsedGroups.has(g.id)
+        // Grupos chegam FECHADOS por default — só abre quem o usuário expandir.
+        const isCollapsed = !expandedGroups.has(g.id)
         const doneCount = g.items.filter((i) => i.status === "done").length
         // Detecta grupos de onboarding (source_type adicionado no GET).
         const gAny = g as unknown as {

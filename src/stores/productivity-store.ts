@@ -94,7 +94,8 @@ interface ProductivityState {
   boardView: "table" | "kanban"
   selectedTaskId: string | null
   expandedTasks: Set<string>
-  collapsedGroups: Set<string>
+  /** Grupos ABERTOS pelo usuário — default vazio = todo grupo chega fechado. */
+  expandedGroups: Set<string>
   hoveredTaskId: string | null
 
   // UI State — Início
@@ -252,7 +253,7 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
   boardView: "table",
   selectedTaskId: null,
   expandedTasks: new Set<string>(),
-  collapsedGroups: new Set<string>(),
+  expandedGroups: new Set<string>(),
   hoveredTaskId: null,
   planningDone: false,
   showShutdown: false,
@@ -347,10 +348,10 @@ export const useProductivityStore = create<ProductivityState>()((set, get) => ({
     return { expandedTasks: next }
   }),
   toggleGroupCollapse: (id) => set((state) => {
-    const next = new Set(state.collapsedGroups)
+    const next = new Set(state.expandedGroups)
     if (next.has(id)) next.delete(id)
     else next.add(id)
-    return { collapsedGroups: next }
+    return { expandedGroups: next }
   }),
   setHoveredTask: (id) => set({ hoveredTaskId: id }),
   setPlanningDone: (done) => set({ planningDone: done }),
