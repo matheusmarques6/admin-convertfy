@@ -1,10 +1,11 @@
 /**
- * apply-delta — aplicação MECÂNICA do delta tipográfico do Refinador.
+ * apply-delta — aplicação MECÂNICA dos deltas do Refinador (v2).
  *
- * O LLM nunca reescreve o HTML: o código extrai um inventário NUMERADO das
- * ocorrências de `font-family` inline do <body> (extractFontOccurrences),
- * o LLM devolve índices + fonte/peso/tracking, e applyRefinerDelta troca
- * apenas os alvos — replace com contador sobre o MESMO regex, determinístico.
+ * O LLM nunca reescreve o HTML: o código extrai inventários NUMERADOS do
+ * <body> (font-family, border-radius, espaçamentos verticais e junções
+ * entre seções), o LLM devolve um delta JSON com índices, e as funções
+ * apply* trocam apenas os alvos — replace com contador sobre o MESMO
+ * regex da extração (contrato interno de ordenação), determinístico.
  * O <style> do <head> (base + media queries) fica intacto; o @import da
  * fonte escolhida entra via injectFontImport.
  *
@@ -33,6 +34,7 @@ export interface RefinerTarget {
   letter_spacing?: string
 }
 
+/** Seção de tipografia do delta (era o delta inteiro no v1). */
 export interface RefinerDelta {
   strategy:
     | "serif_luxury"
@@ -43,6 +45,94 @@ export interface RefinerDelta {
   display_font: { family: string; weights: number[] } | null
   targets: RefinerTarget[]
 }
+
+// ── Formas (border-radius) ─────────────────────────────────────────────
+
+export interface RadiusOccurrence {
+  index: number
+  tag: string
+  hasRadius: boolean
+  currentPx: number | null
+  textSnippet: string
+}
+
+export interface ShapesTarget {
+  index: number
+  radius_px: number
+}
+
+export interface ShapesDelta {
+  stance: "angular_premium" | "rounded_warm" | "disciplined_minimal" | "none"
+  rationale: string
+  targets: ShapesTarget[]
+}
+
+// ── Espaçamento / ritmo vertical ───────────────────────────────────────
+
+export type SpacingProp =
+  | "padding-top"
+  | "padding-bottom"
+  | "margin-top"
+  | "margin-bottom"
+  | "height"
+
+export interface SpacingOccurrence {
+  index: number
+  prop: SpacingProp
+  tag: string
+  currentPx: number
+  textSnippet: string
+}
+
+export interface SpacingAdjust {
+  index: number
+  value_px: number
+}
+
+export interface SpacingInsert {
+  junction: number
+  height_px: number
+}
+
+export interface SpacingDelta {
+  rhythm: "intimate_uniform" | "editorial_spaced" | "contrast_peaks" | "none"
+  rationale: string
+  adjust: SpacingAdjust[]
+  insert: SpacingInsert[]
+}
+
+export interface SectionJunction {
+  junction: number
+  beforeSnippet: string
+  afterSnippet: string
+}
+
+/** Delta completo do Refinador v2 — 3 seções independentes. */
+export interface RefinerDeltaV2 {
+  typography: RefinerDelta
+  shapes: ShapesDelta
+  spacing: SpacingDelta
+}
+
+export const NONE_TYPOGRAPHY: RefinerDelta = {
+  strategy: "none",
+  rationale: "",
+  display_font: null,
+  targets: [],
+}
+export const NONE_SHAPES: ShapesDelta = { stance: "none", rationale: "", targets: [] }
+export const NONE_SPACING: SpacingDelta = {
+  rhythm: "none",
+  rationale: "",
+  adjust: [],
+  insert: [],
+}
+
+// Limites mecânicos (clamps na aplicação; guards validam índices/tetos).
+export const RADIUS_MAX_PX = 24
+export const SPACING_MAX_PX = 160
+export const SPACER_MIN_PX = 8
+export const MAX_SPACER_INSERTS = 6
 
 // font-family DENTRO de style="" inline. O lookbehind não é necessário:
 // varremos só o corpo (após </head>) e o <style> block nunca aparece lá.
@@ -178,4 +268,250 @@ export function injectFontImport(html: string, importRule: string): string {
     return `${html.slice(0, headClose.index)}<style>\n    ${importRule}\n  </style>\n${html.slice(headClose.index)}`
   }
   return html
+}
+
+// ═════════════════════════ FORMAS (border-radius) ═════════════════════
+
+// Elementos com style inline no body. Ordem de match = índice do inventário
+// (contrato entre extractRadiusOccurrences e applyShapesDelta).
+const STYLED_ELEMENT_RE = /<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*?style\s*=\s*"([^"]*)"[^>]*>/gi
+
+function parseRadiusPx(styleContent: string): { has: boolean; px: number | null; isPercent: boolean } {
+  const m = styleContent.match(/border-radius\s*:\s*([^;"]+)/i)
+  if (!m) return { has: false, px: null, isPercent: false }
+  const value = m[1].trim()
+  if (value.includes("%")) return { has: true, px: null, isPercent: true }
+  const px = value.match(/([\d.]+)\s*px/)
+  return { has: true, px: px ? Math.round(parseFloat(px[1])) : value.startsWith("0") ? 0 : null, isPercent: false }
+}
+
+/**
+ * Inventário de candidatos a ajuste de raio: elementos com border-radius
+ * inline OU <a> com style (candidatos a GANHAR raio). Exclusões por lei
+ * do estudo de formas: <img> nunca arredonda (fica fora do inventário) e
+ * radius em % (avatares circulares) não é tocado.
+ */
+export function extractRadiusOccurrences(html: string): RadiusOccurrence[] {
+  const { body } = splitAtBody(html)
+  const occurrences: RadiusOccurrence[] = []
+  const re = new RegExp(STYLED_ELEMENT_RE.source, STYLED_ELEMENT_RE.flags)
+  let match: RegExpExecArray | null
+  let index = 0
+  while ((match = re.exec(body)) !== null) {
+    const tag = match[1].toLowerCase()
+    if (tag === "img") continue
+    const { has, px, isPercent } = parseRadiusPx(match[2])
+    if (isPercent) continue
+    if (!has && tag !== "a") continue
+    occurrences.push({
+      index,
+      tag,
+      hasRadius: has,
+      currentPx: px,
+      textSnippet: snippetAround(body, match.index),
+    })
+    index++
+  }
+  return occurrences
+}
+
+const clampRadius = (v: number): number => Math.max(0, Math.min(RADIUS_MAX_PX, Math.round(v)))
+
+/**
+ * Aplica o delta de formas: nos índices alvo, substitui o border-radius
+ * existente ou apende um novo ao style. Percorre o MESMO regex e as
+ * MESMAS exclusões da extração para manter o contrato de índices.
+ */
+export function applyShapesDelta(html: string, targets: ShapesTarget[]): string {
+  if (targets.length === 0) return html
+  const { head, body } = splitAtBody(html)
+  const byIndex = new Map(targets.map((t) => [t.index, t]))
+
+  let counter = -1
+  const newBody = body.replace(
+    STYLED_ELEMENT_RE,
+    (full: string, tag: string, styleContent: string) => {
+      const tagLower = tag.toLowerCase()
+      if (tagLower === "img") return full
+      const { has, isPercent } = parseRadiusPx(styleContent)
+      if (isPercent) return full
+      if (!has && tagLower !== "a") return full
+      counter++
+      const target = byIndex.get(counter)
+      if (!target) return full
+
+      const radius = `border-radius: ${clampRadius(target.radius_px)}px`
+      let newStyle: string
+      if (has) {
+        newStyle = styleContent.replace(/border-radius\s*:\s*[^;"]+/i, radius)
+      } else {
+        const sep = styleContent.trim() === "" || styleContent.trim().endsWith(";") ? " " : "; "
+        newStyle = `${styleContent}${sep}${radius};`
+      }
+      // Troca apenas o conteúdo do PRIMEIRO style attr do match (o mesmo
+      // capturado pelo regex lazy) — tolera `style = "..."` com espaços.
+      return full.replace(/style\s*=\s*"[^"]*"/i, `style="${newStyle}"`)
+    },
+  )
+  return head + newBody
+}
+
+// ═══════════════════ ESPAÇAMENTO (ritmo vertical) ═════════════════════
+
+// Longhand verticais + height (spacers). O lookbehind bloqueia line-height,
+// min-height e max-height. Shorthand `padding:` fica fora do v1 (ambíguo).
+const SPACING_PROP_RE =
+  /(?<![-\w])(padding-top|padding-bottom|margin-top|margin-bottom|height)\s*:\s*([\d.]+)px/gi
+
+/**
+ * Inventário de espaçamentos verticais inline no body (valores >= 8px —
+ * abaixo disso é ajuste fino de cluster, não ritmo entre fases).
+ */
+export function extractSpacingOccurrences(html: string): SpacingOccurrence[] {
+  const { body } = splitAtBody(html)
+  const occurrences: SpacingOccurrence[] = []
+  const re = new RegExp(SPACING_PROP_RE.source, SPACING_PROP_RE.flags)
+  let match: RegExpExecArray | null
+  let index = 0
+  while ((match = re.exec(body)) !== null) {
+    const px = Math.round(parseFloat(match[2]))
+    if (px < SPACER_MIN_PX) continue
+    occurrences.push({
+      index,
+      prop: match[1].toLowerCase() as SpacingProp,
+      tag: tagAround(body, match.index),
+      currentPx: px,
+      textSnippet: snippetAround(body, match.index),
+    })
+    index++
+  }
+  return occurrences
+}
+
+const clampSpacing = (v: number): number => Math.max(0, Math.min(SPACING_MAX_PX, Math.round(v)))
+const clampSpacerHeight = (v: number): number =>
+  Math.max(SPACER_MIN_PX, Math.min(SPACING_MAX_PX, Math.round(v)))
+
+// Void elements não abrem escopo no scanner de seções.
+const VOID_TAGS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "source", "track", "wbr",
+])
+
+interface SectionSpan {
+  start: number
+  end: number
+}
+
+/**
+ * Localiza o wrapper central (~600px) e devolve os spans dos filhos
+ * diretos (as "seções" do email). Junção i = fronteira entre o filho i
+ * e o i+1 — é onde applySpacingDelta pode inserir um spacer.
+ */
+function scanSections(html: string): SectionSpan[] {
+  const wrapperMatch =
+    /<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*style\s*=\s*"[^"]*(?:max-)?width\s*:\s*600px[^"]*"[^>]*>/i.exec(
+      html,
+    )
+  if (!wrapperMatch || wrapperMatch.index === undefined) return []
+  const contentStart = wrapperMatch.index + wrapperMatch[0].length
+
+  const sections: SectionSpan[] = []
+  const tokenRe = /<!--[\s\S]*?-->|<\/?[a-zA-Z][a-zA-Z0-9]*(?:"[^"]*"|'[^']*'|[^"'>])*>/g
+  tokenRe.lastIndex = contentStart
+  let depth = 0
+  let currentStart = -1
+  let token: RegExpExecArray | null
+  while ((token = tokenRe.exec(html)) !== null) {
+    const t = token[0]
+    if (t.startsWith("<!--")) continue
+    const isClose = t.startsWith("</")
+    const tagName = (t.match(/^<\/?([a-zA-Z][a-zA-Z0-9]*)/)?.[1] ?? "").toLowerCase()
+    const isVoid = VOID_TAGS.has(tagName) || t.endsWith("/>")
+
+    if (isClose) {
+      depth--
+      if (depth === 0 && currentStart !== -1) {
+        sections.push({ start: currentStart, end: token.index + t.length })
+        currentStart = -1
+      }
+      if (depth < 0) break // fechou o wrapper
+    } else if (!isVoid) {
+      if (depth === 0) currentStart = token.index
+      depth++
+    } else if (depth === 0 && tagName !== "br" && tagName !== "hr") {
+      // void element solto no nível das seções (ex.: <img> full-width):
+      // conta como seção própria.
+      sections.push({ start: token.index, end: token.index + t.length })
+    }
+  }
+  return sections
+}
+
+function edgeSnippet(html: string, span: SectionSpan, edge: "head" | "tail"): string {
+  const text = html
+    .slice(span.start, span.end)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return edge === "head" ? text.slice(0, 60) : text.slice(-60)
+}
+
+/**
+ * Junções numeradas entre as seções do wrapper central, com trechos de
+ * texto das bordas para o LLM entender o contexto de cada fronteira.
+ */
+export function extractSectionJunctions(html: string): SectionJunction[] {
+  const sections = scanSections(html)
+  const junctions: SectionJunction[] = []
+  for (let i = 0; i < sections.length - 1; i++) {
+    junctions.push({
+      junction: i,
+      beforeSnippet: edgeSnippet(html, sections[i], "tail"),
+      afterSnippet: edgeSnippet(html, sections[i + 1], "head"),
+    })
+  }
+  return junctions
+}
+
+/**
+ * Aplica o delta de espaçamento: `adjust` troca valores existentes por
+ * índice (mesmo regex da extração); `insert` injeta spacers
+ * `<div style="height:Npx"></div>` nas junções entre seções (recomputadas
+ * no HTML já ajustado; aplicadas em ordem decrescente para preservar
+ * offsets). Teto de MAX_SPACER_INSERTS inserções.
+ */
+export function applySpacingDelta(
+  html: string,
+  adjust: SpacingAdjust[],
+  insert: SpacingInsert[],
+): string {
+  let out = html
+  if (adjust.length > 0) {
+    const byIndex = new Map(adjust.map((a) => [a.index, a]))
+    const { head, body } = splitAtBody(out)
+    let counter = -1
+    const newBody = body.replace(SPACING_PROP_RE, (full: string, prop: string, px: string) => {
+      if (Math.round(parseFloat(px)) < SPACER_MIN_PX) return full
+      counter++
+      const target = byIndex.get(counter)
+      if (!target) return full
+      return `${prop}: ${clampSpacing(target.value_px)}px`
+    })
+    out = head + newBody
+  }
+
+  const inserts = insert.slice(0, MAX_SPACER_INSERTS)
+  if (inserts.length > 0) {
+    const sections = scanSections(out)
+    const valid = inserts
+      .filter((i) => Number.isInteger(i.junction) && i.junction >= 0 && i.junction < sections.length - 1)
+      .sort((a, b) => b.junction - a.junction)
+    for (const ins of valid) {
+      const at = sections[ins.junction].end
+      const spacer = `<div style="height:${clampSpacerHeight(ins.height_px)}px"></div>`
+      out = out.slice(0, at) + spacer + out.slice(at)
+    }
+  }
+  return out
 }

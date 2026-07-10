@@ -182,6 +182,15 @@ beforeEach(() => {
 
 const emailRow = () => h.tables.email_flow_emails[0]
 
+// Helper: delta v2 com seções default "none".
+type AnyDelta = Record<string, unknown>
+const v2Delta = (partial: AnyDelta): AnyDelta => ({
+  typography: { strategy: "none", rationale: "", display_font: null, targets: [] },
+  shapes: { stance: "none", rationale: "", targets: [] },
+  spacing: { rhythm: "none", rationale: "", adjust: [], insert: [] },
+  ...partial,
+})
+
 describe("Step 2.5 — Refinador Tipográfico", () => {
   it("sem config ativa → no-op total (nem run, html cru, ready)", async () => {
     reset({ refinerActive: false })
@@ -198,12 +207,14 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
   it("delta válido → html refinado persistido (fonte + @import) e run success", async () => {
     reset({ refinerActive: true })
     invokeRefinerChain.mockResolvedValue({
-      delta: {
-        strategy: "serif_luxury",
-        rationale: "moda premium",
-        display_font: { family: "Playfair Display", weights: [700] },
-        targets: [{ index: 0, role: "brand_name", font_weight: 700, letter_spacing: "-1.5px" }],
-      },
+      delta: v2Delta({
+        typography: {
+          strategy: "serif_luxury",
+          rationale: "moda premium",
+          display_font: { family: "Playfair Display", weights: [700] },
+          targets: [{ index: 0, role: "brand_name", font_weight: 700, letter_spacing: "-1.5px" }],
+        },
+      }),
       tokensInput: 500,
       tokensOutput: 100,
       renderedPrompt: "rp",
@@ -238,12 +249,14 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
   it("guard reprova (fonte fora da whitelist) → fail-open: html cru, ready", async () => {
     reset({ refinerActive: true })
     invokeRefinerChain.mockResolvedValue({
-      delta: {
-        strategy: "serif_luxury",
-        rationale: "",
-        display_font: { family: "Comic Sans MS", weights: [] },
-        targets: [{ index: 0, role: "brand_name" }],
-      },
+      delta: v2Delta({
+        typography: {
+          strategy: "serif_luxury",
+          rationale: "",
+          display_font: { family: "Comic Sans MS", weights: [] },
+          targets: [{ index: 0, role: "brand_name" }],
+        },
+      }),
       tokensInput: 1,
       tokensOutput: 1,
       renderedPrompt: "",
@@ -262,7 +275,9 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
   it("strategy none → html cru, run success sem aplicar", async () => {
     reset({ refinerActive: true })
     invokeRefinerChain.mockResolvedValue({
-      delta: { strategy: "none", rationale: "já comunica", display_font: null, targets: [] },
+      delta: v2Delta({
+        typography: { strategy: "none", rationale: "já comunica", display_font: null, targets: [] },
+      }),
       tokensInput: 1,
       tokensOutput: 1,
       renderedPrompt: "",
@@ -276,5 +291,65 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
       .find((p) => p.agent === "refiner")
     expect(finish?.status).toBe("success")
     expect((finish?.parsedOutput as Record<string, unknown>).applied).toBe(false)
+  })
+
+  it("delta 3-seções → fonte + raio + spacer aplicados, parsed_output com as 3", async () => {
+    reset({ refinerActive: true })
+    // HTML com wrapper 600px, CTA com radius e espaçamentos (v2-friendly).
+    const HTML_V2 = `<!DOCTYPE html><html><head><style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+</style></head><body><div style="max-width:600px;margin:0 auto;">
+<div style="padding-bottom:24px;"><h1 style="font-family:'Montserrat',Arial,sans-serif;font-size:48px;">RADIANTLYHERS</h1></div>
+<div style="padding-top:16px;"><a href="https://store.com/shop" style="border-radius:0;background:#111;">SHOP NOW</a></div>
+<div style="margin-top:88px;">Footer</div>
+</div></body></html>`
+    invokeHtmlChain.mockResolvedValue({
+      html: HTML_V2,
+      tokensInput: 100,
+      tokensOutput: 200,
+      renderedPrompt: "prompt",
+    })
+    invokeRefinerChain.mockResolvedValue({
+      delta: v2Delta({
+        typography: {
+          strategy: "serif_luxury",
+          rationale: "premium",
+          display_font: { family: "Playfair Display", weights: [700] },
+          targets: [{ index: 0, role: "brand_name" }],
+        },
+        shapes: {
+          stance: "rounded_warm",
+          rationale: "acolhedora",
+          targets: [{ index: 0, radius_px: 9 }],
+        },
+        spacing: {
+          rhythm: "intimate_uniform",
+          rationale: "íntimo",
+          adjust: [{ index: 2, value_px: 40 }],
+          insert: [{ junction: 0, height_px: 24 }],
+        },
+      }),
+      tokensInput: 900,
+      tokensOutput: 220,
+      renderedPrompt: "rp",
+      rawOutput: "{...}",
+    })
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    const html = emailRow().html as string
+    expect(html).toContain("'Playfair Display'")           // tipografia
+    expect(html).toContain("border-radius: 9px")           // formas
+    expect(html).toContain("margin-top: 40px")             // spacing adjust
+    expect(html).toContain(`<div style="height:24px"></div>`) // spacing insert
+    const finish = finishGenerationRun.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((p) => p.agent === "refiner")
+    expect(finish?.status).toBe("success")
+    const parsed = finish?.parsedOutput as Record<string, Record<string, unknown>>
+    expect(parsed.typography.strategy).toBe("serif_luxury")
+    expect(parsed.shapes.stance).toBe("rounded_warm")
+    expect(parsed.spacing.rhythm).toBe("intimate_uniform")
+    expect(parsed.spacing.inserted_count).toBe(1)
+    expect((parsed as Record<string, unknown>).applied).toBe(true)
   })
 })

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 import { runRefinerGuards } from "./guards"
-import type { RefinerDelta } from "./apply-delta"
+import {
+  NONE_SHAPES,
+  NONE_SPACING,
+  NONE_TYPOGRAPHY,
+} from "./apply-delta"
+import type { RefinerDelta, RefinerDeltaV2 } from "./apply-delta"
 
 const BEFORE = `<!DOCTYPE html><html><head><style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400&display=swap');</style></head>
 <body><table><tr><td style="font-family:'Montserrat',Arial,sans-serif;">RADIANTLYHERS</td></tr>
@@ -15,13 +20,28 @@ const AFTER_OK = BEFORE.replace(
   "<style>@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap');",
 )
 
-const deltaSerif: RefinerDelta = {
+const serifTypography: RefinerDelta = {
   strategy: "serif_luxury",
   rationale: "",
   display_font: { family: "Playfair Display", weights: [700] },
   targets: [{ index: 0, role: "brand_name" }],
 }
-const OPTS = { currentFontHeading: "Montserrat", occurrenceCount: 1 }
+
+const v2 = (partial: Partial<RefinerDeltaV2>): RefinerDeltaV2 => ({
+  typography: NONE_TYPOGRAPHY,
+  shapes: NONE_SHAPES,
+  spacing: NONE_SPACING,
+  ...partial,
+})
+
+const deltaSerif = v2({ typography: serifTypography })
+const OPTS = {
+  currentFontHeading: "Montserrat",
+  occurrenceCount: 1,
+  radiusOccurrenceCount: 2,
+  spacingOccurrenceCount: 3,
+  junctionCount: 2,
+}
 
 describe("runRefinerGuards", () => {
   it("caso feliz passa", () => {
@@ -47,20 +67,18 @@ describe("runRefinerGuards", () => {
   })
 
   it("fonte fora da whitelist reprova", () => {
-    const delta = {
-      ...deltaSerif,
-      display_font: { family: "Comic Sans MS", weights: [] },
-    }
+    const delta = v2({
+      typography: {
+        ...serifTypography,
+        display_font: { family: "Comic Sans MS", weights: [] },
+      },
+    })
     const r = runRefinerGuards(BEFORE, AFTER_OK, delta, OPTS)
     expect(r.violations.some((v) => v.startsWith("fonte_fora_da_whitelist"))).toBe(true)
   })
 
   it("fonte igual à da identidade reprova", () => {
-    const delta = {
-      ...deltaSerif,
-      display_font: { family: "Playfair Display", weights: [] },
-    }
-    const r = runRefinerGuards(BEFORE, AFTER_OK, delta, {
+    const r = runRefinerGuards(BEFORE, AFTER_OK, deltaSerif, {
       ...OPTS,
       currentFontHeading: "Playfair Display",
     })
@@ -95,35 +113,115 @@ describe("runRefinerGuards", () => {
   })
 
   it("índice fora do range / targets demais reprovam", () => {
-    const badIdx = { ...deltaSerif, targets: [{ index: 7, role: "brand_name" as const }] }
+    const badIdx = v2({
+      typography: { ...serifTypography, targets: [{ index: 7, role: "brand_name" as const }] },
+    })
     expect(
       runRefinerGuards(BEFORE, AFTER_OK, badIdx, OPTS).violations.some((v) =>
         v.startsWith("target_index_fora_do_range"),
       ),
     ).toBe(true)
 
-    const tooMany = {
-      ...deltaSerif,
-      targets: Array.from({ length: 13 }, (_, i) => ({ index: 0, role: "price" as const, _i: i })),
-    }
+    const tooMany = v2({
+      typography: {
+        ...serifTypography,
+        targets: Array.from({ length: 13 }, () => ({ index: 0, role: "price" as const })),
+      },
+    })
     expect(
       runRefinerGuards(BEFORE, AFTER_OK, tooMany, OPTS).violations.some((v) =>
-        v.startsWith("targets_excede_teto"),
+        v.startsWith("target_excede_teto"),
       ),
     ).toBe(true)
   })
 
   it("mono_weight_contrast não exige whitelist/import", () => {
-    const mono: RefinerDelta = {
-      strategy: "mono_weight_contrast",
-      rationale: "",
-      display_font: null,
-      targets: [{ index: 0, role: "brand_name", font_weight: 200 }],
-    }
+    const mono = v2({
+      typography: {
+        strategy: "mono_weight_contrast",
+        rationale: "",
+        display_font: null,
+        targets: [{ index: 0, role: "brand_name", font_weight: 200 }],
+      },
+    })
     const after = BEFORE.replace(
       "font-family:'Montserrat',Arial,sans-serif;",
       "font-family: 'Montserrat',Arial,sans-serif; font-weight: 200;",
     )
     expect(runRefinerGuards(BEFORE, after, mono, OPTS).ok).toBe(true)
+  })
+
+  // ── v2: formas + espaçamento ─────────────────────────────────────────
+
+  it("shapes: índice fora do range do inventário de radius reprova", () => {
+    const delta = v2({
+      shapes: { stance: "rounded_warm", rationale: "", targets: [{ index: 5, radius_px: 9 }] },
+    })
+    const r = runRefinerGuards(BEFORE, BEFORE, delta, OPTS) // radiusOccurrenceCount: 2
+    expect(r.violations.some((v) => v.startsWith("shapes_index_fora_do_range"))).toBe(true)
+  })
+
+  it("spacing: adjust fora do range e junção inválida reprovam", () => {
+    const delta = v2({
+      spacing: {
+        rhythm: "editorial_spaced",
+        rationale: "",
+        adjust: [{ index: 9, value_px: 96 }],
+        insert: [{ junction: 4, height_px: 64 }],
+      },
+    })
+    const r = runRefinerGuards(BEFORE, BEFORE, delta, OPTS) // spacing: 3, junctions: 2
+    expect(r.violations.some((v) => v.startsWith("spacing_adjust_index_fora_do_range"))).toBe(true)
+    expect(r.violations.some((v) => v.startsWith("spacing_junction_fora_do_range"))).toBe(true)
+  })
+
+  it("spacing: mais de 6 inserções reprova", () => {
+    const delta = v2({
+      spacing: {
+        rhythm: "contrast_peaks",
+        rationale: "",
+        adjust: [],
+        insert: Array.from({ length: 7 }, (_, i) => ({ junction: i % 2, height_px: 40 })),
+      },
+    })
+    const r = runRefinerGuards(BEFORE, BEFORE, delta, OPTS)
+    expect(r.violations.some((v) => v.startsWith("spacing_insert_excede_teto"))).toBe(true)
+  })
+
+  it("inserções ganham folga de crescimento proporcional (spacers legítimos)", () => {
+    const delta = v2({
+      spacing: {
+        rhythm: "editorial_spaced",
+        rationale: "",
+        adjust: [],
+        insert: [
+          { junction: 0, height_px: 64 },
+          { junction: 1, height_px: 96 },
+        ],
+      },
+    })
+    const after = BEFORE.replace(
+      "</table>",
+      `</table><div style="height:64px"></div><div style="height:96px"></div>`,
+    )
+    const r = runRefinerGuards(BEFORE, after, delta, OPTS)
+    expect(r.ok).toBe(true)
+  })
+
+  it("delta 3-seções válido passa (fonte + raio + spacer)", () => {
+    const delta = v2({
+      typography: serifTypography,
+      shapes: { stance: "rounded_warm", rationale: "", targets: [{ index: 0, radius_px: 9 }] },
+      spacing: {
+        rhythm: "intimate_uniform",
+        rationale: "",
+        adjust: [{ index: 1, value_px: 32 }],
+        insert: [{ junction: 0, height_px: 24 }],
+      },
+    })
+    const after = AFTER_OK.replace("</table>", `</table><div style="height:24px"></div>`)
+    const r = runRefinerGuards(BEFORE, after, delta, OPTS)
+    expect(r.violations).toEqual([])
+    expect(r.ok).toBe(true)
   })
 })

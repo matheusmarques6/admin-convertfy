@@ -63,13 +63,18 @@ import { runQaAgent } from "./chains/qa.chain"
 import { invokeRefinerChain } from "./chains/refiner.chain"
 import {
   applyRefinerDelta,
+  applyShapesDelta,
+  applySpacingDelta,
   extractFontOccurrences,
+  extractRadiusOccurrences,
+  extractSectionJunctions,
+  extractSpacingOccurrences,
+  injectFontImport,
 } from "./refiner/apply-delta"
 import {
   buildGoogleFontsImport,
   findWhitelistFont,
 } from "./refiner/font-whitelist"
-import { injectFontImport } from "./refiner/apply-delta"
 import { runRefinerGuards } from "./refiner/guards"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
@@ -1110,8 +1115,17 @@ async function runRefinerStep(input: {
   const refT0 = Date.now()
   let refRunId = ""
   try {
+    // 3 inventários numerados + junções entre seções (todos derivados do
+    // MESMO HTML — o input do agente continua sendo HTML + Pesquisa).
     const occurrences = extractFontOccurrences(finalHtml)
-    if (occurrences.length === 0) {
+    const radiusOccurrences = extractRadiusOccurrences(finalHtml)
+    const spacingOccurrences = extractSpacingOccurrences(finalHtml)
+    const junctions = extractSectionJunctions(finalHtml)
+    if (
+      occurrences.length === 0 &&
+      radiusOccurrences.length === 0 &&
+      spacingOccurrences.length === 0
+    ) {
       log.info("phase2.refiner.no_occurrences", { emailId })
       return finalHtml
     }
@@ -1127,6 +1141,9 @@ async function runRefinerStep(input: {
       email_name: "",
       subject: "",
       font_occurrences_json: JSON.stringify(occurrences, null, 1),
+      radius_occurrences_json: JSON.stringify(radiusOccurrences, null, 1),
+      spacing_occurrences_json: JSON.stringify(spacingOccurrences, null, 1),
+      section_junctions_json: JSON.stringify(junctions, null, 1),
     }
     // Nome/subject do email dão contexto ao agente (best-effort).
     const { data: emailRow } = await admin
@@ -1179,50 +1196,92 @@ async function runRefinerStep(input: {
       durationMs: Date.now() - refT0,
     }
 
-    if (delta.strategy === "none" || delta.targets.length === 0) {
+    const { typography, shapes, spacing } = delta
+    const typographyActive =
+      typography.strategy !== "none" && typography.targets.length > 0
+    const shapesActive = shapes.stance !== "none" && shapes.targets.length > 0
+    const spacingActive =
+      spacing.rhythm !== "none" &&
+      (spacing.adjust.length > 0 || spacing.insert.length > 0)
+
+    // Resumo das 3 seções — vai no parsed_output do run em TODOS os
+    // desfechos (none/guard-fail/aplicado) para os logs de geração.
+    const summary = {
+      typography: {
+        strategy: typography.strategy,
+        rationale: typography.rationale,
+        display_font: typography.display_font,
+        targets_count: typography.targets.length,
+      },
+      shapes: {
+        stance: shapes.stance,
+        rationale: shapes.rationale,
+        targets_count: shapes.targets.length,
+      },
+      spacing: {
+        rhythm: spacing.rhythm,
+        rationale: spacing.rationale,
+        adjusted_count: spacing.adjust.length,
+        inserted_count: spacing.insert.length,
+      },
+    }
+
+    if (!typographyActive && !shapesActive && !spacingActive) {
       await finishGenerationRun(refRunId, {
         ...finishBase,
         status: "success",
-        parsedOutput: {
-          strategy: delta.strategy,
-          rationale: delta.rationale,
-          targets_count: 0,
-          applied: false,
-        },
+        parsedOutput: { ...summary, applied: false },
       })
-      log.info("phase2.refiner.strategy_none", { emailId, rationale: delta.rationale })
+      log.info("phase2.refiner.strategy_none", {
+        emailId,
+        rationale: typography.rationale || shapes.rationale || spacing.rationale,
+      })
       return finalHtml
     }
 
-    const fontEntry = delta.display_font
-      ? findWhitelistFont(delta.display_font.family)
+    // Aplica as 3 dimensões em sequência sobre o mesmo candidato
+    // (tipografia → formas → espaçamento). Guards no final, atômicos.
+    let candidate = finalHtml
+    const fontEntry = typography.display_font
+      ? findWhitelistFont(typography.display_font.family)
       : null
-    let candidate = applyRefinerDelta(finalHtml, delta, fontEntry)
-    if (fontEntry) {
-      candidate = injectFontImport(
-        candidate,
-        buildGoogleFontsImport(fontEntry, delta.display_font?.weights ?? []),
-      )
-    } else if (delta.strategy === "mono_weight_contrast") {
-      // Mono: garante que os pesos extras da família ATUAL estejam no
-      // @import (200/800 podem não estar no import do reference).
-      const currentEntry = findWhitelistFont(
-        occurrences[0]?.currentFamily.split(",")[0] ?? "",
-      )
-      if (currentEntry) {
-        const weights = delta.targets
-          .map((t) => t.font_weight)
-          .filter((w): w is number => typeof w === "number")
+    if (typographyActive) {
+      candidate = applyRefinerDelta(candidate, typography, fontEntry)
+      if (fontEntry) {
         candidate = injectFontImport(
           candidate,
-          buildGoogleFontsImport(currentEntry, weights),
+          buildGoogleFontsImport(fontEntry, typography.display_font?.weights ?? []),
         )
+      } else if (typography.strategy === "mono_weight_contrast") {
+        // Mono: garante que os pesos extras da família ATUAL estejam no
+        // @import (200/800 podem não estar no import do reference).
+        const currentEntry = findWhitelistFont(
+          occurrences[0]?.currentFamily.split(",")[0] ?? "",
+        )
+        if (currentEntry) {
+          const weights = typography.targets
+            .map((t) => t.font_weight)
+            .filter((w): w is number => typeof w === "number")
+          candidate = injectFontImport(
+            candidate,
+            buildGoogleFontsImport(currentEntry, weights),
+          )
+        }
       }
+    }
+    if (shapesActive) {
+      candidate = applyShapesDelta(candidate, shapes.targets)
+    }
+    if (spacingActive) {
+      candidate = applySpacingDelta(candidate, spacing.adjust, spacing.insert)
     }
 
     const guards = runRefinerGuards(finalHtml, candidate, delta, {
       currentFontHeading: ctx.brand?.font_heading ?? null,
       occurrenceCount: occurrences.length,
+      radiusOccurrenceCount: radiusOccurrences.length,
+      spacingOccurrenceCount: spacingOccurrences.length,
+      junctionCount: junctions.length,
     })
     if (!guards.ok) {
       await finishGenerationRun(refRunId, {
@@ -1230,9 +1289,7 @@ async function runRefinerStep(input: {
         status: "error",
         errorMessage: `guards: ${guards.violations.join(", ")}`,
         parsedOutput: {
-          strategy: delta.strategy,
-          display_font: delta.display_font,
-          targets_count: delta.targets.length,
+          ...summary,
           guards_ok: false,
           violations: guards.violations,
           applied: false,
@@ -1254,20 +1311,18 @@ async function runRefinerStep(input: {
     await finishGenerationRun(refRunId, {
       ...finishBase,
       status: "success",
-      parsedOutput: {
-        strategy: delta.strategy,
-        rationale: delta.rationale,
-        display_font: delta.display_font,
-        targets_count: delta.targets.length,
-        guards_ok: true,
-        applied: true,
-      },
+      parsedOutput: { ...summary, guards_ok: true, applied: true },
     })
     log.info("phase2.refiner.applied", {
       emailId,
-      strategy: delta.strategy,
-      displayFont: delta.display_font?.family ?? null,
-      targets: delta.targets.length,
+      strategy: typography.strategy,
+      displayFont: typography.display_font?.family ?? null,
+      stance: shapes.stance,
+      rhythm: spacing.rhythm,
+      targets: typography.targets.length,
+      radiusTargets: shapes.targets.length,
+      spacingAdjusted: spacing.adjust.length,
+      spacersInserted: spacing.insert.length,
       durationMs: Date.now() - refT0,
     })
     return candidate

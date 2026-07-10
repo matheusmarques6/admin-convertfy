@@ -167,6 +167,9 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "subject", desc: "Subject do email" },
     { key: "pesquisa_full_text", desc: "Pesquisa & Diagnóstico (5 pilares serializados)" },
     { key: "font_occurrences_json", desc: "Inventário numerado das ocorrências de font-family do HTML" },
+    { key: "radius_occurrences_json", desc: "Inventário numerado de border-radius (CTAs/cards; <img> nunca entra)" },
+    { key: "spacing_occurrences_json", desc: "Inventário numerado de espaçamentos verticais inline (padding/margin/height ≥ 8px)" },
+    { key: "section_junctions_json", desc: "Junções numeradas entre as seções do wrapper 600px (pontos de inserção de spacer)" },
     { key: "font_whitelist", desc: "Whitelist de fontes por tom (injetada pelo código — fonte única em font-whitelist.ts)" },
   ],
 }
