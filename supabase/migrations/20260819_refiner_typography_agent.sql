@@ -35,7 +35,7 @@ BEGIN
     CHECK (agent_type IN (
       'copy','image','html','qa','blueprint','assembler','assembler_chooser',
       'campaign_suggestion','campaign_trends','campaign_copy_master',
-      'campaign_architect','refiner'
+      'campaign_architect','campaign_image','refiner'
     ));
 END $$;
 
