@@ -14,6 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { syncCarteiraDeal } from "./cs-pipelines-sync.service"
+import { getUnifiedRevenue } from "./unified-metrics.service"
 
 const log = logger.child("CrmHealthService")
 
@@ -69,7 +70,8 @@ function computeTicketsScore(openTicketsCount: number, ticketsBreachingSla: numb
   return Math.max(0, 100 - ticketsBreachingSla * 15 - Math.max(0, openTicketsCount - 3) * 3)
 }
 
-function computeRevenueScore(currentMonth: number, previousMonth: number): number {
+/** Exportada para teste. */
+export function computeRevenueScore(currentMonth: number, previousMonth: number): number {
   if (previousMonth === 0 && currentMonth === 0) return 50
   if (previousMonth === 0) return currentMonth > 0 ? 80 : 50
   const ratio = currentMonth / previousMonth
@@ -81,7 +83,32 @@ function computeRevenueScore(currentMonth: number, previousMonth: number): numbe
   return 10
 }
 
-export async function computeStoreHealth(storeId: string, _orgId: string): Promise<StoreHealthResult | null> {
+/**
+ * Deriva "mês atual" vs "mês anterior" das janelas 30d/90d de
+ * store_revenue_summary (via getUnifiedRevenue). Como a tabela não tem
+ * janela 60d, o mês anterior é a MÉDIA MENSAL dos 60 dias que antecedem
+ * o mês atual: (rev90d − rev30d) / 2. Pura — exportada para teste.
+ *
+ * Histórico: até jul/2026 esta parte consultava colunas inexistentes
+ * (`period`, `total_revenue`) e o período inválido '60d' — a query
+ * falhava SEMPRE (erro engolido) e o componente revenue era neutro (50)
+ * para toda loja, achatando o health score da carteira inteira na faixa
+ * "Atenção".
+ */
+export function deriveRevenueMonths(
+  rows: Array<{ period_label: string; total_revenue: number }>,
+): { currentMonth: number; previousMonth: number } {
+  let rev30 = 0
+  let rev90 = 0
+  for (const r of rows) {
+    if (r.period_label === "30d") rev30 += r.total_revenue || 0
+    else if (r.period_label === "90d") rev90 += r.total_revenue || 0
+  }
+  const previousMonth = rev90 > rev30 ? (rev90 - rev30) / 2 : 0
+  return { currentMonth: rev30, previousMonth }
+}
+
+export async function computeStoreHealth(storeId: string, orgId: string): Promise<StoreHealthResult | null> {
   const admin = createAdminClient()
 
   type StoreNps = { id: string; store_name: string; nps_last_score: number | null }
@@ -174,22 +201,22 @@ export async function computeStoreHealth(storeId: string, _orgId: string): Promi
     }
   }
 
-  // Revenue 30d vs 60-30 (mes anterior). Usa store_revenue_summary se existe.
+  // Revenue: mês atual (30d) vs média mensal dos 60 dias anteriores
+  // (derivada de 90d−30d). Reusa getUnifiedRevenue — mesma fonte e
+  // mesmo unificador Klaviyo/Omnisend do dashboard. Falha de query NÃO
+  // é engolida: loga e mantém neutro (50) explícito.
   let currentMonth = 0
   let previousMonth = 0
-  const { data: revRows } = await admin
-    .from("store_revenue_summary")
-    .select("period, total_revenue")
-    .eq("store_id", storeId)
-    .in("period", ["30d", "60d"])
-
-  for (const r of revRows || []) {
-    if (r.period === "30d") currentMonth = r.total_revenue || 0
-    if (r.period === "60d") {
-      // 60d cobre os ultimos 60 dias; mes anterior = 60d - 30d
-      const sixty = r.total_revenue || 0
-      previousMonth = Math.max(0, sixty - currentMonth)
-    }
+  try {
+    const revRows = await getUnifiedRevenue(admin, orgId, ["30d", "90d"], [storeId])
+    const months = deriveRevenueMonths(revRows)
+    currentMonth = months.currentMonth
+    previousMonth = months.previousMonth
+  } catch (err) {
+    log.warn("health.revenue_query_failed (componente revenue fica neutro)", {
+      storeId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
   const components: HealthComponents = {

@@ -4,6 +4,10 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
+import {
+  computeIntersectionDelta,
+  computeIntersectionRateDelta,
+} from "@/lib/services/kpi-deltas"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KpiSeries")
@@ -38,6 +42,24 @@ export async function GET(request: NextRequest) {
     const byPeriod: Record<string, { total: number; campaign: number; flow: number; rates: number[] }> = {}
     for (const p of PERIODS) byPeriod[p] = { total: 0, campaign: 0, flow: 0, rates: [] }
 
+    // Somas POR LOJA por período — insumo do delta por interseção
+    // (cards/sparklines continuam usando os agregados byPeriod).
+    type StoreMaps = {
+      total: Map<string, number>
+      campaign: Map<string, number>
+      flow: Map<string, number>
+      rate: Map<string, number>
+    }
+    const storeMaps: Record<string, StoreMaps> = {}
+    for (const p of PERIODS) {
+      storeMaps[p] = {
+        total: new Map(),
+        campaign: new Map(),
+        flow: new Map(),
+        rate: new Map(),
+      }
+    }
+
     for (const row of rows) {
       if (!byPeriod[row.period_label]) continue
 
@@ -50,10 +72,16 @@ export async function GET(request: NextRequest) {
       byPeriod[row.period_label].campaign += campBRL
       byPeriod[row.period_label].flow += flowBRL
 
+      const maps = storeMaps[row.period_label]
+      maps.total.set(row.store_id, (maps.total.get(row.store_id) ?? 0) + totalBRL)
+      maps.campaign.set(row.store_id, (maps.campaign.get(row.store_id) ?? 0) + campBRL)
+      maps.flow.set(row.store_id, (maps.flow.get(row.store_id) ?? 0) + flowBRL)
+
       if (row.total_revenue > 0) {
         const attributed = row.campaign_revenue + row.flow_revenue
         const rate = row.total_revenue > 0 ? (attributed / row.total_revenue) * 100 : 0
         byPeriod[row.period_label].rates.push(rate)
+        maps.rate.set(row.store_id, rate)
       }
     }
 
@@ -65,31 +93,30 @@ export async function GET(request: NextRequest) {
       return rates.length > 0 ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0
     })
 
-    const current = byPeriod[selectedPeriod] || byPeriod["30d"]
     const currentDays = PERIOD_DAYS[selectedPeriod] || 30
-    const ref = byPeriod["90d"]
+    const currentMaps = storeMaps[selectedPeriod] || storeMaps["30d"]
+    const refMaps = storeMaps["90d"]
     const refDays = 90
 
-    function calcDelta(currentValue: number, cDays: number, refValue: number, rDays: number): number {
-      const avgCurrent = cDays > 0 ? currentValue / cDays : 0
-      const avgRef = rDays > 0 ? refValue / rDays : 0
-      if (avgRef === 0) return 0
-      return Math.round(((avgCurrent - avgRef) / avgRef) * 1000) / 10
-    }
+    // Delta calculado APENAS sobre a interseção de lojas presentes nas
+    // duas janelas — antes, a janela 90d desatualizada (ex.: 28 lojas
+    // vs 60 no 30d) subestimava a referência e produzia deltas absurdos
+    // (+3763%). value null = referência incompleta → UI mostra "—".
+    const deltaTotal = computeIntersectionDelta(
+      currentMaps.total, currentDays, refMaps.total, refDays,
+    )
+    const deltaCampaign = computeIntersectionDelta(
+      currentMaps.campaign, currentDays, refMaps.campaign, refDays,
+    )
+    const deltaFlow = computeIntersectionDelta(
+      currentMaps.flow, currentDays, refMaps.flow, refDays,
+    )
+    const deltaRate = computeIntersectionRateDelta(currentMaps.rate, refMaps.rate)
 
-    const deltaTotal = calcDelta(current.total, currentDays, ref.total, refDays)
-    const deltaCampaign = calcDelta(current.campaign, currentDays, ref.campaign, refDays)
-    const deltaFlow = calcDelta(current.flow, currentDays, ref.flow, refDays)
-
-    const currentRateAvg = current.rates.length > 0
-      ? current.rates.reduce((a, b) => a + b, 0) / current.rates.length
-      : 0
-    const refRateAvg = ref.rates.length > 0
-      ? ref.rates.reduce((a, b) => a + b, 0) / ref.rates.length
-      : 0
-    const deltaRate = refRateAvg > 0
-      ? Math.round(((currentRateAvg - refRateAvg) / refRateAvg) * 1000) / 10
-      : 0
+    const deltaLabel = (d: { value: number | null; stores: number }) =>
+      d.value === null
+        ? "referência 90d incompleta"
+        : `vs média 90d (${d.stores} lojas)`
 
     return successResponse(request, {
       period: selectedPeriod,
@@ -100,10 +127,10 @@ export async function GET(request: NextRequest) {
         rate: sparkRate,
       },
       deltas: {
-        total: { value: deltaTotal, label: "vs média 90d" },
-        campaign: { value: deltaCampaign, label: "vs média 90d" },
-        flow: { value: deltaFlow, label: "vs média 90d" },
-        rate: { value: deltaRate, label: "vs média 90d" },
+        total: { value: deltaTotal.value, label: deltaLabel(deltaTotal) },
+        campaign: { value: deltaCampaign.value, label: deltaLabel(deltaCampaign) },
+        flow: { value: deltaFlow.value, label: deltaLabel(deltaFlow) },
+        rate: { value: deltaRate.value, label: deltaLabel(deltaRate) },
       },
     })
   } catch (error) {

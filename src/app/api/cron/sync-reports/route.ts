@@ -29,6 +29,7 @@ import {
   type CampaignNameInfo,
 } from "@/lib/services/klaviyo-sync.service"
 import { upsertSyncResults, upsertAudiences } from "@/lib/services/sync-persistence.service"
+import { orderPeriodsByStaleness } from "@/lib/services/sync-period-order"
 
 const log = logger.child("CronSyncReports")
 
@@ -323,7 +324,11 @@ async function syncStore(
   const results: CronSyncResult[] = []
 
   // Story 55.1: filter out fresh periods
-  const { toSync, skipped } = filterFreshPeriods(periods, freshness ?? new Map(), Date.now())
+  const { toSync: toSyncUnordered, skipped } = filterFreshPeriods(periods, freshness ?? new Map(), Date.now())
+  // Anti-starvation: períodos mais famintos primeiro (90d/12m com semanas
+  // de atraso furam a fila do 30d recém-vencido) — quando o orçamento XS
+  // acaba no meio, quem sobra é o menos atrasado, não sempre os longos.
+  const toSync = orderPeriodsByStaleness(toSyncUnordered, freshness ?? new Map(), Date.now())
   if (skipped.length > 0) {
     log.info(`[Cron] ${store.store_name}: syncing ${toSync.length}/${periods.length} periods (skipped ${skipped.join(", ")})`)
     // Add skipped results

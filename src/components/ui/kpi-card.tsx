@@ -18,8 +18,9 @@ interface KpiCardProps {
   value: string
   /** Delta de variação */
   delta?: {
-    /** Valor numérico da variação (ex: 16.4, -3.2, 0) */
-    value: number
+    /** Valor numérico da variação (ex: 16.4, -3.2, 0). `null` = referência
+     *  indisponível/incompleta — renderiza "—" em vez de um % enganoso. */
+    value: number | null
     /** Label opcional (ex: "vs mês anterior") */
     label?: string
   }
@@ -196,8 +197,24 @@ export function KpiCard({ label, value, delta, sparkData, variant = 'default', l
       {/* Delta + Sparkline */}
       {(delta || (sparkData && sparkData.length > 1)) && (
         <div className="flex items-end justify-between mt-3 gap-4">
-          {/* Delta (left) */}
-          {delta && (
+          {/* Delta (left) — value null = referência 90d incompleta */}
+          {delta && delta.value === null && (
+            <div className="flex flex-col">
+              <span className={cn(
+                'text-[13px] font-medium font-mono',
+                isGradient ? 'text-white/60' : 'text-gray-400 dark:text-[#5C6378]',
+              )}>
+                —
+              </span>
+              <span className={cn(
+                'text-[11px] mt-0.5',
+                isGradient ? 'text-white/50' : 'text-gray-400 dark:text-[#5C6378]',
+              )}>
+                {delta.label ?? 'sem referência'}
+              </span>
+            </div>
+          )}
+          {delta && delta.value !== null && (
             <div className="flex flex-col">
               <div className="flex items-center gap-1">
                 {delta.value > 0 && (
