@@ -1,6 +1,5 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { Menu, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -14,10 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useSidebarStore } from "@/hooks/use-sidebar"
-import { useAuthStore } from "@/lib/store"
-import { notificationService } from "@/lib/services"
 import { ROUTES } from "@/lib/routes"
 import { useSettingsModalSafe } from "@/components/settings/settings-modal"
+import { useUnifiedNotifications } from "@/hooks/use-unified-notifications"
 
 interface MobileTopBarProps {
   user?: {
@@ -38,25 +36,10 @@ function getInitials(name: string) {
 
 export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
   const { openMobile } = useSidebarStore()
-  const { user } = useAuthStore()
-  const [unreadCount, setUnreadCount] = useState(0)
   const settingsModal = useSettingsModalSafe()
-
-  const fetchCount = useCallback(async () => {
-    if (!user?.id) return
-    try {
-      const count = await notificationService.getUnreadCount(user.id)
-      setUnreadCount(count)
-    } catch {
-      // silent
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    fetchCount()
-    const interval = setInterval(fetchCount, 30000)
-    return () => clearInterval(interval)
-  }, [fetchCount])
+  // Badge unificado (sino + relatórios) com realtime — substitui o
+  // setInterval de 30s + notificationService direto que só via o sino.
+  const { unreadTotal: unreadCount } = useUnifiedNotifications()
 
   return (
     <header

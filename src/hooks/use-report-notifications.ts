@@ -5,6 +5,10 @@ import useSWR from "swr"
 import { apiFetcher } from "@/lib/hooks/use-api-data"
 import type { ReportJob, ReportJobStatus } from "@/types/report"
 import { toast } from "@/lib/hooks/use-toast"
+import {
+  countReportUnread,
+  REPORT_ACTIVE_STATUSES,
+} from "@/lib/notifications/unread-math"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,8 +36,9 @@ export interface UseReportNotificationsResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ACTIVE_STATUSES: ReportJobStatus[] = ["queued", "processing", "paused"]
-const UNREAD_TERMINAL_STATUSES: ReportJobStatus[] = ["completed", "partial", "failed"]
+// Regra de contagem centralizada em src/lib/notifications/unread-math.ts
+// (mesma matemática do badge unificado — ver useUnifiedNotifications).
+const ACTIVE_STATUSES: ReportJobStatus[] = REPORT_ACTIVE_STATUSES
 const POLL_ACTIVE_MS = 5_000
 const POLL_IDLE_MS = 30_000
 
@@ -69,13 +74,7 @@ export function useReportNotifications(): UseReportNotificationsResult {
     [jobs]
   )
 
-  const unreadCount = useMemo(() => {
-    const unreadTerminal = jobs.filter(
-      (j) => UNREAD_TERMINAL_STATUSES.includes(j.status) && !j.viewed_at
-    ).length
-    const activeCount = jobs.filter((j) => ACTIVE_STATUSES.includes(j.status)).length
-    return unreadTerminal + activeCount
-  }, [jobs])
+  const unreadCount = useMemo(() => countReportUnread(jobs), [jobs])
 
   // ── Detect status transitions and fire toasts ─────────────────────────
   function detectTransitions(currentJobs: ReportJob[]) {

@@ -32,7 +32,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
-import { useReportNotifications } from "@/hooks/use-report-notifications"
+import { useUnifiedNotifications } from "@/hooks/use-unified-notifications"
 import { useSettingsModalSafe } from "@/components/settings/settings-modal"
 
 interface SidebarUserProps {
@@ -57,7 +57,9 @@ export function SidebarUser({ user, collapsed = false }: SidebarUserProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const { unreadCount: notificationsUnread } = useReportNotifications()
+  // Badge unificado: sino (notifications) + relatórios não vistos —
+  // antes contava SÓ report_jobs e divergia do sino mobile.
+  const { unreadTotal: notificationsUnread } = useUnifiedNotifications()
   const settingsModal = useSettingsModalSafe()
 
   async function handleLogout() {

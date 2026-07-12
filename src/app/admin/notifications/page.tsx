@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import {
   Bell,
   BellOff,
@@ -26,6 +27,8 @@ import { notificationService, type Notification } from "@/lib/services"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { ROUTES } from "@/lib/routes"
+import { useUnifiedNotifications } from "@/hooks/use-unified-notifications"
 import type { LucideIcon } from "lucide-react"
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -76,22 +79,31 @@ export default function NotificationsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<NotifFilter>("all")
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (silent = false) => {
     if (!user?.id) return
-    setIsLoading(true)
+    if (!silent) setIsLoading(true)
     try {
       const data = await notificationService.getAll(user.id, 100)
       setNotifications(data)
     } catch {
-      toast({ variant: "destructive", title: "Erro ao carregar notificações" })
+      if (!silent) {
+        toast({ variant: "destructive", title: "Erro ao carregar notificações" })
+      }
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
   }, [user?.id])
 
   useEffect(() => {
     fetchNotifications()
   }, [fetchNotifications])
+
+  // Realtime + relatórios: o mesmo canal do badge recarrega a lista
+  // quando chega/atualiza notificação (silencioso — sem flicker de
+  // loading); reportsUnread alimenta o aviso de relatórios não vistos.
+  const { reportsUnread } = useUnifiedNotifications({
+    onNotificationsChange: () => fetchNotifications(true),
+  })
 
   const unreadCount = notifications.filter((n) => !n.read).length
 
@@ -168,6 +180,21 @@ export default function NotificationsPage() {
           <SegmentedTabItem value="read">Lidas</SegmentedTabItem>
         </SegmentedTabs>
       </PageHeader>
+
+      {/* Contexto de relatórios: o badge soma sino + relatórios; esta
+          linha explica a diferença quando há relatórios não vistos. */}
+      {reportsUnread > 0 && (
+        <Link
+          href={ROUTES.ADMIN.REPORTS.LIST}
+          className="flex items-center gap-2 rounded-[6px] border border-blue-200 bg-blue-50 px-3 py-2 text-[13px] text-blue-700 hover:bg-blue-100 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/15 transition-colors"
+        >
+          <Icon icon={FileBarChart} customSize={15} />
+          {reportsUnread === 1
+            ? "1 relatório em andamento ou pronto para visualizar"
+            : `${reportsUnread} relatórios em andamento ou prontos para visualizar`}
+          <span className="ml-auto underline underline-offset-2">Ver relatórios</span>
+        </Link>
+      )}
 
       {/* List */}
       {isLoading ? (
