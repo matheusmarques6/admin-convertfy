@@ -104,15 +104,26 @@ export function resolveEvolutionRuntimeConfig(
 const PREVIOUS_SECRET_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /**
- * Monta o novo value da row após um PUT. Quando webhookSecretEnc vem e
- * difere do atual, o secret atual vira previous_webhook_secret_enc com
- * janela de 24h. Sempre stampa updated_at/updated_by.
+ * Monta o novo value da row após um PUT.
+ *
+ * IMPORTANTE (achados de revisão): a decisão de que o secret MUDOU é do
+ * CALLER, por comparação de PLAINTEXT — ciphertext AES-GCM tem IV
+ * aleatório e nunca repete, então comparar enc vs enc aqui seria sempre
+ * "diferente". O caller só passa `updates.webhookSecretEnc` quando o
+ * secret realmente mudou; re-submeter o mesmo secret NÃO toca em
+ * previous_* (preserva uma janela de rotação em andamento).
+ *
+ * `rotation.previousSecretEnc` é o secret EFETIVO anterior cifrado —
+ * inclusive quando ele vinha da ENV (primeira migração env→db também
+ * ganha janela de graça de 24h; sem isso o secret da env morreria na
+ * hora e canais com rewire falho quebrariam imediatamente).
  */
 export function buildRotatedValue(
   current: EvolutionSettingsValue | null,
   updates: { apiKeyEnc?: string; apiKeyLast4?: string; webhookSecretEnc?: string },
   nowIso: string,
   userId: string,
+  rotation?: { previousSecretEnc: string | null },
 ): EvolutionSettingsValue {
   const next: EvolutionSettingsValue = { ...(current ?? {}) }
 
@@ -121,9 +132,10 @@ export function buildRotatedValue(
     if (updates.apiKeyLast4) next.api_key_last4 = updates.apiKeyLast4
   }
 
-  if (updates.webhookSecretEnc && updates.webhookSecretEnc !== current?.webhook_secret_enc) {
-    if (current?.webhook_secret_enc) {
-      next.previous_webhook_secret_enc = current.webhook_secret_enc
+  if (updates.webhookSecretEnc) {
+    const previousEnc = rotation?.previousSecretEnc ?? current?.webhook_secret_enc ?? null
+    if (previousEnc) {
+      next.previous_webhook_secret_enc = previousEnc
       next.previous_secret_until = new Date(
         new Date(nowIso).getTime() + PREVIOUS_SECRET_WINDOW_MS,
       ).toISOString()

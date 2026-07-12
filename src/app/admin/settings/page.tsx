@@ -17,7 +17,9 @@ export default async function SettingsPage() {
 
   // Critério canônico de adminOnly (espelhado client-side em
   // canSeeSection): admin/super_admin de profile OU owner/admin da org.
+  // globalAdminOnly (infra do deploy) exige admin/super_admin de PROFILE.
   let isAdmin = false
+  let isProfileAdmin = false
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -27,6 +29,7 @@ export default async function SettingsPage() {
 
     if (profile?.role === "super_admin" || profile?.role === "admin") {
       isAdmin = true
+      isProfileAdmin = true
     } else {
       const { data: membership } = await supabase
         .from("org_members")
@@ -40,7 +43,7 @@ export default async function SettingsPage() {
   }
 
   const visibleSections = SETTINGS_SECTIONS.filter(
-    (s) => !s.adminOnly || isAdmin
+    (s) => (!s.adminOnly || isAdmin) && (!s.globalAdminOnly || isProfileAdmin)
   )
 
   return (

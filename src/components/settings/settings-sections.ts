@@ -45,6 +45,12 @@ export interface SettingsSectionMeta {
   /** Rota da página cheia (sempre existe — fallback/deep link). */
   href: string
   adminOnly?: boolean
+  /**
+   * Credenciais/infra GLOBAIS do deploy: exige admin/super_admin de
+   * PROFILE — org owner NÃO vê (a API correspondente também nega; o
+   * flag evita mostrar a seção e tomar 403 no load).
+   */
+  globalAdminOnly?: boolean
   kind: SettingsSectionKind
 }
 
@@ -159,6 +165,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     icon: QrCode,
     href: "/admin/settings/whatsapp-qr",
     adminOnly: true,
+    globalAdminOnly: true,
     kind: "component",
   },
   {
@@ -195,7 +202,9 @@ export function canSeeSection(
   section: SettingsSectionMeta,
   perms: { isAdmin: boolean; isOrgOwner?: boolean } | null,
 ): boolean {
-  if (!section.adminOnly) return true
+  if (!section.adminOnly && !section.globalAdminOnly) return true
   if (!perms) return false
+  // globalAdminOnly: infra do deploy — org owner não basta.
+  if (section.globalAdminOnly) return perms.isAdmin
   return perms.isAdmin || perms.isOrgOwner === true
 }

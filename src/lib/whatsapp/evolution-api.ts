@@ -17,21 +17,8 @@ import { sleep, withRetry } from "./backoff"
 
 const log = logger.child("EvolutionAPI")
 
-// ─── Env ──────────────────────────────────────────────────────────
-
-export interface EvolutionEnv {
-  baseUrl: string
-  apiKey: string
-  webhookSecret: string
-}
-
-export function getEvolutionEnv(): EvolutionEnv | null {
-  const baseUrl = process.env.EVOLUTION_API_URL?.replace(/\/+$/, "")
-  const apiKey = process.env.EVOLUTION_API_KEY
-  const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
-  if (!baseUrl || !apiKey || !webhookSecret) return null
-  return { baseUrl, apiKey, webhookSecret }
-}
+// A leitura de env/banco vive em evolution-settings.ts
+// (getEvolutionRuntimeConfig) — este módulo é só o client HTTP.
 
 // ─── Erro tipado ──────────────────────────────────────────────────
 

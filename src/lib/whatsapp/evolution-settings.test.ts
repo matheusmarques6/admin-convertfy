@@ -133,12 +133,45 @@ describe("buildRotatedValue", () => {
     expect(next.previous_secret_until).toBe("2026-07-10T00:00:00.000Z")
   })
 
-  it("mesmo ciphertext de secret não rotaciona, mas sempre stampa updated_*", () => {
-    const current: EvolutionSettingsValue = { webhook_secret_enc: "enc(same)" }
-    const next = buildRotatedValue(current, { webhookSecretEnc: "enc(same)" }, NOW, USER)
-    expect(next.previous_webhook_secret_enc).toBeUndefined()
+  it("secret igual (caller NÃO passa webhookSecretEnc) preserva rotação em andamento", () => {
+    // Ciphertext AES-GCM tem IV aleatório — a decisão "mudou?" é do
+    // caller, por plaintext. Re-submeter o mesmo secret NÃO pode renovar
+    // a janela nem sobrescrever o previous de uma rotação em curso.
+    const current: EvolutionSettingsValue = {
+      webhook_secret_enc: "enc(B)",
+      previous_webhook_secret_enc: "enc(A)",
+      previous_secret_until: "2026-07-13T00:00:00.000Z",
+    }
+    const next = buildRotatedValue(current, {}, NOW, USER)
+    expect(next.webhook_secret_enc).toBe("enc(B)")
+    expect(next.previous_webhook_secret_enc).toBe("enc(A)")
+    expect(next.previous_secret_until).toBe("2026-07-13T00:00:00.000Z")
     expect(next.updated_at).toBe(NOW)
     expect(next.updated_by).toBe(USER)
+  })
+
+  it("migração env→db: rotation.previousSecretEnc dá janela de graça ao secret da env", () => {
+    // Antes da feature o secret vinha só da env — a primeira gravação no
+    // banco precisa manter o secret da env válido por 24h (rewire falho
+    // não pode quebrar canais na hora).
+    const next = buildRotatedValue(
+      null,
+      { webhookSecretEnc: "enc(new)" },
+      NOW,
+      USER,
+      { previousSecretEnc: "enc(env-secret)" },
+    )
+    expect(next.webhook_secret_enc).toBe("enc(new)")
+    expect(next.previous_webhook_secret_enc).toBe("enc(env-secret)")
+    expect(next.previous_secret_until).toBe("2026-07-13T12:00:00.000Z")
+  })
+
+  it("rotation.previousSecretEnc null (nunca houve secret) não cria previous", () => {
+    const next = buildRotatedValue(null, { webhookSecretEnc: "enc(first)" }, NOW, USER, {
+      previousSecretEnc: null,
+    })
+    expect(next.previous_webhook_secret_enc).toBeUndefined()
+    expect(next.previous_secret_until).toBeUndefined()
   })
 })
 

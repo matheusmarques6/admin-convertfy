@@ -19,7 +19,11 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { enqueueWhatsAppWebhookEvent, isQStashConfigured } from "@/lib/whatsapp/queue"
 import { parseEvolutionEnvelope } from "@/lib/whatsapp/evolution-content"
-import { getEvolutionRuntimeConfig, isWebhookSecretValidFor } from "@/lib/whatsapp/evolution-settings"
+import {
+  clearEvolutionConfigCache,
+  getEvolutionRuntimeConfig,
+  isWebhookSecretValidFor,
+} from "@/lib/whatsapp/evolution-settings"
 import { applyConnectionUpdate, processEvolutionEvent } from "@/lib/whatsapp/evolution-processor"
 import { processClaimedEvent, type WebhookEventRow } from "@/lib/whatsapp/webhook-processor"
 
@@ -34,13 +38,22 @@ const QUEUED_EVENTS = new Set(["messages.upsert", "messages.update", "send.messa
 export async function POST(request: NextRequest, { params }: { params: Promise<{ secret: string }> }) {
   const { secret } = await params
   const admin = createAdminClient()
-  const cfg = await getEvolutionRuntimeConfig(admin)
-  const secretConfig = cfg ?? {
+
+  const envFallback = {
     webhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? null,
     previousWebhookSecret: null,
     previousSecretUntil: null,
   }
-  if (!isWebhookSecretValidFor(secret, secretConfig, new Date())) {
+  let cfg = await getEvolutionRuntimeConfig(admin)
+  let valid = isWebhookSecretValidFor(secret, cfg ?? envFallback, new Date())
+  if (!valid) {
+    // Pode ser cache stale (até 30s por lambda) logo após uma rotação de
+    // secret na rota admin — invalida e revalida UMA vez antes do 403.
+    clearEvolutionConfigCache()
+    cfg = await getEvolutionRuntimeConfig(admin)
+    valid = isWebhookSecretValidFor(secret, cfg ?? envFallback, new Date())
+  }
+  if (!valid) {
     log.error("secret de webhook inválido")
     return new NextResponse("Forbidden", { status: 403 })
   }

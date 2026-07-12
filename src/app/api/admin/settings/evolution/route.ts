@@ -36,6 +36,9 @@ const log = logger.child("EvolutionSettingsRoute")
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
+// PUT pode re-apontar o webhook de N canais em série (com retry do
+// client) — sem teto maior a função estoura antes de devolver o rewire.
+export const maxDuration = 60
 
 async function requireGlobalAdmin(
   admin: ReturnType<typeof createAdminClient>,
@@ -172,16 +175,23 @@ export async function PUT(request: NextRequest) {
     const secretChanged = Boolean(parsed.webhook_secret && parsed.webhook_secret !== currentSecret)
 
     const nowIso = new Date().toISOString()
+    // webhookSecretEnc só entra quando o secret MUDOU (comparação de
+    // plaintext acima) — re-submeter o mesmo secret não pode renovar a
+    // janela nem sobrescrever um previous de rotação em andamento. O
+    // previous cifrado cobre também o secret que vinha da ENV.
     const nextValue = buildRotatedValue(
       current,
       {
         ...(parsed.api_key
           ? { apiKeyEnc: encrypt(parsed.api_key), apiKeyLast4: maskLast4(parsed.api_key) }
           : {}),
-        ...(parsed.webhook_secret ? { webhookSecretEnc: encrypt(parsed.webhook_secret) } : {}),
+        ...(secretChanged && parsed.webhook_secret
+          ? { webhookSecretEnc: encrypt(parsed.webhook_secret) }
+          : {}),
       },
       nowIso,
       user.id,
+      { previousSecretEnc: currentSecret ? encrypt(currentSecret) : null },
     )
 
     const { error: upsertError } = await admin
