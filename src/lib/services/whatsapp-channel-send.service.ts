@@ -9,7 +9,9 @@
  */
 
 import { logger } from "@/lib/logger"
-import { createEvolutionClient, EvolutionAPIError, getEvolutionEnv } from "@/lib/whatsapp/evolution-api"
+import { createAdminClient } from "@/lib/supabase/server"
+import { createEvolutionClient, EvolutionAPIError } from "@/lib/whatsapp/evolution-api"
+import { getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { sendWhatsAppMessage, type SendResult } from "./whatsapp-cloud.service"
 
 const log = logger.child("WhatsAppChannelSend")
@@ -26,11 +28,12 @@ export async function sendTextViaChannel(
   body: string,
 ): Promise<SendResult> {
   if (channel.provider === "evolution") {
-    const env = getEvolutionEnv()
-    if (!env) {
+    const admin = createAdminClient()
+    const cfg = await getEvolutionRuntimeConfig(admin)
+    if (!cfg) {
       return {
         success: false,
-        error: { code: "config_missing", message: "Evolution não configurada no servidor (env ausente)" },
+        error: { code: "config_missing", message: "Evolution não configurada no servidor (env ou Configurações)" },
       }
     }
     const instanceName = channel.external_id
@@ -38,7 +41,7 @@ export async function sendTextViaChannel(
       return { success: false, error: { code: "config_missing", message: "Canal evolution sem instance_name" } }
     }
     try {
-      const client = createEvolutionClient({ baseUrl: env.baseUrl, apiKey: env.apiKey, instanceName })
+      const client = createEvolutionClient({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, instanceName })
       const sent = await client.sendText(to, body)
       return { success: true, message_id: sent.externalId }
     } catch (err) {

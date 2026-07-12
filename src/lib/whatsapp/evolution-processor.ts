@@ -16,7 +16,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
-import { createEvolutionClient, getEvolutionEnv, type EvolutionAPI } from "./evolution-api"
+import { createEvolutionClient, type EvolutionAPI } from "./evolution-api"
+import { getEvolutionRuntimeConfig } from "./evolution-settings"
 import {
   buildEvolutionMessageContent,
   extractConnectionUpdate,
@@ -133,7 +134,7 @@ async function handleEvolutionMessage(
   if (isMediaType) {
     let base64 = content.mediaBase64
     if (!base64) {
-      const client = getClientForChannel(instanceName)
+      const client = await getClientForChannel(admin, instanceName)
       if (client) {
         const fetched = await client.getBase64FromMediaMessage({ id: content.externalId })
         if (fetched) {
@@ -294,8 +295,8 @@ export async function applyConnectionUpdate(
   return true
 }
 
-function getClientForChannel(instanceName: string): EvolutionAPI | null {
-  const env = getEvolutionEnv()
-  if (!env) return null
-  return createEvolutionClient({ baseUrl: env.baseUrl, apiKey: env.apiKey, instanceName })
+async function getClientForChannel(admin: SupabaseClient, instanceName: string): Promise<EvolutionAPI | null> {
+  const cfg = await getEvolutionRuntimeConfig(admin)
+  if (!cfg) return null
+  return createEvolutionClient({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, instanceName })
 }

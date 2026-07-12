@@ -63,6 +63,31 @@ export class EvolutionAPIError extends Error {
   }
 }
 
+/**
+ * Prova real de uma API key global contra o servidor Evolution:
+ * GET /instance/fetchInstances com o header apikey, SEM retry.
+ * 2xx → { ok: true }; 401/403 → { ok: false } (key inválida);
+ * qualquer outra resposta/erro de rede → EvolutionAPIError
+ * ("Evolution inacessível" — o caller mapeia pra 502).
+ */
+export async function verifyEvolutionApiKey(baseUrl: string, apiKey: string): Promise<{ ok: boolean }> {
+  const url = `${baseUrl.replace(/\/+$/, "")}/instance/fetchInstances`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: { apikey: apiKey },
+      cache: "no-store",
+    })
+  } catch (error) {
+    throw new EvolutionAPIError(
+      `Evolution inacessível: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (response.ok) return { ok: true }
+  if (response.status === 401 || response.status === 403) return { ok: false }
+  throw new EvolutionAPIError(`Evolution inacessível (${response.status})`, response.status)
+}
+
 // ─── Parsers puros (variações de build da v2) ─────────────────────
 
 export interface CreateInstanceResult {

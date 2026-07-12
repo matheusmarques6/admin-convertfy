@@ -13,7 +13,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
 import { loadWhatsAppChannel, type LoadedWhatsAppChannel, type WhatsAppChannelRow } from "./channel-config"
-import { createEvolutionClient, getEvolutionEnv, type EvolutionAPI } from "./evolution-api"
+import { createEvolutionClient, type EvolutionAPI } from "./evolution-api"
+import { getEvolutionRuntimeConfig } from "./evolution-settings"
 
 const log = logger.child("WhatsAppChannelClient")
 
@@ -59,9 +60,9 @@ export async function loadChannelClient(
   const channel = data as WhatsAppChannelRow
 
   if (channel.provider === "evolution") {
-    const env = getEvolutionEnv()
-    if (!env) {
-      log.warn("EVOLUTION_API_URL/API_KEY/WEBHOOK_SECRET ausentes — canal evolution indisponível", {
+    const cfg = await getEvolutionRuntimeConfig(admin)
+    if (!cfg) {
+      log.warn("Evolution não configurada (env ou Configurações) — canal evolution indisponível", {
         channelId: channel.id,
       })
       return null
@@ -73,8 +74,8 @@ export async function loadChannelClient(
       instanceName: channel.external_id,
       connectionState: typeof config.connection_state === "string" ? config.connection_state : "unknown",
       client: createEvolutionClient({
-        baseUrl: env.baseUrl,
-        apiKey: env.apiKey,
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
         instanceName: channel.external_id,
       }),
     }

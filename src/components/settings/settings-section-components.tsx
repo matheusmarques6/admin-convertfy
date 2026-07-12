@@ -56,6 +56,10 @@ export const SETTINGS_SECTION_COMPONENTS: Record<string, ComponentType> = {
     () => import("./sections/implementation").then((m) => ({ default: m.ImplementationSection })),
     { ssr: false, loading },
   ),
+  "whatsapp-qr": dynamic(
+    () => import("./sections/whatsapp-qr").then((m) => ({ default: m.WhatsAppQrSection })),
+    { ssr: false, loading },
+  ),
   "custom-fields": dynamic(
     () => import("./sections/custom-fields").then((m) => ({ default: m.CustomFieldsSection })),
     { ssr: false, loading },

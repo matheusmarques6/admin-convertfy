@@ -30,6 +30,7 @@ import {
   Send,
   LifeBuoy,
   ListChecks,
+  QrCode,
   type LucideIcon,
 } from "lucide-react"
 
@@ -148,6 +149,15 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     description: "Gatilho, público, evento e UTM por flow (Modo Implementação)",
     icon: Send,
     href: "/admin/settings/implementation",
+    adminOnly: true,
+    kind: "component",
+  },
+  {
+    key: "whatsapp-qr",
+    title: "WhatsApp QR (Evolution)",
+    description: "Servidor não-oficial: API key e secret do webhook",
+    icon: QrCode,
+    href: "/admin/settings/whatsapp-qr",
     adminOnly: true,
     kind: "component",
   },

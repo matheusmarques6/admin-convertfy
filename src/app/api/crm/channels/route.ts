@@ -21,7 +21,8 @@ import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api
 import { logger } from "@/lib/logger"
 import { encrypt } from "@/lib/crypto"
 import { appUrl } from "@/lib/whatsapp/queue"
-import { createEvolutionClient, getEvolutionEnv } from "@/lib/whatsapp/evolution-api"
+import { createEvolutionClient } from "@/lib/whatsapp/evolution-api"
+import { getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { buildInstanceName } from "@/lib/whatsapp/evolution-content"
 
 const log = logger.child("CrmChannels")
@@ -115,10 +116,10 @@ export async function POST(request: NextRequest) {
 
     // ── Evolution (WhatsApp via QR): cria instância + webhook + canal ──
     if (parsed.type === "whatsapp" && parsed.provider === "evolution") {
-      const env = getEvolutionEnv()
-      if (!env) {
+      const cfg = await getEvolutionRuntimeConfig(admin)
+      if (!cfg) {
         throw new AppError(
-          "Evolution não configurada no servidor (EVOLUTION_API_URL/API_KEY/WEBHOOK_SECRET)",
+          "Evolution não configurada no servidor (env EVOLUTION_API_URL + key/secret em Configurações ou env)",
           422,
           "evolution-env",
         )
@@ -129,11 +130,11 @@ export async function POST(request: NextRequest) {
       }
 
       const instanceName = buildInstanceName(orgId)
-      const client = createEvolutionClient({ baseUrl: env.baseUrl, apiKey: env.apiKey, instanceName })
+      const client = createEvolutionClient({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, instanceName })
 
       const created = await client.createInstance()
       try {
-        await client.setWebhook(`${base}/api/webhooks/evolution/${env.webhookSecret}`)
+        await client.setWebhook(`${base}/api/webhooks/evolution/${cfg.webhookSecret}`)
       } catch (err) {
         // Sem webhook a integração não funciona — desfaz a instância.
         await client.deleteInstance().catch(() => {})

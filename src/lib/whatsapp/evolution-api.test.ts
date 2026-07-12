@@ -7,6 +7,7 @@ import {
   parseCreateInstanceResponse,
   parseSendResponse,
   sendJitterMs,
+  verifyEvolutionApiKey,
 } from "./evolution-api"
 
 // ─── Parsers puros (variações de build) ───────────────────────────
@@ -172,4 +173,49 @@ describe("EvolutionAPI client", () => {
 
     await expect(makeClient().sendText("5531999999999", "oi", 0)).rejects.toBeInstanceOf(EvolutionAPIError)
   }, 10_000)
+})
+
+// ─── verifyEvolutionApiKey (prova real, sem retry) ────────────────
+
+describe("verifyEvolutionApiKey", () => {
+  it("200 → ok:true, GET fetchInstances com header apikey", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, []))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const r = await verifyEvolutionApiKey("https://evo.test/", "candidate-key")
+
+    expect(r).toEqual({ ok: true })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://evo.test/instance/fetchInstances")
+    expect((init.headers as Record<string, string>).apikey).toBe("candidate-key")
+  })
+
+  it("401 → ok:false (key inválida), sem retry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { message: "Unauthorized" }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(verifyEvolutionApiKey("https://evo.test", "bad")).resolves.toEqual({ ok: false })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("403 → ok:false", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(403, {})))
+    await expect(verifyEvolutionApiKey("https://evo.test", "bad")).resolves.toEqual({ ok: false })
+  })
+
+  it("500 → lança EvolutionAPIError 'Evolution inacessível' (sem retry)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(500, { message: "boom" }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(verifyEvolutionApiKey("https://evo.test", "k")).rejects.toSatisfy((e: unknown) => {
+      return e instanceof EvolutionAPIError && e.status === 500 && e.message.includes("Evolution inacessível")
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("erro de rede → lança EvolutionAPIError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")))
+    await expect(verifyEvolutionApiKey("https://evo.test", "k")).rejects.toBeInstanceOf(EvolutionAPIError)
+  })
 })

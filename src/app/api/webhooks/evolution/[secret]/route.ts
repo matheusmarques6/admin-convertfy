@@ -2,7 +2,8 @@
  * Evolution API webhook receiver (fila durável, mesma do Cloud API).
  *
  * A Evolution NÃO assina payloads — a autenticação é o secret no path
- * (EVOLUTION_WEBHOOK_SECRET, comparação timing-safe). Roteamento:
+ * (secret do banco/env via getEvolutionRuntimeConfig, comparação
+ * timing-safe; o secret anterior vale por 24h após rotação). Roteamento:
  *  - connection.update → inline (barato: update no config do canal)
  *  - qrcode.updated e demais → ignorado (o modal de QR usa polling REST)
  *  - messages.upsert / messages.update / send.message → persiste em
@@ -17,7 +18,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { enqueueWhatsAppWebhookEvent, isQStashConfigured } from "@/lib/whatsapp/queue"
-import { isValidWebhookSecret, parseEvolutionEnvelope } from "@/lib/whatsapp/evolution-content"
+import { parseEvolutionEnvelope } from "@/lib/whatsapp/evolution-content"
+import { getEvolutionRuntimeConfig, isWebhookSecretValidFor } from "@/lib/whatsapp/evolution-settings"
 import { applyConnectionUpdate, processEvolutionEvent } from "@/lib/whatsapp/evolution-processor"
 import { processClaimedEvent, type WebhookEventRow } from "@/lib/whatsapp/webhook-processor"
 
@@ -31,7 +33,14 @@ const QUEUED_EVENTS = new Set(["messages.upsert", "messages.update", "send.messa
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ secret: string }> }) {
   const { secret } = await params
-  if (!isValidWebhookSecret(secret, process.env.EVOLUTION_WEBHOOK_SECRET)) {
+  const admin = createAdminClient()
+  const cfg = await getEvolutionRuntimeConfig(admin)
+  const secretConfig = cfg ?? {
+    webhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? null,
+    previousWebhookSecret: null,
+    previousSecretUntil: null,
+  }
+  if (!isWebhookSecretValidFor(secret, secretConfig, new Date())) {
     log.error("secret de webhook inválido")
     return new NextResponse("Forbidden", { status: 403 })
   }
@@ -48,8 +57,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     log.warn("payload sem envelope event/instance/data")
     return NextResponse.json({ ignored: true })
   }
-
-  const admin = createAdminClient()
 
   // connection.update é barato e sensível a latência (modal de QR):
   // aplica inline, sem passar pela fila.
