@@ -9,7 +9,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
-import { sendWhatsAppMessage } from "@/lib/services/whatsapp-cloud.service"
+import { sendTextViaChannel } from "@/lib/services/whatsapp-channel-send.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingWhatsApp")
@@ -141,34 +141,22 @@ export async function sendColumnWhatsApp(params: {
       buildVars(onb, client, store, baseUrl, deliverables ?? []),
     )
 
-    // Canal WhatsApp default da org (primeiro ativo)
+    // Canal WhatsApp default da org (primeiro ativo — cloud OU evolution)
     const { data: channel } = await admin
       .from("crm_channels")
-      .select("id, config, external_id")
+      .select("id, provider, config, external_id")
       .eq("org_id", onb.org_id)
       .eq("type", "whatsapp")
       .eq("is_active", true)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle()
-    if (!channel?.config) return { ok: false, reason: "no_channel" }
+    if (!channel) return { ok: false, reason: "no_channel" }
 
-    const config = channel.config as {
-      phone_number_id?: string
-      access_token?: string
-      business_account_id?: string
-    }
-    if (!config.phone_number_id || !config.access_token)
+    const result = await sendTextViaChannel(channel, phone, body)
+    if (result.error?.code === "config_missing") {
       return { ok: false, reason: "channel_missing_creds" }
-
-    const result = await sendWhatsAppMessage(
-      {
-        phone_number_id: config.phone_number_id,
-        access_token: config.access_token,
-        business_account_id: config.business_account_id,
-      },
-      { to: phone, type: "text", text: { body } },
-    )
+    }
 
     if (!result.success) {
       log.error("send failed", { onb: onb.id, err: result.error })

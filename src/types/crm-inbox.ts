@@ -18,7 +18,7 @@ export interface ThreadSummary {
   is_window_open?: boolean | null
   window_expires_at?: string | null
   assignee?: { id: string; name: string; avatar_url: string | null } | null
-  channel?: { id: string; type: string; display_name: string } | null
+  channel?: { id: string; type: string; provider?: string | null; display_name: string } | null
 }
 
 export interface InboxMessage {
@@ -53,7 +53,7 @@ export interface ThreadDetail {
     channel_id: string
     is_window_open?: boolean | null
     window_expires_at?: string | null
-    channel?: { id: string; type: string; display_name: string }
+    channel?: { id: string; type: string; provider?: string | null; display_name: string }
     assignee?: { id: string; name: string; avatar_url: string | null } | null
   }
   messages: InboxMessage[]

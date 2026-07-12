@@ -10,7 +10,8 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { loadWhatsAppChannel } from "@/lib/whatsapp/channel-config"
+import { loadChannelClient } from "@/lib/whatsapp/channel-client"
+import { phoneToJid } from "@/lib/whatsapp/evolution-content"
 
 const log = logger.child("CrmInboxRead")
 
@@ -26,21 +27,27 @@ export async function POST(
     await requireAuth(sb)
     const admin = createAdminClient()
 
+    type ThreadRow = {
+      id: string
+      channel_id: string
+      contact_external_id: string
+      channel: { type: string } | Array<{ type: string }> | null
+    }
     const { data: thread } = await admin
       .from("crm_threads")
-      .select("id, channel_id, channel:crm_channels (type)")
+      .select("id, channel_id, contact_external_id, channel:crm_channels (type)")
       .eq("id", id)
-      .maybeSingle<{ id: string; channel_id: string; channel: { type: string } | Array<{ type: string }> | null }>()
+      .maybeSingle<ThreadRow>()
 
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", id)
 
-    // Read receipt best-effort (só WhatsApp)
+    // Read receipt best-effort (só WhatsApp — cloud OU evolution)
     const channelType = Array.isArray(thread?.channel) ? thread?.channel[0]?.type : thread?.channel?.type
     if (thread && channelType === "whatsapp") {
       try {
         const { data: lastInbound } = await admin
           .from("crm_messages")
-          .select("external_id")
+          .select("external_id, metadata")
           .eq("thread_id", id)
           .eq("direction", "inbound")
           .not("external_id", "is", null)
@@ -49,13 +56,23 @@ export async function POST(
           .maybeSingle()
 
         if (lastInbound?.external_id) {
-          const loaded = await loadWhatsAppChannel(admin, { channelId: thread.channel_id })
-          if (loaded) {
-            await loaded.client.markAsRead(lastInbound.external_id)
+          const loaded = await loadChannelClient(admin, { channelId: thread.channel_id })
+          if (loaded?.provider === "evolution") {
+            const rawKey = (lastInbound.metadata as { evolution_key?: { remoteJid?: string } } | null)
+              ?.evolution_key
+            await loaded.client.markAsRead([
+              {
+                id: lastInbound.external_id,
+                remoteJid: rawKey?.remoteJid ?? phoneToJid(thread.contact_external_id),
+                fromMe: false,
+              },
+            ])
+          } else if (loaded?.provider === "whatsapp_cloud") {
+            await loaded.cloud.client.markAsRead(lastInbound.external_id)
           }
         }
       } catch (err) {
-        log.warn("markAsRead na Meta falhou (best-effort)", {
+        log.warn("markAsRead no provider falhou (best-effort)", {
           threadId: id,
           message: err instanceof Error ? err.message : String(err),
         })

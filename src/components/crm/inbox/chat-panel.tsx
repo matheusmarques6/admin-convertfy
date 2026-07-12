@@ -25,6 +25,10 @@ interface ChatPanelProps {
 export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatPanelProps) {
   const thread = detail.thread
   const isWhatsApp = thread.channel?.type === "whatsapp"
+  const isEvolution = thread.channel?.provider === "evolution"
+  // Janela de 24h e templates são exclusivos do WhatsApp OFICIAL
+  // (Cloud API) — Evolution/Baileys é free-form sempre.
+  const isCloudWhatsApp = isWhatsApp && !isEvolution
   const windowOpen = windowIsOpen(thread.is_window_open, thread.window_expires_at)
 
   const [templatesOpen, setTemplatesOpen] = useState(false)
@@ -199,6 +203,25 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
               {thread.contact_external_id}
             </span>
           )}
+          {isWhatsApp && (
+            <span
+              className="hidden sm:inline shrink-0"
+              title={isEvolution ? "WhatsApp via QR (não-oficial)" : "WhatsApp Oficial (Cloud API)"}
+              style={{
+                fontSize: "10px",
+                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--crm-gray-600)",
+                background: "var(--crm-gray-100)",
+                border: "1px solid var(--crm-gray-200)",
+                borderRadius: "var(--crm-radius-sm)",
+                padding: "1px 6px",
+              }}
+            >
+              {isEvolution ? "QR" : "Oficial"}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <AssignDropdown
@@ -224,8 +247,8 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
         </div>
       </div>
 
-      {/* Janela de 24h (só WhatsApp) */}
-      {isWhatsApp && (
+      {/* Janela de 24h (só WhatsApp OFICIAL — Evolution não tem janela) */}
+      {isCloudWhatsApp && (
         <ServiceWindowBar
           isWindowOpen={thread.is_window_open}
           windowExpiresAt={thread.window_expires_at}
@@ -277,11 +300,13 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Composer */}
+      {/* Composer — evolution mantém anexo/áudio, mas nunca bloqueia por
+          janela e não oferece template (exclusivos do cloud oficial) */}
       <Composer
         disabled={false}
-        windowClosed={!windowOpen}
+        windowClosed={Boolean(isCloudWhatsApp) && !windowOpen}
         isWhatsApp={Boolean(isWhatsApp)}
+        supportsTemplates={Boolean(isCloudWhatsApp)}
         onSendText={sendText}
         onSendMedia={sendMedia}
         onOpenTemplates={() => setTemplatesOpen(true)}

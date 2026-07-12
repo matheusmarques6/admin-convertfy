@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       raw_payload: payload,
       signature,
     })
-    .select("id, raw_payload, attempts, max_attempts")
+    .select("id, source, raw_payload, attempts, max_attempts")
     .single()
 
   if (insertError || !event) {

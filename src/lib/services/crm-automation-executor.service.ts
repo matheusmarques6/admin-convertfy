@@ -18,7 +18,7 @@ import type {
   CrmAutomationNode,
   CrmNodeRunResult,
 } from "@/types/crm-automation"
-import { sendWhatsAppMessage } from "./whatsapp-cloud.service"
+import { sendTextViaChannel } from "./whatsapp-channel-send.service"
 import { runAiAction } from "./crm-ai-action.service"
 
 const log = logger.child("CrmAutomationExecutor")
@@ -324,24 +324,33 @@ async function executeNode(
         if (!toResolved) throw new Error("Destinatario vazio")
 
         type ChannelRow = {
-          config: Record<string, string | undefined> | null
+          provider: string | null
+          config: Record<string, unknown> | null
           external_id: string | null
         }
         const { data: channel } = await admin
           .from("crm_channels")
-          .select("config, external_id")
+          .select("provider, config, external_id")
           .eq("id", cfg.channel_id)
           .single<ChannelRow>()
         if (!channel) throw new Error(`Channel ${cfg.channel_id} nao encontrado`)
 
-        const conf = channel.config || {}
         const body = renderTemplate(cfg.body_template, ctx)
-        const result = await sendWhatsAppMessage(
-          {
-            phone_number_id: channel.external_id || conf.phone_number_id || "",
-            access_token: conf.access_token || "",
-          },
-          { to: toResolved, type: "text", text: { body } },
+        // Dispatch por provider (Cloud API oficial OU Evolution via QR).
+        // O adapter cloud usa external_id como phone_number_id fallback.
+        const result = await sendTextViaChannel(
+          channel.provider === "evolution"
+            ? channel
+            : {
+                ...channel,
+                config: {
+                  ...(channel.config ?? {}),
+                  // comportamento original: external_id (phone_number_id) tem precedência
+                  ...(channel.external_id ? { phone_number_id: channel.external_id } : {}),
+                },
+              },
+          toResolved,
+          body,
         )
         if (!result.success) throw new Error(result.error?.message || "Falha no WhatsApp")
         output = { message_id: result.message_id }

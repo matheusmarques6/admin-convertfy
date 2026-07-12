@@ -73,6 +73,8 @@ interface ChannelRow {
 
 export interface WebhookEventRow {
   id: string
+  /** 'whatsapp' (Meta Cloud API) | 'evolution' (Baileys) — roteia o processor. */
+  source: string
   raw_payload: WebhookPayload
   attempts: number
   max_attempts: number
@@ -111,7 +113,16 @@ export async function processClaimedEvent(
   event: WebhookEventRow,
 ): Promise<{ ok: boolean; result?: ProcessResult; error?: string }> {
   try {
-    const result = await processWebhookEvent(admin, event.raw_payload)
+    // Roteamento por source: a fila durável é compartilhada entre a
+    // Cloud API (Meta) e a Evolution — payloads têm shapes diferentes.
+    // Import lazy evita ciclo (evolution-processor usa getOrCreateThread).
+    let result: ProcessResult
+    if (event.source === "evolution") {
+      const { processEvolutionEvent } = await import("./evolution-processor")
+      result = await processEvolutionEvent(admin, event.raw_payload)
+    } else {
+      result = await processWebhookEvent(admin, event.raw_payload)
+    }
     await admin
       .from("crm_webhook_events")
       .update({
@@ -223,7 +234,12 @@ async function handleInboundMessage(
     .maybeSingle()
   if (existing) return false
 
-  const threadId = await getOrCreateThread(admin, { orgId, channelId, message, contactName })
+  const threadId = await getOrCreateThread(admin, {
+    orgId,
+    channelId,
+    contactExternalId: message.from,
+    contactName,
+  })
   if (!threadId) return false
 
   const content = buildMessageContent(message)
@@ -296,12 +312,16 @@ async function handleInboundMessage(
   return inserted
 }
 
-async function getOrCreateThread(
+/**
+ * Busca/cria a thread do contato no canal (compartilhado com o
+ * evolution-processor). contactExternalId = telefone E.164 sem "+".
+ */
+export async function getOrCreateThread(
   admin: SupabaseClient,
-  args: { orgId: string; channelId: string; message: WebhookMessage; contactName: string | null },
+  args: { orgId: string; channelId: string; contactExternalId: string; contactName: string | null },
 ): Promise<string | null> {
-  const { orgId, channelId, message, contactName } = args
-  const phoneE164 = message.from
+  const { orgId, channelId, contactName } = args
+  const phoneE164 = args.contactExternalId
 
   const { data: existingThread } = await admin
     .from("crm_threads")

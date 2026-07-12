@@ -19,6 +19,11 @@ interface ComposerProps {
   disabled: boolean
   windowClosed: boolean
   isWhatsApp: boolean
+  /**
+   * Templates Meta são exclusivos do WhatsApp OFICIAL (Cloud API).
+   * Canais Evolution/Baileys escondem o botão (default: isWhatsApp).
+   */
+  supportsTemplates?: boolean
   onSendText: (body: string) => Promise<void>
   onSendMedia: (file: File, mediaType: string, caption?: string) => Promise<void>
   onOpenTemplates: () => void
@@ -35,6 +40,7 @@ export function Composer({
   disabled,
   windowClosed,
   isWhatsApp,
+  supportsTemplates = isWhatsApp,
   onSendText,
   onSendMedia,
   onOpenTemplates,
@@ -151,21 +157,23 @@ export function Composer({
               >
                 <Mic className="h-4 w-4" />
               </button>
-              <button
-                onClick={onOpenTemplates}
-                disabled={disabled}
-                title="Enviar template aprovado"
-                className="flex h-9 w-9 shrink-0 items-center justify-center"
-                style={{
-                  borderRadius: "var(--crm-radius-md)",
-                  border: "1px solid var(--crm-gray-200)",
-                  background: windowClosed ? "var(--crm-gray-900)" : "transparent",
-                  color: windowClosed ? "var(--crm-gray-0)" : "var(--crm-gray-500)",
-                  cursor: "pointer",
-                }}
-              >
-                <FileText className="h-4 w-4" />
-              </button>
+              {supportsTemplates && (
+                <button
+                  onClick={onOpenTemplates}
+                  disabled={disabled}
+                  title="Enviar template aprovado"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center"
+                  style={{
+                    borderRadius: "var(--crm-radius-md)",
+                    border: "1px solid var(--crm-gray-200)",
+                    background: windowClosed ? "var(--crm-gray-900)" : "transparent",
+                    color: windowClosed ? "var(--crm-gray-0)" : "var(--crm-gray-500)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <FileText className="h-4 w-4" />
+                </button>
+              )}
             </>
           )}
 

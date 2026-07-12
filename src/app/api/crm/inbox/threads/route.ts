@@ -41,7 +41,7 @@ async function handleGet(request: NextRequest) {
         is_window_open, window_expires_at,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url),
-        channel:crm_channels (id, type, display_name)
+        channel:crm_channels (id, type, provider, display_name)
       `)
       .order("last_message_at", { ascending: false })
       .limit(limit)

@@ -21,6 +21,8 @@ import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api
 import { logger } from "@/lib/logger"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { loadWhatsAppChannel, markChannelAuthError } from "@/lib/whatsapp/channel-config"
+import { loadChannelClient, markEvolutionDisconnected } from "@/lib/whatsapp/channel-client"
+import { EvolutionAPIError } from "@/lib/whatsapp/evolution-api"
 import { WhatsAppCloudError, type SendMessageResult } from "@/lib/whatsapp/cloud-api"
 import { validateTemplateVariables, buildTemplateBodyComponents, type TemplateForSend } from "@/lib/whatsapp/templates"
 import {
@@ -72,6 +74,7 @@ export async function POST(
     type ChannelRow = {
       id: string
       type: string
+      provider: string | null
       config: Record<string, unknown> | null
       external_id: string | null
     }
@@ -87,7 +90,7 @@ export async function POST(
     const { data: thread } = await admin
       .from("crm_threads")
       .select(
-        "id, org_id, contact_external_id, is_window_open, window_expires_at, channel:crm_channels (id, type, config, external_id)",
+        "id, org_id, contact_external_id, is_window_open, window_expires_at, channel:crm_channels (id, type, provider, config, external_id)",
       )
       .eq("id", threadId)
       .single<ThreadRow>()
@@ -110,11 +113,66 @@ export async function POST(
       )
     }
 
-    type SendResult = { success: boolean; message_id?: string; error?: { code: string; message: string } }
+    type SendResult = {
+      success: boolean
+      message_id?: string
+      remote_jid?: string | null
+      error?: { code: string; message: string }
+    }
     let result: SendResult
     let localMsgId: string
 
-    if (channel.type === "whatsapp") {
+    if (channel.type === "whatsapp" && channel.provider === "evolution") {
+      // ── Evolution (Baileys, não-oficial) ─────────────────────────
+      // Sem janela de 24h e sem templates Meta; throttle anti-ban por
+      // CANAL (número), bem mais apertado que o da Cloud API.
+      const limited = await checkRateLimit(request, `evo-send:${channel.id}`, {
+        limit: 8,
+        windowSeconds: 60,
+      })
+      if (limited) return limited
+
+      if (parsed.type === "template") {
+        throw new AppError(
+          "Canal via QR (não-oficial) não usa templates Meta — envie texto livre.",
+          422,
+          "TEMPLATE_UNSUPPORTED",
+        )
+      }
+      if (parsed.type === "sticker") {
+        throw new AppError("Sticker não suportado no canal via QR.", 422, "unsupported_type")
+      }
+
+      const loaded = await loadChannelClient(admin, { channelId: channel.id })
+      if (!loaded || loaded.provider !== "evolution") {
+        throw new AppError(
+          "Canal Evolution indisponível — verifique a configuração do servidor.",
+          422,
+          "channel-config",
+        )
+      }
+
+      // Config diz que não está open → revalida live antes de recusar
+      // (o webhook de connection.update pode ter se perdido).
+      if (loaded.connectionState !== "open") {
+        const live = await loaded.client.connectionState().catch(() => "unknown" as const)
+        if (live !== "open") {
+          throw new AppError(
+            "Instância do WhatsApp desconectada — reconecte pelo QR em Canais.",
+            422,
+            "INSTANCE_DISCONNECTED",
+          )
+        }
+      }
+
+      localMsgId = await createLocalMessage(admin, { threadId, thread, parsed, userId: user.id })
+
+      result = await sendEvolution(admin, {
+        loaded,
+        to: thread.contact_external_id,
+        parsed,
+      })
+    } else if (channel.type === "whatsapp") {
       // Rate limit por org (80/s = limite de throughput da Cloud API).
       // Fail-open sem Redis configurado.
       const limited = await checkRateLimit(request, `wa-send:${thread.org_id}`, {
@@ -263,6 +321,10 @@ export async function POST(
           external_id: result.message_id,
           status: "sent",
           status_updated_at: new Date().toISOString(),
+          // Evolution: guarda a key pro markAsRead e reconciliação de JID
+          ...(result.remote_jid
+            ? { metadata: { evolution_key: { id: result.message_id, remoteJid: result.remote_jid } } }
+            : {}),
         })
         .eq("id", localMsgId)
     } else {
@@ -395,6 +457,78 @@ async function sendWhatsApp(
         ? "Janela de 24h expirada — envie um template aprovado."
         : err.message
       return { success: false, error: { code: String(err.code), message: friendly } }
+    }
+    return {
+      success: false,
+      error: { code: "network_error", message: err instanceof Error ? err.message : "Network error" },
+    }
+  }
+}
+
+async function sendEvolution(
+  admin: ReturnType<typeof createAdminClient>,
+  args: {
+    loaded: Extract<NonNullable<Awaited<ReturnType<typeof loadChannelClient>>>, { provider: "evolution" }>
+    to: string
+    parsed: Parsed
+  },
+): Promise<{
+  success: boolean
+  message_id?: string
+  remote_jid?: string | null
+  error?: { code: string; message: string }
+}> {
+  const { loaded, to, parsed } = args
+  const client = loaded.client
+
+  try {
+    let sent: Awaited<ReturnType<typeof client.sendText>>
+    switch (parsed.type) {
+      case "text":
+        sent = await client.sendText(to, parsed.body!)
+        break
+      case "image":
+        sent = await client.sendMedia(to, {
+          mediatype: "image",
+          media: parsed.image_url!,
+          caption: parsed.body,
+        })
+        break
+      case "video":
+        sent = await client.sendMedia(to, {
+          mediatype: "video",
+          media: parsed.video_url!,
+          caption: parsed.body,
+        })
+        break
+      case "document":
+        sent = await client.sendMedia(to, {
+          mediatype: "document",
+          media: parsed.document_url!,
+          fileName: parsed.document_filename,
+          caption: parsed.body,
+        })
+        break
+      case "audio":
+        sent = await client.sendAudio(to, parsed.audio_url!)
+        break
+      default:
+        return { success: false, error: { code: "unsupported_type", message: `Tipo ${parsed.type} não suportado` } }
+    }
+    return { success: true, message_id: sent.externalId, remote_jid: sent.remoteJid }
+  } catch (err) {
+    if (err instanceof EvolutionAPIError) {
+      if (err.isNotConnected() || err.isInstanceNotFound()) {
+        await markEvolutionDisconnected(admin, loaded.channel)
+        return {
+          success: false,
+          error: {
+            code: "INSTANCE_DISCONNECTED",
+            message: "Instância do WhatsApp desconectada — reconecte pelo QR em Canais.",
+          },
+        }
+      }
+      return { success: false, error: { code: String(err.status ?? "evolution_error"), message: err.message } }
     }
     return {
       success: false,

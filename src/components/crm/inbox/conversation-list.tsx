@@ -227,6 +227,11 @@ export function ConversationList({
                     <div className="flex items-center justify-between mt-1">
                       <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
                         {t.channel?.display_name || "—"}
+                        {t.channel?.type === "whatsapp"
+                          ? t.channel?.provider === "evolution"
+                            ? " · QR"
+                            : " · Oficial"
+                          : ""}
                         {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
                       </span>
                       <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>

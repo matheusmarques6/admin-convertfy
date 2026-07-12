@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { sendWhatsAppMessage } from "@/lib/services/whatsapp-cloud.service"
+import { sendTextViaChannel } from "@/lib/services/whatsapp-channel-send.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AcompanhamentoSendWhatsApp")
@@ -77,10 +77,10 @@ export async function POST(
       )
     }
 
-    // Canal WhatsApp default da org
+    // Canal WhatsApp default da org (cloud oficial OU evolution via QR)
     const { data: channelRaw } = await admin
       .from("crm_channels")
-      .select("config")
+      .select("provider, config, external_id")
       .eq("org_id", state.org_id)
       .eq("type", "whatsapp")
       .eq("is_active", true)
@@ -89,24 +89,26 @@ export async function POST(
       .maybeSingle()
 
     const channel = channelRaw as unknown as {
-      config: { phone_number_id?: string; access_token?: string; business_account_id?: string } | null
+      provider: string | null
+      config: Record<string, unknown> | null
+      external_id: string | null
     } | null
 
-    if (!channel?.config?.access_token || !channel.config.phone_number_id) {
+    if (!channel) {
       throw new AppError(
         "Canal WhatsApp não configurado. Configure em /admin/comercial/canais antes.",
         400,
       )
     }
 
-    const result = await sendWhatsAppMessage(
-      {
-        phone_number_id: channel.config.phone_number_id,
-        access_token: channel.config.access_token,
-        business_account_id: channel.config.business_account_id,
-      },
-      { to: phone, type: "text", text: { body: state.ai_message } },
-    )
+    const result = await sendTextViaChannel(channel, phone, state.ai_message)
+
+    if (result.error?.code === "config_missing") {
+      throw new AppError(
+        "Canal WhatsApp não configurado. Configure em /admin/comercial/canais antes.",
+        400,
+      )
+    }
 
     if (!result.success) {
       log.error("[Acompanhamento] WhatsApp send failed", { stateId, error: result.error })

@@ -133,6 +133,63 @@ export async function persistInboundMedia(
   }
 }
 
+/**
+ * Decodifica base64 de mídia (Evolution entrega no webhook com
+ * base64:true). Aceita data-URI ("data:image/png;base64,...") ou base64
+ * cru; extrai o MIME do data-URI quando presente. Puro e testável.
+ */
+export function decodeBase64Media(input: string): { buffer: Uint8Array; mimeFromDataUri: string | null } | null {
+  let raw = input.trim()
+  let mimeFromDataUri: string | null = null
+
+  const dataUriMatch = raw.match(/^data:([^;,]+)?(?:;base64)?,([\s\S]*)$/)
+  if (dataUriMatch) {
+    mimeFromDataUri = dataUriMatch[1] ?? null
+    raw = dataUriMatch[2]
+  }
+
+  if (!raw) return null
+  try {
+    const buffer = new Uint8Array(Buffer.from(raw, "base64"))
+    if (buffer.byteLength === 0) return null
+    return { buffer, mimeFromDataUri }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Persiste mídia recebida em base64 (fluxo Evolution) no mesmo bucket e
+ * shape do fluxo Cloud API. Retorna null em falha — a mensagem persiste
+ * sem mídia (metadata.evolution_key permite retry on-demand).
+ */
+export async function persistBase64Media(
+  admin: SupabaseClient,
+  args: { orgId: string; threadId: string; base64: string; mime: string | null },
+): Promise<PersistedMedia | null> {
+  const decoded = decodeBase64Media(args.base64)
+  if (!decoded) {
+    log.warn("base64 de mídia inválido (persistindo sem mídia)", { threadId: args.threadId })
+    return null
+  }
+
+  const mime = decoded.mimeFromDataUri ?? args.mime ?? "application/octet-stream"
+  const path = `${args.orgId}/${args.threadId}/${crypto.randomUUID()}.${extForMime(mime)}`
+
+  const { error: uploadError } = await admin.storage
+    .from(MEDIA_BUCKET)
+    .upload(path, decoded.buffer, { contentType: mime, upsert: false })
+  if (uploadError) {
+    log.error("storage upload (base64) falhou", { threadId: args.threadId, message: uploadError.message })
+    return null
+  }
+
+  const signedUrl = await createSignedUrl(admin, path)
+  if (!signedUrl) return null
+
+  return { storagePath: path, signedUrl, mime, size: decoded.buffer.byteLength }
+}
+
 export async function createSignedUrl(admin: SupabaseClient, storagePath: string): Promise<string | null> {
   const { data, error } = await admin.storage
     .from(MEDIA_BUCKET)

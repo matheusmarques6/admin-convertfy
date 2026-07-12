@@ -124,3 +124,40 @@ No inbox, abrir o picker de templates (ícone 📄 no composer) → botão
 - **Fase 2 (fora do núcleo)**: CSAT, transferência entre agentes,
   copiloto IA, notas com anexos, payment links, catálogo, opt-out
   guard, auto-resposta IA, crons de saúde (quality/heartbeat).
+
+## Evolution API (WhatsApp não-oficial via QR)
+
+Segundo provider do MESMO núcleo (`crm_channels.provider='evolution'`,
+`external_id` = instance name; mensagens/threads/inbox/realtime
+idênticos). Servidor Evolution v2 (Baileys) remoto, um por deploy:
+`EVOLUTION_API_URL` + `EVOLUTION_API_KEY` + `EVOLUTION_WEBHOOK_SECRET`.
+
+```
+Evolution → POST /api/webhooks/evolution/{SECRET}   (sem HMAC — secret no path)
+  connection.update → inline (config do canal)
+  messages.upsert/update/send.message → crm_webhook_events (source='evolution')
+    → MESMA fila (QStash/claim/cron) → processClaimedEvent roteia por source
+    → evolution-processor: dedup → thread → mídia base64 → crm_messages
+```
+
+Código: `src/lib/whatsapp/evolution-{api,content,processor}.ts` +
+`channel-client.ts` (dispatch por provider). Setup do canal em
+`/admin/comercial/canais` → "WhatsApp via QR" (cria instância, seta
+webhook por instância, modal com QR + polling 3s/refresh 40s).
+
+Regras que DIFEREM do cloud:
+- SEM janela de 24h (free-form sempre; `open_crm_thread_window` não roda)
+  e SEM templates Meta (`type=template` → 422 `TEMPLATE_UNSUPPORTED`).
+- v1 só DM: grupos (@g.us), @lid e broadcast são skip no processor.
+- Reações são skip (CHECK de content_type não tem 'reaction').
+- fromMe=true (respondido no celular) vira outbound `sent_by_kind='system'`.
+- Anti-ban: 8 msg/min por canal (`evo-send:{channelId}`) + jitter
+  0,8–2,5s + `delay` de digitação no client. Risco de ban é inerente —
+  números críticos devem preferir a Cloud API oficial.
+- Instância desconectada → 422 `INSTANCE_DISCONNECTED` no envio, badge
+  vermelho em Canais, botão Reconectar (novo QR). `statusCode 401` no
+  connection.update = deslogou no celular (`needs_reconnect_at`).
+- Uma conexão Baileys ativa por número (nunca 2 instâncias no mesmo).
+
+Migration: `20260912_evolution_provider.sql` (só o CHECK de provider).
+`sendAudio` usa `encoding:true` → exige ffmpeg no servidor Evolution.

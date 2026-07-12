@@ -17,7 +17,7 @@ export function isQStashConfigured(): boolean {
   return Boolean(process.env.QSTASH_TOKEN)
 }
 
-function appUrl(): string | null {
+export function appUrl(): string | null {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   return null

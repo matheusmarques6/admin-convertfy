@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { Plus, Phone, CheckCircle2, Instagram } from "lucide-react"
+import { Plus, Phone, CheckCircle2, Instagram, QrCode, AlertCircle } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import { EvolutionQrModal } from "@/components/crm/channels/evolution-qr-modal"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -17,9 +18,19 @@ interface Channel {
   is_active: boolean
   last_sync_at: string | null
   created_at: string
+  /** Só canais provider=evolution (derivado seguro do config). */
+  connection_state?: string
+  owner_jid?: string | null
+  needs_reconnect?: boolean
 }
 
-type ChannelKind = "whatsapp" | "instagram"
+type ChannelKind = "whatsapp" | "instagram" | "evolution"
+
+interface QrTarget {
+  channelId: string
+  channelName: string
+  initialQr?: string | null
+}
 
 export default function ChannelsPage() {
   const { data, mutate } = useSWR<{ channels: Channel[] }>(
@@ -29,11 +40,12 @@ export default function ChannelsPage() {
 
   const channels = data?.channels || []
   const [creating, setCreating] = useState<ChannelKind | null>(null)
+  const [qrTarget, setQrTarget] = useState<QrTarget | null>(null)
 
   return (
     <CrmPageShell
       title="Canais conectados"
-      subtitle="Conecte WhatsApp e Instagram via tokens da Meta"
+      subtitle="WhatsApp oficial (Cloud API), WhatsApp via QR e Instagram"
       actions={
         <div className="flex gap-2">
           <button
@@ -43,6 +55,14 @@ export default function ChannelsPage() {
           >
             <Instagram className="h-3.5 w-3.5" />
             Conectar Instagram
+          </button>
+          <button
+            className="crm-button-ghost"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            onClick={() => setCreating("evolution")}
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            WhatsApp via QR
           </button>
           <button
             className="crm-button-primary"
@@ -60,7 +80,7 @@ export default function ChannelsPage() {
           <CrmEmptyState
             icon={<Phone className="h-5 w-5" />}
             title="Nenhum canal conectado"
-            description="Configure WhatsApp Cloud API e/ou Instagram Direct/Comments com os tokens gerados no Meta Business Suite."
+            description="Configure WhatsApp Cloud API e/ou Instagram Direct/Comments com os tokens gerados no Meta Business Suite — ou conecte um número via QR (não-oficial)."
             action={
               <button className="crm-button-primary" onClick={() => setCreating("whatsapp")}>
                 Conectar agora
@@ -70,7 +90,13 @@ export default function ChannelsPage() {
         ) : (
           <div className="space-y-3">
             {channels.map((c) => (
-              <ChannelCard key={c.id} channel={c} />
+              <ChannelCard
+                key={c.id}
+                channel={c}
+                onReconnect={() =>
+                  setQrTarget({ channelId: c.id, channelName: c.display_name })
+                }
+              />
             ))}
           </div>
         )}
@@ -85,6 +111,17 @@ export default function ChannelsPage() {
           />
         )}
 
+        {creating === "evolution" && (
+          <EvolutionForm
+            onCancel={() => setCreating(null)}
+            onCreated={(target) => {
+              setCreating(null)
+              mutate()
+              setQrTarget(target)
+            }}
+          />
+        )}
+
         {creating === "instagram" && (
           <InstagramForm
             onCancel={() => setCreating(null)}
@@ -94,6 +131,16 @@ export default function ChannelsPage() {
             }}
           />
         )}
+
+        {qrTarget && (
+          <EvolutionQrModal
+            channelId={qrTarget.channelId}
+            channelName={qrTarget.channelName}
+            initialQr={qrTarget.initialQr}
+            onClose={() => setQrTarget(null)}
+            onConnected={() => mutate()}
+          />
+        )}
       </div>
     </CrmPageShell>
   )
@@ -101,12 +148,20 @@ export default function ChannelsPage() {
 
 // ─── Channel card (lista) ────────────────────────────────────────
 
-function ChannelCard({ channel }: { channel: Channel }) {
+function ChannelCard({ channel, onReconnect }: { channel: Channel; onReconnect: () => void }) {
   const isInstagram = channel.type === "instagram"
-  const Icon = isInstagram ? Instagram : Phone
-  const tagLabel = isInstagram ? "Instagram (DM + Comments)" : "WhatsApp"
+  const isEvolution = channel.provider === "evolution"
+  const Icon = isInstagram ? Instagram : isEvolution ? QrCode : Phone
+  const tagLabel = isInstagram
+    ? "Instagram (DM + Comments)"
+    : isEvolution
+      ? "WhatsApp via QR (não-oficial)"
+      : "WhatsApp Oficial (Cloud API)"
   const accentBg = isInstagram ? "rgba(219,39,119,0.10)" : "var(--crm-success-bg)"
   const accentFg = isInstagram ? "#DB2777" : "var(--crm-success-fg)"
+
+  const evoState = channel.connection_state ?? "unknown"
+  const evoDisconnected = isEvolution && evoState !== "open"
 
   return (
     <div className="crm-card flex items-center justify-between">
@@ -138,26 +193,158 @@ function ChannelCard({ channel }: { channel: Channel }) {
               fontFamily: "var(--crm-font-mono)",
             }}
           >
-            {tagLabel} · {channel.external_id}
+            {tagLabel} · {isEvolution && channel.owner_jid ? `+${channel.owner_jid}` : channel.external_id}
           </div>
         </div>
       </div>
-      {channel.is_active && (
-        <span
-          style={{
-            fontSize: "var(--crm-text-xs)",
-            color: "var(--crm-success-fg)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            fontWeight: "var(--crm-weight-medium)",
-          }}
-        >
-          <CheckCircle2 className="h-3 w-3" />
-          Ativo
-        </span>
-      )}
+      <div className="flex items-center gap-3">
+        {isEvolution && (
+          <span
+            style={{
+              fontSize: "var(--crm-text-xs)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontWeight: "var(--crm-weight-medium)",
+              color:
+                evoState === "open"
+                  ? "var(--crm-success-fg)"
+                  : evoState === "connecting"
+                    ? "var(--crm-warning-fg, #B45309)"
+                    : "var(--crm-danger-fg)",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "9999px",
+                background: "currentColor",
+                display: "inline-block",
+              }}
+            />
+            {evoState === "open" ? "Conectado" : evoState === "connecting" ? "Conectando" : "Desconectado"}
+          </span>
+        )}
+        {evoDisconnected && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            onClick={onReconnect}
+          >
+            <AlertCircle className="h-3 w-3" />
+            Reconectar
+          </button>
+        )}
+        {channel.is_active && !isEvolution && (
+          <span
+            style={{
+              fontSize: "var(--crm-text-xs)",
+              color: "var(--crm-success-fg)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontWeight: "var(--crm-weight-medium)",
+            }}
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Ativo
+          </span>
+        )}
+      </div>
     </div>
+  )
+}
+
+// ─── Evolution form (WhatsApp via QR) ────────────────────────────
+
+function EvolutionForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void
+  onCreated: (target: { channelId: string; channelName: string; initialQr?: string | null }) => void
+}) {
+  const [name, setName] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/crm/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "whatsapp",
+          provider: "evolution",
+          display_name: name,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setError(json.error?.message || "Erro ao criar canal")
+        return
+      }
+      const data = json.data ?? json
+      onCreated({ channelId: data.id, channelName: name, initialQr: data.qr_base64 ?? null })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-6 crm-card" style={{ maxWidth: 560 }}>
+      <h3
+        style={{
+          fontSize: "var(--crm-text-md)",
+          fontWeight: "var(--crm-weight-medium)",
+          color: "var(--crm-gray-900)",
+          marginBottom: "var(--crm-space-3)",
+        }}
+      >
+        Conectar WhatsApp via QR (não-oficial)
+      </h3>
+      <div className="space-y-3">
+        <Field label="Nome do canal *">
+          <input
+            className="crm-input w-full"
+            placeholder="Ex: WhatsApp Atendimento"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </Field>
+        {error && (
+          <p style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-danger-fg)" }}>
+            {error}
+          </p>
+        )}
+        <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", lineHeight: 1.6 }}>
+          Conexão não-oficial (Baileys/Evolution): escaneie o QR com o celular do número.
+          Sem janela de 24h e sem templates Meta — mas com risco de banimento em envios em
+          massa. Um número só pode estar conectado em UMA instância.
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className="crm-button-ghost" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="crm-button-primary"
+            disabled={submitting}
+            style={{ opacity: submitting ? 0.5 : 1 }}
+          >
+            {submitting ? "Criando instância..." : "Gerar QR"}
+          </button>
+        </div>
+      </div>
+    </form>
   )
 }
 

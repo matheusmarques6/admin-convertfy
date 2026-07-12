@@ -15,12 +15,16 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { checkRateLimit } from "@/lib/rate-limit"
 import { loadWhatsAppChannel } from "@/lib/whatsapp/channel-config"
+import { loadChannelClient, markEvolutionDisconnected } from "@/lib/whatsapp/channel-client"
+import { EvolutionAPIError, type EvolutionSendResult } from "@/lib/whatsapp/evolution-api"
 import { WhatsAppCloudError, type SendMessageResult } from "@/lib/whatsapp/cloud-api"
 import {
   MEDIA_BUCKET,
   createSignedUrl,
   extForMime,
+  persistBase64Media,
   persistInboundMedia,
   validateMediaFile,
 } from "@/lib/whatsapp/media"
@@ -38,7 +42,10 @@ interface ThreadWithChannel {
   is_window_open: boolean | null
   window_expires_at: string | null
   channel_id: string
-  channel: { id: string; type: string } | Array<{ id: string; type: string }> | null
+  channel:
+    | { id: string; type: string; provider: string | null }
+    | Array<{ id: string; type: string; provider: string | null }>
+    | null
 }
 
 async function getWhatsAppThread(
@@ -48,7 +55,7 @@ async function getWhatsAppThread(
   const { data: thread } = await admin
     .from("crm_threads")
     .select(
-      "id, org_id, contact_external_id, is_window_open, window_expires_at, channel_id, channel:crm_channels (id, type)",
+      "id, org_id, contact_external_id, is_window_open, window_expires_at, channel_id, channel:crm_channels (id, type, provider)",
     )
     .eq("id", threadId)
     .maybeSingle<ThreadWithChannel>()
@@ -59,6 +66,11 @@ async function getWhatsAppThread(
     throw new AppError("Envio de mídia só é suportado em canais WhatsApp", 400, "channel-unsupported")
   }
   return thread
+}
+
+function threadChannelProvider(thread: ThreadWithChannel): string | null {
+  const channel = Array.isArray(thread.channel) ? thread.channel[0] : thread.channel
+  return channel?.provider ?? null
 }
 
 // ── POST: upload + envio ────────────────────────────────────────────
@@ -73,18 +85,22 @@ export async function POST(
     const admin = createAdminClient()
 
     const thread = await getWhatsAppThread(admin, threadId)
+    const isEvolution = threadChannelProvider(thread) === "evolution"
 
-    // Mídia é sempre free-form → precisa de janela aberta
-    const windowOpen =
-      Boolean(thread.is_window_open) &&
-      Boolean(thread.window_expires_at) &&
-      new Date(thread.window_expires_at as string).getTime() > Date.now()
-    if (!windowOpen) {
-      throw new AppError(
-        "Janela de 24h expirada — envie um template aprovado pra reabrir a conversa.",
-        422,
-        "WINDOW_EXPIRED",
-      )
+    // Mídia é sempre free-form → precisa de janela aberta.
+    // Evolution (Baileys) não tem janela de 24h — gate só no cloud.
+    if (!isEvolution) {
+      const windowOpen =
+        Boolean(thread.is_window_open) &&
+        Boolean(thread.window_expires_at) &&
+        new Date(thread.window_expires_at as string).getTime() > Date.now()
+      if (!windowOpen) {
+        throw new AppError(
+          "Janela de 24h expirada — envie um template aprovado pra reabrir a conversa.",
+          422,
+          "WINDOW_EXPIRED",
+        )
+      }
     }
 
     const formData = await request.formData()
@@ -102,6 +118,112 @@ export async function POST(
     const validation = validateMediaFile(file, mediaType)
     if (!validation.valid) {
       throw new AppError(validation.error, 422, "media-validation")
+    }
+
+    // ── Evolution: arquivo → base64 → sendMedia/sendAudio ──────────
+    if (isEvolution) {
+      const limited = await checkRateLimit(request, `evo-send:${thread.channel_id}`, {
+        limit: 8,
+        windowSeconds: 60,
+      })
+      if (limited) return limited
+
+      const loadedEvo = await loadChannelClient(admin, { channelId: thread.channel_id })
+      if (!loadedEvo || loadedEvo.provider !== "evolution") {
+        throw new AppError("Canal Evolution indisponível — verifique a configuração do servidor.", 422, "channel-config")
+      }
+
+      const fileData = await file.arrayBuffer()
+      const storagePath = `${thread.org_id}/${threadId}/${crypto.randomUUID()}.${extForMime(file.type)}`
+      const { error: storageError } = await admin.storage
+        .from(MEDIA_BUCKET)
+        .upload(storagePath, fileData, { contentType: file.type, upsert: false })
+      const storageOk = !storageError
+      if (!storageOk) {
+        log.warn("upload pro Storage falhou (mensagem segue sem histórico local)", {
+          threadId,
+          error: storageError?.message,
+        })
+      }
+
+      const base64 = Buffer.from(fileData).toString("base64")
+      const to = thread.contact_external_id
+      let sent: EvolutionSendResult
+      try {
+        if (mediaType === "audio") {
+          sent = await loadedEvo.client.sendAudio(to, base64)
+        } else {
+          sent = await loadedEvo.client.sendMedia(to, {
+            mediatype: mediaType as "image" | "video" | "document",
+            media: base64,
+            mimetype: file.type,
+            caption: caption || undefined,
+            fileName: file.name,
+          })
+        }
+      } catch (err) {
+        const isDisconnected =
+          err instanceof EvolutionAPIError && (err.isNotConnected() || err.isInstanceNotFound())
+        if (isDisconnected) await markEvolutionDisconnected(admin, loadedEvo.channel)
+        const message = isDisconnected
+          ? "Instância do WhatsApp desconectada — reconecte pelo QR em Canais."
+          : err instanceof Error
+            ? err.message
+            : "Envio falhou"
+        await admin.from("crm_messages").insert({
+          thread_id: threadId,
+          org_id: thread.org_id,
+          direction: "outbound",
+          content_type: mediaType,
+          body: caption || null,
+          media_storage_path: storageOk ? storagePath : null,
+          media_mime: file.type,
+          media_filename: file.name,
+          media_size: file.size,
+          sent_by: user.id,
+          sent_by_kind: "agent",
+          status: "failed",
+          error_code: isDisconnected ? "INSTANCE_DISCONNECTED" : "evolution_error",
+          error_message: message,
+        })
+        throw new AppError(message, 502, "evolution-send")
+      }
+
+      const signedUrl = storageOk ? await createSignedUrl(admin, storagePath) : null
+
+      const { data: localMsg, error: insertError } = await admin
+        .from("crm_messages")
+        .insert({
+          thread_id: threadId,
+          org_id: thread.org_id,
+          external_id: sent.externalId,
+          direction: "outbound",
+          content_type: mediaType,
+          body: caption || null,
+          media_url: signedUrl,
+          media_storage_path: storageOk ? storagePath : null,
+          media_mime: file.type,
+          media_filename: file.name,
+          media_size: file.size,
+          metadata: { evolution_key: { id: sent.externalId, remoteJid: sent.remoteJid } },
+          sent_by: user.id,
+          sent_by_kind: "agent",
+          status: "sent",
+          status_updated_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
+
+      if (insertError) throw insertError
+
+      await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
+
+      return successResponse(request, {
+        message_id: localMsg?.id,
+        external_id: sent.externalId,
+        media_url: signedUrl,
+        sent: true,
+      })
     }
 
     const loaded = await loadWhatsAppChannel(admin, { channelId: thread.channel_id })
@@ -235,6 +357,37 @@ export async function GET(
       if (!signedUrl) throw new AppError("Falha ao gerar URL", 500, "signed-url")
       await admin.from("crm_messages").update({ media_url: signedUrl }).eq("id", message.id)
       return successResponse(request, { media_url: signedUrl })
+    }
+
+    // Evolution: mídia que falhou no processamento → tenta de novo via
+    // getBase64FromMediaMessage (a Evolution guarda a mensagem um tempo).
+    const evolutionKey = (message.metadata as { evolution_key?: { id?: string } } | null)?.evolution_key
+    if (evolutionKey?.id) {
+      const loadedEvo = await loadChannelClient(admin, { channelId: (await getWhatsAppThread(admin, threadId)).channel_id })
+      if (!loadedEvo || loadedEvo.provider !== "evolution") {
+        throw new AppError("Canal Evolution indisponível", 422, "channel-config")
+      }
+      const fetched = await loadedEvo.client.getBase64FromMediaMessage({ id: evolutionKey.id })
+      if (!fetched) {
+        throw new AppError("Mídia indisponível na Evolution (não recuperável)", 410, "media-expired")
+      }
+      const persisted = await persistBase64Media(admin, {
+        orgId: message.org_id,
+        threadId,
+        base64: fetched.base64,
+        mime: fetched.mimetype,
+      })
+      if (!persisted) throw new AppError("Falha ao persistir mídia", 500, "media-persist")
+      await admin
+        .from("crm_messages")
+        .update({
+          media_url: persisted.signedUrl,
+          media_storage_path: persisted.storagePath,
+          media_mime: persisted.mime,
+          media_size: persisted.size,
+        })
+        .eq("id", message.id)
+      return successResponse(request, { media_url: persisted.signedUrl })
     }
 
     // Legado: wa-media:{id} no media_url ou wa_media_id no metadata →

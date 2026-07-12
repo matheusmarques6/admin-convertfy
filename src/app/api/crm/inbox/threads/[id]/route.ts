@@ -38,7 +38,7 @@ export async function GET(
         is_window_open, window_expires_at,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url, email),
-        channel:crm_channels (id, type, display_name, external_id),
+        channel:crm_channels (id, type, provider, display_name, external_id),
         lead:crm_leads (id, name, status),
         deal:deals (id, title, status, pipeline_id, stage_id),
         client:clients (id, name, email, phone)
