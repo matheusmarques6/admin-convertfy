@@ -68,13 +68,15 @@ export function resolveEvolutionRuntimeConfig(
   value: EvolutionSettingsValue | null,
   decryptFn: (s: string) => string,
 ): EvolutionRuntimeConfig | null {
-  const baseUrl = env.baseUrl?.replace(/\/+$/, "") || null
+  // trim: valor colado no Vercel/PowerShell costuma trazer espaço ou \n
+  // no final — sem trim a URL vira "...com%0A" e o header apikey quebra.
+  const baseUrl = env.baseUrl?.trim().replace(/\/+$/, "") || null
   if (!baseUrl) return null
 
   const safeDecrypt = (enc: string | undefined): string | null => {
     if (!enc) return null
     try {
-      return decryptFn(enc) || null
+      return decryptFn(enc)?.trim() || null
     } catch {
       return null
     }
@@ -83,8 +85,8 @@ export function resolveEvolutionRuntimeConfig(
   const dbApiKey = safeDecrypt(value?.api_key_enc)
   const dbWebhookSecret = safeDecrypt(value?.webhook_secret_enc)
 
-  const apiKey = dbApiKey ?? env.apiKey ?? null
-  const webhookSecret = dbWebhookSecret ?? env.webhookSecret ?? null
+  const apiKey = dbApiKey ?? env.apiKey?.trim() ?? null
+  const webhookSecret = dbWebhookSecret ?? env.webhookSecret?.trim() ?? null
   if (!apiKey || !webhookSecret) return null
 
   const untilRaw = value?.previous_secret_until ? new Date(value.previous_secret_until) : null
@@ -99,6 +101,50 @@ export function resolveEvolutionRuntimeConfig(
     previousWebhookSecret: safeDecrypt(value?.previous_webhook_secret_enc),
     previousSecretUntil,
   }
+}
+
+/**
+ * Diagnóstico puro: quais das 3 peças da config estão presentes. Usado
+ * nas mensagens de erro (dizer EXATAMENTE o que falta em vez do erro
+ * genérico "não configurada").
+ */
+export function evolutionConfigGaps(
+  env: { baseUrl?: string | null; apiKey?: string | null; webhookSecret?: string | null },
+  value: EvolutionSettingsValue | null,
+  decryptFn: (s: string) => string,
+): { baseUrl: boolean; apiKey: boolean; webhookSecret: boolean; missing: string[] } {
+  const safeDecrypt = (enc: string | undefined): string | null => {
+    if (!enc) return null
+    try {
+      return decryptFn(enc)?.trim() || null
+    } catch {
+      return null
+    }
+  }
+  const hasBaseUrl = Boolean(env.baseUrl?.trim())
+  const hasApiKey = Boolean(safeDecrypt(value?.api_key_enc) ?? env.apiKey?.trim())
+  const hasSecret = Boolean(safeDecrypt(value?.webhook_secret_enc) ?? env.webhookSecret?.trim())
+  const missing: string[] = []
+  if (!hasBaseUrl) missing.push("EVOLUTION_API_URL (env do Vercel + redeploy)")
+  if (!hasApiKey) missing.push("API key (Configurações → WhatsApp QR)")
+  if (!hasSecret) missing.push("Webhook secret (Configurações → WhatsApp QR)")
+  return { baseUrl: hasBaseUrl, apiKey: hasApiKey, webhookSecret: hasSecret, missing }
+}
+
+/** Diagnóstico com IO (lê a row) — para mensagens de erro nas rotas. */
+export async function getEvolutionConfigGaps(
+  admin: SupabaseClient,
+): Promise<{ baseUrl: boolean; apiKey: boolean; webhookSecret: boolean; missing: string[] }> {
+  const value = await readEvolutionSettingsValue(admin)
+  return evolutionConfigGaps(
+    {
+      baseUrl: process.env.EVOLUTION_API_URL ?? null,
+      apiKey: process.env.EVOLUTION_API_KEY ?? null,
+      webhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? null,
+    },
+    value,
+    decrypt,
+  )
 }
 
 const PREVIOUS_SECRET_WINDOW_MS = 24 * 60 * 60 * 1000

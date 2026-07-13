@@ -110,9 +110,12 @@ export async function GET(request: NextRequest) {
 
 const putSchema = z
   .object({
-    api_key: z.string().min(10).optional(),
+    // trim: chave colada do terminal costuma trazer \n no final — sem
+    // isso o valor cifrado carrega o lixo e o header apikey quebra.
+    api_key: z.string().trim().min(10).optional(),
     webhook_secret: z
       .string()
+      .trim()
       .min(16)
       .regex(/^[A-Za-z0-9_-]+$/, "Só letras, números, hífen e underscore")
       .optional(),

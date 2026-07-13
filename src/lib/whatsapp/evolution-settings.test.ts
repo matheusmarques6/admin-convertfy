@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildRotatedValue,
+  evolutionConfigGaps,
   isWebhookSecretValidFor,
   maskLast4,
   resolveEvolutionRuntimeConfig,
@@ -95,6 +96,44 @@ describe("resolveEvolutionRuntimeConfig", () => {
     expect(cfg).not.toBeNull()
     expect(cfg!.apiKey).toBe("env-key")
     expect(cfg!.apiKeySource).toBe("env")
+  })
+
+  it("trim: espaço/\\n colados na env não quebram a URL nem os segredos", () => {
+    const cfg = resolveEvolutionRuntimeConfig(
+      { baseUrl: "https://evo.test/\n", apiKey: " env-key \n", webhookSecret: "env-secret\r\n" },
+      null,
+      fakeDecrypt,
+    )
+    expect(cfg!.baseUrl).toBe("https://evo.test")
+    expect(cfg!.apiKey).toBe("env-key")
+    expect(cfg!.webhookSecret).toBe("env-secret")
+  })
+})
+
+describe("evolutionConfigGaps", () => {
+  it("lista exatamente o que falta", () => {
+    const gaps = evolutionConfigGaps({ baseUrl: "https://evo.test" }, null, fakeDecrypt)
+    expect(gaps.baseUrl).toBe(true)
+    expect(gaps.apiKey).toBe(false)
+    expect(gaps.webhookSecret).toBe(false)
+    expect(gaps.missing).toHaveLength(2)
+    expect(gaps.missing[0]).toContain("API key")
+    expect(gaps.missing[1]).toContain("Webhook secret")
+  })
+
+  it("tudo presente → missing vazio", () => {
+    const gaps = evolutionConfigGaps(
+      { baseUrl: "https://evo.test" },
+      { api_key_enc: "enc(k)", webhook_secret_enc: "enc(s)" },
+      fakeDecrypt,
+    )
+    expect(gaps.missing).toHaveLength(0)
+  })
+
+  it("sem URL → aponta a env do Vercel", () => {
+    const gaps = evolutionConfigGaps({}, { api_key_enc: "enc(k)", webhook_secret_enc: "enc(s)" }, fakeDecrypt)
+    expect(gaps.missing).toHaveLength(1)
+    expect(gaps.missing[0]).toContain("EVOLUTION_API_URL")
   })
 })
 

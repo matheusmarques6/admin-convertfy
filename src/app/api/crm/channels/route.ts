@@ -22,7 +22,7 @@ import { logger } from "@/lib/logger"
 import { encrypt } from "@/lib/crypto"
 import { appUrl } from "@/lib/whatsapp/queue"
 import { createEvolutionClient } from "@/lib/whatsapp/evolution-api"
-import { getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
+import { getEvolutionConfigGaps, getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { buildInstanceName } from "@/lib/whatsapp/evolution-content"
 
 const log = logger.child("CrmChannels")
@@ -118,8 +118,11 @@ export async function POST(request: NextRequest) {
     if (parsed.type === "whatsapp" && parsed.provider === "evolution") {
       const cfg = await getEvolutionRuntimeConfig(admin)
       if (!cfg) {
+        // Diz EXATAMENTE qual peça falta (URL da env, key ou secret) —
+        // o erro genérico gerou vários ciclos de adivinhação em prod.
+        const gaps = await getEvolutionConfigGaps(admin)
         throw new AppError(
-          "Evolution não configurada no servidor (env EVOLUTION_API_URL + key/secret em Configurações ou env)",
+          `Evolution não configurada — faltando: ${gaps.missing.join("; ")}`,
           422,
           "evolution-env",
         )
