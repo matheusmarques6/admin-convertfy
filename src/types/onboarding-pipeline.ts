@@ -94,6 +94,12 @@ export interface DeliverableField {
    * (pra select) ou anexado no array (pra multi_checkbox).
    */
   allow_other?: boolean
+  /**
+   * Valor default derivado do contexto da loja/onboarding, injetado em
+   * runtime pelas rotas GET (onboarding/productivity), ex: idioma vindo do
+   * formulario do cliente. Nao e persistido no template — so no payload de GET.
+   */
+  default_value?: string | null
 }
 
 export interface AutomationRule {

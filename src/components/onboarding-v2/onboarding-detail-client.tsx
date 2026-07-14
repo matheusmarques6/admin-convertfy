@@ -7,7 +7,7 @@
  * Acoes: Avancar coluna, Pedir ajustes (com modal feedback), Pedir revisao de briefing.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -931,14 +931,40 @@ function DeliverableField({
     options?: string[]
     placeholder?: string
     helpText?: string
+    /** Injetado em runtime pela API (GET de onboarding), ex: idioma da loja. */
+    default_value?: string | null
+    /** Habilita opcao "Outros" (input livre) em selects. */
+    allow_other?: boolean
   }
   value: string
   onSave: (v: string) => void
 } & DeliverableFieldExtras) {
-  const [local, setLocal] = useState(value)
+  const [local, setLocal] = useState(value || field.default_value || "")
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // "Outros" (allow_other): valor salvo que nao esta na lista de opcoes.
+  const [otherMode, setOtherMode] = useState(
+    Boolean(
+      field.allow_other &&
+        local !== "" &&
+        !(field.options ?? []).includes(local),
+    ),
+  )
   const toast = useToast()
+
+  // Auto-preenche entregaveis derivados do contexto (ex: idioma vindo do
+  // formulario do cliente). Persiste uma vez quando ainda esta vazio, pra
+  // o entregavel ja contar como completo sem clique do operador.
+  const autofilledRef = useRef(false)
+  useEffect(() => {
+    if (autofilledRef.current) return
+    const dv = field.default_value
+    if (dv && !value) {
+      autofilledRef.current = true
+      setLocal(dv)
+      onSave(dv)
+    }
+  }, [field.default_value, value, onSave])
 
   async function commit() {
     if (local === value) return
@@ -1010,25 +1036,51 @@ function DeliverableField({
       )
       break
 
-    case "select":
+    case "select": {
+      const opts = field.options ?? []
+      const showOther =
+        Boolean(field.allow_other) &&
+        (otherMode || (local !== "" && !opts.includes(local)))
       control = (
-        <select
-          value={local}
-          onChange={(e) => {
-            setLocal(e.target.value)
-            onSave(e.target.value)
-          }}
-          className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
-        >
-          <option value="">— selecionar —</option>
-          {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+        <div className="space-y-1.5">
+          <select
+            value={showOther ? "__other__" : local}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === "__other__") {
+                // Entra em modo "Outros": limpa e aguarda o texto livre.
+                setOtherMode(true)
+                setLocal("")
+                return
+              }
+              setOtherMode(false)
+              setLocal(v)
+              onSave(v)
+            }}
+            className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+          >
+            <option value="">— selecionar —</option>
+            {opts.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+            {field.allow_other && <option value="__other__">Outros…</option>}
+          </select>
+          {showOther && (
+            <input
+              type="text"
+              value={local}
+              onChange={(e) => setLocal(e.target.value)}
+              onBlur={commit}
+              placeholder="Digite o valor"
+              className="w-full h-9 px-2 text-[12.5px] rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-[#1A1D27]"
+            />
+          )}
+        </div>
       )
       break
+    }
 
     case "numeric":
       control = (

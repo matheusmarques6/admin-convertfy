@@ -32,7 +32,7 @@ export async function GET(
       .select(
         `*,
          client:clients!onboardings_client_id_fkey(id, name, company, email, phone),
-         store:client_stores(id, store_name, store_url, platform),
+         store:client_stores(id, store_name, store_url, platform, language),
          source_deal:deals(id, title, value),
          current_column:operational_pipeline_columns(*),
          tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version),
@@ -62,7 +62,7 @@ export async function GET(
         .select(
           `*,
            client:clients!onboardings_client_id_fkey(id, name, company, email, phone),
-           store:client_stores(id, store_name, store_url, platform),
+           store:client_stores(id, store_name, store_url, platform, language),
            source_deal:deals(id, title, value),
            current_column:operational_pipeline_columns(*),
            tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version),
@@ -121,9 +121,39 @@ export async function GET(
     )
     const [enrichedOnb] = applyEffectiveStatuses([onb], effective)
 
+    // Defaults derivados do contexto da loja, injetados no deliverables_template
+    // pra UI pre-selecionar valores que ja vieram do formulario do cliente
+    // (ex: idioma de entrega). Nao mexe nos entregaveis ja salvos — o front
+    // so usa default_value quando o campo ainda esta vazio.
+    const store = (
+      Array.isArray(enrichedOnb.store) ? enrichedOnb.store[0] : enrichedOnb.store
+    ) as { language?: string | null } | null
+    const contextDefaults: Record<string, string | null> = {
+      language: store?.language ?? null,
+    }
+    const injectDefaults = <T extends { deliverables_template?: unknown }>(
+      col: T | null | undefined,
+    ): T | null | undefined => {
+      if (!col || !Array.isArray(col.deliverables_template)) return col
+      return {
+        ...col,
+        deliverables_template: (
+          col.deliverables_template as Array<{ slug: string }>
+        ).map((f) => ({ ...f, default_value: contextDefaults[f.slug] ?? null })),
+      }
+    }
+    const columnsWithDefaults = (columns ?? []).map(injectDefaults)
+    const onbWithDefaults = {
+      ...enrichedOnb,
+      current_column: injectDefaults(
+        (enrichedOnb as { current_column?: unknown })
+          .current_column as { deliverables_template?: unknown } | null,
+      ),
+    }
+
     return successResponse(request, {
-      onboarding: enrichedOnb,
-      columns: columns ?? [],
+      onboarding: onbWithDefaults,
+      columns: columnsWithDefaults,
       deliverables: deliverables ?? [],
       activity,
     })
