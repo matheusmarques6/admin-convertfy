@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import useSWR from "swr"
-import { PipelineBoard } from "./pipeline-board"
+import { CadencesBoard } from "./cadences-board"
 import { CADENCIAS_PIPELINE_NAME } from "./constants"
 
 /**
@@ -53,5 +53,5 @@ export function CadenciasTab() {
     )
   }
 
-  return <PipelineBoard pipelineId={cadencias.id} />
+  return <CadencesBoard pipelineId={cadencias.id} />
 }
