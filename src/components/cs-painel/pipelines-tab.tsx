@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { ChevronLeft, ChevronRight, Layers, Plus, Search } from "lucide-react"
-import { PipelineBoardView } from "@/components/crm/pipeline-board-view"
+import { ChevronRight, Layers, Plus, Search } from "lucide-react"
 import { NewPipelineDialog } from "@/components/crm/new-pipeline-dialog"
+import { PipelineBoard } from "./pipeline-board"
 
 /**
  * Aba "Pipelines CS" do modulo Customer Success — porta do prototipo
@@ -46,34 +46,9 @@ export function PipelinesTab() {
   const [openPipe, setOpenPipe] = useState<PipelineSummary | null>(null)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
 
-  // Detalhe: board real embutido
+  // Detalhe: board no design do prototipo, ligado aos dados reais
   if (openPipe) {
-    return (
-      <PipelineBoardView
-        pipelineId={openPipe.id}
-        scope="cs"
-        headerExtras={
-          <button
-            type="button"
-            onClick={() => setOpenPipe(null)}
-            className="inline-flex items-center gap-1.5 rounded-[6px] cf-focusable"
-            style={{
-              height: 32,
-              padding: "0 12px",
-              background: "#fff",
-              color: "var(--crm-gray-700)",
-              border: "1px solid var(--crm-border)",
-              fontSize: 12.5,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Pipelines
-          </button>
-        }
-      />
-    )
+    return <PipelineBoard pipelineId={openPipe.id} onBack={() => setOpenPipe(null)} />
   }
 
   // Agrupa por categoria preservando a ordem de aparicao (null -> "Outros")
