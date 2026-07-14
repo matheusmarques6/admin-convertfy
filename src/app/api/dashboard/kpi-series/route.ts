@@ -7,7 +7,7 @@ import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import {
   computeIntersectionDelta,
-  computeIntersectionRateDelta,
+  computeIntersectionRatioDelta,
 } from "@/lib/services/kpi-deltas"
 import { logger } from "@/lib/logger"
 
@@ -50,11 +50,16 @@ export async function GET(request: NextRequest) {
     // Expomos as duas para o layout escolher conforme showOperacionalSection,
     // evitando o antigo descasamento (sparkline seguia atribuido enquanto o
     // numero mostrava o bruto).
+    // Taxa Convertfy unificada = RAZÃO DE SOMAS (Σatribuído / Σfaturamento
+    // bruto) restrita a lojas com store_total_revenue > 0. rateNum/rateDen
+    // acumulam essa razão; o número do card, o sparkline e o delta passam a
+    // sair todos daqui — antes o card usava razão de somas e o sparkline usava
+    // média de razões por loja (16,83% vs 17,06%).
     const byPeriod: Record<
       string,
-      { total: number; storeTotal: number; campaign: number; flow: number; rates: number[] }
+      { total: number; storeTotal: number; campaign: number; flow: number; rateNum: number; rateDen: number }
     > = {}
-    for (const p of PERIODS) byPeriod[p] = { total: 0, storeTotal: 0, campaign: 0, flow: 0, rates: [] }
+    for (const p of PERIODS) byPeriod[p] = { total: 0, storeTotal: 0, campaign: 0, flow: 0, rateNum: 0, rateDen: 0 }
 
     // Somas POR LOJA por período — insumo do delta por interseção
     // (cards/sparklines continuam usando os agregados byPeriod).
@@ -63,7 +68,8 @@ export async function GET(request: NextRequest) {
       storeTotal: Map<string, number>
       campaign: Map<string, number>
       flow: Map<string, number>
-      rate: Map<string, number>
+      rateNum: Map<string, number>
+      rateDen: Map<string, number>
     }
     const storeMaps: Record<string, StoreMaps> = {}
     for (const p of PERIODS) {
@@ -72,7 +78,8 @@ export async function GET(request: NextRequest) {
         storeTotal: new Map(),
         campaign: new Map(),
         flow: new Map(),
-        rate: new Map(),
+        rateNum: new Map(),
+        rateDen: new Map(),
       }
     }
 
@@ -98,12 +105,15 @@ export async function GET(request: NextRequest) {
 
       // Taxa Convertfy = receita atribuida / faturamento BRUTO da loja.
       // Denominador correto e store_total_revenue (nao total_revenue, que JA
-      // e o atribuido — dividir por ele dava taxa ~100% espuria).
+      // e o atribuido). Acumula numerador e denominador em BRL (razao de
+      // somas) so para lojas com faturamento bruto — lojas email-only sem
+      // Shopify nao entram (evita o 100% espurio do fallback).
       if (row.store_total_revenue > 0) {
-        const attributed = row.campaign_revenue + row.flow_revenue
-        const rate = Math.min(100, (attributed / row.store_total_revenue) * 100)
-        byPeriod[row.period_label].rates.push(rate)
-        maps.rate.set(row.store_id, rate)
+        const attributedBRL = campBRL + flowBRL
+        byPeriod[row.period_label].rateNum += attributedBRL
+        byPeriod[row.period_label].rateDen += storeTotalBRL
+        maps.rateNum.set(row.store_id, (maps.rateNum.get(row.store_id) ?? 0) + attributedBRL)
+        maps.rateDen.set(row.store_id, (maps.rateDen.get(row.store_id) ?? 0) + storeTotalBRL)
       }
     }
 
@@ -111,10 +121,15 @@ export async function GET(request: NextRequest) {
     const sparkStoreTotal = PERIODS.map((p) => Math.round(byPeriod[p].storeTotal))
     const sparkCampaign = PERIODS.map((p) => Math.round(byPeriod[p].campaign))
     const sparkFlow = PERIODS.map((p) => Math.round(byPeriod[p].flow))
-    const sparkRate = PERIODS.map((p) => {
-      const rates = byPeriod[p].rates
-      return rates.length > 0 ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0
-    })
+    // Razão de somas por período (mesma definição do número exibido).
+    const periodRate = (p: string) =>
+      byPeriod[p].rateDen > 0
+        ? Math.min(100, (byPeriod[p].rateNum / byPeriod[p].rateDen) * 100)
+        : 0
+    const sparkRate = PERIODS.map((p) => Math.round(periodRate(p)))
+    // Taxa agregada do período selecionado (1 casa) — fonte única do número
+    // no card "Taxa média da Convertfy".
+    const rateCurrent = Math.round(periodRate(selectedPeriod) * 10) / 10
 
     const currentDays = PERIOD_DAYS[selectedPeriod] || 30
     const currentMaps = storeMaps[selectedPeriod] || storeMaps["30d"]
@@ -137,7 +152,9 @@ export async function GET(request: NextRequest) {
     const deltaFlow = computeIntersectionDelta(
       currentMaps.flow, currentDays, refMaps.flow, refDays,
     )
-    const deltaRate = computeIntersectionRateDelta(currentMaps.rate, refMaps.rate)
+    const deltaRate = computeIntersectionRatioDelta(
+      currentMaps.rateNum, currentMaps.rateDen, refMaps.rateNum, refMaps.rateDen,
+    )
 
     const deltaLabel = (d: { value: number | null; stores: number }) =>
       d.value === null
@@ -146,6 +163,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse(request, {
       period: selectedPeriod,
+      rate: rateCurrent,
       sparklines: {
         total: sparkTotal,
         storeTotal: sparkStoreTotal,

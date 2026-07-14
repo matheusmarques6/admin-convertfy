@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   computeIntersectionDelta,
   computeIntersectionRateDelta,
+  computeIntersectionRatioDelta,
 } from "./kpi-deltas"
 
 const m = (entries: Array<[string, number]>) => new Map(entries)
@@ -76,5 +77,44 @@ describe("computeIntersectionRateDelta", () => {
     const current = m([["a", 20], ["b", 20], ["c", 20], ["d", 20]])
     const ref = m([["a", 10]]) // 1/4 = 25% < 70%
     expect(computeIntersectionRateDelta(current, ref).value).toBeNull()
+  })
+})
+
+describe("computeIntersectionRatioDelta", () => {
+  it("razão de somas: pondera por faturamento, não média simples", () => {
+    // atual: (30+70)/(300+700)=10%; ref: (20+40)/(300+700)=6% → +66.7%
+    const r = computeIntersectionRatioDelta(
+      m([["a", 30], ["b", 70]]),
+      m([["a", 300], ["b", 700]]),
+      m([["a", 20], ["b", 40]]),
+      m([["a", 300], ["b", 700]]),
+    )
+    expect(r.value).toBe(66.7)
+    expect(r.stores).toBe(2)
+  })
+
+  it("razões idênticas → 0%", () => {
+    const r = computeIntersectionRatioDelta(
+      m([["a", 100]]), m([["a", 500]]),
+      m([["a", 200]]), m([["a", 1000]]),
+    )
+    expect(r.value).toBe(0)
+  })
+
+  it("cobertura do denominador abaixo do piso → null", () => {
+    // interseção cobre só 'a' = 100/1000 = 10% do denominador atual
+    const currentNum = m([["a", 20], ["b", 180]])
+    const currentDen = m([["a", 100], ["b", 900]])
+    const refNum = m([["a", 10]])
+    const refDen = m([["a", 100]])
+    expect(computeIntersectionRatioDelta(currentNum, currentDen, refNum, refDen).value).toBeNull()
+  })
+
+  it("referência zerada → null", () => {
+    const r = computeIntersectionRatioDelta(
+      m([["a", 50]]), m([["a", 500]]),
+      m([["a", 0]]), m([["a", 500]]),
+    )
+    expect(r.value).toBeNull()
   })
 })

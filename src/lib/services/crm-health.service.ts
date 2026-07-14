@@ -37,7 +37,8 @@ interface HealthComponents {
 
 interface StoreHealthResult {
   store_id: string
-  health_score: number
+  /** null = nenhum componente com dado real → no_score honesto. */
+  health_score: number | null
   components: HealthComponents
 }
 
@@ -176,21 +177,27 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
 
   let openTickets = 0
   let breachingSla = 0
+  // ticketsTracked = a loja tem histórico de tickets (aberto ou já
+  // resolvido). Sem histórico, o componente tickets é AUSENTE (não conta
+  // como 100 neutro) — antes esse 100 fixo inflava toda a carteira.
+  let ticketsTracked = false
   if (ticketsPipeline) {
     type TicketRow = {
       id: string
+      status: string
       last_stage_changed_at: string | null
       stage: { sla_hours: number | null } | { sla_hours: number | null }[] | null
     }
     const { data: storeTickets } = await admin
       .from("deals")
-      .select("id, last_stage_changed_at, stage:pipeline_stages(sla_hours)")
+      .select("id, status, last_stage_changed_at, stage:pipeline_stages(sla_hours)")
       .eq("pipeline_id", ticketsPipeline.id)
-      .eq("status", "open")
       .eq("store_id", storeId)
       .returns<TicketRow[]>()
 
+    ticketsTracked = (storeTickets?.length ?? 0) > 0
     for (const t of storeTickets || []) {
+      if (t.status !== "open") continue
       openTickets += 1
       const stage = Array.isArray(t.stage) ? t.stage[0] : t.stage
       const sla = stage?.sla_hours
@@ -207,13 +214,17 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
   // é engolida: loga e mantém neutro (50) explícito.
   let currentMonth = 0
   let previousMonth = 0
+  // revenueTracked = a query trouxe receita real (atual ou anterior). Sem
+  // receita, o componente é AUSENTE (não conta como 50 neutro).
+  let revenueTracked = false
   try {
     const revRows = await getUnifiedRevenue(admin, orgId, ["30d", "90d"], [storeId])
     const months = deriveRevenueMonths(revRows)
     currentMonth = months.currentMonth
     previousMonth = months.previousMonth
+    revenueTracked = currentMonth > 0 || previousMonth > 0
   } catch (err) {
-    log.warn("health.revenue_query_failed (componente revenue fica neutro)", {
+    log.warn("health.revenue_query_failed (componente revenue fica ausente)", {
       storeId,
       error: err instanceof Error ? err.message : String(err),
     })
@@ -226,43 +237,65 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
     revenue: computeRevenueScore(currentMonth, previousMonth),
   }
 
-  // Pesos: email 35%, revenue 30%, tickets 20%, nps 15%
-  const score = Math.round(
-    components.email * 0.35 +
-      components.revenue * 0.30 +
-      components.tickets * 0.20 +
-      components.nps * 0.15,
-  )
+  // Renormalização por componente disponível. Só entram na média ponderada
+  // os componentes com dado REAL; componente ausente é excluído (não vira
+  // constante neutra/alta) e os pesos são renormalizados sobre os presentes.
+  // Antes, NPS ausente virava 50 e tickets ausente virava 100 — ~27,5 pts
+  // fixos que achatavam toda a carteira na faixa "Atenção" (50-69). Loja sem
+  // nenhum sinal => score null (no_score honesto), não um número inventado.
+  const presence: Record<keyof HealthComponents, boolean> = {
+    email: emailMetrics.recipients > 0,
+    revenue: revenueTracked,
+    tickets: ticketsTracked,
+    nps: store.nps_last_score != null,
+  }
+  const weights: Record<keyof HealthComponents, number> = {
+    email: 0.35, revenue: 0.30, tickets: 0.20, nps: 0.15,
+  }
+  let weightSum = 0
+  let weighted = 0
+  for (const k of ["email", "revenue", "tickets", "nps"] as const) {
+    if (!presence[k]) continue
+    weightSum += weights[k]
+    weighted += components[k] * weights[k]
+  }
+  const score = weightSum > 0 ? Math.round(weighted / weightSum) : null
 
-  // Persiste
+  // Persiste (health_score aceita null → vira no_score na distribuição)
   await admin
     .from("client_stores")
     .update({ health_score: score })
     .eq("id", storeId)
 
-  await admin.from("crm_health_history").insert({
-    store_id: storeId,
-    health_score: score,
-    components,
-  })
+  // crm_health_history.health_score é NOT NULL — só registra snapshot com score.
+  if (score != null) {
+    await admin.from("crm_health_history").insert({
+      store_id: storeId,
+      health_score: score,
+      components,
+    })
+  }
 
   // Auto-cria store_alert health_critical quando score cai pra <50 e
   // nao ha alerta ativo pra essa loja ainda. Idempotente (dedup por
   // store_id+type+status='active').
-  if (score < 50) {
+  if (score != null && score < 50) {
     await maybeCreateHealthAlert(storeId, score, components)
   }
 
   // Sincroniza com o pipeline "Gestao de Carteira" (state-board CS):
   // move o deal entre Saudavel/Atencao/Risco conforme novo score, ou
   // pra Churn se a loja virou inativa. NAO mexe em deals em stages
-  // manuais (Em recuperacao / Churn iminente).
-  syncCarteiraDeal({ storeId, healthScore: score }).catch((err) => {
-    log.warn("syncCarteiraDeal falhou (nao bloqueia)", {
-      storeId,
-      err: err instanceof Error ? err.message : String(err),
+  // manuais (Em recuperacao / Churn iminente). Score null (sem dado) não
+  // move de stage.
+  if (score != null) {
+    syncCarteiraDeal({ storeId, healthScore: score }).catch((err) => {
+      log.warn("syncCarteiraDeal falhou (nao bloqueia)", {
+        storeId,
+        err: err instanceof Error ? err.message : String(err),
+      })
     })
-  })
+  }
 
   log.info("[CrmHealth] computed", { store_id: storeId, score, components })
 

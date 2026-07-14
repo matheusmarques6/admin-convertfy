@@ -65,6 +65,51 @@ export function computeIntersectionDelta(
 }
 
 /**
+ * Delta de uma RAZÃO DE SOMAS (Σnum/Σden, ex.: taxa de atribuição =
+ * atribuído/faturamento bruto) sobre a interseção de lojas. Diferente de
+ * `computeIntersectionRateDelta` (média de taxas por loja), aqui a taxa é
+ * agregada — pondera lojas grandes e pequenas pelo faturamento, batendo com
+ * o número exibido no card. Cobertura é pela fração do denominador atual.
+ */
+export function computeIntersectionRatioDelta(
+  currentNum: Map<string, number>,
+  currentDen: Map<string, number>,
+  refNum: Map<string, number>,
+  refDen: Map<string, number>,
+  minCoverage = MIN_DELTA_COVERAGE,
+): IntersectionDelta {
+  let currentDenAll = 0
+  for (const v of currentDen.values()) currentDenAll += v
+
+  let numCurInter = 0
+  let denCurInter = 0
+  let numRefInter = 0
+  let denRefInter = 0
+  let stores = 0
+  for (const [storeId, den] of currentDen) {
+    const refDenValue = refDen.get(storeId)
+    if (refDenValue === undefined) continue
+    numCurInter += currentNum.get(storeId) ?? 0
+    denCurInter += den
+    numRefInter += refNum.get(storeId) ?? 0
+    denRefInter += refDenValue
+    stores++
+  }
+
+  const coverage = currentDenAll > 0 ? denCurInter / currentDenAll : 0
+  if (stores === 0 || denRefInter <= 0 || coverage < minCoverage) {
+    return { value: null, coverage, stores }
+  }
+
+  const ratioCur = denCurInter > 0 ? (numCurInter / denCurInter) * 100 : 0
+  const ratioRef = (numRefInter / denRefInter) * 100
+  if (ratioRef <= 0) return { value: null, coverage, stores }
+
+  const value = Math.round(((ratioCur - ratioRef) / ratioRef) * 1000) / 10
+  return { value, coverage, stores }
+}
+
+/**
  * Delta de MÉDIAS (não somas/dia) sobre a interseção — usado para a taxa
  * de atribuição por loja. Cobertura aqui é por CONTAGEM de lojas.
  */

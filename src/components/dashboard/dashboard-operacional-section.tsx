@@ -14,6 +14,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface CsDashboard {
   total_stores: number
+  total_clients: number
+  mrr_client_count: number
   health_distribution: {
     healthy: number
     warning: number
@@ -95,13 +97,26 @@ export function DashboardOperacionalSection() {
             label="Carteira ativa"
             value={isLoading ? "—" : `${data?.total_stores ?? 0}`}
             loading={isLoading}
-            tooltip="Numero de lojas com contrato ativo na carteira."
+            delta={
+              data
+                ? { value: null, label: `${data.total_clients} clientes` }
+                : undefined
+            }
+            tooltip="Lojas com is_active=true na carteira, distribuidas nos clientes indicados. Nao valida datas de contrato (contract_start/end_date)."
           />
           <KpiCard
             label="MRR total"
             value={isLoading ? "—" : fmtBRLCompact((data?.total_mrr_cents ?? 0) / 100)}
             loading={isLoading}
-            tooltip="Receita recorrente mensal somada de todas as lojas ativas."
+            delta={
+              data
+                ? {
+                    value: null,
+                    label: `${data.mrr_client_count} de ${data.total_clients} clientes`,
+                  }
+                : undefined
+            }
+            tooltip="Soma do MRR apenas dos clientes com subscription ativa ou mrr_cents cacheado. Os demais clientes da carteira entram como 0 — por isso a cobertura indicada."
           />
           <KpiCard
             label="NPS"

@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
     const clientIdsFromStores = Array.from(
       new Set(allStores.map((s) => s.client_id).filter(Boolean)),
     )
+    const totalClients = clientIdsFromStores.length
     const mrrFromSubs = new Map<string, number>()
     if (clientIdsFromStores.length > 0) {
       const { data: activeSubs } = await admin
@@ -117,6 +118,10 @@ export async function GET(request: NextRequest) {
     // Loop por client_id (nao por store) pra evitar dobrar MRR quando cliente
     // tem multiplas lojas.
     const clientsSeen = new Set<string>()
+    // Clientes que de fato contribuem com MRR (sub ativa OU mrr_cents cacheado).
+    // Usado pra rotular a cobertura real do card "MRR total" (ex.: "4 de 91"),
+    // ja que o valor agregado esconde que a maioria da carteira entra como 0.
+    let mrrClientCount = 0
     for (const s of allStores) {
       const client = Array.isArray(s.client) ? s.client[0] : s.client
 
@@ -132,9 +137,11 @@ export async function GET(request: NextRequest) {
         if (subMrr > 0) {
           // value vem em reais; converte pra cents
           totalMrrCents += Math.round(subMrr * 100)
+          mrrClientCount += 1
         } else if (s.mrr_cents) {
           // fallback no MRR cacheado em client_stores
           totalMrrCents += s.mrr_cents
+          mrrClientCount += 1
         }
       }
 
@@ -210,6 +217,8 @@ export async function GET(request: NextRequest) {
 
     return successResponse(request, {
       total_stores: totalStores,
+      total_clients: totalClients,
+      mrr_client_count: mrrClientCount,
       health_distribution: {
         healthy,
         warning,

@@ -280,9 +280,9 @@ export async function upsertOmnisendSyncResults(
 
   // omnisend_total_revenue reflete exatamente o attributedRevenue da
   // Statistics API — e a fonte de verdade da receita atribuida ao Omnisend.
-  // omnisend_campaign_revenue/omnisend_flow_revenue mantem o breakdown
-  // derivado (campaign=0, flow=attributed) que o report usa como fallback
-  // enquanto a API nao suporta dimension=campaign|workflow.
+  // omnisend_campaign_revenue/omnisend_flow_revenue recebem o split REAL da
+  // Statistics API (data.totalCampaignRevenue / data.totalAutomationRevenue,
+  // ver revenueFields abaixo) — nao mais o breakdown derivado campaign=0.
   //
   // CRITICO: quando Statistics API esta rate-limited, o sync devolve
   // {totalStoreRevenue: 0, totalAttributedRevenue: 0}. Sem cuidado, isso

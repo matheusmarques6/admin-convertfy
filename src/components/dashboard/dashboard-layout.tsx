@@ -178,27 +178,36 @@ export function DashboardLayout({
   // gerou, nao o faturamento bruto da loja).
   const attributedRevenue = campaignRevenue + flowRevenue
 
-  // Taxa Convertfy = % agregada (atribuido total / total geral) — bate
-  // com a "% Receita atribuida media" do overview de lojas. Usa valores
-  // ja convertidos em BRL do storeBreakdown. Antes calculava media simples
-  // de % por loja, mas o totalRevenueBRL = attributedRevenueBRL (bug
-  // antigo no buildStoreBreakdown), gerando 100% espurio.
+  // Taxa Convertfy = razão de somas (Σatribuído / Σfaturamento bruto)
+  // restrita a lojas com faturamento bruto real. É a MESMA definição do
+  // /api/dashboard/kpi-series (rate); este cálculo local serve apenas de
+  // fallback enquanto o SWR do kpi-series carrega, para não piscar valor
+  // divergente. Lojas email-only (sem Shopify) caem no fallback do backend
+  // onde totalRevenue===attributedRevenue — excluídas para não gerar 100%
+  // espúrio.
   const storeBreakdown = useMemo(
     () => revenueData?.storeBreakdown ?? [],
     [revenueData?.storeBreakdown],
   )
   const convertfyRate = useMemo(() => {
-    type SB = typeof storeBreakdown[number] & { attributedRevenueBRL?: number }
-    const totalAll = storeBreakdown.reduce((sum, s) => sum + (Number(s.totalRevenueBRL) || 0), 0)
-    const totalAttributed = storeBreakdown.reduce((sum, s) => {
-      const sb = s as SB
-      // Prefere attributedRevenueBRL (novo); fallback no campaign+flow
-      // se backend ainda nao foi atualizado.
-      const attributed = Number(sb.attributedRevenueBRL)
+    type SB = typeof storeBreakdown[number] & {
+      totalRevenue?: number
+      attributedRevenue?: number
+      attributedRevenueBRL?: number
+    }
+    let num = 0
+    let den = 0
+    for (const s of storeBreakdown as SB[]) {
+      const hasStoreRevenue =
+        Number(s.totalRevenue) > 0 &&
+        Number(s.totalRevenue) !== Number(s.attributedRevenue)
+      if (!hasStoreRevenue) continue
+      const attributed = Number(s.attributedRevenueBRL)
         || ((Number(s.campaignRevenueBRL) || 0) + (Number(s.flowRevenueBRL) || 0))
-      return sum + attributed
-    }, 0)
-    return totalAll > 0 ? Math.min(100, (totalAttributed / totalAll) * 100) : 0
+      num += attributed
+      den += Number(s.totalRevenueBRL) || 0
+    }
+    return den > 0 ? Math.min(100, (num / den) * 100) : 0
   }, [storeBreakdown])
 
   // Format compact currency
@@ -297,12 +306,12 @@ export function DashboardLayout({
             />
             <KpiCard
               label="Taxa média da Convertfy"
-              value={`${convertfyRate.toFixed(1)}%`}
+              value={`${(typeof kpiSeries?.rate === "number" ? kpiSeries.rate : convertfyRate).toFixed(1)}%`}
               delta={deltas?.rate}
               sparkData={sparklines?.rate}
               variant="gradient"
               loading={isLoading}
-              tooltip="Percentual médio da receita total que é atribuída às ações da Convertfy (campanhas + automações) entre todas as lojas."
+              tooltip="Receita atribuída à Convertfy (campanhas + automações) sobre o faturamento bruto das lojas com Shopify conectado. Número, sparkline e delta usam a mesma razão de somas."
             />
           </KpiCardRow>
         </AnimatedItem>
