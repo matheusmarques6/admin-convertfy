@@ -44,8 +44,12 @@ vi.mock("sharp", () => ({
 }))
 
 const getCampaignHandoff = vi.fn()
+const setHandoffFigmaLink = vi.fn(
+  async (..._args: unknown[]) => ({ persisted: true }),
+)
 vi.mock("./campaign-handoff.service", () => ({
   getCampaignHandoff: (...args: unknown[]) => getCampaignHandoff(...args),
+  setHandoffFigmaLink: (...args: unknown[]) => setHandoffFigmaLink(...args),
 }))
 
 const figmaGetFile = vi.fn()
@@ -110,6 +114,7 @@ beforeEach(() => {
   getCampaignHandoff.mockReset()
   figmaGetFile.mockReset()
   figmaExportImages.mockReset()
+  setHandoffFigmaLink.mockClear()
   isFigmaConfigured.mockReturnValue(true)
   vi.stubGlobal("fetch", okFetch())
 })
@@ -253,5 +258,74 @@ describe("importStoreEmailsFromFigma", () => {
     await expect(
       importStoreEmailsFromFigma("sug-1", "org-1", "user-1"),
     ).rejects.toThrow(/FIGMA_PERSONAL_TOKEN/)
+  })
+
+  it("link colado (override) importa do arquivo informado e persiste", async () => {
+    getCampaignHandoff.mockResolvedValue({
+      suggestion_id: "sug-1",
+      figma_link: null, // campanha sem link registrado
+      stores: [
+        {
+          store_id: "s1",
+          store_name: "Clube Rock",
+          country: "BR",
+          language: "pt-BR",
+          status: "ready",
+          copy: null,
+        },
+      ],
+    })
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock"]))
+    figmaExportImages.mockResolvedValue({ "1:0": "https://s3.example/a.png" })
+
+    const r = await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      figmaLink: "https://www.figma.com/design/ZzYyXx987654/Nova",
+    })
+
+    expect(r.results[0].status).toBe("imported")
+    // Usou o fileKey do link colado, não do deliverable.
+    expect(figmaGetFile).toHaveBeenCalledWith("ZzYyXx987654", { depth: 2 })
+    expect(setHandoffFigmaLink).toHaveBeenCalledWith(
+      "sug-1",
+      "org-1",
+      "https://www.figma.com/design/ZzYyXx987654/Nova",
+      "user-1",
+    )
+  })
+
+  it("link colado inválido lança 422 sem chamar o Figma", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([{ store_id: "s1", store_name: "Clube Rock" }]),
+    )
+    await expect(
+      importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+        figmaLink: "https://exemplo.com/nao-e-figma",
+      }),
+    ).rejects.toThrow(/Link do Figma inválido/)
+    expect(figmaGetFile).not.toHaveBeenCalled()
+  })
+
+  it("sem override e sem link do deliverable lança 422 pedindo o link", async () => {
+    getCampaignHandoff.mockResolvedValue({
+      suggestion_id: "sug-1",
+      figma_link: null,
+      stores: [],
+    })
+    await expect(
+      importStoreEmailsFromFigma("sug-1", "org-1", "user-1"),
+    ).rejects.toThrow(/cole o link do Figma/i)
+  })
+
+  it("override igual ao link já registrado não reescreve o deliverable", async () => {
+    getCampaignHandoff.mockResolvedValue(
+      handoffWith([{ store_id: "s1", store_name: "Clube Rock" }]),
+    )
+    figmaGetFile.mockResolvedValue(figmaFileWith(["Clube Rock"]))
+    figmaExportImages.mockResolvedValue({ "1:0": "https://s3.example/a.png" })
+
+    await importStoreEmailsFromFigma("sug-1", "org-1", "user-1", {
+      figmaLink: "https://www.figma.com/design/AbCdEf123456/Campanha",
+    })
+    expect(setHandoffFigmaLink).not.toHaveBeenCalled()
   })
 })

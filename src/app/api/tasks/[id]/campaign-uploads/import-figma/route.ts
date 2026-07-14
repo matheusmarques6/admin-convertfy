@@ -30,6 +30,8 @@ export const maxDuration = 300
 const bodySchema = z
   .object({
     store_ids: z.array(z.string().uuid()).min(1).max(200).optional(),
+    // Link do Figma colado no modal (override do deliverable da estrutura).
+    figma_link: z.string().trim().url().max(500).optional(),
   })
   .strict()
 
@@ -53,7 +55,7 @@ export async function POST(
       source_id,
       ctx.member.orgId,
       user.id,
-      { storeIds: body.store_ids },
+      { storeIds: body.store_ids, figmaLink: body.figma_link },
     )
     return successResponse(request, result)
   } catch (error) {

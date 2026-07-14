@@ -87,6 +87,12 @@ const STATUS_DOT: Record<string, string> = {
   concluida: "bg-emerald-500",
 }
 
+/** Mesma regra do parseFigmaUrl do servidor — só pra habilitar o botão. */
+const FIGMA_URL_RE = /figma\.com\/(?:file|design)\/[A-Za-z0-9]{10,}/
+function looksLikeFigmaUrl(value: string): boolean {
+  return FIGMA_URL_RE.test(value.trim())
+}
+
 /** Texto de UM bloco pro clipboard (sem os headers de copyBlocksToText). */
 function blockText(block: EmailDraftBlock): string {
   switch (block.type) {
@@ -155,6 +161,8 @@ export function CampaignUploadModal({
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<FigmaImportResult | null>(null)
   const [showImportPanel, setShowImportPanel] = useState(false)
+  const [figmaLinkInput, setFigmaLinkInput] = useState("")
+  const figmaLinkPrefilled = useRef(false)
 
   const [unassigned, setUnassigned] = useState<UnassignedFile[]>([])
   const [uploadingStores, setUploadingStores] = useState<Set<string>>(new Set())
@@ -227,6 +235,16 @@ export function CampaignUploadModal({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
+
+  // Prefill do campo de link com o que veio do deliverable (uma vez) — o
+  // operador pode sobrescrever, mas não perde o link já registrado.
+  useEffect(() => {
+    if (figmaLinkPrefilled.current) return
+    if (payload?.figma_link) {
+      setFigmaLinkInput(payload.figma_link)
+      figmaLinkPrefilled.current = true
+    }
+  }, [payload?.figma_link])
 
   // ── Derivados ────────────────────────────────────────────────────────
   const stores = useMemo(() => payload?.stores ?? [], [payload])
@@ -322,12 +340,18 @@ export function CampaignUploadModal({
       setImporting(true)
       setShowImportPanel(true)
       try {
+        const typedLink = figmaLinkInput.trim()
         const res = await fetch(
           `/api/tasks/${taskId}/campaign-uploads/import-figma`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(storeIds?.length ? { store_ids: storeIds } : {}),
+            body: JSON.stringify({
+              ...(storeIds?.length ? { store_ids: storeIds } : {}),
+              ...(typedLink && looksLikeFigmaUrl(typedLink)
+                ? { figma_link: typedLink }
+                : {}),
+            }),
           },
         )
         const j = await res.json().catch(() => ({}))
@@ -351,7 +375,7 @@ export function CampaignUploadModal({
         setImporting(false)
       }
     },
-    [taskId, load, showFeedback],
+    [taskId, load, showFeedback, figmaLinkInput],
   )
 
   const uploadFileForStore = useCallback(
@@ -580,11 +604,22 @@ export function CampaignUploadModal({
     showFeedback(`Ajustes removidos em ${ok}/${storesWithOverride.length} loja(s)`)
   }, [storesWithOverride, patchStore, showFeedback])
 
+  // Link efetivo do import: o colado no campo tem prioridade; senão o do
+  // deliverable. O campo é a forma do operador informar o Figma quando a
+  // campanha não registrou o link (ou corrigir um link errado).
+  const typedFigmaLink = figmaLinkInput.trim()
+  const typedFigmaLinkValid = typedFigmaLink.length > 0 && looksLikeFigmaUrl(typedFigmaLink)
+  const hasUsableFigmaLink = typedFigmaLink
+    ? typedFigmaLinkValid
+    : Boolean(payload?.figma_link)
+
   const figmaDisabledReason = !payload?.figma_available
     ? "FIGMA_PERSONAL_TOKEN não configurado no servidor — use o upload manual"
-    : !payload?.figma_link
-      ? "Campanha sem link do Figma (deliverable da etapa estrutura)"
-      : null
+    : typedFigmaLink && !typedFigmaLinkValid
+      ? "Link do Figma inválido — cole uma URL de figma.com/design/… ou figma.com/file/…"
+      : !hasUsableFigmaLink
+        ? "Cole o link do Figma ao lado para importar (frames nomeados com o nome da loja)"
+        : null
 
   // ── Render ───────────────────────────────────────────────────────────
   const title = payload?.campaign_title ?? campaignTitle ?? "Campanha"
@@ -680,6 +715,48 @@ export function CampaignUploadModal({
               </div>
 
               <div className="mx-1 h-5 w-px bg-border" />
+
+              {/* Campo do link do Figma — colado aqui tem prioridade sobre o
+                  deliverable da estrutura. Habilita o import quando a campanha
+                  ainda não registrou o link. */}
+              <div
+                className={`flex items-center gap-1.5 rounded-[6px] border bg-background px-2 ${
+                  typedFigmaLink && !typedFigmaLinkValid
+                    ? "border-red-400 dark:border-red-700"
+                    : "border-border"
+                }`}
+                title="Cole o link do arquivo do Figma (figma.com/design/… ou /file/…)"
+              >
+                <Figma size={13} className="shrink-0 text-muted-foreground" />
+                <input
+                  type="url"
+                  value={figmaLinkInput}
+                  onChange={(e) => setFigmaLinkInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !importing &&
+                      !figmaDisabledReason
+                    ) {
+                      void handleImportFigma()
+                    }
+                  }}
+                  disabled={!payload?.figma_available || importing}
+                  placeholder="Link do Figma…"
+                  className="w-[180px] bg-transparent py-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40"
+                />
+                {figmaLinkInput && (
+                  <button
+                    type="button"
+                    onClick={() => setFigmaLinkInput("")}
+                    disabled={importing}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                    aria-label="Limpar link"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
 
               <button
                 type="button"

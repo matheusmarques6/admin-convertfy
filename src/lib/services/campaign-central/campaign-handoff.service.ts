@@ -42,6 +42,43 @@ function deriveStatus(entry: CopyResultEntry | null): CampaignHandoffStatus {
   return "ready"
 }
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
+/**
+ * Resolve a task ÂNCORA da etapa estrutura (versão atual) onde vive o
+ * deliverable `figma_structure_link`. Compartilhado entre a leitura do
+ * handoff e a escrita do link colado na Tela 2. Retorna null quando a
+ * campanha ainda não tem pipeline/versão de design.
+ */
+async function resolveFigmaAnchorTaskId(
+  admin: AdminClient,
+  suggestionId: string,
+  designPipelineId: string | null,
+  designVersion: number | null,
+): Promise<string | null> {
+  if (!designPipelineId || designVersion == null) return null
+
+  const { data: estruturaCol } = await admin
+    .from("operational_pipeline_columns")
+    .select("id")
+    .eq("pipeline_id", designPipelineId)
+    .eq("slug", "estrutura")
+    .maybeSingle()
+  if (!estruturaCol?.id) return null
+
+  const { data: anchorTask } = await admin
+    .from("tasks")
+    .select("id")
+    .eq("source_id", suggestionId)
+    .eq("operational_column_id", estruturaCol.id as string)
+    .eq("version", designVersion)
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return (anchorTask?.id as string | null) ?? null
+}
+
 export async function getCampaignHandoff(
   suggestionId: string,
   orgId: string,
@@ -93,35 +130,21 @@ export async function getCampaignHandoff(
   // na aprovação. Fica no deliverable figma_structure_link da task âncora.
   let figmaLink: string | null = null
   let figmaFilledAt: string | null = null
-  if (sug.design_pipeline_id && sug.design_version != null) {
-    const { data: estruturaCol } = await admin
-      .from("operational_pipeline_columns")
-      .select("id")
-      .eq("pipeline_id", sug.design_pipeline_id)
-      .eq("slug", "estrutura")
+  const anchorTaskId = await resolveFigmaAnchorTaskId(
+    admin,
+    suggestionId,
+    sug.design_pipeline_id,
+    sug.design_version,
+  )
+  if (anchorTaskId) {
+    const { data: figma } = await admin
+      .from("task_deliverables")
+      .select("value, filled_at")
+      .eq("task_id", anchorTaskId)
+      .eq("field_slug", "figma_structure_link")
       .maybeSingle()
-    if (estruturaCol?.id) {
-      const { data: anchorTask } = await admin
-        .from("tasks")
-        .select("id")
-        .eq("source_id", suggestionId)
-        .eq("operational_column_id", estruturaCol.id as string)
-        .eq("version", sug.design_version)
-        .neq("status", "cancelled")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (anchorTask?.id) {
-        const { data: figma } = await admin
-          .from("task_deliverables")
-          .select("value, filled_at")
-          .eq("task_id", anchorTask.id as string)
-          .eq("field_slug", "figma_structure_link")
-          .maybeSingle()
-        figmaLink = (figma?.value as string | null) ?? null
-        figmaFilledAt = (figma?.filled_at as string | null) ?? null
-      }
-    }
+    figmaLink = (figma?.value as string | null) ?? null
+    figmaFilledAt = (figma?.filled_at as string | null) ?? null
   }
 
   return {
@@ -168,4 +191,73 @@ export async function setHandoffPilot(
   if (error) throw error
   log.info("handoff.pilot_set", { suggestionId, storeId })
   return { pilot_store_id: storeId }
+}
+
+/**
+ * Persiste o link do Figma colado na Tela 2 no deliverable
+ * `figma_structure_link` da task âncora — assim o link informado manualmente
+ * pelo operador sobrevive ao reload e aparece pra todo o fluxo (incl. COO).
+ *
+ * Best-effort: se a campanha ainda não tem task âncora (sem pipeline de
+ * design), retorna `persisted: false` sem erro — o import ainda roda com o
+ * link em memória. Faz upsert manual (a linha pode já existir vazia).
+ */
+export async function setHandoffFigmaLink(
+  suggestionId: string,
+  orgId: string,
+  link: string,
+  userId: string,
+): Promise<{ persisted: boolean }> {
+  const admin = createAdminClient()
+
+  const { data: sug } = await admin
+    .from("campaign_suggestions")
+    .select("id, design_pipeline_id, design_version")
+    .eq("id", suggestionId)
+    .eq("org_id", orgId)
+    .maybeSingle<{
+      id: string
+      design_pipeline_id: string | null
+      design_version: number | null
+    }>()
+  if (!sug) throw new NotFoundError("Campanha")
+
+  const anchorTaskId = await resolveFigmaAnchorTaskId(
+    admin,
+    suggestionId,
+    sug.design_pipeline_id,
+    sug.design_version,
+  )
+  if (!anchorTaskId) return { persisted: false }
+
+  const nowIso = new Date().toISOString()
+  const { data: existing } = await admin
+    .from("task_deliverables")
+    .select("id")
+    .eq("task_id", anchorTaskId)
+    .eq("field_slug", "figma_structure_link")
+    .maybeSingle()
+
+  if (existing?.id) {
+    const { error } = await admin
+      .from("task_deliverables")
+      .update({ value: link, filled_at: nowIso, filled_by: userId })
+      .eq("id", existing.id as string)
+    if (error) throw error
+  } else {
+    const { error } = await admin.from("task_deliverables").insert({
+      task_id: anchorTaskId,
+      field_slug: "figma_structure_link",
+      field_label: "Link do Figma com a estrutura",
+      field_type: "url",
+      required: false,
+      value: link,
+      filled_at: nowIso,
+      filled_by: userId,
+    })
+    if (error) throw error
+  }
+
+  log.info("handoff.figma_link_set", { suggestionId, anchorTaskId })
+  return { persisted: true }
 }

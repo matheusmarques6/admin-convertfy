@@ -20,7 +20,7 @@ import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/server"
 import { AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { getCampaignHandoff } from "./campaign-handoff.service"
+import { getCampaignHandoff, setHandoffFigmaLink } from "./campaign-handoff.service"
 import {
   FigmaError,
   figmaExportImages,
@@ -87,7 +87,7 @@ export async function importStoreEmailsFromFigma(
   suggestionId: string,
   orgId: string,
   userId: string,
-  opts: { storeIds?: string[] } = {},
+  opts: { storeIds?: string[]; figmaLink?: string } = {},
 ): Promise<FigmaImportResult> {
   if (!isFigmaConfigured()) {
     throw new AppError(
@@ -97,12 +97,34 @@ export async function importStoreEmailsFromFigma(
   }
 
   const handoff = await getCampaignHandoff(suggestionId, orgId)
-  const parsed = parseFigmaUrl(handoff.figma_link)
+
+  // Link colado no modal tem prioridade sobre o deliverable da estrutura —
+  // permite importar mesmo quando a campanha ainda não registrou o Figma, ou
+  // corrigir um link errado sem voltar na etapa estrutura.
+  const overrideLink = opts.figmaLink?.trim() || null
+  const effectiveLink = overrideLink ?? handoff.figma_link
+  const parsed = parseFigmaUrl(effectiveLink)
   if (!parsed) {
     throw new AppError(
-      "Campanha sem link válido do Figma (deliverable da etapa estrutura)",
+      overrideLink
+        ? "Link do Figma inválido — cole uma URL de figma.com/design/… ou figma.com/file/…"
+        : "Campanha sem link válido do Figma — cole o link do Figma no modal ou preencha na etapa estrutura",
       422,
     )
+  }
+
+  // Persiste o link colado (best-effort) só quando difere do que já está
+  // gravado — o import não pode falhar por causa da escrita do deliverable.
+  if (overrideLink && overrideLink !== handoff.figma_link) {
+    try {
+      await setHandoffFigmaLink(suggestionId, orgId, overrideLink, userId)
+    } catch (persistErr) {
+      log.warn("figma_link.persist_failed", {
+        suggestionId,
+        error:
+          persistErr instanceof Error ? persistErr.message : "erro desconhecido",
+      })
+    }
   }
 
   let targets: StoreRef[] = handoff.stores.map((s) => ({
