@@ -124,6 +124,9 @@ export const ROUTES = {
       // mais do workspace operacional. As URLs antigas /admin/<pagina>
       // continuam respondendo via redirect 308 pra nao quebrar bookmarks.
       CS: {
+        // Modulo Customer Success com shell de abas (Painel · Pipelines ·
+        // Formularios · Cadencias) — porta do prototipo Figma Make.
+        PAINEL: "/admin/operacional/cs",
         CRM: "/admin/operacional/cs-crm",
         CALLS: "/admin/operacional/cs-crm/calls",
         CADENCES: "/admin/operacional/cs-crm/cadences",

@@ -34,6 +34,7 @@ const MATRIX: Matrix = {
   "ops.clients":            { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.stores":             { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.health":             { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
+  "ops.cs.painel":          { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.cs.forms":           { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.cs.pipelines":       { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.cs.ritual":          { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },

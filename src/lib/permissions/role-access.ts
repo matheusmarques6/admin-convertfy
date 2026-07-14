@@ -26,6 +26,7 @@ export type NavItemId =
   | "ops.clients"
   | "ops.stores"
   | "ops.health"
+  | "ops.cs.painel"
   | "ops.cs.forms"
   | "ops.cs.pipelines"
   | "ops.cs.ritual"
@@ -66,6 +67,7 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.clients",
   "ops.stores",
   "ops.health",
+  "ops.cs.painel",
   "ops.cs.forms",
   "ops.cs.pipelines",
   "ops.cs.ritual",
@@ -103,6 +105,7 @@ const COO_ITEMS = new Set<NavItemId>([
   "ops.clients",
   "ops.stores",
   "ops.health",
+  "ops.cs.painel",
   "ops.cs.forms",
   "ops.cs.pipelines",
   "ops.cs.ritual",
@@ -137,6 +140,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "ops.clients",
   "ops.stores",
   "ops.health",
+  "ops.cs.painel",
   "ops.cs.forms",
   "ops.cs.pipelines",
   "ops.cs.ritual",

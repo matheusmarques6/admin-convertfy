@@ -132,7 +132,7 @@ export const OPERACIONAL_NAV: NavGroup[] = [
       // (jul/2026 — antes eram 3 itens; as rotas antigas redirecionam
       // pras abas). "Configurar pipelines" saiu da nav: a página segue
       // existindo, acessível pelos botões "Configurar" do próprio hub.
-      { id: "ops.cs.pipelines", name: "Customer Success", href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, icon: HeartHandshake },
+      { id: "ops.cs.painel", name: "Customer Success", href: ROUTES.ADMIN.OPERACIONAL.CS.PAINEL, icon: HeartHandshake },
       { id: "ops.cs.ritual", name: "Ritual de Sexta", href: ROUTES.ADMIN.OPERACIONAL.CS.RITUAL, icon: Sparkles },
     ],
   },
