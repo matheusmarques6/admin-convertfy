@@ -172,13 +172,27 @@ async function handleGet(request: NextRequest) {
           `id, current_version, current_column_id, plan, mrr_value,
            client:clients!onboardings_client_id_fkey(id, name, company),
            store:client_stores(id, store_name, language),
-           current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role, deliverables_template)`,
+           current_column:operational_pipeline_columns(id, name, slug, color, default_assignee_role, deliverables_template, is_final)`,
         )
         .eq("org_id", orgId)
         .eq("status", "in_progress")
 
-      if (onboardings && onboardings.length > 0) {
-        const onbIds = onboardings.map((o) => o.id as string)
+      // Onboardings que ja chegaram no estagio FINAL ("Cliente ativo - Handoff
+      // pro time de Acompanhamento", is_final=true) tiveram o onboarding
+      // concluido — o time de Acompanhamento assume daqui. Eles somem do board
+      // de Projetos (as tasks de handoff nao precisam poluir a lista de
+      // trabalho ativo). O card continua visivel no kanban operacional, na
+      // propria coluna final. NAO altera onboardings.status (segue in_progress
+      // ate o avanco explicito pra fora do final, que marca 'completed').
+      const activeOnboardings = (onboardings ?? []).filter((o) => {
+        const c = Array.isArray(o.current_column)
+          ? o.current_column[0]
+          : o.current_column
+        return !(c as { is_final?: boolean } | null)?.is_final
+      })
+
+      if (activeOnboardings.length > 0) {
+        const onbIds = activeOnboardings.map((o) => o.id as string)
         const { data: onbTasks } = await supabase
           .from("tasks")
           .select(
@@ -234,7 +248,7 @@ async function handleGet(request: NextRequest) {
           cmtByTask.get(tid)!.push(c)
         }
 
-        for (const onb of onboardings) {
+        for (const onb of activeOnboardings) {
           const client = (
             Array.isArray(onb.client) ? onb.client[0] : onb.client
           ) as { id: string; name: string; company: string | null } | null
