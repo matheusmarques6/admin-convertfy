@@ -279,54 +279,78 @@ export async function POST(
     }
 
     // 6. Se form tem pipeline_id, cria deal.
+    // stage_id e OPCIONAL na config do form: quando o usuario escolhe uma
+    // pipeline mas deixa a etapa no default "Primeira etapa do pipeline", o
+    // stage_id fica null. Nesse caso resolvemos a primeira etapa (menor
+    // "order") aqui — sem isso o deal nunca era criado e a submissao virava
+    // "so lead", contrariando a UI que promete criar o card na 1a etapa.
     let dealId: string | null = null
-    if (form.pipeline_id && form.stage_id && leadId) {
-      // Posicao no fim da etapa.
-      const { data: maxPos } = await admin
-        .from("deals")
-        .select("position")
-        .eq("stage_id", form.stage_id)
-        .order("position", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const nextPos = (maxPos?.position ?? 0) + 10
+    if (form.pipeline_id && leadId) {
+      let stageId = form.stage_id
+      if (!stageId) {
+        const { data: firstStage } = await admin
+          .from("pipeline_stages")
+          .select("id")
+          .eq("pipeline_id", form.pipeline_id)
+          .order("order", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        stageId = firstStage?.id ?? null
+      }
 
-      const { data: deal, error: dErr } = await admin
-        .from("deals")
-        .insert({
-          pipeline_id: form.pipeline_id,
-          stage_id: form.stage_id,
-          title: leadData.name || `Lead via ${form.name}`,
-          value: 0,
-          currency: "BRL",
-          probability: 50,
-          status: "open",
-          source: leadData.source,
-          tags: [],
-          lead_id: leadId,
-          owner_id: form.created_by, // fallback assignee
-          position: nextPos,
-          custom_fields:
-            Object.keys(dealCustomFieldsData).length > 0
-              ? dealCustomFieldsData
-              : {},
-        })
-        .select("id")
-        .single()
+      if (!stageId) {
+        log.warn(
+          "[FormSubmit] Pipeline sem etapas — deal nao criado, segue so com lead",
+          { pipeline_id: form.pipeline_id },
+        )
+      } else {
+        // Posicao no fim da etapa.
+        const { data: maxPos } = await admin
+          .from("deals")
+          .select("position")
+          .eq("stage_id", stageId)
+          .order("position", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const nextPos = (maxPos?.position ?? 0) + 10
 
-      if (!dErr && deal) {
-        dealId = deal.id
+        const { data: deal, error: dErr } = await admin
+          .from("deals")
+          .insert({
+            pipeline_id: form.pipeline_id,
+            stage_id: stageId,
+            title: leadData.name || `Lead via ${form.name}`,
+            value: 0,
+            currency: "BRL",
+            probability: 50,
+            status: "open",
+            source: leadData.source,
+            tags: [],
+            lead_id: leadId,
+            owner_id: form.created_by, // fallback assignee
+            position: nextPos,
+            custom_fields:
+              Object.keys(dealCustomFieldsData).length > 0
+                ? dealCustomFieldsData
+                : {},
+          })
+          .select("id")
+          .single()
 
-        // Activity de criacao via form.
-        await admin.from("crm_deal_activities").insert({
-          deal_id: deal.id,
-          type: "system",
-          content: `Deal criado automaticamente via formulario "${form.name}"`,
-          created_by: form.created_by,
-          is_internal: true,
-        })
-      } else if (dErr) {
-        log.warn("[FormSubmit] Falha ao criar deal — segue submission sem deal", { dErr })
+        if (!dErr && deal) {
+          dealId = deal.id
+
+          // Activity de criacao via form.
+          await admin.from("crm_deal_activities").insert({
+            deal_id: deal.id,
+            type: "system",
+            content: `Deal criado automaticamente via formulario "${form.name}"`,
+            created_by: form.created_by,
+            is_internal: true,
+          })
+        } else if (dErr) {
+          log.warn("[FormSubmit] Falha ao criar deal — segue submission sem deal", { dErr })
+        }
       }
     }
 
