@@ -9,7 +9,8 @@
  * GET  /api/upload/onboarding?path=...  -> signed url 1h
  * DELETE /api/upload/onboarding?path=...
  *
- * Bucket "onboarding-assets" criado on-demand.
+ * Bucket "onboarding-assets" — PRIVADO. O POST retorna signed URL (não
+ * getPublicUrl), então o consumidor sempre acessa via URL assinada.
  */
 
 import { NextRequest } from "next/server"
@@ -22,40 +23,33 @@ import {
 } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
+import {
+  ONBOARDING_ASSETS_BUCKET,
+  MAX_FILE_SIZE,
+  ALLOWED_MIME,
+} from "@/lib/storage/onboarding-buckets"
 
 const log = logger.child("UploadOnboarding")
-const BUCKET = "onboarding-assets"
-const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
-const ALLOWED_MIME = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-  "image/gif",
-  "image/svg+xml",
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/csv",
-  "text/plain",
-  "video/mp4",
-  "video/webm",
-]
+// Bucket PRIVADO — deliverables/tutoriais internos, acesso via signed URL.
+const BUCKET = ONBOARDING_ASSETS_BUCKET
 
 let bucketEnsured = false
 async function ensureBucket(admin: ReturnType<typeof createAdminClient>) {
   if (bucketEnsured) return
-  await admin.storage
-    .createBucket(BUCKET, {
-      public: false,
-      fileSizeLimit: MAX_FILE_SIZE,
-      allowedMimeTypes: ALLOWED_MIME,
+  // A migration declarativa (storage.buckets) é a fonte de verdade; este
+  // ensureBucket é apenas defesa extra e idempotente. NÃO engolimos erro
+  // silenciosamente: se falhar por motivo != "já existe", logamos.
+  const { error } = await admin.storage.createBucket(BUCKET, {
+    public: false,
+    fileSizeLimit: MAX_FILE_SIZE,
+    allowedMimeTypes: ALLOWED_MIME,
+  })
+  if (error && !/already exists|resource already exists/i.test(error.message)) {
+    log.warn("createBucket falhou (nao-fatal)", {
+      bucket: BUCKET,
+      err: error.message,
     })
-    .catch(() => {
-      // existe — ignora
-    })
+  }
   bucketEnsured = true
 }
 

@@ -26,6 +26,8 @@ import {
   Upload,
   ShieldAlert,
   RefreshCw,
+  Download,
+  File as FileIcon,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
@@ -1568,6 +1570,30 @@ function VersionsTab({ versions }: { versions: OnboardingVersion[] }) {
 }
 
 // ─── Form Responses Tab ──────────────────────────────────────────────────────
+
+// Chaves de campo que sempre representam arquivo de storage (mesmo que o valor
+// nao "pareca" URL — path cru tambem conta).
+const FILE_FIELD_KEYS = new Set([
+  "logo_url",
+  "brand_manual_url",
+  "design_direction_file_url",
+  "design_refs_url",
+])
+
+/** Heuristica: valor string que aponta pra um asset no storage do Supabase. */
+function looksLikeStorageValue(v: unknown): v is string {
+  return (
+    typeof v === "string" &&
+    (v.includes("/storage/v1/object/") || v.includes("form-submissions/"))
+  )
+}
+
+/** Extensoes de imagem que exibem thumbnail inline. */
+function isImagePath(stored: string): boolean {
+  const path = stored.split("?")[0].toLowerCase()
+  return /\.(png|jpe?g|webp|gif|svg)$/.test(path)
+}
+
 function FormResponsesTab({
   onboarding,
 }: {
@@ -1583,19 +1609,166 @@ function FormResponsesTab({
   }
   return (
     <div className="space-y-2">
-      {Object.entries(r).map(([k, v]) => (
-        <div
-          key={k}
-          className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-3"
-        >
-          <p className="text-[10px] uppercase tracking-wide font-mono text-slate-400 mb-1">
-            {k.replaceAll("_", " ")}
-          </p>
-          <p className="text-[12.5px] text-slate-800 dark:text-white/85 whitespace-pre-wrap">
-            {typeof v === "string" ? v : JSON.stringify(v, null, 2)}
-          </p>
+      {Object.entries(r).map(([k, v]) => {
+        const isFile = FILE_FIELD_KEYS.has(k) || looksLikeStorageValue(v)
+        return (
+          <div
+            key={k}
+            className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-3"
+          >
+            <p className="text-[10px] uppercase tracking-wide font-mono text-slate-400 mb-1">
+              {k.replaceAll("_", " ")}
+            </p>
+            {isFile && typeof v === "string" && v.trim() ? (
+              // Campos multiplos (ex: design_refs_url) guardam varias URLs
+              // separadas por \n. Renderiza um arquivo por entrada — senao so
+              // a ultima resolveria e as demais sumiriam da UI.
+              <div className="space-y-2">
+                {v
+                  .split("\n")
+                  .map((entry) => entry.trim())
+                  .filter(Boolean)
+                  .map((entry, i) => (
+                    <FormFileField
+                      key={i}
+                      onboardingId={onboarding.id}
+                      stored={entry}
+                    />
+                  ))}
+              </div>
+            ) : (
+              <p className="text-[12.5px] text-slate-800 dark:text-white/85 whitespace-pre-wrap">
+                {typeof v === "string" ? v : JSON.stringify(v, null, 2)}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Renderiza um campo de arquivo do form: resolve a URL final via
+ * /api/onboardings/[id]/asset-url (pública ou signed conforme o bucket) e
+ * exibe thumbnail (imagens) ou chip (outros) com botoes Baixar/Abrir.
+ */
+function FormFileField({
+  onboardingId,
+  stored,
+}: {
+  onboardingId: string
+  stored: string
+}) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading")
+
+  useEffect(() => {
+    let cancelled = false
+    setState("loading")
+    setUrl(null)
+    fetch(
+      `/api/onboardings/${onboardingId}/asset-url?url=${encodeURIComponent(stored)}`,
+    )
+      .then((res) => res.json().catch(() => ({})))
+      .then((j) => {
+        if (cancelled) return
+        const resolved = (j?.data?.url ?? j?.url) as string | undefined
+        if (resolved) {
+          setUrl(resolved)
+          setState("ready")
+        } else {
+          setState("error")
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState("error")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [onboardingId, stored])
+
+  const fileName = decodeURIComponent(
+    stored.split("?")[0].split("/").pop() ?? "arquivo",
+  )
+
+  if (state === "loading") {
+    return (
+      <div className="flex items-center gap-1.5 text-[12px] text-slate-400">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Carregando arquivo…
+      </div>
+    )
+  }
+
+  if (state === "error" || !url) {
+    return (
+      <p className="text-[12px] text-red-500 dark:text-red-400">
+        Nao foi possivel carregar o arquivo.
+      </p>
+    )
+  }
+
+  const isImage = isImagePath(stored)
+  // URLs do storage sao cross-origin (dominio Supabase != origem do app), entao
+  // o atributo `download` do <a> e ignorado pelo browser. O parametro
+  // `?download=<nome>` do Supabase Storage forca Content-Disposition: attachment
+  // tanto em URL publica quanto assinada — assim o botao "Baixar" baixa de fato.
+  const downloadUrl = `${url}${url.includes("?") ? "&" : "?"}download=${encodeURIComponent(fileName)}`
+
+  if (isImage) {
+    return (
+      <div className="space-y-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={fileName}
+          className="max-h-[160px] w-auto object-contain rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white"
+        />
+        <div className="flex items-center gap-1.5">
+          <a
+            href={downloadUrl}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.08] px-2 py-1 text-[11px] text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/[0.05]"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Baixar
+          </a>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.08] px-2 py-1 text-[11px] text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/[0.05]"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Abrir
+          </a>
         </div>
-      ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 min-w-0 rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] px-2 py-1">
+        <FileIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="truncate text-[12px] text-slate-700 dark:text-white/80">
+          {fileName}
+        </span>
+      </div>
+      <a
+        href={downloadUrl}
+        download
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.08] px-2 py-1 text-[11px] text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/[0.05]"
+      >
+        <Download className="h-3.5 w-3.5" />
+        Baixar
+      </a>
     </div>
   )
 }

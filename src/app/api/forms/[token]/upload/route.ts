@@ -13,31 +13,21 @@
  * Body: multipart/form-data com 'file' + opcional 'field_key'.
  * Validacoes: 15MB max, mime allowlist, token valido em onboardings.
  *
- * Retorna: { url, path } — URL publica do bucket onboarding-assets.
+ * Retorna: { url, path } — URL publica do bucket onboarding-public.
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import {
+  ONBOARDING_PUBLIC_BUCKET,
+  MAX_FILE_SIZE,
+  ALLOWED_MIME,
+} from "@/lib/storage/onboarding-buckets"
 
 const log = logger.child("PublicFormUpload")
-const BUCKET = "onboarding-assets"
-const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
-const ALLOWED_MIME = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-  "image/gif",
-  "image/svg+xml",
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/csv",
-  "text/plain",
-]
+// Bucket PÚBLICO — cliente não está logado, precisa de getPublicUrl direto.
+const BUCKET = ONBOARDING_PUBLIC_BUCKET
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -47,15 +37,21 @@ async function ensureBucket(
   admin: ReturnType<typeof createAdminClient>,
 ): Promise<void> {
   if (bucketEnsured) return
-  await admin.storage
-    .createBucket(BUCKET, {
-      public: true,
-      fileSizeLimit: MAX_FILE_SIZE,
-      allowedMimeTypes: ALLOWED_MIME,
+  // A migration declarativa (storage.buckets) é a fonte de verdade; este
+  // ensureBucket é apenas defesa extra e idempotente. NÃO engolimos erro
+  // silenciosamente: se falhar por motivo != "já existe", logamos pra não
+  // mascarar problema real de storage.
+  const { error } = await admin.storage.createBucket(BUCKET, {
+    public: true,
+    fileSizeLimit: MAX_FILE_SIZE,
+    allowedMimeTypes: ALLOWED_MIME,
+  })
+  if (error && !/already exists|resource already exists/i.test(error.message)) {
+    log.warn("createBucket falhou (nao-fatal)", {
+      bucket: BUCKET,
+      err: error.message,
     })
-    .catch(() => {
-      // bucket ja existe
-    })
+  }
   bucketEnsured = true
 }
 
