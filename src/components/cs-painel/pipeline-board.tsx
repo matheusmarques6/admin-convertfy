@@ -372,6 +372,7 @@ function DealCard({
         borderRadius: 9,
         padding: "10px 11px",
         cursor: "grab",
+        boxShadow: "var(--crm-shadow-sm)",
         opacity: dragging ? 0.35 : 1,
       }}
     >
@@ -411,7 +412,7 @@ function DealCard({
       >
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--crm-gray-400)", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 1 }}>
-            Valor
+            Valor mensal
           </div>
           <div className="crm-tnum" style={{ fontSize: 13, fontWeight: 700, color: "var(--crm-gray-900)" }}>
             {fmtBRL(deal.value)}
