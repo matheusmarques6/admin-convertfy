@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { ChevronLeft, Layers } from "lucide-react"
+import { DealDrawer } from "@/components/crm/deal-drawer"
 
 /**
  * Board de detalhe de um pipeline CS — porta do design do prototipo
@@ -109,6 +110,7 @@ export function PipelineBoard({
 
   const [dragId, setDragId] = useState<string | null>(null)
   const [overStage, setOverStage] = useState<string | null>(null)
+  const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const dragRef = useRef<{ id: string; from: string } | null>(null)
 
   const byStage = useMemo(() => {
@@ -152,6 +154,7 @@ export function PipelineBoard({
   }
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -304,6 +307,7 @@ export function PipelineBoard({
                     deal={d}
                     accent={dot}
                     dragging={dragId === d.id}
+                    onOpen={() => setActiveDealId(d.id)}
                     onDragStart={() => {
                       setDragId(d.id)
                       dragRef.current = { id: d.id, from: col.id }
@@ -321,6 +325,20 @@ export function PipelineBoard({
         })}
       </div>
     </div>
+
+    <DealDrawer
+      dealId={activeDealId}
+      onClose={() => setActiveDealId(null)}
+      onUpdated={() => mutate()}
+      pipelineStages={stages.map((s) => ({
+        id: s.id,
+        name: s.name,
+        stage_type: s.stage_type,
+        color: s.color ?? null,
+        order: s.order,
+      }))}
+    />
+    </>
   )
 }
 
@@ -342,12 +360,14 @@ function DealCard({
   deal,
   accent,
   dragging,
+  onOpen,
   onDragStart,
   onDragEnd,
 }: {
   deal: Deal
   accent: string
   dragging: boolean
+  onOpen: () => void
   onDragStart: () => void
   onDragEnd: () => void
 }) {
@@ -360,6 +380,7 @@ function DealCard({
   return (
     <div
       draggable
+      onClick={onOpen}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move"
         onDragStart()
