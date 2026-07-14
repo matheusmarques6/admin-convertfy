@@ -4,8 +4,8 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { BarChart3, FileText, Layers, Link2, Pencil, Plus } from "lucide-react"
-import { NewFormDialog } from "@/components/crm/new-form-dialog"
 import { ROUTES } from "@/lib/routes"
+import { NewCsFormDialog } from "./new-cs-form-dialog"
 
 /**
  * Aba "Formularios" do modulo Customer Success — porta do prototipo Figma
@@ -111,9 +111,8 @@ export function FormulariosTab() {
         </span>
       </button>
 
-      <NewFormDialog
+      <NewCsFormDialog
         open={newDialogOpen}
-        scope="cs"
         onClose={() => setNewDialogOpen(false)}
         onCreated={() => {
           setNewDialogOpen(false)
