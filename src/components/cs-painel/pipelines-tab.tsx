@@ -5,6 +5,7 @@ import useSWR from "swr"
 import { ChevronRight, Layers, Plus, Search } from "lucide-react"
 import { NewPipelineDialog } from "@/components/crm/new-pipeline-dialog"
 import { PipelineBoard } from "./pipeline-board"
+import { CADENCIAS_PIPELINE_NAME } from "./constants"
 
 /**
  * Aba "Pipelines CS" do modulo Customer Success — porta do prototipo
@@ -51,15 +52,18 @@ export function PipelinesTab() {
     return <PipelineBoard pipelineId={openPipe.id} onBack={() => setOpenPipe(null)} />
   }
 
+  // "Cadencias CS" tem aba propria (Cadencias) — nao aparece no grid.
+  const visible = pipelines.filter((p) => p.name !== CADENCIAS_PIPELINE_NAME)
+
   // Agrupa por categoria preservando a ordem de aparicao (null -> "Outros")
   const q = query.trim().toLowerCase()
   const filtered = q
-    ? pipelines.filter(
+    ? visible.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
           (p.description || "").toLowerCase().includes(q),
       )
-    : pipelines
+    : visible
 
   const groupOrder: string[] = []
   const byGroup = new Map<string, PipelineSummary[]>()

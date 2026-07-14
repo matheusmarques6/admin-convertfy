@@ -13,6 +13,7 @@ import {
 import { ROUTES } from "@/lib/routes"
 import { Painel } from "./painel"
 import { PipelinesTab } from "./pipelines-tab"
+import { CadenciasTab } from "./cadencias-tab"
 
 /**
  * Shell do modulo Customer Success — porta do prototipo Figma Make.
@@ -38,7 +39,7 @@ const TABS: Array<{
 ]
 
 const PLACEHOLDER: Record<
-  "formularios" | "cadencias",
+  "formularios",
   { title: string; desc: string; href: string; cta: string }
 > = {
   formularios: {
@@ -46,12 +47,6 @@ const PLACEHOLDER: Record<
     desc: "Formulários CS vinculados aos pipelines (NPS, health check, feedback). Será migrado para esta aba.",
     href: ROUTES.ADMIN.OPERACIONAL.FORMS,
     cta: "Abrir formulários",
-  },
-  cadencias: {
-    title: "Cadências",
-    desc: "Board de frequência de call (Semanal · Quinzenal · Mensal · Pausada). Será migrado para esta aba.",
-    href: ROUTES.ADMIN.OPERACIONAL.CS.CADENCES,
-    cta: "Abrir board de cadências",
   },
 }
 
@@ -141,9 +136,8 @@ export function CustomerSuccessShell() {
       <div className="flex-1 overflow-y-auto" style={{ padding: "20px 32px 48px" }}>
         {tab === "painel" && <Painel />}
         {tab === "pipelines" && <PipelinesTab />}
-        {(tab === "formularios" || tab === "cadencias") && (
-          <TabPlaceholder {...PLACEHOLDER[tab]} />
-        )}
+        {tab === "cadencias" && <CadenciasTab />}
+        {tab === "formularios" && <TabPlaceholder {...PLACEHOLDER.formularios} />}
       </div>
     </div>
   )

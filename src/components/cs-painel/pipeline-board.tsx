@@ -92,7 +92,7 @@ export function PipelineBoard({
   onBack,
 }: {
   pipelineId: string
-  onBack: () => void
+  onBack?: () => void
 }) {
   const { data, mutate } = useSWR<DetailResp>(
     `/api/crm/pipelines/${pipelineId}`,
@@ -155,23 +155,25 @@ export function PipelineBoard({
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 rounded-[8px] cf-focusable"
-          style={{
-            background: "#fff",
-            border: "1px solid var(--crm-border)",
-            padding: "7px 12px",
-            cursor: "pointer",
-            fontFamily: "var(--crm-font-sans)",
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "var(--crm-gray-700)",
-          }}
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> Pipelines
-        </button>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 rounded-[8px] cf-focusable"
+            style={{
+              background: "#fff",
+              border: "1px solid var(--crm-border)",
+              padding: "7px 12px",
+              cursor: "pointer",
+              fontFamily: "var(--crm-font-sans)",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "var(--crm-gray-700)",
+            }}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Pipelines
+          </button>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span
             style={{
