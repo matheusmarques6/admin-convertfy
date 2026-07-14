@@ -8,6 +8,7 @@
 import { Filter, MessageSquare, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ThreadSummary } from "@/types/crm-inbox"
+import { ThreadTagChips, useTagRegistry } from "./thread-tags"
 
 export type StatusFilter = "open" | "pending" | "resolved" | "all"
 
@@ -22,6 +23,8 @@ interface ConversationListProps {
   onMineOnlyChange: (v: boolean) => void
   search: string
   onSearchChange: (v: string) => void
+  tagFilter: string
+  onTagFilterChange: (v: string) => void
   hasActiveFilters: boolean
 }
 
@@ -36,8 +39,11 @@ export function ConversationList({
   onMineOnlyChange,
   search,
   onSearchChange,
+  tagFilter,
+  onTagFilterChange,
   hasActiveFilters,
 }: ConversationListProps) {
+  const tagRegistry = useTagRegistry()
   return (
     <aside
       className={cn(
@@ -129,6 +135,24 @@ export function ConversationList({
             <Filter className="h-3 w-3" />
           </button>
         </div>
+
+        {/* Filtro por tag — só aparece quando a org tem tags */}
+        {tagRegistry.length > 0 && (
+          <select
+            className="crm-input w-full"
+            style={{ marginTop: 8, height: 28, fontSize: "var(--crm-text-xs)" }}
+            aria-label="Filtrar conversas por tag"
+            value={tagFilter}
+            onChange={(e) => onTagFilterChange(e.target.value)}
+          >
+            <option value="">Todas as tags</option>
+            {tagRegistry.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -224,6 +248,11 @@ export function ConversationList({
                       {t.last_message_direction === "outbound" ? "Voce: " : ""}
                       {t.last_message_preview || "Sem mensagens"}
                     </p>
+                    {(t.tags?.length ?? 0) > 0 && (
+                      <div className="mt-1">
+                        <ThreadTagChips tags={t.tags ?? []} registry={tagRegistry} max={2} size="sm" />
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mt-1">
                       <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
                         {t.channel?.display_name || "—"}

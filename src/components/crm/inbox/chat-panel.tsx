@@ -14,6 +14,7 @@ import { Composer } from "./composer"
 import { MessageBubble } from "./message-bubble"
 import { ServiceWindowBar, windowIsOpen } from "./service-window-bar"
 import { TemplatePickerModal } from "./template-picker-modal"
+import { ThreadTags } from "./thread-tags"
 
 interface ChatPanelProps {
   detail: ThreadDetail
@@ -229,6 +230,14 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
           )}
         </div>
         <div className="flex items-center gap-2">
+          <ThreadTags
+            threadId={thread.id}
+            tags={thread.tags ?? []}
+            onChanged={() => {
+              onRefresh()
+              onThreadsRefresh()
+            }}
+          />
           <AssignDropdown
             threadId={thread.id}
             assignedTo={thread.assigned_to}

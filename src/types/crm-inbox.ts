@@ -17,6 +17,7 @@ export interface ThreadSummary {
   assigned_to: string | null
   is_window_open?: boolean | null
   window_expires_at?: string | null
+  tags?: string[]
   assignee?: { id: string; name: string; avatar_url: string | null } | null
   channel?: { id: string; type: string; provider?: string | null; display_name: string } | null
 }
@@ -53,6 +54,7 @@ export interface ThreadDetail {
     channel_id: string
     is_window_open?: boolean | null
     window_expires_at?: string | null
+    tags?: string[]
     channel?: { id: string; type: string; provider?: string | null; display_name: string }
     assignee?: { id: string; name: string; avatar_url: string | null } | null
   }

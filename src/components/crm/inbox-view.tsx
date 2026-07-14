@@ -27,6 +27,7 @@ export function InboxView() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open")
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
   const debouncedSearch = useDebounce(search, 250)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
@@ -35,6 +36,7 @@ export function InboxView() {
   params.set("status", statusFilter)
   if (mineOnly) params.set("mine", "1")
   if (debouncedSearch) params.set("search", debouncedSearch)
+  if (tagFilter) params.set("tag", tagFilter)
 
   // Com realtime conectado o polling vira fallback lento; sem realtime
   // mantém a cadência antiga.
@@ -82,7 +84,8 @@ export function InboxView() {
     [threads],
   )
 
-  const hasActiveFilters = Boolean(debouncedSearch) || statusFilter !== "open" || mineOnly
+  const hasActiveFilters =
+    Boolean(debouncedSearch) || statusFilter !== "open" || mineOnly || Boolean(tagFilter)
 
   return (
     <div
@@ -100,6 +103,8 @@ export function InboxView() {
         onMineOnlyChange={setMineOnly}
         search={search}
         onSearchChange={setSearch}
+        tagFilter={tagFilter}
+        onTagFilterChange={setTagFilter}
         hasActiveFilters={hasActiveFilters}
       />
 

@@ -9,6 +9,7 @@ import { z } from "zod"
 import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { normalizeThreadTags, THREAD_TAG_MAX_LENGTH, THREAD_TAGS_MAX_COUNT } from "@/lib/crm/thread-tags"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmInboxThread")
@@ -33,7 +34,7 @@ export async function GET(
       .from("crm_threads")
       .select(`
         id, status, contact_name, contact_external_id, contact_avatar_url,
-        last_message_at, last_message_preview, unread_count,
+        last_message_at, last_message_preview, unread_count, tags,
         assigned_to, lead_id, deal_id, client_id, contact_id, channel_id,
         is_window_open, window_expires_at,
         created_at, updated_at,
@@ -85,6 +86,8 @@ const patchSchema = z.object({
   deal_id: uuid().nullable().optional(),
   client_id: uuid().nullable().optional(),
   contact_id: uuid().nullable().optional(),
+  /** Array COMPLETO substitui (mesmo modelo de deals.tags). */
+  tags: z.array(z.string().trim().min(1).max(THREAD_TAG_MAX_LENGTH)).max(THREAD_TAGS_MAX_COUNT).optional(),
 })
 
 export async function PATCH(
@@ -102,6 +105,7 @@ export async function PATCH(
 
     const update: Record<string, unknown> = { ...parsed }
     if (parsed.assigned_to) update.assigned_at = new Date().toISOString()
+    if (parsed.tags) update.tags = normalizeThreadTags(parsed.tags)
 
     const { error } = await admin.from("crm_threads").update(update).eq("id", id)
     if (error) throw error
