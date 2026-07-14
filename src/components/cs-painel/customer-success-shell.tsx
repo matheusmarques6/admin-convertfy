@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import {
   BarChart3,
@@ -11,6 +11,8 @@ import {
   Layers,
 } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
+import { Painel } from "./painel"
+import { PipelinesTab } from "./pipelines-tab"
 
 /**
  * Shell do modulo Customer Success — porta do prototipo Figma Make.
@@ -36,15 +38,9 @@ const TABS: Array<{
 ]
 
 const PLACEHOLDER: Record<
-  Exclude<TabKey, "painel">,
+  "formularios" | "cadencias",
   { title: string; desc: string; href: string; cta: string }
 > = {
-  pipelines: {
-    title: "Pipelines CS",
-    desc: "Board de pipelines com etapas e deals. Já disponível na versão atual do hub — será migrado para esta aba.",
-    href: ROUTES.ADMIN.OPERACIONAL.PIPELINES,
-    cta: "Abrir hub de pipelines",
-  },
   formularios: {
     title: "Formulários",
     desc: "Formulários CS vinculados aos pipelines (NPS, health check, feedback). Será migrado para esta aba.",
@@ -59,7 +55,7 @@ const PLACEHOLDER: Record<
   },
 }
 
-export function CustomerSuccessShell({ children }: { children: ReactNode }) {
+export function CustomerSuccessShell() {
   const [tab, setTab] = useState<TabKey>("painel")
 
   return (
@@ -143,9 +139,9 @@ export function CustomerSuccessShell({ children }: { children: ReactNode }) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "20px 32px 48px" }}>
-        {tab === "painel" ? (
-          children
-        ) : (
+        {tab === "painel" && <Painel />}
+        {tab === "pipelines" && <PipelinesTab />}
+        {(tab === "formularios" || tab === "cadencias") && (
           <TabPlaceholder {...PLACEHOLDER[tab]} />
         )}
       </div>
