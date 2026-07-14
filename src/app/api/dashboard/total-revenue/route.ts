@@ -6,6 +6,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
 const log = logger.child("TotalRevenue")
@@ -202,7 +203,11 @@ async function handleGet(request: NextRequest) {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
-    const period = request.nextUrl.searchParams.get("period") || "30d"
+    const period = normalizePeriodLabel(
+      request.nextUrl.searchParams.get("period") || "30d",
+      request.nextUrl.searchParams.get("start"),
+      request.nextUrl.searchParams.get("end"),
+    )
     const storeIdsParam = request.nextUrl.searchParams.get("store_ids")
     const filterStoreIds = storeIdsParam ? storeIdsParam.split(",").filter(Boolean) : null
 

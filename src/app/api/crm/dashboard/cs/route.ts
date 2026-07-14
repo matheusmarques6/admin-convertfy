@@ -24,6 +24,15 @@ export async function GET(request: NextRequest) {
     await requireAuth(sb)
     const admin = createAdminClient()
 
+    // PREMISSA SINGLE-ORG (decisao consciente): esta rota do CRM agrega
+    // client_stores/deals/pipelines SEM filtro de org_id, ao contrario das
+    // rotas irmas do dashboard (health-monitor, stores-overview) que sao
+    // org-scoped. Hoje o CRM opera como agencia single-tenant, entao o
+    // resultado e o mesmo. ATENCAO: se o app passar a ter multiplas orgs
+    // com client_stores, isto vaza dados entre orgs — nesse dia, adicionar
+    // resolveOrgId(user.id) + .eq("org_id", orgId) aqui e nas queries de
+    // client_subscriptions/pipelines/deals abaixo.
+
     // Lojas ativas + health/MRR/NPS
     type StoreRow = {
       id: string

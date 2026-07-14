@@ -33,7 +33,16 @@ interface OnboardingStore {
   badge?: "novo" | "atrasado"
 }
 
-type Phase = "config" | "briefing" | "klaviyo" | "camp" | "golive"
+// As 7 fases correspondem 1:1 aos slugs das colunas do pipeline de onboarding
+// (operational_pipeline_columns em onboarding-bootstrap.service.ts).
+type Phase =
+  | "entrada"
+  | "cliente_formulario"
+  | "preview_producao"
+  | "preview_aprovacao"
+  | "emails_finais"
+  | "implementacao"
+  | "cliente_ativo"
 
 interface PhaseConfig {
   label: string
@@ -42,33 +51,24 @@ interface PhaseConfig {
 
 // ─── Phase config ─────────────────────────────────────────
 
-const PHASES: Record<Phase, PhaseConfig> = {
-  config: { label: "Configuração", color: "#6B7280" },
-  briefing: { label: "Briefing", color: "#4E62D8" },
-  klaviyo: { label: "Klaviyo", color: "#7C3AED" },
-  camp: { label: "1ª Camp.", color: "#F59E0B" },
-  golive: { label: "Go Live", color: "#10B981" },
-}
-
-// ─── Mock data ────────────────────────────────────────────
-
-const _MOCK_STORES: OnboardingStore[] = [
-  { name: "Casa & Decor", phase: "camp", days: 11, badge: "atrasado" },
-  { name: "Green Garden", phase: "klaviyo", days: 9 },
-  { name: "TechHub Store", phase: "briefing", days: 6 },
-  { name: "Moda Viva", phase: "klaviyo", days: 4 },
-  { name: "Pet Kingdom", phase: "config", days: 3 },
-  { name: "Esporte Total", phase: "camp", days: 3 },
-  { name: "Sabor & Arte", phase: "briefing", days: 2 },
-  { name: "Doce Encanto", phase: "golive", days: 2 },
-  { name: "Nova Beleza", phase: "config", days: 1, badge: "novo" },
+const PHASE_ORDER: Phase[] = [
+  "entrada",
+  "cliente_formulario",
+  "preview_producao",
+  "preview_aprovacao",
+  "emails_finais",
+  "implementacao",
+  "cliente_ativo",
 ]
 
-const _MOCK_KPI = {
-  inProgress: 9,
-  avgTime: "5d",
-  completed30d: 4,
-  overdue: 2,
+const PHASES: Record<Phase, PhaseConfig> = {
+  entrada: { label: "Entrada", color: "#6B7280" },
+  cliente_formulario: { label: "Formulário", color: "#4E62D8" },
+  preview_producao: { label: "Preview (Prod.)", color: "#7C3AED" },
+  preview_aprovacao: { label: "Preview (Aprov.)", color: "#A855F7" },
+  emails_finais: { label: "E-mails Finais", color: "#F59E0B" },
+  implementacao: { label: "Implementação", color: "#0EA5E9" },
+  cliente_ativo: { label: "Go Live", color: "#10B981" },
 }
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -170,14 +170,26 @@ function KpiCell({
 // ─── DashboardOnboarding (exported) ───────────────────────
 
 function mapPhase(raw: string): Phase {
-  const lower = raw.toLowerCase()
-  if (lower.includes("config") || lower === "setup") return "config"
-  if (lower.includes("brief")) return "briefing"
-  if (lower.includes("klaviyo") || lower.includes("integra")) return "klaviyo"
-  if (lower.includes("camp") || lower.includes("1a") || lower.includes("first")) return "camp"
-  if (lower.includes("golive") || lower.includes("go_live") || lower.includes("live") || lower === "completed") return "golive"
-  if (lower === "in_progress") return "klaviyo"
-  return "config"
+  const s = (raw || "").toLowerCase().trim()
+  // Match direto pelo slug real da coluna do pipeline.
+  const direct: Record<string, Phase> = {
+    entrada: "entrada",
+    cliente_formulario: "cliente_formulario",
+    preview_producao: "preview_producao",
+    preview_aprovacao: "preview_aprovacao",
+    emails_finais: "emails_finais",
+    implementacao: "implementacao",
+    cliente_ativo: "cliente_ativo",
+  }
+  if (direct[s]) return direct[s]
+  // Fallbacks para status genéricos que possam chegar em current_phase/status.
+  if (s === "completed" || s.includes("live") || s.includes("ativo")) return "cliente_ativo"
+  if (s.includes("aprov")) return "preview_aprovacao"
+  if (s.includes("preview") || s.includes("producao")) return "preview_producao"
+  if (s.includes("form")) return "cliente_formulario"
+  if (s.includes("implement")) return "implementacao"
+  if (s.includes("email") || s.includes("final")) return "emails_finais"
+  return "entrada"
 }
 
 export function DashboardOnboarding({ loading = false, onboardings }: DashboardOnboardingProps) {
@@ -211,11 +223,19 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
 
   // Derive pipeline from real stores
   const pipelineSegments = useMemo(() => {
-    const counts: Record<Phase, number> = { config: 0, briefing: 0, klaviyo: 0, camp: 0, golive: 0 }
+    const counts: Record<Phase, number> = {
+      entrada: 0,
+      cliente_formulario: 0,
+      preview_producao: 0,
+      preview_aprovacao: 0,
+      emails_finais: 0,
+      implementacao: 0,
+      cliente_ativo: 0,
+    }
     for (const s of stores) {
       counts[s.phase]++
     }
-    return (Object.keys(counts) as Phase[])
+    return PHASE_ORDER
       .filter((phase) => counts[phase] > 0)
       .map((phase) => ({ phase, count: counts[phase] }))
   }, [stores])
@@ -247,7 +267,7 @@ export function DashboardOnboarding({ loading = false, onboardings }: DashboardO
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
-                    Acompanhe o progresso dos onboardings ativos. Cada loja passa pelas fases: Configuração, Briefing, Klaviyo, 1a Campanha e Go Live. Lojas atrasadas são destacadas.
+                    Acompanhe o progresso dos onboardings ativos. Cada loja passa pelas fases: Entrada, Formulário, Preview (produção e aprovação), E-mails Finais, Implementação e Go Live. Lojas atrasadas são destacadas.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

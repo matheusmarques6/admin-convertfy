@@ -20,6 +20,7 @@ import {
   getUnifiedCampaigns,
   getUnifiedFlows,
 } from "@/lib/services/unified-metrics.service"
+import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("DashboardEmailPerf")
@@ -34,7 +35,11 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const supabase = await createAdminClient()
 
-    const period = request.nextUrl.searchParams.get("period") || "30d"
+    const period = normalizePeriodLabel(
+      request.nextUrl.searchParams.get("period") || "30d",
+      request.nextUrl.searchParams.get("start"),
+      request.nextUrl.searchParams.get("end"),
+    )
 
     const [revenueRows, campaignRows, flowRows] = await Promise.all([
       getUnifiedRevenue(supabase, orgId, [period]),

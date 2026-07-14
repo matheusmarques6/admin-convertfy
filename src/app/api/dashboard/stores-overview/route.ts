@@ -3,12 +3,13 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
-import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
 import {
   getUnifiedRevenue,
   getUnifiedCampaigns,
   getUnifiedFlows,
 } from "@/lib/services/unified-metrics.service"
+import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoresOverview")
@@ -22,7 +23,11 @@ async function handleGet(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const supabase = await createAdminClient()
 
-    const period = request.nextUrl.searchParams.get("period") || "30d"
+    const period = normalizePeriodLabel(
+      request.nextUrl.searchParams.get("period") || "30d",
+      request.nextUrl.searchParams.get("start"),
+      request.nextUrl.searchParams.get("end"),
+    )
 
     // SELECT resiliente: tenta com email_platform/omnisend_api_key (colunas
     // novas), fallback sem quando a migration 20260417 nao foi aplicada.
@@ -37,13 +42,13 @@ async function handleGet(request: NextRequest) {
     }
 
     let storesQuery = await fetchStores(
-      "id, store_name, store_url, platform, email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, currency, is_active, client_id, clients(name)"
+      "id, store_name, store_url, platform, email_platform, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, currency, health_score, is_active, client_id, clients(name)"
     )
 
     if (storesQuery.error && /email_platform|omnisend_api_key/.test(storesQuery.error.message || "")) {
       log.warn("email_platform/omnisend_api_key columns not found — falling back", { msg: storesQuery.error.message })
       storesQuery = await fetchStores(
-        "id, store_name, store_url, platform, klaviyo_private_key, klaviyo_api_key, currency, is_active, client_id, clients(name)"
+        "id, store_name, store_url, platform, klaviyo_private_key, klaviyo_api_key, currency, health_score, is_active, client_id, clients(name)"
       )
     }
 
@@ -128,15 +133,20 @@ async function handleGet(request: NextRequest) {
       const emailRecipients = emailCamps.reduce((s, c) => s + c.recipients, 0)
       const smsRecipients = smsCamps.reduce((s, c) => s + c.recipients, 0)
 
-      // Paraleliza as conversoes BRL por loja
-      const [totalBRL, campaignBRL, flowBRL, emailBRL, smsBRL, attributedBRL] = await Promise.all([
-        convertToBRL(totalRevenue, currency),
+      // Paraleliza as conversoes BRL por loja. A 1a usa a variante detalhada
+      // para sinalizar câmbio degradado (moeda estrangeira sem taxa → valor
+      // fica na moeda original). Como todas usam a mesma moeda/taxa, o flag da
+      // 1a vale para a loja inteira.
+      const [totalConv, campaignBRL, flowBRL, emailBRL, smsBRL, attributedBRL] = await Promise.all([
+        convertToBRLDetailed(totalRevenue, currency),
         convertToBRL(campaignRevenue, currency),
         convertToBRL(flowRevenue, currency),
         convertToBRL(emailRevenueOriginal, currency),
         convertToBRL(smsRevenueOriginal, currency),
         convertToBRL(attributedRevenue, currency),
       ])
+      const totalBRL = totalConv.valueBRL
+      const fxDegraded = currency !== "BRL" && !totalConv.converted
       // % de receita da loja recuperada via email/sms marketing.
       // Mesmo calculo do card "Recuperacao Email" da pagina de detalhe.
       const recoveryRate = totalBRL > 0 ? (attributedBRL / totalBRL) * 100 : 0
@@ -194,6 +204,12 @@ async function handleGet(request: NextRequest) {
         clientId: store.client_id,
         clientName: client?.name || "—",
         currency,
+        // Health score REAL por loja (0-100), computado pelo cron
+        // crm-health-compute (email35/rev30/tickets20/nps15). null quando
+        // ainda nao calculado — o front trata como badge neutro.
+        healthScore: typeof s.health_score === "number" ? s.health_score : null,
+        // true = câmbio indisponivel, valores estao na moeda original (nao BRL).
+        fxDegraded,
         totalRevenueBRL: Math.round(totalBRL * 100) / 100,
         attributedRevenueBRL: Math.round(attributedBRL * 100) / 100,
         recoveryRate: Math.round(recoveryRate * 100) / 100,

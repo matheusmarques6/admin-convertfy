@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo, lazy, Suspense } from "react"
 import useSWR from "swr"
 import { DashboardTopBar } from "./dashboard-top-bar"
 import type { DateRange } from "./date-range-panel"
-import { TotalRevenueBanner, type TotalRevenueData, type RevenueStoreItem } from "./total-revenue-banner"
+import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
 import { KpiCard } from "@/components/ui/kpi-card"
 import { KpiCardRow } from "@/components/ui/kpi-card-row"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -157,6 +157,16 @@ export function DashboardLayout({
   )
   const flowCards = flowsAgg?.flows ?? undefined
 
+  // ─── Stores overview (receita + engajamento + health score reais por loja) ──
+  // Alimenta "Saúde das Lojas" e "Clientes por Receita" com dados reais
+  // (open/click rate, health score, % recuperação) em vez de placeholders.
+  const { data: storesOverview } = useSWR(
+    `/api/dashboard/stores-overview?period=${revenuePeriod}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const storeOverviewItems = storesOverview?.stores ?? []
+
   // ─── Computed KPI values from REAL data ─────────────────
 
   const totalRevenue = revenueData?.totalRevenue ?? 0
@@ -197,10 +207,6 @@ export function DashboardLayout({
     if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}K`
     return formatCurrency(v)
   }
-
-  // ─── Map storeBreakdown for Client Health + Clients Revenue ──
-
-  const clientStoreData: RevenueStoreItem[] = storeBreakdown
 
   // ─── Map onboarding data from page.tsx ────────────────────
 
@@ -264,8 +270,8 @@ export function DashboardLayout({
             <KpiCard
               label={showOperacionalSection ? "Receita Atribuída" : "Receita Total"}
               value={fmtCompact(showOperacionalSection ? attributedRevenue : totalRevenue)}
-              delta={deltas?.total}
-              sparkData={sparklines?.total}
+              delta={showOperacionalSection ? deltas?.total : deltas?.storeTotal}
+              sparkData={showOperacionalSection ? sparklines?.total : sparklines?.storeTotal}
               loading={isLoading}
               tooltip={
                 showOperacionalSection
@@ -340,7 +346,7 @@ export function DashboardLayout({
             <Suspense fallback={<CardSkeleton />}>
               <DashboardClientHealth
                 loading={isLoading}
-                storeBreakdown={clientStoreData}
+                stores={storeOverviewItems}
               />
             </Suspense>
           </div>
@@ -382,7 +388,7 @@ export function DashboardLayout({
           <Suspense fallback={<CardSkeleton />}>
             <DashboardClientsRevenue
               loading={isLoading}
-              storeBreakdown={clientStoreData}
+              stores={storeOverviewItems}
             />
           </Suspense>
         </AnimatedItem>

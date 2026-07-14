@@ -80,7 +80,6 @@ interface MetricDefinition {
 interface ChartPoint {
   day: string
   current: number
-  previous: number
 }
 
 interface DashboardEmailPerfProps {
@@ -88,28 +87,45 @@ interface DashboardEmailPerfProps {
   period?: string
 }
 
-// ─── Empty chart data (zeros — awaiting sync) ───────────
+// ─── Série diária real (store_daily_metrics via /api/dashboard/email-series) ──
 
-const DAYS = Array.from({ length: 30 }, (_, i) =>
-  new Date(2026, 1, i + 1).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
-)
-
-const EMPTY_SERIES: Record<MetricKey, { current: number[]; previous: number[] }> = {
-  openRate: { current: Array(30).fill(0), previous: Array(30).fill(0) },
-  clickRate: { current: Array(30).fill(0), previous: Array(30).fill(0) },
-  ctor: { current: Array(30).fill(0), previous: Array(30).fill(0) },
-  placedOrder: { current: Array(30).fill(0), previous: Array(30).fill(0) },
-  rpe: { current: Array(30).fill(0), previous: Array(30).fill(0) },
-  deliverability: { current: Array(30).fill(0), previous: Array(30).fill(0) },
+interface EmailSeriesPoint {
+  date: string
+  recipients: number
+  delivered: number
+  opened: number
+  clicked: number
+  conversions: number
+  conversion_value: number
+  openRate: number
+  clickRate: number
+  ctor: number
+  placedOrderRate: number
 }
 
-function getChartData(metric: MetricKey): ChartPoint[] {
-  const series = EMPTY_SERIES[metric]
-  return DAYS.map((day, i) => ({
-    day,
-    current: series.current[i],
-    previous: series.previous[i],
-  }))
+interface EmailSeriesResponse {
+  success?: boolean
+  series?: EmailSeriesPoint[]
+  collecting?: boolean
+}
+
+/** Extrai o valor da métrica selecionada de um ponto diário da série. */
+function pointValue(metric: MetricKey, p: EmailSeriesPoint): number {
+  switch (metric) {
+    case "openRate": return p.openRate
+    case "clickRate": return p.clickRate
+    case "ctor": return p.ctor
+    case "placedOrder": return p.placedOrderRate
+    case "rpe": return p.recipients > 0 ? Math.round((p.conversion_value / p.recipients) * 100) / 100 : 0
+    case "deliverability": return p.recipients > 0 ? Math.round((p.delivered / p.recipients) * 1000) / 10 : 0
+    default: return 0
+  }
+}
+
+function formatDayLabel(isoDate: string): string {
+  // isoDate = "YYYY-MM-DD" → "dd mmm" (UTC, sem deslocamento de fuso).
+  const d = new Date(`${isoDate}T00:00:00Z`)
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
 }
 
 // ─── Metric definitions (empty — filled by sync data) ───
@@ -301,6 +317,14 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
   const apiTotals = apiData?.totals
   const apiAudience = apiData?.audience
 
+  // Série temporal REAL para o gráfico (store_daily_metrics).
+  const { data: seriesData } = useSWR<EmailSeriesResponse>(
+    `/api/dashboard/email-series?period=${period}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const series = useMemo(() => seriesData?.series ?? [], [seriesData])
+
   // Substitui METRICS placeholder com valores reais
   const liveMetrics: MetricDefinition[] = useMemo(() => {
     if (!apiMetrics) return METRICS
@@ -325,7 +349,7 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
   }, [apiTotals, apiAudience, apiMetrics])
 
   const headerSubtitle = useMemo(() => {
-    if (!apiTotals) return "198.6K entregues · R$ 847K receita atribuida"
+    if (!apiTotals) return "—"
     const delivered = fmtCompact(apiTotals.delivered)
     const revenue = apiTotals.revenue > 1_000
       ? `R$ ${fmtCompact(apiTotals.revenue)}`
@@ -333,16 +357,25 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
     return `${delivered} entregues · ${revenue} receita atribuida`
   }, [apiTotals])
 
-  const chartData = useMemo(() => getChartData(selectedMetric), [selectedMetric])
+  const chartData: ChartPoint[] = useMemo(
+    () =>
+      series.map((p) => ({
+        day: formatDayLabel(p.date),
+        current: pointValue(selectedMetric, p),
+      })),
+    [series, selectedMetric],
+  )
   const selectedDef = liveMetrics.find((m) => m.key === selectedMetric)!
+  const hasSeries = chartData.length > 0
 
   const domain = useMemo(() => {
-    const allValues = chartData.flatMap((d) => [d.current, d.previous])
+    if (chartData.length === 0) return [0, 1] as [number, number]
+    const allValues = chartData.map((d) => d.current)
     const min = Math.min(...allValues)
     const max = Math.max(...allValues)
-    const padding = (max - min) * 0.15
+    const padding = (max - min) * 0.15 || Math.max(0.1, max * 0.1)
     return [
-      Math.floor((min - padding) * 10) / 10,
+      Math.max(0, Math.floor((min - padding) * 10) / 10),
       Math.ceil((max + padding) * 10) / 10,
     ] as [number, number]
   }, [chartData])
@@ -383,11 +416,7 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
         <div className="flex items-center gap-4 shrink-0 text-xs text-gray-500 dark:text-white/60 dark:text-[#8B92A5]">
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-4 h-0 border-t-2 border-[#4E62D8] dark:border-[#7B8CEA]" />
-            Atual
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-4 h-0 border-t-2 border-dashed border-gray-300 dark:border-[#5C6378]" />
-            Periodo anterior
+            {selectedDef.label} por dia
           </span>
         </div>
       </div>
@@ -406,75 +435,75 @@ export function DashboardEmailPerf({ loading = false, period = "30d" }: Dashboar
 
       {/* ── Chart ──────────────────────────────────────── */}
       <div className="mt-5">
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="emailPerfGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4E62D8" stopOpacity={0.18} />
-                <stop offset="50%" stopColor="#4E62D8" stopOpacity={0.05} />
-                <stop offset="100%" stopColor="#4E62D8" stopOpacity={0.01} />
-              </linearGradient>
-            </defs>
+        {hasSeries ? (
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="emailPerfGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#4E62D8" stopOpacity={0.18} />
+                  <stop offset="50%" stopColor="#4E62D8" stopOpacity={0.05} />
+                  <stop offset="100%" stopColor="#4E62D8" stopOpacity={0.01} />
+                </linearGradient>
+              </defs>
 
-            <CartesianGrid
-              horizontal
-              vertical={false}
-              stroke="#F3F4F6"
-              className="dark:opacity-10"
-            />
+              <CartesianGrid
+                horizontal
+                vertical={false}
+                stroke="#F3F4F6"
+                className="dark:opacity-10"
+              />
 
-            <XAxis
-              dataKey="day"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: "#9CA3AF" }}
-              dy={8}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              domain={domain}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 11, fill: "#9CA3AF" }}
-              tickFormatter={(v: number) =>
-                selectedDef.format === "currency"
-                  ? `R$${v.toFixed(2)}`
-                  : `${v.toFixed(1)}%`
-              }
-              width={58}
-            />
+              <XAxis
+                dataKey="day"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                dy={8}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                domain={domain}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                tickFormatter={(v: number) =>
+                  selectedDef.format === "currency"
+                    ? `R$${v.toFixed(2)}`
+                    : `${v.toFixed(1)}%`
+                }
+                width={58}
+              />
 
-            <Tooltip
-              content={<EmailPerfTooltip format={selectedDef.format} />}
-            />
+              <Tooltip
+                content={<EmailPerfTooltip format={selectedDef.format} />}
+              />
 
-            <Area
-              type="monotone"
-              dataKey="previous"
-              stroke="#D1D5DB"
-              strokeWidth={1.5}
-              strokeDasharray="6 4"
-              fill="none"
-              dot={false}
-              opacity={0.45}
-            />
-
-            <Area
-              type="monotone"
-              dataKey="current"
-              stroke="#4E62D8"
-              strokeWidth={2}
-              fill="url(#emailPerfGradient)"
-              dot={false}
-              activeDot={{
-                r: 4,
-                fill: "#4E62D8",
-                stroke: "#FFFFFF",
-                strokeWidth: 2,
-              }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+              <Area
+                type="monotone"
+                dataKey="current"
+                stroke="#4E62D8"
+                strokeWidth={2}
+                fill="url(#emailPerfGradient)"
+                dot={false}
+                activeDot={{
+                  r: 4,
+                  fill: "#4E62D8",
+                  stroke: "#FFFFFF",
+                  strokeWidth: 2,
+                }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-[200px] flex-col items-center justify-center gap-1 rounded-[6px] border border-dashed border-black/[0.08] dark:border-white/[0.08] text-center">
+            <span className="text-[13px] font-medium text-gray-500 dark:text-white/60">
+              Coletando dados de tendência
+            </span>
+            <span className="max-w-[280px] text-[11px] text-gray-400 dark:text-white/40">
+              A série diária é preenchida a partir dos envios de campanha. Aguarde a próxima coleta.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Footer ─────────────────────────────────────── */}

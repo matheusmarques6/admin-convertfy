@@ -5,12 +5,16 @@
  * snapshots historicos de campanhas Klaviyo+Omnisend.
  *
  * Estrategia:
- *   1. Le todas as rows de klaviyo_campaign_metrics + omnisend_campaign_metrics
- *      cuja period_end fica dentro das ultimas N semanas (default 4).
- *   2. Agrupa por semana ISO (Mon-Sun) usando period_end.
- *   3. Calcula taxas medias ponderadas por delivered (mais correto que
- *      media simples — uma campanha com 100k recipients pesa mais que
- *      uma com 1k).
+ *   1. Le rows de klaviyo_campaign_metrics + omnisend_campaign_metrics de UM
+ *      unico period_label ("90d", que cobre ate ~13 semanas) para nao
+ *      contar a mesma campanha varias vezes (a mesma campanha existe em
+ *      linhas 7d/15d/30d/90d — a UNIQUE inclui period_start/period_end).
+ *   2. Deduplica por (store_id, campaign_id) mantendo o sync mais recente.
+ *   3. Agrupa por semana ISO (Mon-Sun) usando send_time (data REAL de envio
+ *      da campanha), nao period_end (que e o timestamp do sync e jogaria
+ *      todas as campanhas na semana atual).
+ *   4. Calcula taxas ponderadas por delivered (uma campanha com 100k
+ *      recipients pesa mais que uma com 1k).
  *
  * Se nenhuma campanha foi enviada na janela, retorna array vazio
  * (componente mostra empty state).
@@ -58,11 +62,14 @@ export async function GET(request: NextRequest) {
 
     type CampaignRow = {
       store_id: string
+      campaign_id: string
       delivered: number | null
       opened: number | null
       clicked: number | null
       conversions: number | null
+      send_time: string | null
       period_end: string | null
+      fetched_at: string | null
     }
 
     type StoreRow = { id: string; org_id: string }
@@ -78,18 +85,23 @@ export async function GET(request: NextRequest) {
       return successResponse(request, { weeks: emptyWeeks(weeks, weekStart0), totalsZero: true })
     }
 
+    // Um unico period_label ("90d") cobre ate ~13 semanas sem contar a mesma
+    // campanha em multiplas janelas. Filtra por send_time (data real de envio).
+    const selectCols = "store_id, campaign_id, delivered, opened, clicked, conversions, send_time, period_end, fetched_at"
     const fetchKlav = admin
       .from("klaviyo_campaign_metrics")
-      .select("store_id, delivered, opened, clicked, conversions, period_end")
+      .select(selectCols)
       .in("store_id", storeIds)
-      .gte("period_end", oldest.toISOString())
+      .eq("period_label", "90d")
+      .gte("send_time", oldest.toISOString())
       .returns<CampaignRow[]>()
 
     const fetchOmni = admin
       .from("omnisend_campaign_metrics")
-      .select("store_id, delivered, opened, clicked, conversions, period_end")
+      .select(selectCols)
       .in("store_id", storeIds)
-      .gte("period_end", oldest.toISOString())
+      .eq("period_label", "90d")
+      .gte("send_time", oldest.toISOString())
       .returns<CampaignRow[]>()
 
     const [klavRes, omniRes] = await Promise.all([fetchKlav, fetchOmni])
@@ -97,7 +109,23 @@ export async function GET(request: NextRequest) {
     // Omnisend pode nao existir se migration nao foi aplicada — ignora erro
     const klavRows = klavRes.data ?? []
     const omniRows = omniRes.error ? [] : (omniRes.data ?? [])
-    const allRows = [...klavRows, ...omniRows]
+
+    // Dedup por (store_id, campaign_id) mantendo o sync mais recente. Mesmo
+    // com 1 period_label, syncs concorrentes (cron + live) podem gerar 2
+    // linhas do mesmo campaign_id com period_start/end diferentes.
+    const dedup = new Map<string, CampaignRow>()
+    for (const r of [...klavRows, ...omniRows]) {
+      const key = `${r.store_id}|${r.campaign_id}`
+      const existing = dedup.get(key)
+      if (!existing) {
+        dedup.set(key, r)
+        continue
+      }
+      const a = new Date(r.fetched_at ?? 0).getTime()
+      const b = new Date(existing.fetched_at ?? 0).getTime()
+      if (a > b) dedup.set(key, r)
+    }
+    const allRows = [...dedup.values()]
 
     // Agrupa por inicio da semana ISO
     const buckets = new Map<string, WeekBucket>()
@@ -113,9 +141,11 @@ export async function GET(request: NextRequest) {
     }
 
     for (const r of allRows) {
-      if (!r.period_end) continue
-      const end = new Date(r.period_end)
-      const ws = startOfIsoWeek(end).toISOString()
+      // send_time = data real de envio. Fallback em period_end para linhas
+      // antigas sem send_time (aproximado — pode cair na semana do sync).
+      const dateStr = r.send_time ?? r.period_end
+      if (!dateStr) continue
+      const ws = startOfIsoWeek(new Date(dateStr)).toISOString()
       const b = buckets.get(ws)
       if (!b) continue
       b.delivered += Number(r.delivered) || 0

@@ -4,6 +4,7 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getUnifiedFlows } from "@/lib/services/unified-metrics.service"
+import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("FlowsAggregate")
@@ -48,7 +49,11 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const supabase = await createAdminClient()
 
-    const period = request.nextUrl.searchParams.get("period") || "30d"
+    const period = normalizePeriodLabel(
+      request.nextUrl.searchParams.get("period") || "30d",
+      request.nextUrl.searchParams.get("start"),
+      request.nextUrl.searchParams.get("end"),
+    )
 
     const flows = await getUnifiedFlows(supabase, orgId, period, undefined, true)
     if (flows.length === 0) {
@@ -129,9 +134,12 @@ export async function GET(request: NextRequest) {
       return `R$ ${Math.round(v)}`
     }
 
+    // Só categorias que realmente têm flows ativos — antes o slice(0,3) fixo
+    // descartava Welcome Series mesmo quando categorias anteriores estavam
+    // vazias. Agora prioriza por ordem mas ignora categorias sem dados.
     const results = (Object.keys(CATEGORY_LABELS) as FlowCategory[])
-      .filter((cat) => cat !== "other" || aggregated.get(cat)!.flowCount > 0)
-      .slice(0, 3)
+      .filter((cat) => aggregated.get(cat)!.flowCount > 0)
+      .slice(0, 4)
       .map((cat) => {
         const agg = aggregated.get(cat)!
         const { title, benchmark } = CATEGORY_LABELS[cat]
@@ -147,7 +155,9 @@ export async function GET(request: NextRequest) {
           title,
           rate: Math.round(avgRate * 10) / 10,
           revenue: fmtCurrency(agg.totalRevenueBRL),
-          delta: 0,
+          // Sem série per-flow ainda (Grupo 3 cobre store-level). null =
+          // "sem comparação" → o card não mostra um "+0%" falso.
+          delta: null as number | null,
           benchmark,
           sparklinePoints: "",
           tooltip: {

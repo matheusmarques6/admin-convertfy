@@ -13,7 +13,8 @@ interface FlowCardData {
   title: string
   rate: number
   revenue: string
-  delta: number
+  /** null = sem comparação período-a-período disponível (não renderiza delta). */
+  delta: number | null
   benchmark: number
   sparklinePoints: string
   tooltip: {
@@ -136,7 +137,8 @@ function FlowCardSkeleton() {
 
 function FlowCard({ data }: { data: FlowCardData }) {
   const hasData = data.rate > 0 || (data.revenue && data.revenue !== "—")
-  const isPositive = data.delta > 0
+  const hasDelta = data.delta !== null
+  const isPositive = (data.delta ?? 0) > 0
   const sparklineColor = isPositive ? "#10B981" : "#EF4444"
   const deltaColor = isPositive ? "text-green-500" : "text-red-500"
   const deltaPrefix = isPositive ? "+" : ""
@@ -172,7 +174,7 @@ function FlowCard({ data }: { data: FlowCardData }) {
               <span className="font-mono text-[13px] tabular-nums text-gray-700 dark:text-white/90 dark:text-gray-300">
                 {data.revenue}
               </span>
-              {hasData && (
+              {hasData && hasDelta && (
                 <span className={cn("font-mono text-[13px] tabular-nums", deltaColor)}>
                   {deltaPrefix}{data.delta}%
                 </span>

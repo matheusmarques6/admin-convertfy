@@ -26,30 +26,39 @@ interface ClientHealth {
   storeRevenue: number
   attributedRevenue: number
   revenuePercent: number
-  score: number
+  /** Health score REAL (0-100) do cron. null quando ainda nao computado. */
+  score: number | null
   openRate?: number
   clickRate?: number
   ctor?: number
   bounceRate?: number
   unsubRate?: number
   problem?: string
+  fxDegraded?: boolean
 }
 
-interface StoreBreakdownItem {
-  storeId: string
+/** Item vindo de /api/dashboard/stores-overview (receita + engajamento + score). */
+interface StoreOverviewItem {
+  id: string
   storeName: string
   clientName: string
-  totalRevenue: number
-  campaignRevenue: number
-  flowRevenue: number
-  totalRevenueBRL?: number
-  campaignRevenueBRL?: number
-  flowRevenueBRL?: number
+  totalRevenueBRL: number
+  attributedRevenueBRL: number
+  recoveryRate: number
+  healthScore: number | null
+  fxDegraded?: boolean
+  campaigns?: {
+    openRate?: number
+    clickRate?: number
+    ctor?: number
+    bounceRate?: number
+    unsubRate?: number
+  }
 }
 
 interface DashboardClientHealthProps {
   loading?: boolean
-  storeBreakdown?: StoreBreakdownItem[]
+  stores?: StoreOverviewItem[]
 }
 
 type SortKey = "score" | "attributedRevenue" | "revenuePercent" | "storeRevenue"
@@ -70,13 +79,15 @@ function formatCurrency(value: number): string {
   return `R$ ${value.toLocaleString("pt-BR")}`
 }
 
-function getScoreVariant(score: number) {
+function getScoreVariant(score: number | null) {
+  if (score === null) return "neutral"
   if (score >= 70) return "green"
   if (score >= 50) return "amber"
   return "red"
 }
 
-function getDotColor(score: number): string | null {
+function getDotColor(score: number | null): string | null {
+  if (score === null) return null
   if (score < 50) return "bg-red-500"
   if (score < 70) return "bg-amber-500"
   return null
@@ -94,6 +105,8 @@ const SCORE_BADGE_STYLES = {
   amber:
     "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   red: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  neutral:
+    "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
 }
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -179,31 +192,31 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
         <div className="flex items-center justify-between gap-6">
           <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Open Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
-            {client.openRate?.toFixed(1)}%
+            {client.openRate != null ? `${client.openRate.toFixed(1)}%` : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Click Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
-            {client.clickRate?.toFixed(1)}%
+            {client.clickRate != null ? `${client.clickRate.toFixed(1)}%` : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">CTOR</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
-            {client.ctor?.toFixed(1)}%
+            {client.ctor != null ? `${client.ctor.toFixed(1)}%` : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Bounce</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
-            {client.bounceRate?.toFixed(1)}%
+            {client.bounceRate != null ? `${client.bounceRate.toFixed(1)}%` : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-6">
           <span className="text-gray-400 dark:text-white/50 dark:text-gray-500 dark:text-white/60">Unsub Rate</span>
           <span className="font-mono tabular-nums text-gray-200 dark:text-gray-300">
-            {client.unsubRate?.toFixed(2)}%
+            {client.unsubRate != null ? `${client.unsubRate.toFixed(2)}%` : "—"}
           </span>
         </div>
       </div>
@@ -225,45 +238,54 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
 
 export function DashboardClientHealth({
   loading = false,
-  storeBreakdown,
+  stores,
 }: DashboardClientHealthProps) {
   const [sortKey, setSortKey] = useState<SortKey>("score")
   const [page, setPage] = useState(0)
 
   const MAX_VISIBLE = 9
 
-  // Map real storeBreakdown to ClientHealth format. Empty when no data — UI shows
-  // empty state instead of fictitious clients. Lojas sem revenue real ficam
-  // ordenadas no fim (storeRev=0). Score derivado da taxa de atribuicao
-  // (0-40% mapeado linearmente pra 0-100).
+  // Map dos dados REAIS de /api/dashboard/stores-overview. Vazio quando sem
+  // dados — UI mostra empty state. score = health_score real (0-100) do cron;
+  // % receita = recoveryRate (atribuido/faturamento bruto), ja correto e sem
+  // estourar 100%. Engajamento (open/click/ctor) vem de campaigns.* → tooltip real.
   const allClients: ClientHealth[] = useMemo(() => {
-    if (!storeBreakdown || storeBreakdown.length === 0) return []
-    return storeBreakdown.map((s, i) => {
-      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-      const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
-        (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
-      const pct = storeRev > 0 ? (attributed / storeRev) * 100 : 0
-      // Simple score based on attribution rate (0-100)
-      const score = Math.min(100, Math.round(pct * 2.5))
+    if (!stores || stores.length === 0) return []
+    return stores.map((s, i) => {
+      const storeRev = Number(s.totalRevenueBRL) || 0
+      const attributed = Number(s.attributedRevenueBRL) || 0
+      const pct = Math.min(100, Number(s.recoveryRate) || 0)
+      const c = s.campaigns ?? {}
       return {
-        id: s.storeId || String(i),
+        id: s.id || String(i),
         name: s.storeName || s.clientName,
         storeRevenue: storeRev,
         attributedRevenue: attributed,
         revenuePercent: Math.round(pct * 10) / 10,
-        score,
+        score: typeof s.healthScore === "number" ? s.healthScore : null,
+        openRate: c.openRate,
+        clickRate: c.clickRate,
+        ctor: c.ctor,
+        bounceRate: c.bounceRate,
+        unsubRate: c.unsubRate,
+        fxDegraded: s.fxDegraded,
       }
     }).filter((c) => c.storeRevenue > 0 || c.attributedRevenue > 0)
-  }, [storeBreakdown])
+  }, [stores])
 
   const totalStores = allClients.length
-  const needsAttention = allClients.filter((c) => c.score < 70).length
+  const needsAttention = allClients.filter((c) => c.score !== null && c.score < 70).length
   const totalPages = 1 // single page with max 9 visible
 
   const sorted = useMemo(() => {
     const copy = [...allClients]
     copy.sort((a, b) => {
-      if (sortKey === "score") return a.score - b.score
+      if (sortKey === "score") {
+        // Score null (sem calculo) vai para o fim.
+        const sa = a.score ?? Number.POSITIVE_INFINITY
+        const sb = b.score ?? Number.POSITIVE_INFINITY
+        return sa - sb
+      }
       if (sortKey === "attributedRevenue")
         return b.attributedRevenue - a.attributedRevenue
       if (sortKey === "revenuePercent")
@@ -405,6 +427,14 @@ export function DashboardClientHealth({
                             <span className="text-[13px] font-medium text-gray-900 dark:text-white dark:text-[#EAEDF3]">
                               {client.name}
                             </span>
+                            {client.fxDegraded && (
+                              <span
+                                title="Câmbio indisponível — valores na moeda original, não convertidos para BRL"
+                                className="rounded px-1 py-0.5 text-[9px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                              >
+                                câmbio
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -436,7 +466,7 @@ export function DashboardClientHealth({
                               SCORE_BADGE_STYLES[variant]
                             )}
                           >
-                            {client.score}
+                            {client.score ?? "—"}
                           </span>
                         </td>
                       </tr>

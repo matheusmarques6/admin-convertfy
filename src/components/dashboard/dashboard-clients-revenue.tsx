@@ -1,7 +1,16 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, ExternalLink, ChevronLeft, ChevronRight, Info } from "lucide-react"
+import {
+  Search,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   Tooltip,
@@ -22,26 +31,28 @@ interface ClientRevenueRow {
   revenue: number
   openRate: number
   clickRate: number
+  /** Open rate vs média de open rate da carteira (não é série temporal). */
   trend: TrendDirection
-  sparklinePoints: number[]
-  status: "active" | "at-risk" | "churned"
+  /** Chave de status derivada do health_score (active/at-risk/critical/none). */
+  status: string
 }
 
-interface StoreBreakdownItem {
-  storeId: string
+/** Item vindo de /api/dashboard/stores-overview. */
+interface StoreOverviewItem {
+  id: string
   storeName: string
   clientName: string
-  totalRevenue: number
-  campaignRevenue: number
-  flowRevenue: number
-  totalRevenueBRL?: number
-  campaignRevenueBRL?: number
-  flowRevenueBRL?: number
+  totalRevenueBRL: number
+  healthScore: number | null
+  campaigns?: {
+    openRate?: number
+    clickRate?: number
+  }
 }
 
 interface DashboardClientsRevenueProps {
   loading?: boolean
-  storeBreakdown?: StoreBreakdownItem[]
+  stores?: StoreOverviewItem[]
 }
 
 const PAGE_SIZE = 5
@@ -56,42 +67,36 @@ function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
-// ─── Sparkline ────────────────────────────────────────────
+/** Status da loja a partir do health score real (0-100). */
+function statusFromHealth(score: number | null): string {
+  if (score === null) return "none"
+  if (score >= 70) return "active"
+  if (score >= 50) return "at-risk"
+  return "critical"
+}
 
-function Sparkline({ points, trend }: { points: number[]; trend: TrendDirection }) {
-  const color = trend === "up" ? "#10B981" : trend === "down" ? "#EF4444" : "#9CA3AF"
+// ─── Trend indicator (open rate vs média da carteira) ─────
 
-  const width = 60
-  const height = 20
-  const padding = 2
-
-  const min = Math.min(...points)
-  const max = Math.max(...points)
-  const range = max - min || 1
-
-  const coords = points.map((val, i) => {
-    const x = padding + (i / (points.length - 1)) * (width - padding * 2)
-    const y = height - padding - ((val - min) / range) * (height - padding * 2)
-    return `${x},${y}`
-  })
-
+function TrendIndicator({ trend }: { trend: TrendDirection }) {
+  const config = {
+    up: { Icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400", label: "Acima da média da carteira" },
+    down: { Icon: TrendingDown, color: "text-red-600 dark:text-red-400", label: "Abaixo da média da carteira" },
+    flat: { Icon: Minus, color: "text-gray-400 dark:text-white/50", label: "Na média da carteira" },
+  }[trend]
+  const { Icon } = config
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      fill="none"
-      className="shrink-0"
-    >
-      <polyline
-        points={coords.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("inline-flex", config.color)}>
+            <Icon className="h-4 w-4" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {config.label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -155,30 +160,46 @@ function MobileClientCard({ client }: { client: ClientRevenueRow }) {
 
 // ─── Main Component ───────────────────────────────────────
 
-export function DashboardClientsRevenue({ loading = false, storeBreakdown }: DashboardClientsRevenueProps) {
+export function DashboardClientsRevenue({ loading = false, stores }: DashboardClientsRevenueProps) {
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
 
-  // Map real storeBreakdown to ClientRevenueRow. Empty when no data — UI shows
-  // "Nenhum cliente encontrado" empty state instead of fake data.
+  // Map dos dados REAIS de /api/dashboard/stores-overview. Vazio quando sem
+  // dados → empty state. open/click vem de campaigns.*; status do health_score
+  // real; trend = open rate da loja vs média de open rate da carteira (leitura
+  // honesta sem série temporal — a série real chega no Grupo 3).
   const allClients: ClientRevenueRow[] = useMemo(() => {
-    if (!storeBreakdown || storeBreakdown.length === 0) return []
-    return storeBreakdown
-      .map((s, i) => {
-        const rev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
-        return {
-          id: s.storeId || String(i),
-          name: s.storeName || s.clientName,
-          revenue: rev,
-          openRate: 0,
-          clickRate: 0,
-          trend: "flat" as TrendDirection,
-          sparklinePoints: [rev, rev, rev, rev, rev, rev, rev],
-          status: "active" as const,
+    if (!stores || stores.length === 0) return []
+    const base = stores.map((s, i) => {
+      const rev = Number(s.totalRevenueBRL) || 0
+      const c = s.campaigns ?? {}
+      return {
+        id: s.id || String(i),
+        name: s.storeName || s.clientName,
+        revenue: rev,
+        openRate: Number(c.openRate) || 0,
+        clickRate: Number(c.clickRate) || 0,
+        status: statusFromHealth(typeof s.healthScore === "number" ? s.healthScore : null),
+      }
+    })
+
+    // Média de open rate da carteira (só lojas com envio real) → referência do trend.
+    const withOpen = base.filter((b) => b.openRate > 0)
+    const avgOpen = withOpen.length > 0
+      ? withOpen.reduce((sum, b) => sum + b.openRate, 0) / withOpen.length
+      : 0
+
+    return base
+      .map((b) => {
+        let trend: TrendDirection = "flat"
+        if (avgOpen > 0 && b.openRate > 0) {
+          if (b.openRate > avgOpen * 1.05) trend = "up"
+          else if (b.openRate < avgOpen * 0.95) trend = "down"
         }
+        return { ...b, trend }
       })
       .sort((a, b) => b.revenue - a.revenue)
-  }, [storeBreakdown])
+  }, [stores])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allClients
@@ -321,7 +342,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex justify-center">
-                          <Sparkline points={client.sparklinePoints} trend={client.trend} />
+                          <TrendIndicator trend={client.trend} />
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
