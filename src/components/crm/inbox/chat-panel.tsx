@@ -124,6 +124,11 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
       body: form,
     })
     if (!res.ok) {
+      // 413 vem da PLATAFORMA (limite de body da Vercel ~4,5MB) — o JSON
+      // de erro nem existe nesse caso.
+      if (res.status === 413) {
+        throw new Error("Arquivo grande demais para enviar (limite ~4,5 MB). Comprima ou envie um arquivo menor.")
+      }
       const data = await res.json().catch(() => ({}))
       throw new Error(data.error || "Falha no envio da mídia")
     }

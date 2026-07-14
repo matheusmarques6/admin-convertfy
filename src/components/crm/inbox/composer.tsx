@@ -49,6 +49,9 @@ export function Composer({
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
+  // Falha de envio DEVE aparecer aqui — antes o try/finally sem catch
+  // engolia o erro e o usuário via o spinner sumir sem feedback nenhum.
+  const [sendError, setSendError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -59,9 +62,13 @@ export function Composer({
     const body = text.trim()
     if (!body || sending || blocked) return
     setSending(true)
+    setSendError(null)
     try {
       await onSendText(body)
       setText("")
+    } catch (err) {
+      // Mantém o texto digitado pra re-tentativa.
+      setSendError(err instanceof Error ? err.message : "Falha no envio")
     } finally {
       setSending(false)
     }
@@ -70,9 +77,12 @@ export function Composer({
   const handleFile = async (file: File | null) => {
     if (!file || uploading) return
     setUploading(true)
+    setSendError(null)
     try {
       await onSendMedia(file, mediaTypeForFile(file), text.trim() || undefined)
       setText("")
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Falha no envio da mídia")
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -81,9 +91,13 @@ export function Composer({
 
   const handleAudioSend = async (file: File) => {
     setUploading(true)
+    setSendError(null)
     try {
       await onSendMedia(file, "audio")
       setRecording(false)
+    } catch (err) {
+      setRecording(false)
+      setSendError(err instanceof Error ? err.message : "Falha no envio do áudio")
     } finally {
       setUploading(false)
     }
@@ -105,6 +119,32 @@ export function Composer({
           onSelect={applyQuickReply}
           onClose={() => setText("")}
         />
+      )}
+
+      {sendError && (
+        <div
+          className="flex items-start justify-between gap-2"
+          style={{
+            marginBottom: 8,
+            padding: "6px 10px",
+            fontSize: "var(--crm-text-xs)",
+            color: "var(--crm-danger-fg, #991B1B)",
+            background: "var(--crm-danger-bg, #FEF2F2)",
+            border: "1px solid rgba(153,27,27,0.2)",
+            borderRadius: "var(--crm-radius-md)",
+          }}
+          role="alert"
+        >
+          <span>{sendError}</span>
+          <button
+            type="button"
+            onClick={() => setSendError(null)}
+            aria-label="Dispensar erro"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 600 }}
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {recording ? (
