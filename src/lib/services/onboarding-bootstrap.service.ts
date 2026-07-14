@@ -55,14 +55,13 @@ export const SEED_COLUMNS: ColumnSeed[] = [
     default_assignee_role: "suporte",
     sla_hours: 2,
     checklist_template: [
-      chk("entrada_whatsapp_group", "Criar grupo no WhatsApp com cliente + time", 1, { slug: "entrada_whatsapp_group" }),
-      chk("entrada_welcome", "Dar boas vindas ao cliente e apresentar o time", 2, { slug: "entrada_welcome" }),
-      chk("entrada_asaas", "Enviar instrucoes de pagamento do Asaas", 3, { slug: "entrada_asaas" }),
-      chk("entrada_form_link", "Gerar link unico do formulario e enviar ao cliente", 4, { slug: "entrada_form_link" }),
+      chk("entrada_welcome", "Dar boas vindas ao cliente e apresentar o time", 1, { slug: "entrada_welcome" }),
+      chk("entrada_asaas", "Enviar instrucoes de pagamento do Asaas", 2, { slug: "entrada_asaas" }),
+      chk("entrada_form_link", "Gerar link unico do formulario e enviar ao cliente", 3, { slug: "entrada_form_link" }),
     ],
-    deliverables_template: [
-      { slug: "whatsapp_group_screenshot", label: "Print do grupo WhatsApp", type: "upload", required: true },
-    ],
+    // Removido o deliverable "Print do grupo WhatsApp" (whatsapp_group_screenshot)
+    // junto com a task "Criar grupo no WhatsApp" — a etapa Entrada não tem mais entregável.
+    deliverables_template: [],
     whatsapp_template:
       "Ola {{client_name}}! Seja muito bem-vindo a Convertfy.\n\nEsse e nosso grupo oficial pra acompanhar todo o processo da {{store_name}}.\n\nPrimeiro passo: responda esse formulario (5 minutos):\n{{form_url}}\n\nA IA gera um briefing direto no proprio formulario pra voce revisar.",
     automation_rules: [
