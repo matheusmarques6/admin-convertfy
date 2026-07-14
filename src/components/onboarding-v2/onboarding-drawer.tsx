@@ -345,7 +345,7 @@ export function OnboardingDrawer({
   }
 
   async function toggleTask(
-    task: OnboardingTaskLite & { metadata?: Record<string, unknown> },
+    task: OnboardingTaskLite,
   ) {
     const newStatus = task.status === "completed" ? "pending" : "completed"
     try {
@@ -920,7 +920,7 @@ function ChecklistRow({
   task,
   onToggle,
 }: {
-  task: OnboardingTaskLite & { metadata?: Record<string, unknown> }
+  task: OnboardingTaskLite
   onToggle: () => void
 }) {
   const done = task.status === "completed"

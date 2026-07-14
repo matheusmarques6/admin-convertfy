@@ -246,6 +246,9 @@ export interface OnboardingTaskLite {
   due_date: string | null
   /** Version do onboarding em que a task foi criada (sobe a cada go-back). */
   version?: number | null
+  /** is_column_anchor / item_position / sub_items etc. (usado pra achar a âncora). */
+  metadata?: Record<string, unknown> | null
+  created_at?: string
 }
 
 export interface TaskDeliverable {

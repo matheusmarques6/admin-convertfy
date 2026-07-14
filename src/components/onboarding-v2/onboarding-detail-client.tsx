@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
 import { SubItemsList, type SubItem } from "@/components/onboarding-v2/sub-items-list"
+import { pickAnchorTask } from "@/lib/onboarding/anchor-task"
 import { ROUTES } from "@/lib/routes"
 import type {
   OnboardingPipelineItem,
@@ -51,7 +52,7 @@ const fetcher = async (url: string) => {
 
 interface DetailResponse {
   onboarding: OnboardingPipelineItem & {
-    tasks?: (OnboardingTaskLite & { metadata?: Record<string, unknown> })[]
+    tasks?: OnboardingTaskLite[]
   }
   columns: OperationalPipelineColumn[]
   deliverables: TaskDeliverable[]
@@ -588,7 +589,7 @@ function OverrideDialog({
   submitting,
 }: {
   column: OperationalPipelineColumn
-  tasksInCurrent: (OnboardingTaskLite & { metadata?: Record<string, unknown> })[]
+  tasksInCurrent: (OnboardingTaskLite)[]
   deliverables: TaskDeliverable[]
   onClose: () => void
   onConfirm: (
@@ -715,7 +716,7 @@ function ChecklistTab({
   onMutate,
 }: {
   column: OperationalPipelineColumn | null
-  tasks: (OnboardingTaskLite & { metadata?: Record<string, unknown> })[]
+  tasks: OnboardingTaskLite[]
   onboardingId: string
   onMutate: () => void
 }) {
@@ -835,7 +836,10 @@ function DeliverablesTab({
   onboardingId: string
 }) {
   const toast = useToast()
-  const task = tasks[0] ?? null
+  // Os deliverables vivem na task ÂNCORA da coluna — NÃO em tasks[0]
+  // (a API não ordena; pegar a primeira crua lia a task errada e o
+  // designer caía no POST/admin → 403 e o arquivo sumia da tela).
+  const task = pickAnchorTask(tasks)
   const fields = column?.deliverables_template ?? []
   const taskDels = deliverables.filter((d) => task && d.task_id === task.id)
 

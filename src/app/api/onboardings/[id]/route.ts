@@ -35,7 +35,7 @@ export async function GET(
          store:client_stores(id, store_name, store_url, platform, language),
          source_deal:deals(id, title, value),
          current_column:operational_pipeline_columns(*),
-         tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version),
+         tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version, created_at),
          versions:onboarding_versions(*)`,
       )
       .eq("id", id)
@@ -65,7 +65,7 @@ export async function GET(
            store:client_stores(id, store_name, store_url, platform, language),
            source_deal:deals(id, title, value),
            current_column:operational_pipeline_columns(*),
-           tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version),
+           tasks(id, title, status, priority, assignee_role, assignee_id, operational_column_id, due_date, metadata, version, created_at),
            versions:onboarding_versions(*)`,
         )
         .eq("id", id)
