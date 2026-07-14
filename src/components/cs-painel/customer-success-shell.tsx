@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import {
   BarChart3,
   CalendarClock,
@@ -10,19 +9,15 @@ import {
   HeartHandshake,
   Layers,
 } from "lucide-react"
-import { ROUTES } from "@/lib/routes"
 import { Painel } from "./painel"
 import { PipelinesTab } from "./pipelines-tab"
 import { CadenciasTab } from "./cadencias-tab"
+import { FormulariosTab } from "./formularios-tab"
 
 /**
  * Shell do modulo Customer Success — porta do prototipo Figma Make.
  * Header com breadcrumb (Operacional › Customer Success › CS) + 4 sub-tabs:
- * Painel · Pipelines CS · Formularios · Cadencias.
- *
- * Nesta primeira entrega so a aba Painel esta implementada (passada via
- * children). As outras 3 mostram um placeholder com atalho pra versao
- * atual da funcionalidade — serao migradas pagina por pagina.
+ * Painel · Pipelines CS · Formularios · Cadencias. Todas implementadas.
  */
 
 type TabKey = "painel" | "pipelines" | "formularios" | "cadencias"
@@ -37,18 +32,6 @@ const TABS: Array<{
   { key: "formularios", label: "Formulários", icon: FileText },
   { key: "cadencias", label: "Cadências", icon: CalendarClock },
 ]
-
-const PLACEHOLDER: Record<
-  "formularios",
-  { title: string; desc: string; href: string; cta: string }
-> = {
-  formularios: {
-    title: "Formulários",
-    desc: "Formulários CS vinculados aos pipelines (NPS, health check, feedback). Será migrado para esta aba.",
-    href: ROUTES.ADMIN.OPERACIONAL.FORMS,
-    cta: "Abrir formulários",
-  },
-}
 
 export function CustomerSuccessShell() {
   const [tab, setTab] = useState<TabKey>("painel")
@@ -137,62 +120,7 @@ export function CustomerSuccessShell() {
         {tab === "painel" && <Painel />}
         {tab === "pipelines" && <PipelinesTab />}
         {tab === "cadencias" && <CadenciasTab />}
-        {tab === "formularios" && <TabPlaceholder {...PLACEHOLDER.formularios} />}
-      </div>
-    </div>
-  )
-}
-
-function TabPlaceholder({
-  title,
-  desc,
-  href,
-  cta,
-}: {
-  title: string
-  desc: string
-  href: string
-  cta: string
-}) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="max-w-md text-center">
-        <h2
-          style={{
-            margin: 0,
-            fontSize: 18,
-            fontWeight: 600,
-            color: "var(--crm-gray-900)",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {title}
-        </h2>
-        <p
-          style={{
-            margin: "8px 0 20px",
-            fontSize: 13,
-            color: "var(--crm-gray-500)",
-            lineHeight: 1.5,
-          }}
-        >
-          {desc}
-        </p>
-        <Link
-          href={href}
-          className="inline-flex items-center gap-1.5 rounded-[6px]"
-          style={{
-            height: 36,
-            padding: "0 16px",
-            background: "var(--crm-brand)",
-            color: "var(--crm-brand-fg)",
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          {cta}
-        </Link>
+        {tab === "formularios" && <FormulariosTab />}
       </div>
     </div>
   )
