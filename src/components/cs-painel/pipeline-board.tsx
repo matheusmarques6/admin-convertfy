@@ -39,7 +39,16 @@ interface Deal {
   created_at: string | null
   owner: { id: string; name: string | null; avatar_url: string | null } | null
   client: { id: string; name: string | null } | null
-  store: { id: string; store_name: string | null } | null
+  store: { id: string; store_name: string | null; health_score: number | null } | null
+}
+
+// Cor de saude pela faixa de score (>=70 saudavel · >=50 atencao · <50 risco).
+// null = sem score → acento neutro (cor do pipeline, definido no card).
+function healthColor(score: number | null | undefined): string | null {
+  if (score == null) return null
+  if (score >= 70) return "var(--crm-pos)"
+  if (score >= 50) return "var(--crm-amber)"
+  return "var(--crm-neg)"
 }
 interface DetailResp {
   pipeline: { id: string; name: string; description: string | null; color: string | null; stages: Stage[] }
@@ -344,6 +353,8 @@ function DealCard({
   const [gbg, gc] = glyphColor(name)
   const age = daysInStage(deal)
   const ownerName = deal.owner?.name || ""
+  // Borda esquerda pela saude da loja; sem score cai no acento do pipeline.
+  const border = healthColor(deal.store?.health_score) ?? accent
   return (
     <div
       draggable
@@ -355,7 +366,7 @@ function DealCard({
       style={{
         background: "#fff",
         border: "1px solid var(--crm-border)",
-        borderLeft: `3px solid ${accent}`,
+        borderLeft: `3px solid ${border}`,
         borderRadius: 9,
         padding: "10px 11px",
         cursor: "grab",

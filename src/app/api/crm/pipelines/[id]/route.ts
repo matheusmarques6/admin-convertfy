@@ -64,7 +64,7 @@ export async function GET(
         won_at, lost_at, lost_reason, created_at, updated_at,
         owner:profiles!deals_owner_id_fkey (id, name, avatar_url),
         client:clients (id, name, company, email, phone),
-        store:client_stores (id, store_name)
+        store:client_stores (id, store_name, health_score)
       `)
       .eq("pipeline_id", id)
       .neq("status", "archived")
