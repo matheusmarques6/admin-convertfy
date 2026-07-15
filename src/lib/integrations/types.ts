@@ -382,6 +382,17 @@ export interface GoogleCalendarEvent {
       minutes: number
     }>
   }
+  /**
+   * Propriedades customizadas. Usamos private.convertfyMeetingId para
+   * casar eventos criados por nos com a meeting local (anti-eco no import
+   * bidirecional Google -> admin).
+   */
+  extendedProperties?: {
+    private?: Record<string, string>
+    shared?: Record<string, string>
+  }
+  updated?: string
+  status?: "confirmed" | "tentative" | "cancelled"
 }
 
 export interface GoogleCalendarList {

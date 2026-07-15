@@ -17,6 +17,7 @@ import { GoogleCalendarEvent } from "@/lib/integrations/types"
 import {
   getValidAccessToken,
   GoogleTokenRevokedError,
+  type GoogleUserType,
 } from "@/lib/services/google-auth.service"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -54,6 +55,8 @@ interface MeetingRow {
   google_sync_status: string | null
   timezone: string | null
   user_id: string
+  org_id: string | null
+  client_id: string | null
   participants: Array<{
     id: string
     participant_id: string
@@ -74,7 +77,7 @@ async function fetchMeeting(meetingId: string): Promise<MeetingRow | null> {
       `
       id, title, scheduled_at, duration_minutes, notes,
       google_event_id, google_calendar_id, meeting_url, meeting_url_source,
-      google_sync_status, timezone, user_id,
+      google_sync_status, timezone, user_id, org_id, client_id,
       participants:meeting_participants(
         id, participant_id, participant_type, is_organizer, email
       )
@@ -241,7 +244,44 @@ function buildGoogleEvent(
         { method: "popup", minutes: 15 },
       ],
     },
+    // Tag de origem: permite ao import bidirecional reconhecer eventos que
+    // NOS criamos (atualiza a meeting existente em vez de duplicar).
+    extendedProperties: {
+      private: { convertfyMeetingId: meeting.id },
+    },
   }
+}
+
+/**
+ * Decide em qual conta Google o evento da reuniao deve viver.
+ *
+ * - Reuniao de CLIENTE (tem client_id) -> conta central da org ("convertfy"),
+ *   se estiver conectada. Assim a agenda central concentra todas as reunioes
+ *   de clientes e cada convocado (attendee) a ve na propria agenda pessoal.
+ * - Se a conta central nao estiver conectada/ativa -> cai na agenda pessoal
+ *   do organizador (fallback suave).
+ * - Reuniao sem client_id (pessoal/importada) -> agenda pessoal.
+ */
+async function resolveSyncAccount(
+  meeting: MeetingRow,
+  fallbackUserId: string
+): Promise<{ userId: string; userType: GoogleUserType }> {
+  if (meeting.client_id && meeting.org_id) {
+    try {
+      const orgToken = await getValidAccessToken(meeting.org_id, "org")
+      if (orgToken) {
+        return { userId: meeting.org_id, userType: "org" }
+      }
+    } catch (err) {
+      // Conta central revogada -> fallback pra pessoal (nao derruba o sync)
+      if (!(err instanceof GoogleTokenRevokedError)) throw err
+      log.warn("Org calendar revoked, falling back to personal", {
+        meetingId: meeting.id,
+        orgId: meeting.org_id,
+      })
+    }
+  }
+  return { userId: fallbackUserId, userType: "profile" }
 }
 
 /**
@@ -284,10 +324,13 @@ export async function syncMeetingToGoogle(
       return { synced: false, reason: "error", error: "Meeting not found" }
     }
 
-    // 2. Get valid access token and user preferences for the organizer
+    // 2. Reunião de cliente vai pra conta central (convertfy); senão, pessoal
+    const account = await resolveSyncAccount(meeting, organizerUserId)
+
+    // Get valid access token for the resolved account
     let accessToken: string | null
     try {
-      accessToken = await getValidAccessToken(organizerUserId, "profile")
+      accessToken = await getValidAccessToken(account.userId, account.userType)
     } catch (err) {
       if (err instanceof GoogleTokenRevokedError) {
         await updateSyncStatus(meetingId, {
@@ -307,13 +350,13 @@ export async function syncMeetingToGoogle(
       return { synced: false, reason: "not_connected" }
     }
 
-    // 2b. Read user preferences (selected_calendar_id, auto_meet)
+    // 2b. Read account preferences (selected_calendar_id, auto_meet)
     const adminClient = createAdminClient()
     const { data: tokenRecord } = await adminClient
       .from("user_google_tokens")
       .select("selected_calendar_id, auto_meet")
-      .eq("user_type", "profile")
-      .eq("user_id", organizerUserId)
+      .eq("user_type", account.userType)
+      .eq("user_id", account.userId)
       .single()
 
     const calendarId = tokenRecord?.selected_calendar_id || "primary"
@@ -330,23 +373,35 @@ export async function syncMeetingToGoogle(
 
     // 6. Create or update
     if (meeting.google_event_id) {
-      // Update existing event
-      const updated = await calendarService.updateEvent(
-        meeting.google_event_id,
-        eventData,
-        { sendUpdates: "all" }
-      )
+      try {
+        // Update existing event
+        const updated = await calendarService.updateEvent(
+          meeting.google_event_id,
+          eventData,
+          { sendUpdates: "all" }
+        )
 
-      await updateSyncStatus(meetingId, {
-        google_sync_status: "synced",
-        google_sync_error: null,
-        google_synced_at: new Date().toISOString(),
-      })
+        await updateSyncStatus(meetingId, {
+          google_calendar_id: calendarId,
+          google_sync_status: "synced",
+          google_sync_error: null,
+          google_synced_at: new Date().toISOString(),
+        })
 
-      return {
-        synced: true,
-        reason: "success",
-        google_event_id: updated.id,
+        return {
+          synced: true,
+          reason: "success",
+          google_event_id: updated.id,
+        }
+      } catch (updateErr) {
+        // Se o evento nao existe na conta resolvida (ex: reuniao antiga estava
+        // na agenda pessoal e agora roteia pra central), recria; erros de outro
+        // tipo sobem para o catch externo (nao duplica).
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr)
+        const notFound = /404|not\s*found|notFound/i.test(msg)
+        if (!notFound) throw updateErr
+        log.warn("Event missing on resolved account, recreating", { meetingId, error: msg })
+        // continua para o fluxo de criacao abaixo
       }
     }
 
@@ -417,89 +472,16 @@ export async function syncMeetingToGoogle(
 /**
  * Update an existing Google Calendar event from updated meeting data.
  *
- * If meeting has no google_event_id, attempts to create (fallback for meetings
- * that failed on initial sync).
+ * Delega a syncMeetingToGoogle, que ja resolve a conta correta (central da
+ * org p/ reuniao de cliente, ou pessoal), cria quando nao ha evento e
+ * recria quando o evento sumiu da conta resolvida.
  */
 export async function updateGoogleEvent(meetingId: string): Promise<SyncResult> {
-  try {
-    const meeting = await fetchMeeting(meetingId)
-    if (!meeting) {
-      return { synced: false, reason: "error", error: "Meeting not found" }
-    }
-
-    // If no google_event_id, try to create via syncMeetingToGoogle
-    if (!meeting.google_event_id) {
-      return syncMeetingToGoogle(meetingId, meeting.user_id)
-    }
-
-    // Get valid token for organizer
-    let accessToken: string | null
-    try {
-      accessToken = await getValidAccessToken(meeting.user_id, "profile")
-    } catch (err) {
-      if (err instanceof GoogleTokenRevokedError) {
-        await updateSyncStatus(meetingId, {
-          google_sync_status: "error",
-          google_sync_error: err.message,
-        })
-        throw err
-      }
-      accessToken = null
-    }
-
-    if (!accessToken) {
-      await updateSyncStatus(meetingId, {
-        google_sync_status: "not_connected",
-        google_sync_error: null,
-      })
-      return { synced: false, reason: "not_connected" }
-    }
-
-    // Read user preferences (selected_calendar_id) — same pattern as syncMeetingToGoogle
-    const adminClient = createAdminClient()
-    const { data: tokenRecord } = await adminClient
-      .from("user_google_tokens")
-      .select("selected_calendar_id")
-      .eq("user_type", "profile")
-      .eq("user_id", meeting.user_id)
-      .single()
-
-    const calendarId = tokenRecord?.selected_calendar_id || meeting.google_calendar_id || "primary"
-
-    const calendarService = new GoogleCalendarService({ accessToken, calendarId })
-    const attendees = await resolveParticipantEmails(meeting.participants || [])
-    const eventData = buildGoogleEvent(meeting, attendees)
-
-    const updated = await calendarService.updateEvent(
-      meeting.google_event_id,
-      eventData,
-      { sendUpdates: "all" }
-    )
-
-    await updateSyncStatus(meetingId, {
-      google_sync_status: "synced",
-      google_sync_error: null,
-      google_synced_at: new Date().toISOString(),
-    })
-
-    return {
-      synced: true,
-      reason: "success",
-      google_event_id: updated.id,
-    }
-  } catch (err) {
-    if (err instanceof GoogleTokenRevokedError) throw err
-
-    const errorMessage = err instanceof Error ? err.message : String(err)
-    log.error("updateGoogleEvent failed", { meetingId, error: errorMessage })
-
-    await updateSyncStatus(meetingId, {
-      google_sync_status: "error",
-      google_sync_error: errorMessage,
-    })
-
-    return { synced: false, reason: "error", error: errorMessage }
+  const meeting = await fetchMeeting(meetingId)
+  if (!meeting) {
+    return { synced: false, reason: "error", error: "Meeting not found" }
   }
+  return syncMeetingToGoogle(meetingId, meeting.user_id)
 }
 
 // ---------------------------------------------------------------------------
@@ -524,10 +506,12 @@ export async function deleteGoogleEvent(meetingId: string): Promise<SyncResult> 
       return { synced: true, reason: "success" }
     }
 
-    // Get valid token for organizer
+    // Deleta na mesma conta que hospeda o evento (central p/ reuniao de cliente)
+    const account = await resolveSyncAccount(meeting, meeting.user_id)
+
     let accessToken: string | null
     try {
-      accessToken = await getValidAccessToken(meeting.user_id, "profile")
+      accessToken = await getValidAccessToken(account.userId, account.userType)
     } catch (err) {
       if (err instanceof GoogleTokenRevokedError) {
         await updateSyncStatus(meetingId, {
@@ -550,7 +534,8 @@ export async function deleteGoogleEvent(meetingId: string): Promise<SyncResult> 
       return { synced: false, reason: "not_connected" }
     }
 
-    const calendarService = new GoogleCalendarService({ accessToken })
+    const calendarId = meeting.google_calendar_id || "primary"
+    const calendarService = new GoogleCalendarService({ accessToken, calendarId })
 
     await calendarService.deleteEvent(meeting.google_event_id, {
       sendUpdates: "all",
