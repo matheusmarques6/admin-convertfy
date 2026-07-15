@@ -170,18 +170,6 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   const { data: flowsRaw } = useSWR<FlowsResponse>(emailPlatformConnected ? `/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
   const { data: shopify } = useSWR<ShopifyReport>(shopifyConnected ? `/api/integrations/shopify/report?store_id=${storeId}&${periodParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
 
-  // Total da loja AO VIVO (Omnisend, sem Shopify): busca direto da Statistics
-  // API no page-load pra bater com o painel na unidade — o valor do cron
-  // defasa porque o dia corrente esta em movimento. Shopify ja e live.
-  const omnisendConnected = !!status.omnisend?.connected
-  const { data: liveTotals } = useSWR<{ supported?: boolean; totalOrders?: number; totalRevenue?: number; attributedRevenue?: number; attributedOrders?: number }>(
-    omnisendConnected && !shopifyConnected && range !== "custom"
-      ? `/api/client-stores/${storeId}/live-store-totals?period=${range}`
-      : null,
-    fetcher,
-    { revalidateOnFocus: false, keepPreviousData: true }
-  )
-
   const prevDates = compareEnabled ? previousPeriodDates(range, customStart, customEnd) : null
   const prevParam = prevDates ? `period=custom&start_date=${prevDates.start}&end_date=${prevDates.end}` : null
   const { data: reportPrev } = useSWR<EmailReport>(emailPlatformConnected && prevParam ? `/api/integrations/email-platform/report?store_id=${storeId}&${prevParam}` : null, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
@@ -197,14 +185,14 @@ export function TabPerformance({ storeId }: { storeId: string }) {
     const rv = report?.revenue ?? {}
     const rvPrev = reportPrev?.revenue ?? {}
 
-    // Ordem de precedencia do total da loja: Shopify (live) > Omnisend live
-    // (Statistics API no page-load, bate com o painel) > cron (store_revenue_summary).
-    const faturamento = Number(sh.totalRevenue ?? liveTotals?.totalRevenue ?? rv.storeRevenue ?? 0)
+    // Fonte unica = banco (store_revenue_summary via report). Shopify quando
+    // conectado. O resync/cron alimenta o banco -> todos os cards ficam
+    // consistentes e atualizam juntos.
+    const faturamento = Number(sh.totalRevenue ?? rv.storeRevenue ?? 0)
     const faturamentoPrev = Number(shPrev.totalRevenue ?? rvPrev.storeRevenue ?? 0)
-    const pedidos = Number(sh.totalOrders ?? liveTotals?.totalOrders ?? rv.storeOrders ?? 0)
+    const pedidos = Number(sh.totalOrders ?? rv.storeOrders ?? 0)
     const pedidosPrev = Number(shPrev.totalOrders ?? rvPrev.storeOrders ?? 0)
-    // Ticket recalculado a partir do total exibido pra ficar consistente.
-    const ticket = pedidos > 0 ? faturamento / pedidos : Number(sh.averageOrderValue ?? rv.averageOrderValue ?? 0)
+    const ticket = Number(sh.averageOrderValue ?? rv.averageOrderValue ?? 0)
     const ticketPrev = Number(shPrev.averageOrderValue ?? rvPrev.averageOrderValue ?? 0)
     const novos = Number(cs.newCustomersLast30Days ?? 0)
     const novosPrev = Number(csPrev.newCustomersLast30Days ?? 0)
@@ -224,17 +212,15 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       novos,
       novosDelta: delta(novos, novosPrev),
     }
-  }, [report, reportPrev, shopify, shopifyPrev, liveTotals])
+  }, [report, reportPrev, shopify, shopifyPrev])
 
   const attribution = useMemo(() => {
     const rv = report?.revenue ?? {}
-    // storeRevenue e atribuido preferem o AO VIVO (Omnisend, mesma janela do
-    // painel); caem no cron so se o live nao carregou.
-    const totalRevenue = Number(liveTotals?.totalRevenue ?? rv.storeRevenue ?? 0)
-    const attributed = Number(liveTotals?.attributedRevenue ?? rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? 0)
+    const totalRevenue = Number(rv.storeRevenue ?? 0)
+    const attributed = Number(rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? 0)
     const campRev = Number(rv.campaignRevenue ?? campaignsRaw?.summary?.totalRevenue ?? 0)
     const flowRev = Number(rv.flowRevenue ?? flowsRaw?.summary?.totalRevenue ?? 0)
-    const orders = Number(liveTotals?.attributedOrders ?? rv.klaviyoAttributedOrders ?? 0)
+    const orders = Number(rv.klaviyoAttributedOrders ?? 0)
     const campOrders = (campaignsRaw?.campaigns ?? []).reduce((s, c) => s + (c.recipients > 0 ? Math.round(c.recipients * c.clickRate) : 0), 0)
     const flowOrders = Math.max(0, orders - campOrders)
     const sentCampaigns = Number(campaignsRaw?.summary?.sentCampaigns ?? campaignsRaw?.campaigns?.length ?? 0)
@@ -254,7 +240,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       sentCampaigns,
       liveFlows,
     }
-  }, [report, campaignsRaw, flowsRaw, liveTotals])
+  }, [report, campaignsRaw, flowsRaw])
 
   const emailPerf = useMemo(() => {
     const ep = report?.emailPerformance ?? {}
