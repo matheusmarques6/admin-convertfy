@@ -1535,6 +1535,38 @@ function startOfDayInTimezone(daysAgo: number, timezone: string): string {
   return `${yy}-${mm}-${dd}T00:00:00${getTimezoneOffset(timezone)}`
 }
 
+const LIVE_PERIOD_DAYS: Record<string, number> = {
+  "1d": 1, today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90, "12m": 365, "1y": 365,
+}
+
+/** periodDays a partir de um period label da UI (default 30). */
+export function periodLabelToDays(period: string): number {
+  return LIVE_PERIOD_DAYS[period] ?? 30
+}
+
+/**
+ * Total da loja (pedidos + receita) AO VIVO, direto da Statistics API, usando a
+ * MESMA janela do sync (00:00 do fuso da loja ate agora). Serve pra bater com o
+ * painel do Omnisend na unidade: o valor do cron sempre defasa alguns pedidos
+ * porque o dia corrente esta em movimento e o snapshot foi tirado antes.
+ */
+export async function fetchLiveOmnisendStoreTotals(
+  storeId: string,
+  apiKey: string,
+  periodDays: number,
+): Promise<{ totalOrders: number; totalRevenue: number; startDate: string; endDate: string }> {
+  const timezone = await resolveStoreTimezone(storeId)
+  const startDate = startOfDayInTimezone(periodDays - 1, timezone)
+  const endDate = new Date().toISOString()
+  const stats = await fetchOmnisendStatistics(apiKey, startDate, endDate)
+  return {
+    totalOrders: stats.totalOrders,
+    totalRevenue: stats.totalRevenue,
+    startDate,
+    endDate,
+  }
+}
+
 async function doSyncOmnisendForStore(params: {
   storeId: string
   orgId: string
