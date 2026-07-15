@@ -19,6 +19,7 @@
 
 import { logger } from "@/lib/logger"
 import { createAdminClient } from "@/lib/supabase/server"
+import { getTimezoneOffset } from "@/lib/integrations/klaviyo/account"
 import {
   omnisendRequest,
   omnisendPaginateV3,
@@ -1471,6 +1472,69 @@ export async function syncOmnisendForStore(params: {
   }
 }
 
+// País (ISO-2, client_stores.country) -> IANA timezone. Usado pra alinhar a
+// janela do sync ao painel do Omnisend, que agrega em 00:00 do fuso da loja
+// (nao 00:00 UTC). Sem isso, a fronteira da janela captura pedidos de mais/
+// menos (~1% no total da loja). Default America/Sao_Paulo (maioria e BR).
+const COUNTRY_TIMEZONE: Record<string, string> = {
+  BR: "America/Sao_Paulo",
+  US: "America/New_York",
+  PT: "Europe/Lisbon",
+  ES: "Europe/Madrid",
+  IT: "Europe/Rome",
+  FR: "Europe/Paris",
+  DE: "Europe/Berlin",
+  GB: "Europe/London",
+  UK: "Europe/London",
+  IE: "Europe/Dublin",
+  NL: "Europe/Amsterdam",
+  BE: "Europe/Brussels",
+  CH: "Europe/Zurich",
+  AT: "Europe/Vienna",
+  AR: "America/Argentina/Buenos_Aires",
+  MX: "America/Mexico_City",
+  CL: "America/Santiago",
+  CO: "America/Bogota",
+  PE: "America/Lima",
+  UY: "America/Montevideo",
+  PY: "America/Asuncion",
+}
+
+/** Resolve o IANA timezone da loja a partir do country (ISO-2) em client_stores. */
+async function resolveStoreTimezone(storeId: string): Promise<string> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from("client_stores")
+      .select("country")
+      .eq("id", storeId)
+      .single()
+    const country = String(data?.country || "BR").toUpperCase()
+    return COUNTRY_TIMEZONE[country] || "America/Sao_Paulo"
+  } catch {
+    return "America/Sao_Paulo"
+  }
+}
+
+/** Início do dia (00:00) no fuso `timezone`, `daysAgo` dias atrás, como ISO com offset.
+ *  Ex.: (29, "America/Sao_Paulo") em 15/07 -> "2026-06-16T00:00:00-03:00". */
+function startOfDayInTimezone(daysAgo: number, timezone: string): string {
+  const now = new Date()
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now) // YYYY-MM-DD no fuso da loja
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const day = new Date(Date.UTC(y, m - 1, d))
+  day.setUTCDate(day.getUTCDate() - daysAgo)
+  const yy = day.getUTCFullYear()
+  const mm = String(day.getUTCMonth() + 1).padStart(2, "0")
+  const dd = String(day.getUTCDate()).padStart(2, "0")
+  return `${yy}-${mm}-${dd}T00:00:00${getTimezoneOffset(timezone)}`
+}
+
 async function doSyncOmnisendForStore(params: {
   storeId: string
   orgId: string
@@ -1585,12 +1649,15 @@ async function doSyncOmnisendForStore(params: {
       startDate = params.startDate
       endDate = params.endDate
     } else {
-      const now = new Date()
-      const start = new Date(now)
-      start.setUTCDate(start.getUTCDate() - (periodDays - 1))
-      start.setUTCHours(0, 0, 0, 0)
-      startDate = start.toISOString()
-      endDate = now.toISOString()
+      // Janela alinhada ao painel do Omnisend: inicio em 00:00 do FUSO DA LOJA
+      // (derivado de client_stores.country), nao 00:00 UTC. Sem isso, a
+      // fronteira captura ~1% de pedidos a mais no total da loja (o painel
+      // comeca 00:00 BRT; nos comecavamos 00:00 UTC = 21:00 BRT do dia anterior).
+      // O fim continua "agora" (o painel atualiza no decorrer do dia).
+      const timezone = await resolveStoreTimezone(storeId)
+      startDate = startOfDayInTimezone(periodDays - 1, timezone)
+      endDate = new Date().toISOString()
+      log.info(`[OmnisendSync] janela alinhada ao fuso ${timezone}`, { storeId, startDate, endDate })
     }
     const activityBreakdown = await safely(
       "activityBreakdown",
