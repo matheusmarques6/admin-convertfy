@@ -970,3 +970,297 @@ async function resolveParticipantEmailsForRsvp(
 
   return result
 }
+
+// ---------------------------------------------------------------------------
+// Import bidirecional: Google (agenda central "convertfy") -> admin
+// ---------------------------------------------------------------------------
+
+type GoogleSyncEvent = GoogleCalendarEvent & {
+  id: string
+  organizer?: { email?: string }
+  hangoutLink?: string
+  attendees?: Array<{
+    email: string
+    displayName?: string
+    responseStatus?: "needsAction" | "declined" | "tentative" | "accepted"
+  }>
+}
+
+interface ImportContext {
+  orgId: string
+  calendarId: string
+  emailToProfileId: Map<string, string>
+  fallbackOrganizerId: string | null
+}
+
+/** Campos da meeting derivados de um evento do Google. */
+function eventToMeetingPatch(ev: GoogleSyncEvent): Record<string, unknown> {
+  const startIso = ev.start?.dateTime
+  const patch: Record<string, unknown> = {}
+  if (ev.summary) patch.title = ev.summary
+  if (startIso) {
+    patch.scheduled_at = new Date(startIso).toISOString()
+    if (ev.end?.dateTime) {
+      const mins = Math.round(
+        (new Date(ev.end.dateTime).getTime() - new Date(startIso).getTime()) / 60000
+      )
+      if (mins > 0) patch.duration_minutes = mins
+    }
+    if (ev.start?.timeZone) patch.timezone = ev.start.timeZone
+  }
+  return patch
+}
+
+function localResponseStatus(
+  s?: "needsAction" | "declined" | "tentative" | "accepted"
+): "pending" | "accepted" | "declined" | "tentative" {
+  if (s === "accepted" || s === "declined" || s === "tentative") return s
+  return "pending"
+}
+
+/**
+ * Aplica um evento do Google na base local.
+ * - Evento com tag convertfyMeetingId -> atualiza a meeting existente (reverse).
+ * - Evento ja importado (match por google_event_id) -> atualiza.
+ * - Evento novo criado no Google -> cria meeting sem cliente (source=google).
+ */
+async function applyGoogleEvent(
+  ctx: ImportContext,
+  ev: GoogleSyncEvent
+): Promise<"imported" | "updated" | "skipped"> {
+  const adminClient = createAdminClient()
+  const isCancelled = ev.status === "cancelled"
+  const convId = ev.extendedProperties?.private?.convertfyMeetingId
+
+  // 1) Evento que NOS criamos (tem a tag): reverse update / cancelamento
+  if (convId) {
+    const { data: m } = await adminClient
+      .from("meetings")
+      .select("id, google_synced_at")
+      .eq("id", convId)
+      .maybeSingle()
+    if (!m) return "skipped"
+
+    if (isCancelled) {
+      await adminClient.from("meetings").update({ status: "cancelled" }).eq("id", convId)
+      return "updated"
+    }
+
+    // So aplica se o Google for mais novo que nosso ultimo push (anti-eco)
+    const gUpdated = ev.updated ? new Date(ev.updated).getTime() : 0
+    const synced = m.google_synced_at ? new Date(m.google_synced_at as string).getTime() : 0
+    if (gUpdated <= synced + 2000) return "skipped"
+
+    await adminClient
+      .from("meetings")
+      .update({ ...eventToMeetingPatch(ev), google_synced_at: new Date().toISOString() })
+      .eq("id", convId)
+    return "updated"
+  }
+
+  // 2) Evento criado no Google e ja importado antes (match por google_event_id)
+  const { data: existing } = await adminClient
+    .from("meetings")
+    .select("id")
+    .eq("google_event_id", ev.id)
+    .eq("org_id", ctx.orgId)
+    .maybeSingle()
+
+  if (existing) {
+    if (isCancelled) {
+      await adminClient.from("meetings").update({ status: "cancelled" }).eq("id", existing.id)
+      return "updated"
+    }
+    await adminClient
+      .from("meetings")
+      .update({ ...eventToMeetingPatch(ev), google_synced_at: new Date().toISOString() })
+      .eq("id", existing.id)
+    return "updated"
+  }
+
+  // 3) Evento novo criado direto no Google -> importa como reuniao sem cliente
+  if (isCancelled) return "skipped"
+  if (!ev.start?.dateTime) return "skipped" // ignora all-day / sem horario
+
+  // user_id (organizador local) e NOT NULL: casa email do organizer/attendee
+  // com um profile da org; senao usa um admin/owner de fallback.
+  const candidateEmails = [
+    ev.organizer?.email,
+    ...(ev.attendees?.map((a) => a.email) || []),
+  ].filter(Boolean) as string[]
+  let organizerId: string | null = null
+  for (const email of candidateEmails) {
+    const pid = ctx.emailToProfileId.get(email.toLowerCase())
+    if (pid) { organizerId = pid; break }
+  }
+  organizerId = organizerId || ctx.fallbackOrganizerId
+  if (!organizerId) return "skipped" // sem ninguem da org p/ ancorar
+
+  const patch = eventToMeetingPatch(ev)
+  const meetLink = ev.hangoutLink || undefined
+
+  const { data: inserted, error: insErr } = await adminClient
+    .from("meetings")
+    .insert({
+      org_id: ctx.orgId,
+      client_id: null,
+      user_id: organizerId,
+      title: (patch.title as string) || "(sem titulo)",
+      scheduled_at: patch.scheduled_at,
+      duration_minutes: (patch.duration_minutes as number) || 30,
+      timezone: (patch.timezone as string) || DEFAULT_TIMEZONE,
+      status: "scheduled",
+      source: "google",
+      google_event_id: ev.id,
+      google_calendar_id: ctx.calendarId,
+      google_sync_status: "synced",
+      google_synced_at: new Date().toISOString(),
+      meeting_url: meetLink || null,
+      meeting_url_source: meetLink ? "google_meet" : "manual",
+    })
+    .select("id")
+    .single()
+
+  if (insErr || !inserted) {
+    log.error("Failed to import Google event", { eventId: ev.id, error: insErr?.message })
+    return "skipped"
+  }
+
+  // Vincula attendees que sao membros da org como participantes (aparecem
+  // no workspace "Geral" de cada um). Organizador entra como is_organizer.
+  const participantRows: Array<Record<string, unknown>> = [
+    {
+      meeting_id: inserted.id,
+      participant_id: organizerId,
+      participant_type: "profile",
+      is_organizer: true,
+      response_status: "accepted",
+    },
+  ]
+  for (const att of ev.attendees || []) {
+    const pid = ctx.emailToProfileId.get(att.email.toLowerCase())
+    if (!pid || pid === organizerId) continue
+    participantRows.push({
+      meeting_id: inserted.id,
+      participant_id: pid,
+      participant_type: "profile",
+      is_organizer: false,
+      email: att.email,
+      response_status: localResponseStatus(att.responseStatus),
+    })
+  }
+  if (participantRows.length > 0) {
+    await adminClient
+      .from("meeting_participants")
+      .upsert(participantRows, { onConflict: "meeting_id,participant_id,participant_type" })
+  }
+
+  return "imported"
+}
+
+/**
+ * Importa/atualiza reunioes da agenda central da convertfy (conta org) para o
+ * admin. Usa syncToken incremental (armazenado em user_google_tokens) e
+ * refaz full sync se o token vencer (410).
+ */
+export async function importMeetingsFromGoogle(
+  orgId: string
+): Promise<{ imported: number; updated: number }> {
+  const adminClient = createAdminClient()
+
+  let accessToken: string | null
+  try {
+    accessToken = await getValidAccessToken(orgId, "org")
+  } catch (err) {
+    if (err instanceof GoogleTokenRevokedError) return { imported: 0, updated: 0 }
+    throw err
+  }
+  if (!accessToken) return { imported: 0, updated: 0 }
+
+  const { data: tokenRow } = await adminClient
+    .from("user_google_tokens")
+    .select("calendar_sync_token, selected_calendar_id")
+    .eq("user_type", "org")
+    .eq("user_id", orgId)
+    .single()
+
+  const calendarId = tokenRow?.selected_calendar_id || "primary"
+  const service = new GoogleCalendarService({ accessToken, calendarId })
+
+  // Mapa email -> profile_id dos membros da org (p/ ancorar organizador e
+  // vincular participantes de eventos importados)
+  const emailToProfileId = new Map<string, string>()
+  let fallbackOrganizerId: string | null = null
+  const { data: members } = await adminClient
+    .from("org_members")
+    .select("role, profile:profiles!org_members_profile_id_fkey(id, email)")
+    .eq("org_id", orgId)
+  for (const m of members || []) {
+    const prof = Array.isArray(m.profile) ? m.profile[0] : m.profile
+    if (prof?.email) emailToProfileId.set(prof.email.toLowerCase(), prof.id)
+    if (!fallbackOrganizerId && ["admin", "owner", "coo"].includes(m.role) && prof?.id) {
+      fallbackOrganizerId = prof.id
+    }
+  }
+  if (!fallbackOrganizerId) {
+    const first = (members || [])[0]
+    const prof = first ? (Array.isArray(first.profile) ? first.profile[0] : first.profile) : null
+    fallbackOrganizerId = prof?.id || null
+  }
+
+  const ctx: ImportContext = { orgId, calendarId, emailToProfileId, fallbackOrganizerId }
+
+  let syncToken: string | undefined = tokenRow?.calendar_sync_token || undefined
+  let pageToken: string | undefined
+  let nextSyncToken: string | undefined
+  let imported = 0
+  let updated = 0
+
+  // Loop de paginas (limitado p/ nao rodar infinito)
+  for (let i = 0; i < 25; i++) {
+    const res = await service.listEventsForSync({
+      syncToken,
+      pageToken,
+      maxResults: 250,
+      timeMin: syncToken ? undefined : new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      timeMax: syncToken ? undefined : new Date(Date.now() + 90 * 86_400_000).toISOString(),
+    })
+
+    if (res.expired) {
+      // syncToken vencido -> recomeca full sync
+      syncToken = undefined
+      pageToken = undefined
+      continue
+    }
+
+    for (const ev of res.items as GoogleSyncEvent[]) {
+      try {
+        const r = await applyGoogleEvent(ctx, ev)
+        if (r === "imported") imported++
+        else if (r === "updated") updated++
+      } catch (err) {
+        log.error("applyGoogleEvent failed", {
+          eventId: ev.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    if (res.nextPageToken) {
+      pageToken = res.nextPageToken
+      continue
+    }
+    nextSyncToken = res.nextSyncToken
+    break
+  }
+
+  if (nextSyncToken) {
+    await adminClient
+      .from("user_google_tokens")
+      .update({ calendar_sync_token: nextSyncToken, last_synced_at: new Date().toISOString() })
+      .eq("user_type", "org")
+      .eq("user_id", orgId)
+  }
+
+  return { imported, updated }
+}

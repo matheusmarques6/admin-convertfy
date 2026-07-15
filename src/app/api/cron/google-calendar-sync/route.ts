@@ -17,6 +17,7 @@ import { requireCronAuth } from "@/lib/api/cron-auth"
 import {
   syncRsvpFromGoogle,
   syncMeetingToGoogle,
+  importMeetingsFromGoogle,
 } from "@/lib/services/google-calendar-sync.service"
 import { GoogleTokenRevokedError } from "@/lib/services/google-auth.service"
 import { logger } from "@/lib/logger"
@@ -154,6 +155,10 @@ export async function GET(request: NextRequest) {
           break
         }
 
+        // Tokens da conta central (org) sao tratados na Fase 3 (import), nao
+        // no RSVP-por-usuario.
+        if (token.user_type === "org") continue
+
         const result: UserSyncResult = {
           user_id: token.user_id,
           org_id: token.org_id,
@@ -289,13 +294,47 @@ export async function GET(request: NextRequest) {
       }
 
       // -------------------------------------------------------------------
+      // Phase 3: Import bidirecional das contas centrais (Google -> admin)
+      // -------------------------------------------------------------------
+
+      let orgImported = 0
+      let orgUpdated = 0
+
+      if (Date.now() - startTime < MAX_DURATION_MS) {
+        const orgTokens = activeTokens.filter((t) => t.user_type === "org")
+        for (const token of orgTokens) {
+          if (Date.now() - startTime > MAX_DURATION_MS) {
+            log.warn("Timeout approaching during org import phase, stopping")
+            break
+          }
+          if (!token.org_id) continue
+          try {
+            const res = await importMeetingsFromGoogle(token.org_id)
+            orgImported += res.imported
+            orgUpdated += res.updated
+          } catch (err) {
+            if (err instanceof GoogleTokenRevokedError) {
+              log.warn("Org calendar token revoked, skipping import", { orgId: token.org_id })
+            } else {
+              totalErrors++
+              log.error("Org import failed", {
+                orgId: token.org_id,
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, INTER_USER_DELAY_MS))
+        }
+      }
+
+      // -------------------------------------------------------------------
       // AC 42.12.5: Log summary
       // -------------------------------------------------------------------
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
 
       log.info(
-        `GoogleCalendarCron: completed. users=${userResults.length}, meetings_synced=${totalMeetingsSynced}, rsvp_updated=${totalRsvpUpdated}, retries=${retryResults.length}/${retriesSucceeded}, errors=${totalErrors}, duration=${duration}s`
+        `GoogleCalendarCron: completed. users=${userResults.length}, meetings_synced=${totalMeetingsSynced}, rsvp_updated=${totalRsvpUpdated}, retries=${retryResults.length}/${retriesSucceeded}, org_imported=${orgImported}, org_updated=${orgUpdated}, errors=${totalErrors}, duration=${duration}s`
       )
 
       return NextResponse.json({
@@ -304,6 +343,8 @@ export async function GET(request: NextRequest) {
         rsvp_updated: totalRsvpUpdated,
         retries_attempted: retryResults.length,
         retries_succeeded: retriesSucceeded,
+        org_imported: orgImported,
+        org_updated: orgUpdated,
         errors: totalErrors,
         duration_s: parseFloat(duration),
         user_details: userResults,

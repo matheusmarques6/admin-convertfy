@@ -162,6 +162,68 @@ export class GoogleCalendarService {
     return response.items || []
   }
 
+  /**
+   * List incremental para o sync bidirecional (Google -> admin).
+   *
+   * - Com syncToken: retorna apenas o delta desde o ultimo sync (inclui
+   *   eventos cancelados, status='cancelled').
+   * - Sem syncToken: full sync na janela informada; a ultima pagina traz
+   *   nextSyncToken.
+   * - HTTP 410 (syncToken vencido): retorna expired=true; o chamador deve
+   *   refazer um full sync.
+   */
+  async listEventsForSync(params: {
+    syncToken?: string
+    timeMin?: string
+    timeMax?: string
+    maxResults?: number
+    pageToken?: string
+  }): Promise<{
+    items: Array<GoogleCalendarEvent & { id: string }>
+    nextSyncToken?: string
+    nextPageToken?: string
+    expired?: boolean
+  }> {
+    const qp = new URLSearchParams()
+    qp.set("singleEvents", "true")
+    if (params.syncToken) {
+      qp.set("syncToken", params.syncToken)
+    } else {
+      if (params.timeMin) qp.set("timeMin", params.timeMin)
+      if (params.timeMax) qp.set("timeMax", params.timeMax)
+      qp.set("showDeleted", "false")
+    }
+    if (params.maxResults) qp.set("maxResults", params.maxResults.toString())
+    if (params.pageToken) qp.set("pageToken", params.pageToken)
+
+    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events?${qp.toString()}`
+    const response = await fetchWithRetry(`${CALENDAR_API_URL}${endpoint}`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.accessToken}`,
+      },
+    })
+
+    // syncToken vencido -> chamador refaz full sync
+    if (response.status === 410) {
+      return { items: [], expired: true }
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(
+        error.error?.message || `Google Calendar API error: ${response.status}`
+      )
+    }
+
+    const data = await response.json()
+    return {
+      items: data.items || [],
+      nextSyncToken: data.nextSyncToken,
+      nextPageToken: data.nextPageToken,
+    }
+  }
+
   // Create event with Google Meet
   async createEventWithMeet(
     event: Omit<GoogleCalendarEvent, "conferenceData">
