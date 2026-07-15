@@ -61,11 +61,13 @@ export async function GET(request: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       orgId = (portalUser?.clients as any)?.org_id || ""
     } else {
+      // org_members usa profile_id (= auth.uid, pois profiles.id = auth.uid).
       const { data: orgMember } = await supabase
         .from("org_members")
         .select("org_id, role")
-        .eq("user_id", user.id)
-        .single()
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle()
       orgId = orgMember?.org_id || ""
 
       // Conectar a conta central da org exige papel de gestao
@@ -91,6 +93,18 @@ export async function GET(request: NextRequest) {
         ? "portal_user"
         : "profile"
     const tokenUserId = target === "org" ? orgId : user.id
+
+    // Calendar precisa de org_id (coluna NOT NULL em user_google_tokens).
+    // Falha cedo com mensagem clara em vez de estourar no callback.
+    if ((scope === "calendar" || scope === "all") && !orgId) {
+      log.error("Cannot resolve org_id for calendar OAuth", { userId: user.id, context })
+      const noOrgReturn =
+        returnTo && returnTo.startsWith("/admin") ? returnTo : "/admin/dashboard"
+      const noOrgUrl = new URL(noOrgReturn, "http://local")
+      noOrgUrl.searchParams.set("settings", "integrations")
+      noOrgUrl.searchParams.set("error", "no_org")
+      return NextResponse.redirect(new URL(noOrgUrl.pathname + noOrgUrl.search, request.url))
+    }
 
     // Generate state for CSRF protection with cryptographic nonce (C2)
     const state = Buffer.from(

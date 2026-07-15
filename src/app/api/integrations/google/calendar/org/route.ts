@@ -23,8 +23,9 @@ async function resolveOrgAndRole(userId: string) {
   const { data: member } = await supabase
     .from("org_members")
     .select("org_id, role")
-    .eq("user_id", userId)
-    .single()
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .maybeSingle()
   return { orgId: member?.org_id as string | undefined, role: member?.role as string | undefined }
 }
 

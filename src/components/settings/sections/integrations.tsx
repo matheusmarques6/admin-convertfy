@@ -104,6 +104,8 @@ export function IntegrationsSection() {
       toast({ title: "Google Calendar conectado", description: "Sua agenda pessoal foi conectada com sucesso." })
     } else if (errorParam === "forbidden_org_connect") {
       toast({ variant: "destructive", title: "Sem permissão", description: "Apenas admin/gestão pode conectar a conta central." })
+    } else if (errorParam === "no_org") {
+      toast({ variant: "destructive", title: "Organização não encontrada", description: "Seu usuário não está vinculado a uma organização ativa." })
     } else if (errorParam) {
       toast({ variant: "destructive", title: "Falha ao conectar", description: `Erro: ${errorParam}` })
     }
