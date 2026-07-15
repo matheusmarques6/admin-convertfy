@@ -224,6 +224,40 @@ export class GoogleCalendarService {
     }
   }
 
+  /**
+   * Registra um canal de push (watch) para receber notificacoes de mudanca
+   * na agenda. O Google faz POST em `address` a cada alteracao.
+   * Retorna resourceId + expiration (ms epoch como string).
+   */
+  async watchEvents(params: {
+    channelId: string
+    address: string
+    token?: string
+    ttlSeconds?: number
+  }): Promise<{ resourceId: string; expiration?: string }> {
+    const body: Record<string, unknown> = {
+      id: params.channelId,
+      type: "web_hook",
+      address: params.address,
+    }
+    if (params.token) body.token = params.token
+    if (params.ttlSeconds) body.params = { ttl: String(params.ttlSeconds) }
+
+    const res = await this.request<{ resourceId: string; expiration?: string }>(
+      `/calendars/${encodeURIComponent(this.calendarId)}/events/watch`,
+      { method: "POST", body: JSON.stringify(body) }
+    )
+    return { resourceId: res.resourceId, expiration: res.expiration }
+  }
+
+  /** Encerra um canal de push previamente registrado. */
+  async stopChannel(channelId: string, resourceId: string): Promise<void> {
+    await this.request(`/channels/stop`, {
+      method: "POST",
+      body: JSON.stringify({ id: channelId, resourceId }),
+    })
+  }
+
   // Create event with Google Meet
   async createEventWithMeet(
     event: Omit<GoogleCalendarEvent, "conferenceData">

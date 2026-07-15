@@ -142,6 +142,23 @@ export async function GET(request: NextRequest) {
         googleEmail: userInfo.email,
         hasRefreshToken: !!tokens.refresh_token,
       })
+
+      // Conta central: registra o watch (push em tempo real) e faz um import
+      // inicial pra ja trazer o que existe na agenda. Best effort — se falhar
+      // (ex.: dominio nao verificado no Google), o cron horario cobre.
+      if (stateData.target === "org" && stateData.org_id) {
+        try {
+          const { startCalendarWatch, importMeetingsFromGoogle } = await import(
+            "@/lib/services/google-calendar-sync.service"
+          )
+          await startCalendarWatch(stateData.org_id)
+          await importMeetingsFromGoogle(stateData.org_id)
+        } catch (e) {
+          log.warn("Falha ao iniciar watch/import inicial da conta central", {
+            error: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }
     } else if (stateData.store_id) {
       // AC 42.3.7: Existing flow — save to client_stores (Ads/per-store)
       const integrationKey = stateData.scope === "calendar" ? "google_calendar" : "google_ads" as const

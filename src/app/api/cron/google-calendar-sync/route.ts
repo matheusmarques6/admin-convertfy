@@ -18,6 +18,7 @@ import {
   syncRsvpFromGoogle,
   syncMeetingToGoogle,
   importMeetingsFromGoogle,
+  renewExpiringWatches,
 } from "@/lib/services/google-calendar-sync.service"
 import { GoogleTokenRevokedError } from "@/lib/services/google-auth.service"
 import { logger } from "@/lib/logger"
@@ -328,6 +329,20 @@ export async function GET(request: NextRequest) {
       }
 
       // -------------------------------------------------------------------
+      // Phase 4: Renova watches de push perto de expirar (rede de seguranca)
+      // -------------------------------------------------------------------
+      let watchesRenewed = 0
+      if (Date.now() - startTime < MAX_DURATION_MS) {
+        try {
+          watchesRenewed = await renewExpiringWatches()
+        } catch (err) {
+          log.warn("Falha ao renovar watches", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+
+      // -------------------------------------------------------------------
       // AC 42.12.5: Log summary
       // -------------------------------------------------------------------
 
@@ -345,6 +360,7 @@ export async function GET(request: NextRequest) {
         retries_succeeded: retriesSucceeded,
         org_imported: orgImported,
         org_updated: orgUpdated,
+        watches_renewed: watchesRenewed,
         errors: totalErrors,
         duration_s: parseFloat(duration),
         user_details: userResults,

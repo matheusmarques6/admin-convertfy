@@ -21,6 +21,7 @@ import {
 } from "@/lib/services/google-auth.service"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { randomUUID } from "crypto"
 
 const log = logger.child("GoogleCalendarSync")
 
@@ -1263,4 +1264,153 @@ export async function importMeetingsFromGoogle(
   }
 
   return { imported, updated }
+}
+
+// ---------------------------------------------------------------------------
+// Push notifications (watch) — import Google -> admin em tempo real
+// ---------------------------------------------------------------------------
+
+const WATCH_TTL_SECONDS = 7 * 24 * 3600 // 7 dias
+
+/**
+ * Registra (ou re-registra) um canal de push na agenda central da org, para
+ * que o Google avise nosso webhook a cada mudanca. Retorna true se registrou.
+ *
+ * Requer NEXT_PUBLIC_APP_URL publico com HTTPS e dominio verificado no Google
+ * (senao o Google recusa o webhook). Em caso de falha, o cron horario segue
+ * como rede de seguranca.
+ */
+export async function startCalendarWatch(orgId: string): Promise<boolean> {
+  const adminClient = createAdminClient()
+
+  let accessToken: string | null
+  try {
+    accessToken = await getValidAccessToken(orgId, "org")
+  } catch {
+    return false
+  }
+  if (!accessToken) return false
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) {
+    log.warn("NEXT_PUBLIC_APP_URL ausente — nao da pra registrar watch")
+    return false
+  }
+
+  const { data: tokenRow } = await adminClient
+    .from("user_google_tokens")
+    .select("selected_calendar_id, calendar_channel_id, calendar_resource_id")
+    .eq("user_type", "org")
+    .eq("user_id", orgId)
+    .single()
+
+  const calendarId = tokenRow?.selected_calendar_id || "primary"
+  const service = new GoogleCalendarService({ accessToken, calendarId })
+
+  // Encerra canal anterior (best effort) para nao acumular
+  if (tokenRow?.calendar_channel_id && tokenRow?.calendar_resource_id) {
+    try {
+      await service.stopChannel(tokenRow.calendar_channel_id, tokenRow.calendar_resource_id)
+    } catch {
+      /* ignora */
+    }
+  }
+
+  const channelId = randomUUID()
+  const token = randomUUID()
+  const address = `${appUrl.replace(/\/$/, "")}/api/webhooks/google-calendar`
+
+  try {
+    const res = await service.watchEvents({
+      channelId,
+      address,
+      token,
+      ttlSeconds: WATCH_TTL_SECONDS,
+    })
+    await adminClient
+      .from("user_google_tokens")
+      .update({
+        calendar_channel_id: channelId,
+        calendar_resource_id: res.resourceId,
+        calendar_channel_token: token,
+        calendar_channel_expiration: res.expiration
+          ? new Date(Number(res.expiration)).toISOString()
+          : null,
+      })
+      .eq("user_type", "org")
+      .eq("user_id", orgId)
+    log.info("Calendar watch registered", { orgId, channelId })
+    return true
+  } catch (err) {
+    log.error("Failed to register calendar watch", {
+      orgId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+/** Encerra o watch da org (ao desconectar a conta central). */
+export async function stopCalendarWatch(orgId: string): Promise<void> {
+  const adminClient = createAdminClient()
+  let accessToken: string | null
+  try {
+    accessToken = await getValidAccessToken(orgId, "org")
+  } catch {
+    return
+  }
+  if (!accessToken) return
+
+  const { data: tokenRow } = await adminClient
+    .from("user_google_tokens")
+    .select("calendar_channel_id, calendar_resource_id")
+    .eq("user_type", "org")
+    .eq("user_id", orgId)
+    .single()
+
+  if (tokenRow?.calendar_channel_id && tokenRow?.calendar_resource_id) {
+    const service = new GoogleCalendarService({ accessToken })
+    try {
+      await service.stopChannel(tokenRow.calendar_channel_id, tokenRow.calendar_resource_id)
+    } catch {
+      /* ignora */
+    }
+  }
+  await adminClient
+    .from("user_google_tokens")
+    .update({
+      calendar_channel_id: null,
+      calendar_resource_id: null,
+      calendar_channel_token: null,
+      calendar_channel_expiration: null,
+    })
+    .eq("user_type", "org")
+    .eq("user_id", orgId)
+}
+
+/**
+ * Renova watches que estao sem canal ou perto de expirar (< 24h). Chamado
+ * pelo cron. Retorna quantos foram (re)registrados.
+ */
+export async function renewExpiringWatches(): Promise<number> {
+  const adminClient = createAdminClient()
+  const cutoff = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+
+  const { data: rows } = await adminClient
+    .from("user_google_tokens")
+    .select("user_id, calendar_channel_expiration, calendar_channel_id")
+    .eq("user_type", "org")
+    .eq("is_active", true)
+
+  let renewed = 0
+  for (const row of rows || []) {
+    const expired =
+      !row.calendar_channel_id ||
+      !row.calendar_channel_expiration ||
+      row.calendar_channel_expiration < cutoff
+    if (!expired) continue
+    const ok = await startCalendarWatch(row.user_id)
+    if (ok) renewed++
+  }
+  return renewed
 }

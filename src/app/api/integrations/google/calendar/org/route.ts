@@ -4,6 +4,7 @@ import {
   getConnectionStatus,
   disconnectGoogle,
 } from "@/lib/services/google-auth.service"
+import { stopCalendarWatch } from "@/lib/services/google-calendar-sync.service"
 import { errorResponse } from "@/lib/api/errors"
 
 /**
@@ -60,6 +61,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Sem permissao" }, { status: 403 })
     }
 
+    // Encerra o canal de push antes de remover o token
+    await stopCalendarWatch(orgId)
     await disconnectGoogle(orgId, "org")
     return NextResponse.json({ success: true })
   } catch (error) {
