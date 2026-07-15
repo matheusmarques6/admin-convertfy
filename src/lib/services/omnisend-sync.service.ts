@@ -1723,11 +1723,19 @@ async function doSyncOmnisendForStore(params: {
       })
     }
 
+    // Pedidos atribuidos: preferir Reports API (send-date, = dashboard do app),
+    // igual ja fazemos com a receita (totalAttributedRevenueFinal calibrado).
+    // O Statistics breakdown (event-date) contava ~3-4% a mais. So cai nele se
+    // a Reports API veio vazia (rate limit/timeout).
+    const reportsAttributedOrders =
+      (reportsTotals.campaignAttributedOrders || 0) + (reportsTotals.automationAttributedOrders || 0)
     const revenueStats = {
       totalRevenue: activityBreakdown.total.revenue,
       totalOrders: activityBreakdown.total.orders,
       attributedRevenue: totalAttributedRevenueFinal,
-      attributedOrders: totalCampaignsOrders + totalAutomationsOrders,
+      attributedOrders: reportsAttributedOrders > 0
+        ? reportsAttributedOrders
+        : totalCampaignsOrders + totalAutomationsOrders,
     }
 
     // Currency vem do DB (client_stores.currency, migration 20241217).
