@@ -262,7 +262,9 @@ export function TabPerformance({ storeId }: { storeId: string }) {
     [campaignsRaw],
   )
   const topFlows = useMemo(
-    () => [...(flowsRaw?.flows ?? [])].filter((f) => f.revenue > 0 || f.recipients > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 6),
+    // Mostra TODOS os flows ativos (nao so top 6) — o subtitulo "N flows
+    // ativos" prometia a lista completa. Ordenados por receita desc.
+    () => [...(flowsRaw?.flows ?? [])].filter((f) => f.revenue > 0 || f.recipients > 0).sort((a, b) => b.revenue - a.revenue),
     [flowsRaw],
   )
 
