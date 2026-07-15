@@ -1014,6 +1014,94 @@ export async function fetchOmnisendActivityBreakdown(
   }
 }
 
+/**
+ * Aberturas/cliques UNICOS por atividade (campanha/automation) via Reports API.
+ *
+ * Por que existe: o Statistics breakdown (/analytics/statistics) EXIGE a
+ * dimension `timestamp`, entao bucketiza — e somar `openedUnique` por bucket
+ * conta em dobro quem abre em dias/meses diferentes. O fix de granularity=month
+ * resolve CAMPANHAS (envio pontual, cabe em 1 bucket) mas NAO os FLOWS, que
+ * rodam continuos e cruzam a virada de mes (janela de 30d = 2 buckets somados).
+ *
+ * A Reports API (/analytics/reports) aceita `dimensions: [marketingActivityID]`
+ * SEM timestamp -> devolve 1 row por atividade com o `openedUnique` CONSOLIDADO
+ * do periodo inteiro = o mesmo numero do dashboard. Sem dupla contagem.
+ *
+ * Fallback: se a API rejeitar a dimension (0 rows), o consumidor mantem o valor
+ * do Statistics breakdown — nunca fica pior que hoje.
+ */
+export async function fetchOmnisendActivityUniques(
+  apiKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<{
+  campaigns: Map<string, { openedUnique: number; clickedUnique: number }>
+  automations: Map<string, { openedUnique: number; clickedUnique: number }>
+}> {
+  const empty = { campaigns: new Map(), automations: new Map() }
+  try {
+    const resp = await omnisendRequest<{
+      reports: Array<{ alias?: string; rows?: Array<Record<string, number | string>> }>
+    }>(
+      apiKey,
+      `${OMNISEND_API}/analytics/reports`,
+      {
+        method: "POST",
+        logTag: "OmnisendActivityUniques",
+        omnisendVersion: "2026-preview",
+        authStyle: "bearer",
+        body: {
+          queries: [
+            {
+              alias: "campaignUniques",
+              metrics: [{ name: "openedUnique" }, { name: "clickedUnique" }],
+              dateRange: { interval: "custom", from: startDate, to: endDate },
+              dimensions: [{ name: "marketingActivityID" }],
+              filters: [{ name: "marketingActivityType", operator: "in", values: ["Campaign"] }],
+            },
+            {
+              alias: "automationUniques",
+              metrics: [{ name: "openedUnique" }, { name: "clickedUnique" }],
+              dateRange: { interval: "custom", from: startDate, to: endDate },
+              dimensions: [{ name: "marketingActivityID" }],
+              filters: [{ name: "marketingActivityType", operator: "in", values: ["Automation"] }],
+            },
+          ],
+        },
+      },
+    )
+
+    const parse = (alias: string) => {
+      const rows = resp?.reports?.find((r) => r.alias === alias)?.rows ?? []
+      const map = new Map<string, { openedUnique: number; clickedUnique: number }>()
+      for (const row of rows) {
+        const r = row as Record<string, unknown>
+        const dims = (r.dimensions as Record<string, unknown> | undefined) ?? {}
+        const id = String(r.marketingActivityID ?? dims.marketingActivityID ?? "")
+        if (!id) continue
+        map.set(id, {
+          openedUnique: Number(r.openedUnique) || 0,
+          clickedUnique: Number(r.clickedUnique) || 0,
+        })
+      }
+      return map
+    }
+
+    const result = { campaigns: parse("campaignUniques"), automations: parse("automationUniques") }
+    log.info("[OmnisendActivityUniques] fetched", {
+      campaigns: result.campaigns.size,
+      automations: result.automations.size,
+    })
+    return result
+  } catch (err) {
+    if (err instanceof OmnisendRateLimitError || err instanceof OmnisendInvalidKeyError) throw err
+    log.warn("[OmnisendActivityUniques] failed — flows mantem valores do Statistics breakdown", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return empty
+  }
+}
+
 export async function fetchOmnisendReports(
   apiKey: string,
   startDate: string,
@@ -1492,6 +1580,16 @@ async function doSyncOmnisendForStore(params: {
       } as OmnisendActivityBreakdownResult,
     )
 
+    // Aberturas/cliques UNICOS por atividade via Reports API (sem timestamp =
+    // consolidado, sem dupla contagem). Usado pra corrigir os FLOWS, onde o
+    // Statistics breakdown bucketizado infla (janela cruza a virada de mes).
+    // Fallback embutido: se vier vazio, o mapeamento mantem o valor antigo.
+    const activityUniques = await safely(
+      "activityUniques",
+      () => fetchOmnisendActivityUniques(apiKey, startDate, endDate),
+      { campaigns: new Map(), automations: new Map() } as Awaited<ReturnType<typeof fetchOmnisendActivityUniques>>,
+    )
+
     // /api/analytics/reports devolve openedUnique consolidado pra todo
     // o periodo (1 row), conforme orientacao explicita do suporte
     // (2026-05-06): "para puxar leads que abriram >= 1 email no periodo,
@@ -1768,8 +1866,12 @@ async function doSyncOmnisendForStore(params: {
         const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
         const sent = autoBreakdownEntry?.sent ?? 0
         const delivered = autoBreakdownEntry?.sent ?? 0
-        const opened = autoBreakdownEntry?.opened ?? 0
-        const clicked = autoBreakdownEntry?.clicked ?? 0
+        // opened/clicked: preferir o UNICO consolidado da Reports API (bate
+        // com o dashboard); so cair no breakdown bucketizado (inflado) se a
+        // Reports API nao trouxe essa automation.
+        const autoUniq = activityUniques.automations.get(getAutomationId(a))
+        const opened = autoUniq?.openedUnique ?? autoBreakdownEntry?.opened ?? 0
+        const clicked = autoUniq?.clickedUnique ?? autoBreakdownEntry?.clicked ?? 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
         const revenue = autoBreakdownEntry?.totalRevenue ?? 0
