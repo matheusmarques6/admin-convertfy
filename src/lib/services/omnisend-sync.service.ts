@@ -1649,15 +1649,18 @@ async function doSyncOmnisendForStore(params: {
       startDate = params.startDate
       endDate = params.endDate
     } else {
-      // Janela alinhada ao painel do Omnisend: inicio em 00:00 do FUSO DA LOJA
-      // (derivado de client_stores.country), nao 00:00 UTC. Sem isso, a
-      // fronteira captura ~1% de pedidos a mais no total da loja (o painel
-      // comeca 00:00 BRT; nos comecavamos 00:00 UTC = 21:00 BRT do dia anterior).
-      // O fim continua "agora" (o painel atualiza no decorrer do dia).
+      // Janela IDENTICA ao "Last N days" do painel do Omnisend:
+      //   [hoje-periodDays 00:00, hoje 00:00) no FUSO DA LOJA (nao UTC).
+      // Dois pontos confirmados na conta Omnisend:
+      //   1. As datas sao ancoradas em 00:00 do fuso da loja (BRT), nao UTC.
+      //   2. O `to` da API e EXCLUSIVO e o painel conta apenas dias COMPLETOS
+      //      (exclui o dia parcial de hoje). Ex: hoje=15/07 -> Jun 15 a Jul 14.
+      // Antes usavamos start=hoje-29 e end="agora" (dia parcial), o que inflava
+      // o total da loja (incluia hoje) e deslocava a fronteira inicial.
       const timezone = await resolveStoreTimezone(storeId)
-      startDate = startOfDayInTimezone(periodDays - 1, timezone)
-      endDate = new Date().toISOString()
-      log.info(`[OmnisendSync] janela alinhada ao fuso ${timezone}`, { storeId, startDate, endDate })
+      startDate = startOfDayInTimezone(periodDays, timezone) // 00:00 de (hoje - periodDays)
+      endDate = startOfDayInTimezone(0, timezone)            // 00:00 de HOJE (exclusivo)
+      log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate})`, { storeId })
     }
     const activityBreakdown = await safely(
       "activityBreakdown",
