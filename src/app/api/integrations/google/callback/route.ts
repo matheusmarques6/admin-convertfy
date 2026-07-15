@@ -211,14 +211,20 @@ function buildRedirectUrl(stateData: OAuthStateData, error?: string): string {
     // preservando o contexto do app (as Configuracoes viraram modal via
     // ?settings=integrations). Fallback para uma pagina admin quando nao ha
     // return_to valido.
-    const safeReturn =
+    const validReturn =
       stateData.return_to &&
       (stateData.return_to.startsWith("/admin") || stateData.return_to.startsWith("/client"))
         ? stateData.return_to
-        : "/admin/dashboard"
+        : ""
 
-    const url = new URL(safeReturn, "http://local")
-    url.searchParams.set("settings", "integrations")
+    const url = new URL(validReturn || "/admin/dashboard", "http://local")
+    // Abre o modal de Integracoes apenas quando o retorno JA aponta pra ele
+    // (fluxo das Configuracoes) ou quando nao ha return_to valido (fallback).
+    // Retornos de paginas normais (ex.: /admin/meetings) NAO abrem o modal —
+    // a confirmacao acontece na propria pagina.
+    const wantsSettingsModal =
+      !validReturn || url.searchParams.get("settings") === "integrations"
+    if (wantsSettingsModal) url.searchParams.set("settings", "integrations")
     const successVal =
       stateData.target === "org"
         ? "google_org_calendar_connected"

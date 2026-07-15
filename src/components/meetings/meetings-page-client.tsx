@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   isToday,
   isFuture,
@@ -139,6 +140,32 @@ export function MeetingsPageClient({
   useEffect(() => {
     setLocalMeetings(initialMeetings)
   }, [initialMeetings])
+
+  // Confirmação visual ao voltar do OAuth do Google Calendar (feito aqui,
+  // não mais nas Configurações). Revalida o status e limpa os params.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  useEffect(() => {
+    const success = searchParams.get("success")
+    const errorParam = searchParams.get("error")
+    if (!success && !errorParam) return
+
+    if (success === "google_calendar_connected") {
+      toast({ title: "Google Calendar conectado", description: "Suas reuniões vão sincronizar com a sua agenda pessoal." })
+    } else if (errorParam) {
+      toast({ variant: "destructive", title: "Falha ao conectar", description: `Erro: ${errorParam}` })
+    }
+    calendarStatus.refresh()
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("success")
+    params.delete("error")
+    params.delete("settings")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, router, pathname])
 
   // Filter meetings
   const filteredMeetings = useMemo(() => {
@@ -292,7 +319,20 @@ export function MeetingsPageClient({
   return (
     <>
       <div className="space-y-4 h-full flex flex-col">
-        {/* Google Calendar reconnection banner */}
+        {/* Conectar Google Calendar (primeira vez) */}
+        {!calendarStatus.connected && !calendarStatus.isLoading && (
+          <AlertBanner
+            variant="info"
+            title="Conecte seu Google Calendar"
+            description="Sincronize suas reuniões automaticamente com a sua agenda pessoal do Google."
+            action={{
+              label: "Conectar Google Calendar",
+              href: "/api/integrations/google/authorize?scope=calendar&context=admin&return_to=%2Fadmin%2Fmeetings",
+            }}
+          />
+        )}
+
+        {/* Reconexão quando o token foi revogado */}
         {calendarStatus.connected && !calendarStatus.isActive && !calendarStatus.isLoading && (
           <AlertBanner
             variant="warning"
@@ -300,7 +340,7 @@ export function MeetingsPageClient({
             description={calendarStatus.syncError || "Reconecte para sincronizar reuniões."}
             action={{
               label: "Reconectar",
-              href: "/api/integrations/google/authorize?scope=calendar&context=admin",
+              href: "/api/integrations/google/authorize?scope=calendar&context=admin&return_to=%2Fadmin%2Fmeetings",
             }}
           />
         )}

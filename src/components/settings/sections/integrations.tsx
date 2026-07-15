@@ -53,7 +53,6 @@ import { createClient } from "@/lib/supabase/client"
 import { useIntegrationsStore } from "@/lib/store"
 import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/config"
 import { toast } from "@/lib/hooks/use-toast"
-import { GoogleCalendarCard } from "@/components/settings/google-calendar-card"
 import { OrgGoogleCalendarCard } from "@/components/settings/org-google-calendar-card"
 import type { IntegrationType, Integration } from "@/types"
 import { cn } from "@/lib/utils"
@@ -287,16 +286,6 @@ export function IntegrationsSection() {
         </div>
       ) : (
         <>
-          {/* Per-user integrations */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] mb-3">
-              Conexões pessoais
-            </p>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              <GoogleCalendarCard />
-            </div>
-          </div>
-
           {/* Org-level integrations */}
           <div>
             <p className="text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] mb-3">
