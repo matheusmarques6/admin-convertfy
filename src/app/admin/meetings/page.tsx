@@ -9,17 +9,26 @@ import { MeetingsPageClient } from "@/components/meetings/meetings-page-client"
 
 export const dynamic = "force-dynamic"
 
-export default async function MeetingsPage() {
+export default async function MeetingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>
+}) {
+  const { scope } = await searchParams
+  // scope=mine (workspace "Geral") mostra só reuniões em que o usuário foi
+  // convocado; sem scope (workspace "Comercial") mostra todas as da org.
+  const personalScope = scope === "mine"
+
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Resolve org_id for multi-tenant scoping
+  // Resolve org_id (+ org_member id) for multi-tenant scoping
   const { data: currentMember } = await adminClient
     .from("org_members")
-    .select("org_id")
+    .select("id, org_id")
     .eq("profile_id", user.id)
     .eq("is_active", true)
     .limit(1)
@@ -50,10 +59,26 @@ export default async function MeetingsPage() {
     log.error("Error fetching meetings:", meetingsError)
   }
 
+  // Escopo pessoal ("Geral"): só reuniões onde o usuário é organizador OU
+  // participante (profile próprio ou seu org_member). A conta central
+  // ("Comercial") vê todas as da org.
+  const myOrgMemberId = currentMember.id
+  const scopedMeetings = personalScope
+    ? (meetings || []).filter((m: Record<string, unknown>) => {
+        if (m.user_id === user.id) return true
+        const parts = (m.participants || []) as Array<{ participant_type: string; participant_id: string }>
+        return parts.some(
+          (p) =>
+            (p.participant_type === "profile" && p.participant_id === user.id) ||
+            (p.participant_type === "org_member" && p.participant_id === myOrgMemberId)
+        )
+      })
+    : (meetings || [])
+
   // Fetch profiles for participants separately (polymorphic participant_id has no FK)
   const participantProfileIds = new Set<string>()
   const participantOrgMemberIds = new Set<string>()
-  ;(meetings || []).forEach((m: Record<string, unknown>) => {
+  ;scopedMeetings.forEach((m: Record<string, unknown>) => {
     const parts = (m.participants || []) as Array<{ participant_type: string; participant_id: string }>
     parts.forEach((p) => {
       if (p.participant_type === "profile" && p.participant_id) {
@@ -143,7 +168,7 @@ export default async function MeetingsPage() {
   const lastSyncedAt = googleToken?.last_synced_at || null
 
   // Transform meetings for client component
-  const transformedMeetings = (meetings || []).map((m) => {
+  const transformedMeetings = scopedMeetings.map((m) => {
     const clientRaw = Array.isArray(m.client) ? m.client[0] : m.client
     return {
       ...m,
@@ -172,9 +197,13 @@ export default async function MeetingsPage() {
       <div className="space-y-6">
         <PageHeader
           icon={Calendar}
-          title="Reuniões"
+          title={personalScope ? "Minhas reuniões" : "Reuniões"}
           badge={meetingCount}
-          description="Agende e acompanhe reuniões com clientes e equipe"
+          description={
+            personalScope
+              ? "Reuniões em que você foi convocado"
+              : "Agende e acompanhe reuniões com clientes e equipe"
+          }
         />
 
         <MeetingsPageClient

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
@@ -32,14 +32,22 @@ export function SidebarItem({
   accentColor,
 }: SidebarItemProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // href pode carregar query (ex: /admin/meetings?scope=mine). Separamos o
+  // path para o match de rota e comparamos o `scope` para diferenciar dois
+  // itens que apontam pro mesmo path (Comercial = todas, Geral = minhas).
+  const [hrefPath, hrefQuery] = href.split("?")
+  const hrefScope = new URLSearchParams(hrefQuery || "").get("scope")
+  const currentScope = searchParams.get("scope")
   // Match exato pra dashboards de cada workspace, prefix pro resto
   const isExactMatch =
-    href === "/admin/dashboard" ||
-    href === "/admin/comercial/dashboard" ||
-    href === "/admin/operacional/dashboard"
-  const active = isExactMatch
-    ? pathname === href
-    : pathname === href || pathname.startsWith(href + "/")
+    hrefPath === "/admin/dashboard" ||
+    hrefPath === "/admin/comercial/dashboard" ||
+    hrefPath === "/admin/operacional/dashboard"
+  const pathActive = isExactMatch
+    ? pathname === hrefPath
+    : pathname === hrefPath || pathname.startsWith(hrefPath + "/")
+  const active = pathActive && hrefScope === currentScope
 
   // Quando workspace tem cor, usa ela com bg sutil e texto branco;
   // senao mantem fallback original.

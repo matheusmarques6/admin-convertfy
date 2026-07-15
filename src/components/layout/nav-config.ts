@@ -172,7 +172,7 @@ export const GERAL_NAV: NavGroup[] = [
     key: "agenda",
     label: "Agenda",
     items: [
-      { id: "geral.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
+      { id: "geral.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.MINE, icon: Calendar },
     ],
   },
   {

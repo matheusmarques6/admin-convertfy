@@ -47,6 +47,7 @@ export const ROUTES = {
 
     MEETINGS: {
       LIST: "/admin/meetings",
+      MINE: "/admin/meetings?scope=mine",
       NEW: "/admin/meetings/new",
       CALENDAR: "/admin/meetings?view=calendar",
     },
