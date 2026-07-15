@@ -453,8 +453,10 @@ export async function fetchOmnisendStatistics(
 
   try {
     // Payload alinhado ao curl validado pelo Ryan (Azzurro Milano, abr/2026):
-    // - granularity "day" (a API 2026-preview retorna rows diarias com totalRevenue/
-    //   totalOrders/attributedRevenue/attributedOrders por dia)
+    // - granularity "month" (NAO "day"): com bucket diario e janela ancorada no
+    //   fuso da loja (-03:00), a API conta pedidos a mais na virada de dia
+    //   (~+53 na Clube Rock vs painel). Com month (1-2 buckets no periodo) bate
+    //   com o painel na unidade. Igual ao que o sync usa no `total`.
     // - Omnisend-Version "2026-preview" (versao que funciona nos testes manuais;
     //   "2026-03-15" ainda e valida mas deu resultados inconsistentes em alguns
     //   requests recentes)
@@ -490,7 +492,7 @@ export async function fetchOmnisendStatistics(
               { name: "attributedOrders" },
             ],
             dateRange: { interval: "custom", from: startDate, to: endDate },
-            dimensions: [{ name: "timestamp", granularity: "day" }],
+            dimensions: [{ name: "timestamp", granularity: "month" }],
           }],
         },
       }
