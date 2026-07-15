@@ -1030,15 +1030,23 @@ export async function fetchOmnisendActivityBreakdown(
  * Fallback: se a API rejeitar a dimension (0 rows), o consumidor mantem o valor
  * do Statistics breakdown — nunca fica pior que hoje.
  */
+interface ActivityReportEntry {
+  sent: number
+  openedUnique: number
+  clickedUnique: number
+  revenue: number
+  orders: number
+}
+
 export async function fetchOmnisendActivityUniques(
   apiKey: string,
   startDate: string,
   endDate: string,
 ): Promise<{
-  campaigns: Map<string, { openedUnique: number; clickedUnique: number }>
-  automations: Map<string, { openedUnique: number; clickedUnique: number }>
+  campaigns: Map<string, ActivityReportEntry>
+  automations: Map<string, ActivityReportEntry>
 }> {
-  const empty = { campaigns: new Map(), automations: new Map() }
+  const empty = { campaigns: new Map<string, ActivityReportEntry>(), automations: new Map<string, ActivityReportEntry>() }
   try {
     const resp = await omnisendRequest<{
       reports: Array<{ alias?: string; rows?: Array<Record<string, number | string>> }>
@@ -1054,14 +1062,26 @@ export async function fetchOmnisendActivityUniques(
           queries: [
             {
               alias: "campaignUniques",
-              metrics: [{ name: "openedUnique" }, { name: "clickedUnique" }],
+              metrics: [
+                { name: "sent" },
+                { name: "openedUnique" },
+                { name: "clickedUnique" },
+                { name: "attributedRevenue" },
+                { name: "attributedOrdersUnique" },
+              ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [{ name: "marketingActivityID" }],
               filters: [{ name: "marketingActivityType", operator: "in", values: ["Campaign"] }],
             },
             {
               alias: "automationUniques",
-              metrics: [{ name: "openedUnique" }, { name: "clickedUnique" }],
+              metrics: [
+                { name: "sent" },
+                { name: "openedUnique" },
+                { name: "clickedUnique" },
+                { name: "attributedRevenue" },
+                { name: "attributedOrdersUnique" },
+              ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
               dimensions: [{ name: "marketingActivityID" }],
               filters: [{ name: "marketingActivityType", operator: "in", values: ["Automation"] }],
@@ -1073,15 +1093,18 @@ export async function fetchOmnisendActivityUniques(
 
     const parse = (alias: string) => {
       const rows = resp?.reports?.find((r) => r.alias === alias)?.rows ?? []
-      const map = new Map<string, { openedUnique: number; clickedUnique: number }>()
+      const map = new Map<string, ActivityReportEntry>()
       for (const row of rows) {
         const r = row as Record<string, unknown>
         const dims = (r.dimensions as Record<string, unknown> | undefined) ?? {}
         const id = String(r.marketingActivityID ?? dims.marketingActivityID ?? "")
         if (!id) continue
         map.set(id, {
+          sent: Number(r.sent) || 0,
           openedUnique: Number(r.openedUnique) || 0,
           clickedUnique: Number(r.clickedUnique) || 0,
+          revenue: Number(r.attributedRevenue) || 0,
+          orders: Number(r.attributedOrdersUnique) || 0,
         })
       }
       return map
@@ -1864,18 +1887,21 @@ async function doSyncOmnisendForStore(params: {
         // Apr 2026 mostrando R$47k em vez de R$26k do dashboard porque o
         // breakdown com filter "Workflow" voltava vazio).
         const autoBreakdownEntry = activityBreakdown.automations.get(getAutomationId(a))
-        const sent = autoBreakdownEntry?.sent ?? 0
-        const delivered = autoBreakdownEntry?.sent ?? 0
-        // opened/clicked: preferir o UNICO consolidado da Reports API (bate
-        // com o dashboard); so cair no breakdown bucketizado (inflado) se a
-        // Reports API nao trouxe essa automation.
-        const autoUniq = activityUniques.automations.get(getAutomationId(a))
-        const opened = autoUniq?.openedUnique ?? autoBreakdownEntry?.opened ?? 0
-        const clicked = autoUniq?.clickedUnique ?? autoBreakdownEntry?.clicked ?? 0
+        // Reports API por flow (send-date, bate com o dashboard) é a fonte
+        // preferida para TODOS os cores do flow: envios, aberturas/cliques
+        // unicos, receita e pedidos. O Statistics breakdown (event-date) so
+        // entra como fallback quando a Reports API nao trouxe essa automation
+        // — la a receita/enviados divergiam ~2-20% do dashboard e o opened
+        // vinha inflado (soma de buckets).
+        const autoRpt = activityUniques.automations.get(getAutomationId(a))
+        const sent = autoRpt?.sent ?? autoBreakdownEntry?.sent ?? 0
+        const delivered = sent
+        const opened = autoRpt?.openedUnique ?? autoBreakdownEntry?.opened ?? 0
+        const clicked = autoRpt?.clickedUnique ?? autoBreakdownEntry?.clicked ?? 0
         const bounced = s.bounced || 0
         const unsubscribed = s.unsubscribed || 0
-        const revenue = autoBreakdownEntry?.totalRevenue ?? 0
-        const automationOrders = autoBreakdownEntry?.totalOrders ?? 0
+        const revenue = autoRpt?.revenue ?? autoBreakdownEntry?.totalRevenue ?? 0
+        const automationOrders = autoRpt?.orders ?? autoBreakdownEntry?.totalOrders ?? 0
         const triggerType = typeof a.trigger === "string"
           ? a.trigger
           : (a.triggerType || (a.trigger && typeof a.trigger === "object" && typeof (a.trigger as Record<string, unknown>).event === "string"
