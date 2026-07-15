@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { mutate } from "swr"
 import { RotateCcw, Loader2 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
@@ -50,6 +51,15 @@ export function StoreForceResyncAction({ storeId, storeName }: StoreForceResyncA
         setIsOpen(false)
         // Refresh server components
         router.refresh()
+        // Forca o SWR a re-buscar TODAS as chaves dessa loja (report,
+        // campaigns, flows, etc.) sem precisar de F5. Sem isso, os cards
+        // client-side (revalidateOnFocus:false) continuavam mostrando o dado
+        // velho ate um reload manual.
+        mutate(
+          (key) => typeof key === "string" && key.includes(storeId),
+          undefined,
+          { revalidate: true },
+        )
       } else {
         toast({
           title: "Erro ao limpar cache",

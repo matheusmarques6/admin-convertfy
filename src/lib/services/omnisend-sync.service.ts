@@ -1735,22 +1735,19 @@ async function doSyncOmnisendForStore(params: {
     let startDate: string
     let endDate: string
     if (params.startDate && params.endDate) {
-      startDate = params.startDate
-      endDate = params.endDate
+      // CUSTOM: re-ancora as datas no fuso da loja (country) — MESMA regra dos
+      // periodos regulares. Preserva a parte YYYY-MM-DD e forca 00:00 no offset
+      // do fuso. Antes o caller (buildFromLiveFetch) derivava o offset da
+      // currency, que divergia do country em lojas nao-BR. Agora e uniforme.
+      const timezone = await resolveStoreTimezone(storeId)
+      const offset = getTimezoneOffset(timezone)
+      startDate = `${params.startDate.slice(0, 10)}T00:00:00${offset}`
+      endDate = `${params.endDate.slice(0, 10)}T00:00:00${offset}`
     } else {
-      // Janela IDENTICA ao "Last N days" do painel do Omnisend:
-      //   [hoje-periodDays 00:00, hoje 00:00) no FUSO DA LOJA (nao UTC).
-      // Dois pontos confirmados na conta Omnisend:
-      //   1. As datas sao ancoradas em 00:00 do fuso da loja (BRT), nao UTC.
-      //   2. O `to` da API e EXCLUSIVO e o painel conta apenas dias COMPLETOS
-      //      (exclui o dia parcial de hoje). Ex: hoje=15/07 -> Jun 15 a Jul 14.
-      // Antes usavamos start=hoje-29 e end="agora" (dia parcial), o que inflava
-      // o total da loja (incluia hoje) e deslocava a fronteira inicial.
       // Janela = painel "Last N days": inicio em 00:00 do FUSO DA LOJA
-      // (hoje-(periodDays-1)) ate AGORA. O painel INCLUI o dia corrente parcial
-      // (é vivo/rolando) — confirmado empiricamente: excluir hoje deixa o total
-      // ABAIXO do painel. O unico alinhamento que importa aqui e a fronteira
-      // inicial em 00:00 do fuso da loja (nao 00:00 UTC).
+      // (hoje-(periodDays-1)) ate AGORA (dia corrente parcial incluido — o
+      // painel e vivo/rolando). Ancorar em 00:00 do fuso da loja (nao UTC) e o
+      // que faz o total bater com o painel. `to` no MESMO offset do `from`.
       const timezone = await resolveStoreTimezone(storeId)
       startDate = startOfDayInTimezone(periodDays - 1, timezone) // 00:00 de (hoje-(N-1)) no fuso
       endDate = nowInTimezone(timezone)                          // agora, MESMO offset do from (-03:00)
