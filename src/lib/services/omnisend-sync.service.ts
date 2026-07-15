@@ -1972,10 +1972,15 @@ async function doSyncOmnisendForStore(params: {
       // suporte). Engagement (sent/opened/clicked) prioriza Statistics
       // API; fallback no listing /v5 (que nem sempre traz stats inline).
       const breakdownEntry = activityBreakdown.campaigns.get(getCampaignId(c))
+      // opened/clicked: preferir o UNICO CONSOLIDADO da Reports API (sem
+      // timestamp = 1 numero por campanha no periodo inteiro). Isso evita a
+      // dupla contagem na virada de mes (relevante em custom que cruza meses,
+      // ex.: 30/06 a 10/07). Fallback: breakdown bucketizado -> V3. Igual flows.
+      const campUniq = activityUniques.campaigns.get(getCampaignId(c))
       const sent = breakdownEntry?.sent || s.sent || 0
       const delivered = breakdownEntry?.sent || s.delivered || 0
-      const opened = breakdownEntry?.opened || s.uniqueOpened || s.opened || 0
-      const clicked = breakdownEntry?.clicked || s.uniqueClicked || s.clicked || 0
+      const opened = campUniq?.openedUnique ?? (breakdownEntry?.opened || s.uniqueOpened || s.opened || 0)
+      const clicked = campUniq?.clickedUnique ?? (breakdownEntry?.clicked || s.uniqueClicked || s.clicked || 0)
       const bounced = s.bounced || 0
       const unsubscribed = s.unsubscribed || 0
       const revenue = breakdownEntry?.totalRevenue ?? (s.totalRevenue || s.revenue || 0)
