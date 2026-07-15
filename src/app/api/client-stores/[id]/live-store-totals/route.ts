@@ -89,6 +89,8 @@ export async function GET(
       supported: true,
       totalOrders: totals.totalOrders,
       totalRevenue: totals.totalRevenue,
+      attributedRevenue: totals.attributedRevenue,
+      attributedOrders: totals.attributedOrders,
       currency: storeRow?.currency || "BRL",
       window: { start: totals.startDate, end: totals.endDate },
     })

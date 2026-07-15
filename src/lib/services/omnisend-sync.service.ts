@@ -1578,14 +1578,25 @@ export async function fetchLiveOmnisendStoreTotals(
   storeId: string,
   apiKey: string,
   periodDays: number,
-): Promise<{ totalOrders: number; totalRevenue: number; startDate: string; endDate: string; rows?: Array<Record<string, number | string>> }> {
+): Promise<{ totalOrders: number; totalRevenue: number; attributedRevenue: number; attributedOrders: number; startDate: string; endDate: string; rows?: Array<Record<string, number | string>> }> {
   const timezone = await resolveStoreTimezone(storeId)
   const startDate = startOfDayInTimezone(periodDays - 1, timezone)
   const endDate = nowInTimezone(timezone) // mesmo offset do `from` (fuso da loja)
-  const stats = await fetchOmnisendStatistics(apiKey, startDate, endDate)
+  // Total da loja (Statistics, event-date) + atribuido (Reports API por
+  // atividade, send-date = painel). Ambos ao vivo, sem cache, na mesma janela.
+  const [stats, uniques] = await Promise.all([
+    fetchOmnisendStatistics(apiKey, startDate, endDate),
+    fetchOmnisendActivityUniques(apiKey, startDate, endDate),
+  ])
+  let attributedRevenue = 0
+  let attributedOrders = 0
+  for (const e of uniques.campaigns.values()) { attributedRevenue += e.revenue; attributedOrders += e.orders }
+  for (const e of uniques.automations.values()) { attributedRevenue += e.revenue; attributedOrders += e.orders }
   return {
     totalOrders: stats.totalOrders,
     totalRevenue: stats.totalRevenue,
+    attributedRevenue,
+    attributedOrders,
     startDate,
     endDate,
     rows: stats.rows,

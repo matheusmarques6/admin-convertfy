@@ -174,7 +174,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
   // API no page-load pra bater com o painel na unidade — o valor do cron
   // defasa porque o dia corrente esta em movimento. Shopify ja e live.
   const omnisendConnected = !!status.omnisend?.connected
-  const { data: liveTotals } = useSWR<{ supported?: boolean; totalOrders?: number; totalRevenue?: number }>(
+  const { data: liveTotals } = useSWR<{ supported?: boolean; totalOrders?: number; totalRevenue?: number; attributedRevenue?: number; attributedOrders?: number }>(
     omnisendConnected && !shopifyConnected && range !== "custom"
       ? `/api/client-stores/${storeId}/live-store-totals?period=${range}`
       : null,
@@ -228,11 +228,13 @@ export function TabPerformance({ storeId }: { storeId: string }) {
 
   const attribution = useMemo(() => {
     const rv = report?.revenue ?? {}
-    const totalRevenue = Number(rv.storeRevenue ?? 0)
-    const attributed = Number(rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? 0)
+    // storeRevenue e atribuido preferem o AO VIVO (Omnisend, mesma janela do
+    // painel); caem no cron so se o live nao carregou.
+    const totalRevenue = Number(liveTotals?.totalRevenue ?? rv.storeRevenue ?? 0)
+    const attributed = Number(liveTotals?.attributedRevenue ?? rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? 0)
     const campRev = Number(rv.campaignRevenue ?? campaignsRaw?.summary?.totalRevenue ?? 0)
     const flowRev = Number(rv.flowRevenue ?? flowsRaw?.summary?.totalRevenue ?? 0)
-    const orders = Number(rv.klaviyoAttributedOrders ?? 0)
+    const orders = Number(liveTotals?.attributedOrders ?? rv.klaviyoAttributedOrders ?? 0)
     const campOrders = (campaignsRaw?.campaigns ?? []).reduce((s, c) => s + (c.recipients > 0 ? Math.round(c.recipients * c.clickRate) : 0), 0)
     const flowOrders = Math.max(0, orders - campOrders)
     const sentCampaigns = Number(campaignsRaw?.summary?.sentCampaigns ?? campaignsRaw?.campaigns?.length ?? 0)
@@ -252,7 +254,7 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       sentCampaigns,
       liveFlows,
     }
-  }, [report, campaignsRaw, flowsRaw])
+  }, [report, campaignsRaw, flowsRaw, liveTotals])
 
   const emailPerf = useMemo(() => {
     const ep = report?.emailPerformance ?? {}
