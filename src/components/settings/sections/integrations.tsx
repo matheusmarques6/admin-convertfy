@@ -52,6 +52,7 @@ import { useIntegrationsStore } from "@/lib/store"
 import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/config"
 import { toast } from "@/lib/hooks/use-toast"
 import { GoogleCalendarCard } from "@/components/settings/google-calendar-card"
+import { OrgGoogleCalendarCard } from "@/components/settings/org-google-calendar-card"
 import type { IntegrationType, Integration } from "@/types"
 import { cn } from "@/lib/utils"
 
@@ -258,6 +259,7 @@ export function IntegrationsSection() {
               Integrações da organização
             </p>
             <div className={cn("grid gap-3", "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
+              <OrgGoogleCalendarCard />
               {allConfigs.map((config) => {
                 const status = statuses[config.type]
                 const IconComp = ICONS[config.icon] || Plug
