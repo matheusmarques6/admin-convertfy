@@ -23,6 +23,14 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000 // 5 minutes
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Dono de um token Google.
+ * - profile: admin (profiles.id = auth.uid)
+ * - portal_user: usuario do portal do cliente
+ * - org: conta compartilhada da organizacao ("convertfy"), user_id = org_id
+ */
+export type GoogleUserType = "profile" | "portal_user" | "org"
+
 export interface GoogleTokens {
   access_token: string
   refresh_token?: string
@@ -76,7 +84,7 @@ export class GoogleTokenMissingError extends Error {
  */
 export async function saveTokens(
   userId: string,
-  userType: "profile" | "portal_user",
+  userType: GoogleUserType,
   orgId: string,
   tokens: GoogleTokens,
   userInfo: GoogleUserInfo
@@ -150,7 +158,7 @@ export async function saveTokens(
  */
 export async function getValidAccessToken(
   userId: string,
-  userType: "profile" | "portal_user"
+  userType: GoogleUserType
 ): Promise<string | null> {
   const adminClient = createAdminClient()
 
@@ -200,7 +208,7 @@ export async function getValidAccessToken(
  */
 async function refreshAccessToken(
   userId: string,
-  userType: "profile" | "portal_user",
+  userType: GoogleUserType,
   record: Record<string, unknown>
 ): Promise<string | null> {
   const adminClient = createAdminClient()
@@ -330,7 +338,7 @@ async function refreshAccessToken(
  */
 export async function getConnectionStatus(
   userId: string,
-  userType: "profile" | "portal_user"
+  userType: GoogleUserType
 ): Promise<ConnectionStatus> {
   const adminClient = createAdminClient()
 
@@ -373,7 +381,7 @@ export async function getConnectionStatus(
  */
 export async function disconnectGoogle(
   userId: string,
-  userType: "profile" | "portal_user"
+  userType: GoogleUserType
 ): Promise<void> {
   const adminClient = createAdminClient()
 
@@ -423,7 +431,7 @@ export async function disconnectGoogle(
  */
 export async function hasValidConnection(
   userId: string,
-  userType: "profile" | "portal_user"
+  userType: GoogleUserType
 ): Promise<boolean> {
   const status = await getConnectionStatus(userId, userType)
   return status.connected && status.is_active

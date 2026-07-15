@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
     const scope = searchParams.get("scope") || "ads"
     const storeId = searchParams.get("store_id")
     const context = searchParams.get("context") || "admin" // AC 42.3.1
+    // target=org conecta a conta Google compartilhada da organizacao ("convertfy"),
+    // que concentra todas as reunioes de clientes. Só admin/dev/coo podem.
+    const target = searchParams.get("target") // null | "org"
 
     // Define scopes based on integration type
     const scopes: string[] = [
@@ -53,20 +56,41 @@ export async function GET(request: NextRequest) {
     } else {
       const { data: orgMember } = await supabase
         .from("org_members")
-        .select("org_id")
+        .select("org_id, role")
         .eq("user_id", user.id)
         .single()
       orgId = orgMember?.org_id || ""
+
+      // Conectar a conta central da org exige papel de gestao
+      if (target === "org") {
+        const ORG_CONNECT_ROLES = ["admin", "dev", "coo", "owner"]
+        if (!orgMember?.role || !ORG_CONNECT_ROLES.includes(orgMember.role)) {
+          log.warn("Non-admin tried to connect org Google account", { userId: user.id, role: orgMember?.role })
+          return NextResponse.redirect(
+            new URL("/admin/settings?tab=integrations&error=forbidden_org_connect", request.url)
+          )
+        }
+      }
     }
+
+    // Dono do token: conta compartilhada da org (target=org) usa user_type='org'
+    // e user_id=org_id; senao segue o padrao por-usuario.
+    const tokenUserType = target === "org"
+      ? "org"
+      : context === "portal"
+        ? "portal_user"
+        : "profile"
+    const tokenUserId = target === "org" ? orgId : user.id
 
     // Generate state for CSRF protection with cryptographic nonce (C2)
     const state = Buffer.from(
       JSON.stringify({
-        user_id: user.id,
-        user_type: context === "portal" ? "portal_user" : "profile",
+        user_id: tokenUserId,
+        user_type: tokenUserType,
         scope,
         org_id: orgId,
         store_id: storeId || "",
+        target: target || "",
         nonce: crypto.randomUUID(), // AC 42.3.2 — C2 anti-CSRF nonce
         timestamp: Date.now(),
         context,

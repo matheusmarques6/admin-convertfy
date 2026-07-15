@@ -9,10 +9,11 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 interface OAuthStateData {
   user_id: string
-  user_type: "profile" | "portal_user"
+  user_type: "profile" | "portal_user" | "org"
   scope: string
   org_id: string
   store_id: string
+  target?: string
   nonce: string
   timestamp: number
   context: string
