@@ -263,7 +263,16 @@ export function IntegrationsSection() {
 
   // Separate active and available
   const _activeTypes = new Set(integrations.filter(i => i.is_active).map(i => i.type))
-  const allConfigs = Object.values(INTEGRATION_CONFIGS)
+  // Só exibimos no grid da organização as integrações que REALMENTE são
+  // consumidas a nível org (tabela `integrations`): Asaas e Wise. As demais
+  // (Klaviyo/Shopify/Meta/Google Ads/Instagram) são por-loja e conectadas
+  // dentro de cada loja; o antigo card "Google Calendar" do grid era duplicata
+  // dos cards dedicados (pessoal + Convertfy); WhatsApp é via CRM/webhooks.
+  // Conectar as outras por aqui salvava num limbo que nada lia (auditoria jul/2026).
+  const ORG_LEVEL_INTEGRATIONS = new Set(["asaas", "wise"])
+  const allConfigs = Object.values(INTEGRATION_CONFIGS).filter((c) =>
+    ORG_LEVEL_INTEGRATIONS.has(c.type)
+  )
 
   return (
     <div className="space-y-6">
