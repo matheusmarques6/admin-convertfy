@@ -110,6 +110,11 @@ const NEUTRAL_PREFIXES = [
   "/admin/settings",
   "/admin/notifications",
   "/admin/onboarding-help",
+  // Reunioes e rota COMPARTILHADA entre os workspaces Comercial (todas) e
+  // Geral (?scope=mine). Se nao fosse neutra, cairia sempre em "geral" e
+  // clicar em Reunioes no Comercial jogaria o usuario pro Geral. Neutra =
+  // o usuario continua no workspace em que estava.
+  "/admin/meetings",
 ]
 
 /**
