@@ -440,12 +440,15 @@ export interface OmnisendStatisticsResult {
   totalOrders: number
   attributedRevenue: number
   attributedOrders: number
+  /** Linhas cruas por bucket (diagnostico) */
+  rows?: Array<Record<string, number | string>>
 }
 
 export async function fetchOmnisendStatistics(
   apiKey: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  granularity: "day" | "month" = "month"
 ): Promise<OmnisendStatisticsResult> {
   const result: OmnisendStatisticsResult = {
     totalRevenue: 0, totalOrders: 0, attributedRevenue: 0, attributedOrders: 0,
@@ -492,7 +495,7 @@ export async function fetchOmnisendStatistics(
               { name: "attributedOrders" },
             ],
             dateRange: { interval: "custom", from: startDate, to: endDate },
-            dimensions: [{ name: "timestamp", granularity: "month" }],
+            dimensions: [{ name: "timestamp", granularity }],
           }],
         },
       }
@@ -503,6 +506,7 @@ export async function fetchOmnisendStatistics(
     // quando a UI mostra R$ 0,00.
     if (resp?.statistics?.[0]) {
       const rows = resp.statistics[0].rows || []
+      result.rows = rows
       log.info(`[OmnisendStatistics] Received ${rows.length} rows, first 3: ${JSON.stringify(rows.slice(0, 3))}`)
       for (const row of rows) {
         result.totalRevenue += Number(row.totalRevenue) || 0
@@ -1574,7 +1578,7 @@ export async function fetchLiveOmnisendStoreTotals(
   storeId: string,
   apiKey: string,
   periodDays: number,
-): Promise<{ totalOrders: number; totalRevenue: number; startDate: string; endDate: string }> {
+): Promise<{ totalOrders: number; totalRevenue: number; startDate: string; endDate: string; rows?: Array<Record<string, number | string>> }> {
   const timezone = await resolveStoreTimezone(storeId)
   const startDate = startOfDayInTimezone(periodDays - 1, timezone)
   const endDate = nowInTimezone(timezone) // mesmo offset do `from` (fuso da loja)
@@ -1584,6 +1588,28 @@ export async function fetchLiveOmnisendStoreTotals(
     totalRevenue: stats.totalRevenue,
     startDate,
     endDate,
+    rows: stats.rows,
+  }
+}
+
+/** Diagnostico: roda a Statistics API com month E day, retornando ambos +
+ *  as linhas cruas, pra localizar de onde vem uma divergencia com o painel. */
+export async function debugOmnisendStoreTotals(
+  storeId: string,
+  apiKey: string,
+  periodDays: number,
+) {
+  const timezone = await resolveStoreTimezone(storeId)
+  const startDate = startOfDayInTimezone(periodDays - 1, timezone)
+  const endDate = nowInTimezone(timezone)
+  const [month, day] = await Promise.all([
+    fetchOmnisendStatistics(apiKey, startDate, endDate, "month"),
+    fetchOmnisendStatistics(apiKey, startDate, endDate, "day"),
+  ])
+  return {
+    window: { start: startDate, end: endDate, timezone },
+    month: { totalOrders: month.totalOrders, totalRevenue: month.totalRevenue, rows: month.rows },
+    day: { totalOrders: day.totalOrders, totalRevenue: day.totalRevenue, rows: day.rows },
   }
 }
 

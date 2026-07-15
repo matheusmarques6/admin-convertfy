@@ -25,6 +25,7 @@ import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
   fetchLiveOmnisendStoreTotals,
+  debugOmnisendStoreTotals,
   periodLabelToDays,
 } from "@/lib/services/omnisend-sync.service"
 import { logger } from "@/lib/logger"
@@ -59,6 +60,12 @@ export async function GET(
     const apiKey = credentials.omnisend_api_key
     if (!apiKey) {
       throw new AppError("Loja sem Omnisend API key configurada", 400)
+    }
+
+    // Modo diagnostico: ?debug=1 retorna month + day + linhas cruas por bucket.
+    if (request.nextUrl.searchParams.get("debug") === "1") {
+      const dbg = await debugOmnisendStoreTotals(storeId, apiKey, periodDays)
+      return successResponse(request, { supported: true, debug: dbg })
     }
 
     const totals = await fetchLiveOmnisendStoreTotals(storeId, apiKey, periodDays)
