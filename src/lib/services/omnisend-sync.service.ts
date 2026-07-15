@@ -1712,17 +1712,21 @@ async function doSyncOmnisendForStore(params: {
         delivered,
         delivery_rate: safeRate(delivered, sent),
         opened,
-        open_rate: safeRate(opened, delivered),
+        // Omnisend calcula as taxas de engajamento sobre ENVIADOS (sent),
+        // nao sobre entregues. No fallback (sem breakdown da Statistics API)
+        // `delivered` = sent - bounced, o que inflava open/click/conversion.
+        // Dividir por `sent` bate 1:1 com a dashboard do Omnisend.
+        open_rate: safeRate(opened, sent),
         clicked,
-        click_rate: safeRate(clicked, delivered),
+        click_rate: safeRate(clicked, sent),
         conversions: campaignOrders,
-        conversion_rate: safeRate(campaignOrders, delivered),
+        conversion_rate: safeRate(campaignOrders, sent),
         conversion_value: revenue,
         revenue_per_recipient: sent > 0 ? Math.round((revenue / sent) * 100) / 100 : 0,
         bounced,
         bounce_rate: safeRate(bounced, sent),
         unsubscribed,
-        unsubscribe_rate: safeRate(unsubscribed, delivered),
+        unsubscribe_rate: safeRate(unsubscribed, sent),
         spam_complaints: spam,
       }
     })
@@ -1777,17 +1781,19 @@ async function doSyncOmnisendForStore(params: {
           delivered,
           delivery_rate: safeRate(delivered, sent),
           opened,
-          open_rate: safeRate(opened, delivered),
+          // Mesmo criterio das campanhas: taxas de engajamento sobre
+          // ENVIADOS (sent) para bater com a dashboard do Omnisend.
+          open_rate: safeRate(opened, sent),
           clicked,
-          click_rate: safeRate(clicked, delivered),
+          click_rate: safeRate(clicked, sent),
           conversions: automationOrders,
-          conversion_rate: safeRate(automationOrders, delivered),
+          conversion_rate: safeRate(automationOrders, sent),
           conversion_value: revenue,
           revenue_per_recipient: sent > 0 ? Math.round((revenue / sent) * 100) / 100 : 0,
           bounced,
           bounce_rate: safeRate(bounced, sent),
           unsubscribed,
-          unsubscribe_rate: safeRate(unsubscribed, delivered),
+          unsubscribe_rate: safeRate(unsubscribed, sent),
         }
       })
 
