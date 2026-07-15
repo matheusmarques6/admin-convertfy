@@ -78,11 +78,13 @@ export function GoogleCalendarCard() {
   const [isDisconnecting, setIsDisconnecting] = useState(false)
 
   const handleConnect = () => {
-    window.location.href = "/api/integrations/google/authorize?scope=calendar&context=admin"
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.href = `/api/integrations/google/authorize?scope=calendar&context=admin&return_to=${returnTo}`
   }
 
   const handleReconnect = () => {
-    window.location.href = "/api/integrations/google/authorize?scope=calendar&context=admin"
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.href = `/api/integrations/google/authorize?scope=calendar&context=admin&return_to=${returnTo}`
   }
 
   const handleDisconnect = async () => {

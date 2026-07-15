@@ -8,6 +8,8 @@
  */
 
 import { useEffect, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { mutate as globalMutate } from "swr"
 import {
   DollarSign,
   Facebook,
@@ -85,6 +87,37 @@ export function IntegrationsSection() {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => { loadIntegrations() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirmacao visual do retorno do OAuth (success/error na URL) + revalida
+  // o status do Google Calendar. Limpa os params depois para nao repetir.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  useEffect(() => {
+    const success = searchParams.get("success")
+    const errorParam = searchParams.get("error")
+    if (!success && !errorParam) return
+
+    if (success === "google_org_calendar_connected") {
+      toast({ title: "Conta central conectada", description: "A agenda da Convertfy está sincronizando as reuniões de clientes." })
+    } else if (success === "google_calendar_connected") {
+      toast({ title: "Google Calendar conectado", description: "Sua agenda pessoal foi conectada com sucesso." })
+    } else if (errorParam === "forbidden_org_connect") {
+      toast({ variant: "destructive", title: "Sem permissão", description: "Apenas admin/gestão pode conectar a conta central." })
+    } else if (errorParam) {
+      toast({ variant: "destructive", title: "Falha ao conectar", description: `Erro: ${errorParam}` })
+    }
+
+    // Revalida o card pessoal (SWR) e recarrega para atualizar o card central
+    globalMutate("/api/integrations/google/calendar/status")
+
+    // Remove success/error da URL preservando o resto (ex.: settings=integrations)
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("success")
+    params.delete("error")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [searchParams, router, pathname])
 
   async function loadIntegrations() {
     setLoading(true)

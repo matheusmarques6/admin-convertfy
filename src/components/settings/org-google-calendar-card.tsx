@@ -64,7 +64,8 @@ export function OrgGoogleCalendarCard() {
   }, [load])
 
   const handleConnect = () => {
-    window.location.href = "/api/integrations/google/authorize?scope=calendar&target=org"
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
+    window.location.href = `/api/integrations/google/authorize?scope=calendar&target=org&return_to=${returnTo}`
   }
 
   const handleDisconnect = async () => {

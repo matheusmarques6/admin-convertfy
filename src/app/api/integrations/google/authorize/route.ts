@@ -23,6 +23,13 @@ export async function GET(request: NextRequest) {
     // target=org conecta a conta Google compartilhada da organizacao ("convertfy"),
     // que concentra todas as reunioes de clientes. Só admin/dev/coo podem.
     const target = searchParams.get("target") // null | "org"
+    // Pagina para voltar apos o OAuth (preserva o contexto do app + modal).
+    // Sanitizado: so aceita caminhos internos, evitando open redirect.
+    const rawReturnTo = searchParams.get("return_to") || ""
+    const returnTo =
+      rawReturnTo.startsWith("/admin") || rawReturnTo.startsWith("/client")
+        ? rawReturnTo
+        : ""
 
     // Define scopes based on integration type
     const scopes: string[] = [
@@ -66,9 +73,12 @@ export async function GET(request: NextRequest) {
         const ORG_CONNECT_ROLES = ["admin", "dev", "coo", "owner"]
         if (!orgMember?.role || !ORG_CONNECT_ROLES.includes(orgMember.role)) {
           log.warn("Non-admin tried to connect org Google account", { userId: user.id, role: orgMember?.role })
-          return NextResponse.redirect(
-            new URL("/admin/settings?tab=integrations&error=forbidden_org_connect", request.url)
-          )
+          const denyReturn =
+            returnTo && returnTo.startsWith("/admin") ? returnTo : "/admin/dashboard"
+          const denyUrl = new URL(denyReturn, "http://local")
+          denyUrl.searchParams.set("settings", "integrations")
+          denyUrl.searchParams.set("error", "forbidden_org_connect")
+          return NextResponse.redirect(new URL(denyUrl.pathname + denyUrl.search, request.url))
         }
       }
     }
@@ -91,6 +101,7 @@ export async function GET(request: NextRequest) {
         org_id: orgId,
         store_id: storeId || "",
         target: target || "",
+        return_to: returnTo,
         nonce: crypto.randomUUID(), // AC 42.3.2 — C2 anti-CSRF nonce
         timestamp: Date.now(),
         context,

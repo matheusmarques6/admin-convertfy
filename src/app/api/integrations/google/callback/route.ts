@@ -14,6 +14,7 @@ interface OAuthStateData {
   org_id: string
   store_id: string
   target?: string
+  return_to?: string
   nonce: string
   timestamp: number
   context: string
@@ -205,10 +206,28 @@ function buildRedirectUrl(stateData: OAuthStateData, error?: string): string {
         ? `/client/settings?error=${error}`
         : "/client/settings?success=google_calendar_connected"
     }
-    // admin (default)
-    return error
-      ? `/admin/settings?tab=integrations&error=${error}`
-      : "/admin/settings?tab=integrations&success=google_calendar_connected"
+
+    // admin: volta pra pagina de origem com o modal de Integracoes aberto,
+    // preservando o contexto do app (as Configuracoes viraram modal via
+    // ?settings=integrations). Fallback para uma pagina admin quando nao ha
+    // return_to valido.
+    const safeReturn =
+      stateData.return_to &&
+      (stateData.return_to.startsWith("/admin") || stateData.return_to.startsWith("/client"))
+        ? stateData.return_to
+        : "/admin/dashboard"
+
+    const url = new URL(safeReturn, "http://local")
+    url.searchParams.set("settings", "integrations")
+    const successVal =
+      stateData.target === "org"
+        ? "google_org_calendar_connected"
+        : "google_calendar_connected"
+    if (error) url.searchParams.set("error", error)
+    else url.searchParams.set("success", successVal)
+    // Remove params sensiveis/obsoletos que possam ter vindo do return_to
+    url.searchParams.delete("tab")
+    return url.pathname + url.search
   }
 
   // Existing behavior for ads/other scopes
