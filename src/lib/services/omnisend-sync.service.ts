@@ -1537,6 +1537,24 @@ function startOfDayInTimezone(daysAgo: number, timezone: string): string {
   return `${yy}-${mm}-${dd}T00:00:00${getTimezoneOffset(timezone)}`
 }
 
+/** "Agora" expresso no fuso da loja, com offset (ex.: "2026-07-15T19:01:07-03:00").
+ *  CRITICO: o `to` do request TEM que sair no mesmo offset do `from` (fuso da
+ *  loja). Se sair em UTC (Z), a Statistics API bucketiza com offset misturado e
+ *  conta pedidos a mais na virada de dia (bug confirmado: +56 na Clube Rock). */
+function nowInTimezone(timezone: string): string {
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(now)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00"
+  let hh = get("hour")
+  if (hh === "24") hh = "00" // quirk do Intl: meia-noite pode vir como "24"
+  return `${get("year")}-${get("month")}-${get("day")}T${hh}:${get("minute")}:${get("second")}${getTimezoneOffset(timezone)}`
+}
+
 const LIVE_PERIOD_DAYS: Record<string, number> = {
   "1d": 1, today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90, "12m": 365, "1y": 365,
 }
@@ -1559,7 +1577,7 @@ export async function fetchLiveOmnisendStoreTotals(
 ): Promise<{ totalOrders: number; totalRevenue: number; startDate: string; endDate: string }> {
   const timezone = await resolveStoreTimezone(storeId)
   const startDate = startOfDayInTimezone(periodDays - 1, timezone)
-  const endDate = new Date().toISOString()
+  const endDate = nowInTimezone(timezone) // mesmo offset do `from` (fuso da loja)
   const stats = await fetchOmnisendStatistics(apiKey, startDate, endDate)
   return {
     totalOrders: stats.totalOrders,
@@ -1698,7 +1716,7 @@ async function doSyncOmnisendForStore(params: {
       // inicial em 00:00 do fuso da loja (nao 00:00 UTC).
       const timezone = await resolveStoreTimezone(storeId)
       startDate = startOfDayInTimezone(periodDays - 1, timezone) // 00:00 de (hoje-(N-1)) no fuso
-      endDate = new Date().toISOString()                         // agora (inclui hoje parcial)
+      endDate = nowInTimezone(timezone)                          // agora, MESMO offset do from (-03:00)
       log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate}]`, { storeId })
     }
     const activityBreakdown = await safely(
