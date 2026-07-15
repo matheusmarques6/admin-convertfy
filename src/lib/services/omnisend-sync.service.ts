@@ -1657,15 +1657,15 @@ async function doSyncOmnisendForStore(params: {
       //      (exclui o dia parcial de hoje). Ex: hoje=15/07 -> Jun 15 a Jul 14.
       // Antes usavamos start=hoje-29 e end="agora" (dia parcial), o que inflava
       // o total da loja (incluia hoje) e deslocava a fronteira inicial.
-      // Janela VALIDADA contra a conta Omnisend: hoje=15/07 ->
-      //   from = 2026-06-16T00:00:00-03:00 (hoje - (periodDays-1))
-      //   to   = 2026-07-15T00:00:00-03:00 (hoje 00:00, EXCLUSIVO)
-      // = ultimos `periodDays` dias, ancorado 00:00 no fuso da loja, contando
-      // so dias COMPLETOS (o `to` exclusivo exclui o dia parcial de hoje).
+      // Janela = painel "Last N days": inicio em 00:00 do FUSO DA LOJA
+      // (hoje-(periodDays-1)) ate AGORA. O painel INCLUI o dia corrente parcial
+      // (é vivo/rolando) — confirmado empiricamente: excluir hoje deixa o total
+      // ABAIXO do painel. O unico alinhamento que importa aqui e a fronteira
+      // inicial em 00:00 do fuso da loja (nao 00:00 UTC).
       const timezone = await resolveStoreTimezone(storeId)
-      startDate = startOfDayInTimezone(periodDays - 1, timezone) // 00:00 de (hoje-(N-1))
-      endDate = startOfDayInTimezone(0, timezone)                // 00:00 de HOJE (exclusivo)
-      log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate})`, { storeId })
+      startDate = startOfDayInTimezone(periodDays - 1, timezone) // 00:00 de (hoje-(N-1)) no fuso
+      endDate = new Date().toISOString()                         // agora (inclui hoje parcial)
+      log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate}]`, { storeId })
     }
     const activityBreakdown = await safely(
       "activityBreakdown",
