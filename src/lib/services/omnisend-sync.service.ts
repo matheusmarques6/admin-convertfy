@@ -842,7 +842,7 @@ export async function fetchOmnisendActivityBreakdown(
               alias: "campaigns",
               // Estrutura recomendada pelo suporte da Omnisend (2026-05-06):
               //   metrics: sent, openedUnique, clickedUnique, attributedRevenue
-              //   dimensions: timestamp(day) + marketingActivityID
+              //   dimensions: timestamp(month) + marketingActivityID
               //   filters: marketingActivityType in [Campaign]
               metrics: [
                 { name: "attributedRevenue" },
@@ -852,8 +852,16 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "clickedUnique" },
               ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
+              // granularity=month (nao "day"): openedUnique/clickedUnique sao
+              // unicos POR BUCKET. Com bucket diario, aggregateActivityRows
+              // soma ~30 dias e conta em dobro quem abre em dias diferentes —
+              // inflando opened acima do unico real do Omnisend (efeito cresce
+              // com a idade da campanha). Com month, quem abre em dias diferentes
+              // do mesmo mes conta 1x; so cruza bucket quem abre em meses
+              // distintos (raro). Alinha com as queries engagement/total abaixo.
+              // Receita e somada entre buckets de qualquer forma — inalterada.
               dimensions: [
-                { name: "timestamp", granularity: "day" },
+                { name: "timestamp", granularity: "month" },
                 { name: "marketingActivityID" },
               ],
               filters: [
@@ -870,8 +878,10 @@ export async function fetchOmnisendActivityBreakdown(
                 { name: "clickedUnique" },
               ],
               dateRange: { interval: "custom", from: startDate, to: endDate },
+              // granularity=month (nao "day"): mesmo motivo das campanhas —
+              // evita contar em dobro aberturas unicas somadas por dia.
               dimensions: [
-                { name: "timestamp", granularity: "day" },
+                { name: "timestamp", granularity: "month" },
                 { name: "marketingActivityID" },
               ],
               filters: [
