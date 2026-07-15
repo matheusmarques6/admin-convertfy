@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import {
@@ -110,11 +110,6 @@ const NEUTRAL_PREFIXES = [
   "/admin/settings",
   "/admin/notifications",
   "/admin/onboarding-help",
-  // Reunioes e rota COMPARTILHADA entre os workspaces Comercial (todas) e
-  // Geral (?scope=mine). Se nao fosse neutra, cairia sempre em "geral" e
-  // clicar em Reunioes no Comercial jogaria o usuario pro Geral. Neutra =
-  // o usuario continua no workspace em que estava.
-  "/admin/meetings",
 ]
 
 /**
@@ -159,7 +154,16 @@ export const useWorkspaceMemory = create<WorkspaceMemoryState>()(
 
 export function useWorkspace(): WorkspaceKey {
   const pathname = usePathname() || ""
-  const detected = detectWorkspaceOrNull(pathname)
+  const searchParams = useSearchParams()
+  // Reunioes e rota COMPARTILHADA por dois workspaces. A intencao vem do
+  // scope: ?scope=mine pertence ao Geral; sem scope (visao "todas") pertence
+  // ao Comercial. Deterministico -> no F5 sempre cai num workspace que TEM
+  // o item Reunioes (nunca no Operacional, que nao tem).
+  const detected: WorkspaceKey | null = pathname.startsWith("/admin/meetings")
+    ? searchParams.get("scope") === "mine"
+      ? "geral"
+      : "comercial"
+    : detectWorkspaceOrNull(pathname)
   const lastWorkspace = useWorkspaceMemory((s) => s.lastWorkspace)
 
   // Grava o ultimo workspace real fora do render (evita setState-in-render).
