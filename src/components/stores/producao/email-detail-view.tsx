@@ -71,6 +71,25 @@ interface EmailDetailResponse {
   }
 }
 
+// Espelha o retorno de GET /api/admin/stores/[id]/generated. A aba "Ref"
+// mostra o HTML de ARQUITETURA que o Montador (Component Assembler, agente #3)
+// gerou para esta loja×email — só leitura, não altera o flow.
+interface GeneratedRefItem {
+  flow_type: string
+  email_number: number
+  reference: {
+    html: string
+    source: string
+    model: string | null
+    updated_at: string
+  } | null
+  // Referência que o HTML agent EFETIVAMENTE consome: loja > global > nenhum.
+  consumed?: {
+    match: "loja" | "global" | "nenhum"
+    html: string | null
+  }
+}
+
 interface EmailDetailViewProps {
   storeId: string
   flow: EmailFlow
@@ -100,11 +119,33 @@ export function EmailDetailView({
   const blocks = email?.blocks ?? []
   const qaItems = email?.qa_items ?? []
 
-  const [viewMode, setViewMode] = useState<"render" | "copy" | "html">("render")
+  const [viewMode, setViewMode] = useState<"render" | "copy" | "html" | "ref">(
+    "render",
+  )
   const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
   const [width, setWidth] = useState<number>(600)
 
   const isTextOnly = !!email?.text_only
+
+  // Aba "Ref": busca lazy (só quando a aba abre) da arquitetura gerada pelo
+  // Montador para esta loja. Reusa o endpoint de inspeção /generated.
+  const { data: generatedData } = useSWR<{
+    items?: GeneratedRefItem[]
+    data?: { items?: GeneratedRefItem[] }
+  }>(
+    viewMode === "ref" ? `/api/admin/stores/${storeId}/generated` : null,
+    fetcher,
+  )
+  const refItem = useMemo<GeneratedRefItem | null>(() => {
+    const items = generatedData?.data?.items ?? generatedData?.items ?? []
+    return (
+      items.find(
+        (it) =>
+          it.flow_type === flow.flow_type &&
+          it.email_number === (email?.number ?? -1),
+      ) ?? null
+    )
+  }, [generatedData, flow.flow_type, email?.number])
 
   // Reset tab quando troca de email. Somente-texto abre direto em Copy —
   // o render mostraria placeholders {{...}} (html null) e confundiria o
@@ -611,6 +652,14 @@ export function EmailDetailView({
                 onClick={() => setViewMode("html")}
               />
             )}
+            {!isTextOnly && (
+              <ModePillBtn
+                icon={<LayoutGrid className="h-3 w-3" />}
+                label="Ref"
+                active={viewMode === "ref"}
+                onClick={() => setViewMode("ref")}
+              />
+            )}
           </div>
           <button
             onClick={generateWithAI}
@@ -784,6 +833,13 @@ export function EmailDetailView({
               exportBasename={emailExportBasename(flow, email)}
               html={email.html || renderEmailHtml(email, blocks)}
               onCopyAll={(html) => copyToClipboard(html, "HTML completo")}
+            />
+          )}
+          {viewMode === "ref" && (
+            <EmailRefView
+              item={refItem}
+              loading={!generatedData}
+              onCopyAll={(html) => copyToClipboard(html, "HTML de referência")}
             />
           )}
         </div>
@@ -2380,6 +2436,248 @@ export function EmailHtmlView({
                 }}
               >
                 {line || " "}
+              </code>
+            </div>
+          ))}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+// ─── Ref view (arquitetura do Montador) ───────────────────
+// Só leitura: mostra o HTML de ARQUITETURA que o Montador (Component
+// Assembler, agente #3) gerou para esta loja×email. Não altera o flow —
+// espelha a inspeção de /generated (reference da loja + fallback consumido).
+
+function RefMetaChip({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string
+  value: string
+  tone?: "neutral" | "ai" | "warn"
+}) {
+  const palette =
+    tone === "ai"
+      ? { bg: "var(--crm-blue-50)", fg: "var(--crm-brand)" }
+      : tone === "warn"
+        ? { bg: "#FEF3C7", fg: "#92400E" }
+        : { bg: "var(--crm-gray-100)", fg: "var(--crm-gray-600)" }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5"
+      style={{
+        padding: "3px 8px",
+        borderRadius: 4,
+        background: palette.bg,
+        color: palette.fg,
+        fontSize: 10.5,
+        fontWeight: 600,
+      }}
+    >
+      <span style={{ opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {label}
+      </span>
+      <span className="crm-tnum">{value}</span>
+    </span>
+  )
+}
+
+function EmailRefView({
+  item,
+  loading,
+  onCopyAll,
+}: {
+  item: GeneratedRefItem | null
+  loading: boolean
+  onCopyAll: (html: string) => void
+}) {
+  if (loading) {
+    return (
+      <div
+        className="flex items-center justify-center gap-2"
+        style={{ padding: "80px 32px", color: "var(--crm-gray-500)", fontSize: 13 }}
+      >
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Carregando referência do Montador...
+      </div>
+    )
+  }
+
+  const storeHtml = item?.reference?.html ?? null
+  const consumed = item?.consumed
+  // HTML a mostrar: prioridade pra reference da loja; senão o fallback global
+  // que o HTML agent realmente consome.
+  const shownHtml =
+    storeHtml ?? (consumed?.match === "global" ? consumed.html : null)
+
+  if (!shownHtml) {
+    return (
+      <div style={{ padding: "24px 32px 48px", maxWidth: 720, margin: "0 auto" }}>
+        <div
+          style={{
+            padding: "40px 24px",
+            textAlign: "center",
+            background: "var(--crm-gray-0)",
+            border: "1px dashed var(--crm-border)",
+            borderRadius: 10,
+          }}
+        >
+          <LayoutGrid
+            className="h-8 w-8"
+            style={{ margin: "0 auto 12px", color: "var(--crm-gray-300)" }}
+          />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--crm-gray-800)" }}>
+            Sem arquitetura gerada para este e-mail
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "var(--crm-gray-500)",
+              lineHeight: 1.6,
+              maxWidth: 440,
+              margin: "8px auto 0",
+            }}
+          >
+            O Montador não gravou uma referência específica desta loja (fallback)
+            e não há template global para <b>{item?.flow_type ?? "—"}</b> e-mail{" "}
+            <b>#{item?.email_number ?? "—"}</b>. O HTML final usa o template
+            padrão embutido.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const isGlobalFallback = !storeHtml && consumed?.match === "global"
+  const ref = item?.reference
+  const updated = ref?.updated_at
+    ? new Date(ref.updated_at).toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null
+  const lines = shownHtml.split("\n")
+
+  return (
+    <div style={{ padding: "24px 32px 48px", maxWidth: 1200, margin: "0 auto" }}>
+      {/* Barra de metadados */}
+      <div
+        className="flex items-center flex-wrap gap-2"
+        style={{ marginBottom: 16 }}
+      >
+        {isGlobalFallback ? (
+          <RefMetaChip label="Origem" value="Template global (fallback)" tone="warn" />
+        ) : (
+          <>
+            <RefMetaChip
+              label="Origem"
+              value={ref?.source === "ai" ? "Montador (IA)" : ref?.source ?? "—"}
+              tone={ref?.source === "ai" ? "ai" : "neutral"}
+            />
+            {ref?.model && <RefMetaChip label="Modelo" value={ref.model} />}
+            {updated && <RefMetaChip label="Atualizado" value={updated} />}
+          </>
+        )}
+        {consumed && (
+          <RefMetaChip
+            label="Consumido"
+            value={
+              consumed.match === "loja"
+                ? "Loja"
+                : consumed.match === "global"
+                  ? "Global"
+                  : "Nenhum"
+            }
+            tone={consumed.match === "loja" ? "ai" : "warn"}
+          />
+        )}
+        <div style={{ flex: 1 }} />
+        <button
+          className="cf-focusable inline-flex items-center gap-1.5"
+          style={{
+            height: 28,
+            padding: "0 10px",
+            background: "var(--crm-gray-900)",
+            color: "#fff",
+            border: 0,
+            borderRadius: 6,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+          onClick={() => onCopyAll(shownHtml)}
+        >
+          <Copy className="h-3 w-3" />
+          Copiar HTML
+        </button>
+      </div>
+
+      {/* Preview renderizado da arquitetura */}
+      <SectionLabel>Preview da arquitetura</SectionLabel>
+      <div style={{ marginBottom: 24 }}>
+        <ScaledEmailFrame html={shownHtml} baseWidth={600} maxHeight={520} />
+      </div>
+
+      {/* Código HTML (só leitura) */}
+      <SectionLabel>HTML gerado</SectionLabel>
+      <div
+        style={{
+          background: "#0F0F0F",
+          color: "#fff",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          className="flex items-center gap-2"
+          style={{
+            padding: "12px 16px",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            fontSize: 11,
+            color: "rgba(255,255,255,0.7)",
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E" }} />
+          arquitetura.html
+          <span style={{ marginLeft: 8 }}>· {lines.length} linhas</span>
+        </div>
+        <pre
+          style={{
+            margin: 0,
+            padding: "16px 0",
+            fontSize: 12,
+            lineHeight: 1.6,
+            fontFamily: "var(--crm-font-mono, 'Geist Mono', monospace)",
+            overflowX: "auto",
+            maxHeight: 480,
+            overflowY: "auto",
+          }}
+        >
+          {lines.map((line, i) => (
+            <div
+              key={i}
+              style={{ display: "flex", padding: "0 16px", background: "transparent" }}
+            >
+              <span
+                className="crm-tnum shrink-0"
+                style={{
+                  width: 40,
+                  textAlign: "right",
+                  marginRight: 16,
+                  color: "rgba(255,255,255,0.30)",
+                }}
+              >
+                {i + 1}
+              </span>
+              <code style={{ flex: 1, color: "rgba(255,255,255,0.85)", whiteSpace: "pre" }}>
+                {line || " "}
               </code>
             </div>
           ))}
