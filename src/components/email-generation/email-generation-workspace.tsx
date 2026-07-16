@@ -1592,7 +1592,14 @@ function TestTab() {
               runs: typeof allRuns,
               agent: string,
             ) => {
-              const agentRuns = runs.filter((r) => r.agent === agent)
+              // O fluxo n8n grava o run como `copy_dispatch` (o dispatch da
+              // copy), não `copy`. Casa os dois no step "Copy" pra ele não
+              // ficar eterno em "pending" no teste "Geração completa".
+              const agentRuns = runs.filter(
+                (r) =>
+                  r.agent === agent ||
+                  (agent === "copy" && r.agent === "copy_dispatch"),
+              )
               const latestRun = agentRuns[agentRuns.length - 1]
               const status = latestRun?.status ?? "pending"
               return (

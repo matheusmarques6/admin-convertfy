@@ -1197,6 +1197,35 @@ async function runRefinerStep(input: {
     }
 
     const { typography, shapes, spacing } = delta
+
+    // Teto por dimensão (espelha o ceiling dos guards). O Refinador às vezes
+    // devolve mais alvos que o teto (ex.: 14 shapes num e-mail com muitos
+    // border-radius). Antes o guard reprovava o delta INTEIRO (fail-open →
+    // e-mail sem refinamento nenhum). Agora truncamos aos 12 PRIMEIROS: aplica
+    // o refinamento parcial (os alvos vêm em ordem de relevância) em vez de
+    // descartar tudo. spacing.insert tem seu próprio teto (MAX_SPACER_INSERTS).
+    const REFINER_TARGET_CEILING = 12
+    const truncated: Record<string, number> = {}
+    if (typography.targets.length > REFINER_TARGET_CEILING) {
+      truncated.typography = typography.targets.length
+      typography.targets = typography.targets.slice(0, REFINER_TARGET_CEILING)
+    }
+    if (shapes.targets.length > REFINER_TARGET_CEILING) {
+      truncated.shapes = shapes.targets.length
+      shapes.targets = shapes.targets.slice(0, REFINER_TARGET_CEILING)
+    }
+    if (spacing.adjust.length > REFINER_TARGET_CEILING) {
+      truncated.spacing_adjust = spacing.adjust.length
+      spacing.adjust = spacing.adjust.slice(0, REFINER_TARGET_CEILING)
+    }
+    if (Object.keys(truncated).length > 0) {
+      log.info("phase2.refiner.targets_truncated", {
+        emailId,
+        ceiling: REFINER_TARGET_CEILING,
+        original: truncated,
+      })
+    }
+
     const typographyActive =
       typography.strategy !== "none" && typography.targets.length > 0
     const shapesActive = shapes.stance !== "none" && shapes.targets.length > 0

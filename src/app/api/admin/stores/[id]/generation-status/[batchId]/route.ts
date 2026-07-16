@@ -188,6 +188,11 @@ export async function GET(
       "qa_running",
       "copy_generating",
       "copy_generating_recovery",
+      // `in_progress`: janela entre o dispatch da copy (n8n) e o callback
+      // marcar copy_ready. Sem ele, o teste "Geração completa" caía no ramo
+      // legado "todos runs success = done" (fase 1 concluída) e o polling
+      // encerrava ANTES da fase 2 aparecer na tela.
+      "in_progress",
       "pending",
     ])
 
