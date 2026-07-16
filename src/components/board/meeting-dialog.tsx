@@ -134,6 +134,16 @@ export function MeetingDialog({
   const [selectedParticipants, setSelectedParticipants] = useState<ParticipantOption[]>([])
   const [timezone, setTimezone] = useState(getBrowserTimezone())
   const [createGoogleMeet, setCreateGoogleMeet] = useState(hasGoogleCalendar)
+  const [guestEmails, setGuestEmails] = useState<string[]>([])
+  const [guestInput, setGuestInput] = useState("")
+
+  const addGuest = () => {
+    const email = guestInput.trim().toLowerCase()
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    if (!ok) return
+    if (!guestEmails.includes(email)) setGuestEmails((g) => [...g, email])
+    setGuestInput("")
+  }
 
   const isEditing = !!meeting
 
@@ -163,6 +173,8 @@ export function MeetingDialog({
         setStatus(meeting.status)
         setTimezone(meeting.timezone || getBrowserTimezone())
         setCreateGoogleMeet(hasGoogleCalendar && meeting.meeting_url_source === "google_meet")
+        setGuestEmails(((meeting as { guest_emails?: string[] }).guest_emails) || [])
+        setGuestInput("")
 
         const date = new Date(meeting.scheduled_at)
         setScheduledDate(date)
@@ -204,6 +216,8 @@ export function MeetingDialog({
         })
         setStatus("scheduled")
         setSelectedParticipants([])
+        setGuestEmails([])
+        setGuestInput("")
         setTimezone(getBrowserTimezone())
         setCreateGoogleMeet(hasGoogleCalendar)
         if (initialDate) {
@@ -251,6 +265,7 @@ export function MeetingDialog({
         timezone,
         create_google_meet: createGoogleMeet,
         participants: selectedParticipants.map(p => ({ id: p.id, type: p.type })),
+        guest_emails: guestEmails,
         ...(isEditing ? { status } : {}),
       }
 
@@ -449,6 +464,39 @@ export function MeetingDialog({
                   </p>
                 </div>
               )}
+
+              {/* Convidados externos por email */}
+              <div className="grid gap-2">
+                <Label>Convidados externos (email)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={guestInput}
+                    onChange={(e) => setGuestInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuest() } }}
+                    placeholder="email@exemplo.com"
+                    type="email"
+                  />
+                  <Button type="button" variant="secondary" onClick={addGuest}>Adicionar</Button>
+                </div>
+                {guestEmails.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {guestEmails.map((g) => (
+                      <Badge key={g} variant="neutral" showDot={false} className="gap-1">
+                        {g}
+                        <button
+                          type="button"
+                          onClick={() => setGuestEmails((gs) => gs.filter((x) => x !== g))}
+                          className="ml-1 text-muted-foreground hover:text-foreground"
+                          aria-label={`Remover ${g}`}
+                        >×</button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Recebem o convite do Google Calendar por email, mesmo sem conta no Convertfy.
+                </p>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">

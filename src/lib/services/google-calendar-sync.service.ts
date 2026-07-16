@@ -58,6 +58,7 @@ interface MeetingRow {
   user_id: string
   org_id: string | null
   client_id: string | null
+  guest_emails: string[] | null
   participants: Array<{
     id: string
     participant_id: string
@@ -78,7 +79,7 @@ async function fetchMeeting(meetingId: string): Promise<MeetingRow | null> {
       `
       id, title, scheduled_at, duration_minutes, notes,
       google_event_id, google_calendar_id, meeting_url, meeting_url_source,
-      google_sync_status, timezone, user_id, org_id, client_id,
+      google_sync_status, timezone, user_id, org_id, client_id, guest_emails,
       participants:meeting_participants(
         id, participant_id, participant_type, is_organizer, email
       )
@@ -223,6 +224,13 @@ function buildGoogleEvent(
   const startDate = new Date(meeting.scheduled_at)
   const endDate = new Date(startDate.getTime() + meeting.duration_minutes * 60_000)
 
+  // Junta participantes (membros) + convidados externos por email; dedup.
+  const seen = new Set(attendees.map((a) => a.email.toLowerCase()))
+  const guestAttendees = (meeting.guest_emails || [])
+    .map((e) => e.trim())
+    .filter((e) => e && !seen.has(e.toLowerCase()))
+    .map((email) => ({ email }))
+
   return {
     summary: meeting.title,
     description: meeting.notes || undefined,
@@ -234,10 +242,13 @@ function buildGoogleEvent(
       dateTime: endDate.toISOString(),
       timeZone: tz,
     },
-    attendees: attendees.map((a) => ({
-      email: a.email,
-      ...(a.displayName ? { displayName: a.displayName } : {}),
-    })),
+    attendees: [
+      ...attendees.map((a) => ({
+        email: a.email,
+        ...(a.displayName ? { displayName: a.displayName } : {}),
+      })),
+      ...guestAttendees.map((a) => ({ email: a.email })),
+    ],
     reminders: {
       useDefault: false,
       overrides: [

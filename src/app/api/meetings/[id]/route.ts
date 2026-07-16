@@ -151,6 +151,7 @@ export async function PUT(
     if (body.status !== undefined) updateData.status = body.status
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
+    if (body.guest_emails !== undefined) updateData.guest_emails = Array.isArray(body.guest_emails) ? body.guest_emails : []
     if (body.completion_notes !== undefined) updateData.completion_notes = body.completion_notes
     if (body.timezone !== undefined) updateData.timezone = body.timezone
 

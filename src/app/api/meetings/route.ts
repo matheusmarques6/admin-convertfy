@@ -193,6 +193,7 @@ export async function POST(request: NextRequest) {
         status: "scheduled",
         meeting_url: body.meeting_url || null,
         notes: body.notes || null,
+        guest_emails: Array.isArray(body.guest_emails) ? body.guest_emails : [],
         timezone,
       })
       .select(`

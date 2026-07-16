@@ -618,18 +618,6 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
         </div>
       </div>
 
-      {/* banner conectar Google (só se não conectado) */}
-      {!hasGoogleCalendar && (
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: C.blue50, border: `1px solid ${C.blue100}`, borderRadius: 10 }}>
-          <span style={{ width: 36, height: 36, borderRadius: 9, background: C.white, border: `1px solid ${C.blue100}`, color: C.brand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><I.calendar s={19} /></span>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.g900 }}>Conecte seu Google Calendar</div>
-            <div style={{ fontSize: 12.5, color: C.g600, marginTop: 2 }}>Sincronize suas reuniões automaticamente com a sua agenda pessoal.</div>
-          </div>
-          <a href="/api/integrations/google/authorize?scope=calendar&context=admin&return_to=%2Fadmin%2Fmeetings" style={{ height: 34, padding: "0 14px", borderRadius: 6, background: C.brandHover, color: "#fff", fontWeight: 500, fontSize: 13, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Conectar Google Calendar</a>
-        </div>
-      )}
-
       {/* KPIs */}
       <div style={{ display: "flex", gap: 14, marginTop: 16 }}>
         <Kpi icon={<I.calendar s={17} />} tone={C.brand} label="Próximas" value={upcoming} hint="próximos dias" />
