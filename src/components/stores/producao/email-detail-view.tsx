@@ -2563,7 +2563,6 @@ function EmailRefView({
         minute: "2-digit",
       })
     : null
-  const lines = shownHtml.split("\n")
 
   return (
     <div style={{ padding: "24px 32px 48px", maxWidth: 1200, margin: "0 auto" }}>
@@ -2621,67 +2620,8 @@ function EmailRefView({
 
       {/* Preview renderizado da arquitetura */}
       <SectionLabel>Preview da arquitetura</SectionLabel>
-      <div style={{ marginBottom: 24 }}>
+      <div>
         <ScaledEmailFrame html={shownHtml} baseWidth={600} maxHeight={520} />
-      </div>
-
-      {/* Código HTML (só leitura) */}
-      <SectionLabel>HTML gerado</SectionLabel>
-      <div
-        style={{
-          background: "#0F0F0F",
-          color: "#fff",
-          borderRadius: 10,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          className="flex items-center gap-2"
-          style={{
-            padding: "12px 16px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.7)",
-          }}
-        >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E" }} />
-          arquitetura.html
-          <span style={{ marginLeft: 8 }}>· {lines.length} linhas</span>
-        </div>
-        <pre
-          style={{
-            margin: 0,
-            padding: "16px 0",
-            fontSize: 12,
-            lineHeight: 1.6,
-            fontFamily: "var(--crm-font-mono, 'Geist Mono', monospace)",
-            overflowX: "auto",
-            maxHeight: 480,
-            overflowY: "auto",
-          }}
-        >
-          {lines.map((line, i) => (
-            <div
-              key={i}
-              style={{ display: "flex", padding: "0 16px", background: "transparent" }}
-            >
-              <span
-                className="crm-tnum shrink-0"
-                style={{
-                  width: 40,
-                  textAlign: "right",
-                  marginRight: 16,
-                  color: "rgba(255,255,255,0.30)",
-                }}
-              >
-                {i + 1}
-              </span>
-              <code style={{ flex: 1, color: "rgba(255,255,255,0.85)", whiteSpace: "pre" }}>
-                {line || " "}
-              </code>
-            </div>
-          ))}
-        </pre>
       </div>
     </div>
   )
