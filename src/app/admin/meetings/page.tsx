@@ -6,6 +6,7 @@ const log = logger.child("MeetingsPage")
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 import { MeetingsPageClient } from "@/components/meetings/meetings-page-client"
+import { ComercialReunioes } from "@/components/meetings/comercial-reunioes"
 
 export const dynamic = "force-dynamic"
 
@@ -192,18 +193,31 @@ export default async function MeetingsPage({
     (m) => m.status === "scheduled"
   ).length
 
+  // Comercial (visão "todas") usa a página nova (design do protótipo); o
+  // workspace Geral ("minhas") mantém a página atual.
+  if (!personalScope) {
+    return (
+      <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 6rem)" }}>
+          <ComercialReunioes
+            meetings={transformedMeetings as Parameters<typeof ComercialReunioes>[0]["meetings"]}
+            clients={clients}
+            members={members}
+            hasGoogleCalendar={hasGoogleCalendar}
+          />
+        </div>
+      </PagePermissionWrapper>
+    )
+  }
+
   return (
     <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
       <div className="space-y-6">
         <PageHeader
           icon={Calendar}
-          title={personalScope ? "Minhas reuniões" : "Reuniões"}
+          title="Minhas reuniões"
           badge={meetingCount}
-          description={
-            personalScope
-              ? "Reuniões em que você foi convocado"
-              : "Agende e acompanhe reuniões com clientes e equipe"
-          }
+          description="Reuniões em que você foi convocado"
         />
 
         <MeetingsPageClient
