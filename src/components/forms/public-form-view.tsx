@@ -699,9 +699,15 @@ function FieldRenderer({
               onFocus={(e) => (e.currentTarget.style.boxShadow = focusRing)}
               onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
             >
-              <option value="">{field.placeholder ?? "Selecione..."}</option>
+              {/* Fundo/cor explicitos e OPACOS no <option>: o dropdown nativo
+                  ignora o inputBg translucido (dark mode) e cai no branco
+                  padrao do SO -> com texto claro herdado do select, as opcoes
+                  ficavam invisiveis (texto claro sobre fundo claro). */}
+              <option value="" style={{ background: t.bg, color: t.inputText }}>
+                {field.placeholder ?? "Selecione..."}
+              </option>
               {opts.map((o) => (
-                <option key={o.value} value={o.value}>
+                <option key={o.value} value={o.value} style={{ background: t.bg, color: t.inputText }}>
                   {o.label}
                 </option>
               ))}
@@ -944,7 +950,7 @@ function PhoneIntlField({
             onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
           >
             {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>
+              <option key={c.code} value={c.code} style={{ background: t.bg, color: t.inputText }}>
                 {c.flag} {c.dial}
               </option>
             ))}
