@@ -19,6 +19,7 @@ import { addDays, addMonths, startOfWeek, startOfMonth, isSameDay, isSameMonth, 
 import { ptBR } from "date-fns/locale"
 import { MeetingDialog } from "@/components/board/meeting-dialog"
 import { MeetingCompletionDialog } from "@/components/meetings/meeting-completion-dialog"
+import { toast } from "@/lib/hooks/use-toast"
 import type { MeetingStatus } from "@/types"
 
 // ── Tokens (subset do DS do protótipo) ─────────────────────────────────────
@@ -65,6 +66,7 @@ const I = {
   list: ({ s = 18 }: IcoProps) => svg(<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>, s),
   close: ({ s = 18 }: IcoProps) => svg(<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>, s),
   edit: ({ s = 18 }: IcoProps) => svg(<><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></>, s),
+  refresh: ({ s = 18 }: IcoProps) => svg(<><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></>, s),
 }
 
 // ── Modelo de dado que a página consome ────────────────────────────────────
@@ -513,6 +515,29 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<MeetingLite | null>(null)
   const [completion, setCompletion] = useState<MeetingLite | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  const syncNow = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch("/api/integrations/google/calendar/org", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Falha ao sincronizar")
+      const imported = data.imported || 0
+      const updated = data.updated || 0
+      toast({
+        title: "Sincronização concluída",
+        description: imported || updated
+          ? `${imported} nova(s), ${updated} atualizada(s).`
+          : "Nenhuma reunião nova na agenda central.",
+      })
+      router.refresh()
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erro ao sincronizar", description: e instanceof Error ? e.message : "Tente novamente" })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const shaped = useMemo(() => meetings.map(shape), [meetings])
 
@@ -574,6 +599,7 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0, flex: 1 }}>
+      <style>{`@keyframes cf-spin{to{transform:rotate(360deg)}}`}</style>
       {/* header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div>
@@ -583,7 +609,13 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
           </div>
           <div style={{ marginTop: 4, fontSize: 13.5, color: C.g500 }}>Agende e acompanhe reuniões com clientes e equipe.</div>
         </div>
-        <button onClick={openNew} style={{ height: 40, padding: "0 20px", borderRadius: 6, border: "none", background: C.brandHover, color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><I.plus s={16} /> Nova Reunião</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={syncNow} disabled={syncing} title="Importar reuniões da agenda central" style={{ height: 40, padding: "0 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.white, color: C.g700, fontWeight: 500, fontSize: 13, cursor: syncing ? "default" : "pointer", opacity: syncing ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ display: "flex", animation: syncing ? "cf-spin 1s linear infinite" : "none" }}><I.refresh s={15} /></span>
+            {syncing ? "Sincronizando…" : "Sincronizar"}
+          </button>
+          <button onClick={openNew} style={{ height: 40, padding: "0 20px", borderRadius: 6, border: "none", background: C.brandHover, color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><I.plus s={16} /> Nova Reunião</button>
+        </div>
       </div>
 
       {/* banner conectar Google (só se não conectado) */}
