@@ -28,6 +28,9 @@ const bodySchema = z.object({
   // Só fase 2 (imagem → HTML → QA): reusa blueprint/reference/copy
   // existentes sem repagar Montador/Blueprint. Requer copy no email.
   phase2_only: z.boolean().optional().default(false),
+  // Teste COMPLETO: fase 1 (Architect) → copy nova via n8n só deste email
+  // → fase 2 relaxada automática ao chegar copy_ready. Assíncrono.
+  full_pipeline: z.boolean().optional().default(false),
 })
 
 export async function POST(
@@ -60,6 +63,7 @@ export async function POST(
       triggeredBy: user.id,
       batchId,
       phase2Only: parsed.phase2_only,
+      fullPipeline: parsed.full_pipeline,
     })
 
     // Path with_copy: dispara phase2 em background.

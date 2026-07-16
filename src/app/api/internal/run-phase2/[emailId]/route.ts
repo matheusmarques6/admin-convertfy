@@ -45,17 +45,42 @@ export async function POST(
     const storeId = (flow as { store_id?: string } | null)?.store_id
     if (!storeId) throw new NotFoundError("Store da email")
 
-    log.info("internal.run_phase2.dispatched", { emailId, storeId })
+    // Teste "Geração completa": o watchdog (fallback) passa relaxedBrandCheck
+    // para pular o gate de identidade, igual ao disparo primário do callback.
+    const body = (await request.json().catch(() => ({}))) as {
+      relaxedBrandCheck?: boolean
+    }
+    const relaxedBrandCheck = body?.relaxedBrandCheck === true
+
+    log.info("internal.run_phase2.dispatched", {
+      emailId,
+      storeId,
+      relaxedBrandCheck,
+    })
 
     try {
-      after(runPhase2InBackground({ storeId, emailId, triggeredBy: "watchdog" }))
+      after(
+        runPhase2InBackground({
+          storeId,
+          emailId,
+          triggeredBy: "watchdog",
+          relaxedBrandCheck,
+        }),
+      )
     } catch (err) {
       // Runtime sem suporte a `after` — fallback sincrono em background
       log.warn("internal.after_unavailable", {
         error: err instanceof Error ? err.message : String(err),
       })
-      void runPhase2InBackground({ storeId, emailId, triggeredBy: "watchdog" }).catch(
-        (e: unknown) => log.error("phase2.bg.error", { error: e instanceof Error ? e.message : String(e) }),
+      void runPhase2InBackground({
+        storeId,
+        emailId,
+        triggeredBy: "watchdog",
+        relaxedBrandCheck,
+      }).catch((e: unknown) =>
+        log.error("phase2.bg.error", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
       )
     }
 

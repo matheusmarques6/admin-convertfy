@@ -425,7 +425,9 @@ async function redispatchStaleCopyReady(): Promise<{
 
   const { data, error } = await admin
     .from("email_flow_emails")
-    .select("id, flow_id, generation_batch_id, flow:email_flows(store_id)")
+    .select(
+      "id, flow_id, generation_batch_id, auto_phase2_relaxed, flow:email_flows(store_id)",
+    )
     .eq("status", "copy_ready")
     .lt("copy_ready_at", threshold)
     .lt("copy_ready_dispatch_attempts", MAX_STALE_DISPATCH)
@@ -440,6 +442,7 @@ async function redispatchStaleCopyReady(): Promise<{
     id: string
     flow_id: string
     generation_batch_id: string | null
+    auto_phase2_relaxed: boolean | null
     flow: { store_id?: string } | Array<{ store_id?: string }> | null
   }>
   if (allRows.length === 0) return { dispatched: 0, exhausted: 0 }
@@ -448,6 +451,8 @@ async function redispatchStaleCopyReady(): Promise<{
   // nao sao "stale" — estao corretamente esperando o portao. Re-dispatchar
   // so derrubaria a fase 2 no Guard 0 (skipped). Filtramos pra so manter
   // os de lojas com brand confirmada — os demais sao ignorados.
+  // EXCECAO: e-mails do teste "Geração completa" (auto_phase2_relaxed) rodam
+  // a fase 2 em modo RELAXADO, ignorando o gate — sempre elegiveis.
   const storeIdByEmail = new Map<string, string>()
   for (const r of allRows) {
     const flowRel = Array.isArray(r.flow) ? r.flow[0] : r.flow
@@ -458,6 +463,7 @@ async function redispatchStaleCopyReady(): Promise<{
   const confirmedStoreIds = await getConfirmedBrandStoreIds(admin, uniqueStoreIds)
 
   const rows = allRows.filter((r) => {
+    if (r.auto_phase2_relaxed === true) return true
     const storeId = storeIdByEmail.get(r.id)
     return storeId !== undefined && confirmedStoreIds.has(storeId)
   })
@@ -482,6 +488,7 @@ async function redispatchStaleCopyReady(): Promise<{
   let dispatched = 0
 
   for (const r of rows) {
+    const relaxed = r.auto_phase2_relaxed === true
     const url = `${base}/api/internal/run-phase2/${r.id}`
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 5_000)
@@ -493,12 +500,22 @@ async function redispatchStaleCopyReady(): Promise<{
           "Content-Type": "application/json",
           "x-internal-secret": internalSecret,
         },
+        // Teste "Geração completa": fase 2 relaxada, sem gate de identidade.
+        body: JSON.stringify({ relaxedBrandCheck: relaxed }),
       })
       if (resp.ok) {
         dispatched++
+        // Limpa o flag após disparo bem-sucedido (idempotência: não re-dispara).
+        if (relaxed) {
+          await admin
+            .from("email_flow_emails")
+            .update({ auto_phase2_relaxed: false })
+            .eq("id", r.id)
+        }
         log.info("watchdog.stale_copy_ready.dispatch_ok", {
           emailId: r.id,
           status: resp.status,
+          relaxed,
         })
       } else {
         failedIds.push(r.id)

@@ -32,6 +32,14 @@ export interface TestGenerationInput {
    * Montador/Blueprint. Requer copy no email (erro se não houver).
    */
   phase2Only?: boolean
+  /**
+   * TESTE COMPLETO: roda a fase 1 fresca (Curador + Montador + Blueprint),
+   * dispara copy NOVA via n8n só deste email e, ao chegar copy_ready, a
+   * fase 2 (imagem → HTML → QA) roda automática em modo relaxado (sem gate
+   * de identidade). Fluxo assíncrono: a request retorna "dispatched" e o
+   * email progride copy_generating → copy_ready → rendering → ready.
+   */
+  fullPipeline?: boolean
 }
 
 export interface TestGenerationResult {
@@ -53,6 +61,12 @@ export interface TestGenerationResult {
    * UI mostra banner informativo de que brand pode estar incompleta.
    */
   relaxedBrand?: boolean
+  /**
+   * True quando o disparo foi o teste completo (fase 1 + copy n8n + fase 2).
+   * O front usa pra fazer polling do batch mesmo com status "dispatched"
+   * (a copy vem async e a fase 2 dispara sozinha ao chegar copy_ready).
+   */
+  fullPipeline?: boolean
 }
 
 /** Um bloco "tem copy" quando seu content é um objeto com pelo menos 1 chave. */
@@ -81,6 +95,84 @@ export async function runTestGeneration(
 ): Promise<TestGenerationResult> {
   const { storeId, flowId, emailId, flowType, emailNumber, batchId, triggeredBy } =
     input
+
+  // ── TESTE COMPLETO ──────────────────────────────────────────────────
+  // Fase 1 (Architect) síncrona → dispara copy NOVA via n8n só deste email
+  // → marca auto_phase2_relaxed pra fase 2 disparar sozinha no copy_ready.
+  if (input.fullPipeline === true) {
+    log.info("test.full_pipeline.start", { storeId, emailId, batchId })
+    const admin = createAdminClient()
+
+    // 1) Fase 1: Curador + Montador + Blueprint (força reescrita da estrutura).
+    try {
+      await generateBlueprintAndReference({
+        storeId,
+        flowType,
+        emailNumber,
+        batchId,
+        triggeredBy,
+        force: true,
+      })
+    } catch (err) {
+      return {
+        status: "error",
+        path: "without_copy",
+        hasCopy: false,
+        error: `Falha na fase 1 (Architect): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        batchId,
+        emailId,
+      }
+    }
+
+    // 2) Marca o email: batch + flag de auto-fase2 relaxada. O flag atravessa
+    //    o callback async do n8n (setado antes do dispatch pra não haver
+    //    corrida com o callback, que pode chegar rápido).
+    await admin
+      .from("email_flow_emails")
+      .update({
+        auto_phase2_relaxed: true,
+        generation_batch_id: batchId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+
+    // 3) Dispara copy NOVA pro n8n, restrita a este email.
+    const dispatch = await dispatchEmailCopyWebhook(storeId, {
+      triggerSource: "test_full_pipeline",
+      flowIds: [flowId],
+      emailIds: [emailId],
+      triggeredBy,
+    })
+
+    if (!dispatch.ok) {
+      // Sem copy a caminho: limpa o flag pra não deixar o email marcado.
+      await admin
+        .from("email_flow_emails")
+        .update({ auto_phase2_relaxed: false })
+        .eq("id", emailId)
+      return {
+        status: "error",
+        path: "without_copy",
+        hasCopy: false,
+        error: `Falha ao disparar copy no n8n: ${dispatch.reason ?? "desconhecido"}`,
+        batchId,
+        emailId,
+      }
+    }
+
+    log.info("test.full_pipeline.dispatched", { storeId, emailId, batchId })
+    return {
+      status: "dispatched",
+      path: "without_copy",
+      hasCopy: false,
+      batchId,
+      emailId,
+      relaxedBrand: true,
+      fullPipeline: true,
+    }
+  }
 
   const hasCopy = await emailHasCopy(emailId)
   const phase2Only = input.phase2Only === true

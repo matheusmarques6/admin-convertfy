@@ -18,7 +18,7 @@
  *    (front 1) chama runPhase2InBackground pra cada email em copy_ready.
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
@@ -35,7 +35,10 @@ import {
 } from "@/lib/email-workspace/copy-spec"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
-import { checkBatchTerminal } from "@/lib/agents/phase2-runner.service"
+import {
+  checkBatchTerminal,
+  runPhase2InBackground,
+} from "@/lib/agents/phase2-runner.service"
 
 const log = logger.child("N8nEmailCopy")
 
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
     const { data: email, error: emailErr } = await admin
       .from("email_flow_emails")
       .select(
-        "id, flow_id, status, number, generation_batch_id, flow:email_flows(store_id, flow_type)",
+        "id, flow_id, status, number, generation_batch_id, auto_phase2_relaxed, flow:email_flows(store_id, flow_type)",
       )
       .eq("id", body.email_id)
       .maybeSingle()
@@ -401,6 +404,71 @@ export async function POST(request: NextRequest) {
         email_id: body.email_id,
         store_id: body.store_id,
         batch_id: batchId ?? null,
+      })
+    } else if (
+      (email as { auto_phase2_relaxed?: boolean }).auto_phase2_relaxed === true
+    ) {
+      // Teste "Geração completa": a copy chegou → dispara a fase 2 RELAXADA
+      // agora, sem esperar o gate de identidade visual. Limpa o flag primeiro
+      // (idempotência: um callback repetido não re-dispara). Mesmo padrão de
+      // disparo do generate-email route: fetch interno com fallback direto.
+      await admin
+        .from("email_flow_emails")
+        .update({ auto_phase2_relaxed: false })
+        .eq("id", body.email_id)
+
+      const secret = process.env.INTERNAL_SECRET
+      const baseUrl = (
+        process.env.NEXT_PUBLIC_APP_URL ??
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+        `https://${request.headers.get("host") ?? "localhost:3000"}`
+      ).replace(/\/$/, "")
+
+      after(async () => {
+        const fallbackDirect = async (reason: string) => {
+          log.warn("email_copy.full_pipeline.phase2_fallback_direct", {
+            email_id: body.email_id,
+            reason,
+          })
+          try {
+            await runPhase2InBackground({
+              storeId: body.store_id,
+              emailId: body.email_id,
+              relaxedBrandCheck: true,
+            })
+          } catch (err) {
+            log.error("email_copy.full_pipeline.phase2_fallback_error", err)
+          }
+        }
+        if (!secret) {
+          await fallbackDirect("no_internal_secret")
+          return
+        }
+        try {
+          const resp = await fetch(
+            `${baseUrl}/api/internal/run-phase2-image/${body.email_id}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-internal-secret": secret,
+              },
+              body: JSON.stringify({
+                storeId: body.store_id,
+                relaxedBrandCheck: true,
+              }),
+            },
+          )
+          if (!resp.ok) await fallbackDirect(`fetch_non_ok_${resp.status}`)
+        } catch (err) {
+          log.error("email_copy.full_pipeline.phase2_dispatch_error", err)
+          await fallbackDirect("fetch_error")
+        }
+      })
+
+      log.info("email_copy.full_pipeline.phase2_triggered", {
+        email_id: body.email_id,
+        store_id: body.store_id,
       })
     } else {
       log.info("email_copy.phase2_deferred", {

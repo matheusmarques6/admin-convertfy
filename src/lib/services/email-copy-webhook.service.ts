@@ -36,8 +36,19 @@ const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
 
 export interface DispatchEmailCopyOptions {
-  triggerSource: "briefing_confirmed" | "manual_store_button" | "pesquisa_completa"
+  triggerSource:
+    | "briefing_confirmed"
+    | "manual_store_button"
+    | "pesquisa_completa"
+    | "test_full_pipeline"
   flowIds?: string[]
+  /**
+   * Restringe o dispatch a e-mails específicos (por id). Usado pelo teste
+   * "Geração completa", que dispara copy para UM e-mail só — não o flow
+   * inteiro. Quando presente, filtra os e-mails enviados ao n8n a esse
+   * conjunto (interseção com flowIds/onlyDrafts se também fornecidos).
+   */
+  emailIds?: string[]
   triggeredBy?: string
   onlyDrafts?: boolean
 }
@@ -305,6 +316,10 @@ export async function dispatchEmailCopyWebhook(
   if (options.onlyDrafts) {
     emailsQuery = emailsQuery.eq("status", "draft")
   }
+  // Teste "Geração completa": restringe a copy a e-mails específicos.
+  if (options.emailIds && options.emailIds.length > 0) {
+    emailsQuery = emailsQuery.in("id", options.emailIds)
+  }
 
   // Blueprints: cascata store-specific -> global via helper batch.
   // Mantemos paralelismo com emails/references; helper resolve as duas
@@ -359,6 +374,9 @@ export async function dispatchEmailCopyWebhook(
         .order("number", { ascending: true })
       if (options.onlyDrafts) {
         retryQuery = retryQuery.eq("status", "draft")
+      }
+      if (options.emailIds && options.emailIds.length > 0) {
+        retryQuery = retryQuery.in("id", options.emailIds)
       }
       const retryRes = await retryQuery
       if (retryRes.error) {

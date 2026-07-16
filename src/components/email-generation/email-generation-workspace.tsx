@@ -12,6 +12,7 @@ import {
   X,
   Save,
   Play,
+  Rocket,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -1110,7 +1111,7 @@ function TestTab() {
     return () => clearInterval(interval)
   }, [statusInfo, pollInterval])
 
-  const handleGenerate = async (phase2Only = false) => {
+  const handleGenerate = async (phase2Only = false, fullPipeline = false) => {
     if (!selectedStoreId || !selectedFlowId || !selectedEmailId || !selectedFlow || !selectedEmail) return
 
     setGenerating(true)
@@ -1140,6 +1141,7 @@ function TestTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phase2_only: phase2Only,
+          full_pipeline: fullPipeline,
           flowId: selectedFlowId,
           emailId: selectedEmailId,
           flowType: selectedFlow.flow_type,
@@ -1168,6 +1170,7 @@ function TestTab() {
       const isError = respStatus === "error"
       const isDispatched = respStatus === "dispatched"
       const isRunning = respStatus === "running"
+      const isFullPipeline = responseData.fullPipeline === true
       const errMsg =
         responseData.error != null ? errText(responseData.error) : undefined
       setResult({
@@ -1181,19 +1184,22 @@ function TestTab() {
         error: isError
           ? errMsg || "Falha na geração (sem detalhe retornado)"
           : errMsg,
-        message: isDispatched
-          ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem/HTML/QA) virá depois, após o callback da copy."
-          : isRunning
-            ? "Montador e Blueprint concluídos. Render (imagem + HTML + QA) rodando em background — esta página atualiza sozinha."
-            : undefined,
+        message: isFullPipeline
+          ? "Geração completa: fase 1 (Curador → Montador → Blueprint) concluída e copy nova disparada ao N8N só deste e-mail. Ao chegar a copy, a fase 2 (imagem → HTML → QA) roda sozinha — esta página atualiza automaticamente."
+          : isDispatched
+            ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem/HTML/QA) virá depois, após o callback da copy."
+            : isRunning
+              ? "Montador e Blueprint concluídos. Render (imagem + HTML + QA) rodando em background — esta página atualiza sozinha."
+              : undefined,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
         relaxedBrand: responseData.relaxedBrand === true,
       })
-      // Polling no caminho síncrono (with_copy) E no novo "running" (phase2
-      // em background). Só pula no "dispatched" porque o render lá vem sob
-      // outro batch.
-      if (responseData.batchId && !isDispatched) {
+      // Polling no caminho síncrono (with_copy), no "running" (phase2 em
+      // background) E no teste "Geração completa" (dispatched + fullPipeline:
+      // a copy vem async e a fase 2 dispara sozinha no copy_ready). Só pula no
+      // "dispatched" comum, cujo render vem sob outro batch.
+      if (responseData.batchId && (!isDispatched || isFullPipeline)) {
         setBatchId(responseData.batchId as string)
         setPollInterval(2000)
       }
@@ -1384,6 +1390,20 @@ function TestTab() {
               <Play className="h-4 w-4" />
             )}
             {generating ? "Gerando..." : "Executar geração"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGenerate(false, true)}
+            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
+            title="Fluxo completo real: fase 1 (Curador → Montador → Blueprint) → copy NOVA via n8n só deste e-mail → fase 2 (imagem → HTML → QA) automática. Assíncrono."
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-[#1F1F1F] dark:border-white/40 bg-white dark:bg-white/[0.03] text-[#1F1F1F] dark:text-white text-[13px] font-semibold disabled:opacity-40 transition-opacity"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Rocket className="h-4 w-4" />
+            )}
+            Geração completa (fase 1 + copy n8n + fase 2)
           </button>
           <button
             type="button"
