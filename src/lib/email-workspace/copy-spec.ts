@@ -57,7 +57,9 @@ const GENERIC_BOUNDS = { min: 3, max: 600 }
  */
 const DEFAULT_SPEC_BY_TYPE: Record<string, CopySpecField[]> = {
   hero: [
-    { key: "eyebrow", min_chars: 10, max_chars: 35 },
+    // Kicker do hero: 1 linha, 1-3 palavras. Teto 24 (espelha a instrução do
+    // Blueprint agent, que envia o copy_spec ao n8n — ver migration 20260923).
+    { key: "eyebrow", min_chars: 8, max_chars: 24 },
     { key: "headline", min_chars: 18, max_chars: 40 },
     { key: "body", min_chars: 120, max_chars: 210 },
     { key: "cta", min_chars: 8, max_chars: 16 },
