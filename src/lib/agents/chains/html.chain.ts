@@ -118,15 +118,42 @@ Non-negotiable output-formatting rules. They override any conflicting habit and 
 </formatting_hard_rules>
 
 <hero_overlay_hard_rule>
-This rule OVERRIDES <overlay_decision> for the HERO block only.
+This rule governs the HERO block only. The hero is ALWAYS text-over-image
+(overlay): the image is a BACKGROUND and headline/copy/CTA sit ON TOP of it.
+NEVER stack the text below the image, and NEVER expect the text baked inside
+the image.
 
-When the hero block (block_type = "hero", or the first image-bearing block when block types are generic) has an image in the image_map with overlay = "needs_html_overlay":
-- ALWAYS build it as TEXT-OVER-BACKGROUND-IMAGE — even if the reference stacks the image above the text. The generated hero image reserves its bottom area for this text; stacking wastes the reserved area and breaks the composition.
-- Construction: a container div with \`background-image: url(<the exact image_map URL>)\`, \`background-size: cover\`, \`background-position: center top\`, and a height proportional to the image's aspect_ratio at 600px width (4:5 -> ~750px, 1:1 -> 600px, 16:9 -> ~338px).
-- Legibility: add a gradient scrim between the image and the text (e.g. an inner wrapper with \`background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%)\`, or a tone matched to the text color) so headline/copy/CTA keep contrast on any photo.
-- Content placement: headline + copy + CTA are HTML text ON TOP of the image, anchored to the BOTTOM portion of the container (the reserved area). Never duplicate them below the image.
-- If the hero has NO image in the image_map (generation failed upstream): render the text-only hero exactly as before. NEVER invent a URL or reuse another block's image.
-- overlay = "burned" keeps the existing rule: place the image only, no HTML text over it.
+THE REFERENCE (library variant) IS THE AUTHORITY — do NOT re-invent the hero:
+- If the hero in reference_html is ALREADY an overlay (its cell/div carries a
+  \`background-image\`, OR an HTML comment describing the overlay construction,
+  e.g. \`<!-- hero: overlay, adaptive height, kicker 12px -->\`), PRESERVE it
+  faithfully. Repaint ONLY: swap the background-image URL for the image_map
+  URL, apply color_roles + fonts, pour in the copy. KEEP every inline
+  font-size, padding, gradient, structure AND the comment exactly as authored.
+  Do NOT re-derive heights or sizes. Follow any instruction written in the
+  comment verbatim.
+- Only if the hero is a PLAIN image slot with no overlay authored do you BUILD
+  the overlay, following the construction rules below.
+
+CONSTRUCTION (only when the reference had no overlay authored):
+- ADAPTIVE HEIGHT — never a fixed height that the text can overflow. Use a
+  table cell with the image as \`background-image\` (\`background-size:cover;
+  background-position:center top\`) and GENEROUS VERTICAL PADDING (e.g.
+  \`padding-top:320px; padding-bottom:44px\`) so the cell GROWS with the text
+  and the next block always starts BELOW it. DO NOT use \`position:absolute\`
+  for the hero text — absolute escapes the cell and the next block overlaps it
+  (the exact bug this rule prevents).
+- Legibility: a gradient scrim behind the text
+  (\`linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.6) 100%)\`).
+- FONT SIZES by role (small kicker, large headline) — NEVER enlarge the
+  eyebrow/kicker: eyebrow/kicker 11-13px uppercase with letter-spacing,
+  headline 34-44px, subcopy 15-17px, CTA 13-15px.
+- The hero is its OWN \`<tr><td>\`; the next block is a SEPARATE \`<tr>\`. Nothing
+  may bleed from one cell into the next.
+
+If the hero has NO image (generation failed upstream): render a text-only hero
+(solid brand color, text in normal flow). NEVER invent a URL or reuse another
+block's image.
 </hero_overlay_hard_rule>
 
 Emit ONLY the final HTML.`
