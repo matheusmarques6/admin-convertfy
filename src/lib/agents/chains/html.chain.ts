@@ -68,6 +68,7 @@ Do NOT replace these. Do NOT flag them. Keep verbatim.
 - DO NOT add CSS, classes, or selectors that are not in the reference.
 - DO NOT add MSO/Outlook conditionals beyond what's in the reference.
 - DO NOT touch <meta>, <head>, <!DOCTYPE>, the <style> block structure, media queries, or comments other than to substitute font-family + :root vars.
+- NEVER place a <div> (or any non-table element) as a direct child of <table>, e.g. \`</tr><div style="height:64px"></div><tr>\`. This is invalid HTML — email clients foster-parent it to the TOP of the email, creating a blank gap and pushing the hero down. To add vertical space between blocks, use a table row: \`<tr><td style="height:Npx;line-height:Npx;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>\`, or padding on the adjacent cell. Between </tr> and <tr> ONLY <tr>...</tr> or comments may appear.
 - PREHEADER: the preheader is ONE short hidden line of text (just the preheader copy). NEVER pad it with repeated &nbsp;, &#160;, zero-width characters (U+200C/U+200D/U+200B/U+FEFF), or any whitespace/spacer "hack". No spacer block of any kind. Emit the preheader text once and move on.
 - DO NOT repeat any character, entity, or token more than a handful of times in a row. If you find yourself emitting a long run of the same thing, STOP and continue with the next block.
 - DO NOT emit commentary, markdown fences, or any text before <!DOCTYPE html> or after </html>.
@@ -355,6 +356,25 @@ function collapseRunawaySpacers(html: string): string {
   )
 }
 
+/**
+ * Corrige "spacer divs" orfaos que o modelo as vezes injeta ENTRE blocos:
+ * `</tr><div style="height:64px"></div><tr>`. Uma <div> NAO pode ser filha
+ * direta de <table> — pela regra de parsing do HTML5 (foster parenting), o
+ * navegador/cliente de email move a div para ANTES da tabela, empilhando um
+ * GAP de espaco vazio no TOPO do email (hero deslocado pra baixo; bug
+ * Luxe Lift Welcome, jul/2026). Converte cada div-spacer solta num spacer de
+ * TABELA valido no MESMO ponto (respeita o respiro que o modelo quis dar entre
+ * os blocos, sem o deslocamento). `mso-line-height-rule:exactly` garante a
+ * altura no Outlook. Defensivo: o prompt ja proibe, isto e a rede de seguranca.
+ */
+export function fixOrphanSpacerDivs(html: string): string {
+  return html.replace(
+    /<\/tr>\s*<div\b[^>]*?height\s*:\s*(\d+)\s*px[^>]*>\s*<\/div>/gi,
+    (_m, px) =>
+      `</tr><tr><td style="height:${px}px;line-height:${px}px;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>`,
+  )
+}
+
 /** Erro de output truncado — o modelo nao fechou o documento (`</html>`). */
 export class HtmlTruncatedError extends Error {
   constructor(htmlLength: number) {
@@ -419,6 +439,7 @@ function postProcessHtml(rawText: string, locale?: string): string {
   if (!/<\/html>\s*$/i.test(raw)) {
     throw new HtmlTruncatedError(raw.length)
   }
+  raw = fixOrphanSpacerDivs(raw)
   raw = stripUnresolvedPlaceholders(raw)
   if (locale) raw = enforceLangAttribute(raw, locale)
   return raw
