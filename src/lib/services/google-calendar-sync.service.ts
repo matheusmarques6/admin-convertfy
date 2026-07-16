@@ -278,7 +278,10 @@ async function resolveSyncAccount(
   meeting: MeetingRow,
   fallbackUserId: string
 ): Promise<{ userId: string; userType: GoogleUserType }> {
-  if (meeting.client_id && meeting.org_id) {
+  // Se a agenda central da org estiver conectada, TODA reuniao vai pra ela
+  // (com cliente ou nao) — assim nada deixa de aparecer no Google so por
+  // faltar client_id. Fallback: agenda pessoal do organizador.
+  if (meeting.org_id) {
     try {
       const orgToken = await getValidAccessToken(meeting.org_id, "org")
       if (orgToken) {

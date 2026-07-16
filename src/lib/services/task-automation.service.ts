@@ -73,6 +73,15 @@ export class TaskAutomationService {
 
         const position = (maxPos?.position ?? 0) + 1
 
+        // created_by e FK -> profiles. candidate_assignees sao org_member_ids,
+        // entao resolvemos o profile do membro (fallback: o id ja e profile).
+        const { data: omRow } = await supabase
+          .from("org_members")
+          .select("profile_id")
+          .eq("id", assigneeId)
+          .maybeSingle()
+        const createdByProfile = (omRow?.profile_id as string | undefined) || assigneeId
+
         // Create the task
         const { data: task, error } = await supabase
           .from("tasks")
@@ -92,7 +101,7 @@ export class TaskAutomationService {
             position,
             metadata: {},
             tags: [],
-            created_by: assigneeId, // Auto-generated tasks are "self-assigned"
+            created_by: createdByProfile,
           })
           .select("id")
           .single()

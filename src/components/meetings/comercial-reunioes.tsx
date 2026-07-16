@@ -205,10 +205,10 @@ const ROW_H = 58
 function EventBlock({ m, onOpen }: { m: Shaped; onOpen: (m: Shaped) => void }) {
   const t = MTYPE[m.type]
   const top = (m.start - 7) * ROW_H
-  const h = Math.max(26, (m.end - m.start) * ROW_H - 4)
+  const h = Math.max(42, (m.end - m.start) * ROW_H - 4)
   const done = m.status === "done"
   const now = m.status === "now"
-  const compact = h < 46
+  const compact = h < 52
   return (
     <button onClick={() => onOpen(m)} style={{
       position: "absolute", top: top + 2, left: 3, right: 3, height: h,
