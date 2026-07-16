@@ -2664,6 +2664,7 @@ function EmailRefView({
             tag="Montador · placeholders"
             swatch="var(--crm-brand)"
             html={shownHtml}
+            maxHeight={COMPARE_HEIGHT}
           />
           <RefCompareColumn
             name="HTML final"
@@ -2671,6 +2672,7 @@ function EmailRefView({
             swatch="var(--crm-pos)"
             html={finalHtml && finalHtml.trim() ? finalHtml : null}
             emptyLabel="HTML final ainda não gerado"
+            maxHeight={COMPARE_HEIGHT}
           />
         </div>
       )}
@@ -2709,6 +2711,10 @@ function RefModePill({
   )
 }
 
+// Altura fixa das colunas no modo comparar, pra ficarem pareadas (topo e base
+// alinhados); cada preview rola por dentro. O modo single continua completo.
+const COMPARE_HEIGHT = 680
+
 // Coluna do modo comparação: cabeçalho rotulado + preview (ou vazio).
 function RefCompareColumn({
   name,
@@ -2716,12 +2722,14 @@ function RefCompareColumn({
   swatch,
   html,
   emptyLabel,
+  maxHeight,
 }: {
   name: string
   tag: string
   swatch: string
   html: string | null
   emptyLabel?: string
+  maxHeight?: number
 }) {
   return (
     <div>
@@ -2757,10 +2765,12 @@ function RefCompareColumn({
         </span>
       </div>
       {html ? (
-        <ScaledEmailFrame html={html} baseWidth={600} />
+        <ScaledEmailFrame html={html} baseWidth={600} maxHeight={maxHeight} />
       ) : (
         <div
+          className="flex items-center justify-center"
           style={{
+            height: maxHeight,
             padding: "48px 20px",
             textAlign: "center",
             fontSize: 12,
