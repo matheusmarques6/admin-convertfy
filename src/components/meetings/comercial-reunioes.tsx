@@ -85,6 +85,7 @@ export interface MeetingLite {
   meeting_url_source?: string | null
   notes?: string | null
   completion_notes?: string | null
+  guest_emails?: string[] | null
   client_id?: string | null
   client?: { id: string; name: string; company?: string | null } | null
   user?: { name?: string | null; email?: string | null } | null
@@ -466,13 +467,22 @@ function DetailDrawer({ m, clients, onClose, onEdit, onComplete, onLinkClient }:
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.g400, letterSpacing: "0.07em", marginBottom: 8 }}>PARTICIPANTES</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {m.attendees.length === 0 && <div style={{ fontSize: 12.5, color: C.g400 }}>Sem participantes registrados.</div>}
+              {m.attendees.length === 0 && (m.raw.guest_emails || []).length === 0 && <div style={{ fontSize: 12.5, color: C.g400 }}>Sem participantes registrados.</div>}
               {m.attendees.map((a, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div key={`m${i}`} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <Avatar name={a} size={30} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: C.g800 }}>{a}</div>
                     <div style={{ fontSize: 11.5, color: C.g400 }}>{a === m.owner ? "Organizador" : "Convidado"}</div>
+                  </div>
+                </div>
+              ))}
+              {(m.raw.guest_emails || []).map((email, i) => (
+                <div key={`g${i}`} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar name={email} size={30} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: C.g800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{email}</div>
+                    <div style={{ fontSize: 11.5, color: C.g400 }}>Convidado externo</div>
                   </div>
                 </div>
               ))}
