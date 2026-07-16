@@ -2618,10 +2618,10 @@ function EmailRefView({
         </button>
       </div>
 
-      {/* Preview renderizado da arquitetura */}
+      {/* Preview renderizado da arquitetura — altura completa, sem corte. */}
       <SectionLabel>Preview da arquitetura</SectionLabel>
       <div>
-        <ScaledEmailFrame html={shownHtml} baseWidth={600} maxHeight={520} />
+        <ScaledEmailFrame html={shownHtml} baseWidth={600} />
       </div>
     </div>
   )
