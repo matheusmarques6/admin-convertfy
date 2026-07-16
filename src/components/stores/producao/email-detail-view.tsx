@@ -839,6 +839,7 @@ export function EmailDetailView({
             <EmailRefView
               item={refItem}
               loading={!generatedData}
+              finalHtml={email.html || renderEmailHtml(email, blocks)}
               onCopyAll={(html) => copyToClipboard(html, "HTML de referência")}
             />
           )}
@@ -2488,12 +2489,18 @@ function RefMetaChip({
 function EmailRefView({
   item,
   loading,
+  finalHtml,
   onCopyAll,
 }: {
   item: GeneratedRefItem | null
   loading: boolean
+  /** HTML final gerado do email — usado no modo comparar. */
+  finalHtml: string | null
   onCopyAll: (html: string) => void
 }) {
+  // Modo de exibição: só a referência ou referência × HTML final lado a lado.
+  const [compareMode, setCompareMode] = useState<"single" | "compare">("single")
+
   if (loading) {
     return (
       <div
@@ -2598,6 +2605,22 @@ function EmailRefView({
           />
         )}
         <div style={{ flex: 1 }} />
+        {/* Toggle: só referência × comparar com o HTML final */}
+        <div
+          className="inline-flex items-center"
+          style={{ padding: 2, background: "var(--crm-gray-100)", borderRadius: 6 }}
+        >
+          <RefModePill
+            label="Só referência"
+            active={compareMode === "single"}
+            onClick={() => setCompareMode("single")}
+          />
+          <RefModePill
+            label="Comparar"
+            active={compareMode === "compare"}
+            onClick={() => setCompareMode("compare")}
+          />
+        </div>
         <button
           className="cf-focusable inline-flex items-center gap-1.5"
           style={{
@@ -2618,11 +2641,138 @@ function EmailRefView({
         </button>
       </div>
 
-      {/* Preview renderizado da arquitetura — altura completa, sem corte. */}
-      <SectionLabel>Preview da arquitetura</SectionLabel>
-      <div>
-        <ScaledEmailFrame html={shownHtml} baseWidth={600} />
+      {compareMode === "single" ? (
+        /* Preview renderizado da arquitetura — altura completa, sem corte. */
+        <>
+          <SectionLabel>Preview da arquitetura</SectionLabel>
+          <div>
+            <ScaledEmailFrame html={shownHtml} baseWidth={600} />
+          </div>
+        </>
+      ) : (
+        /* Comparação lado a lado: referência × HTML final. */
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 16,
+            alignItems: "start",
+          }}
+        >
+          <RefCompareColumn
+            name="Referência (arquitetura)"
+            tag="Montador · placeholders"
+            swatch="var(--crm-brand)"
+            html={shownHtml}
+          />
+          <RefCompareColumn
+            name="HTML final"
+            tag="Gerado · conteúdo real"
+            swatch="var(--crm-pos)"
+            html={finalHtml && finalHtml.trim() ? finalHtml : null}
+            emptyLabel="HTML final ainda não gerado"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Pill do toggle de modo da aba Ref (mesmo visual do ModePillBtn, sem ícone).
+function RefModePill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        height: 26,
+        padding: "0 10px",
+        background: active ? "var(--crm-gray-0)" : "transparent",
+        color: active ? "var(--crm-gray-900)" : "var(--crm-gray-600)",
+        border: 0,
+        borderRadius: 4,
+        fontSize: 11,
+        fontWeight: active ? 600 : 500,
+        cursor: "pointer",
+        boxShadow: active ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+// Coluna do modo comparação: cabeçalho rotulado + preview (ou vazio).
+function RefCompareColumn({
+  name,
+  tag,
+  swatch,
+  html,
+  emptyLabel,
+}: {
+  name: string
+  tag: string
+  swatch: string
+  html: string | null
+  emptyLabel?: string
+}) {
+  return (
+    <div>
+      <div
+        className="flex items-center justify-between gap-2"
+        style={{
+          padding: "8px 12px",
+          marginBottom: 8,
+          background: "var(--crm-gray-0)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 6,
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-2"
+          style={{ fontSize: 11.5, fontWeight: 700, color: "var(--crm-gray-800)" }}
+        >
+          <span
+            style={{ width: 8, height: 8, borderRadius: 2, background: swatch }}
+          />
+          {name}
+        </span>
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 600,
+            color: "var(--crm-gray-400)",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          {tag}
+        </span>
       </div>
+      {html ? (
+        <ScaledEmailFrame html={html} baseWidth={600} />
+      ) : (
+        <div
+          style={{
+            padding: "48px 20px",
+            textAlign: "center",
+            fontSize: 12,
+            color: "var(--crm-gray-400)",
+            background: "var(--crm-gray-50)",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 10,
+          }}
+        >
+          {emptyLabel ?? "Sem conteúdo"}
+        </div>
+      )}
     </div>
   )
 }
