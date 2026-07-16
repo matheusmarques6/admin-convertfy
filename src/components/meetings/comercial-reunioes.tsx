@@ -15,7 +15,7 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { addDays, startOfWeek, isSameDay, format } from "date-fns"
+import { addDays, addMonths, startOfWeek, startOfMonth, isSameDay, isSameMonth, format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { MeetingDialog } from "@/components/board/meeting-dialog"
 import { MeetingCompletionDialog } from "@/components/meetings/meeting-completion-dialog"
@@ -343,8 +343,68 @@ function ListView({ days, byDay, onOpen }: { days: { date: Date; today: boolean 
   )
 }
 
+// ── Mês ────────────────────────────────────────────────────────────────────
+const DOW = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]
+
+function MonthGrid({ anchor, byDay, onOpen }: { anchor: Date; byDay: Map<string, Shaped[]>; onOpen: (m: Shaped) => void }) {
+  const monthStart = startOfMonth(anchor)
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
+  const today = new Date()
+  const key = (d: Date) => format(d, "yyyy-MM-dd")
+  // 6 semanas cobre qualquer mês; removemos a última linha se toda fora do mês
+  const weeks: Date[][] = []
+  for (let w = 0; w < 6; w++) {
+    const row = Array.from({ length: 7 }, (_, i) => addDays(gridStart, w * 7 + i))
+    if (w === 5 && row.every((d) => !isSameMonth(d, monthStart))) break
+    weeks.push(row)
+  }
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", borderBottom: `1px solid ${C.border}`, background: C.g25 }}>
+        {DOW.map((d) => (
+          <div key={d} style={{ padding: "8px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: C.g500, textTransform: "capitalize" }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateRows: `repeat(${weeks.length},1fr)`, flex: 1, minHeight: 0 }}>
+        {weeks.map((row, wi) => (
+          <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", borderBottom: wi < weeks.length - 1 ? `1px solid ${C.g100}` : "none" }}>
+            {row.map((d) => {
+              const out = !isSameMonth(d, monthStart)
+              const isToday = isSameDay(d, today)
+              const evs = (byDay.get(key(d)) || []).slice().sort((a, b) => a.start - b.start)
+              const shown = evs.slice(0, 3)
+              return (
+                <div key={key(d)} style={{ borderRight: `1px solid ${C.g100}`, padding: "6px 6px 4px", minHeight: 0, overflow: "hidden", background: out ? C.g25 : C.white, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <span style={{ width: 22, height: 22, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, ...TNUM,
+                      background: isToday ? C.brand : "transparent", color: isToday ? "#fff" : out ? C.g300 : C.g700 }}>{format(d, "d")}</span>
+                  </div>
+                  {shown.map((m) => {
+                    const t = MTYPE[m.type]
+                    return (
+                      <button key={m.id} onClick={() => onOpen(m)} style={{
+                        display: "flex", alignItems: "center", gap: 4, width: "100%", textAlign: "left",
+                        background: t.bg, border: "none", borderLeft: `2px solid ${t.c}`, borderRadius: 3,
+                        padding: "1px 5px", cursor: "pointer", overflow: "hidden", opacity: m.status === "done" ? 0.6 : 1,
+                      }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 600, color: t.c, ...TNUM, flexShrink: 0 }}>{fmtHour(m.start)}</span>
+                        <span style={{ fontSize: 10.5, color: C.g700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</span>
+                      </button>
+                    )
+                  })}
+                  {evs.length > 3 && <span style={{ fontSize: 10, color: C.g400, paddingLeft: 4 }}>+{evs.length - 3} mais</span>}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Drawer de detalhe ──────────────────────────────────────────────────────
-function DetailDrawer({ m, onClose, onEdit, onComplete }: { m: Shaped | null; onClose: () => void; onEdit: (m: MeetingLite) => void; onComplete: (m: MeetingLite) => void }) {
+function DetailDrawer({ m, clients, onClose, onEdit, onComplete, onLinkClient }: { m: Shaped | null; clients: ClientOption[]; onClose: () => void; onEdit: (m: MeetingLite) => void; onComplete: (m: MeetingLite) => void; onLinkClient: (meetingId: string, clientId: string) => void }) {
   if (!m) return null
   const t = MTYPE[m.type]
   const done = m.status === "done"
@@ -375,6 +435,32 @@ function DetailDrawer({ m, onClose, onEdit, onComplete }: { m: Shaped | null; on
             <span style={{ fontSize: 13.5 }}>{m.channel === "meet" ? "Google Meet" : "Ligação telefônica"}</span>
             {meetUrl && <a href={meetUrl} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontSize: 13, color: C.brand, fontWeight: 500, textDecoration: "none" }}>Abrir link ↗</a>}
           </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.g400, letterSpacing: "0.07em", marginBottom: 8 }}>CLIENTE</div>
+            {m.raw.client ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar name={m.raw.client.name} size={28} />
+                <div style={{ fontSize: 13, fontWeight: 500, color: C.g800 }}>{m.raw.client.name}</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 8 }}>
+                  {m.raw.source === "google" ? "Importada do Google — sem cliente vinculado." : "Sem cliente vinculado."}
+                </div>
+                <select
+                  defaultValue=""
+                  onChange={(e) => { if (e.target.value) onLinkClient(m.id, e.target.value) }}
+                  style={{ width: "100%", height: 34, padding: "0 10px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.white, color: C.g700, fontSize: 13 }}
+                >
+                  <option value="">Vincular cliente…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.g400, letterSpacing: "0.07em", marginBottom: 8 }}>PARTICIPANTES</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -416,7 +502,7 @@ function DetailDrawer({ m, onClose, onEdit, onComplete }: { m: Shaped | null; on
 
 // ── Página principal ───────────────────────────────────────────────────────
 type View = "calendario" | "lista"
-type Scale = "semana" | "dia"
+type Scale = "mes" | "semana" | "dia"
 
 export function ComercialReunioes({ meetings, clients, members, hasGoogleCalendar = false }: Props) {
   const router = useRouter()
@@ -458,15 +544,33 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
   const doneCount = shaped.filter((s) => s.status === "done").length
   const todayCount = shaped.filter((s) => isSameDay(s.date, now)).length
 
-  const rangeLabel = scale === "dia"
-    ? format(anchor, "d 'de' MMM yyyy", { locale: ptBR })
-    : `${format(days[0].date, "d")} – ${format(days[6].date, "d 'de' MMM", { locale: ptBR })}`
+  const rangeLabel = scale === "mes"
+    ? format(anchor, "MMMM yyyy", { locale: ptBR })
+    : scale === "dia"
+      ? format(anchor, "d 'de' MMM yyyy", { locale: ptBR })
+      : `${format(days[0].date, "d")} – ${format(days[6].date, "d 'de' MMM", { locale: ptBR })}`
 
-  const step = (dir: number) => setAnchor((a) => addDays(a, dir * (scale === "dia" ? 1 : 7)))
+  const step = (dir: number) =>
+    setAnchor((a) => (scale === "mes" ? addMonths(a, dir) : addDays(a, dir * (scale === "dia" ? 1 : 7))))
 
   const openNew = () => { setEditing(null); setDialogOpen(true) }
   const openEdit = (m: MeetingLite) => { setOpen(null); setEditing(m); setDialogOpen(true) }
   const openComplete = (m: MeetingLite) => { setOpen(null); setCompletion(m) }
+
+  const linkClient = async (meetingId: string, clientId: string) => {
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId }),
+      })
+      if (!res.ok) throw new Error()
+      setOpen(null)
+      router.refresh()
+    } catch {
+      // silencioso — mantém o drawer aberto para nova tentativa
+    }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0, flex: 1 }}>
@@ -516,6 +620,7 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
           </div>
           {view === "calendario" && (
             <Segmented<Scale> value={scale} onChange={setScale} options={[
+              { key: "mes", label: "Mês" },
               { key: "semana", label: "Semana" },
               { key: "dia", label: "Dia" },
             ]} />
@@ -527,10 +632,12 @@ export function ComercialReunioes({ meetings, clients, members, hasGoogleCalenda
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         {view === "lista"
           ? <ListView days={days} byDay={byDay} onOpen={setOpen} />
-          : <TimeGrid days={days} byDay={byDay} onOpen={setOpen} />}
+          : scale === "mes"
+            ? <MonthGrid anchor={anchor} byDay={byDay} onOpen={setOpen} />
+            : <TimeGrid days={days} byDay={byDay} onOpen={setOpen} />}
       </div>
 
-      <DetailDrawer m={open} onClose={() => setOpen(null)} onEdit={openEdit} onComplete={openComplete} />
+      <DetailDrawer m={open} clients={clients} onClose={() => setOpen(null)} onEdit={openEdit} onComplete={openComplete} onLinkClient={linkClient} />
 
       {dialogOpen && (
         <MeetingDialog
