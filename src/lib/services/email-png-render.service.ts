@@ -250,16 +250,19 @@ async function renderOnPage(
     deviceScaleFactor: dsf,
   })
 
-  let shot: Uint8Array
   if (clipped) {
     log.warn("height_clipped", { scrollHeight, maxHeightPx: opts.maxHeightPx })
-    shot = await page.screenshot({
-      type: "png",
-      clip: { x: 0, y: 0, width: opts.width, height: opts.maxHeightPx },
-    })
-  } else {
-    shot = await page.screenshot({ type: "png", fullPage: true })
   }
+  // SEMPRE `clip` com a altura REAL medida — nunca `fullPage`. O `fullPage`
+  // recalcula a altura por conta própria e, com os emails usando
+  // `html,body{height:100% !important}`, ele SOMA o viewport esticado
+  // (setViewport acima) + o conteúdo e DUPLICA o email no PNG (bug Luxe Lift
+  // Site Abandoned: 1 email no HTML, 2 no PNG). `clip` captura exatamente a
+  // região 600×targetHeight, uma vez.
+  const shot = await page.screenshot({
+    type: "png",
+    clip: { x: 0, y: 0, width: opts.width, height: targetHeight },
+  })
   return Buffer.from(shot)
 }
 

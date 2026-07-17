@@ -63,7 +63,12 @@ describe("email-png-render.service", () => {
       idleTime: 500,
       timeout: 30_000,
     })
-    expect(page.screenshot).toHaveBeenCalledWith({ type: "png", fullPage: true })
+    // SEMPRE clip com a altura real medida (nunca fullPage — fullPage duplica
+    // o email com html,body{height:100%}). evaluate mock → scrollHeight 1000.
+    expect(page.screenshot).toHaveBeenCalledWith({
+      type: "png",
+      clip: { x: 0, y: 0, width: 600, height: 1000 },
+    })
     expect(page.close).toHaveBeenCalled()
   })
 
@@ -103,7 +108,7 @@ describe("email-png-render.service", () => {
     expect(launchMock).toHaveBeenCalledTimes(2)
   })
 
-  it("reduz o dsf (sem clip) quando a altura fisica excede o limite de textura", async () => {
+  it("reduz o dsf quando a altura fisica excede o limite de textura", async () => {
     // Caso real de producao: 9614px css × dsf 2 = 19228px fisicos > 16384.
     // O render deve sair INTEIRO com dsf reduzido, nao cortado.
     const page = makeFakePage({ evaluate: vi.fn().mockResolvedValue(9_614) })
@@ -118,7 +123,11 @@ describe("email-png-render.service", () => {
       // floor(16384/9614*1000)/1000
       deviceScaleFactor: 1.704,
     })
-    expect(page.screenshot).toHaveBeenCalledWith({ type: "png", fullPage: true })
+    // clip com a altura real (9614), não fullPage.
+    expect(page.screenshot).toHaveBeenCalledWith({
+      type: "png",
+      clip: { x: 0, y: 0, width: 600, height: 9_614 },
+    })
   })
 
   it("clipa o screenshot quando scrollHeight excede maxHeightPx (16384)", async () => {
