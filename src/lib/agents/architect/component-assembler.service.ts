@@ -81,7 +81,7 @@ const DEFAULT_CHOOSER_USER = `<store>
 Para CADA block_index em <estrutura_geral_ordenada>, escolha em <biblioteca_componentes> (mesmo block_index) o variant_id que melhor serve ao objetivo e à loja. Responda APENAS o array JSON [{"block_index":N,"variant_id":"..."}].`
 
 // ── PASSO B — Montador: recebe só o HTML das ESCOLHIDAS e monta ──
-const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.
+export const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.
 
 Regras:
 - Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
@@ -92,7 +92,9 @@ Regras:
 - NÃO escreva a copy final: use placeholders curtos (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
 
-Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.`
+Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.
+
+REGRA DAS TAGS CANÔNICAS: os HTMLs das variantes usam placeholders padronizados no formato {{TAG_MAIUSCULA}} (ex.: {{HERO_HEADLINE}}, {{PRODUCT_1_NAME}}, {{COUPON_CODE}}). PRESERVE cada placeholder EXATAMENTE como está no HTML da variante — NUNCA renomeie, traduza, abrevie ou invente tags novas. Se precisar de um placeholder num trecho que não tem (bloco criado do zero), use SOMENTE tags no padrão SECAO_CAMPO já presente nas outras variantes do documento (ex.: {{BODY_TITLE}}, {{BODY_TEXT}}, {{CTA_LABEL}}) — jamais um nome novo fora desse padrão. A correlação downstream (estrutura, copy e orçamento de caracteres) depende desses nomes exatos.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
 - marca: {{brand_name}}

@@ -10,6 +10,11 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CopySpecField, EmailOutlineTemplate } from "@/types/email-generation"
+import {
+  extractStructureFromReference,
+  skeletonToPromptJson,
+  type ExtractedStructure,
+} from "./reference-structure"
 import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
 
 import { DEFAULT_BLUEPRINTS } from "../email-blueprint"
@@ -80,15 +85,17 @@ const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 // Fallback usado apenas se email_agent_configs não tiver row ativa para
 // agent_type='blueprint' (a migration 20260708b semeia a versão canônica).
-const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Recebe o HTML JÁ MONTADO de um email e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — UM bloco para CADA seção visual do HTML, na MESMA ordem, SEM fundir seções diferentes num bloco só e SEM pular nenhuma. Se o HTML tem 9 seções, o blueprint tem 9 blocos; NÃO force um número (esqueça qualquer faixa tipo "4 a 9"). Mapeie cada seção ao tipo técnico mais adequado (reviews/depoimentos → testimonials ou social_proof; cupom → coupon; escassez/contagem → urgency; CTA de fechamento → cta; selos/garantias → features; grade de produtos → products). Use SOMENTE os tipos permitidos. Cada bloco precisa de:
+export const DEFAULT_BLUEPRINT_SYSTEM = `Você é o arquiteto de estrutura de emails. Recebe o HTML JÁ MONTADO de um email e a estrutura geral (outline). Sua tarefa: LER o HTML e extrair o BLUEPRINT DETALHADO — UM bloco para CADA seção visual do HTML, na MESMA ordem, SEM fundir seções diferentes num bloco só e SEM pular nenhuma. Se o HTML tem 9 seções, o blueprint tem 9 blocos; NÃO force um número (esqueça qualquer faixa tipo "4 a 9"). Mapeie cada seção ao tipo técnico mais adequado (reviews/depoimentos → testimonials ou social_proof; cupom → coupon; escassez/contagem → urgency; CTA de fechamento → cta; selos/garantias → features; grade de produtos → products). Use SOMENTE os tipos permitidos. Cada bloco precisa de:
 - label: nome específico da seção (não genérico).
 - purpose: 2-3 frases CONCRETAS — o que a seção mostra, o ângulo/argumento e o que a COPY precisa entregar ali (NÃO escreva a copy final, escreva a diretiva específica daquele bloco). Nada de "papel do bloco" raso.
 - needs_image: true só onde há imagem renderizada (hero/image quase sempre; products quando tem foto; demais quase nunca).
 - image_brief: quando needs_image=true, 1-2 frases de COMO gerar a imagem (cena, assunto, enquadramento, mood) derivadas da INTENÇÃO do email + NICHO, sem texto na imagem; quando needs_image=false, null.
 - copy_spec: para cada bloco com texto, a lista dos campos de copy com orçamento de caracteres derivado da GEOMETRIA REAL do HTML que você leu. Fórmula: chars_por_linha ≈ largura_útil_px ÷ (font_size_px × 0.55); em colunas ESTREITAS (< 300px, ex.: texto ao lado de imagem) use × 0.75 — a quebra de palavra desperdiça ~30% da linha. max_chars = chars_por_linha × nº de linhas que a seção comporta com elegância (headline 1-2 linhas; body 3-4; CTA SEMPRE 1). min_chars ≈ 40-60% do max. Use as chaves reais de copy (headline, body, text, cta, code, hint, title, eyebrow, greeting, signoff, author). Guarda-corpos que nunca podem ser violados: headline 12-60, body/text 30-400, cta 6-24, code 4-16, title 8-50. REGRA ESPECÍFICA DO HERO: o campo \`eyebrow\` (kicker) do bloco hero tem MÁXIMO 24 caracteres — é um kicker de 1 linha (1-3 palavras). NUNCA emita max_chars > 24 para o eyebrow do hero, mesmo que a geometria comporte mais. Blocos sem texto (image, divider, spacer, footer) → copy_spec: [].
-Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief","copy_spec":[{"key","min_chars","max_chars"}]}]}.`
+Retorne APENAS JSON: {"objective","messaging","subject_hint","blocks":[{"type","label","purpose","needs_image","image_brief","copy_spec":[{"key","min_chars","max_chars"}]}]}.
 
-const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
+ESTRUTURA PRÉ-EXTRAÍDA (tags canônicas): quando o input contiver um bloco <estrutura_extraida> NÃO-VAZIO, a estrutura já foi derivada deterministicamente das tags {{TAG}} do HTML — número, ordem e type dos blocos e o copy_spec por bloco JÁ ESTÃO DECIDIDOS e serão impostos por código. Nesse caso: NÃO re-derive a estrutura nem a geometria; gere "blocks" EXATAMENTE na mesma ordem, quantidade e type da estrutura pré-extraída, preenchendo para cada bloco apenas label (nome específico), purpose (2-3 frases concretas de diretiva de copy) e image_brief (só onde needs_image=true), além de objective, messaging e subject_hint. Pode omitir copy_spec nesses blocos (será sobrescrito). Se <estrutura_extraida> estiver vazio, siga o fluxo normal (extraia a estrutura do HTML como sempre).`
+
+export const DEFAULT_BLUEPRINT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — POSICIONAMENTO: {{posicionamento}}
 PERSONA: {{persona}} — TOM DE VOZ: {{tom_voz}}
 FLOW: {{flow_type}} — EMAIL #{{email_number}}
 OUTLINE: {{outline_objective}} | {{outline_guidance}}
@@ -101,7 +108,11 @@ TIPOS PERMITIDOS: {{allowed_block_types}}
 HTML MONTADO (extraia a estrutura DELE):
 {{reference_html}}
 
-Extraia o blueprint detalhado que reflete este HTML. Responda apenas o JSON.`
+Extraia o blueprint detalhado que reflete este HTML. Responda apenas o JSON.
+
+<estrutura_extraida>
+{{estrutura_extraida}}
+</estrutura_extraida>`
 
 // ── Parsing + fallback (puro, testável) ────────────────────────────
 
@@ -148,6 +159,48 @@ export function parseBlueprintOutput(raw: string): GeneratedBlueprint | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Impõe o esqueleto determinístico (extraído das tags canônicas do
+ * reference) sobre o blueprint do LLM: número/ordem/type dos blocos,
+ * needs_image e copy_spec vêm SEMPRE do esqueleto; do LLM aproveita-se só
+ * label/purpose/image_brief (casados por posição+tipo, best-effort). Assim o
+ * LLM não tem como corromper a estrutura — se fundir/pular blocos, o
+ * esqueleto ganha e os campos criativos do bloco não-casado ficam default.
+ */
+export function applySkeletonToBlueprint(
+  blueprint: GeneratedBlueprint,
+  skeleton: ExtractedStructure,
+): GeneratedBlueprint {
+  const used = new Set<number>()
+  const pick = (type: string, idx: number): GeneratedBlock | null => {
+    const at = blueprint.blocks[idx]
+    if (at && at.type === type && !used.has(idx)) {
+      used.add(idx)
+      return at
+    }
+    const j = blueprint.blocks.findIndex(
+      (b, k) => !used.has(k) && b.type === type,
+    )
+    if (j >= 0) {
+      used.add(j)
+      return blueprint.blocks[j]
+    }
+    return null
+  }
+  const blocks: GeneratedBlock[] = skeleton.blocks.map((sb, i) => {
+    const src = pick(sb.type, i)
+    return {
+      type: sb.type,
+      label: src?.label?.trim() ? src.label : sb.type,
+      purpose: src?.purpose ?? "",
+      needs_image: sb.needs_image,
+      image_brief: sb.needs_image ? (src?.image_brief ?? null) : null,
+      copy_spec: sb.copy_spec,
+    }
+  })
+  return { ...blueprint, blocks }
 }
 
 /** Fallback determinístico a partir dos DEFAULT_BLUEPRINTS in-code. */
@@ -252,6 +305,20 @@ export async function generateStoreBlueprint(
         user_template: DEFAULT_BLUEPRINT_USER,
       }
 
+  // Estrutura determinística das tags canônicas do reference (tag-registry).
+  // Quando presente: o LLM só preenche os campos criativos e o merge
+  // pós-parse impõe estrutura/copy_spec do esqueleto. null = reference
+  // legado (sem tags canônicas) → fluxo atual intacto.
+  const skeleton = extractStructureFromReference(input.referenceHtml)
+  if (skeleton && skeleton.unknownTags.length > 0) {
+    log.warn("blueprint.unknown_tags", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      unknownTags: skeleton.unknownTags,
+    })
+  }
+
   const vars: Record<string, string> = {
     brand_name: input.brandName,
     nicho: input.nicho,
@@ -267,6 +334,7 @@ export async function generateStoreBlueprint(
     allowed_block_types: Array.from(ALLOWED_BLOCK_TYPES).join(", "),
     reference_html: input.referenceHtml,
     pesquisa_diagnostico: input.pesquisa,
+    estrutura_extraida: skeleton ? skeletonToPromptJson(skeleton) : "",
   }
 
   const t0 = Date.now()
@@ -295,6 +363,10 @@ export async function generateStoreBlueprint(
     blueprint = parseBlueprintOutput(res.raw)
     // LLM respondeu mas o JSON não pôde ser parseado em um blueprint válido.
     if (!blueprint) invokeError = "blueprint_unparseable_json"
+    // Estrutura determinística ganha do LLM (tags canônicas no reference).
+    if (blueprint && skeleton) {
+      blueprint = applySkeletonToBlueprint(blueprint, skeleton)
+    }
   } catch (err) {
     invokeError = err instanceof Error ? err.message : String(err)
     log.error("blueprint.invoke_failed", {
@@ -371,6 +443,10 @@ export async function generateStoreBlueprint(
       fallback_source: fallbackSource,
       attempted_model: config.model,
       invoke_error: invokeError,
+      // Estrutura determinística via tags canônicas do reference.
+      skeleton_used: skeleton !== null,
+      skeleton_blocks: skeleton?.blocks.length ?? null,
+      skeleton_unknown_tags: skeleton?.unknownTags ?? null,
     },
     tokensInput,
     tokensOutput,
