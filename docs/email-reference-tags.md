@@ -171,6 +171,58 @@ CTA genérico de bloco único (quando o bloco só tem um botão):
 
 ---
 
+## Extensões v1.1 (mapeamento da biblioteca Email / Componentes)
+
+Tags adicionadas ao converter as 40 variantes reais de
+`email_component_variants` (que usavam o dialeto `{{ tag_minuscula }}`).
+
+### Tags de sistema adicionadas (sem orçamento de copy)
+
+| Tag | Conteúdo |
+|---|---|
+| `{{LOGO_URL}}` | URL da imagem do logo (quando o logo é `<img>`) |
+| `{{WEBSITE_URL}}` | URL do site da loja |
+| `{{X_IMAGE_ALT}}` | Alt text de qualquer imagem (par de toda `X_IMAGE`) |
+| `{{X_BG_IMAGE}}` | Imagem decorativa de fundo da seção (`BODY_BG_IMAGE`, `PRODUCTS_BG_IMAGE`) |
+| `{{PRODUCT_N_THUMB_M}}` | Miniaturas do produto (M = 1..3) |
+| `{{FACEBOOK_ICON}}` `{{INSTAGRAM_ICON}}` `{{TIKTOK_ICON}}` `{{YOUTUBE_ICON}}` `{{PINTEREST_ICON}}` | Ícones sociais (img src) |
+| `{{USP_N_ICON}}` / `{{USP_ICON}}` | Ícone do benefício (compartilhado quando único) |
+| `{{BADGE_N_ICON}}` | Ícone do selo |
+| `{{STEP_N_IMAGE}}` / `{{STEP_N_NUMBER}}` | Imagem e numeral do passo |
+| `{{REVIEW_N_IMAGE}}` / `{{REVIEW_N_INITIAL}}` / `{{REVIEW_N_PHOTOS}}` / `{{REVIEW_N_URL}}` | Avatar, inicial, fotos anexas e link do review |
+| `{{REVIEWS_IMAGE}}` / `{{REVIEWS_IMAGE_ALT}}` | Imagem/gif da seção de reviews |
+| `{{PRODUCTS_IMAGE}}` | Imagem editorial da seção de produtos |
+| `{{HEADER_LINK_N_LABEL}}` / `{{HEADER_LINK_N_URL}}` | Menu de navegação no topo (N = 1..4) |
+
+### Tags de copy adicionadas
+
+| Tag | Conteúdo | min | max |
+|---|---|---|---|
+| `{{OFFER_VALUE}}` | Valor do desconto (ex.: "10% OFF") | 4 | 16 |
+| `{{BODY_SUBHEAD}}` | Apoio sob o título da seção de texto | 30 | 90 |
+| `{{BODY_TEXT_N}}` | Parágrafos múltiplos (N = 1..3) | 80 | 220 |
+| `{{BODY_QUOTE_LINE_N}}` | Linhas de citação da brand story (N = 1..3) | 15 | 60 |
+| `{{HERO_HEADLINE_LINE_N}}` | Headline quebrada em 2 linhas estilizadas | 8 | 24 |
+| `{{HERO_CTA_2_LABEL}}` / `{{HERO_CTA_2_URL}}` | Segundo CTA do hero | 8/— | 16/— |
+| `{{PRODUCTS_SUBHEAD}}` | Apoio sob o título da grade | 20 | 80 |
+| `{{PRODUCT_N_SUBHEAD}}` | Subtítulo do produto | 10 | 40 |
+| `{{PRODUCT_N_DESC_2}}` | Segundo parágrafo (bloco 1-produto) | 40 | 90 |
+| `{{PRODUCT_N_COMPARE_PRICE}}` | Preço "de" riscado | 4 | 12 |
+| `{{PRODUCT_N_USP_M}}` | Benefício curto do produto (M = 1..2) | 8 | 35 |
+| `{{PRODUCT_N_REVIEWS_COUNT}}` | Contagem de reviews (ex.: "1.234 reviews") | 5 | 20 |
+| `{{PRODUCT_CTA_LABEL}}` | CTA compartilhado dos cards (grades grandes) | 6 | 16 |
+| `{{REVIEWS_TEXT}}` | Intro da seção de reviews | 40 | 140 |
+| `{{REVIEW_N_META}}` | Papel/produto do autor (ex.: "Verified Buyer") | 5 | 40 |
+| `{{REVIEW_VERIFIED_LABEL}}` | Rótulo "Compra verificada" | 8 | 25 |
+| `{{STEP_N_TITLE}}` / `{{STEP_N_TEXT}}` | Passos "como funciona" (N = 1..3) | 8–30 | 40–100 |
+
+### Ajustes de faixa
+
+- `FOOTER_LINK_N`: N estendido de 1..4 para **1..7** (footers reais têm até 7 links)
+- `PRODUCT_N`: N estendido para **1..9** (grade "produtos 8" tem 9 cards)
+
+---
+
 ## De → Para (tags mais frequentes fora do padrão)
 
 Mapa de conversão para normalizar references existentes (frequência na
