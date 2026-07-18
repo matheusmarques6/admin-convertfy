@@ -13,6 +13,7 @@ import {
   Unplug,
   Trash2,
   Power,
+  FolderInput,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -169,8 +170,9 @@ function ChannelCard({
   onReconnect: () => void
   onChanged: () => void
 }) {
-  const [busy, setBusy] = useState<"check" | "logout" | "remove" | "restart" | null>(null)
+  const [busy, setBusy] = useState<"check" | "logout" | "remove" | "restart" | "migrate" | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionOk, setActionOk] = useState<string | null>(null)
 
   const isInstagram = channel.type === "instagram"
   const isEvolution = channel.provider === "evolution"
@@ -189,6 +191,36 @@ function ChannelCard({
       onChanged()
     } catch {
       setActionError("Falha ao consultar o estado")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Traz as conversas dos canais Evolution DESATIVADOS da org para este
+  // canal (troca de instância: threads antigas ficam amarradas ao canal
+  // morto e responder nelas falha). Merge automático de contatos que já
+  // têm conversa nova.
+  const migrateThreads = async () => {
+    if (!window.confirm(`Importar as conversas dos canais desativados para "${channel.display_name}"? Contatos que já têm conversa neste canal serão mesclados.`)) return
+    setBusy("migrate")
+    setActionError(null)
+    setActionOk(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/migrate-threads`, { method: "POST" })
+      const json = await res.json()
+      const data = json.data ?? json
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao importar conversas")
+      } else if (data.sources === 0) {
+        setActionOk("Nenhum canal desativado com conversas para importar.")
+      } else {
+        setActionOk(
+          `${data.migrated} conversas importadas, ${data.merged} mescladas${data.failed ? `, ${data.failed} falharam (ver logs)` : ""}.`,
+        )
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao importar conversas")
     } finally {
       setBusy(null)
     }
@@ -342,6 +374,24 @@ function ChannelCard({
           <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-danger-fg)" }}>
             {actionError}
           </span>
+        )}
+        {actionOk && (
+          <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-success-fg)" }}>
+            {actionOk}
+          </span>
+        )}
+        {isEvolution && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Traz as conversas dos canais Evolution desativados (troca de instância) para este canal — responder nelas volta a funcionar"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={migrateThreads}
+          >
+            <FolderInput className="h-3 w-3" />
+            {busy === "migrate" ? "Importando..." : "Importar conversas antigas"}
+          </button>
         )}
         {isEvolution && channel.is_active && (
           <button
