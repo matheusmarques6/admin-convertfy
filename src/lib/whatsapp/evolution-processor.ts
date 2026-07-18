@@ -30,6 +30,10 @@ import {
 import { shouldApplyStatus } from "./message-content"
 import { persistBase64Media } from "./media"
 import { getOrCreateThread, type ProcessResult } from "./webhook-processor"
+import {
+  clearCrmThreadNotifications,
+  notifyCrmInboundMessage,
+} from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("EvolutionProcessor")
 
@@ -198,6 +202,22 @@ async function handleEvolutionMessage(
   if (inserted && !content.fromMe) {
     // Sem janela de 24h no Baileys — inbound só reabre thread resolvida.
     await admin.from("crm_threads").update({ status: "open" }).eq("id", threadId).eq("status", "resolved")
+
+    // Notificação no sino do admin (coalescida por thread). Awaited:
+    // promise solta pode ser congelada no serverless. Best-effort.
+    await notifyCrmInboundMessage(admin, {
+      orgId: channel.org_id,
+      threadId,
+      messageId: insertedRows![0].id as string,
+      contentType: content.contentType,
+      body: content.body,
+    })
+  }
+
+  if (inserted && content.fromMe) {
+    // Agente respondeu pelo celular = conversa atendida — limpa as
+    // notificações pendentes da thread (mesma semântica do send route).
+    await clearCrmThreadNotifications(admin, threadId)
   }
 
   if (inserted) {

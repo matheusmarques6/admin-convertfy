@@ -19,6 +19,7 @@ import { decrypt } from "@/lib/crypto"
 import { createWhatsAppCloudClient, type WebhookMessage, type WhatsAppCloudAPI } from "./cloud-api"
 import { buildMessageContent, shouldApplyStatus } from "./message-content"
 import { persistInboundMedia } from "./media"
+import { notifyCrmInboundMessage } from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("WhatsAppProcessor")
 
@@ -305,6 +306,17 @@ async function handleInboundMessage(
       p_now: messageAt,
     })
     if (rpcError) log.error("open_crm_thread_window falhou", { threadId, message: rpcError.message })
+
+    // Notificação no sino do admin (coalescida por thread) — awaited
+    // de propósito: promise solta pode ser congelada pelo runtime
+    // serverless após o return. Best-effort: nunca lança.
+    await notifyCrmInboundMessage(admin, {
+      orgId,
+      threadId,
+      messageId: insertedRows![0].id as string,
+      contentType: content.contentType,
+      body: content.body,
+    })
 
     log.info("inbound message", { thread_id: threadId, external_id: message.id, type: content.contentType })
   }

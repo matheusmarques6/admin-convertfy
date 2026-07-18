@@ -23,13 +23,16 @@ import { ConversationList, type StatusFilter } from "./inbox/conversation-list"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-export function InboxView() {
+export function InboxView({ initialThreadId }: { initialThreadId?: string | null }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open")
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
   const [tagFilter, setTagFilter] = useState("")
   const debouncedSearch = useDebounce(search, 250)
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  // initialThreadId = deep-link ?thread=<id> vindo das notificações do
+  // sino; o SWR de detail busca por id direto, então funciona mesmo se
+  // a thread não estiver na lista filtrada atual.
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
 
   const params = new URLSearchParams()

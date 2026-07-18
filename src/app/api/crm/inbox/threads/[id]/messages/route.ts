@@ -29,6 +29,7 @@ import {
   sendInstagramMessage,
   replyToInstagramComment,
 } from "@/lib/services/instagram-graph.service"
+import { clearCrmThreadNotifications } from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("CrmInboxSend")
 
@@ -339,8 +340,9 @@ export async function POST(
       log.error(`[Inbox] ${channel.type} send failed`, result.error)
     }
 
-    // Reseta unread (agente respondeu)
+    // Reseta unread (agente respondeu) + limpa notificações do sino
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
+    await clearCrmThreadNotifications(admin, threadId)
 
     return successResponse(request, {
       message_id: localMsgId,

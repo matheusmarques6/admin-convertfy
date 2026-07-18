@@ -12,6 +12,7 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { loadChannelClient } from "@/lib/whatsapp/channel-client"
 import { phoneToJid } from "@/lib/whatsapp/evolution-content"
+import { clearCrmThreadNotifications } from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("CrmInboxRead")
 
@@ -40,6 +41,10 @@ export async function POST(
       .maybeSingle<ThreadRow>()
 
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", id)
+
+    // Conversa vista — some do sino para TODOS os destinatários
+    // (clear global, consistente com unread_count). Best-effort.
+    await clearCrmThreadNotifications(admin, id)
 
     // Read receipt best-effort (só WhatsApp — cloud OU evolution)
     const channelType = Array.isArray(thread?.channel) ? thread?.channel[0]?.type : thread?.channel?.type
