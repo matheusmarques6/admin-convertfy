@@ -210,7 +210,21 @@ export default async function DashboardLayout({
   }
 
   return (
-    <DashboardClientWrapper initialPermissions={permissions}>
+    <DashboardClientWrapper
+      initialPermissions={permissions}
+      // Hidrata o useAuthStore client-side (o sino de notificações e
+      // outros consumidores dependem de user.id — sem isso ficam mudos).
+      // role vazio no fallback raro sem profile: consumidores só usam id.
+      initialUser={{
+        id: user.id,
+        email: (profile?.email as string | null) ?? user.email ?? "",
+        name: userData.name,
+        avatar_url: userData.avatar_url ?? undefined,
+        role: (profile?.role ?? "") as import("@/types").UserRole,
+        created_at: (profile?.created_at as string | null) ?? "",
+        updated_at: (profile?.updated_at as string | null) ?? "",
+      }}
+    >
       {/* SettingsModalProvider ANTES do CommandPalette: a paleta abre o
           modal de Configurações via contexto. */}
       <SettingsModalProvider>
