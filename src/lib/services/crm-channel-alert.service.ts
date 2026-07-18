@@ -23,6 +23,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
+import { channelAlertPriority, sendPilotPush } from "./pushover.service"
 
 const log = logger.child("CrmChannelAlert")
 
@@ -125,6 +126,18 @@ export async function notifyChannelDisconnected(
       return
     }
     log.info("alerta de canal desconectado criado", { channelId, kind, recipients: recipients.length })
+
+    // Push pro celular piloto (Fase 0). Dedup acima garante 1 push por
+    // queda. priority default 1 (fura o modo silencioso do Pushover —
+    // canal parado = leads sendo perdidos); ajustável via env
+    // PUSHOVER_ALERT_PRIORITY=0. Sem TTL: alerta não deve sumir sozinho.
+    await sendPilotPush({
+      title: `WhatsApp desconectado: ${label}`,
+      message: reason,
+      url: CHANNELS_PAGE_LINK,
+      urlTitle: "Abrir canais",
+      priority: channelAlertPriority(),
+    })
   } catch (err) {
     log.warn("notifyChannelDisconnected falhou (best-effort)", {
       channelId,

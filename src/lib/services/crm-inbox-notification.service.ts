@@ -26,6 +26,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
+import { INBOX_PUSH_TTL_SECONDS, sendPilotPush } from "./pushover.service"
 
 const log = logger.child("CrmInboxNotification")
 
@@ -123,18 +124,42 @@ export async function notifyCrmInboundMessage(
     }
 
     const contactLabel = thread.contact_name?.trim() || thread.contact_external_id
+    const preview = buildNotificationPreview(contentType, body)
+
+    // O push (Fase 0: celular piloto) dispara SÓ quando a notificação
+    // da conversa NASCE — mensagens seguintes só coalescem no sino.
+    // Checa antes do RPC se já havia notificação aberta desta thread.
+    const { data: openBefore } = await admin
+      .from("notifications")
+      .select("id")
+      .eq("read", false)
+      .filter("metadata->>source", "eq", CRM_INBOX_NOTIFICATION_SOURCE)
+      .filter("metadata->>thread_id", "eq", threadId)
+      .limit(1)
+      .maybeSingle()
 
     const { error } = await admin.rpc("upsert_crm_inbox_notification", {
       p_user_ids: recipients,
       p_thread_id: threadId,
       p_org_id: orgId,
       p_contact_label: contactLabel,
-      p_preview: buildNotificationPreview(contentType, body),
+      p_preview: preview,
       p_link: `/admin/inbox?thread=${threadId}`,
       p_message_id: messageId,
     })
     if (error) {
       log.warn("upsert_crm_inbox_notification falhou", { threadId, message: error.message })
+      return
+    }
+
+    if (!openBefore) {
+      await sendPilotPush({
+        title: `Nova mensagem de ${contactLabel}`,
+        message: preview,
+        url: `/admin/inbox?thread=${threadId}`,
+        urlTitle: "Abrir conversa",
+        ttl: INBOX_PUSH_TTL_SECONDS,
+      })
     }
   } catch (err) {
     log.warn("notifyCrmInboundMessage falhou (best-effort)", {
