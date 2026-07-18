@@ -9,7 +9,7 @@
  * relaxado pra 30s como fallback quando conectado.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -81,6 +81,22 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         .catch(() => {})
     }
   }, [activeThreadId, mutateThreads])
+
+  // Mensagem inbound que chega com a conversa JÁ aberta não passa pelo
+  // effect acima (activeThreadId não muda) e deixaria unread_count e a
+  // notificação do sino pendurados — re-marca como lida uma vez por
+  // mensagem (dedup por id via ref).
+  const lastReadInboundRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeThreadId || !detailData?.messages?.length) return
+    const last = detailData.messages[detailData.messages.length - 1]
+    if (last.direction !== "inbound") return
+    if (lastReadInboundRef.current === last.id) return
+    lastReadInboundRef.current = last.id
+    fetch(`/api/crm/inbox/threads/${activeThreadId}/read`, { method: "POST" })
+      .then(() => mutateThreads())
+      .catch(() => {})
+  }, [activeThreadId, detailData, mutateThreads])
 
   const totalUnread = useMemo(
     () => threads.reduce((sum, t) => sum + (t.unread_count || 0), 0),
