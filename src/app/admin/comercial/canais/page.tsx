@@ -2,7 +2,17 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { Plus, Phone, CheckCircle2, Instagram, QrCode, AlertCircle } from "lucide-react"
+import {
+  Plus,
+  Phone,
+  CheckCircle2,
+  Instagram,
+  QrCode,
+  AlertCircle,
+  RefreshCw,
+  Unplug,
+  Trash2,
+} from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { EvolutionQrModal } from "@/components/crm/channels/evolution-qr-modal"
@@ -96,6 +106,7 @@ export default function ChannelsPage() {
                 onReconnect={() =>
                   setQrTarget({ channelId: c.id, channelName: c.display_name })
                 }
+                onChanged={() => mutate()}
               />
             ))}
           </div>
@@ -148,9 +159,78 @@ export default function ChannelsPage() {
 
 // ─── Channel card (lista) ────────────────────────────────────────
 
-function ChannelCard({ channel, onReconnect }: { channel: Channel; onReconnect: () => void }) {
+function ChannelCard({
+  channel,
+  onReconnect,
+  onChanged,
+}: {
+  channel: Channel
+  onReconnect: () => void
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState<"check" | "logout" | "remove" | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
   const isInstagram = channel.type === "instagram"
   const isEvolution = channel.provider === "evolution"
+
+  // Consulta o estado LIVE na Evolution (pega instância zumbi em que o
+  // config diz "open" mas a API está quebrada) e revalida a lista.
+  const checkState = async () => {
+    setBusy("check")
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/evolution/state`)
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao consultar o estado")
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao consultar o estado")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Desconecta o número (logout) — o canal continua existindo e pode
+  // reconectar com novo QR (inclusive outro número).
+  const logout = async () => {
+    if (!window.confirm(`Desconectar o WhatsApp de "${channel.display_name}"? As mensagens param de chegar até reconectar com um novo QR.`)) return
+    setBusy("logout")
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/evolution/logout`, { method: "POST" })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao desconectar")
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao desconectar")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Remove a instância no servidor Evolution e desativa o canal.
+  const remove = async () => {
+    if (!window.confirm(`Remover o canal "${channel.display_name}"? A instância será apagada no servidor Evolution e o canal desativado. As conversas já recebidas permanecem no inbox.`)) return
+    setBusy("remove")
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/evolution/logout`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao remover")
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao remover")
+    } finally {
+      setBusy(null)
+    }
+  }
   const Icon = isInstagram ? Instagram : isEvolution ? QrCode : Phone
   const tagLabel = isInstagram
     ? "Instagram (DM + Comments)"
@@ -226,15 +306,72 @@ function ChannelCard({ channel, onReconnect }: { channel: Channel; onReconnect: 
             {evoState === "open" ? "Conectado" : evoState === "connecting" ? "Conectando" : "Desconectado"}
           </span>
         )}
+        {actionError && (
+          <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-danger-fg)" }}>
+            {actionError}
+          </span>
+        )}
+        {isEvolution && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Consulta o estado real da instância na Evolution (detecta conexão travada mesmo quando aparece Conectado)"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={checkState}
+          >
+            <RefreshCw className={`h-3 w-3 ${busy === "check" ? "animate-spin" : ""}`} />
+            Verificar
+          </button>
+        )}
         {evoDisconnected && channel.is_active && (
           <button
             type="button"
             className="crm-button-ghost"
-            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
             onClick={onReconnect}
           >
             <AlertCircle className="h-3 w-3" />
             Reconectar
+          </button>
+        )}
+        {isEvolution && channel.is_active && evoState === "open" && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Desconecta o número (logout) — reconecte depois com um novo QR"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              color: "var(--crm-danger-fg)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={logout}
+          >
+            <Unplug className="h-3 w-3" />
+            {busy === "logout" ? "Desconectando..." : "Desconectar"}
+          </button>
+        )}
+        {isEvolution && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Remove a instância no servidor Evolution e desativa o canal"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              color: "var(--crm-danger-fg)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={remove}
+          >
+            <Trash2 className="h-3 w-3" />
+            {busy === "remove" ? "Removendo..." : "Remover"}
           </button>
         )}
         {channel.is_active && !isEvolution && (
