@@ -78,6 +78,7 @@ export async function POST(
       provider: string | null
       config: Record<string, unknown> | null
       external_id: string | null
+      is_active: boolean
     }
     type ThreadRow = {
       id: string
@@ -91,7 +92,7 @@ export async function POST(
     const { data: thread } = await admin
       .from("crm_threads")
       .select(
-        "id, org_id, contact_external_id, is_window_open, window_expires_at, channel:crm_channels (id, type, provider, config, external_id)",
+        "id, org_id, contact_external_id, is_window_open, window_expires_at, channel:crm_channels (id, type, provider, config, external_id, is_active)",
       )
       .eq("id", threadId)
       .single<ThreadRow>()
@@ -111,6 +112,16 @@ export async function POST(
         `Channel ${channel.type} nao suportado pra envio. Use whatsapp ou instagram.`,
         400,
         "channel-unsupported",
+      )
+    }
+    // Conversa amarrada a canal removido (troca de instância): erro
+    // acionável em vez do genérico "indisponível" — o operador resolve
+    // sozinho com a importação, sem precisar de logs.
+    if (!channel.is_active) {
+      throw new AppError(
+        "Esta conversa pertence a um canal DESATIVADO. Vá em Comercial → Canais e clique em \"Importar conversas antigas\" no canal ativo para migrá-la.",
+        422,
+        "channel-inactive",
       )
     }
 

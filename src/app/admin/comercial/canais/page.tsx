@@ -350,8 +350,12 @@ function ChannelCard({
               alignItems: "center",
               gap: 5,
               fontWeight: "var(--crm-weight-medium)",
-              color:
-                evoState === "open"
+              // Canal desativado NUNCA mostra "Conectado" — o badge de
+              // conexão de um canal removido é mentira útil pra ninguém
+              // (a instância pode até estar open, mas o canal não opera).
+              color: !channel.is_active
+                ? "var(--crm-gray-500)"
+                : evoState === "open"
                   ? "var(--crm-success-fg)"
                   : evoState === "connecting"
                     ? "var(--crm-warning-fg, #B45309)"
@@ -367,7 +371,13 @@ function ChannelCard({
                 display: "inline-block",
               }}
             />
-            {evoState === "open" ? "Conectado" : evoState === "connecting" ? "Conectando" : "Desconectado"}
+            {!channel.is_active
+              ? "Desativado"
+              : evoState === "open"
+                ? "Conectado"
+                : evoState === "connecting"
+                  ? "Conectando"
+                  : "Desconectado"}
           </span>
         )}
         {actionError && (
