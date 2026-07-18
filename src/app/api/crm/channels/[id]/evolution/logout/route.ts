@@ -36,8 +36,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const { id: channelId } = await context.params
     const { admin, loaded } = await loadOwnEvolutionChannel(channelId)
 
+    // Não engolir a falha silenciosamente: se a Evolution recusar o
+    // logout, o estado local ainda é marcado close (a intenção do
+    // operador vale), mas a resposta DIZ que a Evolution não confirmou
+    // — a UI mostra o aviso em vez de fingir sucesso.
+    let evolutionOk = true
+    let evolutionError: string | null = null
     await loaded.client.logout().catch((err) => {
-      log.warn("logout na Evolution falhou (seguindo)", { channelId, message: (err as Error)?.message })
+      evolutionOk = false
+      evolutionError = err instanceof Error ? err.message : String(err)
+      log.warn("logout na Evolution falhou (seguindo)", { channelId, message: evolutionError })
     })
 
     const config = {
@@ -49,7 +57,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     await admin.from("crm_channels").update({ config }).eq("id", channelId)
 
-    return successResponse(request, { ok: true })
+    return successResponse(request, { ok: true, evolution_ok: evolutionOk, evolution_error: evolutionError })
   } catch (error) {
     log.error("logout error:", error)
     return errorResponse(request, error, "crm-channel-evolution-logout")
@@ -61,9 +69,13 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     const { id: channelId } = await context.params
     const { admin, loaded } = await loadOwnEvolutionChannel(channelId)
 
+    let evolutionOk = true
+    let evolutionError: string | null = null
     await loaded.client.logout().catch(() => {})
     await loaded.client.deleteInstance().catch((err) => {
-      log.warn("delete na Evolution falhou (seguindo)", { channelId, message: (err as Error)?.message })
+      evolutionOk = false
+      evolutionError = err instanceof Error ? err.message : String(err)
+      log.warn("delete na Evolution falhou (seguindo)", { channelId, message: evolutionError })
     })
 
     const config = {
@@ -73,7 +85,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     }
     await admin.from("crm_channels").update({ config, is_active: false }).eq("id", channelId)
 
-    return successResponse(request, { ok: true })
+    return successResponse(request, { ok: true, evolution_ok: evolutionOk, evolution_error: evolutionError })
   } catch (error) {
     log.error("delete error:", error)
     return errorResponse(request, error, "crm-channel-evolution-delete")

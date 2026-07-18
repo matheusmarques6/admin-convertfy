@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Unplug,
   Trash2,
+  Power,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -168,7 +169,7 @@ function ChannelCard({
   onReconnect: () => void
   onChanged: () => void
 }) {
-  const [busy, setBusy] = useState<"check" | "logout" | "remove" | null>(null)
+  const [busy, setBusy] = useState<"check" | "logout" | "remove" | "restart" | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const isInstagram = channel.type === "instagram"
@@ -193,6 +194,31 @@ function ChannelCard({
     }
   }
 
+  // Reinicia o socket na Evolution usando as credenciais salvas — SEM
+  // novo QR. É o remédio para instância zumbi (painel diz Conectado mas
+  // envios falham/mensagens não chegam).
+  const restart = async () => {
+    setBusy("restart")
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/evolution/restart`, { method: "POST" })
+      const json = await res.json()
+      const data = json.data ?? json
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao reiniciar a instância")
+      } else if (!data.recovered) {
+        setActionError(
+          `Reiniciou mas não reconectou (estado: ${data.state}). Sessão pode estar corrompida — desconecte e leia o QR novamente.`,
+        )
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao reiniciar a instância")
+    } finally {
+      setBusy(null)
+    }
+  }
+
   // Desconecta o número (logout) — o canal continua existindo e pode
   // reconectar com novo QR (inclusive outro número).
   const logout = async () => {
@@ -202,8 +228,11 @@ function ChannelCard({
     try {
       const res = await fetch(`/api/crm/channels/${channel.id}/evolution/logout`, { method: "POST" })
       const json = await res.json()
+      const data = json.data ?? json
       if (!res.ok || json.error) {
         setActionError(json.error?.message || "Falha ao desconectar")
+      } else if (data.evolution_ok === false) {
+        setActionError(`Marcado como desconectado aqui, mas a Evolution não confirmou o logout: ${data.evolution_error ?? "erro desconhecido"}`)
       }
       onChanged()
     } catch {
@@ -221,8 +250,11 @@ function ChannelCard({
     try {
       const res = await fetch(`/api/crm/channels/${channel.id}/evolution/logout`, { method: "DELETE" })
       const json = await res.json()
+      const data = json.data ?? json
       if (!res.ok || json.error) {
         setActionError(json.error?.message || "Falha ao remover")
+      } else if (data.evolution_ok === false) {
+        setActionError(`Canal desativado aqui, mas a Evolution não confirmou a remoção da instância: ${data.evolution_error ?? "erro desconhecido"}`)
       }
       onChanged()
     } catch {
@@ -322,6 +354,19 @@ function ChannelCard({
           >
             <RefreshCw className={`h-3 w-3 ${busy === "check" ? "animate-spin" : ""}`} />
             Verificar
+          </button>
+        )}
+        {isEvolution && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Reinicia o socket na Evolution com as credenciais salvas (sem novo QR) — use quando a instância trava: mostra Conectado mas mensagens não chegam"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={restart}
+          >
+            <Power className="h-3 w-3" />
+            {busy === "restart" ? "Reiniciando..." : "Reiniciar"}
           </button>
         )}
         {evoDisconnected && channel.is_active && (

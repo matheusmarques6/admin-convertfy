@@ -261,6 +261,26 @@ export class EvolutionAPI {
     await this.request(`/instance/logout/${this.config.instanceName}`, { method: "DELETE" })
   }
 
+  /**
+   * Derruba e recria o socket Baileys usando as credenciais salvas —
+   * SEM novo QR. É o remédio para instância zumbi (banco diz "open",
+   * socket morto). Builds v2 usam POST; algumas antigas exigem PUT —
+   * fallback em 404/405.
+   */
+  async restart(): Promise<void> {
+    try {
+      await this.request(`/instance/restart/${this.config.instanceName}`, { method: "POST" })
+    } catch (err) {
+      const status = err instanceof EvolutionAPIError ? err.status : undefined
+      if (status === 404 || status === 405) {
+        log.warn("restart POST rejeitado — tentando PUT", { status })
+        await this.request(`/instance/restart/${this.config.instanceName}`, { method: "PUT" })
+        return
+      }
+      throw err
+    }
+  }
+
   async deleteInstance(): Promise<void> {
     await this.request(`/instance/delete/${this.config.instanceName}`, { method: "DELETE" })
   }
