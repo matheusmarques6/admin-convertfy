@@ -34,6 +34,10 @@ import {
   clearCrmThreadNotifications,
   notifyCrmInboundMessage,
 } from "@/lib/services/crm-inbox-notification.service"
+import {
+  clearChannelAlerts,
+  notifyChannelDisconnected,
+} from "@/lib/services/crm-channel-alert.service"
 
 const log = logger.child("EvolutionProcessor")
 
@@ -309,6 +313,17 @@ export async function applyConnectionUpdate(
   if (error) {
     log.error("falha ao persistir connection.update", { instanceName, message: error.message })
     return false
+  }
+
+  // Alertas no sino do admin (best-effort, nunca lançam):
+  // - 401 = deslogou no celular → alerta IMEDIATO (definitivo, precisa QR).
+  //   close genérico NÃO alerta aqui — Baileys oscila close→connecting→open
+  //   em reconexão normal; o cron de health confirma se ficou fora mesmo.
+  // - open → limpa os alertas abertos do canal.
+  if (update.state === "close" && update.statusCode === 401) {
+    await notifyChannelDisconnected(admin, { channelId: channel.id, kind: "logged_out" })
+  } else if (update.state === "open") {
+    await clearChannelAlerts(admin, channel.id)
   }
 
   log.info("connection.update aplicado", { instanceName, state: update.state, statusCode: update.statusCode })

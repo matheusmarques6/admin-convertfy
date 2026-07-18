@@ -108,6 +108,10 @@
     {
       "path": "/api/cron/whatsapp-resync-templates",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-connection-health",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

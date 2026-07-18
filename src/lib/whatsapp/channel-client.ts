@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger"
 import { loadWhatsAppChannel, type LoadedWhatsAppChannel, type WhatsAppChannelRow } from "./channel-config"
 import { createEvolutionClient, type EvolutionAPI } from "./evolution-api"
 import { getEvolutionRuntimeConfig } from "./evolution-settings"
+import { notifyChannelDisconnected } from "@/lib/services/crm-channel-alert.service"
 
 const log = logger.child("WhatsAppChannelClient")
 
@@ -104,4 +105,8 @@ export async function markEvolutionDisconnected(
   }
   const { error } = await admin.from("crm_channels").update({ config }).eq("id", channel.id)
   if (error) log.error("falha ao marcar canal evolution desconectado", { channelId: channel.id, message: error.message })
+
+  // Envio recusado por desconexão é sinal definitivo (aconteceu em uso
+  // real) — alerta o sino imediatamente. Best-effort, nunca lança.
+  await notifyChannelDisconnected(admin, { channelId: channel.id, kind: "send_refused" })
 }
