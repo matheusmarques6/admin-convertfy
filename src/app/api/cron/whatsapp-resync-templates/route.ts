@@ -27,11 +27,14 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
 
+    // Templates Meta são exclusivos do Cloud API — canal Evolution (QR)
+    // não tem access_token/phone_number_id e falharia toda execução.
     const { data: channels, error } = await admin
       .from("crm_channels")
       .select("id")
       .eq("type", "whatsapp")
       .eq("is_active", true)
+      .neq("provider", "evolution")
     if (error) throw error
 
     let synced = 0
