@@ -478,3 +478,50 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     expect(blocks[1].purpose).toBe("P-COUPON")
   })
 })
+
+describe("dispatchEmailCopyWebhook — regenerateAll", () => {
+  const mixedBlocks = () => [
+    { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+      content: { headline: "copy antiga" } },
+    { id: "b2", email_id: "e1", position: 2, block_type: "coupon", label: "Cupom",
+      content: {} },
+    { id: "b3", email_id: "e1", position: 3, block_type: "footer", label: "Rodapé",
+      content: { text: "copy antiga" } },
+  ]
+
+  function sentBlocks(): Array<{ position: number; type: string }> {
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blocks: Array<{ position: number; type: string }> }> }>
+    }
+    return body.flows[0].emails[0].blocks
+  }
+
+  it("sem o flag: email misto envia só os blocos VAZIOS (mixed mode)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = mixedBlocks()
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(sentBlocks().map((b) => b.position)).toEqual([2])
+  })
+
+  it("com regenerateAll: envia TODOS os blocos mesmo em email misto", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = mixedBlocks()
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "test_full_pipeline",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+      regenerateAll: true,
+    })
+    expect(sentBlocks().map((b) => b.position)).toEqual([1, 2, 3])
+  })
+})

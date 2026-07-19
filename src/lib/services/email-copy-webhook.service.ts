@@ -51,6 +51,14 @@ export interface DispatchEmailCopyOptions {
   emailIds?: string[]
   triggeredBy?: string
   onlyDrafts?: boolean
+  /**
+   * Envia TODOS os blocos ao n8n para copy nova, ignorando o filtro
+   * "mixed mode" (que em email parcialmente preenchido envia só os VAZIOS
+   * e preserva a copy antiga dos demais). Sem isso, o teste "Geração
+   * completa" regenerava só os blocos que o reconcile criou vazios — na
+   * Luxe Lift welcome#3 foi 1 bloco de 12.
+   */
+  regenerateAll?: boolean
 }
 
 interface EmailFlowRow {
@@ -785,7 +793,10 @@ export async function dispatchEmailCopyWebhook(
                 subject_hint: bp.subject_hint,
               }
             : null,
-          blocks: selectBlocksForCopy(blocksByEmail.get(e.id) ?? []).map(
+          blocks: (options.regenerateAll
+            ? (blocksByEmail.get(e.id) ?? [])
+            : selectBlocksForCopy(blocksByEmail.get(e.id) ?? [])
+          ).map(
             (b) => {
               // Bloco correspondente no blueprint (mesma position, semeado
               // na mesma ordem). Se a estrutura divergiu (reseed antigo,

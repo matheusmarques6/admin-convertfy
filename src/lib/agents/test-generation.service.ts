@@ -144,6 +144,10 @@ export async function runTestGeneration(
       flowIds: [flowId],
       emailIds: [emailId],
       triggeredBy,
+      // Copy NOVA do email INTEIRO: sem isso o mixed-mode enviava só os
+      // blocos que o reconcile criou vazios e preservava a copy antiga
+      // dos demais (Luxe Lift w#3: 1 bloco de 12 foi pro n8n).
+      regenerateAll: true,
     })
 
     if (!dispatch.ok) {
