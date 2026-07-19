@@ -120,6 +120,11 @@ describe("paridade dos prompts default com as migrations", () => {
     )
   })
 
+  // Espelha a migration 20260927 — purpose não pode pedir copy sem slot.
+  it("DEFAULT_BLUEPRINT_SYSTEM contém a regra do purpose limitado às tags", () => {
+    expect(DEFAULT_BLUEPRINT_SYSTEM).toContain("PURPOSE LIMITADO ÀS TAGS")
+  })
+
   it("DEFAULT_BLUEPRINT_USER interpola {{estrutura_extraida}}", () => {
     expect(DEFAULT_BLUEPRINT_USER).toContain("<estrutura_extraida>")
     expect(DEFAULT_BLUEPRINT_USER).toContain("{{estrutura_extraida}}")
