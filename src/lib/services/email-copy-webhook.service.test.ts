@@ -431,6 +431,10 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     // Tags canônicas do bloco repassadas ao n8n; sem tags no blueprint → []
     expect(blocks[1].tags).toEqual(["HERO_EYEBROW", "HERO_IMAGE"])
     expect(blocks[0].tags).toEqual([])
+    // fields: orçamento POR TAG (só copy — HERO_IMAGE fica de fora)
+    expect(
+      (blocks[1] as unknown as { fields: unknown }).fields,
+    ).toEqual([{ tag: "HERO_EYEBROW", key: "eyebrow", min_chars: 8, max_chars: 24 }])
 
     // ANTES do fix: blocks[position] deslocava 1 → type nunca casava →
     // purpose null e copy_spec default em TODOS (provado na Luxe Lift w#3).

@@ -31,6 +31,7 @@ import type {
 } from "@/types/email-workspace"
 import type { BlueprintBlock } from "@/types/email-generation"
 import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
+import { lookupTag } from "@/lib/email-workspace/tag-registry"
 
 const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
@@ -825,6 +826,22 @@ export async function dispatchEmailCopyWebhook(
                 // (contrato 1:1 campo↔template — docs/email-reference-tags.md).
                 // Vazio em blueprints legados/fallback sem esqueleto de tags.
                 tags: Array.isArray(matched?.tags) ? matched.tags : [],
+                // Orçamento POR TAG (só tags de copy): a forma mais direta do
+                // n8n gerar cada campo — 1 tag = 1 texto dentro de min/max.
+                // Deriva do tag-registry; tags de imagem/url/dados ficam fora.
+                fields: (Array.isArray(matched?.tags) ? matched.tags : [])
+                  .map((t) => {
+                    const spec = lookupTag(t)
+                    return spec && spec.kind === "copy"
+                      ? {
+                          tag: t,
+                          key: spec.copyKey,
+                          min_chars: spec.min,
+                          max_chars: spec.max,
+                        }
+                      : null
+                  })
+                  .filter((f) => f !== null),
               }
             },
           ),
